@@ -676,7 +676,7 @@
       "q4": "Hormuz veya Bab el-Mandeb gibi darboğazları gerçek zamanlı olarak izleyebilir miyim?",
       "a4": "Evet. Darboğazlar, canlı AIS gemi sayıları, hafta bazında transit değişikliği ve kesinti puanlaması ile izlenir — ve yoğunluk anomalileri her boğazın hareketli çizgisine karşı işaretlenir.",
       "q5": "Bu, Liveuamap gibi bir çatışma haritasından nasıl farklı?",
-      "a5": "Çatışma bir harita katmanıdır. World Monitor çatışmaları gemi trafiği, askeri uçaklar, altyapı, piyasalar ve siber tehditlerle birleştirir — ardından AI yakınsama ilişkisini puanlandırır: istikrarsızlık endeksleri, kritik bölge yoğunlaşması, doğrulanmış acil haberler ve günlük briefler.",
+      "a5": "Çatışma bir harita katmanıdır. World Monitor, çatışmaları denizcilik, askeri uçuşlar, altyapı, piyasalar ve siber ile birleştirir — ardından yapay zeka yakınsamayı puanlar: istikrarsızlık endeksleri, sıcak nokta tırmanışı, doğrulanmış son dakika uyarıları ve günlük raporlar. World Monitor'u Liveuamap ve diğer çatışma haritalarıyla karşılaştırın: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Uyarıya neden güvenmeliyim?",
       "a6": "Bölünmüş bir afiş yalnızca bağımsız kaynak türleri doğrulandığında harekete geçer — haber sınıflandırması, anahtar kelime hızı, sıcak nokta yoğunlaşması, askeri artışlar, resmi sirenler — deduplicated ve hız sınırlı. Daha az uyarı, gerçek olanlar.",
       "q7": "Claude veya GPT gibi AI ajanlar bunu kullanabilir mi?",

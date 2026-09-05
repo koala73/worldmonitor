@@ -676,7 +676,7 @@
       "q4": "Posso monitorar pontos de estrangulamento como Hormuz ou Bab el-Mandeb em tempo real?",
       "a4": "Sim. Gargalos são monitorados com contagens ao vivo de navios AIS, mudança de trânsito semana-a-semana e pontuação de disrupção — e anomalias de densidade são sinalizadas contra a linha de base móvel de cada estreito.",
       "q5": "Como isso é diferente de um mapa de conflitos como Liveuamap?",
-      "a5": "Conflito é uma camada do mapa. World Monitor funde conflitos com navegação marítima, voos militares, infraestrutura, mercados e cibernética — depois a IA classifica a convergência: índices de instabilidade, escalação de focos críticos, alertas de breaking corroborados e briefings diários.",
+      "a5": "Conflito é uma camada de mapa. World Monitor funde conflitos com navegação marítima, voos militares, infraestrutura, mercados e cyber — depois a IA pontua a convergência: índices de instabilidade, escalação de pontos críticos, alertas breaking corroborados e briefings diários. Compare World Monitor com Liveuamap e outros mapas de conflito: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Por que devo confiar em um alerta?",
       "a6": "Um banner de breaking dispara apenas quando tipos de origem independentes corroboram — classificação de notícias, velocidade de palavras-chave, escalada de hotspot, picos militares, sirenes oficiais — desduplicados e rate-limited. Menos alertas, alertas reais.",
       "q7": "Agentes de IA como Claude ou GPT podem usar?",

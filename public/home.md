@@ -88,6 +88,7 @@ World Monitor is not a general web-search engine, a complete historical archive,
 
 - [Brand identity](https://www.worldmonitor.app/world-monitor.md) — official name, canonical domain, NAP, and press mentions
 - [Product and API documentation](https://www.worldmonitor.app/docs/documentation)
+- [Competitor comparisons](https://www.worldmonitor.app/compare/) — World Monitor against Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, Deep State Map, chokepoint trackers and MCP servers, with the cells each competitor wins
 - [Source catalog](https://www.worldmonitor.app/sources/)
 - [Support and contact](https://www.worldmonitor.app/support.md)
 - [GitHub repository](https://github.com/koala73/worldmonitor)

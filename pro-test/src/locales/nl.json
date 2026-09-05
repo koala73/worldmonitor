@@ -676,7 +676,7 @@
       "q4": "Kan ik knelpunten zoals Hormuz of Bab el-Mandeb in real time volgen?",
       "a4": "Ja. Bottlenecks worden gemonitord met live AIS-scheepstellingen, week-over-week transitverandering en verstoringsscoringen — en dichtheidsanomalieën worden gemarkeerd tegen elk zeeëngtebasislijncijfer.",
       "q5": "Hoe verschilt dit van een conflictkaart zoals Liveuamap?",
-      "a5": "Conflict is één kaartlaag. World Monitor combineert conflicten met scheepsverkeer, militaire vluchten, infrastructuur, markten en cyber — en AI berekent vervolgens de convergentie: instabiliteitsindices, hotspot-escalatie, geverifieerde breaking alerts en dagelijkse briefings.",
+      "a5": "Conflict is één kaartlaag. World Monitor integreert conflicten met shipping, militaire vluchten, infrastructuur, markten en cyber — vervolgens scoren AI-systemen de convergentie: instabiliteitsindices, hotspot-escalatie, geverifieerde breaking alerts en dagelijkse briefs. Vergelijk World Monitor met Liveuamap en andere conflictkaarten: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Waarom moet ik een waarschuwing vertrouwen?",
       "a6": "Een breaking banner verschijnt alleen wanneer onafhankelijke brontypen dit bevestigen — nieuwsclassificatie, trefwoord-snelheid, hotspot-escalatie, militaire pieken, officiële sirenes — gededupliceerd en frequentielimited. Minder waarschuwingen, echte.",
       "q7": "Kunnen AI-agenten zoals Claude of GPT het gebruiken?",

@@ -676,7 +676,7 @@
       "q4": "Pot să monitorizez puncte de strângulare precum Hormuz sau Bab el-Mandeb în timp real?",
       "a4": "Da. Punctele critice sunt urmărite cu numărări live de nave AIS, schimbare de tranzit săptămânal și scoring disruptiv — și anomaliile de densitate sunt semnalate în raport cu linia de referință glisantă a fiecărui strâmtoare.",
       "q5": "Care este diferența față de o hartă de conflict ca Liveuamap?",
-      "a5": "Conflictul este un strat de hartă. World Monitor fuzionează conflictele cu transportul maritim, zborurile militare, infrastructura, piețele și cyber — apoi AI evaluează convergența: indici de instabilitate, escaladare în zone critice, alertele confirmate de ultimă oră și rapoarte zilnice.",
+      "a5": "Conflictul este un strat pe hartă. World Monitor fuzionează conflictele cu transportul maritim, zborurile militare, infrastructura, piețele și cyber — apoi AI evaluează convergența: indici de instabilitate, escaladare în punctele fierbinți, alerte de breaking corroborate și briefing-uri zilnice. Comparați World Monitor cu Liveuamap și alte hărți de conflict: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "De ce ar trebui să am încredere într-o alertă?",
       "a6": "Un banner de ultimă oră se activează doar atunci când tipuri de origine independente corborează — clasificare știri, viteza cuvintelor cheie, escaladare pe puncte fierbinți, creșteri militare, sirenele oficiale — deduplicate și limitate la viteză. Mai puține alerte, cele reale.",
       "q7": "Pot agenți AI precum Claude sau GPT să-l folosească?",

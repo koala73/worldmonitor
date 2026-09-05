@@ -676,7 +676,7 @@
       "q4": "Tôi có thể theo dõi các điểm nghẽn như Hormuz hoặc Bab el-Mandeb trong thời gian thực không?",
       "a4": "Có. Các điểm nghẽn được theo dõi với số lượng tàu AIS trực tiếp, thay đổi quá cảnh tuần qua và chấm điểm xáo trộn — và các bất thường mật độ được gắn cờ so với đường cơ sở lăn của từng eo biển.",
       "q5": "Điều này khác với bản đồ xung đột như Liveuamap như thế nào?",
-      "a5": "Xung đột là một lớp bản đồ. World Monitor kết hợp xung đột với vận tải biển, chuyến bay quân sự, cơ sở hạ tầng, thị trường và an ninh mạng — rồi AI cho điểm sự hội tụ: chỉ số bất ổn, leo thang điểm nóng, cảnh báo phá vỡ được xác nhận và các bản tóm tắt hàng ngày.",
+      "a5": "Xung đột là một lớp bản đồ. World Monitor kết hợp xung đột với vận tải biển, các chuyến bay quân sự, cơ sở hạ tầng, thị trường và an ninh mạng — sau đó AI đánh giá sự hội tụ: chỉ số bất ổn định, nóng điểm leo thang, các cảnh báo phá vỡ được xác nhận và các bản tóm tắt hàng ngày. So sánh World Monitor với Liveuamap và các bản đồ xung đột khác: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Tại sao tôi nên tin tưởng một cảnh báo?",
       "a6": "Một biểu ngữ phá vỡ chỉ phát ra khi các loại nguồn gốc độc lập xác nhận — phân loại tin tức, vận tốc từ khóa, leo thang điểm nóng, sự tăng vọt quân sự, còi chính thức — loại trùng và giới hạn tỷ lệ. Ít cảnh báo hơn, những cảnh báo thực sự.",
       "q7": "Các agent AI như Claude hoặc GPT có thể sử dụng nó không?",

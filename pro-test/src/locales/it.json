@@ -676,7 +676,7 @@
       "q4": "Posso monitorare i punti di strozzatura come Hormuz o Bab el-Mandeb in tempo reale?",
       "a4": "Sì. I colli di bottiglia sono monitorati con conteggi di vasi AIS live, variazione di transito settimana su settimana e valutazione delle interruzioni — e le anomalie di densità sono contrassegnate rispetto alla baseline mobile di ogni stretto.",
       "q5": "Com'è diverso da una mappa di conflitti come Liveuamap?",
-      "a5": "Il conflitto è un livello di mappa. World Monitor fonde i conflitti con le spedizioni marittime, i voli militari, le infrastrutture, i mercati e il cyber — quindi l'AI valuta la convergenza: indici di instabilità, escalation degli hotspot, avvisi breaking corroborati e briefing giornalieri.",
+      "a5": "Il conflitto è un livello di mappa. World Monitor fonde i conflitti con il trasporto marittimo, i voli militari, le infrastrutture, i mercati e il cyber — quindi l'AI valuta la convergenza: indici di instabilità, escalation negli hotspot, avvisi di breaking corroborati e briefing giornalieri. Confronta World Monitor con Liveuamap e altre mappe di conflitti: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Perché dovrei fidarmi di un avviso?",
       "a6": "Un banner di breaking si attiva solo quando i tipi di origine indipendenti corroborano — classificazione delle notizie, velocità delle parole chiave, escalation degli hotspot, aumenti militari, sirene ufficiali — deduplicati e rate-limited. Meno avvisi, veri.",
       "q7": "Gli agenti IA come Claude o GPT possono usarlo?",

@@ -676,7 +676,7 @@
       "q4": "Kann ich Engpässe wie Hormuz oder Bab el-Mandeb in Echtzeit beobachten?",
       "a4": "Ja. Engpässe werden mit Live-AIS-Schiffszählungen, Woche-über-Woche-Transitveränderung und Disruptions-Bewertung überwacht – und Dichte-Anomalien werden gegen jede Meerenge-Baseline gekennzeichnet.",
       "q5": "Wie unterscheidet sich dies von einer Konfliktkarte wie Liveuamap?",
-      "a5": "Konflikte sind eine Kartenschicht. World Monitor vereinigt Konflikte mit Schiffsverkehr, Militärflügen, Infrastruktur, Märkten und Cyber – dann bewertet AI die Konvergenz: Instabilitätsindizes, Hotspot-Eskalation, bestätigte Breaking Alerts und tägliche Briefings.",
+      "a5": "Konflikt ist eine Kartenschicht. World Monitor verbindet Konflikte mit Schifffahrt, Militärflugverkehr, Infrastruktur, Märkten und Cyber – dann bewertet KI die Konvergenz: Instabilitätsindizes, Hotspot-Eskalation, bestätigte Breaking Alerts und tägliche Briefings. Vergleichen Sie World Monitor mit Liveuamap und anderen Konfliktkarten: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Warum sollte ich einem Alert vertrauen?",
       "a6": "Ein Breaking-Banner wird nur angezeigt, wenn unabhängige Ursprungstypen bestätigt werden — Nachrichtenklassifizierung, Keyword-Geschwindigkeit, Hotspot-Eskalation, Militärsurgen, offizielle Sirenen — dedupliziert und drosselungsbegrenzt. Weniger Alerts, echte Alerts.",
       "q7": "Können KI-Agenten wie Claude oder GPT es verwenden?",

@@ -676,7 +676,7 @@
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
       "a4": "Igen. A szűk keresztmetszetek nyomon követésre kerülnek élő AIS hajóalakokkal, hét/hét fordulatváltás és zavar pontozásával — és a sűrűségi anomáliák mindegyik szoros alapvonalához képest jelzésre kerülnek.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",
-      "a5": "A konfliktus egyetlen térképréteg. A World Monitor összekapcsolja a konfliktusokat a szállítmányozással, katonai repülésekkel, infrastruktúrával, piacokkal és kibertámadásokkal — majd az AI kiértékeli a konvergenciát: instabilitási indexek, forrópontok eszkalációja, megerősített feltörési riasztások és napi tájékoztatók.",
+      "a5": "A konfliktus egyetlen térképréteg. A World Monitor összekapcsolja a konfliktusokat a tengerészeti szállítmányokkal, katonai repülésekkel, infrastruktúrával, piacokkal és kibernetikai tevékenységekkel — majd az AI kiértékeli az átfedéseket: instabilitási indexek, kritikus pontok kialakulása, megerősített hírriasztások és napi helyzetelemzések. Hasonlítsa össze a World Monitort más konfliktustérképekkel: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Miért bízzak egy riasztásban?",
       "a6": "Egy fontos szalagcím csak akkor jelenik meg, ha független forrásfajták megerősítik — hírosztályozás, kulcsszósebesség, kritikus pont eskalációja, katonai ugrások, hivatalos szirénák — deduplikálva és sebességkorláttal. Kevesebb riasztás, valódi riasztások.",
       "q7": "Használhatják azt AI-ügynökök, mint a Claude vagy a GPT?",

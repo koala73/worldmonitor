@@ -95,7 +95,7 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md public/llms.txt
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
       - name: Open the monthly snapshot PR
@@ -111,7 +111,7 @@ jobs:
               --base main \
               --head "$BRANCH_NAME" \
               --title "chore(resilience): refresh published snapshot ${BRANCH_NAME##*-snapshot-}" \
-              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and llms-full corpus." \
+              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and both agent files (llms.txt and llms-full.txt)." \
               > "$RUNNER_TEMP/snapshot-pr.out" 2> "$RUNNER_TEMP/snapshot-pr.err"; then
             cat "$RUNNER_TEMP/snapshot-pr.out" >> "$GITHUB_STEP_SUMMARY"
           elif grep -Fq 'GitHub Actions is not permitted to create or approve pull requests' "$RUNNER_TEMP/snapshot-pr.err"; then

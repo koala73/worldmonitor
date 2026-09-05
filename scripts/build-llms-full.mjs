@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
- * Expand public/llms-full.txt from a product brief into a crawler/LLM corpus
- * (#7463). The hand-authored brief above `## Generated corpus` is preserved;
- * glossary bodies, chokepoint methodology, published chokepoint explainers,
- * CRI methodology, the corrections log, and the current ranking snapshot are
- * inlined below that heading.
+ * Generate the two agent files (#7463, #7746):
+ *   - public/llms.txt is hand-authored except its `## Comparisons` section,
+ *     which is rendered from the comparison-page registry and spliced in
+ *     ahead of `## Live Instances` on every run.
+ *   - public/llms-full.txt keeps its hand-authored brief above `## Generated
+ *     corpus`; the comparisons index, glossary bodies, chokepoint
+ *     methodology, published chokepoint explainers, CRI methodology, the
+ *     corrections log, and the current ranking snapshot are inlined below
+ *     that heading.
  *
  * Usage:
- *   npm run build:llms-full
- *   npm run build:llms-full:check
+ *   npm run build:llms-full          # rewrite whichever file is stale
+ *   npm run build:llms-full:check    # exit 1 naming every stale file
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -16,12 +20,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
+import { COMPARISON_MATRIX_COLUMNS, comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
 import { resolveLatestResilienceSnapshotPath } from './build-crawlable-corpus.mjs';
 import { CHOKEPOINT_CONTENT } from './chokepoint-page-content.mjs';
+import { SITE_ORIGIN } from './discover-content-corpus-pages.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_PATH = 'public/llms-full.txt';
+export const LLMS_TXT_PATH = 'public/llms.txt';
 export const LLMS_FULL_GENERATED_HEADING = '## Generated corpus';
+export const COMPARISONS_HEADING = '## Comparisons';
+const COMPARISONS_ANCHOR_HEADING = '## Live Instances';
 
 const CHOKEPOINT_BLOGS = [
   'blog-site/src/content/blog/what-is-a-maritime-chokepoint.md',
@@ -164,6 +173,49 @@ function renderSnapshotTable(rootDir) {
   return lines.join('\n');
 }
 
+/**
+ * The /compare/ family scored 85–92 on citability yet was referenced from
+ * none of the discovery surfaces (#7746). One entry per route, derived from
+ * the same COMPARISON_PAGES that emit the pages, so a new comparison cannot
+ * ship without an entry and a renamed one cannot leave a stale link.
+ */
+export function renderComparisons() {
+  const entries = comparisonDiscoveryEntries(SITE_ORIGIN);
+  return [
+    COMPARISONS_HEADING,
+    '',
+    `A comparison hub plus ${entries.length - 1} head-to-head and category pages. Every page uses the same ${COMPARISON_MATRIX_COLUMNS.length}-column matrix (${COMPARISON_MATRIX_COLUMNS.join(', ')}), states what each competitor wins, and answers the questions engines lift verbatim. Prices were checked at publication and can change.`,
+    '',
+    ...entries.map((entry) => `- [${entry.title}](${entry.url}): ${entry.description}`),
+  ].join('\n');
+}
+
+/**
+ * Splice the generated Comparisons section into the hand-maintained
+ * llms.txt: replace the existing section in place, or insert it ahead of
+ * Live Instances the first time. Idempotent, so --check can diff it.
+ */
+export function withComparisonsSection(llmsTxt) {
+  const text = String(llmsTxt);
+  const block = renderComparisons();
+  const headings = [...text.matchAll(/^## Comparisons$/gm)];
+  if (headings.length > 1) {
+    throw new Error(`${LLMS_TXT_PATH} carries ${headings.length} "${COMPARISONS_HEADING}" headings; keep exactly one`);
+  }
+  if (headings.length === 1) {
+    const start = headings[0].index;
+    const nextHeading = text.indexOf('\n## ', start + COMPARISONS_HEADING.length);
+    const end = nextHeading === -1 ? text.length : nextHeading;
+    return `${text.slice(0, start)}${block}\n${text.slice(end)}`;
+  }
+  const anchor = `\n${COMPARISONS_ANCHOR_HEADING}\n`;
+  const at = text.indexOf(anchor);
+  if (at === -1) {
+    throw new Error(`${LLMS_TXT_PATH} must carry a "${COMPARISONS_ANCHOR_HEADING}" heading to anchor the Comparisons section`);
+  }
+  return `${text.slice(0, at + 1)}${block}\n${text.slice(at)}`;
+}
+
 export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   const existing = existsSync(join(rootDir, OUTPUT_PATH))
     ? read(rootDir, OUTPUT_PATH)
@@ -172,7 +224,9 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   const generated = [
     LLMS_FULL_GENERATED_HEADING,
     '',
-    'The sections below are produced by `npm run build:llms-full` from glossary terms, chokepoint methodology, published chokepoint explainers, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.',
+    'The sections below are produced by `npm run build:llms-full` from the comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.',
+    '',
+    renderComparisons().trim(),
     '',
     renderGlossary().trim(),
     '',
@@ -205,26 +259,40 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   return `${prefix}\n\n${generated}`;
 }
 
+/**
+ * Writes both agent files: the Comparisons section spliced into llms.txt and
+ * the full corpus. One script owns both so the section cannot drift between
+ * them (#7746). Both outputs are rendered before anything is written or
+ * judged, so --check names every stale file at once and a render failure
+ * never leaves the pair half-written. Returns one entry per file.
+ */
 export function writeLlmsFull({ rootDir = ROOT, check = false } = {}) {
-  const next = buildLlmsFullText({ rootDir });
-  const path = join(rootDir, OUTPUT_PATH);
-  const current = existsSync(path) ? readFileSync(path, 'utf8') : null;
-  if (current === next) return { path: OUTPUT_PATH, changed: false, bytes: Buffer.byteLength(next) };
-  if (check) {
-    throw new Error(`${OUTPUT_PATH} is stale — run npm run build:llms-full`);
+  const outputs = [
+    { relativePath: LLMS_TXT_PATH, next: withComparisonsSection(read(rootDir, LLMS_TXT_PATH)) },
+    { relativePath: OUTPUT_PATH, next: buildLlmsFullText({ rootDir }) },
+  ].map(({ relativePath, next }) => {
+    const path = join(rootDir, relativePath);
+    const current = existsSync(path) ? readFileSync(path, 'utf8') : null;
+    return { path, relativePath, next, changed: current !== next, bytes: Buffer.byteLength(next) };
+  });
+  const stale = outputs.filter((output) => output.changed);
+  if (check && stale.length > 0) {
+    throw new Error(`${stale.map((output) => output.relativePath).join(' and ')} stale — run npm run build:llms-full`);
   }
-  writeFileSync(path, next);
-  return { path: OUTPUT_PATH, changed: true, bytes: Buffer.byteLength(next) };
+  for (const output of stale) writeFileSync(output.path, output.next);
+  return { files: outputs.map(({ relativePath, changed, bytes }) => ({ path: relativePath, changed, bytes })) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const check = process.argv.includes('--check');
   try {
     const result = writeLlmsFull({ check });
-    const kb = (result.bytes / 1000).toFixed(1);
-    process.stdout.write(
-      `${result.changed ? 'Wrote' : 'Unchanged'} ${result.path} (${kb} KB)\n`,
-    );
+    for (const file of result.files) {
+      const kb = (file.bytes / 1000).toFixed(1);
+      process.stdout.write(
+        `${file.changed ? 'Wrote' : 'Unchanged'} ${file.path} (${kb} KB)\n`,
+      );
+    }
   } catch (err) {
     process.stderr.write(`${err.stack || err.message}\n`);
     process.exit(1);

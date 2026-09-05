@@ -676,7 +676,7 @@
       "q4": "¿Puedo vigilar cuellos de botella como Hormuz o Bab el-Mandeb en tiempo real?",
       "a4": "Sí. Los puntos críticos se rastrean con conteos de buques AIS en vivo, cambio de tránsito semana a semana y puntuación de disrupción — y las anomalías de densidad se marcan contra la línea base móvil de cada estrecho.",
       "q5": "¿En qué se diferencia esto de un mapa de conflictos como Liveuamap?",
-      "a5": "El conflicto es una capa de mapa. World Monitor fusiona conflictos con transporte marítimo, vuelos militares, infraestructura, mercados y ciberataques — luego AI califica la convergencia: índices de inestabilidad, escalada de puntos críticos, alertas confirmadas y reportes diarios.",
+      "a5": "El conflicto es una capa de mapa. World Monitor fusiona conflictos con envíos marítimos, vuelos militares, infraestructura, mercados y ciberinteligencia — luego la IA puntúa la convergencia: índices de inestabilidad, escalada de puntos críticos, alertas de último momento corroboradas e informes diarios. Compara World Monitor con Liveuamap y otros mapas de conflictos: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "¿Por qué debo confiar en una alerta?",
       "a6": "Un banner de último minuto se activa solo cuando tipos de origen independientes corroboran — clasificación de noticias, velocidad de palabras clave, escalada de puntos críticos, aumentos militares, sirenas oficiales — deduplicadas y limitadas por velocidad. Menos alertas, alertas reales.",
       "q7": "¿Pueden usarlo agentes de IA como Claude o GPT?",

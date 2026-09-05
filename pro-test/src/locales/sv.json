@@ -676,7 +676,7 @@
       "q4": "Kan jag övervaka flaskhalsar som Hormuz eller Bab el-Mandeb i realtid?",
       "a4": "Ja. Flaskhalsar spåras med live AIS-fartygsräkningar, vecka-över-vecka transiteringsändring och disruptionspoäng — och densitetsavvikelser flaggas mot varje sunds rullande baslinje.",
       "q5": "Hur skiljer sig detta från en konfliktkarta som Liveuamap?",
-      "a5": "Konflikter är ett kartlager. World Monitor kombinerar konflikter med sjöfart, militära flygningar, infrastruktur, marknader och cyber — sedan utvärderar AI konvergensen: instabilitetsindex, eskalering av hotspots, bekräftade breaking-aviseringar och dagliga briefningar.",
+      "a5": "Konflikter är ett kartlager. World Monitor kombinerar konflikter med sjöfart, militära flygningar, infrastruktur, marknader och cyber — sedan analyserar AI konvergensen: instabilitetsindex, hotspot-eskalering, bekräftade breakingaviseringar och dagliga briefingar. Jämför World Monitor med Liveuamap och andra konfliktkartor: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Varför ska jag lita på en avisering?",
       "a6": "En breaking-banner startar endast när oberoende ursprungstyper bekräftar — nyhetsklassificering, nyckelordshastighet, hotspot-eskalering, militär ökning, officiella sirener — deduplicerad och hastighetsbegränsad. Färre aviseringar, verkliga.",
       "q7": "Kan AI-agenter som Claude eller GPT använda det?",

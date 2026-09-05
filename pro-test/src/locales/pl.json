@@ -676,7 +676,7 @@
       "q4": "Czy mogę obserwować gardła handlowe takie jak Hormuz lub Bab el-Mandeb w czasie rzeczywistym?",
       "a4": "Tak. Punkty krytyczne są monitorowane z live licznikami statków AIS, zmianą przejść tygodniowo i score'owaniem perturbacji — a anomalie gęstości są flagowane względem bazową linii każdej cieśniny na bieżąco.",
       "q5": "Czym to różni się od mapy konfliktów takie jak Liveuamap?",
-      "a5": "Konflikt to jedna warstwa mapy. World Monitor łączy konflikty z transportem morskim, lotami wojskowymi, infrastrukturą, rynkami i cyberzagrożeniami — następnie AI ocenia zbieżność: wskaźniki niestabilności, eskalację hotspotów, potwierdzane alerty breaking i codzienne briefingi.",
+      "a5": "Konflikt to jedna warstwa mapy. World Monitor łączy konflikty z transportem morskim, lotami wojskowymi, infrastrukturą, rynkami i cyberzagrożeniami — następnie AI ocenia konwergencję: indeksy niestabilności, eskalacja zagrożeń, potwierdzone alerty przełomowe i codzienne briefingi. Porównaj World Monitor z Liveuamap i innymi mapami konfliktów: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Dlaczego powinienem ufać alertowi?",
       "a6": "Baner przerwania pojawia się tylko gdy niezależne typy źródeł się potwierdzą — klasyfikacja wiadomości, prędkość słów kluczowych, eskalacja gorących punktów, surge wojskowości, oficjalne syreny — deduplikowane i ograniczone. Mniej alertów, prawdziwe.",
       "q7": "Czy agenci AI takie jak Claude lub GPT mogą go używać?",

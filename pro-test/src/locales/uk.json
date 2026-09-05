@@ -676,7 +676,7 @@
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "Так. Вузькі місця відслідковуються з живими AIS-підрахунками суден, змінами транзиту тиждень від тижня та оцінюванням збоїв — а аномалії щільності позначаються порівняно з базовою лінією проливу.",
       "q5": "How is this different from a conflict map like Liveuamap?",
-      "a5": "Конфлікт — це один шар карти. World Monitor об'єднує конфлікти з морськими перевезеннями, військовими польотами, інфраструктурою, ринками та кіберпростором — потім AI оцінює їхню збіжність: індекси нестабільності, посилення у гарячих точках, підтверджені екстрені повідомлення та щоденні брифінги.",
+      "a5": "Конфлікт — це один шар карти. World Monitor об'єднує конфлікти з морським транспортом, військовими польотами, інфраструктурою, ринками та кібербезпекою — потім AI оцінює збіги: індекси нестабільності, швидкість ескалації гарячих точок, підтверджені повідомлення про екстрені новини та щоденні брифінги. Порівняйте World Monitor з Liveuamap та іншими картами конфліктів: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Why should I trust an alert?",
       "a6": "A breaking banner fires only when independent origin types corroborate — news classification, keyword velocity, hotspot escalation, military surges, official sirens — deduplicated and rate-limited. Fewer alerts, real ones.",
       "q7": "Can AI agents like Claude or GPT use it?",

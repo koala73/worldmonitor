@@ -83,6 +83,7 @@ World Monitor uses public or documented feeds including ACLED, UCDP, AISStream, 
 - Welcome page: https://www.worldmonitor.app/
 - Main dashboard: https://www.worldmonitor.app/dashboard
 - Live Country Instability Index rankings: https://www.worldmonitor.app/country-instability-index/
+- Competitor comparisons — Liveuamap, ACLED, GDELT, Dataminr, Recorded Future, Deep State Map, chokepoint tools and MCP servers, with the cells each competitor wins: https://www.worldmonitor.app/compare/
 - World Monitor Pro: https://www.worldmonitor.app/pro
 - Source catalog — the authority behind the Data Coverage figures above: https://www.worldmonitor.app/sources/
 - Agent guide — machine surfaces, auth, crawl policy, rate limits: https://www.worldmonitor.app/agents.md

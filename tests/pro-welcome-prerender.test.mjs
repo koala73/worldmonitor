@@ -44,6 +44,9 @@ test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => 
     assert.equal(entry.name, en.welcome.faq[`q${n}`]);
     assert.equal(entry.acceptedAnswer?.text, en.welcome.faq[`a${n}`]);
   }
+  // The structured answer to the Liveuamap question must carry the compare
+  // destination itself, not only the DOM anchor derived from it (#7746).
+  assert.match(faqPage.mainEntity[4].acceptedAnswer.text, /worldmonitor\.app\/compare\/liveuamap-alternatives/);
 });
 
 test('welcome JSON-LD connects the page, website, application, and publisher', { skip }, () => {
@@ -89,6 +92,12 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.match(rootContent, /Which World Monitor license do I need\?/);
   assert.match(rootContent, /API Business lets that organization embed World Monitor data/);
   assert.match(rootContent, /href="\/docs\/terms"[^>]*>worldmonitor\.app\/docs\/terms<\/a>/);
+  // The Liveuamap FAQ is the homepage's one link into the /compare/ family;
+  // it has to survive prerender so non-JS crawlers see it (#7746).
+  const faqStart = rootContent.indexOf('id="faq"');
+  assert.ok(faqStart >= 0, 'the FAQ section must be prerendered');
+  const faqContent = rootContent.slice(faqStart);
+  assert.match(faqContent, /href="\/compare\/liveuamap-alternatives\/"[^>]*>worldmonitor\.app\/compare\/liveuamap-alternatives<\/a>/);
   assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-hero"/);
   assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-depth"/);
   assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-footer"[^>]*>Sources<\/a>/);

@@ -676,7 +676,7 @@
       "q4": "Mohu sledovat kritická místa jako Hormuz nebo Bab el-Mandeb v reálném čase?",
       "a4": "Ano. Úzká místa jsou sledována s počty živých AIS plavidel, změnami tranziturů týden na týden a skóre narušení — a anomálie hustoty jsou označeny proti základní linii každého průlivu.",
       "q5": "Jak se liší od mapy konfliktů jako Liveuamap?",
-      "a5": "Konflikt je jednou z vrstev mapy. World Monitor spojuje konflikty se mořskou přepravou, vojenskými lety, infrastrukturou, trhy a kybernetiku — pak AI vyhodnotí konvergenci: indexy nestability, eskalaci hotspotů, potvrzená breaking upozornění a denní briefy.",
+      "a5": "Konflikt je jednou mapovou vrstvou. World Monitor kombinuje konflikty s lodní dopravou, vojenským letectvem, infrastrukturou, trhy a kybernetiku — následně AI vyhodnocuje konvergenci: indexy nestability, eskalaci hotspotů, ověřené breaking upozornění a denní briefy. Porovnejte World Monitor s Liveuamap a dalšími konflikty mapami: worldmonitor.app/compare/liveuamap-alternatives.",
       "a6": "Přerušující banner se aktivuje pouze pokud si nezávislé typy zdrojů potvrdí — klasifikace zpráv, rychlost klíčových slov, eskalace hotspotů, vojenské nárůsty, oficiální sirény — deduplikovány a omezeny podle frekvence. Méně alertů, skutečné.",
       "q7": "Mohou jej používat AI agenti jako Claude nebo GPT?",
       "a7": "Ano. World Monitor dodává MCP server se živým registrem nástrojů, takže Claude, GPT nebo jakýkoliv MCP-kompatibilní agent může dotazovat živé skóre rizik, stav průsmyků, konflikty, trhy a briefy — s JMESPath projekcí, takže agenti získají přesně to, co potřebují.",

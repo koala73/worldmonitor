@@ -103,6 +103,10 @@ jobs:
             # surfacing later as a confusing failure on an unrelated PR.
             /^docs\/snapshots\/resilience-ranking-[0-9-]+\.json$/ { count++; next }
             /^blog-site\/src\/content\/blog\/.*\.md$/ { count++; next }
+            # public/home.md is the agent-mode homepage and the residue guard
+            # asserts it links the comparison hub (#7746). Without this rule a
+            # home.md-only PR sets code=false and that guard never runs.
+            /^public\/home\.md$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }

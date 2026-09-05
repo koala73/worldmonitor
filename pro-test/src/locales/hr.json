@@ -676,7 +676,7 @@
       "q4": "Mogu li pratiti uska grla poput Hormuzа ili Bab el-Mandeba u stvarnom vremenu?",
       "a4": "Da. Kritične točke se prate s brojevima živih AIS brodova, promjenom prometa tjedan-naspram-tjedna i ocjenom perturbacija — a anomalije gustoće se označavaju prema baznoj liniji svakog tjesnaca.",
       "q5": "Kako se ovo razlikuje od konfliktne karte kao što je Liveuamap?",
-      "a5": "Konflikt je jedan sloj mape. World Monitor spaja konflikte s pomorskim transportom, vojnim letovima, infrastrukturom, tržištima i kibernetikom — zatim AI ocjenjuje konvergenciju: indekse nestabilnosti, eskalaciju žarišta, potvrđena izvješća o prekidima i dnevne brifinge.",
+      "a5": "Konflikt je jedan sloj karte. World Monitor spaja konflikte s brodskom prometom, vojnim letovima, infrastrukturom, tržištima i kibernetikom — zatim AI ocjenjuje konvergenciju: indekse nestabilnosti, eskalaciju žarišta, potvrđena BREAKING upozorenja i dnevne brifinge. Usporedite World Monitor s Liveuamap-om i drugim kartama konflikata: worldmonitor.app/compare/liveuamap-alternatives.",
       "q6": "Zašto bih trebao vjerovati upozoru?",
       "a6": "Banerski hitni slučaj aktivira se samo kada neovisni tipovi izvora potvrde — klasifikacija vijesti, brzina ključnih riječi, eskalacija hotspota, vojne surge, službene sirene — dedupliciranih i ograničenih brzinom. Manje upozora, pravi.",
       "q7": "Mogu li AI agenti kao Claude ili GPT koristiti?",
