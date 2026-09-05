@@ -263,26 +263,17 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/initialize\.instructions/i.test(mod.JMESPATH_SCHEMA.description));
     });
 
-    it('every projection-safe tool in tools/list advertises jmespath', async () => {
+    it('EVERY tool in tools/list advertises jmespath — no exceptions', async () => {
       const res = await mod.default(makeReq({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }));
       const body = await res.json();
       const tools = body.result.tools;
       assert.ok(tools.length > 0);
-      // Derived from the registry's own `_jmespathDisabled` flag, not a hardcoded
-      // name: a newly added attribution-bound tool used to slip past this
-      // assertion, which is how the supply-vulnerability tools shipped
-      // advertising a projection over BGS-licensed evidence.
-      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
-      const attributionBound = new Set(
-        TOOL_REGISTRY.filter((t) => t._jmespathDisabled === true).map((t) => t.name),
-      );
-      assert.ok(attributionBound.size > 0, 'expected attribution-bound tools to be declared');
+      // No roster any more. Licence-bearing tools declare `_attribution` and
+      // the dispatcher re-attaches their sources to every projection, so a
+      // tool that does NOT advertise jmespath is a regression, not a licence
+      // control — the old roster's own gaps were invisible precisely because
+      // a missing `jmespath` property looked deliberate.
       for (const tool of tools) {
-        if (attributionBound.has(tool.name)) {
-          assert.equal(tool.inputSchema?.properties?.jmespath, undefined,
-            `attribution-bound tool "${tool.name}" must not advertise jmespath`);
-          continue;
-        }
         assert.ok(tool.inputSchema?.properties?.jmespath,
           `tool "${tool.name}" missing inputSchema.properties.jmespath`);
         assert.equal(tool.inputSchema.properties.jmespath.type, 'string');
@@ -306,10 +297,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const withoutSummary = tools.filter(t => !t.inputSchema?.properties?.summary);
       assert.ok(withSummary.length > 0, 'expected at least one cache tool with summary');
       assert.ok(withoutSummary.length > 0, 'expected at least one RPC tool without summary');
-      assert.equal(
-        tools.find((tool) => tool.name === 'get_resilience_indicators')?.inputSchema?.properties?.jmespath,
-        undefined,
-      );
+      // A licence-bearing RPC tool: jmespath yes (universal), summary no
+      // (cache-only). Its attribution is carried by the dispatcher's rider,
+      // not by withholding the projection argument.
+      const resilience = tools.find((tool) => tool.name === 'get_resilience_indicators');
+      assert.ok(resilience?.inputSchema?.properties?.jmespath);
+      assert.equal(resilience.inputSchema.properties.summary, undefined);
     });
   });
 
@@ -426,19 +419,107 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       return { res, body };
     }
 
-    it('rejects projection for attribution-bound resilience raw values before execution', async () => {
-      let executed = false;
-      globalThis.fetch = async () => {
-        executed = true;
-        throw new Error('resilience downstream must not execute');
+    // Licence-bearing tools no longer refuse projection: the dispatcher
+    // re-attaches the sources their `_attribution` extraction names, merged
+    // after `jmespath.search` so no expression can reach the rider.
+    const RESILIENCE_SOURCE = {
+      key: 'worldbank-wdi',
+      name: 'World Bank WDI',
+      attribution: 'World Bank',
+      license: 'CC BY 4.0',
+      url: 'https://data.worldbank.org',
+      licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+      attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
+    };
+
+    function mockResilienceIndicators() {
+      const payload = {
+        countryCode: 'DE',
+        methodology: 'contribution-reconciliation-v1',
+        indicators: [
+          {
+            id: 'power-losses',
+            sources: [{ ...RESILIENCE_SOURCE, observationProvenance: true }],
+            rawValue: { available: true, numericValue: 4.2, numericValueAvailable: true, unit: 'percent', status: 'available' },
+          },
+          {
+            id: 'education-attainment',
+            sources: [{ ...RESILIENCE_SOURCE, observationProvenance: false }],
+            rawValue: { available: true, numericValue: 91.3, numericValueAvailable: true, unit: 'percent', status: 'available' },
+          },
+        ],
       };
+      globalThis.fetch = async (url) => {
+        if (url.toString().includes('/api/resilience/v1/get-resilience-indicators')) {
+          return new Response(JSON.stringify(payload), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return originalFetch(url);
+      };
+      return payload;
+    }
+
+    it('a projection selecting ONLY raw values still returns the attribution rider', async () => {
+      mockResilienceIndicators();
       const { body } = await callTool('get_resilience_indicators', {
         country_code: 'DE',
         jmespath: 'indicators[].rawValue',
       });
-      assert.equal(body.error?.code, -32602);
-      assert.match(body.error?.message ?? '', /JMESPath.*attribution-bound/);
-      assert.equal(executed, false);
+      assert.equal(body.error, undefined, JSON.stringify(body.error ?? {}));
+      const parsed = JSON.parse(body.result.content[0].text);
+      // The projection did what it was asked: raw values, nothing else.
+      assert.deepEqual(parsed.data, [
+        { available: true, numericValue: 4.2, numericValueAvailable: true, unit: 'percent', status: 'available' },
+        { available: true, numericValue: 91.3, numericValueAvailable: true, unit: 'percent', status: 'available' },
+      ]);
+      // And the licence travelled with them anyway — deduped to one entry
+      // even though two indicators cite the source with different provenance.
+      assert.equal(parsed._attribution.required, true);
+      assert.deepEqual(parsed._attribution.sources, [RESILIENCE_SOURCE]);
+      assert.match(parsed._attribution.notice, /Redistribution requires/);
+    });
+
+    it('an expression naming _attribution cannot displace the rider', async () => {
+      mockResilienceIndicators();
+      const { body } = await callTool('get_resilience_indicators', {
+        country_code: 'DE',
+        jmespath: '{_attribution: `"stripped"`}',
+      });
+      const parsed = JSON.parse(body.result.content[0].text);
+      // The projection's own `_attribution` lands under `data`, untouched;
+      // the real rider is merged outside the projected document.
+      assert.deepEqual(parsed.data, { _attribution: 'stripped' });
+      assert.deepEqual(parsed._attribution.sources, [RESILIENCE_SOURCE]);
+    });
+
+    it('the rider rides on the _jmespath_error soft-fail envelope', async () => {
+      mockResilienceIndicators();
+      const { body } = await callTool('get_resilience_indicators', {
+        country_code: 'DE',
+        jmespath: 'indicators[.broken',
+      });
+      const parsed = JSON.parse(body.result.content[0].text);
+      assert.match(parsed.data._jmespath_error, /invalid_expression/);
+      assert.ok(Array.isArray(parsed.data.original_keys));
+      assert.deepEqual(parsed._attribution.sources, [RESILIENCE_SOURCE]);
+    });
+
+    it('omitting jmespath on a licence-bearing tool returns the payload with no rider', async () => {
+      const payload = mockResilienceIndicators();
+      const { body } = await callTool('get_resilience_indicators', { country_code: 'DE' });
+      const parsed = JSON.parse(body.result.content[0].text);
+      // Byte-identical to the pre-rider contract: the unprojected payload
+      // already carries its attribution inline, so there is nothing to add.
+      assert.deepEqual(parsed, payload);
+      assert.equal('_attribution' in parsed, false);
+    });
+
+    it('a projected tool with no licence fields is served bare, exactly as before', async () => {
+      mockMarketDataCache();
+      const { body } = await callTool('get_market_data', { jmespath: 'data."stocks-bootstrap".quotes[*].symbol' });
+      const parsed = JSON.parse(body.result.content[0].text);
+      assert.ok(Array.isArray(parsed), 'a tool with no `_attribution` must not be wrapped');
     });
 
     it('omitting jmespath returns the v1.3.0 payload byte-for-byte (additive guarantee)', async () => {

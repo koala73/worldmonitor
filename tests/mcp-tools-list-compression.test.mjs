@@ -159,32 +159,20 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.deepEqual(cacheTool.inputSchema.properties.summary, SUMMARY_SCHEMA);
     });
 
-    it('every projection-safe tool has the JMESPath schema and attribution-bound tools omit it', async () => {
+    it('EVERY tool has the JMESPath schema — the projection is universal', async () => {
       const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
       const tools = await getRegistry();
-      // Derived from the registry's own `_jmespathDisabled` flag rather than a
-      // hardcoded list: a new attribution-bound tool used to pass this assertion
-      // silently, which is exactly how the supply-vulnerability tools shipped
-      // advertising a projection over BGS-licensed evidence.
-      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
-      const attributionBoundTools = new Set(
-        TOOL_REGISTRY.filter((tool) => tool._jmespathDisabled === true).map((tool) => tool.name),
-      );
-      assert.ok(
-        attributionBoundTools.size > 0,
-        'expected at least one attribution-bound tool to be declared',
-      );
       for (const t of tools) {
-        if (attributionBoundTools.has(t.name)) {
-          assert.ok(!('jmespath' in (t.inputSchema?.properties ?? {})), `tool "${t.name}" must omit jmespath`);
-          continue;
-        }
         assert.ok(t.inputSchema?.properties?.jmespath, `tool "${t.name}" missing jmespath schema`);
         assert.deepEqual(t.inputSchema.properties.jmespath, JMESPATH_SCHEMA, `tool "${t.name}" jmespath shape differs`);
       }
+      // No roster of tools that omit it. A licence-bearing tool declares an
+      // `_attribution` extraction instead and the dispatcher re-attaches its
+      // sources after the projection runs — see shared/attribution-rider.ts
+      // and the gate in tests/mcp-attribution-rider.test.mjs.
       assert.deepEqual(
         tools.filter((t) => !('jmespath' in (t.inputSchema?.properties ?? {}))).map((t) => t.name),
-        [...attributionBoundTools],
+        [],
       );
     });
 

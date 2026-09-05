@@ -121,9 +121,12 @@ export function buildPublicTool(
   if (isCacheTool) {
     clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
   }
-  if (tool._jmespathDisabled !== true) {
-    clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
-  }
+  // Universal, with no roster: a licence-bearing tool declares `_attribution`
+  // instead, and the dispatcher re-attaches its sources to every projection
+  // (shared/attribution-rider.ts). Nothing here is allowed to gate it, because
+  // a tool advertising no `jmespath` is exactly the state that made the old
+  // roster's gaps invisible.
+  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)

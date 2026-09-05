@@ -2949,10 +2949,12 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_supply_vulnerabilities',
-    // Payload carries BGS mineral evidence under an attribution-required,
-    // redistribution-restricted licence; a projection could strip the
-    // source/licence/retrieval fields that authorise reuse.
-    _jmespathDisabled: true,
+    // No `_attribution`: enforceCommodityRedistributionPolicy has already
+    // blanked score/band/source-concentration and dropped every
+    // redistribution-restricted input before the payload reaches the
+    // projection boundary, and the surviving shape declares no licence field
+    // for a rider to carry. The gate test re-derives that from the
+    // outputSchema on every run.
     // A full reviewed portfolio currently carries 23 commodities and the
     // complete 13-route provenance set per commodity. Production-shape
     // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
@@ -3006,10 +3008,8 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_chokepoint_dependencies',
-    // Payload carries BGS mineral evidence under an attribution-required,
-    // redistribution-restricted licence; a projection could strip the
-    // source/licence/retrieval fields that authorise reuse.
-    _jmespathDisabled: true,
+    // Same redaction path and same empty licence surface as
+    // get_supply_vulnerabilities above — no rider to attach.
     _outputBudgetBytes: 131072,
     description: 'An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
     inputSchema: {

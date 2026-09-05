@@ -66,11 +66,6 @@ export interface BaseToolDef {
   // envelope instead of the oversized payload. Required so a new tool can't
   // be added without an explicit budget choice.
   _outputBudgetBytes: number;
-  // Attribution-bound responses may opt out of the universal JMESPath
-  // projection when projecting fields independently would make an otherwise
-  // permitted value unsafe to redistribute. The dispatcher also enforces the
-  // denial as defence in depth.
-  _jmespathDisabled?: true;
   // JMESPath expression extracting this tool's source list from its
   // UNPROJECTED payload. Declared by every tool whose `outputSchema` carries a
   // licence marker (`shared/attribution-rider.ts::LICENCE_MARKER_FIELDS`), and
