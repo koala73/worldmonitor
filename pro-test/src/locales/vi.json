@@ -414,7 +414,7 @@
         "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu WorldMonitor",
         "features": [
           "Tất cả trong API Starter",
-          "Quyền phân phối lại — nhúng dữ liệu của chúng tôi vào những gì bạn bán",
+          "Quyền phân phối lại R1–R3 cho các sản phẩm hướng tới khách hàng",
           "300 yêu cầu/phút",
           "10.000 yêu cầu/ngày (REST + MCP kết hợp; một cuộc gọi MCP trực tiếp tính là 2-3)",
           "5 giấy phép Pro — mời người dùng bằng bất kỳ tên miền email doanh nghiệp nào",

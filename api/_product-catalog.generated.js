@@ -131,7 +131,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
     },
     {
       "planKey": "api_business_annual",
@@ -329,7 +329,7 @@ export const TIER_CONFIG = {
     "description": "Launch your own product on WorldMonitor data",
     "features": [
       "Everything in API Starter",
-      "Redistribution rights — embed our data in what you sell",
+      "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",

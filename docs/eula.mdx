@@ -3,9 +3,9 @@ title: "World Monitor End User License Agreement (EULA)"
 description: "One license for every way you use World Monitor — web dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: what each plan grants, what you may do with the outputs, retention and redistribution rights, and the restrictions that apply to all of them."
 ---
 
-{/* REVIEW — canonical license instrument; docs/terms.mdx points here for plan scope. Decided 20 August 2026: (1) the R1-R4 output-rights schedule ships as drafted (#6635) — counsel review on the EU sui generis database right still to come, and it may narrow R3; (2) the AI-training restriction in section 8.5 stands and training rights are sellable at Enterprise; (3) governing law and the liability cap stay as the Terms state them, with an explicit enterprise carve-out in section 2 (#6639); (4) the party is World Monitor FZ LLC, a Dubai free-zone company. Hardened alongside the Terms review: the five API Business seats carry the plan's commercial scope rather than the Personal licence (the shipped bundle is "5 Pro licenses" — the scope wrinkle is resolved in the licence, not by inventing a SKU), API Starter is stated as including no dashboard seat, section 8.9 carries an express compliance/journalism/research carve-out, section 10 says to delete cached R4, section 6.3 freezes quotas for the paid period so a pricing-page edit cannot narrow licence scope, section 9 no longer claims ownership of facts section 5 calls unowned, and section 11 matches the Terms on change notice. Warranties, indemnities, confidentiality and SLAs are Enterprise terms and are not granted here. Still open: no DPA (#6638), and the pricing bullet at convex/config/productCatalog.ts still sells unqualified "redistribution rights" without the class model. NOT legal advice; a legal review is still recommended. */}
+{/* REVIEW — canonical license instrument; docs/terms.mdx points here for plan scope. Decided 20 August 2026: (1) the R1-R4 output-rights schedule ships as drafted (#6635); (2) the AI-training restriction in section 8.5 stands and training rights are sellable at Enterprise; (3) governing law and the liability cap stay as the Terms state them, with an explicit enterprise carve-out in section 2 (#6639); (4) the party is World Monitor FZ LLC, a Dubai free-zone company. Updated 5 September 2026 for #6635: the owner confirmed that API Business may redistribute R1-R3 Outputs from every source World Monitor distributes. OpenSky remains product-only and is excluded at the API and MCP redistribution boundary. The pricing promise now names the class model. Warranties, indemnities, confidentiality and SLAs are Enterprise terms and are not granted here. NOT legal advice; a legal review is still recommended. */}
 
-_Last updated: 20 August 2026_
+_Last updated: 5 September 2026_
 
 **Download:** [PDF](https://www.worldmonitor.app/legal/eula.pdf) · [Markdown](https://www.worldmonitor.app/docs/eula.md)
 
@@ -74,7 +74,7 @@ The right plan depends on **who uses the Service and who receives its Outputs** 
 | **Personal license (Pro)** | One named subscriber using World Monitor for their own research, learning, investing, and personal decision-making, across the dashboard, desktop apps, and the included MCP allowance. | Use on behalf of an employer, business, client, or other organization; shared accounts; client deliverables; internal or customer-facing products; redistribution. |
 | **Commercial license (Pro Business)** | One named subscriber using the dashboard, desktop apps, exports, and included MCP / SDK allowance for company or client work — analysis, reports, presentations, and internal tools used in that Licensed User's workflow. Reports and analysis may be shared with colleagues or clients as part of that work. | Shared login access; organization-wide programmatic deployments; customer-facing data products; live feeds; bulk or standalone data redistribution. |
 | **Commercial license — for your organization (API Starter)** | Your Organization using the API, MCP server, and SDKs in its own internal systems, dashboards, automations, research, and reporting. This is an API plan and includes no World Monitor dashboard seat; dashboard access is a separate Pro or Pro Business subscription. Employees and contractors may use the resulting internal tools and Outputs for that organization. | Making World Monitor data or API functionality available to customers or other third parties; customer-facing products; resale; external feeds; bulk or standalone data redistribution. |
-| **Commercial license — for your customers (API Business)** | Everything in API Starter, plus displaying, embedding, or delivering Outputs to your customers as part of Your Organization's own product or service. The five included seats give named users at any corporate email domain the Pro dashboard feature set, under this plan's commercial scope rather than the Personal licence, and may not be shared. | Reselling API keys or access to the Service; offering World Monitor data as a standalone database or substantially similar feed; enabling bulk extraction that substitutes for the Service; white-labeling or uses that require custom rights unless we agree in writing. |
+| **Commercial license — for your customers (API Business)** | Everything in API Starter, plus displaying, embedding, or delivering Outputs to your customers as part of Your Organization's own product or service. The five included seats give named users at any corporate email domain the Pro dashboard feature set, under this plan's commercial scope rather than the Personal licence, and may not be shared. | Reselling API keys or access to the Service; offering World Monitor data as a standalone database or substantially similar feed; enabling bulk extraction that substitutes for the Service; white-labeling beyond the R1 right in section 5 or uses that require custom rights unless we agree in writing. |
 | **Enterprise** | The rights stated in the applicable order form — additional seats, higher-volume distribution, white-labeling, dedicated deployments, on-premises use, and **model-training or dataset rights** over the Outputs. | Any use outside the signed order form and this Agreement. |
 
 Examples:
@@ -83,7 +83,7 @@ Examples:
 - a consultant using Pro Business to prepare a client report is covered by the Pro Business commercial license;
 - a company feeding API data into a private employee risk dashboard needs API Starter;
 - a software company showing API data inside a customer-facing product needs API Business;
-- a standalone data feed, bulk resale, white-label product, or custom deployment requires an Enterprise agreement or our written approval.
+- a standalone data feed, bulk resale, white-label use beyond the R1 right in section 5, or custom deployment requires an Enterprise agreement or our written approval.
 
 If your use expands beyond the scope of your plan, **upgrade or obtain written permission before that expanded use begins.**
 
@@ -101,18 +101,18 @@ Outputs are not one thing, and they do not carry one set of rights. What you may
 
 | Class | What it is | You may | Retention | Available |
 | --- | --- | --- | --- | --- |
-| **R1 — Derived facts and scores** | Resilience and risk indices, forecast probabilities, event counts, aggregates, rankings | Redistribute within your plan scope, **white-label, no attribution required** | **Indefinite** | Today, from all sources |
-| **R2 — Structured events** | Normalized what / where / when / type / severity, entities, and a source link — **no source text** | Redistribute within your plan scope, display in your own or a partner UI | **Indefinite** | Today, from all sources |
-| **R3 — Headline and snippet** | A source's headline, publisher name, URL, and up to 200 characters of its text | Display and cache; source attribution must remain and is **not** white-labellable | **30 days** | Per source, on request |
+| **R1 — Derived facts and scores** | Resilience and risk indices, forecast probabilities, event counts, aggregates, rankings | Redistribute within your plan scope, **white-label, no attribution required** | **Indefinite** | Today, from every source World Monitor distributes |
+| **R2 — Structured events** | Normalized what / where / when / type / severity, entities, and a source link — **no source text** | Redistribute within your plan scope, display in your own or a partner UI | **Indefinite** | Today, from every source World Monitor distributes |
+| **R3 — Headline and snippet** | A source's headline, publisher name, URL, and up to 200 characters of its text | Display and cache; source attribution must remain and is **not** white-labellable | **30 days** | Today, from every source World Monitor distributes |
 | **R4 — Full source content** | Verbatim third-party text, images, or media | **Internal use only** | For as long as your plan is active | Never redistributable |
 
-**Default rule.** For any source whose provider terms we have not individually cleared, its **Source Content is R4**, while **facts derived from it are R1 and R2**. Facts are not owned; the sentence a wire service wrote is. We license you the first freely and the second not at all.
+**Default rule.** API Business may redistribute R1, R2, and R3 Outputs from every source World Monitor distributes, within its plan scope and subject to the class rules above. R4 Source Content remains internal-only and is not redistributable. Facts are not owned; the sentence a wire service wrote is protected expression, so the R3 limit is the line between an attributed excerpt and full Source Content.
+
+**OpenSky exception.** OpenSky data is display-only. It is not included in Outputs delivered through the API, MCP server, SDKs, webhooks, or customer-facing redistribution.
 
 **Retention and caching are granted, not merely tolerated.** Within the classes above you may store, cache, index, and re-query R1 and R2 Outputs for as long as you like, including after your subscription ends, for records, audit, and back-testing. What you may not do after the Term ends is **fetch, refresh, or operate integrations** that require an active entitlement (section 10).
 
 **Attribution travels with the Output.** Where an Output arrives with a source-specific citation, timestamp, license notice, or usage restriction, that notice must survive every copy you make and every screen you show it on.
-
-R3 rights are available per source on request — ask us and we will tell you which sources are cleared for it.
 
 ## 6. Terms for each surface
 
@@ -209,4 +209,4 @@ This page carries the date it was last changed. Every earlier version, and the e
 
 ## 13. Contact
 
-Licensing questions, plan-scope questions, R3 requests, and enterprise terms: [support@worldmonitor.app](mailto:support@worldmonitor.app).
+Licensing questions, plan-scope questions, and enterprise terms: [support@worldmonitor.app](mailto:support@worldmonitor.app).

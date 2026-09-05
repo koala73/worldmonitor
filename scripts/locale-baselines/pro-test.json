@@ -185,7 +185,7 @@
   "pricing.tiers.api.highlightFeatures[0]": "Commercial license — for your organization",
   "pricing.tiers.apiBusiness.description": "Launch your own product on WorldMonitor data",
   "pricing.tiers.apiBusiness.features[0]": "Everything in API Starter",
-  "pricing.tiers.apiBusiness.features[1]": "Redistribution rights — embed our data in what you sell",
+  "pricing.tiers.apiBusiness.features[1]": "R1–R3 redistribution rights for customer-facing products",
   "pricing.tiers.apiBusiness.features[2]": "300 requests/minute",
   "pricing.tiers.apiBusiness.features[3]": "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
   "pricing.tiers.apiBusiness.features[4]": "5 Pro licenses — invite users at any corporate email domain",
