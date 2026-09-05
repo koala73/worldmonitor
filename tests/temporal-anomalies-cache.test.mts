@@ -10,7 +10,6 @@ import {
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
   TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   BASELINE_SAMPLE_INTERVAL_MS,
-  COUNT_SOURCE_KEYS,
   makeBaselineKeyV2,
   temporalAnomaliesContentMeta,
   temporalAnomaliesReadableContentMeta,
@@ -621,6 +620,7 @@ describe('temporal anomalies cache freshness', () => {
         // names. A prefixed read can never hit them.
         'news:insights:v1': liveNews(),
         'wildfire:fires:v1': liveFires(),
+        ...altSourcesLiveRedis(),
       },
       { vercelEnv: 'preview', vercelSha: 'deadbeefcafebabe' },
     );
