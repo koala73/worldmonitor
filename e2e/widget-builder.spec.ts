@@ -644,4 +644,74 @@ test.describe('AI widget builder — PRO tier', () => {
     await expect(modal).not.toBeVisible();
     await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible();
   });
+
+  test('health 403 in PRO mode shows widget key guidance instead of PRO key guidance', async ({ page }) => {
+    await page.route('**/widget-agent/health', async (route) => {
+      expect(route.request().headers()['x-widget-key']).toBe(widgetKey);
+      expect(route.request().headers()['x-pro-key']).toBe(proWidgetKey);
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: false,
+          agentEnabled: true,
+          widgetKeyConfigured: true,
+          anthropicConfigured: true,
+          proKeyConfigured: true,
+          error: 'Forbidden',
+          errorCode: 'invalid_widget_key',
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
+    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+
+    const modal = page.locator('.widget-chat-modal');
+    await expect(modal).toBeVisible();
+    await expect(modal.locator('.widget-chat-readiness')).toContainText('Widget key rejected', { timeout: 15000 });
+    await expect(modal.locator('.widget-chat-readiness')).not.toContainText('PRO key rejected');
+    await expect(modal.locator('.widget-chat-send')).toBeDisabled();
+  });
+
+  test('POST 403 with invalid_pro_key shows PRO key guidance on generation failure', async ({ page }) => {
+    await page.route('**/widget-agent/health', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          agentEnabled: true,
+          widgetKeyConfigured: true,
+          anthropicConfigured: true,
+          proKeyConfigured: true,
+        }),
+      });
+    });
+
+    await page.route('**/widget-agent', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Forbidden', errorCode: 'invalid_pro_key' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
+    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+
+    const modal = page.locator('.widget-chat-modal');
+    await expect(modal.locator('.widget-chat-readiness')).toContainText('Connected', { timeout: 15000 });
+    await modal.locator('.widget-chat-input').fill('Interactive oil gold chart');
+    await modal.locator('.widget-chat-send').click();
+
+    await expect(modal.locator('.widget-chat-messages')).toContainText('PRO key rejected', { timeout: 15000 });
+    await expect(modal.locator('.widget-chat-messages')).not.toContainText('Widget key rejected');
+  });
 });

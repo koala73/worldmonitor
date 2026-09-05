@@ -30,6 +30,7 @@ type WidgetAgentHealth = {
   widgetKeyConfigured?: boolean;
   anthropicConfigured?: boolean;
   proKeyConfigured?: boolean;
+  errorCode?: 'invalid_widget_key' | 'invalid_pro_key';
   error?: string;
 };
 
@@ -202,8 +203,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       const requestUserId = requestAuthState.user?.id ?? null;
       const requestBelief = readClientEntitlementBelief(requestAuthState);
       const res = await fetch(widgetAgentHealthUrl(), { headers: auth.headers });
-      let payload: WidgetAgentHealth | null = null;
-      try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+      const payload = await parseWidgetAgentJson(res);
 
       if (!res.ok) {
         const message = resolvePreflightMessage(
@@ -305,8 +305,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       });
 
       if (!res.ok) {
-        let payload: WidgetAgentHealth | null = null;
-        try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+        const payload = await parseWidgetAgentJson(res);
         reportWidgetEntitlementDesync(
           res.status,
           payload,
@@ -314,7 +313,14 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
           requestBelief,
           requestUserId,
         );
-        throw new Error(t('widgets.serverError', { status: res.status }));
+        throw new Error(resolveRequestErrorMessage(
+          res.status,
+          payload,
+          isPro,
+          auth.usedTesterKey,
+          requestBelief,
+          requestUserId,
+        ));
       }
       if (!res.body) {
         throw new Error(t('widgets.serverError', { status: res.status }));
@@ -452,6 +458,41 @@ function renderExampleChips(container: HTMLElement, inputEl: HTMLTextAreaElement
   }
 }
 
+async function parseWidgetAgentJson(res: Response): Promise<WidgetAgentHealth | null> {
+  try {
+    return await res.json() as WidgetAgentHealth;
+  } catch {
+    return null;
+  }
+}
+
+function resolveWidgetAgentFailureMessage(
+  status: number,
+  payload: WidgetAgentHealth | null,
+  isPro: boolean,
+  usedTesterKey: boolean,
+  requestBelief: ClientEntitlementBelief,
+  requestUserId: string | null,
+): string | null {
+  if (status === 403) {
+    if (payload?.errorCode === 'invalid_pro_key') {
+      return t('widgets.preflightInvalidProKey');
+    }
+    if (payload?.errorCode === 'invalid_widget_key') {
+      return t('widgets.preflightInvalidKey');
+    }
+    // Tester-key path without structured errorCode: branch on tier.
+    if (usedTesterKey) {
+      return isPro ? t('widgets.preflightInvalidProKey') : t('widgets.preflightInvalidKey');
+    }
+    reportWidgetEntitlementDesync(status, payload, usedTesterKey, requestBelief, requestUserId);
+    return isPro ? t('widgets.preflightProSubscriptionRequired') : t('widgets.preflightProRequired');
+  }
+  if (status === 503 && payload?.proKeyConfigured === false) return t('widgets.preflightProUnavailable');
+  if (payload?.anthropicConfigured === false) return t('widgets.preflightAiUnavailable');
+  return null;
+}
+
 function resolvePreflightMessage(
   status: number,
   payload: WidgetAgentHealth | null,
@@ -460,25 +501,36 @@ function resolvePreflightMessage(
   requestBelief: ClientEntitlementBelief,
   requestUserId: string | null,
 ): string {
-  if (status === 403) {
-    // Tester-key path: tell the operator to update the wm-*-key they actually have.
-    if (usedTesterKey) return isPro ? t('widgets.preflightInvalidProKey') : t('widgets.preflightInvalidKey');
-    reportWidgetEntitlementDesync(status, payload, usedTesterKey, requestBelief, requestUserId);
-    // Clerk-auth copy stays keyed to the requested widget tier. Telemetry above
-    // separately classifies the account belief so the two concepts cannot be
-    // conflated.
-    //   isPro=true  — the modal requested a Pro widget; a 403 means either
-    //                 (a) they just upgraded (entitlement still propagating)
-    //                 or (b) the entitlement service is degraded. Tell them to
-    //                 refresh / contact support.
-    //   isPro=false — a free user reached a Pro action; "contact support" is
-    //                 wrong, they need to upgrade. Surface a clean upgrade ask
-    //                 without the "just upgraded" language.
-    return isPro ? t('widgets.preflightProSubscriptionRequired') : t('widgets.preflightProRequired');
-  }
-  if (status === 503 && payload?.proKeyConfigured === false) return t('widgets.preflightProUnavailable');
-  if (payload?.anthropicConfigured === false) return t('widgets.preflightAiUnavailable');
+  const message = resolveWidgetAgentFailureMessage(
+    status,
+    payload,
+    isPro,
+    usedTesterKey,
+    requestBelief,
+    requestUserId,
+  );
+  if (message) return message;
   return t('widgets.preflightUnavailable');
+}
+
+function resolveRequestErrorMessage(
+  status: number,
+  payload: WidgetAgentHealth | null,
+  isPro: boolean,
+  usedTesterKey: boolean,
+  requestBelief: ClientEntitlementBelief,
+  requestUserId: string | null,
+): string {
+  const message = resolveWidgetAgentFailureMessage(
+    status,
+    payload,
+    isPro,
+    usedTesterKey,
+    requestBelief,
+    requestUserId,
+  );
+  if (message) return message;
+  return t('widgets.serverError', { status });
 }
 
 function setReadinessState(container: HTMLElement, tone: 'checking' | 'ready' | 'error', text: string): void {
