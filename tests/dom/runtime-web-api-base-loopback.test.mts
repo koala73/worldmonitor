@@ -238,6 +238,40 @@ describe('installWebApiRedirect on deployed WorldMonitor pages', () => {
     expect(await response.json()).toEqual({ flights: [{ id: 'flight-1' }] });
     expect(seen).toEqual([`${REMOTE_API}${path}`, path]);
   });
+
+  it('does not replay a mutation request (POST) on the page origin after an API-host failure', async () => {
+    const pageOrigin = 'https://www.worldmonitor.app';
+    const path = '/api/scenario/v1/run-scenario';
+    const seen: string[] = [];
+    window.fetch = (async (input: RequestInfo | URL) => {
+      const target = hrefOf(input);
+      seen.push(target);
+      if (target.startsWith(REMOTE_API)) throw new TypeError('Failed to fetch');
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+
+    const runtime = await loadRuntimeWith({
+      apiBase: REMOTE_API,
+      hostname: 'www.worldmonitor.app',
+      protocol: 'https:',
+    });
+    Object.assign(window.location, {
+      hostname: 'www.worldmonitor.app',
+      host: 'www.worldmonitor.app',
+      protocol: 'https:',
+      href: `${pageOrigin}/dashboard`,
+      origin: pageOrigin,
+    });
+
+    runtime.installWebApiRedirect();
+
+    await expect(window.fetch(`${REMOTE_API}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario: 'hormuz_strait' }),
+    })).rejects.toThrow('Failed to fetch');
+    expect(seen).toEqual([`${REMOTE_API}${path}`]);
+  });
 });
 
 describe('HTTPS loopback uses the web API path, not the sidecar', () => {
