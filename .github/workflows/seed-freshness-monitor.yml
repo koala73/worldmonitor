@@ -105,7 +105,10 @@ jobs:
         # The next step decides whether that problem is a new transition or the
         # same durable incident already attached to the operational anchor.
         continue-on-error: true
-        run: node scripts/check-seed-freshness.mjs --json-output "$RUNNER_TEMP/seed-freshness-observation.json"
+        run: |
+          node scripts/check-seed-freshness.mjs \
+            --json-output "$RUNNER_TEMP/seed-freshness-observation.json" \
+            --markdown-output "$RUNNER_TEMP/seed-freshness-summary.md"
 
       - name: Publish ingestion operational transitions
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
@@ -140,3 +143,22 @@ jobs:
             --sha "$SEED_ACCEPTANCE_SHA" \
             "${status_args[@]}" \
             --report "$RUNNER_TEMP/seed-freshness-observation.json"
+
+      - name: Show production acceptance
+        if: ${{ always() }}
+        run: |
+          if [ -s "$RUNNER_TEMP/seed-freshness-summary.md" ]; then
+            cat "$RUNNER_TEMP/seed-freshness-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '## Production ingestion acceptance\n\n**Unverified.** No current observation was produced. Inspect the [gate and probe logs](%s/%s/actions/runs/%s).\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Retain acceptance observation
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: seed-freshness-observation
+          path: ${{ runner.temp }}/seed-freshness-observation.json
+          retention-days: 7
+          if-no-files-found: ignore

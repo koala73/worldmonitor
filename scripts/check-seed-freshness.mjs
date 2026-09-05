@@ -131,6 +131,9 @@ export function findOperationalProblems(payload, now = Date.now()) {
       name,
       status: problem?.status ?? 'UNKNOWN',
       records: problem?.records,
+      ...(typeof problem?.errorCode === 'string' && /^[A-Z0-9_:-]{1,100}$/.test(problem.errorCode)
+        ? { errorCode: problem.errorCode }
+        : {}),
       ...(Number.isFinite(problem?.seedAgeMin)
         ? { seedAgeMin: problem.seedAgeMin }
         : {}),
@@ -455,14 +458,55 @@ export function buildAcceptanceObservation(payload, baseline, now = Date.now()) 
     version: 1,
     checkedAt,
     acceptance,
+    graced: findGracedStaleContent(payload, now),
     report: formatAcceptanceReport(acceptance, checkedAt),
   };
+}
+
+function markdownCell(value) {
+  return String(value ?? 'unknown').slice(0, 500)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/[\r\n]/g, ' ').replace(/\|/g, '&#124;')
+    .replace(/[\\`*_[\]()]/g, '\\$&');
+}
+
+export function formatAcceptanceMarkdown({ checkedAt, acceptance, report, graced = [] }) {
+  const { blocking, acknowledged, cleared, expired, expiresAt } = acceptance;
+  const verdict = report.failed ? 'Failed' : acknowledged.length || graced.length
+    ? 'Passed with acknowledged degradation or active grace' : 'Passed';
+  const lines = [
+    '## Production ingestion acceptance', '',
+    `**${verdict}.** Observed ${markdownCell(checkedAt)}.`, '',
+    'Workflow success can mean the observation completed without a new incident alert. It does not prove source recovery.', '',
+    '| Source | State | Detail |', '| --- | --- | --- |',
+  ];
+  for (const [state, problems] of [['Active', blocking], ['Acknowledged', acknowledged]]) {
+    for (const problem of problems) {
+      const code = problem.errorCode ? `; ${problem.errorCode}` : '';
+      const owner = problem.issue ? `; tracking issue #${problem.issue}` : '';
+      lines.push(`| ${markdownCell(problem.name)} | ${state} | ${markdownCell(describeProblem(problem) + code + owner)} |`);
+    }
+  }
+  for (const problem of graced) {
+    lines.push(`| ${markdownCell(problem.name)} | In grace | Alerts at ${markdownCell(problem.graceUntil)} |`);
+  }
+  for (const problem of cleared) {
+    lines.push(`| ${markdownCell(problem.name)} | Baseline entry cleared | No longer reported; review tracking issue #${markdownCell(problem.issue)} |`);
+  }
+  if (!blocking.length && !acknowledged.length && !graced.length && !cleared.length) {
+    lines.push('| None | No active source incidents | Current observation |');
+  }
+  if (expired) lines.push('', `Accepted-problem baseline expired at ${markdownCell(expiresAt)}. Acceptance remains failed.`);
+  return `${lines.join('\n')}\n`;
 }
 
 async function main() {
   const { values } = parseArgs({
     args: process.argv.slice(2),
-    options: { 'json-output': { type: 'string' } },
+    options: {
+      'json-output': { type: 'string' },
+      'markdown-output': { type: 'string' },
+    },
     strict: true,
   });
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
@@ -478,11 +522,12 @@ async function main() {
   const observation = buildAcceptanceObservation(payload, readAcceptanceBaseline());
   const outputPath = values['json-output'];
   if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);
+  if (values['markdown-output']) writeFileSync(values['markdown-output'], formatAcceptanceMarkdown(observation));
   const { report } = observation;
   for (const line of report.info) console.log(line);
   // Non-blocking, but never silent: a green run should still say which feeds
   // are mid-grace and when they start counting as warnings.
-  for (const graced of findGracedStaleContent(payload)) {
+  for (const graced of observation.graced) {
     console.log(`in grace: ${graced.name} (${graced.status}, alerting at ${graced.graceUntil})`);
   }
   for (const line of report.errors) console.error(line);

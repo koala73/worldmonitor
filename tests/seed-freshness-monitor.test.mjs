@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import YAML from 'yaml';
@@ -10,6 +14,7 @@ import {
   buildAcceptanceObservation,
   findOperationalProblems,
   formatAcceptanceReport,
+  formatAcceptanceMarkdown,
   isOnDemandProblem,
   findGracedStaleContent,
   isStaleContentGraceProblem,
@@ -32,6 +37,86 @@ const TEST_WORKFLOW_URL = new URL('../.github/workflows/test.yml', import.meta.u
 const PRE_PUSH_HOOK_URL = new URL('../.husky/pre-push', import.meta.url);
 const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
 const readRailwayServices = () => JSON.parse(readFileSync(RAILWAY_SERVICES_URL, 'utf8'));
+
+describe('production acceptance summary', () => {
+  const now = Date.parse('2026-09-05T07:00:00.000Z');
+  const baseline = { expiresAt: '2026-09-06', acknowledged: [] };
+  const observation = (problems, accepted = baseline) => buildAcceptanceObservation({
+    status: Object.keys(problems).length ? 'WARNING' : 'HEALTHY',
+    checkedAt: new Date(now).toISOString(),
+    problems,
+  }, accepted, now);
+
+  it('shows every continuing incident independently of the workflow verdict', () => {
+    const report = observation({
+      wildfires: { status: 'SEED_ERROR', records: 1932, errorCode: 'FIRMS_PARTIAL_COVERAGE' },
+      physicalDivergence: { status: 'SEED_ERROR', records: 2 },
+      crossStraitActivityTaiwanMnd: { status: 'SEED_ERROR', records: 133 },
+    });
+    const markdown = formatAcceptanceMarkdown(report);
+    assert.match(markdown, /\*\*Failed\.\*\* Observed 2026-09-05T07:00:00.000Z/);
+    for (const source of report.acceptance.blocking) assert.ok(markdown.includes(`| ${source.name} | Active |`));
+    assert.ok(markdown.includes('FIRMS\\_PARTIAL\\_COVERAGE'));
+    assert.match(markdown, /without a new incident alert/);
+  });
+
+  it('keeps acknowledgements, grace deadlines, and cleared baseline entries distinct', () => {
+    const report = observation({
+      known: { status: 'EMPTY' },
+      frozen: { status: 'STALE_CONTENT', staleContentGraceUntil: '2026-09-05T08:00:00.000Z' },
+    }, { ...baseline, acknowledged: [
+      { name: 'known', status: 'EMPTY', issue: 1, reason: 'Known source problem' },
+      { name: 'recovered', status: 'EMPTY', issue: 2, reason: 'Old problem' },
+    ] });
+    const markdown = formatAcceptanceMarkdown(report);
+    assert.match(markdown, /Passed with acknowledged degradation or active grace/);
+    assert.match(markdown, /known \| Acknowledged/);
+    assert.match(markdown, /frozen \| In grace \| Alerts at 2026-09-05T08:00:00.000Z/);
+    assert.match(markdown, /recovered \| Baseline entry cleared/);
+  });
+
+  it('escapes source text and keeps an expired baseline failed even with no incidents', () => {
+    const hostile = formatAcceptanceMarkdown(observation({
+      '<img>\n[link](https://example.com)|extra': { status: 'UNKNOWN', errorCode: '<secret>' },
+    }));
+    assert.doesNotMatch(hostile, /<img>|<secret>|\[link\]\(/);
+    assert.match(hostile, /&lt;img&gt;/);
+    assert.match(hostile, /&#124;/);
+    assert.match(formatAcceptanceMarkdown(observation({})), /\*\*Passed\.\*\*/);
+    const expired = formatAcceptanceMarkdown(observation({}, {
+      expiresAt: '2026-09-04',
+      acknowledged: [{ name: 'old', status: 'EMPTY', issue: 1, reason: 'Old baseline' }],
+    }));
+    assert.match(expired, /\*\*Failed\.\*\*/);
+    assert.match(expired, /baseline expired/);
+  });
+
+  it('writes JSON and Markdown from one CLI request before returning a failed verdict', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'seed-summary-'));
+    try {
+      const preload = join(dir, 'fetch.mjs');
+      const calls = join(dir, 'calls');
+      writeFileSync(preload, `import { appendFileSync } from 'node:fs';
+globalThis.fetch = async () => {
+  appendFileSync(${JSON.stringify(calls)}, 'request\\n');
+  return Response.json({ status: 'WARNING', checkedAt: new Date().toISOString(), problems: { wildfires: { status: 'SEED_ERROR', records: 2 } } });
+};\n`);
+      const json = join(dir, 'observation.json');
+      const markdown = join(dir, 'summary.md');
+      const result = spawnSync(process.execPath, [
+        '--import', preload, fileURLToPath(new URL('../scripts/check-seed-freshness.mjs', import.meta.url)),
+        '--json-output', json, '--markdown-output', markdown,
+      ], { encoding: 'utf8', timeout: 10_000 });
+      assert.equal(result.status, 1, result.stderr);
+      const report = JSON.parse(readFileSync(json, 'utf8'));
+      assert.equal(report.report.failed, true);
+      assert.equal(readFileSync(markdown, 'utf8'), formatAcceptanceMarkdown(report));
+      assert.equal(readFileSync(calls, 'utf8'), 'request\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('scheduled seed freshness monitor', () => {
   it('projects stable per-source statuses without putting changing ages in the incident identity', () => {

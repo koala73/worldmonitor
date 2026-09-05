@@ -239,6 +239,34 @@ function runScheduledGate(head, ancestors = []) {
 }
 
 describe('seed freshness workflow control plane', () => {
+  it('shows failed acceptance even after a successful publisher and marks a missing observation unverified', () => {
+    const step = stepNamed('Show production acceptance');
+    assert.equal(step.if, '${{ always() }}');
+    assertBashSyntax(step.run);
+    const artifact = stepNamed('Retain acceptance observation');
+    assert.equal(artifact.if, '${{ always() }}');
+    assert.equal(artifact.with['retention-days'], 7);
+    assert.equal(artifact.with.path, '${{ runner.temp }}/seed-freshness-observation.json');
+    const dir = mkdtempSync(join(repoRoot, '.tmp-seed-summary-'));
+    try {
+      const output = join(dir, 'summary.md');
+      const run = () => spawnSync('bash', ['-e', '-c', step.run], {
+        encoding: 'utf8',
+        env: { ...process.env, RUNNER_TEMP: dir, GITHUB_STEP_SUMMARY: output,
+          GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'koala73/worldmonitor', GITHUB_RUN_ID: '123' },
+      });
+      assert.equal(run().status, 0);
+      assert.match(readFileSync(output, 'utf8'), /Unverified.*No current observation/);
+      assert.match(readFileSync(output, 'utf8'), /https:\/\/github.com\/koala73\/worldmonitor\/actions\/runs\/123/);
+      writeFileSync(output, '');
+      writeFileSync(join(dir, 'seed-freshness-summary.md'), '**Failed.** wildfires remains active.\n');
+      assert.equal(run().status, 0);
+      assert.equal(readFileSync(output, 'utf8'), '**Failed.** wildfires remains active.\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('monitors the checked-out main SHA when its gate passed', () => {
     const success = runScheduledGate('success', [
       { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
