@@ -52,6 +52,7 @@ import { evaluateFreshness } from '../freshness';
 import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, type McpBudget } from '../quota';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
+import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import {
   FREE_ACCOUNT_CALLS_PER_DAY,
   FREE_ACCOUNT_IDLE_GAP_MS,
@@ -620,8 +621,11 @@ export async function buildResourceResponse(
       wrappedText = innerText;
     } else {
       const { seedMetaKey, maxStaleMin } = matched.def.freshnessWrap;
-      // Seeder-owned seed-meta (#7674) — read raw in every environment.
-      const meta = await readJsonFromUpstash(seedMetaKey, 3_000, true).catch(() => null);
+      const meta = await readJsonFromUpstash(
+        seedMetaKey,
+        3_000,
+        !isAppOwnedRedisKey(seedMetaKey),
+      ).catch(() => null);
       const { cached_at, stale } = evaluateFreshness(
         [{ key: seedMetaKey, maxStaleMin }],
         [meta],

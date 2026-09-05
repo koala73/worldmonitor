@@ -54,15 +54,19 @@ const ISSUE_SLOT_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 const BRIEF_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /**
- * Public base URL for the share links we mint. Pinned to
- * WORLDMONITOR_PUBLIC_BASE_URL in prod to prevent host-header
- * reflection from producing share URLs pointing at preview deploys
- * or other non-canonical origins.
+ * Public base URL for the share links we mint. Preview and development
+ * pointers live in their deployment namespace, so their URLs must stay on
+ * that deployment. Production remains pinned to the configured canonical
+ * origin to prevent host-header reflection.
  */
-function publicBaseUrl(req: Request): string {
+export function publicBaseUrl(req: Request): string {
+  const requestOrigin = new URL(req.url).origin;
+  if (process.env.VERCEL_ENV === 'preview' || process.env.VERCEL_ENV === 'development') {
+    return requestOrigin;
+  }
   const pinned = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
   if (pinned) return pinned.replace(/\/+$/, '');
-  return new URL(req.url).origin;
+  return requestOrigin;
 }
 
 export default async function handler(
@@ -220,9 +224,9 @@ export default async function handler(
   //
   // App-owned pointer (#7674): share-url routes are the only writers of
   // brief:public-pointer:*, so this write and the public route's read ride
-  // the deployment-prefixed helper default — a share URL resolves on the
-  // deployment family that minted it (share URLs are origin-pinned, so
-  // this matches how they circulate).
+  // the deployment-prefixed helper default. publicBaseUrl keeps previews on
+  // their deployment origin and pins production to the canonical origin,
+  // which keeps every returned URL in the pointer's namespace.
   const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${hash}`;
   const pointerValue = JSON.stringify(encodePublicPointer(session.userId, issueSlot));
   const writeResult = await redisPipeline([

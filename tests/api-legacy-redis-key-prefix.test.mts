@@ -411,6 +411,44 @@ describe('health sweep classifies the temporal producer keys into the preview na
   });
 });
 
+describe('seed-health classifies mixed producer keys for preview (#7674)', () => {
+  it('prefixes route-owned metadata while seeder probes and activation markers stay raw', async () => {
+    const { handleSeedHealth } = await import('../api/seed-health.js');
+    process.env.WORLDMONITOR_VALID_KEYS = 'prefix-seed-health-test-key';
+
+    globalThis.fetch = (async (input, init = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith(`${UPSTASH}/pipeline`)) {
+        const commands = JSON.parse(init.body);
+        pipelineBodies.push(commands);
+        return Response.json(commands.map(([op]) => ({ result: op === 'EXISTS' ? 0 : null })));
+      }
+      throw new Error(`unexpected global fetch: ${url}`);
+    }) as typeof fetch;
+
+    await handleSeedHealth(new Request('https://api.worldmonitor.app/api/seed-health', {
+      headers: { 'x-worldmonitor-key': 'prefix-seed-health-test-key' },
+    }), { now: Date.parse('2026-09-05T00:00:00Z') });
+
+    const batch = pipelineBodies.find((commands) => commands[0]?.[0] === 'GET');
+    assert.ok(batch, 'the seed-health batch must have run');
+    const requestedKeys = new Set(batch.map((command) => command[1]));
+
+    assert.ok(requestedKeys.has(`${PREFIX}seed-meta:intelligence:risk-scores`),
+      'route-owned risk metadata must use the preview namespace');
+    assert.ok(requestedKeys.has(`${PREFIX}seed-meta:supply_chain:chokepoints`),
+      'route-owned chokepoint metadata must use the preview namespace');
+    assert.ok(requestedKeys.has(`${PREFIX}seed-meta:cable-health`),
+      'route-owned cable metadata must use the preview namespace');
+    assert.ok(requestedKeys.has('resilience:education-attainment:v1'),
+      'Railway-owned data probes must stay raw');
+    assert.ok(requestedKeys.has('seed-activated:news:feed-health'),
+      'Railway-owned activation markers must stay raw');
+    assert.ok(!requestedKeys.has('seed-meta:intelligence:risk-scores'),
+      'preview must not read production risk metadata');
+  });
+});
+
 describe('getRiskScores reads the app-owned temporal snapshot prefixed (#7674)', () => {
   it('temporal:anomalies:v1 is namespaced; seeder-owned sources stay raw', async () => {
     const { getRiskScores } = await import(

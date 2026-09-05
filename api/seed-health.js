@@ -21,7 +21,8 @@ import {
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
 // @ts-expect-error — JS module, no declaration file
-import { readExistsFlags, redisPipeline } from './_upstash-json.js';
+import { applyRedisKeyPrefix, readExistsFlags, redisPipeline } from './_upstash-json.js';
+import { isAppOwnedRedisKey } from './_redis-key-ownership.js';
 
 export const config = { runtime: 'edge' };
 
@@ -525,27 +526,28 @@ async function getSeedBatch(entries) {
   const probeSlots = [];
   const activationSlots = [];
   const contentFreshnessActivationSlots = [];
+  const batchKey = (key) => (isAppOwnedRedisKey(key) ? applyRedisKeyPrefix(key) : key);
   for (const [domain, cfg] of entries) {
     metaSlots.push({ domain, key: cfg.key, index: commands.length });
-    commands.push(['GET', cfg.key]);
+    commands.push(['GET', batchKey(cfg.key)]);
     if (cfg.dataProbe?.key) {
       probeSlots.push({ domain, index: commands.length });
-      commands.push(['GET', cfg.dataProbe.key]);
+      commands.push(['GET', batchKey(cfg.dataProbe.key)]);
     }
     if (cfg.activationKey) {
       activationSlots.push({ domain, index: commands.length });
-      commands.push(['EXISTS', cfg.activationKey]);
+      commands.push(['EXISTS', batchKey(cfg.activationKey)]);
     }
     if (cfg.contentFreshnessActivationKey) {
       contentFreshnessActivationSlots.push({ domain, index: commands.length });
-      commands.push(['EXISTS', cfg.contentFreshnessActivationKey]);
+      commands.push(['EXISTS', batchKey(cfg.contentFreshnessActivationKey)]);
     }
   }
 
-  // All keys here are written by the Railway seeder fleet (data payloads,
-  // seed-meta, activation markers) — read them raw in every environment so
-  // preview monitors the fleet rows, not an empty deployment namespace
-  // (#7674).
+  // Most rows are written by the Railway seeder fleet and stay raw. The small
+  // route-owned set is finalized above into this deployment's namespace. Send
+  // the mixed pipeline verbatim so the Redis helper cannot prefix every key
+  // as one ownership class (#7674).
   const data = await redisPipeline(commands, 3000, true);
   if (!data) throw new Error('Redis not configured');
 
