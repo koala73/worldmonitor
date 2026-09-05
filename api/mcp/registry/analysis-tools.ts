@@ -539,6 +539,93 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     _apiPaths: [],
   },
   {
+    name: 'get_global_air_activity',
+    _outputBudgetBytes: 32768,
+    description:
+      'Global military air activity: how many aircraft are aloft worldwide right now, by type and theater. ' +
+      'A cheap aggregate over the seeded world flight snapshot — one total, an aircraft-type breakdown ' +
+      '(fighters, tankers, AWACS, reconnaissance, transports, bombers, drones), per-theater rollups using the ' +
+      'same theater assignment the surge engine uses, and the count outside every declared theater. Quiet ' +
+      'theaters are omitted rather than reported as zero rows. Scope is military aircraft from ' +
+      'redistribution-cleared providers — the seeded snapshot that covers the world; for civilian traffic or a ' +
+      'single country use get_airspace, and for posture/threat interpretation of the same data use ' +
+      'get_military_surge.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        cached_at: { type: ['string', 'null'], description: 'Fetch time of the flight snapshot.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
+        data: {
+          type: 'object',
+          properties: {
+            total_military_aircraft: { type: 'number' },
+            by_aircraft_type: { type: 'object', additionalProperties: { type: 'number' } },
+            theaters: { type: 'array', items: { type: 'object', properties: {
+              theater_id: { type: 'string' }, theater_name: { type: 'string' }, short_name: { type: 'string' },
+              total_aircraft: { type: 'number' },
+              fighters: { type: 'number' }, tankers: { type: 'number' }, awacs: { type: 'number' },
+              reconnaissance: { type: 'number' }, transport: { type: 'number' },
+              bombers: { type: 'number' }, drones: { type: 'number' },
+            } } },
+            outside_theater_count: { type: 'number', description: 'Aircraft aloft outside every declared posture theater.' },
+          },
+          required: [],
+        },
+      },
+      required: ['cached_at', 'stale', 'data'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async () => {
+      const {
+        payloads: [flightsPayload],
+        freshness,
+      } = await readCachesWithFreshness(
+        ['military:flights:v1'],
+        [{ key: 'seed-meta:military:flights', maxStaleMin: 30 }],
+      );
+      requireAnyInput([flightsPayload], freshness, 'The military flight snapshot is unavailable');
+
+      // Same adapter as get_military_surge: redistribution gating and shape
+      // tolerance live in ONE place, and the theater assignment below is the
+      // surge engine's own — no second geometry implementation.
+      const flights = militaryFlightsToSurgeInputs(flightsPayload);
+      const byType: Record<string, number> = {};
+      for (const flight of flights) {
+        byType[flight.aircraftType] = (byType[flight.aircraftType] ?? 0) + 1;
+      }
+      const theaters = getTheaterPostureSummaries(flights)
+        .filter((summary) => summary.totalAircraft > 0)
+        .map((summary) => ({
+          theater_id: summary.theaterId,
+          theater_name: summary.theaterName,
+          short_name: summary.shortName,
+          total_aircraft: summary.totalAircraft,
+          fighters: summary.fighters,
+          tankers: summary.tankers,
+          awacs: summary.awacs,
+          reconnaissance: summary.reconnaissance,
+          transport: summary.transport,
+          bombers: summary.bombers,
+          drones: summary.drones,
+        }));
+      const inTheaters = theaters.reduce((sum, theater) => sum + theater.total_aircraft, 0);
+
+      return {
+        ...freshness,
+        data: {
+          total_military_aircraft: flights.length,
+          by_aircraft_type: byType,
+          theaters,
+          outside_theater_count: Math.max(0, flights.length - inTheaters),
+        },
+      };
+    },
+    _coverageKeys: ['military:flights:v1'],
+    _apiPaths: [],
+  },
+  {
     name: 'get_military_surge',
     _outputBudgetBytes: 65536,
     description:
