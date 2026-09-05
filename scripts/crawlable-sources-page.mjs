@@ -18,7 +18,7 @@ import {
 // their docs anchors mirror docs/data-sources.mdx section headings; the
 // aggregate counts are computed from the committed attribution manifest, so
 // the page cannot drift from the tracked inventory.
-const SOURCE_DOMAINS = [
+export const SOURCE_DOMAINS = [
   {
     id: 'geopolitics',
     name: 'Geopolitics & Conflict',

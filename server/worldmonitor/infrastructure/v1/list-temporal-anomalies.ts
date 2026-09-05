@@ -77,6 +77,11 @@ async function readPriorContentAge(
     `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}); `
     + 'carrying the previous content clock forward rather than stamping a false STALE_CONTENT',
   );
+  // seed-meta:temporal:anomalies is ROUTE-stamped (app-owned): this handler is
+  // its only producer, so unlike the seeder-written seed-meta:* keys it must
+  // stay on the prefixed (non-raw) read to remain in the deployment namespace.
+  // Pattern-matching the "seed-meta" prefix into raw=true would cross namespaces
+  // on preview — the inverse of #7575.
   const prior = await getCachedJson('seed-meta:temporal:anomalies').catch(() => null);
   if (!prior || typeof prior !== 'object') return null;
   const meta = prior as { newestItemAt?: unknown; oldestItemAt?: unknown };
@@ -227,7 +232,11 @@ export async function listTemporalAnomalies(
       const countReads = await Promise.all(
         Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
           type,
-          await readCachedJson(sourceKey),
+          // raw = true: these are seeder-owned keys written unprefixed by the
+          // Railway seeders (same convention as every other seed-key read in
+          // server/). The prefixing default made preview rebuilds request
+          // rows nothing ever writes, silently emptying the route (#7575).
+          await readCachedJson(sourceKey, true),
         ] as const),
       );
       const erroredSourceTypes = countReads

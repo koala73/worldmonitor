@@ -1090,10 +1090,8 @@ export function resolveSeedMetaTtl(metaTtlSeconds, dataTtlSeconds) {
   return metaTtlSeconds ?? Math.max(SEED_META_MIN_TTL_SECONDS, dataTtlSeconds || 0);
 }
 
-export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
-  const { url, token } = getRedisCredentials();
-  const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
-  const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
+function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
+  const meta = { fetchedAt, recordCount: recordCount ?? 0 };
   if (coverage) meta.coverage = coverage;
   // Optional producer diagnostics, copied verbatim onto the meta record.
   // api/health.js decides which fields it trusts (see readSeedMeta), so callers
@@ -1105,6 +1103,13 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
       if (value !== undefined) meta[key] = value;
     }
   }
+  return meta;
+}
+
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
+  const { url, token } = getRedisCredentials();
+  const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
+  const meta = buildSeedMeta(recordCount, coverage, extra);
   // No data TTL is in scope here — callers that know one resolve it through
   // `resolveSeedMetaTtl` before calling. Bare floor otherwise.
   const metaTtl = resolveSeedMetaTtl(metaTtlSeconds);
@@ -1125,12 +1130,65 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   return true;
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
   await writeExtraKey(key, data, ttl);
   // The data TTL is right here, so the meta never has to be the shorter of the
   // two. seed-economy's four EIA weekly keys (21d data, 14d health budget) rode
   // the bare 7d default and went silent-OK for the 14 days in between.
-  return writeSeedMeta(key, recordCount, metaKeyOverride, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage);
+  // `extra` carries the same optional producer diagnostics writeSeedMeta accepts
+  // directly (see its contract note) — provenance a caller needs on the meta
+  // record, not just inside the data payload.
+  return writeSeedMeta(key, recordCount, metaKeyOverride, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage, extra);
+}
+
+// Some aggregate keys are both the data pointer and the provenance source for
+// health. Publish that pair in one Redis transaction so readers cannot observe
+// a new marker with the previous seed-meta record.
+export async function writeExtraKeyWithMetaAtomically({
+  key,
+  data,
+  ttlSeconds,
+  recordCount,
+  metaKey: metaKeyOverride,
+  metaTtlSeconds,
+  coverage,
+  extra,
+  fetchedAt = Date.now(),
+}) {
+  const { url, token } = getRedisCredentials();
+  const dataTtl = Number(ttlSeconds);
+  const metaTtl = Number(resolveSeedMetaTtl(metaTtlSeconds, dataTtl));
+  if (!key || !Number.isInteger(dataTtl) || dataTtl <= 0) {
+    throw new Error('Atomic extra-key publish requires a key and a positive integer TTL');
+  }
+  if (!Number.isInteger(metaTtl) || metaTtl <= 0) {
+    throw new Error('Atomic seed-meta publish requires a positive integer TTL');
+  }
+
+  const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
+  const commands = [
+    ['SET', key, JSON.stringify(data), 'EX', dataTtl],
+    ['SET', metaKey, JSON.stringify(buildSeedMeta(recordCount, coverage, extra, fetchedAt)), 'EX', metaTtl],
+  ];
+  const resp = await fetch(`${url}/multi-exec`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!resp.ok) {
+    throw new Error(`Atomic extra-key publish failed: HTTP ${resp.status}`);
+  }
+
+  const results = await resp.json();
+  if (!Array.isArray(results)) {
+    throw new Error(`Atomic extra-key publish failed: ${results?.error || 'invalid transaction response'}`);
+  }
+  const failures = results.filter((result) => result?.error || result?.result === 'ERR');
+  if (failures.length > 0 || results.length !== commands.length) {
+    throw new Error(`Atomic extra-key publish failed: ${failures.length || 'missing'} command result(s)`);
+  }
+  return true;
 }
 
 // Detailed counterpart to extendExistingTtl. Results stay aligned to the input

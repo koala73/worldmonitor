@@ -9,6 +9,7 @@ import {
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
   TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   BASELINE_SAMPLE_INTERVAL_MS,
+  COUNT_SOURCE_KEYS,
   makeBaselineKeyV2,
   temporalAnomaliesContentMeta,
   temporalAnomaliesReadableContentMeta,
@@ -512,6 +513,63 @@ describe('temporal anomalies cache freshness', () => {
     assert.ok(
       calls.some((c) => c.method === 'POST' && c.key === `${prefix}baseline:lock`),
       'preview rebuilds must not contend on the production lock key',
+    );
+  });
+
+  it('reads the seeder-owned count sources through the raw key on preview (#7575)', async () => {
+    const prefix = 'preview:deadbeef:';
+    const seedKeys = Object.values(COUNT_SOURCE_KEYS);
+    const { calls } = await runWithRedisStub(
+      {
+        // Railway seeders write these keys unprefixed — they do not know the
+        // Vercel env-prefix scheme — so the rows exist ONLY under the bare
+        // names. A prefixed read can never hit them.
+        'news:insights:v1': liveNews(),
+        'wildfire:fires:v1': liveFires(),
+      },
+      { vercelEnv: 'preview', vercelSha: 'deadbeefcafebabe' },
+    );
+
+    const getKeys = calls.filter((c) => c.method === 'GET').map((c) => c.key);
+    for (const seedKey of seedKeys) {
+      assert.ok(
+        getKeys.includes(seedKey),
+        `count source ${seedKey} must be requested under its bare (seeder-written) name on preview`,
+      );
+      assert.equal(
+        getKeys.some((k) => k.startsWith(`${prefix}${seedKey}`)),
+        false,
+        `no prefixed read may stand in for seeder-owned ${seedKey}: nothing ever writes those rows`,
+      );
+    }
+
+    // The raw reads must actually feed the rebuild, while app-owned state
+    // stays inside the preview namespace — including the published snapshot:
+    // a bare snapshot write from a preview deploy would clobber the live
+    // production row.
+    assert.ok(
+      calls.some((c) => c.method === 'GET' && c.key === `${prefix}temporal:anomalies:v1`),
+      'the hot-path snapshot read must stay in the preview namespace (app-owned key)',
+    );
+    assert.ok(
+      calls.some((c) => c.method === 'POST' && c.key === `${prefix}temporal:anomalies:v1`),
+      'the published snapshot must stay in the preview namespace (app-owned key)',
+    );
+    assert.ok(
+      calls.some((c) => c.method === 'POST' && c.key.startsWith(`${prefix}baseline:v2:`)),
+      'baseline sampling must stay in the preview namespace (app-owned key)',
+    );
+    assert.equal(
+      calls.some((c) => c.method === 'POST'
+        && (c.key === 'temporal:anomalies:v1' || c.key === 'seed-meta:temporal:anomalies')),
+      false,
+      'no app-owned write may escape the preview namespace to the bare production key',
+    );
+    const stamp = calls.find((c) => c.method === 'POST' && c.key === `${prefix}seed-meta:temporal:anomalies`);
+    assert.equal(
+      stamp?.recordCount,
+      Object.keys(COUNT_SOURCE_KEYS).length,
+      'every configured count source must be raw-read and reach the rebuild',
     );
   });
 
