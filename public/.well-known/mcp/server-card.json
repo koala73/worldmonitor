@@ -564,7 +564,7 @@
   "authentication": {
     "type": "oauth2",
     "authorization_servers": [
-      "https://api.worldmonitor.app"
+      "https://worldmonitor.app"
     ],
     "resource": "https://worldmonitor.app",
     "scopes": [
