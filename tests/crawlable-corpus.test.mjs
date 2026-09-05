@@ -24,6 +24,8 @@ import {
   assertDevelopmentsCoverage,
   CHOKEPOINT_PAGE_CONTENT_VERSION,
   CHOKEPOINT_PAGE_LASTMOD_PATHS,
+  COMPARISON_PAGE_LASTMOD_PATHS,
+  comparisonPageLastmod,
   CII_COUNTRY_PAGE_CONTENT_VERSION,
   CII_RANKING_PAGE_CONTENT_VERSION,
   COUNTRIES_INDEX_CONTENT_VERSION,
@@ -1534,6 +1536,14 @@ describe('crawlable corpus generator', () => {
     ]);
   });
 
+  it('tracks every live compare-page statistic in its lastmod clock', () => {
+    assert.deepEqual(COMPARISON_PAGE_LASTMOD_PATHS, [
+      'scripts/build-comparison-pages.mjs',
+      'shared/source-attribution-manifest.json',
+      'src/config/chokepoint-registry.ts',
+    ]);
+  });
+
   // laterDate is imported rather than re-implemented, so the family-clock
   // assertions below share one implementation with the builder. These literal
   // cases are what keeps that from being circular: a regression in laterDate
@@ -1546,6 +1556,16 @@ describe('crawlable corpus generator', () => {
     assert.equal(laterDate('2026-01-02', '2026-01-02'), '2026-01-02');
     assert.equal(laterDate(null, undefined, ''), null);
     assert.equal(laterDate(), null);
+  });
+
+  it('advances comparison lastmod when the attribution manifest is newer than the generator', () => {
+    assert.equal(
+      comparisonPageLastmod({
+        contentVersion: '2026-01-02',
+        pathLastmods: ['2026-02-03', '2026-03-04', '2026-01-02'],
+      }),
+      '2026-03-04',
+    );
   });
 
   it('picks the newest live-pulse snapshot among several candidates', () => {
@@ -4799,6 +4819,14 @@ describe('crawlable corpus generator', () => {
       'source-page lastmod must include manifest, renderer, origin, catalog-input, and shared-template changes',
     );
     assert.equal(
+      data.lastmod.comparisons,
+      comparisonPageLastmod({
+        contentVersion: COMPARISONS_CONTENT_VERSION,
+        pathLastmods: COMPARISON_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
+      }),
+      'comparisons lastmod must fold the generator, attribution manifest, and chokepoint registry',
+    );
+    assert.equal(
       data.crises.length,
       JSON.parse(read(repoRoot, 'shared/crawlable-crises.json')).length,
       'the loaded crisis set must match the registry, never a frozen count',
@@ -5083,7 +5111,10 @@ describe('live-pulse snapshot injection (#7533)', () => {
             'reference/changelog/index.html',
           ]],
           ['comparisons', [
-            laterDate(COMPARISONS_CONTENT_VERSION, gitFileLastmod(repoRoot, 'scripts/build-comparison-pages.mjs')),
+            comparisonPageLastmod({
+              contentVersion: COMPARISONS_CONTENT_VERSION,
+              pathLastmods: COMPARISON_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
+            }),
             pageFor(manifest.sections.comparisons.index),
           ]],
         ]);
@@ -5176,11 +5207,11 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // embedded inside longer strings (HTML fixtures, snapshot paths) are all
   // counted. Full-line comments are stripped first so this allowance list — and
   // prose comments — are never misread as pins.
-  // #7533-allowlist: 2026-01-02 x10 2026-01-05 x1 2026-01-09 x1 2026-01-15 x10 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
+  // #7533-allowlist: 2026-01-02 x12 2026-01-05 x1 2026-01-09 x1 2026-01-15 x10 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
   // #7533-allowlist: 2026-01-01 x2 2026-01-31 x2 — datasetTemporalCoverage observation-interval range fixture
   // #7533-allowlist: 2025-05-28 x2 2026-02-14 x4 — shiftLivePulseDates unit-test fixtures (derived from 2026-01-15 +-30/232d)
-  // #7533-allowlist: 2026-02-03 x1 2026-02-30 x1 2026-02-31 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
-  // #7533-allowlist: 2026-03-04 x4 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
+  // #7533-allowlist: 2026-02-03 x2 2026-02-30 x1 2026-02-31 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
+  // #7533-allowlist: 2026-03-04 x6 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
   // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
   // #7533-allowlist: 2026-08-08 x3 2026-08-09 x4 2026-08-10 x4 2026-08-11 x3 2026-08-12 x3 2026-08-13 x4 — sourcePageLastmod pure-function fixtures

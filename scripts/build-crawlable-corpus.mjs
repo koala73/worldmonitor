@@ -124,6 +124,12 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
   CHOKEPOINT_PAGE_CONTENT_PATH,
   EIA_OIL_TRANSIT_BASELINES_PATH,
 ]);
+/** Compare pages interpolate live provider and chokepoint counts (#7744). */
+export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
+  'scripts/build-comparison-pages.mjs',
+  SOURCE_ATTRIBUTION_MANIFEST_PATH,
+  CHOKEPOINT_REGISTRY_PATH,
+]);
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
@@ -516,6 +522,13 @@ export function sourcePageLastmod({
     generatorContentVersion,
     pageContentVersion,
   );
+}
+
+export function comparisonPageLastmod({
+  contentVersion = COMPARISONS_CONTENT_VERSION,
+  pathLastmods = [],
+} = {}) {
+  return laterDate(contentVersion, ...pathLastmods);
 }
 
 function normalizeBaseUrl(baseUrl) {
@@ -1696,10 +1709,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshot
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
   );
-  const comparisonsLastmod = laterDate(
-    COMPARISONS_CONTENT_VERSION,
-    gitFileLastmod(rootDir, 'scripts/build-comparison-pages.mjs'),
-  );
+  const comparisonsLastmod = comparisonPageLastmod({
+    contentVersion: COMPARISONS_CONTENT_VERSION,
+    pathLastmods: COMPARISON_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
+  });
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
   // Production generators share the validated attribution predicate and stats.
   // Tests retain a separate raw-manifest oracle so a mutation here cannot make
