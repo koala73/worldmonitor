@@ -1,3 +1,4 @@
+import { buildAttributionRider, mergeAttributionRider } from '../../shared/attribution-rider';
 import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
@@ -43,15 +44,6 @@ import { isPhysicalDivergenceContractError as isMcpStoredContractError } from '.
 // throw/fall-back path can be exercised directly — it can't be triggered
 // through the public handler because every registry `_postFilter` is
 // defensively written and won't throw on JSON-RPC input.
-// Tools whose payloads carry attribution-bound provider evidence. A JMESPath
-// projection could detach the values from the source/licence/retrieval fields
-// that make their redistribution permissible, so projection is refused outright.
-const ATTRIBUTION_BOUND_TOOLS: ReadonlySet<string> = new Set([
-  'get_resilience_indicators',
-  'get_supply_vulnerabilities',
-  'get_chokepoint_dependencies',
-]);
-
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
@@ -291,25 +283,6 @@ export async function dispatchToolsCall(
     return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
   }
 
-  // Raw resilience values are redistribution-safe only when they remain
-  // attached to their source, licence, retrieval time, and provenance fields.
-  // Reject projection before quota reservation and execution so a caller
-  // cannot use the universal JMESPath facility to separate those fields.
-  // The supply-vulnerability tools carry BGS mineral evidence under the same
-  // "attribution required; redistribution restricted" licence.
-  if (
-    ATTRIBUTION_BOUND_TOOLS.has(tool.name)
-    && typeof p.arguments?.jmespath === 'string'
-    && p.arguments.jmespath.length > 0
-  ) {
-    return rpcError(
-      id,
-      -32602,
-      'JMESPath projection is not available for this attribution-bound response',
-      corsHeaders,
-    );
-  }
-
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in
   // exactly one place — the handler's free-tier branch, after matching this
   // same `_freeTier` flag — but a free context reaching any other tool would be
@@ -458,11 +431,35 @@ export async function dispatchToolsCall(
     // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
     // so we can report `bytes_pre_jmespath` separately from the projected
     // size.
-    const { text, failed } = applyJmespath(result, jmespathArg);
+    const { text: projectedText, failed } = applyJmespath(result, jmespathArg);
+    // Attribution accompaniment. A projection can detach a redistribution-
+    // permitted value from the licence fields sitting beside it in the
+    // unprojected payload, so a licence-bearing tool declares an extraction
+    // (`_attribution`) and the sources it names are re-attached here.
+    //
+    // Two properties carry the whole safety argument:
+    //   1. the rider is built from `result` — the payload BEFORE
+    //      `jmespath.search` — so an expression cannot narrow what it sees;
+    //   2. it is merged AFTER the search, by concatenating bytes around the
+    //      projected document, so no expression can name, reach, or displace
+    //      it (`mergeAttributionRider`).
+    // It rides on the `{_jmespath_error, original_keys}` soft-fail envelope
+    // too: that envelope is the response for a projected call, so it carries
+    // the same obligation.
+    //
+    // No `jmespath` argument → no rider and byte-identical output, because the
+    // unprojected payload already carries its attribution inline.
+    const rider = jmespathUsed && tool._attribution !== undefined
+      ? buildAttributionRider(result, tool._attribution)
+      : null;
+    const text = rider === null ? projectedText : mergeAttributionRider(projectedText, rider);
     const latencyMs = Date.now() - tStart;
     // Budget gate: always compute byte length for the budget check. This
     // replaces the previous telemetry-only perf gate for the post-JMESPath
     // measurement — budget enforcement requires the walk unconditionally.
+    // Measured on the merged text, so the rider counts toward the budget: it
+    // is bytes on the wire, and a projection that only fits by shedding its
+    // attribution is not a projection we can serve.
     const textBytes = utf8ByteLength(text);
     const budget = tool._outputBudgetBytes;
     const budgetExceeded = textBytes > budget;

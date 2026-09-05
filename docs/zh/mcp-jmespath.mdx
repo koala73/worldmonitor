@@ -32,6 +32,44 @@ curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=c
   -H "X-WorldMonitor-Key: $WORLDMONITOR_API_KEY"
 ```
 
+## 署名附带块（attribution rider）
+
+没有任何工具会拒绝投影。但部分工具承载的数据是**要求署名**才可复用的，而投影很容易只选出数值、把许可字段留在原地。对这类工具，服务端会自行把署名重新附加回来，而不是拒绝请求。
+
+当你对这类工具做投影时，结果会被包裹一层：
+
+```json
+{
+  "data": [ { "available": true, "numericValue": 4.2, "unit": "percent" } ],
+  "_attribution": {
+    "required": true,
+    "notice": "The values in `data` are derived from the sources listed here. Redistribution requires this attribution block to travel with them.",
+    "sources": [
+      {
+        "indicatorId": "power-losses",
+        "retrievedAt": "2026-08-30T00:00:00.000Z",
+        "key": "worldbank-wdi",
+        "name": "World Bank WDI",
+        "attribution": "World Bank",
+        "license": "CC BY 4.0",
+        "url": "https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.LOSS.ZS",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+      }
+    ]
+  }
+}
+```
+
+三点需要知道：
+
+- **韧性数据源条目会保留数值关联。** 每条记录都包含正确归属投影值所需的指标 ID、抓取日期和精确数据源 URL。
+
+- **你的表达式只会看到 `data`。** 附带块是从未投影的载荷中提取的，并在你的表达式执行**之后**合并进来，因此无法被选掉——即使表达式本身投影出一个 `_attribution` 键，它也只会无害地落在 `data` 里面。
+- **省略 `jmespath` 则一切照旧。** 未投影的响应本身就内联携带署名，因此会原样返回，既没有包裹层也没有 `_attribution` 键。
+- **附带块计入该工具的输出预算**；当表达式软失败时，它也会附在 `{ _jmespath_error, original_keys }` 信封上（该信封此时位于 `data` 内）。在 REST 上，错误表达式返回 HTTP 400 且不携带任何数据，因此无需署名，也不会有附带块。
+
+目前携带附带块的工具与端点：`get_resilience_indicators`、`get_toronto_reported_occurrences`、`get_toronto_calls_attended`、`get_imd_cyclone_marine`、`GET /api/resilience/v1/get-resilience-indicators` 以及 `GET /api/safety/v1/get-toronto-safety`。该清单由工具 schema 推导而来，而非手工维护——一个新增了许可字段却没有声明署名提取表达式的工具会直接让构建失败。
+
 ## 十二个示例
 
 ### 1. 钻取单个嵌套对象

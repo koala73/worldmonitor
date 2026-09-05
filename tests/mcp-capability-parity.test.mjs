@@ -346,6 +346,55 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     assert.equal(card.serverUrl, card.transport?.endpoint, 'top-level serverUrl must mirror transport.endpoint');
   });
 
+  // The card's `authentication` block is a hand-maintained copy of what the
+  // dynamic RFC 9728 handler emits, and scanners (isitagentready.com,
+  // mcp.cloudflare.com) reject an `authorization_servers` entry whose origin
+  // differs from `resource`. Assert the copy against the handler rather than
+  // against a second hardcoded origin list — a hand-copied constant is how it
+  // drifted to api.worldmonitor.app against an apex `resource` in the first place.
+  it('server-card authentication mirrors the RFC 9728 handler (same-origin, allowlisted, same scopes)', async () => {
+    const card = JSON.parse(
+      readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
+    );
+    const auth = card.authentication;
+    const resource = new URL(auth.resource);
+
+    for (const server of auth.authorization_servers) {
+      assert.equal(
+        new URL(server).origin,
+        resource.origin,
+        `authorization_servers entry ${server} must share origin with resource ${auth.resource}`,
+      );
+    }
+
+    // resolveMetadataOrigin coerces any host outside its allowlist to the apex,
+    // so an allowlisted origin is exactly one that round-trips through it.
+    const { resolveMetadataOrigin } = await import('../api/_agent-metadata.ts');
+    assert.equal(
+      resolveMetadataOrigin(new Request(resource.origin, { headers: { host: resource.host } })),
+      resource.origin,
+      `authentication.resource ${auth.resource} is not an origin resolveMetadataOrigin can return`,
+    );
+
+    const prm = (await import('../api/oauth-protected-resource.ts')).default;
+    const emitted = await (
+      await prm(
+        new Request(`${resource.origin}/.well-known/oauth-protected-resource`, {
+          headers: { host: resource.host },
+        }),
+      )
+    ).json();
+    assert.deepEqual(
+      auth.authorization_servers,
+      emitted.authorization_servers,
+      'authentication.authorization_servers must match what the PRM handler emits for that host',
+    );
+    assert.deepEqual(
+      auth.scopes,
+      emitted.scopes_supported,
+      'authentication.scopes must match the scopes_supported the PRM handler emits',
+    );
+  });
 });
 
 describe('docs/mcp-overview.mdx — API-key quota contract', () => {
