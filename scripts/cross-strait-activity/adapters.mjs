@@ -2321,8 +2321,15 @@ function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
     (_, index) => eligible[(offset + index) % eligible.length]);
 }
 
-function hasMndOutboundBudget({ runStartedAt, nowFn, cadenceMs }) {
-  return nowFn() - runStartedAt + cadenceMs + REQUEST_TIMEOUT_MS <= MND_OUTBOUND_BUDGET_MS;
+function hasMndOutboundBudget({
+  runStartedAt,
+  nowFn,
+  cadenceMs,
+  reservedRequestCount = 0,
+}) {
+  const reservedMs = reservedRequestCount * (REQUEST_CADENCE_MS + REQUEST_TIMEOUT_MS);
+  return nowFn() - runStartedAt + cadenceMs + REQUEST_TIMEOUT_MS + reservedMs
+    <= MND_OUTBOUND_BUDGET_MS;
 }
 
 /**
@@ -2659,20 +2666,38 @@ export async function fetchCrossStraitActivitySnapshot({
   );
   const candidates = [...primaryCandidates, ...refreshCandidates]
     .slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
+  const candidateSchedule = [
+    ...primaryCandidates.map((candidate) => ({
+      candidate,
+      isRefresh: false,
+      reservedRefreshAttempts: refreshCandidates.length,
+    })),
+    ...refreshCandidates.map((candidate, index) => ({
+      candidate,
+      isRefresh: true,
+      reservedRefreshAttempts: refreshCandidates.length - index - 1,
+    })),
+  ];
   const parsedMnd = [];
   let detailRequestCount = 0;
+  let primaryBudgetExhausted = false;
   candidateLoop:
-  for (const candidate of candidates) {
+  for (const { candidate, isRefresh, reservedRefreshAttempts } of candidateSchedule) {
+    if (primaryBudgetExhausted && !isRefresh) continue;
+    const detailAttemptLimit = MND_MAX_DETAIL_REQUESTS_PER_RUN - reservedRefreshAttempts;
     let retryingMissingMetadata = false;
-    while (detailRequestCount < MND_MAX_DETAIL_REQUESTS_PER_RUN) {
+    while (detailRequestCount < detailAttemptLimit) {
       if (!hasMndOutboundBudget({
         runStartedAt,
         nowFn,
         cadenceMs: REQUEST_CADENCE_MS,
+        reservedRequestCount: reservedRefreshAttempts,
       })) {
         if (retryingMissingMetadata) mndErrors.push('MND_PUBLICATION_METADATA_MISSING');
         mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
-        break candidateLoop;
+        if (isRefresh && !retryingMissingMetadata) break candidateLoop;
+        if (!isRefresh) primaryBudgetExhausted = true;
+        break;
       }
       try {
         await sleepFn(REQUEST_CADENCE_MS);
@@ -2692,7 +2717,7 @@ export async function fetchCrossStraitActivitySnapshot({
         if (
           code === 'MND_PUBLICATION_METADATA_MISSING'
           && !retryingMissingMetadata
-          && detailRequestCount < MND_MAX_DETAIL_REQUESTS_PER_RUN
+          && detailRequestCount < detailAttemptLimit
         ) {
           retryingMissingMetadata = true;
           continue;
