@@ -60,7 +60,7 @@
     "bundle:check:embed": "node scripts/bundle-budgets.mjs --check --surface embed",
     "sandbox:fixtures": "node scripts/generate-sandbox-fixtures.mjs",
     "sandbox:fixtures:check": "node scripts/generate-sandbox-fixtures.mjs --check",
-    "product:facts": "node --import tsx scripts/generate-product-config.mjs && node --import tsx scripts/generate-public-product-facts.mjs && npm run inventory:facts",
+    "product:facts": "node --import tsx scripts/generate-product-config.mjs && node --import tsx scripts/generate-public-product-facts.mjs && npm run inventory:facts && npm run build:ai-search",
     "product:facts:check": "node --import tsx scripts/generate-public-product-facts.mjs --check && npm run inventory:facts:check",
     "inventory:facts": "node scripts/generate-inventory-facts.mjs",
     "inventory:facts:check": "node scripts/generate-inventory-facts.mjs --check",

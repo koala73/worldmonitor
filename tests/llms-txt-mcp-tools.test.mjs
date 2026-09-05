@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { withOpenApiByteSize } from '../scripts/build-openapi-json.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -112,5 +113,19 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
       LLMS_TEXTS.get('public/llms.txt'),
       new RegExp(`openapi\\.yaml[^\\n]*${formattedBytes} bytes`, 'i'),
     );
+  });
+
+  it('updates only the YAML byte annotation and rejects ambiguous publication input', () => {
+    const source = LLMS_TEXTS.get('public/llms.txt');
+    const updated = withOpenApiByteSize(source, 1_234_567);
+    assert.equal(updated, source.replace(`${OPENAPI_BYTES.toLocaleString('en-US')} bytes`, '1,234,567 bytes'));
+    assert.equal(withOpenApiByteSize(updated, 1_234_567), updated);
+    assert.throws(() => withOpenApiByteSize('no annotation', 10), /exactly one/);
+    assert.throws(() => withOpenApiByteSize(`${source}\n${source}`, 10), /exactly one/);
+  });
+
+  it('preserves committed publication facts for the unit freshness checks', () => {
+    const scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts;
+    assert.doesNotMatch(scripts['pretest:data'], /build:openapi|build:ai-search|product:facts/);
   });
 });

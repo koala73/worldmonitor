@@ -9,7 +9,8 @@
 // and the AI briefings carry a machine-readable version header.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -80,6 +81,64 @@ describe('#6038 ai-search.md data coverage', () => {
 });
 
 describe('#6038 ai-search.md is generated, not hand-maintained', () => {
+  it('publishes changed registry counts and OpenAPI bytes through the real build pipelines', { timeout: 120_000 }, () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'wm-publication-'));
+    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot };
+    const run = (script) => spawnSync('npm', ['run', script], {
+      cwd: sandbox, env, encoding: 'utf8', timeout: 45_000,
+    });
+    const succeeds = (script) => {
+      const result = run(script);
+      assert.equal(result.status, 0, `${script}: ${result.stdout}\n${result.stderr}`);
+    };
+    const fixtureRead = (path) => readFileSync(join(sandbox, path), 'utf8');
+    try {
+      const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, env, encoding: 'utf8' });
+      for (const path of tracked.split('\0').filter(Boolean)) {
+        mkdirSync(dirname(join(sandbox, path)), { recursive: true });
+        cpSync(join(repoRoot, path), join(sandbox, path), { recursive: true, verbatimSymlinks: true });
+      }
+      symlinkSync(join(repoRoot, 'node_modules'), join(sandbox, 'node_modules'), 'dir');
+      const originalLocales = loadStatsForInventoryFacts().locales;
+      writeFileSync(join(sandbox, 'src/locales/zz.json'), '{}\n');
+      const yaml = `${fixtureRead('docs/api/worldmonitor.openapi.yaml')}\nx-publication-fixture: café\n`;
+      writeFileSync(join(sandbox, 'docs/api/worldmonitor.openapi.yaml'), yaml);
+      succeeds('product:facts');
+      succeeds('build:openapi');
+
+      const ai = fixtureRead(AI_SEARCH_PATH);
+      assert.ok(ai.includes(`${originalLocales + 1} supported interface languages`));
+      assert.equal(JSON.parse(fixtureRead('public/product-facts.json')).capabilities.locales, originalLocales + 1);
+      const expectedBytes = Buffer.byteLength(yaml).toLocaleString('en-US');
+      assert.ok(fixtureRead('public/llms.txt').includes(`${expectedBytes} bytes`));
+      assert.equal(fixtureRead('public/openapi.yaml'), yaml);
+      assert.equal(JSON.parse(fixtureRead('public/openapi.json'))['x-publication-fixture'], 'café');
+      const outputs = [AI_SEARCH_PATH, 'public/product-facts.json', 'public/llms.txt', 'public/openapi.json'];
+      const before = outputs.map(fixtureRead);
+      succeeds('product:facts');
+      succeeds('build:openapi');
+      assert.deepEqual(outputs.map(fixtureRead), before);
+      succeeds('build:ai-search:check');
+
+      writeFileSync(join(sandbox, AI_SEARCH_PATH), ai.replace(`${originalLocales + 1} supported interface languages`, '999 supported interface languages'));
+      assert.notEqual(run('build:ai-search:check').status, 0);
+      const prose = fixtureRead('public/llms.txt');
+      writeFileSync(join(sandbox, 'public/llms.txt'), prose.replace(`${expectedBytes} bytes`, '999 bytes'));
+      const freshness = spawnSync(process.execPath, ['--test', '--test-name-pattern=annotates the oversized', 'tests/llms-txt-mcp-tools.test.mjs'], {
+        cwd: sandbox, env, encoding: 'utf8', timeout: 10_000,
+      });
+      assert.notEqual(freshness.status, 0);
+      assert.match(freshness.stdout, /annotates the oversized/);
+      assert.ok(fixtureRead('public/llms.txt').includes('999 bytes'));
+      writeFileSync(join(sandbox, 'public/llms.txt'), prose.replace(`${expectedBytes} bytes`, 'unknown size'));
+      const broken = run('build:openapi');
+      assert.notEqual(broken.status, 0);
+      assert.match(broken.stderr, /exactly one OpenAPI YAML byte-size annotation/);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
   it('matches the generator byte for byte', () => {
     assert.equal(
       read(AI_SEARCH_PATH),
