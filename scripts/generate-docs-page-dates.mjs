@@ -44,7 +44,16 @@ function latestCommitDates() {
   }).trim() === 'true';
   if (isShallow() && FETCH_HISTORY) {
     const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-    execFileSync('git', ['fetch', '--unshallow', '--no-tags', '--filter=blob:none', '--no-write-fetch-head', 'origin', sha], {
+    const remotes = execFileSync('git', ['remote'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n');
+    let remote = 'origin';
+    if (!remotes.includes(remote)) {
+      const { VERCEL_GIT_PROVIDER: provider, VERCEL_GIT_REPO_OWNER: owner, VERCEL_GIT_REPO_SLUG: repo } = process.env;
+      if (provider !== 'github' || !/^[a-z\d][a-z\d-]*$/i.test(owner ?? '') || !/^[a-z\d][a-z\d._-]*$/i.test(repo ?? '')) {
+        throw new Error('docs page dates: no origin remote or valid Vercel GitHub repository identity');
+      }
+      remote = `https://github.com/${owner}/${repo}.git`;
+    }
+    execFileSync('git', ['fetch', '--unshallow', '--no-tags', '--filter=blob:none', '--no-write-fetch-head', remote, sha], {
       cwd: ROOT, stdio: 'pipe', timeout: 120_000,
     });
   }

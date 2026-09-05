@@ -133,6 +133,27 @@ it('rejects missing history and corrupted generated dates', () => withDateFixtur
   assert.equal(readFileSync(join(root, OUTPUT), 'utf8'), good);
 }));
 
+it('recovers Vercel history when its checkout has no origin remote', () => withDateFixture((root) => {
+  const shallow = mkdtempSync(join(tmpdir(), 'wm-docs-dates-vercel-'));
+  try {
+    const env = isolatedGitEnv();
+    execFileSync('git', ['clone', '--quiet', '--depth=1', pathToFileURL(root).href, shallow], { env });
+    execFileSync('git', ['remote', 'remove', 'origin'], { cwd: shallow, env });
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: shallow, env });
+    assert.throws(() => generate(shallow, ['--fetch-history'], { VERCEL_GIT_PROVIDER: '' }), /no origin remote/);
+    assert.equal(existsSync(join(shallow, OUTPUT)), false);
+    execFileSync('git', ['config', `url.${pathToFileURL(root).href}.insteadOf`, 'https://github.com/fixture/docs.git'], { cwd: shallow, env });
+    generate(shallow, ['--fetch-history'], {
+      VERCEL_GIT_PROVIDER: 'github', VERCEL_GIT_REPO_OWNER: 'fixture', VERCEL_GIT_REPO_SLUG: 'docs',
+    });
+    assert.match(readFileSync(join(shallow, OUTPUT), 'utf8'), /"about": "2026-07-27"/);
+    assert.deepEqual(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: shallow, env }), head);
+    assert.equal(execFileSync('git', ['remote'], { cwd: shallow, env, encoding: 'utf8' }).trim(), '');
+  } finally {
+    rmSync(shallow, { recursive: true, force: true });
+  }
+}));
+
 it('generates dates before every web build and checks generated output in CI', () => {
   const { scripts } = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
   for (const build of ['build', 'build:full', 'build:tech', 'build:finance', 'build:happy', 'build:commodity', 'build:energy']) {
