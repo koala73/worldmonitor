@@ -18,13 +18,17 @@ on:
         required: false
         default: false
         type: boolean
+      release_tag:
+        description: 'Release tag to build (must match package.json)'
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
 
 concurrency:
-  group: desktop-build-${{ github.ref }}
-  cancel-in-progress: true
+  group: desktop-build-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
@@ -35,6 +39,20 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Require matching release target
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$RELEASE_TAG" != "v${VERSION}" ]; then
+            echo "::error::Release target $RELEASE_TAG does not match package.json version $VERSION."
+            exit 1
+          fi
+
       - name: Release client-env preflight (#5905)
         # A tag-push or published manual release with empty client env secrets
         # would ship sign-in/Pro/basemap/relay silently disabled again — the

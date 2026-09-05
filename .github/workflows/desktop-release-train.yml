@@ -162,7 +162,8 @@ jobs:
           gh workflow run build-desktop.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TAG" \
-            -f draft=false
+            -f draft=false \
+            -f release_tag="$TAG"
           echo "::notice::Dispatched Build Desktop App for $TAG."
 
       - name: Report no pending release

@@ -25,6 +25,8 @@ const stepNamed = (name) => {
   assert.equal(matches.length, 1, `expected one "${name}" step`);
   return matches[0];
 };
+const activeLookup =
+  'api repos/fixture/repository/actions/workflows/build-desktop.yml/runs?branch=v2.10.0&per_page=100 --paginate --slurp';
 const clientEnv = Object.fromEntries([
   'VITE_CLERK_PUBLISHABLE_KEY', 'VITE_WS_RELAY_URL', 'VITE_PMTILES_URL_PUBLIC', 'CONVEX_URL',
 ].map((key) => [key, 'fixture-configured']));
@@ -37,7 +39,7 @@ function runPreparation({ env = clientEnv, runs = [], apiExit = 0, response = [{
     writeFileSync(join(bin, 'gh'), [
       '#!/bin/sh',
       'if [ "$1" = "api" ]; then',
-      '  echo api >> "$FAKE_CALLS"',
+      '  printf \'%s\\n\' "$*" >> "$FAKE_CALLS"',
       '  [ "$FAKE_API_EXIT" = 0 ] || exit "$FAKE_API_EXIT"',
       '  printf \'%s\\n\' "$FAKE_RUNS"',
       'else',
@@ -89,29 +91,62 @@ test('preparation refuses every missing release secret before tag creation or di
 });
 
 test('preparation skips active builds and permits a configured retry after a completed failure', () => {
+  assert.equal(stepNamed('Check for an active desktop build').if, "steps.release.outputs.action == 'release'");
   for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
     const result = runPreparation({ runs: [{ status }] });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.calls, ['api']);
+    assert.deepEqual(result.calls, [activeLookup]);
   }
   for (const runs of [[], [{ status: 'completed', conclusion: 'failure' }]]) {
     const result = runPreparation({ runs });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.calls, ['api', 'workflow run build-desktop.yml --repo fixture/repository --ref v2.10.0 -f draft=false']);
+    assert.deepEqual(result.calls, [
+      activeLookup,
+      'workflow run build-desktop.yml --repo fixture/repository --ref v2.10.0 -f draft=false -f release_tag=v2.10.0',
+    ]);
   }
   const failedRead = runPreparation({ apiExit: 1 });
   assert.notEqual(failedRead.status, 0);
-  assert.deepEqual(failedRead.calls, ['api']);
+  assert.deepEqual(failedRead.calls, [activeLookup]);
   const incompleteRead = runPreparation({ response: [{ message: 'unavailable' }] });
   assert.notEqual(incompleteRead.status, 0);
-  assert.deepEqual(incompleteRead.calls, ['api']);
+  assert.deepEqual(incompleteRead.calls, [activeLookup]);
 });
 
 test('direct builds validate client configuration once before matrix expansion and preserve draft policy', () => {
   const desktop = loadYaml(readFileSync(resolve(root, '.github/workflows/build-desktop.yml'), 'utf8'));
+  const desktopTriggers = desktop.on ?? desktop[true];
+  assert.equal(desktopTriggers.workflow_dispatch.inputs.release_tag.required, true);
+  assert.equal(desktopTriggers.workflow_dispatch.inputs.release_tag.type, 'string');
+  assert.equal(
+    desktop.concurrency.group,
+    "desktop-build-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}",
+  );
+  assert.equal(desktop.concurrency['cancel-in-progress'], false);
   assert.equal(desktop.jobs['build-tauri'].needs, 'client-env');
   const job = desktop.jobs['client-env'];
   assert.equal(job.strategy, undefined);
+  const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+  assert.ok(checkout);
+  assert.match(checkout.uses, /@[0-9a-f]{40}$/i);
+  const target = job.steps.find((step) => step.name === 'Require matching release target');
+  assert.ok(target);
+  assert.equal(
+    target.env.RELEASE_TAG,
+    "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}",
+  );
+  const packageVersion = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version;
+  for (const [releaseTag, success] of [
+    [`v${packageVersion}`, true],
+    ['v0.0.0', false],
+  ]) {
+    const result = spawnSync('bash', ['-e', '-c', target.run], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, RELEASE_TAG: releaseTag },
+    });
+    assert.equal(result.status === 0, success, result.stdout + result.stderr);
+  }
   const preflight = job.steps.find((step) => step.name === 'Release client-env preflight (#5905)');
   assert.ok(preflight);
   assert.equal(desktop.jobs['build-tauri'].steps.some((step) => step.name === preflight.name), false);
@@ -226,6 +261,7 @@ test('the workflow creates only a compatible main-history tag and dispatches the
   assert.match(dispatch.run, /gh workflow run build-desktop\.yml/);
   assert.match(dispatch.run, /--ref "\$TAG"/);
   assert.match(dispatch.run, /-f draft=false/);
+  assert.match(dispatch.run, /-f release_tag="\$TAG"/);
   assert.doesNotMatch(workflowSource, /gh release create/);
   assert.doesNotMatch(workflowSource, /--no-verify/);
 });
