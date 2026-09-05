@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import YAML from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowsDir = resolve(root, '.github/workflows');
@@ -425,6 +426,195 @@ describe('MCP live smoke — the production detection net', () => {
     assert.match(smokeJob, /^\s{4}concurrency:\s*$/m);
     assert.match(smokeJob, /group:\s*mcp-live-smoke-\$\{\{[^}]*deployment\.environment/);
     assert.match(smokeJob, /cancel-in-progress:\s*false/);
+  });
+});
+
+// #7593: a `deployment_status` trigger is privileged — repo secrets and a
+// write-capable GITHUB_TOKEN are in scope — and these workflows check out
+// `github.event.deployment.sha`, so a dependency install there would resolve
+// THAT commit's lockfile and could write its package cache into the shared
+// Actions cache scope that main-branch runs restore from. PR #7591 shipped
+// exactly that shape (`cache: 'npm'` + `npm ci --ignore-scripts`) and the
+// #7605 emergency revert removed it; this guard keeps it from coming back.
+// Deliberately file-level and fail-closed: if a deployment_status workflow
+// ever genuinely needs npm, extend this guard consciously with the
+// event-scoping argument rather than special-casing around it.
+describe('deployment_status triggers — npm cache scope hygiene (#7593)', () => {
+  // Comment lines are not executable: the workflows themselves explain the
+  // absence ("no npm ci", #7593) and must not self-trip the guard. Round-trip
+  // through the YAML parser, which drops comments AND normalizes flow-map
+  // inputs (with: {cache: 'npm'}) into the same block form the ban patterns
+  // match, so neither spelling can hide behind syntax. If a future workflow
+  // carries YAML this parser rejects, fall back to the plain comment-line
+  // filter: weaker (comments survive), but the ban patterns themselves stay
+  // fail-closed on whatever text remains.
+  const executableText = (source: string): string =>
+  {
+    try {
+      const doc = YAML.parse(source);
+      return doc == null ? '' : YAML.stringify(doc);
+    } catch {
+      return source
+        .split('\n')
+        .filter((line) => !/^\s*#/.test(line))
+        .join('\n');
+    }
+  }
+
+  // Block-style (`on:\n  deployment_status:`) and flow-style (`on: [ … ]`)
+  // triggers; the block is the `on:` value up to the next column-0 key. Both
+  // forms tolerate a trailing YAML comment (`on: # ...`,
+  // `deployment_status: # ...`) — the guard is fail-closed, so a comment must
+  // never silently exclude a workflow from the sweep.
+  const triggersOnDeploymentStatus = (source: string): boolean => {
+    const flow = source.match(/^on:[ \t]*(?:#[^\n]*)?\s*\[([^\]]*)\]/m);
+    if (flow) return /['"]?deployment_status['"]?/.test(flow[1]);
+    const onIndex = source.search(/^on:(?:[ \t]*#[^\n]*)?\s*$/m);
+    if (onIndex === -1) return false;
+    const block = source.slice(onIndex).split(/\n(?=\S)/)[0];
+    return /^ {2}deployment_status:(?:[ \t]*#[^\n]*)?\s*$/m.test(block);
+  };
+
+  // The two ban patterns and the single detection path both tests below read.
+  // The sweep asserts real workflows stay clean; the self-test asserts the
+  // patterns can still fire, so a corrupted pattern reddens this suite
+  // instead of silently covering nothing.
+  // After the YAML round-trip a truthy cache input always appears as a
+  // block-mapping key, so the line-start anchor no longer depends on the
+  // author's block vs flow-map spelling. Only falsy scalars (false, null, ~)
+  // are exempt.
+  const CACHE_BAN_PATTERN = /^[ \t]*cache:[ \t]*(?!false\b)(?!null\b)(?!~)[^\s#]/m;
+  // `npm i` resolves the deployed SHA's lockfile exactly like `npm install`,
+  // so the alias spelling is banned too, under any shell whitespace
+  // (double space or a tab before the verb is the same command). The word
+  // boundaries keep npm info, npm init and pnpm i out of the ban.
+  const NPM_INSTALL_BAN_PATTERN = /\bnpm[ \t]+(?:ci|install|i)\b/;
+
+  const deploymentCacheProblems = (executable: string): string[] => {
+    const problems: string[] = [];
+    if (CACHE_BAN_PATTERN.test(executable)) {
+      problems.push(
+        'a step carries a truthy `cache:` input, so a privileged deployment_status run could save a package cache resolved from github.event.deployment.sha',
+      );
+    }
+    if (NPM_INSTALL_BAN_PATTERN.test(executable)) {
+      problems.push("the job runs npm ci/install, resolving the deployed SHA's lockfile instead of main's");
+    }
+    return problems;
+  };
+
+  it('keeps every deployment_status-triggered workflow free of package-cache writes and lockfile installs (#7593)', () => {
+    const scanned: string[] = [];
+    const offenders: string[] = [];
+
+    for (const file of readdirSync(workflowsDir)
+      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+      .sort()) {
+      const source = read(resolve(workflowsDir, file));
+      if (!triggersOnDeploymentStatus(source)) continue;
+      scanned.push(file);
+
+      const problems = deploymentCacheProblems(executableText(source));
+      if (problems.length > 0) offenders.push(`${file}\n    - ${problems.join('\n    - ')}`);
+    }
+
+    // Not vacuous: mcp-live-smoke.yml's deployment_status trigger is pinned
+    // by the describe above, so if the sweep stops seeing that file the
+    // trigger parser has broken and this guard is green while covering
+    // nothing.
+    assert.ok(
+      scanned.includes('mcp-live-smoke.yml'),
+      'the sweep matched no workflows — mcp-live-smoke.yml still triggers on deployment_status, so the trigger parser here is broken and this guard covers nothing',
+    );
+    assert.deepEqual(
+      offenders,
+      [],
+      '#7593: a deployment_status trigger is privileged (repo secrets, write-capable GITHUB_TOKEN) and these workflows check out github.event.deployment.sha, so resolving dependencies there could write a package cache built from a non-main lockfile into the shared scope main-branch runs restore from. PR #7591 shipped that shape and #7605 reverted it; if one of these workflows genuinely needs npm, extend this guard deliberately:\n' +
+        offenders.join('\n'),
+    );
+  });
+
+  // The sweep only asserts the absence of offenders, so a ban pattern that
+  // stopped matching (lost indentation anchor, dropped alternation branch)
+  // would keep this suite green while the guard detects nothing. This
+  // self-test feeds inline sources through the same deploymentCacheProblems
+  // path the sweep uses and pins the firing half of the guard.
+  it('keeps the ban patterns load-bearing: offenders fire and safe look-alikes stay silent (#7593)', () => {
+    const cacheProblem =
+      'a step carries a truthy `cache:` input, so a privileged deployment_status run could save a package cache resolved from github.event.deployment.sha';
+    const npmProblem = "the job runs npm ci/install, resolving the deployed SHA's lockfile instead of main's";
+
+    const offender = [
+      'name: offender',
+      'on:',
+      '  deployment_status:',
+      'jobs:',
+      '  smoke:',
+      '    steps:',
+      '      - uses: actions/setup-node@v4',
+      '        with:',
+      "          cache: 'npm'",
+      '      - run: npm ci --ignore-scripts --omit=optional',
+    ].join('\n');
+    assert.deepEqual(deploymentCacheProblems(executableText(offender)), [cacheProblem, npmProblem]);
+
+    // Flow-map syntax must trip the same bans: the parser normalizes the
+    // mapping, so the block-style fixture reshaped into a flow map detects
+    // identically (review finding: line-anchored pattern missed
+    // with: {node-version: '24', cache: 'npm'}).
+    const flowMapOffender = [
+      "name: flow-map-offender",
+      'on:',
+      '  deployment_status:',
+      'jobs:',
+      '  smoke:',
+      '    steps:',
+      "      - uses: actions/setup-node@v4",
+      "        with: { node-version: '24', cache: 'npm' }",
+      "      - run: npm ci --ignore-scripts --omit=optional",
+    ].join('\n');
+    assert.deepEqual(deploymentCacheProblems(executableText(flowMapOffender)), [cacheProblem, npmProblem]);
+
+    const aliasOffender = offender.replace(
+      'npm ci --ignore-scripts --omit=optional',
+      'npm i --omit=optional',
+    );
+    assert.ok(
+      deploymentCacheProblems(executableText(aliasOffender)).includes(npmProblem),
+      'npm i must be flagged the same as npm install',
+    );
+
+    // Shell whitespace between npm and the verb is legal and equally
+    // dangerous: double space and tab must fire like the single-space form
+    // (review finding: literal single space escaped detection).
+    for (const spaced of ['npm  ci --ignore-scripts', 'npm\tinstall --no-audit', 'npm\ti']) {
+      assert.ok(
+        deploymentCacheProblems(executableText(offender.replace('npm ci --ignore-scripts --omit=optional', spaced)))
+          .includes(npmProblem),
+        'irregular shell whitespace before the npm verb must not escape the ban: ' + spaced,
+      );
+    }
+
+    for (const safe of [
+      '        with:\n          cache: false',
+      "      # cache: 'npm'",
+      '        with:\n          cache-dependency-path: package-lock.json',
+      '      - run: npm run build',
+      "      - run: pnpm i --frozen-lockfile",
+      "      - run: npm info webpack",
+    ]) {
+      assert.deepEqual(deploymentCacheProblems(executableText(safe)), [], `must not flag safe input:\n${safe}`);
+    }
+
+    // Both trigger spellings must stay recognized through a trailing YAML
+    // comment, and a flow list without deployment_status must not be swept.
+    assert.equal(
+      triggersOnDeploymentStatus('on: # deploy hook\n  deployment_status: # success only'),
+      true,
+      'a trailing comment on either trigger line must not hide a deployment_status trigger',
+    );
+    assert.equal(triggersOnDeploymentStatus('on: [push, deployment_status]'), true);
+    assert.equal(triggersOnDeploymentStatus('on: [push, workflow_dispatch]'), false);
   });
 });
 

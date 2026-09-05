@@ -121,9 +121,11 @@ function createBriefHarness(code: string) {
   let visible = false;
   let activeCode = '';
   const infrastructureUpdates: string[] = [];
+  const militaryUpdates: Array<{ ownFlights: number; foreignFlights: number }> = [];
   const newsUpdates: string[] = [];
   const page = {
     getCode: () => activeCode,
+    getName: () => code === 'US' ? 'United States' : activeCode,
     isVisible: () => visible,
     hide: () => {
       visible = false;
@@ -143,7 +145,9 @@ function createBriefHarness(code: string) {
     updateNews: () => {
       newsUpdates.push(activeCode);
     },
-    updateMilitaryActivity: () => {},
+    updateMilitaryActivity: (summary: { ownFlights: number; foreignFlights: number }) => {
+      militaryUpdates.push(summary);
+    },
     updateEconomicIndicators: () => {},
     updateStock: () => {},
     updateMarkets: () => {},
@@ -178,7 +182,10 @@ function createBriefHarness(code: string) {
   Reflect.set(manager, 'fetchCommodityVulnerability', () => {});
   Reflect.set(manager, 'mountCountryTimeline', () => {});
   return {
+    ctx,
     infrastructureUpdates,
+    manager,
+    militaryUpdates,
     newsUpdates,
     open: () => manager.openCountryBriefByCode(code, code, { trackAnalytics: false }),
   };
@@ -235,5 +242,24 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     await vi.waitFor(() => expect(infrastructureUpdates).toEqual(['AE', 'AE']));
     await pendingOpen;
     expect(infrastructureUpdates).toEqual(['AE', 'AE']);
+  });
+
+  it('refreshes the visible military card from the current military cache', async () => {
+    geometryMocks.preloadCountryGeometry.mockResolvedValue(undefined);
+    infraMocks.preloadInfrastructureTables.mockResolvedValue(undefined);
+    const { ctx, manager, militaryUpdates, open } = createBriefHarness('US');
+    await open();
+    militaryUpdates.length = 0;
+    ctx.intelligenceCache.military = {
+      flights: [{ lat: 40, lon: -100, operatorCountry: 'United States' }],
+      flightClusters: [],
+      vessels: [],
+      vesselClusters: [],
+    } as never;
+
+    manager.refreshOpenMilitaryActivity();
+
+    expect(militaryUpdates).toHaveLength(1);
+    expect(militaryUpdates[0]).toEqual(expect.objectContaining({ ownFlights: 1, foreignFlights: 0 }));
   });
 });
