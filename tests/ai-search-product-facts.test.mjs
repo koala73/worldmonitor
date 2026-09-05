@@ -123,6 +123,13 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
       writeFileSync(join(sandbox, AI_SEARCH_PATH), ai.replace(`${originalLocales + 1} supported interface languages`, '999 supported interface languages'));
       assert.notEqual(run('build:ai-search:check').status, 0);
       const prose = fixtureRead('public/llms.txt');
+      writeFileSync(join(sandbox, 'public/llms.txt'), prose.replace(`${expectedBytes} bytes`, '999 bytes'));
+      const freshness = spawnSync(process.execPath, ['--test', '--test-name-pattern=annotates the oversized', 'tests/llms-txt-mcp-tools.test.mjs'], {
+        cwd: sandbox, env, encoding: 'utf8', timeout: 10_000,
+      });
+      assert.notEqual(freshness.status, 0);
+      assert.match(freshness.stdout, /annotates the oversized/);
+      assert.ok(fixtureRead('public/llms.txt').includes('999 bytes'));
       writeFileSync(join(sandbox, 'public/llms.txt'), prose.replace(`${expectedBytes} bytes`, 'unknown size'));
       const broken = run('build:openapi');
       assert.notEqual(broken.status, 0);
