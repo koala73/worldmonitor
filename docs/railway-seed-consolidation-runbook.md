@@ -1495,6 +1495,9 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 
+Configure the IMD account credentials and the IP-bound production key before
+you activate this service. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
+
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
 under the provider's 500-call monthly quota. The authenticated route requests
 one four-year window (`Y-2` through `Y-5`) in each of two HS4 batches and keeps

@@ -975,7 +975,7 @@ function dirHasFiles(rel) {
   return false;
 }
 
-function computeStats() {
+function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   const makefile = read('Makefile');
   const serverCard = parseJson('public/.well-known/mcp/server-card.json');
   const mcpApps = parseMcpAppsInventory();
@@ -1060,7 +1060,7 @@ function computeStats() {
   // several feed URLs, while a structured endpoint may never appear in the
   // curated-feed registry. The attribution checker owns manifest coverage;
   // docs-stats pins the public count surfaces to the same live number.
-  const sourceAttribution = buildSourceAttributionStats({ rootDir: rootOf() });
+  const sourceAttribution = suppliedAttribution ?? buildSourceAttributionStats({ rootDir: rootOf() });
 
   // ---- Operational source counts used by data-source and methodology docs ----
   const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;

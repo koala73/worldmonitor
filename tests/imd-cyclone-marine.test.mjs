@@ -389,6 +389,24 @@ test('requires valid IMD API key and account credentials', async () => {
   assert.deepEqual(requested, []);
 });
 
+test('documents the complete IMD Railway credential setup', () => {
+  const docs = readFileSync(join(root, 'docs/natural-disasters.mdx'), 'utf8');
+  const heading = '## Configure the IMD Railway seeder';
+  const start = docs.indexOf(heading);
+  assert.notEqual(start, -1, `missing ${heading}`);
+  const nextHeading = docs.indexOf('\n## ', start + heading.length);
+  const setup = docs.slice(start, nextHeading === -1 ? docs.length : nextHeading);
+
+  assert.match(setup, /IMD_API_KEY/);
+  assert.match(setup, /IMD_API_EMAIL/);
+  assert.match(setup, /IMD_API_PASSWORD/);
+  assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
+  assert.match(setup, /static public IP/i);
+  assert.match(setup, /api\/oauth\/token\.php/);
+  assert.match(setup, /Do\s+not store the JWT/i);
+  assert.doesNotMatch(setup, /IMD_API_TOKEN=/);
+});
+
 test('mints a fresh IMD JWT before each product batch', async () => {
   let minted = 0;
   const productTokens = [];

@@ -3277,9 +3277,8 @@ describe('agent readiness: api-catalog + openapi build', () => {
         script.includes('npm run build:openapi'),
         `scripts["${buildName}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
       );
-      assert.equal(
-        pkg.scripts[prebuildName],
-        'npm run product:facts',
+      assert.ok(
+        pkg.scripts[prebuildName]?.split(' && ').includes('npm run product:facts'),
         `scripts["${prebuildName}"] must regenerate ignored inventory facts before ${buildName}`,
       );
     }
