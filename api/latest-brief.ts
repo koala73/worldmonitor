@@ -110,7 +110,10 @@ async function readBriefPreview(
   timeoutMs: number,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<BriefPreview | null> {
-  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`, timeoutMs);
+  // Seeder-owned keys (#7674): the Railway digest composer writes
+  // brief:{userId}:{slot} and brief:latest:{userId} bare — read them raw in
+  // every environment so preview resolves the real envelopes.
+  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`, timeoutMs, true);
   if (raw == null) return null;
   // Reuse the renderer's strict validator so a "ready" preview never
   // points at an envelope that the hosted magazine route will reject.
@@ -145,7 +148,7 @@ async function readBriefPreview(
  * brief, or the pointer has expired past its 7d TTL).
  */
 async function readLatestPointer(userId: string, timeoutMs: number): Promise<string | null> {
-  const raw = await readRawJsonFromUpstash(`brief:latest:${userId}`, timeoutMs);
+  const raw = await readRawJsonFromUpstash(`brief:latest:${userId}`, timeoutMs, true);
   if (raw == null) return null;
   const slot = (raw as { issueSlot?: unknown } | null)?.issueSlot;
   if (typeof slot !== 'string' || !ISSUE_SLOT_RE.test(slot)) return null;

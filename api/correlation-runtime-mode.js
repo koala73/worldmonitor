@@ -29,7 +29,9 @@ function resolveMode(value) {
 
 async function readModeFromRedis() {
   try {
-    const entries = await redisPipeline([['GET', CORRELATION_RUNTIME_MODE_KEY]], 3_000);
+    // Seeder-owned key (#7674): scripts/seed-correlation.mjs publishes it
+    // bare — read raw in every environment so preview sees the fleet row.
+    const entries = await redisPipeline([['GET', CORRELATION_RUNTIME_MODE_KEY]], 3_000, true);
     const entry = entries?.[0];
     // An Upstash-reported error is a broken control plane, not an unset key —
     // report it so it stays distinguishable from the (silent, expected) no-key

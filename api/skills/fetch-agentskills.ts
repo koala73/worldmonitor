@@ -119,6 +119,8 @@ export default async function handler(
   // cache entirely rather than sharing a bare-path key, so a variant can never
   // be served a payload fetched for a different URL. (#6412 review)
   const cacheable = skillUrl.search === '';
+  // App-owned self-cache (#7674): this route is its only writer, so read and
+  // write ride the deployment-prefixed helper default.
   const cacheKey = `agentskills:v1:${skillUrl.hostname}${skillUrl.pathname}`;
   if (cacheable) {
     try {

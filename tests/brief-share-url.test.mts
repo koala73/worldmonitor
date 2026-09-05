@@ -206,3 +206,102 @@ describe('pointer wire format (P1 regression — write ↔ read must round-trip)
     assert.throws(() => JSON.parse('user_abc:2026-04-18-0800'), SyntaxError);
   });
 });
+
+describe('preview share route reachability', () => {
+  it('mints a preview URL whose public route can read the preview-owned pointer', async () => {
+    const originalEnv = { ...process.env };
+    const originalFetch = globalThis.fetch;
+    const redis = new Map<string, string>();
+
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+    process.env.WORLDMONITOR_PUBLIC_BASE_URL = 'https://worldmonitor.app';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+
+    globalThis.fetch = (async (input, init = {}) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url === 'https://upstash.test/pipeline') {
+        const commands = JSON.parse(String(init.body)) as string[][];
+        const results = commands.map(([verb, key, value]) => {
+          if (verb === 'SET' && key && value !== undefined) {
+            redis.set(key, value);
+            return { result: 'OK' };
+          }
+          return { result: null };
+        });
+        return Response.json(results);
+      }
+      if (url.startsWith('https://upstash.test/get/')) {
+        const key = decodeURIComponent(url.slice('https://upstash.test/get/'.length));
+        return Response.json({ result: redis.get(key) ?? null });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const shareRoute = await import('../api/brief/share-url.ts') as Record<string, unknown>;
+      assert.equal(
+        typeof shareRoute.publicBaseUrl,
+        'function',
+        'share route must expose its destination selector for the route round-trip contract',
+      );
+      const publicBaseUrl = shareRoute.publicBaseUrl as (req: Request) => string;
+      const previewOrigin = 'https://worldmonitor-git-brief-test-eliewm.vercel.app';
+      const userId = 'user_preview';
+      const issueSlot = '2026-04-18-0800';
+      const { url, hash } = await buildPublicBriefUrl({
+        userId,
+        issueDate: issueSlot,
+        baseUrl: publicBaseUrl(new Request(`${previewOrigin}/api/brief/share-url`)),
+        secret: SECRET_A,
+      });
+
+      const { redisPipeline } = await import('../api/_upstash-json.js');
+      await redisPipeline([
+        ['SET', `${BRIEF_PUBLIC_POINTER_PREFIX}${hash}`, JSON.stringify(encodePublicPointer(userId, issueSlot)), 'EX', '604800'],
+      ]);
+      await redisPipeline([
+        ['SET', `brief:${userId}:${issueSlot}`, JSON.stringify({
+          version: 2,
+          issuedAt: 1_700_000_000_000,
+          data: {
+            user: { name: 'Preview User', tz: 'UTC' },
+            issue: '18.04',
+            date: '2026-04-18',
+            dateLong: '18 April 2026',
+            digest: {
+              greeting: 'Good morning.',
+              lead: 'A preview brief.',
+              numbers: { clusters: 1, multiSource: 1, surfaced: 1 },
+              threads: [],
+              signals: [],
+            },
+            stories: [{
+              category: 'World',
+              country: 'US',
+              threatLevel: 'low',
+              headline: 'Preview headline',
+              description: 'Preview description',
+              source: 'Test source',
+              sourceUrl: 'https://example.com/story',
+              whyMatters: 'Preview round-trip proof.',
+            }],
+          },
+        }), 'EX', '604800'],
+      ], 5_000, true);
+
+      assert.equal(new URL(url).origin, previewOrigin);
+      const { default: publicHandler } = await import('../api/brief/public/[hash].ts');
+      const response = await publicHandler(new Request(url));
+      assert.equal(response.status, 200, 'the URL destination must read the pointer namespace that minted it');
+      assert.match(await response.text(), /Preview headline/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const key of Object.keys(process.env)) {
+        if (!(key in originalEnv)) delete process.env[key];
+      }
+      Object.assign(process.env, originalEnv);
+    }
+  });
+});

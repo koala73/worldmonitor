@@ -28,6 +28,8 @@ import {
 } from '../server/_shared/rate-limit.ts';
 // @ts-expect-error — JS module, no declaration file
 import { rateLimitErrorLevel as apiRateLimitErrorLevel, rateLimitFingerprintStage as apiRateLimitFingerprintStage } from '../api/_rate-limit.js';
+// @ts-expect-error — JS module, no declaration file
+import { limitWithFallback } from '../api/_rate-limit-fallback.js';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -1038,6 +1040,45 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
         return { result: entry.hasTtl ? 60 : -1 }; // TTL
       });
   }
+
+  it('keeps a provider-global fallback bucket raw across preview deployments', async () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+    const incrementedKeys: string[] = [];
+    const pipelineHandler = makeProxyPipelineHandler();
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      incrementedKeys.push(String(commands[0]?.[1]));
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const unsupportedLuaLimiter = {
+      limit: async () => {
+        throw new Error('Command not allowed: EVALSHA');
+      },
+    };
+    const fallbackKey = 'rl:scope:fw:reverse-geocode:global';
+
+    const first = await limitWithFallback(
+      unsupportedLuaLimiter,
+      'reverse-geocode:global',
+      fallbackKey,
+      1,
+      60,
+    );
+    process.env.VERCEL_GIT_COMMIT_SHA = 'cafebabe01234567';
+    const second = await limitWithFallback(
+      unsupportedLuaLimiter,
+      'reverse-geocode:global',
+      fallbackKey,
+      1,
+      60,
+    );
+
+    assert.deepEqual(incrementedKeys, [fallbackKey, fallbackKey]);
+    assert.equal(first.success, true);
+    assert.equal(second.success, false, 'the second preview must consume the shared provider budget');
+  });
 
   it('canonical checkRateLimit enforces the non-Lua fallback window directly', async () => {
     const pipelineHandler = makeProxyPipelineHandler();
