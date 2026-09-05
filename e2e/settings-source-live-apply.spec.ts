@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 
 /**
  * Settings → SOURCES must reach the live dashboard when the modal closes (#6380).
@@ -109,6 +110,13 @@ async function seedProFullVariant(page: Page): Promise<void> {
 async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
   const log = await installDigestAccounting(page);
 
+  // #6501: this exact boot has lost the browser mid-goto with a trace that
+  // cannot name the cause. Watch the boot window so a recurrence prints
+  // renderer-crash vs browser-disconnected vs context-closed.
+  const lossWatch = attachBrowserLossDiagnostics(
+    pageBrowserLossEvents(page),
+    'settings-source-live-apply bootUntilNewsSettles',
+  );
   const firstDigest = page.waitForRequest(DIGEST_GLOB);
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
@@ -116,6 +124,7 @@ async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
   );
   await firstDigest;
   await page.waitForTimeout(SETTLE_MS);
+  lossWatch.dispose();
 
   expect(
     log.urls.length,

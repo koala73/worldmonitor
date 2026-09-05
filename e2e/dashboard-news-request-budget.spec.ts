@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -324,12 +325,18 @@ test.describe('dashboard news request budget (#5376)', () => {
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page);
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
 
     // The news load is not viewport-gated, so nothing needs scrolling to
     // provoke the second load — the bootstrap fan-out and the hydration
@@ -371,12 +378,18 @@ test.describe('dashboard news request budget (#5376)', () => {
     });
     const log = await installNewsRequestAccounting(page);
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
     await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
 
     const feeds = distinctProxiedFeeds(log.rssProxyUrls);
@@ -437,12 +450,18 @@ test.describe('dashboard news request budget (#5376)', () => {
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page, { emptyDigestTimes: 1 });
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
     await expect
       .poll(
         () => log.digestUrls.length,
@@ -488,12 +507,18 @@ test.describe('dashboard news request budget (#5376)', () => {
       healthyPoliticsHeadline: HEALTHY_POLITICS_HEADLINE,
     });
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
 
     // Positive control: the healthy digest must actually reach the cache, or the
     // "still intact" assertion below would pass against an entry that was never
@@ -580,12 +605,18 @@ test.describe('dashboard news request budget (#5376)', () => {
       degradedPoliticsHeadline: PARTIAL_POLITICS_HEADLINE,
     });
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
 
     await expect
       .poll(
@@ -678,12 +709,18 @@ test.describe('dashboard news request budget (#5376)', () => {
     // to [] — exactly the shape a partial digest produces in production.
     await installNewsRequestAccounting(page);
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
     await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
 
     const panel = page.locator(`[data-panel="${EMPTY_CATEGORY_PANEL}"]`);
@@ -710,12 +747,18 @@ test.describe('dashboard news request budget (#5376)', () => {
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page, { failDigestTimes: 1 });
 
+    // #6501: watch the boot window so a lost browser names its cause.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
+    );
     const firstDigest = page.waitForRequest(DIGEST_GLOB);
     await page.goto('/');
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
+    lossWatch.dispose();
     await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
 
     // Attempt 1 was served 503, so that load rendered every category empty. A

@@ -688,7 +688,25 @@ jobs:
       # pointer event) — named explicitly because nothing in CI runs the e2e/
       # glob, and a regression guard no job invokes reports green while the
       # regression ships.
-      - run: npm run test:e2e:ci-smoke
+      # #6501 diagnostics, alongside the run itself:
+      #   - DEBUG=pw:browser + DEBUG_FILE captures the browser process's own
+      #     stderr into the artifact dir, so a vanished browser leaves ITS
+      #     side of the story next to the (client-side) trace;
+      #   - a background sampler appends `free -m` every 5s to the same dir,
+      #     so a loss that correlates with a memory cliff is attributable to
+      #     OOM rather than guessed at. Both ride the existing test-results/
+      #     upload below and cost nothing when the run is clean.
+      - name: Run ci-smoke with browser-loss diagnostics
+        env:
+          DEBUG: 'pw:browser'
+          DEBUG_FILE: test-results/pw-browser-debug.log
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          ( while :; do { date -u +%FT%T.%3NZ; free -m; echo; } >> test-results/memory-samples.log; sleep 5; done ) &
+          MEM_SAMPLER_PID=$!
+          trap 'kill "$MEM_SAMPLER_PID" 2>/dev/null || true' EXIT
+          npm run test:e2e:ci-smoke
       # playwright.config.ts already retains a trace, a video and a screenshot
       # for every failed test (retain-on-failure) — but nothing collected them,
       # so they died with the runner and every flake in this required gate was
