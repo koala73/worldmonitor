@@ -16,15 +16,24 @@ Real-time global intelligence dashboard with a TypeScript browser app, Vercel Ed
 
 1. Inspect `git status --short --branch`. Preserve unrelated user changes.
 2. State the requested outcome and the terminal state you can prove.
-3. Run `npm run --silent agent:preflight -- --issue <number>` before expensive tests or implementation. Add `--pr <number>` for PR work and repeat `--require-env <NAME>` for task credentials.
-4. Treat `status: "ready"` and `expensiveTestsAllowed: true` in its JSON as the start gate. It refreshes `origin/main`, checks duplicate PRs and active worktrees, captures the task-start PR snapshot, runs at most one bounded `npm ci --ignore-scripts` dependency bootstrap, and regenerates ignored inventory facts on trusted worktrees.
+3. Run `npm run --silent agent:preflight -- --mode review` for source inspection, `--mode tests` before local tests, or `--mode repair` before implementation. Add `--issue <number>` when an issue exists, `--pr <number>` for PR work, and repeat `--require-env <NAME>` for required credentials.
+4. Explicit modes return the v2 contract. Use `readiness.sourceReview.ready`, `readiness.tests.ready`, or `readiness.repair.ready` for the corresponding action. `status`, `ok`, and the exit code follow the selected mode. `expensiveTestsAllowed` follows test readiness only. A blocked repair does not stop source inspection when source review is ready. Read each blocker's `reason` and `nextAction`. Readiness never grants authority.
 5. Use `--allow-dirty`, `--allow-detached`, or `--allow-stale-main` only when that state is intentional and appropriate to the task. These flags record an exception; they do not repair the state.
 6. Use Node.js 24, which matches `.nvmrc` and the main CI workflows. Preflight enforces it.
+
+Preflight modes:
+
+- `review` reads committed source without dependency installation or inventory generation. Inspect the commit in `checks.source.headOid` through Git objects, especially when the checkout is dirty. A known PR-head mismatch blocks PR source review. If live PR state is unavailable, `checks.source.scope` is `local_commit`. Report the coverage gaps and do not claim current PR status or complete feedback coverage.
+- `tests` prepares dependencies and inventory facts in the current trusted checkout. GitHub access, base drift, and detached HEAD do not independently block local tests. Dirty files require intentional `--allow-dirty`; unmerged paths always block execution. Tests run against the working tree, including intentional edits, not only the recorded commit. Test readiness is not a test result.
+- `repair` requires safe branch alignment, current base ancestry, required access, complete preparation, and no worktree collision. Valid local commits ahead of the confirmed remote PR head can proceed. A known closed PR blocks delivery to that branch. Refresh base and head again before a push.
+- A collision identifies another registered worktree, not a proven live writer. Inspect the reported path and available task state. Resume an idle, safe existing PR worktree, or coordinate with an active writer. If writer activity is unknown, keep branch writes blocked and continue safe source inspection. Never discard another worktree or bypass this check to create a second writer.
+- Without `--mode`, the original v1 contract and preparation behavior remain unchanged. Existing callers still require `status: "ready"` and `expensiveTestsAllowed: true` together. Use explicit modes for new workflows.
 
 Fresh-worktree rules:
 
 - `agent:preflight` is the primary safe bootstrap path. It does not link env files or run dependency lifecycle scripts. After dependencies are ready in the current trusted worktree, it directly runs the repository's inventory-fact generator with a minimal environment. Older checkouts without that generator and alternate `--root` targets skip this step explicitly. If a full bootstrap is necessary, run `npm run worktree:bootstrap` only from a trusted agent-owned worktree; for docs-only or test-tooling work, use `npm run worktree:bootstrap:test-only`.
 - Never run repository scripts from an unreviewed third-party PR checkout. Run `agent:preflight` and `agent:pr-snapshot` from a clean trusted worktree and pass `--root /path/to/untrusted-checkout`; add `--skip-bootstrap` for that target. Preflight does not execute the alternate target's inventory generator even if this flag is omitted, but the flag also disables dependency bootstrap and is still required for the full trust boundary.
+- Explicit modes also disable dependency bootstrap for alternate targets and block their test and repair readiness. Changing the mode or directory does not establish trust in third-party code.
 - After the repository owner has reviewed the exact fork head, the owner may run the pinned `make generate` command in a clean isolated worktree with no linked environment files or credentials. Push only the reviewed source changes and required generated artifacts to the existing editable fork branch. The owner push is the CI trust event for that exact head. A later contributor push revokes that trust.
 - Link only `.env.local` and `.env`. Never copy or link `.env.vercel-backup` or `.env.vercel-export`.
 - Use `WM_ENV_SOURCE=/path/to/worldmonitor npm run worktree:env` only when Git cannot infer the source checkout.
@@ -73,7 +82,9 @@ Data-source activation rules:
 ## Common Commands
 
 ```bash
-npm run --silent agent:preflight -- --issue 123 # Fail-fast task-start JSON gate
+npm run --silent agent:preflight -- --mode review --pr 456 # Committed-source inspection
+npm run --silent agent:preflight -- --mode tests          # Local test preparation
+npm run --silent agent:preflight -- --mode repair --issue 123 # Implementation gate
 npm run --silent agent:pr-snapshot -- --pr 456  # Read cached authoritative PR state
 npm run worktree:bootstrap           # Fresh worktree setup
 npm run dev                          # Full Vite variant
