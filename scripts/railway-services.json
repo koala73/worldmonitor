@@ -1488,6 +1488,7 @@
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_sp500-breadth.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",

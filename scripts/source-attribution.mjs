@@ -689,6 +689,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Barchart; link to the source quote or page.',
     status: 'terms-review',
   },
+  'scanner.tradingview.com': {
+    provider: 'TradingView',
+    license: 'TradingView terms; the screener scan endpoint is undocumented and redistribution requires review',
+    attribution: 'TradingView; link to the S&P 500 stock screener.',
+    status: 'terms-review',
+  },
   'www.bankofcanada.ca': {
     provider: 'Bank of Canada',
     license: 'Bank of Canada Terms of Use — permission to freely use, copy, distribute and transmit website content with attribution (https://www.bankofcanada.ca/terms/)',
@@ -932,13 +938,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'b95aa14699deb45fe8ece9e9806dc03038b4fb378024c824afc32b6ef2a4b159',
-  reason: 'Preserve reviewed provider identities and register the two official NASA FIRMS Area API hosts as one provider identity.',
+  sha256: 'cd71e5c18ce0b2048c57e8f825b4b82838aafcd59f8e5086a116d84fd79cd358',
+  reason: 'Preserve reviewed provider identities, register the two official NASA FIRMS Area API hosts as one provider identity, and name TradingView as the provider behind the S&P 500 breadth screener scan that replaced the WAF-blocked Barchart quote pages.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, and the 2026-09-04 FIRMS partial-coverage incident.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

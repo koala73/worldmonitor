@@ -7963,6 +7963,20 @@
       ]
     },
     {
+      "host": "scanner.tradingview.com",
+      "provider": "TradingView",
+      "kind": "structured",
+      "observed": true,
+      "license": "TradingView terms; the screener scan endpoint is undocumented and redistribution requires review",
+      "attribution": "TradingView; link to the S&P 500 stock screener.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_sp500-breadth.mjs"
+        }
+      ]
+    },
+    {
       "host": "schema.org",
       "provider": "schema.org",
       "kind": "structured",
@@ -10676,9 +10690,6 @@
       "references": [
         {
           "path": "scripts/seed-fear-greed.mjs"
-        },
-        {
-          "path": "scripts/seed-market-breadth.mjs"
         }
       ]
     },

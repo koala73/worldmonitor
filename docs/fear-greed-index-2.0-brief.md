@@ -50,7 +50,7 @@ Each category scores **0–100** (0 = Extreme Fear, 100 = Extreme Greed). The we
 | VIX | Yahoo / FRED | % change |
 | HY Spread | FRED | vs long-term average |
 | F&G Header FSI | Yahoo + FRED | bespoke HYG/TLT/VIX/HY OAS stress ratio |
-| % > 200 DMA | Barchart `$S5TH` scrape | exact S&P 500 share above 200 DMA |
+| % > 200 DMA | TradingView S&P 500 constituent scan | exact S&P 500 share above 200 DMA |
 | 10Y Yield | FRED | level |
 | Fed Rate | FRED | current range |
 
@@ -88,7 +88,7 @@ All sources are free with no paid API keys required.
 | **CNN Fear & Greed** | `production.dataviz.cnn.io/index/fearandgreed/current` | JSON | User-Agent header | MEDIUM |
 | **AAII Sentiment** | `aaii.com/sentimentsurvey` (HTML scrape) | HTML | User-Agent header | LOW (blocks bots) |
 | **Barchart Total P/C** | `barchart.com/stocks/quotes/%24CPC` | HTML / Next data | User-Agent header | MEDIUM |
-| **Barchart S&P 500 > 200 DMA** | `barchart.com/stocks/quotes/%24S5TH` | HTML / Next data | User-Agent header | MEDIUM |
+| **TradingView S&P 500 > 200 DMA** | `scanner.tradingview.com/america/scan` (S&P 500 symbol set, close vs SMA200) | JSON | User-Agent header | MEDIUM |
 
 ### Yahoo Finance Symbols (22 total)
 
@@ -121,7 +121,7 @@ Uses `query1.finance.yahoo.com/v8/finance/chart` — no API key, User-Agent head
 
 **Notes:**
 
-- `$S5TH` from Barchart is the implemented % above **200-day** MA input; `^MMTH` is not fetched by the current seeder.
+- The implemented % above **200-day** MA input is computed from the TradingView S&P 500 constituent scan (close above SMA200); `^MMTH` is not fetched by the current seeder.
 - Advance/decline ratio is currently `null`. Breadth drops `ad_score` and reweights to `breadth_score * 0.57 + rsp_score * 0.43`.
 - Fallback: VIX can fall back to FRED `VIXCLS`; Yahoo failures for ETF symbols leave their derived categories neutral or degraded.
 
@@ -192,7 +192,7 @@ score = (above_count / 3) * 50 + clamp(distance_200 * 500 + 50, 0, 100) * 0.5
 ### 5. Breadth (10%)
 
 ```
-inputs: Pct_Above_200DMA from Barchart $S5TH, Advance_Decline, RSP_SPY_Divergence
+inputs: Pct_Above_200DMA from the TradingView S&P 500 scan, Advance_Decline, RSP_SPY_Divergence
 breadth_score = Pct_Above_200DMA  // already 0-100
 ad_score = clamp((AD_Ratio - 0.5) / 1.5 * 100, 0, 100)
 rsp_score = clamp(RSP_SPY_30d_diff * 10 + 50, 0, 100)
@@ -314,13 +314,14 @@ not treat it as a live key.
 | Source | Calls | Rate Limited? | Auth |
 |--------|-------|--------------|------|
 | Yahoo Finance | 22 symbols | 150ms gaps | User-Agent only |
-| Barchart | 2 HTML quote pages (`$CPC`, `$S5TH`) | No | User-Agent only |
+| Barchart | 1 HTML quote page (`$CPC`) | No | User-Agent only |
+| TradingView | 1 screener scan (S&P 500 symbol set) | No | User-Agent only |
 | CNN dataviz | 1 | No | User-Agent only |
 | AAII | 1 | Blocks bots | User-Agent + scrape |
 | Redis reads | ~10 FRED series | No | Bearer token |
 | **Total** | **~34** | — | — |
 
-**Estimated runtime**: ~3.3s (Yahoo sequential) + ~2s (Barchart/CNN/AAII parallel) + ~1s (Redis) = **~6-7s per run**
+**Estimated runtime**: ~3.3s (Yahoo sequential) + ~2s (Barchart/TradingView/CNN/AAII parallel) + ~1s (Redis) = **~6-7s per run**
 
 **Timeouts**: Set `AbortSignal.timeout(8000)` on AAII scrape (frequently stalls). AAII failure must not block the entire seed run — wrap in `try/catch`, log warn, continue with degraded Sentiment scoring.
 
@@ -420,6 +421,6 @@ Build the initial version using only data we already have + easy additions:
 7. **Momentum** — Sector ETF returns from Yahoo
 8. **Cross-Asset** — GLD/TLT/SPY/DXY returns from Yahoo
 9. **Positioning** — Barchart `$CPC` put/call + SKEW from Yahoo
-10. **Breadth** — Barchart `$S5TH` + RSP/SPY divergence, with advance/decline currently null
+10. **Breadth** — TradingView S&P 500 scan (% above 200 DMA) + RSP/SPY divergence, with advance/decline currently null
 
 All 10 categories covered from day one. No paid sources needed.
