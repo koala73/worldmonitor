@@ -2321,8 +2321,15 @@ function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
     (_, index) => eligible[(offset + index) % eligible.length]);
 }
 
-function hasMndOutboundBudget({ runStartedAt, nowFn, cadenceMs }) {
-  return nowFn() - runStartedAt + cadenceMs + REQUEST_TIMEOUT_MS <= MND_OUTBOUND_BUDGET_MS;
+function hasMndOutboundBudget({
+  runStartedAt,
+  nowFn,
+  cadenceMs,
+  reservedRequestCount = 0,
+}) {
+  const reservedMs = reservedRequestCount * (REQUEST_CADENCE_MS + REQUEST_TIMEOUT_MS);
+  return nowFn() - runStartedAt + cadenceMs + REQUEST_TIMEOUT_MS + reservedMs
+    <= MND_OUTBOUND_BUDGET_MS;
 }
 
 /**
@@ -2609,8 +2616,8 @@ export async function fetchCrossStraitActivitySnapshot({
     }
     try {
       if (cadenceMs) await sleepFn(cadenceMs);
-      const html = await fetchBoundedText(fetchFn, url, mndContract);
       requestCount += 1;
+      const html = await fetchBoundedText(fetchFn, url, mndContract);
       const rows = parseTaiwanMndList(html).map((row) => {
         const previous = previousMndByUrl.get(row.sourceUrl);
         return {
@@ -2639,7 +2646,6 @@ export async function fetchCrossStraitActivitySnapshot({
         break;
       }
     } catch (error) {
-      requestCount += 1;
       mndErrors.push(errorCode(error));
       if (page === 1) break;
     }
@@ -2660,30 +2666,65 @@ export async function fetchCrossStraitActivitySnapshot({
   );
   const candidates = [...primaryCandidates, ...refreshCandidates]
     .slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
+  const candidateSchedule = [
+    ...primaryCandidates.map((candidate) => ({
+      candidate,
+      isRefresh: false,
+      reservedRefreshAttempts: refreshCandidates.length,
+    })),
+    ...refreshCandidates.map((candidate, index) => ({
+      candidate,
+      isRefresh: true,
+      reservedRefreshAttempts: refreshCandidates.length - index - 1,
+    })),
+  ];
   const parsedMnd = [];
-  for (const candidate of candidates) {
-    if (!hasMndOutboundBudget({
-      runStartedAt,
-      nowFn,
-      cadenceMs: REQUEST_CADENCE_MS,
-    })) {
-      mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
-      break;
-    }
-    try {
-      await sleepFn(REQUEST_CADENCE_MS);
-      const html = await fetchBoundedText(fetchFn, candidate.sourceUrl, mndContract);
-      requestCount += 1;
-      parsedMnd.push(parseTaiwanMndDetail(html, {
-        sourceUrl: candidate.sourceUrl,
-        retrievedAt: generatedAt,
-        expectedPublicationDay: candidate.publicationDay,
-        allowPublicationAdvance: candidate.allowPublicationAdvance === true,
-        expectedReportingDay: candidate.expectedReportingDay ?? null,
-      }));
-    } catch (error) {
-      requestCount += 1;
-      mndErrors.push(errorCode(error));
+  let detailRequestCount = 0;
+  let primaryBudgetExhausted = false;
+  candidateLoop:
+  for (const { candidate, isRefresh, reservedRefreshAttempts } of candidateSchedule) {
+    if (primaryBudgetExhausted && !isRefresh) continue;
+    const detailAttemptLimit = MND_MAX_DETAIL_REQUESTS_PER_RUN - reservedRefreshAttempts;
+    let retryingMissingMetadata = false;
+    while (detailRequestCount < detailAttemptLimit) {
+      if (!hasMndOutboundBudget({
+        runStartedAt,
+        nowFn,
+        cadenceMs: REQUEST_CADENCE_MS,
+        reservedRequestCount: isRefresh && !retryingMissingMetadata ? 0 : reservedRefreshAttempts,
+      })) {
+        if (retryingMissingMetadata) mndErrors.push('MND_PUBLICATION_METADATA_MISSING');
+        mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
+        if (isRefresh && !retryingMissingMetadata) break candidateLoop;
+        if (!isRefresh) primaryBudgetExhausted = true;
+        break;
+      }
+      try {
+        await sleepFn(REQUEST_CADENCE_MS);
+        detailRequestCount += 1;
+        requestCount += 1;
+        const html = await fetchBoundedText(fetchFn, candidate.sourceUrl, mndContract);
+        parsedMnd.push(parseTaiwanMndDetail(html, {
+          sourceUrl: candidate.sourceUrl,
+          retrievedAt: generatedAt,
+          expectedPublicationDay: candidate.publicationDay,
+          allowPublicationAdvance: candidate.allowPublicationAdvance === true,
+          expectedReportingDay: candidate.expectedReportingDay ?? null,
+        }));
+        break;
+      } catch (error) {
+        const code = errorCode(error);
+        if (
+          code === 'MND_PUBLICATION_METADATA_MISSING'
+          && !retryingMissingMetadata
+          && detailRequestCount < detailAttemptLimit
+        ) {
+          retryingMissingMetadata = true;
+          continue;
+        }
+        mndErrors.push(code);
+        break;
+      }
     }
   }
 
