@@ -2854,6 +2854,67 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(snapshot.sources[0].requestCount, mndCalls.length);
   });
 
+  it('uses remaining time for correction first attempts after slow list discovery', async () => {
+    const correctionDetails = new Map([21, 22, 23].map((day) => [
+      `https://www.mnd.gov.tw/en/News/PLAAct/${99_000 + day}`,
+      fixture('mnd-detail.html')
+        .replace('2026.07.25', `2026.07.${day}`)
+        .replace(
+          '6 a.m. Jul. 24 (Fri.) to 6 a.m. Jul. 25 (Sat.) (UTC+8)',
+          `6 a.m. Jul. ${day - 1} to 6 a.m. Jul. ${day} (UTC+8)`,
+        ),
+    ]));
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: '2026-07-25T05:30:00.000Z',
+      previousSnapshot: null,
+      mndOutcome: {
+        ok: true,
+        requestCount: 0,
+        observations: [...correctionDetails].map(([sourceUrl, html]) => parseTaiwanMndDetail(html, {
+          sourceUrl,
+          retrievedAt,
+          expectedPublicationDay: `2026-07-${sourceUrl.slice(-2)}`,
+        })),
+      },
+      japanOutcome: { ok: true, requestCount: 0, availableDocumentUrls: [] },
+    });
+
+    for (const [listDelayMs, expectedDetails] of [[14_000, 2], [16_000, 1]]) {
+      let clock = 0;
+      let listCalls = 0;
+      const detailCalls: string[] = [];
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt),
+        nowFn: () => clock,
+        previousSnapshot,
+        proxyUrl: '',
+        sleepFn: async (ms) => { clock += ms; },
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+          if (url.includes('plaactlist')) {
+            listCalls += 1;
+            clock += listDelayMs;
+            return new Response(fixture('mnd-list.html'));
+          }
+          detailCalls.push(url);
+          clock += 20_000;
+          return new Response(correctionDetails.get(url) ?? fixture('mnd-detail.html'));
+        },
+      });
+      const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+
+      assert.equal(listCalls, MND_MAX_LIST_PAGES_PER_BACKFILL_RUN);
+      assert.equal(detailCalls.length, expectedDetails);
+      assert.ok(detailCalls.every((url) => correctionDetails.has(url)));
+      assert.ok(clock <= MND_OUTBOUND_BUDGET_MS);
+      assert.equal(mnd?.requestCount, listCalls + detailCalls.length);
+      assert.equal(mnd?.transportStatus, 'fresh');
+      assert.equal(mnd?.lastSuccessAt, retrievedAt);
+      assert.deepEqual(mnd?.errorCodes, ['OUTBOUND_BUDGET_EXHAUSTED']);
+    }
+  });
+
   it('keeps a partial MND collection fresh when only the outbound budget stops more work', async () => {
     let budgetCheck = 0;
     const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);

@@ -2691,7 +2691,7 @@ export async function fetchCrossStraitActivitySnapshot({
         runStartedAt,
         nowFn,
         cadenceMs: REQUEST_CADENCE_MS,
-        reservedRequestCount: reservedRefreshAttempts,
+        reservedRequestCount: isRefresh && !retryingMissingMetadata ? 0 : reservedRefreshAttempts,
       })) {
         if (retryingMissingMetadata) mndErrors.push('MND_PUBLICATION_METADATA_MISSING');
         mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
