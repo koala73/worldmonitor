@@ -102,9 +102,9 @@ export function projectSource(source, health, meta, detail, observedAt) {
 function scheduledStart(timestamp, cron) {
   const date = new Date(timestamp);
   const minute = date.getUTCMinutes();
-  if (cron === '*/10 * * * *') return minute % 10 < 2;
+  if (cron === '*/10 * * * *') return minute % 10 < 5;
   if (cron === '*/5 * * * *') return minute % 5 < 2;
-  if (cron === '0 8,9 * * *') return [8, 9].includes(date.getUTCHours()) && minute < 2;
+  if (cron === '0 8,9 * * *') return [8, 9].includes(date.getUTCHours()) && minute < 5;
   return false;
 }
 

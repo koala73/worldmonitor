@@ -186,6 +186,19 @@ test('reads standalone structured and bundle-prefixed completions with cron star
   assert.equal(projectRuns('wildfires', crashed, { cronSchedule: config.wildfires[1] }, at(24))[1].state, 'INCOMPLETE');
 });
 
+test('accepts a delayed macro cron start within five minutes and rejects later starts', () => {
+  const source = 'physicalDivergence';
+  const event = { event: 'seed_complete', domain: 'market', timestamp: '2026-09-05T08:04:53.871Z', durationMs: 2549, state: 'OK' };
+  const delayed = [
+    { timestamp: '2026-09-05T08:04:50.045Z', message: 'Starting Container' },
+    { timestamp: event.timestamp, message: `  [Physical-Premiums] ${JSON.stringify(event)}` },
+  ];
+  const deployment = { cronSchedule: config[source][1] };
+  assert.equal(projectRuns(source, delayed, deployment, at(70))[0].scheduled, true);
+  delayed[0].timestamp = '2026-09-05T08:05:00.000Z';
+  assert.equal(projectRuns(source, delayed, deployment, at(70))[0].scheduled, false);
+});
+
 function fixture(source = 'wildfires', minutes = 0) {
   const [serviceName, cronSchedule] = config[source];
   const successAt = minutes === 0 ? BASELINE : at(minutes - 1);
