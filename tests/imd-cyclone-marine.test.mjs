@@ -403,7 +403,7 @@ test('documents the complete IMD Railway credential setup', () => {
   assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
   assert.match(setup, /static public IP/i);
   assert.match(setup, /api\/oauth\/token\.php/);
-  assert.match(setup, /Do not store the JWT/i);
+  assert.match(setup, /Do\s+not store the JWT/i);
   assert.doesNotMatch(setup, /IMD_API_TOKEN=/);
 });
 
