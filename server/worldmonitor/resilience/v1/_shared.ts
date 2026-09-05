@@ -654,6 +654,11 @@ function coverageWeightedMean(dimensions: ResilienceDimension[]): number {
   return weightedSum / totalWeight;
 }
 
+export const __testing__ = {
+  coverageWeightedMean,
+  IMPUTED_DIM_WEIGHT_FACTOR,
+};
+
 export const PENALTY_ALPHA = 0.50;
 
 export function penalizedPillarScore(pillars: { score: number; weight: number }[]): number {

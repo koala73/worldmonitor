@@ -299,17 +299,17 @@ describe('cohort anti-inversion deterministic fixture (Plan 2026-04-26-002 §U1)
 });
 
 describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)', () => {
-  // SKIP guard: if Upstash creds are missing, all tests in this describe block
-  // log + pass without running the live invariants. Required for CI-without-prod-creds.
+  // Skips without Upstash creds so CI and dev machines still pass. The same
+  // four invariants run unconditionally against the committed fixture above,
+  // so skipping here loses the production reading, not the invariant.
   const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
   const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
   const credsPresent = Boolean(upstashUrl && upstashToken);
 
   if (!credsPresent) {
-    it('[skip] live invariants — UPSTASH_REDIS_REST_URL/TOKEN not set in env', () => {
-      console.log('[cohort-anti-inversion] Skipping live invariants — no Upstash credentials in env. Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN to run.');
-      assert.ok(true);
-    });
+    // A real skip, not a passing no-op. Reporting this as a pass inflated the
+    // count with a case that asserted nothing.
+    it.skip('live invariants — UPSTASH_REDIS_REST_URL/TOKEN not set in env', () => {});
     return;
   }
 
@@ -394,12 +394,12 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
       'Plan 002 §U6 per-capita normalization should keep microstate-territories out of the top 20.');
   });
 
-  it('REPORT-ONLY: per-cohort coverage in the live ranking [diagnostic]', () => {
-    if (!ranking) return;
+  it('every cohort has live-ranking coverage', () => {
+    assert.ok(ranking, 'live ranking must be loaded');
     for (const [key, cohort] of Object.entries(cohorts)) {
       const present = cohort.iso2.filter((iso) => ranking!.has(iso)).length;
       console.log(`[cohort-anti-inversion] ${key}: ${present}/${cohort.iso2.length} present in ranking`);
+      assert.ok(present > 0, `${key} has no members in the live ranking, so its invariants read nothing`);
     }
-    assert.ok(true);
   });
 });
