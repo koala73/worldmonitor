@@ -12,6 +12,35 @@ function readFileSync(path, options) {
   }
   return content;
 }
+
+// Consecutive User-agent lines share one robots.txt group. A blank line, or a
+// User-agent line after rules, starts a new group; comments do not end a group.
+function parseRobotsGroups(source) {
+  const groups = [];
+  let current = null;
+  for (const raw of source.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      current = null;
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim().toLowerCase();
+    const value = line.slice(colon + 1).trim();
+    if (key === 'user-agent') {
+      if (!current || current.rules.length > 0) {
+        current = { agents: [], rules: [] };
+        groups.push(current);
+      }
+      current.agents.push(value.toLowerCase());
+    } else if (current && (key === 'allow' || key === 'disallow')) {
+      current.rules.push(`${key}: ${value}`);
+    }
+  }
+  return groups;
+}
 import { fileURLToPath } from 'node:url';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 import { CACHE_POLICY_HEADER_NAME, isSharedCacheable } from './helpers/shared-cache-policy.mjs';
@@ -3951,37 +3980,7 @@ describe('agent readiness: Content-Signal declarations', () => {
 describe('agent readiness: robots.txt AI crawler policy', () => {
   const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
-  // Minimal robots.txt group parser: consecutive User-agent lines share one
-  // group; a blank line or a User-agent line following rules starts a new one;
-  // comments never end a group.
-  const parseGroups = (source) => {
-    const groups = [];
-    let current = null;
-    for (const raw of source.split('\n')) {
-      const line = raw.trim();
-      if (line === '') {
-        current = null;
-        continue;
-      }
-      if (line.startsWith('#')) continue;
-      const colon = line.indexOf(':');
-      if (colon === -1) continue;
-      const key = line.slice(0, colon).trim().toLowerCase();
-      const value = line.slice(colon + 1).trim();
-      if (key === 'user-agent') {
-        if (!current || current.rules.length > 0) {
-          current = { agents: [], rules: [] };
-          groups.push(current);
-        }
-        current.agents.push(value.toLowerCase());
-      } else if (current && (key === 'allow' || key === 'disallow')) {
-        current.rules.push(`${key}: ${value}`);
-      }
-    }
-    return groups;
-  };
-
-  const groups = parseGroups(robotsSource);
+  const groups = parseRobotsGroups(robotsSource);
   const starGroup = groups.find((g) => g.agents.includes('*'));
   const aiAllowGroup = groups.find((g) => g.agents.includes('gptbot'));
   const userFetchGroup = groups.find((g) => g.agents.includes('chatgpt-user'));
@@ -4106,36 +4105,9 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     'disallow: /*?*layers=',
   ];
 
-  const parseGroups = (source) => {
-    const groups = [];
-    let current = null;
-    for (const raw of source.split('\n')) {
-      const line = raw.trim();
-      if (line === '') {
-        current = null;
-        continue;
-      }
-      if (line.startsWith('#')) continue;
-      const colon = line.indexOf(':');
-      if (colon === -1) continue;
-      const key = line.slice(0, colon).trim().toLowerCase();
-      const value = line.slice(colon + 1).trim();
-      if (key === 'user-agent') {
-        if (!current || current.rules.length > 0) {
-          current = { agents: [], rules: [] };
-          groups.push(current);
-        }
-        current.agents.push(value.toLowerCase());
-      } else if (current && (key === 'allow' || key === 'disallow')) {
-        current.rules.push(`${key}: ${value}`);
-      }
-    }
-    return groups;
-  };
-
   for (const file of ['robots.www.txt', 'robots.variant.txt']) {
     it(`${file} lets user-triggered assistant fetchers open shared map links`, () => {
-      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
       const starGroup = groups.find((group) => group.agents.includes('*'));
       const userFetchGroup = groups.find((group) => group.agents.includes('chatgpt-user'));
       assert.ok(starGroup, `${file} must have a default group`);
@@ -4153,7 +4125,7 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     });
 
     it(`${file} carries every crawl-budget disallow in every autonomous crawl group`, () => {
-      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
       const crawling = groups.filter((g) => g.rules.includes('allow: /'));
       const autonomous = crawling.filter((g) => !g.agents.includes('chatgpt-user'));
       assert.ok(autonomous.length >= 2, `${file} must have a * group and a named AI group that crawl`);
@@ -4219,7 +4191,7 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     const ruleCache = new Map();
     const starGroupRules = (file) => {
       if (!ruleCache.has(file)) {
-        const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+        const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
         const star = groups.find((g) => g.agents.includes('*'));
         assert.ok(star, `${file} must have a * group`);
         ruleCache.set(
@@ -4417,7 +4389,7 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
           // As a query KEY only — quoted, or written into a query string. A
           // bare prose mention (`// [sw_lat, sw_lon, …]` documenting an array
           // order) is not a parameter and must not trip this.
-          const asQueryKey = new RegExp(`['\"\`]${needle}['\"\`]|[?&]${needle}=`);
+          const asQueryKey = new RegExp(`['"\`]${needle}['"\`]|[?&]${needle}=`);
           if (asQueryKey.test(body)) acc.push({ path: full, apiScoped: body.includes('/api/') });
         }
         return acc;
@@ -5310,35 +5282,8 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
   });
 
   it('variant and api robots keep AI-group rule parity with their own * group (#6835)', () => {
-    const parseGroups = (source) => {
-      const groups = [];
-      let current = null;
-      for (const raw of source.split('\n')) {
-        const line = raw.trim();
-        if (line === '') {
-          current = null;
-          continue;
-        }
-        if (line.startsWith('#')) continue;
-        const colon = line.indexOf(':');
-        if (colon === -1) continue;
-        const key = line.slice(0, colon).trim().toLowerCase();
-        const value = line.slice(colon + 1).trim();
-        if (key === 'user-agent') {
-          if (!current || current.rules.length > 0) {
-            current = { agents: [], rules: [] };
-            groups.push(current);
-          }
-          current.agents.push(value.toLowerCase());
-        } else if (current && (key === 'allow' || key === 'disallow')) {
-          current.rules.push(`${key}: ${value}`);
-        }
-      }
-      return groups;
-    };
-
     for (const file of ['robots.variant.txt', 'robots.api.txt']) {
-      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
       const star = groups.find((g) => g.agents.includes('*'));
       const ai = groups.find((g) => g.agents.includes('gptbot'));
       const training = groups.find((g) => g.agents.includes('ccbot'));
