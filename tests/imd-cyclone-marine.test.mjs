@@ -360,6 +360,43 @@ test('requires the IMD API key and bearer token', async () => {
   assert.deepEqual(requested, []);
 });
 
+test('mints a fresh IMD JWT before each product batch', async () => {
+  let minted = 0;
+  const productTokens = [];
+  const fetchFn = async (url, init = {}) => {
+    if (String(url) === 'https://api.imd.gov.in/api/oauth/token.php') {
+      minted += 1;
+      assert.equal(init.method, 'POST');
+      assert.equal(init.headers['Content-Type'], 'application/json');
+      assert.deepEqual(JSON.parse(init.body), {
+        email: 'operator@example.com',
+        password: 'railway-secret',
+      });
+      return jsonResponse({
+        access_token: `fresh-token-${minted}`,
+        token_type: 'Bearer',
+        expires_in: 3600,
+      });
+    }
+    productTokens.push(init.headers.Authorization);
+    return jsonResponse([]);
+  };
+  const env = {
+    IMD_API_KEY: 'test-key',
+    IMD_API_EMAIL: 'operator@example.com',
+    IMD_API_PASSWORD: 'railway-secret',
+  };
+
+  await fetchImdCycloneMarine({ env, fetchFn, now: NOW });
+  await fetchImdCycloneMarine({ env, fetchFn, now: NOW + 1 });
+
+  assert.equal(minted, 2);
+  assert.deepEqual(new Set(productTokens), new Set([
+    'Bearer fresh-token-1',
+    'Bearer fresh-token-2',
+  ]));
+});
+
 test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
   const snapshot = await fetchImdCycloneMarine({
     env: { IMD_API_KEY: 'test-key', IMD_API_TOKEN: 'header.payload.signature' },
