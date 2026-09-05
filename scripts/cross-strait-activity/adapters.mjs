@@ -1446,7 +1446,7 @@ function extractMndPublicationDay(html) {
     ?? extractHtmlElementBodies(html, ['div', 'section'], 'newsinfo')[0];
   if (container == null) throw new Error('MND_PUBLICATION_METADATA_MISSING');
   const dateBodies = extractHtmlElementBodies(container, ['span'], 'body-2', 2);
-  const publicationDay = dateBodies[0]?.includes('<') ? null : dottedDate(dateBodies[0]);
+  const publicationDay = dottedDate(decodeHtml(dateBodies[0]));
   if (!publicationDay || dateBodies.length !== 1) throw new Error('MND_PUBLICATION_DATE_MISSING');
   return publicationDay;
 }

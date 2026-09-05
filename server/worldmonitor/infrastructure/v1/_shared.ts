@@ -44,10 +44,35 @@ export function makeBaselineKeyV2(type: string, region: string, weekday: number,
   return `baseline:v2:${type}:${region}:${weekday}:${month}`;
 }
 
-export const COUNT_SOURCE_KEYS: Record<string, string> = {
+/**
+ * Server-side count sources for the temporal baselines.
+ *
+ * `news` and `satellite_fires` were always server-counted (#1194). The other
+ * three moved here from the retired client-reported producer (#7574,
+ * GHSA-gxj5-54wh-7vgr): browser sessions can no longer fold samples into
+ * shared baselines, so each type counts a trusted server-side Redis payload
+ * instead. That re-bases the meaning of all three — deliberately:
+ *
+ *   - military_flights ← `military:flights:v1` (raw payload, seeder + RPC):
+ *     the globally tracked military flights, not the requesting browser's
+ *     viewport-filtered set.
+ *   - vessels ← `theater-posture:sebuf:v1` (seed envelope): the relay's
+ *     strictly-filtered military vessels inside the monitored theater
+ *     bounds, not a browser's own AIS-websocket tracker.
+ *   - ais_gaps ← `maritime:ais-gaps:v1` (seed envelope, published by the
+ *     relay): dark ships that returned after extended AIS silence, not a
+ *     per-session gap observation.
+ *
+ * The v2 baselines start empty for all three (MIN_SAMPLES warm-up), so no
+ * pre-existing statistics are silently re-based.
+ */
+export const COUNT_SOURCE_KEYS = {
   news: 'news:insights:v1',
   satellite_fires: 'wildfire:fires:v1',
-};
+  military_flights: 'military:flights:v1',
+  vessels: 'theater-posture:sebuf:v1',
+  ais_gaps: 'maritime:ais-gaps:v1',
+} satisfies Record<string, string>;
 
 export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
 
@@ -217,12 +242,90 @@ function firesContentClock(
 }
 
 /**
+ * `military:flights:v1` clock — the seeder's assessment timestamp.
+ *
+ * A present payload with no `fetchedAt` cannot be dated, so it fails closed;
+ * an empty flights array WITH a timestamp is a legitimate zero-traffic window,
+ * not an outage.
+ */
+function flightsContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const fetchedAt = parseObservationMs((data as { fetchedAt?: unknown }).fetchedAt, skewLimit);
+  if (fetchedAt == null) return null;
+  return { newestItemAt: fetchedAt, oldestItemAt: fetchedAt };
+}
+
+/**
+ * `theater-posture:sebuf:v1` clock — the theaters' per-theater assessment
+ * timestamps, reduced like every other multi-observation payload: newest is
+ * the max within the payload, oldest the min. One stalled theater ages the
+ * source clock instead of hiding behind its fresher sibling. An absent or
+ * empty theaters array is undatable (the theater set is static and never
+ * legitimately empty), so it fails closed.
+ */
+function postureContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const theaters = (data as { theaters?: unknown }).theaters;
+  if (!Array.isArray(theaters) || theaters.length === 0) return null;
+  const timestamps: number[] = [];
+  for (const theater of theaters) {
+    if (!theater || typeof theater !== 'object') continue;
+    const ts = parseObservationMs((theater as Record<string, unknown>).assessedAt, skewLimit);
+    if (ts != null) timestamps.push(ts);
+  }
+  if (timestamps.length === 0) return null;
+  return reduceTimestamps(timestamps);
+}
+
+/** `maritime:ais-gaps:v1` clock — the relay's dark-ship sampling timestamp. */
+function gapsContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const sampledAt = parseObservationMs((data as { sampledAt?: unknown }).sampledAt, skewLimit);
+  if (sampledAt == null) return null;
+  return { newestItemAt: sampledAt, oldestItemAt: sampledAt };
+}
+
+/** Unwrapped count-source payloads as the rebuild reads them from Redis.
+ *  Derived from COUNT_SOURCE_KEYS so a new source cannot forget its slot. */
+export type CountSourcePayloads = {
+  [K in keyof typeof COUNT_SOURCE_KEYS]?: unknown;
+};
+
+/**
+ * One content-clock extractor per configured COUNT_SOURCE_KEYS type.
+ *
+ * Typed against CountSourcePayloads (itself derived from COUNT_SOURCE_KEYS)
+ * so adding a source without an extractor is a COMPILE error; the runtime
+ * parity test in tests/temporal-anomalies-cache.test.mts is the behavioral
+ * belt-and-braces on top.
+ */
+const CONTENT_CLOCK_EXTRACTORS: Record<
+  keyof CountSourcePayloads,
+  (data: unknown, skewLimit: number) => TemporalAnomaliesContentAge | null | undefined
+> = {
+  news: newsContentClock,
+  satellite_fires: firesContentClock,
+  military_flights: flightsContentClock,
+  vessels: postureContentClock,
+  ais_gaps: gapsContentClock,
+};
+
+/**
  * Content-age of a temporal-anomalies rebuild from the upstream payloads that
  * actually contributed a count this cycle.
  *
- * Two independently-failing sources (`news:insights:v1`, `wildfire:fires:v1`).
- * One clock per source, reduced with min() — a live fires feed must not hide a
- * frozen news feed, and vice versa. See CONCEPTS.md "Content-Age Contract" and
+ * Every configured COUNT_SOURCE_KEYS source contributes a clock, reduced with
+ * min() — a live fires feed must not hide a frozen news feed, and vice versa.
+ * See CONCEPTS.md "Content-Age Contract" and
  * docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md.
  *
  * Returns null when no contributing source is datable, when a contributing
@@ -235,27 +338,11 @@ function firesContentClock(
  * STALE_CONTENT.
  */
 export function temporalAnomaliesContentMeta(
-  sources: { news?: unknown; satellite_fires?: unknown },
+  sources: CountSourcePayloads,
   nowMs = Date.now(),
 ): TemporalAnomaliesContentAge | null {
-  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
-  const clocks: TemporalAnomaliesContentAge[] = [];
-  for (const clock of [
-    // Missing configured source → null (fail closed), not undefined (skip).
-    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : null,
-    sources.satellite_fires !== undefined
-      ? firesContentClock(sources.satellite_fires, skewLimit)
-      : null,
-  ]) {
-    if (clock === undefined) continue;
-    if (clock === null) return null;
-    clocks.push(clock);
-  }
-  if (clocks.length === 0) return null;
-  return {
-    newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
-    oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
-  };
+  const collected = collectSourceClocks(sources, nowMs + CONTENT_AGE_CLOCK_SKEW_MS, null);
+  return collected.status === 'ok' ? collected.clock : null;
 }
 
 /**
@@ -282,20 +369,33 @@ export type TemporalAnomaliesReadableClock =
   | { status: 'no-signal' };
 
 export function temporalAnomaliesReadableContentMeta(
-  sources: { news?: unknown; satellite_fires?: unknown },
+  sources: CountSourcePayloads,
   nowMs = Date.now(),
 ): TemporalAnomaliesReadableClock {
-  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
+  return collectSourceClocks(sources, nowMs + CONTENT_AGE_CLOCK_SKEW_MS, undefined);
+}
+
+/**
+ * The shared collector behind both content-meta functions.
+ *
+ * They differ in exactly ONE input — what an ABSENT configured source means:
+ *   - `null` (strict): a configured source that was not read fail-closes the
+ *     whole clock. Right when absence means "the key is gone".
+ *   - `undefined` (readable): absence is skipped. Right when absence means
+ *     "this one read timed out".
+ * Everything else (per-source extraction, fail-closed on an unhealthy source,
+ * no-signal when nothing is datable, min-reduction) is identical.
+ */
+function collectSourceClocks(
+  sources: CountSourcePayloads,
+  skewLimit: number,
+  absentClock: TemporalAnomaliesContentAge | null | undefined,
+): TemporalAnomaliesReadableClock {
   const clocks: TemporalAnomaliesContentAge[] = [];
-  for (const clock of [
-    // Absent here means "not readable this cycle", which the caller handles —
-    // so absence is skipped rather than fail-closed. That is the ONLY
-    // difference from temporalAnomaliesContentMeta.
-    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : undefined,
-    sources.satellite_fires !== undefined
-      ? firesContentClock(sources.satellite_fires, skewLimit)
-      : undefined,
-  ]) {
+  for (const [type, extractClock] of Object.entries(CONTENT_CLOCK_EXTRACTORS)) {
+    const clock = sources[type as keyof CountSourcePayloads] !== undefined
+      ? extractClock(sources[type as keyof CountSourcePayloads], skewLimit)
+      : absentClock;
     if (clock === undefined) continue;
     if (clock === null) return { status: 'fail-closed' };
     clocks.push(clock);

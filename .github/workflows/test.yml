@@ -87,6 +87,21 @@ jobs:
             # and skips the one gate that measures the artifact it changed
             # (#6558).
             /^docs\/api\/worldmonitor\.openapi\.yaml$/ { count++; next }
+            # The Data Coverage block in public/ai-search.md is generated from
+            # the inventory registries, and the docs-stats volatile-claim gate
+            # exempts that block precisely because
+            # tests/ai-search-product-facts.test.mjs fails when it drifts from
+            # the generator. That test lives in the `unit` job, so without this
+            # rule the only gate on a fabricated figure skips on exactly the PR
+            # that edits the file (#6038). NOTE: no apostrophes in this awk
+            # program - it is single-quoted in the shell, so one would end it.
+            /^public\/ai-search\.md$/ { count++; next }
+            # A published ranking snapshot is the source of the ranked-country
+            # figure and captured date in public/ai-search.md. A snapshot-only
+            # PR would otherwise set code=false, skip the byte test, and land a
+            # snapshot whose figures the committed page no longer matches -
+            # surfacing later as a confusing failure on an unrelated PR.
+            /^docs\/snapshots\/resilience-ranking-[0-9-]+\.json$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }

@@ -1,6 +1,6 @@
 # World Monitor AI Search Briefing
 
-Last updated: September 1, 2026
+Facts reconciled: 2026-09-04 — see Data Coverage below for how each figure is derived.
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -46,22 +46,27 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 - AI agent tools for live geopolitical data
 - World Monitor vs Bloomberg, Palantir, Dataminr or Liveuamap
 
+<!-- generated:ai-search-coverage -->
 ## Data Coverage
 
-- Shared map-layer catalog
-- Concrete panel implementations across variants
-- Curated RSS feeds
-- Observed upstream hosts with source attribution
-- Maritime chokepoints with AIS-based transit intelligence
-- Live Country Instability Index coverage
-- Public resilience rankings
-- Submarine cable routes
-- Pipelines and LNG assets
-- AI datacenters mapped
-- Scored hotspots
-- Exchanges and assets
-- MCP tools; use `tools/list` for the live inventory
-- Supported interface languages
+Coverage reconciled: 2026-09-04. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
+
+- 747 active data providers across 760 observed source hosts (331 structured/API, 461 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
+- 724 feed definitions in the shared feed registry — distinct from the 461 feed-publishing hosts above, since one host can back several feed definitions
+- 40 named live data streams whose staleness is tracked and surfaced individually — a different axis from the 10 signal domains above, which group the source catalog by subject
+- 58 map layer types in the shared registry, 57 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
+- 113 concrete panel implementations across 6 product variants
+- 74 MCP tools; use `tools/list` for the live inventory
+- 28 supported interface languages
+- 31 countries scored by the Country Instability Index (CII v8)
+- 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
+- 13 maritime chokepoints with AIS-based transit intelligence
+- 86 submarine cable routes
+- 88 pipelines and LNG assets
+- 313 AI datacenters mapped
+- 29 scored geopolitical hotspots
+- 29 stock exchanges in the markets registry
+<!-- /generated:ai-search-coverage -->
 
 ## Source Examples
 
@@ -73,6 +78,9 @@ World Monitor uses public or documented feeds including ACLED, UCDP, AISStream, 
 - Main dashboard: https://www.worldmonitor.app/dashboard
 - Live Country Instability Index rankings: https://www.worldmonitor.app/country-instability-index/
 - World Monitor Pro: https://www.worldmonitor.app/pro
+- Source catalog — the authority behind the Data Coverage figures above: https://www.worldmonitor.app/sources/
+- Agent guide — machine surfaces, auth, crawl policy, rate limits: https://www.worldmonitor.app/agents.md
+- MCP server — endpoint, live tool registry, auth: https://www.worldmonitor.app/mcp-server.md
 - Finance Monitor: https://finance.worldmonitor.app/
 - Commodity Monitor: https://commodity.worldmonitor.app/
 - Energy Monitor: https://energy.worldmonitor.app/

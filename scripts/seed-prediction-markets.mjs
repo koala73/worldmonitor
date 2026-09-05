@@ -10,9 +10,16 @@ import {
   isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume,
   selectPricedKalshiMarket, isExpired,
 } from './_prediction-scoring.mjs';
-import { countCountryMarkets, projectCountryMarketIndex } from './_prediction-country-index.mjs';
+import {
+  buildCountryMarketIndex,
+  countCountryMarkets,
+  projectCountryMarketIndex,
+  selectKalshiSeriesTickers,
+} from './_prediction-country-index.mjs';
 import {
   fetchKalshiEvents as fetchKalshiEventPages,
+  fetchKalshiMarketsBySeries,
+  fetchKalshiSeries,
   fetchPolymarketEventsByTag,
 } from './_prediction-upstream.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
@@ -30,6 +37,9 @@ const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
 const FETCH_TIMEOUT = 10_000;
 const TAG_DELAY_MS = 300;
+const MAX_KALSHI_COUNTRY_REQUESTS = 24;
+const MAX_KALSHI_COUNTRY_ROUNDS = 4;
+const KALSHI_COUNTRY_LOCK_TTL_MS = 300_000;
 
 const GEOPOLITICAL_TAGS = predictionTags.geopolitical;
 const TECH_TAGS = predictionTags.tech;
@@ -61,6 +71,24 @@ function kalshiTitle(marketTitle, eventTitle) {
   return `${eventTitle}: ${marketTitle}`;
 }
 
+function kalshiCountryCandidate(market, eventTitle) {
+  const yesPrice = parseKalshiYesPrice(market);
+  if (yesPrice === null) return null;
+  const marketTitle = eventTitle
+    ? market.yes_sub_title || market.title || ''
+    : market.title || market.yes_sub_title || '';
+  return {
+    title: kalshiTitle(marketTitle, eventTitle),
+    yesPrice,
+    volume: parseFloat(market.volume_fp) || 0,
+    url: `https://kalshi.com/markets/${market.ticker}`,
+    endDate: market.close_time ?? undefined,
+    tags: [],
+    source: 'kalshi',
+    eventKey: `kalshi:${market.event_ticker || market.ticker}`,
+  };
+}
+
 async function fetchKalshiMarkets() {
   const { events, complete } = await fetchKalshiEvents();
   const featured = [];
@@ -81,19 +109,8 @@ async function fetchKalshiMarkets() {
 
     const eventKey = `kalshi:${event.event_ticker || event.ticker || event.id || event.title}`;
     for (const market of binaryActive) {
-      const candidatePrice = parseKalshiYesPrice(market);
-      if (candidatePrice === null) continue;
-      const marketTitle = market.yes_sub_title || market.title || '';
-      countryCandidates.push({
-        title: kalshiTitle(marketTitle, event.title),
-        yesPrice: candidatePrice,
-        volume: parseFloat(market.volume_fp) || 0,
-        url: `https://kalshi.com/markets/${market.ticker}`,
-        endDate: market.close_time ?? undefined,
-        tags: [],
-        source: 'kalshi',
-        eventKey,
-      });
+      const candidate = kalshiCountryCandidate(market, event.title);
+      if (candidate) countryCandidates.push({ ...candidate, eventKey });
     }
 
     const volume = parseFloat(topMarket.volume_fp) || 0;
@@ -114,6 +131,65 @@ async function fetchKalshiMarkets() {
   }
 
   return { featured, countryCandidates, complete };
+}
+
+async function fetchKalshiCountryMarkets(targetCountryCodes) {
+  if (targetCountryCodes.length === 0) return { countryCandidates: [], complete: true };
+  try {
+    const series = await fetchKalshiSeries({
+      baseUrl: KALSHI_BASE,
+      userAgent: CHROME_UA,
+      timeoutMs: FETCH_TIMEOUT,
+    });
+    const pendingCountryCodes = new Set(targetCountryCodes);
+    const triedSeriesTickers = [];
+    const countryCandidates = [];
+    let requestsUsed = 0;
+
+    for (
+      let round = 1;
+      round <= MAX_KALSHI_COUNTRY_ROUNDS
+        && pendingCountryCodes.size > 0
+        && requestsUsed < MAX_KALSHI_COUNTRY_REQUESTS;
+      round += 1
+    ) {
+      const seriesTickers = selectKalshiSeriesTickers(series, [...pendingCountryCodes], {
+        perCountryLimit: 1,
+        excludedTickers: triedSeriesTickers,
+        totalLimit: MAX_KALSHI_COUNTRY_REQUESTS - requestsUsed,
+      });
+      if (seriesTickers.length === 0) break;
+      triedSeriesTickers.push(...seriesTickers);
+      console.log(
+        `  [kalshi] hydrating ${seriesTickers.length} country series in round ${round}`,
+      );
+      const seriesMarkets = await fetchKalshiMarketsBySeries(seriesTickers, {
+        baseUrl: KALSHI_BASE,
+        userAgent: CHROME_UA,
+        timeoutMs: FETCH_TIMEOUT,
+        maxRequests: MAX_KALSHI_COUNTRY_REQUESTS - requestsUsed,
+        onRequest: () => { requestsUsed += 1; },
+      });
+      countryCandidates.push(...seriesMarkets
+        .filter((market) => market.market_type === 'binary' && market.status === 'active')
+        .map((market) => kalshiCountryCandidate(market))
+        .filter(Boolean));
+
+      for (const countryCode of Object.keys(buildCountryMarketIndex(countryCandidates))) {
+        pendingCountryCodes.delete(countryCode);
+      }
+    }
+    console.log(
+      `  [kalshi] country series used ${requestsUsed}/${MAX_KALSHI_COUNTRY_REQUESTS} requests; ${pendingCountryCodes.size} countries remain uncovered`,
+    );
+    return {
+      countryCandidates,
+      complete: true,
+    };
+  } catch (err) {
+    console.warn(`  [kalshi] error fetching country series: ${err.message}`);
+    return { countryCandidates: [], complete: false };
+  }
 }
 
 async function fetchAllPredictions() {
@@ -195,7 +271,16 @@ async function fetchAllPredictions() {
   if (!kalshiMarkets.complete) countryProjectionComplete = false;
   console.log(`  [kalshi] ${kalshiMarkets.featured.length} featured markets`);
   markets.push(...kalshiMarkets.featured);
+  const polymarketCountryCodes = Object.keys(buildCountryMarketIndex(countryCandidates));
+  const coveredKalshiCountryCodes = new Set(
+    Object.keys(buildCountryMarketIndex(kalshiMarkets.countryCandidates)),
+  );
+  const uncoveredCountryCodes = polymarketCountryCodes
+    .filter((countryCode) => !coveredKalshiCountryCodes.has(countryCode));
+  const kalshiCountryMarkets = await fetchKalshiCountryMarkets(uncoveredCountryCodes);
+  if (!kalshiCountryMarkets.complete) countryProjectionComplete = false;
   countryCandidates.push(...kalshiMarkets.countryCandidates);
+  countryCandidates.push(...kalshiCountryMarkets.countryCandidates);
 
   console.log(`  total raw markets: ${markets.length}`);
 
@@ -249,7 +334,7 @@ async function markCountryIndexActivated(data) {
 
 await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   ttlSeconds: CACHE_TTL,
-  lockTtlMs: 60_000,
+  lockTtlMs: KALSHI_COUNTRY_LOCK_TTL_MS,
   // Population requirement + #5733 category-integrity gate. Lives in
   // _prediction-classify.mjs so the gate is unit-testable (this module runs
   // runSeed at import time, so a test can never import it).

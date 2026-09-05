@@ -18,7 +18,11 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 ### Seed-Owned Key
 
-A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key, Read Outcome.
+A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. On the read side, seed-owned keys must bypass the deployment key prefix (`raw = true`), because the owning seeder writes bare keys — and the `seed-meta:` name prefix is not the ownership test, since a `seed-meta:`-named key can still be route-stamped and app-owned. See also: Bootstrap Tier, On-Demand Key, Read Outcome, Deployment Key Prefix.
+
+### Deployment Key Prefix
+
+The namespace `getKeyPrefix()` prepends to every app-owned cache key on non-production deployments — `<VERCEL_ENV>:<8-char commit sha>:` — so preview and development deploys sharing the production Upstash instance cannot read or clobber production rows. It is a write-ownership boundary, not a caching detail: Railway seeders write bare keys (they run outside Vercel), so every read names which population's namespace it targets, and the shared Redis helpers' `raw = true` flag is the opt-out — required for seeder-owned reads, forbidden for app-owned ones. Production collapses the prefix to `''`, which makes a wrong-side choice invisible there: a prefixed read of a seeder key silently misses (reads as empty data), and a bare write from a preview silently lands in the production namespace. See also: Seed-Owned Key.
 
 ### Content-Age Contract
 
@@ -211,6 +215,18 @@ The same allowlist rot runs along a second axis that is easier to miss, because 
 A counted census of a known-bad idiom's remaining occurrences, recorded per (file, idiom) pair with an occurrence count, which the guard enforces in *both* directions: a higher count or an unrecorded pair fails as new drift, a lower count fails as a stale record that must be updated. The bidirectionality is what separates it from an allowlist — a plain permission list cannot see a second occurrence added to a file it already forgives, which is the highest-traffic regression shape there is, because new code lands in the files that already carry the pattern. Counts must be measured on normalised source (comment-stripped, at minimum), or a mention of the idiom in prose keeps an entry alive after its last real call is gone and the stale check never asks anyone to delete it.
 
 Two properties are routinely misread. An entry is a *record*, not a permission slip: it says this many occurrences are known and tracked, never that they are sanctioned. And a shrinking entry does not imply zero is the destination — some populations have a floor, where the surviving occurrence is the one that must *not* be migrated, so its count is terminal rather than unfinished. A ratchet cannot distinguish "this count moved" from "this count moved for the wrong reason", so wherever a floor exists it has to be stated in the inventory *and* in the guard's own failure text, which is the only prose the person driving the count to zero will actually read. The behavioural rule underneath the floor needs a separate test; the ratchet enforces the census, not the reason. See also: Closed-World Gate, Vacuous Guard, Mutation Proof.
+
+### Unreached Guard
+
+A guard that is correct, has teeth, and never executes for the change class it was written to police, because the routing that decides which checks run for a change excludes that class. It is the complement of a Vacuous Guard rather than a variety of one: a vacuous guard runs and passes wrongly, so its assertions are the thing to interrogate; an unreached guard's assertions are fine and are simply never reached, so interrogating them finds nothing wrong. The shape is most dangerous where a guard is the stated justification for relaxing another one — an exemption granted on the promise that a compensating check covers the gap leaves *no* enforcement at all when the compensating check does not run, and the exemption is the half that keeps working.
+
+Two properties make it hard to see. The coupling is asymmetric in kind: what the exempting gate keys on is the content of the change, while what the compensating guard keys on is the change's classification for routing, and nothing links them — so they can disagree without either being edited. And the failure renders as *skipped*, not failed, which reads as a deliberate scoping decision rather than a hole; a summary that reports no failures is consistent with a guard that never ran, so the check must be that the expected guard *did* run, not that nothing reported failure. The remedy is to make the coupling real by routing the exempted artifact into the guarding job, and to treat any decision logic embedded in the routing configuration as code that has no local test unless one is written for it. See also: Vacuous Guard, Mutation Proof, Closed-World Gate, Volatile Inventory Claim.
+
+### Volatile Inventory Claim
+
+A published count of a population that grows independently of the prose quoting it — sources, feeds, providers, interface languages, map layers, agent tools — as opposed to a fixed contract like a schema version or a documented threshold. The distinction is what a gate can act on: a fixed value is pinned and asserted exactly, while an extensible one is guaranteed to rot in hand-authored copy, because the population changes in unrelated work by people with no reason to revisit the sentence. Public-facing surfaces are therefore scanned for such claims and rejected, which pushes authors toward wording that stays true as the population moves.
+
+The rule is about *provenance*, not about numerals, and collapsing the two is the failure that follows it around. Deleting the numbers satisfies a scanner and destroys the surface's purpose when that surface exists to be quoted — an audience that cannot lift a figure cites someone else's stale one instead, so the claim survives in a worse form somewhere the project does not control. The resolution is generation: a figure derived from the authoritative registry at build time is not hand-authored, so it is exempt on the merits rather than by concession, provided a drift check actually proves the published block still matches its source. Two further obligations travel with a generated figure. It must carry the definition that produced it, because the same noun frequently names two different populations — hosts that publish feeds versus feed definitions those hosts back — and a figure quoted without its definition will be reconciled against a different surface's number and read as a contradiction. And where two surfaces legitimately publish different counts under the same word, the surface written for quoting is the one that must state both and say which is which. See also: Unreached Guard, Closed-World Gate, Ratchet Inventory.
 
 ## News Story Tracking & Trend Detection
 
@@ -441,6 +457,26 @@ Theater posture has two independent producers on different schedules — a loop 
 The upstream that actually fed a published theater-posture cycle, recorded with the publication rather than inferred from which sources are configured.
 
 Each cycle attributes exactly one winning source (or a vessels-only outcome when no flight source contributed), and per-source cycle counts accumulate for the life of the producer process. The attribution answers "who fed this record", not "which sources are healthy" — a primary source that answered healthily with zero relevant traffic is a quiet primary, not a failed one, and its health is judged from its own request counters, never from the attribution. Because the two Theater Posture producers use different vocabularies for their sources, every attribution also names its producer. See also: Theater Posture.
+
+## Temporal Baselines
+
+### Temporal Baseline
+
+The running per-type mean and variance a dashboard's anomaly detection compares each period's count against — e.g. how many military flights, vessels, or dark ships are "normal" for this weekday and month.
+
+Baselines are computed exclusively by trusted server-side producers; browser sessions can never contribute samples to them. The statistics live under a versioned namespace, so a change in what a metric MEANS (or in who may write it) orphans the old accumulation instead of silently re-basing it — a client-reported mean and a server-counted mean never blend. Sampling is decoupled from rebuild cadence: a sample folds on its own statistical clock, so tuning a cache interval must never change the sample rate.
+
+### Count Source
+
+The trusted server-side data payload a temporal metric's count is computed from each cycle — the number whose deviation from the baseline raises the anomaly.
+
+One producer per metric type, always a seeded server-side payload; the count semantic is deliberately specific (an array length, a sum over sub-records, a producer-published counter) and re-deriving it differently silently re-bases the baseline. Every configured count source also feeds the shared content-age contract, so a count source that stops publishing dates the whole baseline set as stale.
+
+### Dark Ship
+
+A vessel observed again after an extended AIS silence — it "went dark" and returned.
+
+A return only counts when the silence exceeded the gap threshold and the re-sighting is recent, so the observation must be recorded at the moment the returning fix arrives from a structure whose retention spans the whole silence; a history buffer pruned to a shorter display window (or capped at a few entries) can never span the gap, making the detection read as permanently zero. See also: Count Source (dark-ship returns feed the ais_gaps baseline).
 
 ## Metered Upstreams
 

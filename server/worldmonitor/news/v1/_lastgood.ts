@@ -7,11 +7,19 @@
  * six-hour last-good value masked the gap for humans, but programmatic
  * consumers and cold isolates did not have an accepted snapshot.
  *
- * This module owns the pure policy: which key, when a candidate is
- * accepted, when an accepted snapshot may replace a live one, when a
- * snapshot is still servable, and how a revocation filters items. All I/O
- * lives in the caller.
+ * This module owns the pure last-good policy: which key, when an accepted
+ * snapshot may replace a live one, when a snapshot is still servable, and
+ * how a revocation filters items. The structural acceptance rule is shared
+ * with seed-insights; all I/O lives in the callers.
  */
+
+import {
+  countDigestItems,
+  isAcceptableDigest,
+  type DigestLike,
+} from '../../../../scripts/shared/digest-acceptance.mjs';
+
+export { countDigestItems, isAcceptableDigest, type DigestLike };
 
 /** Redis TTL for the accepted snapshot. Six hours, per the contract. */
 export const LASTGOOD_TTL_S = 6 * 60 * 60;
@@ -139,27 +147,6 @@ export function parseAcceptedSnapshot<T extends DigestLike = DigestLike>(
   const data = (value as Record<string, unknown>).data;
   if (!data || typeof data !== 'object') return null;
   return { ...meta, data: data as T };
-}
-
-export interface DigestLike {
-  categories?: Record<string, { items?: unknown[] }>;
-}
-
-/** Total items across every category bucket. */
-export function countDigestItems(data: DigestLike): number {
-  // `b?.` matters: this runs over bodies read back from Redis, where a bucket
-  // can be null/malformed. A throw here propagates out of the servability
-  // gate and can abort EVERY fallback tier for the request.
-  return Object.values(data.categories ?? {}).reduce((sum, b) => sum + (b?.items?.length ?? 0), 0);
-}
-
-/** Structural acceptance: at least one category AND at least one item. */
-export function isAcceptableDigest(data: DigestLike | null | undefined): boolean {
-  if (!data || typeof data !== 'object') return false;
-  const categories = data.categories;
-  if (!categories || typeof categories !== 'object') return false;
-  const catCount = Object.keys(categories).length;
-  return catCount >= 1 && countDigestItems(data) >= 1;
 }
 
 /**

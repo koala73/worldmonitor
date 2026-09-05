@@ -18,10 +18,9 @@ const PER_SOURCE_DISPLAY_LIMIT = 15;
 // that floor before replacing the last-good global level index. This still
 // tolerates normal source differences while rejecting a partial-feed blackout.
 export const MIN_ADVISORY_COUNTRY_COVERAGE = 100;
-// One MiB leaves roughly 4 KiB for each entry in the current 219-country
-// State Department register while bounding an allowed upstream's processing
-// and memory use before XML parsing.
-export const MAX_ADVISORY_FEED_BYTES = 1024 * 1024;
+// Two MiB accepts the current ~1.1 MiB State Department register while still
+// bounding an allowed upstream's processing and memory use before XML parsing.
+export const MAX_ADVISORY_FEED_BYTES = 2 * 1024 * 1024;
 
 const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 

@@ -8,6 +8,10 @@
  *   - auth errors must be no-store and dynamic
  *   - anonymous public surfaces remain cacheable
  *   - MCP auth/protocol surfaces remain functional and no-store
+ *
+ * It also carries the corpus edge-cache probe from #7659: the same class of
+ * failure (a Cloudflare cache rule silently overriding correct origin headers)
+ * seen from the opposite direction — content that should be cached and is not.
  */
 
 import { strict as assert } from 'node:assert';
@@ -16,7 +20,14 @@ import { describe, it } from 'node:test';
 const LIVE = process.env.LIVE_API_CACHE_TESTS === '1';
 const API_BASE = stripTrailingSlash(process.env.WM_LIVE_API_BASE_URL || 'https://api.worldmonitor.app');
 const WEB_BASE = stripTrailingSlash(process.env.WM_LIVE_WEB_BASE_URL || 'https://worldmonitor.app');
+// The corpus cache rule is scoped to the www document host; apex only 301s here.
+const WWW_BASE = stripTrailingSlash(process.env.WM_LIVE_WWW_BASE_URL || 'https://www.worldmonitor.app');
 const FAKE_WM_KEY = 'wm_0000000000000000000000000000000000000000';
+/** The shared edge TTL vercel.json advertises on every corpus family. */
+const CORPUS_EDGE_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=60';
+// One always-present corpus document. Any family member would do; a country page
+// is the shape AI crawlers and Googlebot fetch most.
+const CORPUS_DOCUMENT_URL = `${WWW_BASE}/countries/iran/`;
 // The CDN-shielded weather read. `&public=1` marks a URL whose response is the
 // shared seed payload for EVERY caller, so it can be cached without the cache
 // key ever having to know about credentials (#5386).
@@ -116,6 +127,61 @@ async function fetchText(pathOrUrl, init = {}) {
   const resp = await fetch(pathOrUrl, { ...init, headers, signal });
   const bodyText = await resp.text();
   return { resp, bodyText };
+}
+
+async function assertRepeatedNeverCloudflareHit(url, { expectedStatus, label, init = {} }) {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const { resp } = await fetchText(url, init);
+    assert.equal(resp.status, expectedStatus, `${label} attempt ${attempt}: expected HTTP ${expectedStatus}`);
+    assert.notEqual(
+      cfCacheStatus(resp).toUpperCase(),
+      'HIT',
+      `${label} attempt ${attempt}: must never be a Cloudflare HIT`,
+    );
+  }
+}
+
+/**
+ * Fetch a corpus document until Cloudflare reports a stored HIT.
+ *
+ * Asserting merely "not DYNAMIC" proves the cache rule made the document
+ * ELIGIBLE — which a zone that never actually stores anything also satisfies. It
+ * would answer MISS forever and this probe would stay green while the edge HITs
+ * #7659 exists to deliver never happened. A cold edge server legitimately answers
+ * MISS once, so retry rather than demanding a HIT on the first request: six fresh
+ * country documents each reached HIT on their second attempt when measured.
+ *
+ * The retry budget is sized for the one condition observed to need more than two:
+ * changing the zone ruleset purges the edge cache, so requests in the seconds
+ * after `--apply` legitimately MISS repeatedly. The 6-hourly schedule never
+ * coincides with an apply, but a manual re-run right after one would, and the
+ * failure message says so.
+ */
+async function waitForCloudflareHit(url, name) {
+  const seen = [];
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    const result = await fetchText(url);
+    assert.equal(result.resp.status, 200, `${name}: corpus document must still be served`);
+    const status = cfCacheStatus(result.resp).toUpperCase();
+    seen.push(status || 'absent');
+    if (status === 'HIT') return result;
+    // DYNAMIC/BYPASS is the cache-rule fingerprint and is worth its own message;
+    // any other status means eligible-but-not-yet-stored, so keep trying.
+    assert.ok(
+      !['DYNAMIC', 'BYPASS'].includes(status),
+      `${name}: not edge-cacheable (cf-cache-status: ${status || 'absent'});`
+        + ' the "WWW corpus HTML" cache rule is missing, disabled, or no longer sits after the'
+        + ' "Bypass cache - WWW documents" rule — regenerate it with'
+        + ' `node scripts/cloudflare-cache-rule.mjs --apply`',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  assert.fail(
+    `${name}: eligible for the Cloudflare cache but never returned a HIT (${seen.join(' -> ')}) —`
+    + ' the rule is in force yet nothing is being stored, so the corpus still pays full origin TTFB.'
+    + ' If a `cloudflare-cache-rule.mjs --apply` just ran, the ruleset change purged the edge cache'
+    + ' and this clears on its own; otherwise the origin has stopped sending a cacheable response.',
+  );
 }
 
 async function waitForSharedCacheHit(url, name) {
@@ -427,6 +493,58 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assert.equal(authBody.issuer, API_BASE);
     assert.equal(authBody.token_endpoint, `${API_BASE}/oauth/token`);
     markProbeCompleted('oauth-metadata');
+  });
+
+  // The Cloudflare half of the corpus edge-cache pair (#7659). `isSharedCacheHit`
+  // above accepts a Vercel HIT, and the corpus was ALWAYS a Vercel HIT — that is
+  // precisely why this regression survived unseen for months while every offline
+  // assertion stayed green. Only cf-cache-status can see it.
+  //
+  // `DYNAMIC` is the exact fingerprint: Cloudflare reports it when a cache rule
+  // has declared the response ineligible, before origin cache headers get a vote.
+  // An eligible document reports MISS / HIT / EXPIRED / REVALIDATED depending on
+  // which edge server answered, so "not DYNAMIC" is the deterministic form of
+  // "the rule is in force" — demanding a HIT would be a coin flip on a cold POP.
+  it('serves the corpus from the Cloudflare edge, and only its query-free canonical', async () => {
+    const canonical = await waitForCloudflareHit(CORPUS_DOCUMENT_URL, 'corpus document');
+    assert.equal(
+      canonical.resp.headers.get('cdn-cache-control'),
+      CORPUS_EDGE_CACHE_CONTROL,
+      'corpus document must still advertise the 600s shared TTL the cache rule honours',
+    );
+
+    // Negative control, and the safety boundary the rule was scoped around:
+    // middleware.ts answers a bot-UA request carrying utm_*/ref with a 308 to the
+    // clean URL under `Vary: User-Agent`, and Cloudflare honours Vary only for
+    // Accept-Encoding. Query-bearing corpus URLs must therefore stay ineligible,
+    // or a crawler's redirect could be replayed to a human and strip `ref`
+    // before referral capture. This sweep's own UA is not bot-shaped, so the
+    // tagged request gets the page rather than the redirect.
+    // `redirect: 'manual'` so a 308 fails on the assertion that names it. Following
+    // the redirect would land on the cached canonical and fail the DYNAMIC check
+    // below instead — still red, but pointing at the wrong cause.
+    const tagged = await fetchText(`${CORPUS_DOCUMENT_URL}?utm_source=live-cache-sweep`, { redirect: 'manual' });
+    assert.equal(tagged.resp.status, 200, 'the tagged URL must reach the page, not the bot redirect —'
+      + ' otherwise this control passes for the wrong reason');
+    // Same two-value set the positive assertion treats as "not edge-cached".
+    // Demanding exactly DYNAMIC would turn this 6-hourly gate red the day
+    // Cloudflare answers BYPASS for an unrelated reason.
+    assert.ok(
+      ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(tagged.resp).toUpperCase()),
+      'query-bearing corpus URLs must stay out of the Cloudflare cache — they reach a'
+        + ` User-Agent-dependent redirect that Cloudflare cannot vary on (got ${cfCacheStatus(tagged.resp) || 'absent'})`,
+    );
+
+    await assertRepeatedNeverCloudflareHit(`${WWW_BASE}/countries`, {
+      expectedStatus: 308,
+      label: 'bare corpus family redirect',
+      init: { redirect: 'manual' },
+    });
+    await assertRepeatedNeverCloudflareHit(`${WWW_BASE}/countries/live-cache-sweep-not-a-country/`, {
+      expectedStatus: 404,
+      label: 'missing corpus document',
+    });
+    markProbeCompleted('corpus-edge-cache');
   });
 
   // The #4497 incident class is a CACHED 200 of private/authenticated data — the

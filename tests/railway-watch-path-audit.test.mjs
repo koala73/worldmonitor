@@ -1462,6 +1462,7 @@ describe('critical ingestion Railway registry contract', () => {
   const expected = new Map([
     ['seed-conflict-intel', '*/15 * * * *'],
     ['seed-gdelt-intel', '*/15 * * * *'],
+    ['seed-security-advisories', '0 * * * *'],
     ['seed-supply-chain-trade', '0 */6 * * *'],
     ['seed-comtrade-bilateral-hs4', '0 6 1 * *'],
     ['seed-bundle-market-backup', '*/5 * * * *'],
