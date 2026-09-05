@@ -807,7 +807,8 @@ describe('module import contract', () => {
     assert.match(seederSrc, /wildfire:fires:v1/);
     assert.doesNotMatch(seederSrc, /wildfire:canada/);
     assert.doesNotMatch(seederSrc, /fetch\.bind/);
-    assert.match(firmsModuleSrc, /firms2\.modaps\.eosdis\.nasa\.gov/);
+    assert.match(firmsModuleSrc, /firms\.modaps\.eosdis\.nasa\.gov/);
+    assert.doesNotMatch(firmsModuleSrc, /firms2\.modaps\.eosdis\.nasa\.gov/);
     assert.match(railwaySrc, /scripts\/wildfire\/bc-fire-points\.mjs/);
     assert.match(railwaySrc, /scripts\/wildfire\/cwfis-wfs\.mjs/);
     assert.match(railwaySrc, /scripts\/wildfire\/firms-area\.mjs/);
