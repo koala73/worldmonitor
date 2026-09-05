@@ -431,7 +431,103 @@ LINT_MD_INPUTS=(':(glob)**/*.md' '.markdownlint*' package.json)
 # scripts/generate-request-validation.mjs made an injector-only amend
 # keep the previous key and skip regeneration (#7236). These are sound
 # supersets of the generator inputs (worst case a spurious re-run).
-PROTO_INPUTS=(proto Makefile scripts src/generated docs/api shared server src/shared)
+PROTO_INPUTS=(
+  proto
+  Makefile
+  package.json
+  package-lock.json
+  .nvmrc
+  .github/workflows/proto-check.yml
+  scripts/_conflict-gdelt.mjs
+  scripts/_gdelt-bulk-materializer.mjs
+  scripts/_html-entities.mjs
+  scripts/apply-openapi-filter-param-schemas.mjs
+  scripts/generate-request-validation.mjs
+  scripts/generate-scorecard-edge-mirrors.mjs
+  scripts/lib/main-module.mjs
+  scripts/lib/openapi-codegen.mjs
+  scripts/openapi-inject-async-jobs.mjs
+  scripts/openapi-inject-billing-verification.mjs
+  scripts/openapi-inject-china-corridors.mjs
+  scripts/openapi-inject-china-decision-signals.mjs
+  scripts/openapi-inject-company-monitoring-contract.mjs
+  scripts/openapi-inject-deprecated.mjs
+  scripts/openapi-inject-examples.mjs
+  scripts/openapi-inject-idempotency.mjs
+  scripts/openapi-inject-jmespath.mjs
+  scripts/openapi-inject-rate-limit-errors.mjs
+  scripts/openapi-inject-required.mjs
+  scripts/openapi-inject-security.mjs
+  scripts/openapi-inject-servers.mjs
+  scripts/openapi-inject-webhooks.mjs
+  scripts/openapi-restrict-provider-redistribution.mjs
+  scripts/scorecard/v1/_input-registry.mts
+  scripts/scorecard/v1/_methodology.mts
+  scripts/scorecard/v1/_score-country.mts
+  scripts/scorecard/v1/_snapshot.mts
+  scripts/scorecard/v1/_source-adapters.mts
+  scripts/scorecard/v1/_source-registry.mts
+  scripts/scorecard/v1/_types.mts
+  scripts/shared/geography.js
+  scripts/shared/giving-published-estimate-claims.json
+  scripts/shared/iso2-to-region.json
+  server/_shared/api-key-rate-limit.ts
+  server/_shared/auth-session.ts
+  server/_shared/cache-contract.ts
+  server/_shared/client-ip.ts
+  server/_shared/deprecation-policy.ts
+  server/_shared/direct-llm-quota.ts
+  server/_shared/entitlement-check.ts
+  server/_shared/idempotency.ts
+  server/_shared/internal-auth.ts
+  server/_shared/mcp-internal-hmac.ts
+  server/_shared/pro-mcp-gate.ts
+  server/_shared/pro-mcp-token.ts
+  server/_shared/rate-limit.ts
+  server/_shared/redis.ts
+  server/_shared/response-headers.ts
+  server/_shared/response-projection.ts
+  server/_shared/seed-envelope.ts
+  server/_shared/usage-identity.ts
+  server/_shared/usage.ts
+  server/auth-session.ts
+  server/cors.ts
+  server/error-mapper.ts
+  server/gateway.ts
+  server/request-validator.ts
+  server/router.ts
+  server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
+  server/worldmonitor/supply-chain/v1/scenario-templates.ts
+  shared/attribution-rider.ts
+  shared/china-corridor-control-towers.ts
+  shared/china-decision-signal-manifest.ts
+  shared/china-decision-signals.ts
+  shared/china-logistics-corridors.ts
+  shared/decision-signal-provenance-contract.ts
+  shared/decision-signal-provenance-families.ts
+  shared/decision-signal-provenance.ts
+  shared/embed-access.ts
+  shared/embed-panels.ts
+  shared/iso2-to-iso3.json
+  shared/openapi-filter-param-contracts.json
+  shared/source-provenance-declarations.ts
+  shared/source-provenance.ts
+  shared/telegram-channel-trust.ts
+  shared/x-account-source-tiers.json
+  shared/x-account-trust.ts
+  src/shared/premium-paths.ts
+  src/shared/pro-fresh-rpc.ts
+  src/shared/public-rpc-cache.ts
+  src/generated
+  docs/api
+  server/worldmonitor/scorecard/v1/_input-registry.ts
+  server/worldmonitor/scorecard/v1/_methodology.ts
+  server/worldmonitor/scorecard/v1/_score-country.ts
+  server/worldmonitor/scorecard/v1/_snapshot.ts
+  server/worldmonitor/scorecard/v1/_source-adapters.ts
+  server/worldmonitor/scorecard/v1/_source-registry.ts
+  server/worldmonitor/scorecard/v1/_types.ts
+)
 PRO_TEST_INPUTS=(pro-test convex/config/productCatalog.ts scripts/generate-product-config.mjs src/config/products.generated.ts src/config/product-ids.generated.ts)
 
 # A fresh worktree's install is part of the expensive phase too. Keep it under

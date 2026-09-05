@@ -278,6 +278,13 @@ required gates. Run focused checks first and heavy checks sequentially. Keep use
 regression coverage. Remove a check only with evidence that its protection is
 obsolete, redundant, or ineffective.
 
+For Railway registry changes, use `npm run test:railway-registry` during the edit
+loop. It exercises the real CLI, runner, workflow and registry contracts without
+the unrelated health-status publisher fixtures. Run the expanded source-health
+proof once before delivery when that boundary changes. See
+[CI test selection and shards](docs/solutions/performance-issues/ci-test-selection-and-shards.md)
+for the commands, full-suite route and timing evidence.
+
 For browser work, use the [verification skill](.agents/skills/verify-worldmonitor/SKILL.md)
 and the relevant feature recipe. Country Brief is a worked example with an existing
 local command and CI coverage. Extend that proof for a changed outcome instead of

@@ -31,7 +31,7 @@ function extractAwkProgram(marker) {
 
 /** Run the extracted program through bash the way the workflow step does. */
 function runFilter(program, paths) {
-  const script = `FILES=$(cat); printf '%s' "$(echo "$FILES" | awk '${program}')"`;
+  const script = `FILES=$(cat); printf '%s' "$(printf '%s\\n' "$FILES" | awk '${program}')"`;
   return execFileSync('bash', ['-c', script], { input: paths.join('\n'), encoding: 'utf8' });
 }
 

@@ -422,7 +422,7 @@ describe('zh-TW catalogues — the generator is the freshness gate', () => {
   const workflow = loadYaml(readFileSync(repoPath('.github/workflows/test.yml'), 'utf8')) as {
     jobs: Record<string, WorkflowJob | undefined>;
   };
-  const unit = workflow.jobs.unit;
+  const unit = workflow.jobs['unit-shards'];
   const stepsOf = (job: WorkflowJob | undefined): WorkflowStep[] => job?.steps ?? [];
   const checkCommand = 'python3 scripts/convert-zh-tw.py --check';
 
@@ -497,7 +497,7 @@ describe('zh-TW catalogues — the generator is the freshness gate', () => {
 
     const diff = stepsOf(workflow.jobs.changes).find((step) => step.id === 'diff');
     assert.ok(diff?.run, 'could not find the diff step of the changes job');
-    const program = diff.run.match(/CODE=\$\(echo "\$FILES" \| awk '([\s\S]*?)'\)/);
+    const program = diff.run.match(/CODE=\$\(printf '%s\\n' "\$FILES" \| awk '([\s\S]*?)'\)/);
     assert.ok(program, 'could not read the CODE filter out of the changes job');
     const body = program[1]!;
 

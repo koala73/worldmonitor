@@ -102,6 +102,7 @@ const REQUIRED_NON_TEST_GATE_CHECKS = [
 // from becoming a way to quietly drop a job out of the gate.
 const GATE_CHECK_EXEMPTIONS: Record<string, { workflow: string; coveredBy: string }> = {
   'audit-lockfile': { workflow: 'Security Audit', coveredBy: 'security-audit' },
+  'unit-shards': { workflow: 'Test', coveredBy: 'unit' },
 };
 
 const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
@@ -140,7 +141,7 @@ function workflowRegexNeedle(path: string): string {
 }
 
 function shellAwkAssignmentBlock(variable: string): string {
-  const start = `${variable}=$(echo "$FILES" | awk '`;
+  const start = `${variable}=$(printf '%s\\n' "$FILES" | awk '`;
   const startIndex = testWorkflow.indexOf(start);
   assert.notEqual(startIndex, -1, `test.yml must define ${variable}`);
   const end = "\n          ')";
@@ -846,9 +847,10 @@ describe('CI workflow coverage', () => {
       );
     }
     for (const job of workflowJobNames(testWorkflow, 'test.yml')) {
+      const coveredBy = GATE_CHECK_EXEMPTIONS[job]?.coveredBy ?? job;
       assert.ok(
-        requiredChecks.includes(job),
-        `deploy-gate.yml must require every test.yml job; missing ${job}`,
+        requiredChecks.includes(coveredBy),
+        `deploy-gate.yml must require every test.yml job; missing ${coveredBy}`,
       );
     }
     for (const check of REQUIRED_NON_TEST_GATE_CHECKS) {
@@ -1149,7 +1151,7 @@ describe('CI workflow coverage', () => {
       assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
     }
 
-    const unit = testJobBlock('unit');
+    const unit = testJobBlock('unit-shards');
     assert.match(
       unit,
       /^\s+run: node scripts\/openapi-capacity-report\.mjs --out "\$RUNNER_TEMP\/openapi-capacity\.json"\s*$/m,
@@ -1165,7 +1167,7 @@ describe('CI workflow coverage', () => {
     );
     assert.match(
       unit,
-      /name: openapi-capacity-\$\{\{ github\.run_attempt \}\}/,
+      /name: openapi-capacity-\$\{\{ matrix\.shard \}\}-\$\{\{ github\.run_attempt \}\}/,
       'the capacity artifact name must carry run_attempt — upload-artifact v6 rejects a duplicate name within a run, which collides on the re-run started to chase the failure',
     );
     assert.match(
@@ -1355,7 +1357,7 @@ describe('CI workflow coverage', () => {
     // it back to a narrower path-gated job would silently re-open the
     // "bundle-breaking change with green PR CI" gap.
     assert.match(
-      testJobBlock('unit'),
+      testJobBlock('unit-shards'),
       /^\s+node scripts\/build-sidecar-handlers\.mjs\s*$/m,
       'unit job must run the sidecar handler bundle build',
     );
@@ -1369,7 +1371,7 @@ describe('CI workflow coverage', () => {
       'desktop-config job must run the desktop build env parity check',
     );
     assert.match(
-      testJobBlock('unit'),
+      testJobBlock('unit-shards'),
       /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
       'unit job must run the desktop build env parity check',
     );

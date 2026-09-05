@@ -15,6 +15,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      browser: ${{ steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
       validation: ${{ steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
@@ -23,6 +24,7 @@ jobs:
       desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
     steps:
       - id: diff
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -33,6 +35,7 @@ jobs:
           # Fail open (run everything) only when we cannot see the file list:
           # a zero parent SHA, a compare error, or GitHub's 300-file cap.
           emit_all_true() {
+            echo "browser=true" >> "$GITHUB_OUTPUT"
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
@@ -49,23 +52,49 @@ jobs:
               emit_all_true
               exit 0
             fi
-            if ! FILES=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}" \
-              --jq '.files[]?.filename'); then
+            if ! COMPARE_JSON=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}"); then
               echo "Compare API failed; running every Test job."
               emit_all_true
               exit 0
             fi
-            FILE_COUNT=$(printf '%s\n' "$FILES" | grep -c . || true)
+            if ! FILES_JSON=$(jq -ce '.files | arrays' <<< "$COMPARE_JSON"); then
+              emit_all_true
+              exit 0
+            fi
+            FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
             if [ "$FILE_COUNT" -ge 300 ]; then
               echo "Compare listing is truncated at 300 files; running every Test job."
               emit_all_true
               exit 0
             fi
           else
-            FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-              --paginate --jq '.[].filename')
+            if ! PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}") ||
+               ! FILES_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --slurp | jq -ce 'add | arrays'); then
+              echo "PR file lookup failed; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
+            if ! jq -e --arg head "${{ github.event.pull_request.head.sha }}" \
+              --arg base "${{ github.event.pull_request.base.sha }}" --argjson count "$FILE_COUNT" \
+              '.head.sha == $head and .base.sha == $base and .changed_files == $count and $count < 3000' <<< "$PR_JSON" >/dev/null; then
+              echo "PR metadata moved or its file list is incomplete; running every Test job."
+              emit_all_true
+              exit 0
+            fi
           fi
-          CODE=$(echo "$FILES" | awk '
+          # Include both sides of renames. A deleted file is still an input.
+          # Refuse line-delimiter characters before passing paths to awk.
+          if [ "$FILE_COUNT" -eq 0 ] || ! FILES=$(jq -er '
+            [.[] | .filename, (.previous_filename // empty)]
+            | if all(.[]; type == "string" and length > 0 and (explode | all(. != 0 and . != 10 and . != 13)))
+              then .[] else error("invalid path listing") end
+          ' <<< "$FILES_JSON"); then
+            echo "Unusable file list; running every Test job."
+            emit_all_true
+            exit 0
+          fi
+          CODE=$(printf '%s\n' "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
             # tests/dry-run-resilience-education-flip.test.mts validates —
@@ -113,12 +142,27 @@ jobs:
             END { print count + 0 }
           ')
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Only proven non-browser inputs may skip this job. New paths run it
+          # until their owner can establish that they cannot affect the smoke.
+          BROWSER=$(printf '%s\n' "$FILES" | awk '
+            /^(src\/|api\/|server\/|shared\/|public\/|pro-test\/|e2e\/)/ { count++; next }
+            /^docs\// { next }
+            /^tests\/.*\.test\.(mjs|mts)$/ { next }
+            /^scripts\/(audit-railway-watch-paths|run-railway-registry-sync|railway-services)\.(mjs|json)$/ { next }
+            /^\.github\/workflows\/(railway-registry-sync|seed-freshness)\.yml$/ { next }
+            /^\.husky\// { next }
+            /\.md$/ || /^LICENSE$/ { next }
+            /^src-tauri\// { next }
+            { count++ }
+            END { print count + 0 }
+          ')
+          echo "browser=$( [ "$BROWSER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # digest-image job: build Dockerfile.digest-notifications when a PR
           # touches its inputs (scripts/, shared/, server/_shared/, api/, the
           # Dockerfile itself, or the root package manifest). Catches the
           # cross-directory-import + native-dep breakage class documented in
           # tests/dockerfile-digest-notifications-imports.test.mjs.
-          DIGEST=$(echo "$FILES" | awk '
+          DIGEST=$(printf '%s\n' "$FILES" | awk '
             /^(scripts\/|shared\/|server\/_shared\/|api\/|\.dockerignore$|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
             END { print count + 0 }
           ')
@@ -126,7 +170,7 @@ jobs:
           # resilience-validation-smoke job: run the no-secrets artifact/schema
           # and script-contract gate when the validation bundle, its Dockerfile,
           # its committed artifacts, or its focused tests change.
-          VALIDATION=$(echo "$FILES" | awk '
+          VALIDATION=$(printf '%s\n' "$FILES" | awk '
             /^Dockerfile\.seed-bundle-resilience-validation$/ { count++ }
             /^docs\/methodology\/country-resilience-index\/validation\// { count++ }
             /^package\.json$/ || /^package-lock\.json$/ { count++ }
@@ -144,7 +188,7 @@ jobs:
           # migration, patch, or focused tests change. Do not trigger on every
           # Test workflow edit: unit already pins the job shape, and rebuilding
           # two Umami images is the cost that made this look like a per-PR tax.
-          UMAMI=$(echo "$FILES" | awk '
+          UMAMI=$(printf '%s\n' "$FILES" | awk '
             /^\.dockerignore$/ { count++ }
             /^Dockerfile\.umami$/ { count++ }
             /^Dockerfile\.umami-retention$/ { count++ }
@@ -156,7 +200,7 @@ jobs:
           echo "umami=$( [ "$UMAMI" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # Consumer-prices-core has its own lockfile and Vitest suite, so run
           # it whenever package code, tests, or its CI definition changes.
-          CONSUMER_PRICES=$(echo "$FILES" | awk '
+          CONSUMER_PRICES=$(printf '%s\n' "$FILES" | awk '
             /^consumer-prices-core\// { count++ }
             /^\.github\/workflows\/test\.yml$/ { count++ }
             END { print count + 0 }
@@ -178,7 +222,7 @@ jobs:
           # import from src/ and server/ via the @/ alias, so the bundle's
           # real input graph is the whole code surface, and `code` is the
           # filter that already tracks it.
-          DESKTOP_CONFIG=$(echo "$FILES" | awk '
+          DESKTOP_CONFIG=$(printf '%s\n' "$FILES" | awk '
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
@@ -193,7 +237,7 @@ jobs:
           # Workflow edits are covered by desktop-config (cheap) and by the
           # unit contract that pins this job's shape — they must not pay
           # cargo test --locked (45 min budget) the way test.yml used to.
-          DESKTOP_RUST=$(echo "$FILES" | awk '
+          DESKTOP_RUST=$(printf '%s\n' "$FILES" | awk '
             /^src-tauri\/sidecar\// { next }
             /^src-tauri\// { count++ }
             END { print count + 0 }
@@ -240,7 +284,13 @@ jobs:
         # sweep expects (exit 2) — a partial sweep must never certify as complete.
         run: node scripts/generate-entitlement-crosswalk.mjs --check
 
-  unit:
+  unit-shards:
+    name: unit-shard (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -340,7 +390,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: openapi-capacity-${{ github.run_attempt }}
+          name: openapi-capacity-${{ matrix.shard }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/openapi-capacity.json
           if-no-files-found: warn
           retention-days: 14
@@ -363,7 +413,15 @@ jobs:
           npm run bundle:check
           npm run bundle:check:pro
           npm run bundle:check:embed
-      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
+      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --shard=${{ matrix.shard }}/2 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+      - name: Upload data test timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-test-timings.jsonl
+          if-no-files-found: warn
+          retention-days: 14
       - name: Edge function bundle check
         # Shared checker with caller-specific profiles. Tracked files are the
         # deployable contract, so ignored Node sidecar bundles left by local
@@ -402,6 +460,28 @@ jobs:
         # import.meta.env.VITE_ read (code=true), forcing the author to
         # classify it for desktop builds before it can silently miss them.
         run: node scripts/check-desktop-build-env.mjs
+
+  unit:
+    needs: [changes, unit-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every selected unit shard
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          SHARDS_RESULT: ${{ needs.unit-shards.result }}
+        run: |
+          if [ "$CHANGES_RESULT" = success ] && {
+            { [ "$CODE_CHANGED" = true ] && [ "$SHARDS_RESULT" = success ]; } ||
+            { [ "$CODE_CHANGED" = false ] && [ "$SHARDS_RESULT" = skipped ]; }
+          }; then
+            echo "All selected unit shards passed."
+          else
+            echo "Unit shards did not satisfy the change selection."
+            exit 1
+          fi
 
   consumer-prices:
     needs: changes
@@ -618,7 +698,7 @@ jobs:
 
   variant-smoke-full:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
