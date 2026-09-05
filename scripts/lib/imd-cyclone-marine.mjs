@@ -4,13 +4,14 @@
  * Not district/nowcast (#7004) and not NDMA SACHET (#7002).
  * Products stay typed. They are not merged into weather:alerts:v1.
  *
- * Live fetch requires an API key. Disabled is not all-clear.
+ * Live fetch requires an API key and IMD account credentials. Disabled is not all-clear.
  */
 
 import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
 
 export const IMD_HOST = 'api.imd.gov.in';
 export const IMD_API_ORIGIN = 'https://api.imd.gov.in';
+export const IMD_OAUTH_TOKEN_URL = `${IMD_API_ORIGIN}/api/oauth/token.php`;
 export const IMD_API_REFERENCE_URL = 'https://api.imd.gov.in/public/api_reference.html';
 export const IMD_RSMC_URL = 'https://rsmcnewdelhi.imd.gov.in/';
 export const IMD_PORT_WARNING_PAGE = 'https://rsmcnewdelhi.imd.gov.in/port-warning.php';
@@ -196,6 +197,16 @@ export function imdApiKey(env = process.env) {
   return key || null;
 }
 
+export function imdApiEmail(env = process.env) {
+  const email = String(env.IMD_API_EMAIL || '').trim();
+  return email || null;
+}
+
+export function imdApiPassword(env = process.env) {
+  const password = String(env.IMD_API_PASSWORD || '');
+  return password.trim() ? password : null;
+}
+
 function imdApiKeyHeader(env = process.env) {
   return String(env.IMD_API_KEY_HEADER || 'X-API-Key').trim() || 'X-API-Key';
 }
@@ -204,6 +215,12 @@ function imdLiveFetchDisabledReason(env = process.env) {
   const key = imdApiKey(env);
   if (!key) return 'IMD_API_KEY_MISSING';
   if (!/^[\u0009\u0020-\u007E\u0080-\u00FF]+$/.test(key)) return 'IMD_API_KEY_INVALID';
+  const email = imdApiEmail(env);
+  if (!email) return 'IMD_API_EMAIL_MISSING';
+  if (!/^[^\u0000-\u001F\u007F]+$/u.test(email)) return 'IMD_API_EMAIL_INVALID';
+  const password = imdApiPassword(env);
+  if (!password) return 'IMD_API_PASSWORD_MISSING';
+  if (!/^[^\u0000-\u001F\u007F]+$/u.test(password)) return 'IMD_API_PASSWORD_INVALID';
   return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(imdApiKeyHeader(env))
     ? null
     : 'IMD_API_KEY_HEADER_INVALID';
@@ -701,27 +718,7 @@ function decorateSnapshotSurfaces(snapshot) {
   };
 }
 
-export async function fetchApprovedImdJson(url, {
-  fetchFn = globalThis.fetch,
-  userAgent = CHROME_UA,
-  maxBytes = IMD_MAX_BYTES,
-  timeoutMs = IMD_TIMEOUT_MS,
-  apiKey = null,
-  apiKeyHeader = 'X-API-Key',
-} = {}) {
-  if (!isAllowedImdHost(url)) throw new Error('UNTRUSTED_SOURCE_HOST');
-  const headers = { Accept: 'application/json', 'User-Agent': userAgent };
-  if (apiKey) headers[apiKeyHeader] = apiKey;
-  const response = await fetchFn(url, {
-    headers,
-    redirect: 'error',
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) {
-    const err = new Error(`HTTP ${response.status}`);
-    err.httpStatus = response.status;
-    throw err;
-  }
+async function readBoundedJsonResponse(response, maxBytes = IMD_MAX_BYTES) {
   const chunks = [];
   let size = 0;
   if (!response.body || typeof response.body.getReader !== 'function') {
@@ -739,6 +736,86 @@ export async function fetchApprovedImdJson(url, {
     chunks.push(value);
   }
   return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))));
+}
+
+export async function fetchApprovedImdJson(url, {
+  fetchFn = globalThis.fetch,
+  userAgent = CHROME_UA,
+  maxBytes = IMD_MAX_BYTES,
+  timeoutMs = IMD_TIMEOUT_MS,
+  apiKey = null,
+  apiKeyHeader = 'X-API-Key',
+  apiToken = null,
+} = {}) {
+  if (!isAllowedImdHost(url)) throw new Error('UNTRUSTED_SOURCE_HOST');
+  const headers = { Accept: 'application/json', 'User-Agent': userAgent };
+  if (apiKey) headers[apiKeyHeader] = apiKey;
+  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
+  const response = await fetchFn(url, {
+    headers,
+    redirect: 'error',
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    const err = new Error(`HTTP ${response.status}`);
+    err.httpStatus = response.status;
+    throw err;
+  }
+  return readBoundedJsonResponse(response, maxBytes);
+}
+
+function imdAuthFailureReason(err) {
+  const message = String(err?.message || '');
+  if (/^IMD_AUTH_HTTP_[1-5]\d{2}$/.test(message)) return message;
+  if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return 'IMD_AUTH_TIMEOUT';
+  if (/^IMD_RESPONSE_TOO_LARGE:\d+$/.test(message)) return 'IMD_AUTH_RESPONSE_TOO_LARGE';
+  if (message === 'IMD_AUTH_RESPONSE_INVALID') return message;
+  return 'IMD_AUTH_FAILED';
+}
+
+async function mintImdApiToken({
+  email,
+  password,
+  fetchFn = globalThis.fetch,
+  userAgent = CHROME_UA,
+  maxBytes = IMD_MAX_BYTES,
+  timeoutMs = IMD_TIMEOUT_MS,
+}) {
+  try {
+    const response = await fetchFn(IMD_OAUTH_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': userAgent,
+      },
+      body: JSON.stringify({ email, password }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) throw new Error(`IMD_AUTH_HTTP_${response.status}`);
+    let payload;
+    try {
+      payload = await readBoundedJsonResponse(response, maxBytes);
+    } catch (err) {
+      if (/^IMD_RESPONSE_TOO_LARGE:\d+$/.test(String(err?.message || ''))) throw err;
+      throw new Error('IMD_AUTH_RESPONSE_INVALID');
+    }
+    const accessToken = typeof payload?.access_token === 'string' ? payload.access_token : '';
+    const tokenType = typeof payload?.token_type === 'string' ? payload.token_type.trim() : '';
+    const expiresIn = Number(payload?.expires_in);
+    if (
+      !/^[\u0021-\u007E]+$/.test(accessToken)
+      || tokenType.toLowerCase() !== 'bearer'
+      || !Number.isFinite(expiresIn)
+      || expiresIn <= 0
+    ) {
+      throw new Error('IMD_AUTH_RESPONSE_INVALID');
+    }
+    return { token: accessToken, error: null };
+  } catch (err) {
+    return { token: null, error: imdAuthFailureReason(err) };
+  }
 }
 
 function imdFetchFailureReason(err) {
@@ -781,6 +858,21 @@ export async function fetchImdCycloneMarine({
     return buildDisabledSnapshot({ now, reason: disabledReason });
   }
   const apiKey = imdApiKey(env);
+  const auth = await mintImdApiToken({
+    email: imdApiEmail(env),
+    password: imdApiPassword(env),
+    fetchFn,
+    userAgent,
+  });
+  if (auth.error) {
+    const productResults = {};
+    for (const id of IMD_PRODUCT_IDS) {
+      if (IMD_PRODUCTS[id].schema === 'documented') {
+        productResults[id] = { status: 'failed', reason: auth.error, records: [], requestCount: 0 };
+      }
+    }
+    return assembleImdSnapshot({ productResults, previous, now });
+  }
   const apiKeyHeader = imdApiKeyHeader(env);
   const productResults = {};
   await Promise.all(IMD_PRODUCT_IDS.map(async (id) => {
@@ -789,6 +881,7 @@ export async function fetchImdCycloneMarine({
       userAgent,
       apiKey,
       apiKeyHeader,
+      apiToken: auth.token,
     });
   }));
   return assembleImdSnapshot({ productResults, previous, now });

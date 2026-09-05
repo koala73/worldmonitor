@@ -39,9 +39,10 @@ public API is account- and key-gated.
   undocumented fishermen warning, and keeps observed positions, forecast
   positions, forecast-wind-radii, and cone-of-uncertainty as distinct
   `geometryKind` values.
-- Live fetch requires `IMD_API_KEY`. Without it, the seeder publishes
-  `coverageState: disabled` with `sourceState:
-  unavailable` (not all-clear).
+- Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and
+  `IMD_API_PASSWORD`. The seeder mints one short-lived JWT per run. Without
+  valid credentials, it publishes `coverageState: disabled` or
+  `unavailable` with `sourceState: unavailable` (not all-clear).
 - One failed product carries last-good for that product only.
 - Dashboard hydration is the on-demand bootstrap key `imdCycloneMarine`.
 

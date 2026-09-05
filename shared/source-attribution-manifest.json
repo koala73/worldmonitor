@@ -1382,6 +1382,9 @@
           "path": "scripts/audit-resilience-cohorts.mjs"
         },
         {
+          "path": "scripts/capture-seed-recovery.mjs"
+        },
+        {
           "path": "scripts/check-seed-freshness.mjs"
         },
         {

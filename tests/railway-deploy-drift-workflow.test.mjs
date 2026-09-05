@@ -79,7 +79,7 @@ function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha, queryLog 
       rootDirectory,
       watchPatterns: entry?.watchPatterns ?? [],
       dockerfilePath: entry?.dockerfile ?? null,
-      startCommand: null,
+      startCommand: entry?.startCommand ?? null,
       cronSchedule: entry?.cronSchedule ?? null,
     };
   };
@@ -321,15 +321,13 @@ describe('Railway Native Deploy Health workflow', () => {
       assert.match(healthyDrift.stdout, /Every service this repository deploys is running/);
       assert.match(
         healthyDrift.stderr,
-        // 82 since seed-bundle-static-ref-heavy was provisioned; FLEET_PAGE_SIZE
-        // is 500, so it is still one fleet page.
-        /Read 82 service histories in 1 fleet page\(s\) \(82 records\), 0 direct fallback\(s\)\./,
+        /Read 83 service histories in 1 fleet page\(s\) \(83 records\), 0 direct fallback\(s\)\./,
       );
       const queries = readFileSync(fixture.queryLog, 'utf8').trim().split('\n');
       assert.equal(
         queries.filter((query) => query === 'ViewerDeploymentConfig').length,
-        82,
-        'the config audit must reuse the deployment projection instead of reading 82 services twice',
+        83,
+        'the config audit must reuse the deployment projection instead of reading 83 services twice',
       );
       assert.equal(queries.filter((query) => query === 'FleetDeployments').length, 1);
 
