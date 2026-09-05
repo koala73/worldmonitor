@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { query, type QueryExecutor } from '../client.js';
-import type { PriceObservation } from '../models.js';
 
 export interface InsertObservationInput {
   retailerProductId: string;
@@ -63,36 +62,3 @@ export async function insertObservation(
   return result.rows[0].id;
 }
 
-export async function getLatestObservations(
-  retailerProductIds: string[],
-): Promise<PriceObservation[]> {
-  if (retailerProductIds.length === 0) return [];
-
-  const result = await query<PriceObservation>(
-    `SELECT DISTINCT ON (retailer_product_id) *
-     FROM price_observations
-     WHERE retailer_product_id = ANY($1) AND in_stock = true
-     ORDER BY retailer_product_id, observed_at DESC, id DESC`,
-    [retailerProductIds],
-  );
-  return result.rows;
-}
-
-export async function getPriceHistory(
-  retailerProductId: string,
-  daysBack: number,
-): Promise<Array<{ date: Date; price: number; unitPrice: number | null }>> {
-  const result = await query<{ date: Date; price: number; unit_price: number | null }>(
-    `SELECT date_trunc('day', observed_at) AS date,
-            AVG(price)::numeric(12,2) AS price,
-            AVG(unit_price)::numeric(12,4) AS unit_price
-     FROM price_observations
-     WHERE retailer_product_id = $1
-       AND observed_at > NOW() - ($2 || ' days')::INTERVAL
-       AND in_stock = true
-     GROUP BY 1
-     ORDER BY 1`,
-    [retailerProductId, daysBack],
-  );
-  return result.rows.map((r) => ({ date: r.date, price: r.price, unitPrice: r.unit_price }));
-}

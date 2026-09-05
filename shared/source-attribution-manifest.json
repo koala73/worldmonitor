@@ -444,9 +444,6 @@
         },
         {
           "path": "scripts/seed-cyber-threats.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -4187,9 +4184,6 @@
       "references": [
         {
           "path": "scripts/seed-cyber-threats.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -4281,9 +4275,6 @@
           "path": "server/worldmonitor/market/v1/_quote-provider.ts"
         },
         {
-          "path": "server/worldmonitor/market/v1/_shared.ts"
-        },
-        {
           "path": "server/worldmonitor/market/v1/get-insider-transactions.ts"
         }
       ]
@@ -4306,15 +4297,10 @@
       "host": "firms2.modaps.eosdis.nasa.gov",
       "provider": "NASA FIRMS",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "NASA FIRMS provider terms apply; redistribution terms require review",
       "attribution": "Credit NASA FIRMS and link to the original upstream API or dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/wildfire/firms-area.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "focustaiwan.tw",
@@ -4403,9 +4389,6 @@
       "references": [
         {
           "path": "scripts/seed-cyber-threats.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -5181,9 +5164,6 @@
       "references": [
         {
           "path": "scripts/seed-cyber-threats.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -6928,9 +6908,6 @@
       "references": [
         {
           "path": "scripts/seed-cyber-threats.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -7473,9 +7450,6 @@
           "path": "scripts/seed-market-quotes.mjs"
         },
         {
-          "path": "server/worldmonitor/market/v1/_shared.ts"
-        },
-        {
           "path": "server/worldmonitor/market/v1/analyze-stock.ts"
         },
         {
@@ -7579,9 +7553,6 @@
         },
         {
           "path": "scripts/seed-disease-outbreaks.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -9762,9 +9733,6 @@
         },
         {
           "path": "scripts/seed-cyber-threats.mjs"
-        },
-        {
-          "path": "server/worldmonitor/cyber/v1/_shared.ts"
         }
       ]
     },
@@ -10527,9 +10495,6 @@
         },
         {
           "path": "server/worldmonitor/market/v1/_quote-provider.ts"
-        },
-        {
-          "path": "server/worldmonitor/market/v1/_shared.ts"
         }
       ]
     },

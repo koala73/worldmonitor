@@ -1,9 +1,6 @@
 import { CHROME_UA, sleep } from '../_seed-utils.mjs';
 
-export const FIRMS_API_BASE_URLS = Object.freeze([
-  'https://firms.modaps.eosdis.nasa.gov',
-  'https://firms2.modaps.eosdis.nasa.gov',
-]);
+export const FIRMS_API_BASE_URL = 'https://firms.modaps.eosdis.nasa.gov';
 
 export const FIRMS_SOURCES = Object.freeze([
   'VIIRS_SNPP_NRT',
@@ -72,10 +69,10 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
   logger = console,
 } = {}) {
   const failures = [];
-  for (let index = 0; index < FIRMS_API_BASE_URLS.length; index++) {
-    const baseUrl = FIRMS_API_BASE_URLS[index];
+  const labels = ['primary', 'primary retry'];
+  for (let index = 0; index < labels.length; index++) {
     try {
-      const response = await fetchFn(buildAreaUrl(baseUrl, apiKey, source, bbox), {
+      const response = await fetchFn(buildAreaUrl(FIRMS_API_BASE_URL, apiKey, source, bbox), {
         headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(30_000),
       });
@@ -86,10 +83,13 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
       }
       return parseCsv(await response.text());
     } catch (error) {
-      const endpoint = index === 0 ? 'primary' : 'secondary';
+      const endpoint = labels[index];
       failures.push(`${endpoint} ${safeFailureReason(error)}`);
-      if (index + 1 < FIRMS_API_BASE_URLS.length) {
-        logger.warn(`  [FIRMS] ${source}/${regionName}: ${failures.at(-1)}; trying secondary`);
+      const retryable = !Number.isInteger(error?.status) || error.status === 408
+        || error.status === 429 || (error.status >= 500 && error.status <= 599);
+      if (!retryable) break;
+      if (index + 1 < labels.length) {
+        logger.warn(`  [FIRMS] ${source}/${regionName}: ${failures.at(-1)}; trying ${labels[index + 1]}`);
         await sleepFn(REQUEST_PACE_MS);
       }
     }
