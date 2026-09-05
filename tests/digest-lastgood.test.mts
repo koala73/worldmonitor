@@ -49,8 +49,12 @@ describe('durable last-good policy (#7084)', () => {
   it('accepts only structurally valid digests with real content', () => {
     assert.ok(isAcceptableDigest(ONE_ITEM));
     assert.ok(isAcceptableDigest(RICHER));
+    assert.ok(isAcceptableDigest({ categories: { malformed: null, ...ONE_ITEM.categories } }));
     assert.ok(!isAcceptableDigest({ categories: {} }));
     assert.ok(!isAcceptableDigest({ categories: { politics: { items: [] } } }));
+    assert.ok(!isAcceptableDigest({ categories: { politics: { items: 'not-an-array' } } } as any));
+    assert.ok(!isAcceptableDigest({ categories: { politics: { items: { length: 1 } } } } as any));
+    assert.ok(!isAcceptableDigest({ categories: { politics: null } }));
     assert.ok(!isAcceptableDigest(null));
     assert.ok(!isAcceptableDigest(undefined));
     assert.ok(!isAcceptableDigest({}));

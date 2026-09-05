@@ -5,11 +5,11 @@ import { __testing__ } from '../api/health.js';
 import { evaluateFreshness } from '../api/mcp/freshness.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import {
+  COUNT_SOURCE_KEYS,
   TEMPORAL_ANOMALIES_TTL,
   TEMPORAL_ANOMALIES_REBUILD_AFTER_MS,
   TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN,
   BASELINE_SAMPLE_INTERVAL_MS,
-  COUNT_SOURCE_KEYS,
   makeBaselineKeyV2,
   temporalAnomaliesContentMeta,
   temporalAnomaliesReadableContentMeta,
@@ -163,6 +163,97 @@ function seedMetaStamp(calls: { method: string; key: string; value?: unknown }[]
   return calls.find((call) => call.method === 'POST' && call.key === 'seed-meta:temporal:anomalies');
 }
 
+/**
+ * `military:flights:v1` is a RAW payload (no seed envelope): the seeder and the
+ * military-flights RPC both write plain JSON via redisSet/setCachedJson.
+ */
+function liveFlights(now = Date.now(), ageMs = 10 * 60_000) {
+  return {
+    flights: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    fetchedAt: now - ageMs,
+    coverage: 'global',
+    stats: { total: 3, byType: {} },
+    classificationAudit: {},
+  };
+}
+
+/**
+ * `theater-posture:sebuf:v1` is stored as a seed envelope ({_seed, data});
+ * readers see the unwrapped `data` payload.
+ */
+function livePosture(
+  now = Date.now(),
+  newestAgeMs = 10 * 60_000,
+  oldestAgeMs = 15 * 60_000,
+) {
+  return {
+    theaters: [
+      { theater: 'a', postureLevel: 'normal', activeFlights: 1, trackedVessels: 4, assessedAt: now - oldestAgeMs },
+      { theater: 'b', postureLevel: 'elevated', activeFlights: 0, trackedVessels: 2, assessedAt: now - newestAgeMs },
+    ],
+    provider: 'adsb.lol',
+  };
+}
+
+/** `maritime:ais-gaps:v1` envelope data payload. */
+function liveGaps(now = Date.now(), ageMs = 10 * 60_000, darkShips = 2) {
+  return { darkShips, sampledAt: now - ageMs };
+}
+
+/** Redis values (envelopes stay wrapped) for the three client-reported metric sources. */
+function redisValueFor(type: string, payload: unknown): unknown {
+  if (type === 'vessels' || type === 'ais_gaps') {
+    return {
+      _seed: {
+        fetchedAt: Date.now(),
+        recordCount: type === 'ais_gaps' ? (payload as { darkShips?: number }).darkShips ?? 0 : 2,
+        sourceVersion: type === 'ais_gaps' ? 'ais-relay' : 'theater-posture',
+        schemaVersion: 1,
+        state: 'OK',
+      },
+      data: payload,
+    };
+  }
+  return payload;
+}
+
+function dueBaseline(mean = 1000, m2 = 290_000) {
+  // stdDev ~= 100 around a mean of 1000: any small count clears the anomaly
+  // threshold, so assertions turn on the count semantics, not the z-score.
+  return {
+    mean, m2, sampleCount: 30,
+    lastUpdated: new Date(Date.now() - BASELINE_SAMPLE_INTERVAL_MS - 60_000).toISOString(),
+  };
+}
+
+function baselineKeyFor(type: string, at = new Date()) {
+  return makeBaselineKeyV2(type, 'global', at.getUTCDay(), at.getUTCMonth() + 1);
+}
+
+/**
+ * The three client-reported metric sources at FRESH ages (2-3min), so they
+ * never win a min-reduction against the news/FIRMS ages the #7141 tests pin.
+ * Spread into the two-source fixtures that predate the five-source contract.
+ */
+function altSourcesLive(now = Date.now()) {
+  return {
+    military_flights: liveFlights(now, 2 * 60_000),
+    vessels: livePosture(now, 2 * 60_000, 3 * 60_000),
+    ais_gaps: liveGaps(now, 2 * 60_000),
+  };
+}
+
+/** Same three sources as REDIS values (real keys, envelopes wrapped), built
+ *  from the type-keyed fixture so the payload ages have one source of truth. */
+function altSourcesLiveRedis(now = Date.now()) {
+  const live = altSourcesLive(now);
+  return {
+    'military:flights:v1': live.military_flights,
+    'theater-posture:sebuf:v1': redisValueFor('vessels', live.vessels),
+    'maritime:ais-gaps:v1': redisValueFor('ais_gaps', live.ais_gaps),
+  };
+}
+
 function temporalAnomaliesCheck() {
   const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_temporal_anomalies');
   assert.ok(tool, 'get_temporal_anomalies must exist');
@@ -291,17 +382,20 @@ describe('temporal anomalies cache freshness', () => {
     assert.equal(stamp?.recordCount, 1, 'one source read must stamp recordCount 1');
   });
 
-  it('stamps full coverage when both count sources are present', async () => {
+  it('stamps full coverage when all five count sources are present', async () => {
     // Positive control: the assertion above must not pass merely because the
     // stamp is always 0.
     const { calls } = await runWithRedisStub({
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(),
       'wildfire:fires:v1': liveFires(),
+      'military:flights:v1': liveFlights(),
+      'theater-posture:sebuf:v1': redisValueFor('vessels', livePosture()),
+      'maritime:ais-gaps:v1': redisValueFor('ais_gaps', liveGaps()),
     });
 
     const stamp = calls.find((c) => c.method === 'POST' && c.key === 'seed-meta:temporal:anomalies');
-    assert.equal(stamp?.recordCount, 2, 'both sources read must stamp recordCount 2');
+    assert.equal(stamp?.recordCount, 5, 'all five sources read must stamp recordCount 5');
     const meta = stamp?.value as { maxContentAgeMin?: number; newestItemAt?: number } | undefined;
     assert.equal(
       meta?.maxContentAgeMin,
@@ -526,6 +620,7 @@ describe('temporal anomalies cache freshness', () => {
         // names. A prefixed read can never hit them.
         'news:insights:v1': liveNews(),
         'wildfire:fires:v1': liveFires(),
+        ...altSourcesLiveRedis(),
       },
       { vercelEnv: 'preview', vercelSha: 'deadbeefcafebabe' },
     );
@@ -623,6 +718,55 @@ describe('temporal anomalies cache freshness', () => {
   });
 });
 
+describe('server-side producers for client-reported metrics (#7574)', () => {
+  // The three former client-reported types get trusted Redis producers. Each
+  // test drives a rebuild where ONLY that source is readable, with a due
+  // baseline (mean 1000, stdDev ~100), so the emitted anomaly proves the
+  // source key, the count extraction, and the baseline fold end to end.
+  const cases: Array<{ type: string; sourceKey: string; payload: unknown; expectedCount: number }> = [
+    { type: 'military_flights', sourceKey: 'military:flights:v1', payload: liveFlights(), expectedCount: 3 },
+    // theater-posture stores an envelope; the count is the sum of per-theater
+    // tracked military vessels (4 + 2), not the envelope recordCount (2).
+    { type: 'vessels', sourceKey: 'theater-posture:sebuf:v1', payload: livePosture(), expectedCount: 6 },
+    { type: 'ais_gaps', sourceKey: 'maritime:ais-gaps:v1', payload: liveGaps(), expectedCount: 2 },
+  ];
+
+  for (const { type, sourceKey, payload, expectedCount } of cases) {
+    it(`counts ${type} from its trusted Redis producer`, async () => {
+      const { response, calls } = await runWithRedisStub({
+        [sourceKey]: redisValueFor(type, payload),
+        [baselineKeyFor(type)]: dueBaseline(),
+      });
+
+      const anomaly = response.anomalies.find((a) => a.type === type);
+      assert.ok(anomaly, `a ${type} anomaly should be emitted`);
+      assert.equal(anomaly.currentCount, expectedCount);
+      assert.equal(anomaly.region, 'global');
+
+      // The rebuild must fold a sample into the v2 baseline for this type --
+      // the producer is not just read, it advances the running statistics.
+      const baselineWrites = calls.filter(
+        (c) => c.method === 'POST' && c.key.includes(`baseline:v2:${type}:`),
+      );
+      assert.equal(baselineWrites.length, 1, `exactly one ${type} baseline sample must fold`);
+    });
+  }
+
+  it('does not count theater-posture envelope metadata as vessels', async () => {
+    // Counting the raw envelope (iterating _seed/data as theaters) or the
+    // theaters ARRAY LENGTH (2) instead of trackedVessels would silently
+    // re-base the vessel baseline.
+    const { response } = await runWithRedisStub({
+      'theater-posture:sebuf:v1': redisValueFor('vessels', livePosture()),
+      [baselineKeyFor('vessels')]: dueBaseline(),
+    });
+
+    const anomaly = response.anomalies.find((a) => a.type === 'vessels');
+    assert.ok(anomaly);
+    assert.equal(anomaly.currentCount, 6);
+  });
+});
+
 describe('temporal anomalies content-age extractor (#7141)', () => {
   const NOW = Date.parse('2026-08-27T12:00:00.000Z');
 
@@ -632,6 +776,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const meta = temporalAnomaliesContentMeta({
       news: frozenNews(NOW, newsAge),
       satellite_fires: liveFires(NOW, firesAge),
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta, 'both sources datable');
@@ -667,6 +812,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
         ],
         pagination: { nextCursor: '', totalCount: 2 },
       },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta);
@@ -682,6 +828,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, newsAge),
       satellite_fires: frozenFires(NOW, firesAge),
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta);
@@ -693,6 +840,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, newsAge),
       satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta);
@@ -703,6 +851,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const meta = temporalAnomaliesContentMeta({
       news: { topStories: [{ id: 'a' }] },
       satellite_fires: liveFires(NOW),
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.equal(meta, null, 'undatable news items are STALE_CONTENT, not skipped');
@@ -712,6 +861,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW),
       satellite_fires: undatableFires(),
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.equal(meta, null, 'undatable FIRMS rows are STALE_CONTENT, not skipped');
@@ -728,6 +878,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
           { id: 'firms-1', source: 'firms', detectedAt: firmsAt },
         ],
       },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta);
@@ -739,6 +890,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
     const meta = temporalAnomaliesContentMeta({
       news: liveNews(NOW, newsAge),
       satellite_fires: canadaOnlyDegradedFires(NOW),
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.equal(
@@ -756,6 +908,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
         _firmsState: 'ok',
         _firmsPartial: true,
       },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.equal(
@@ -782,6 +935,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
         _firmsState: 'ok',
         _firmsCount: 0,
       },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.equal(
@@ -800,6 +954,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
           { id: 'cwfis-1', source: 'cwfis', detectedAt: NOW - 30 * 60_000 },
         ],
       },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta);
@@ -818,6 +973,7 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
       },
       // Present empty FIRMS window still skips; this isolates the news skew rule.
       satellite_fires: { fireDetections: [], pagination: { totalCount: 0 } },
+      ...altSourcesLive(NOW),
     }, NOW);
 
     assert.ok(meta);
@@ -873,6 +1029,114 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
       'live fires plus absent news must not stamp a fires-only content clock',
     );
   });
+
+  it('clocks all five count sources and reduces with min across sources', () => {
+    // Frozen military flights must win over the four live sources — per-source
+    // newest = max within the payload, across sources = min, the house rule.
+    const flightsAge = 72 * HOUR_MS;
+    const newsAge = 12 * 60_000;
+    const postureNewest = 10 * 60_000;
+    const postureOldest = 15 * 60_000;
+    const gapsAge = 20 * 60_000;
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, newsAge),
+      satellite_fires: liveFires(NOW, 25 * 60_000),
+      military_flights: liveFlights(NOW, flightsAge),
+      vessels: livePosture(NOW, postureNewest, postureOldest),
+      ais_gaps: liveGaps(NOW, gapsAge),
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(
+      meta.newestItemAt,
+      NOW - flightsAge,
+      'a frozen flights payload must surface even with four live sources',
+    );
+    assert.equal(
+      meta.oldestItemAt,
+      NOW - flightsAge,
+      'oldestItemAt is the min across per-source oldest observations',
+    );
+  });
+
+  it('clocks theater-posture off the theaters, not the envelope stamp', () => {
+    // Posture is the STALEST source, so its clock must surface on both fields.
+    // Others are fresh enough (5-8min) to never win the min-reduction.
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, 5 * 60_000),
+      satellite_fires: liveFires(NOW, 6 * 60_000),
+      military_flights: liveFlights(NOW, 7 * 60_000),
+      vessels: livePosture(NOW, 90 * 60_000, 90 * 60_000),
+      ais_gaps: liveGaps(NOW, 8 * 60_000),
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, NOW - 90 * 60_000, 'a stalled theater assessment must age the clock');
+    assert.equal(meta.oldestItemAt, NOW - 90 * 60_000);
+  });
+
+  it('reduces theater assessments with max-newest/min-oldest inside the payload', () => {
+    // Theaters [90min, 50min] with everything else fresh: the per-source clock
+    // is {newest: 50min, oldest: 90min}. A swapped within-payload reduction
+    // would stamp {newest: 90min, oldest: 50min} and fail both assertions.
+    const meta = temporalAnomaliesContentMeta({
+      news: liveNews(NOW, 5 * 60_000),
+      satellite_fires: liveFires(NOW, 6 * 60_000),
+      military_flights: liveFlights(NOW, 7 * 60_000),
+      vessels: livePosture(NOW, 50 * 60_000, 90 * 60_000),
+      ais_gaps: liveGaps(NOW, 8 * 60_000),
+    }, NOW);
+
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, NOW - 50 * 60_000);
+    assert.equal(meta.oldestItemAt, NOW - 90 * 60_000);
+  });
+
+  it('every configured COUNT_SOURCE_KEYS source participates in the content clock', () => {
+    // Parity guard: a source added to COUNT_SOURCE_KEYS without a content-clock
+    // extractor would silently exempt itself from the stale-content contract.
+    const live = {
+      news: liveNews(NOW, 5 * 60_000),
+      satellite_fires: liveFires(NOW, 6 * 60_000),
+      military_flights: liveFlights(NOW, 7 * 60_000),
+      vessels: livePosture(NOW),
+      ais_gaps: liveGaps(NOW, 8 * 60_000),
+    };
+    const undatable: Record<string, unknown> = {
+      news: { topStories: [{ id: 'a' }] },
+      satellite_fires: undatableFires(),
+      military_flights: { flights: [] },
+      vessels: { theaters: [] },
+      ais_gaps: { darkShips: 3 },
+    };
+
+    for (const type of Object.keys(COUNT_SOURCE_KEYS)) {
+      assert.ok(
+        undatable[type] !== undefined,
+        `no undatable fixture for COUNT_SOURCE_KEYS type ${type}`,
+      );
+      assert.equal(
+        temporalAnomaliesContentMeta({ ...live, [type]: undatable[type] } as never, NOW),
+        null,
+        `${type} must fail closed when its payload is undatable`,
+      );
+    }
+  });
+
+  it('readable-only clock skips absent new sources but fails closed on an unhealthy one', () => {
+    const readable = temporalAnomaliesReadableContentMeta({
+      satellite_fires: liveFires(NOW, 15 * 60_000),
+      military_flights: { flights: [] },
+    }, NOW);
+
+    assert.equal(readable.status, 'fail-closed', 'an undatable readable flights payload fails closed');
+
+    const ok = temporalAnomaliesReadableContentMeta({
+      satellite_fires: liveFires(NOW, 15 * 60_000),
+      military_flights: liveFlights(NOW),
+    }, NOW);
+    assert.equal(ok.status, 'ok');
+  });
 });
 
 describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
@@ -883,6 +1147,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': frozenNews(now, frozenAge),
       'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+      ...altSourcesLiveRedis(now),
     });
 
     const stamp = seedMetaStamp(calls);
@@ -911,6 +1176,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': frozenNews(now, frozenAge),
       'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+      ...altSourcesLiveRedis(now),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -941,6 +1207,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
         _firmsState: 'ok',
         _firmsPartial: true,
       },
+      ...altSourcesLiveRedis(now),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -964,6 +1231,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 20 * 60_000),
       'wildfire:fires:v1': liveFires(now, 25 * 60_000),
+      ...altSourcesLiveRedis(now),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -984,6 +1252,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now, 12 * 60_000),
       'wildfire:fires:v1': canadaOnlyDegradedFires(now),
+      ...altSourcesLiveRedis(now),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -1013,6 +1282,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': { topStories: [{ id: 'a' }] },
       'wildfire:fires:v1': liveFires(),
+      ...altSourcesLiveRedis(now),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -1087,6 +1357,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': liveNews(now),
       'wildfire:fires:v1': undatableFires(),
+      ...altSourcesLiveRedis(now),
     });
 
     const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
@@ -1243,6 +1514,7 @@ describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
       'temporal:anomalies:v1': freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000),
       'news:insights:v1': frozenNews(now, 72 * HOUR_MS),
       'wildfire:fires:v1': liveFires(now, 12 * 60_000),
+      ...altSourcesLiveRedis(now),
     });
 
     const stamped = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
