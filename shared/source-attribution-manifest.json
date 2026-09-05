@@ -594,6 +594,9 @@
           "path": "scripts/_r2-storage.mjs"
         },
         {
+          "path": "scripts/cloudflare-cache-rule.mjs"
+        },
+        {
           "path": "scripts/seed-internet-outages.mjs"
         },
         {
@@ -14231,6 +14234,9 @@
         },
         {
           "path": "scripts/build-agent-skills-index.mjs"
+        },
+        {
+          "path": "scripts/build-ai-search.mjs"
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs"

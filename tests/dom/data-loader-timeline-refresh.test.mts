@@ -202,6 +202,7 @@ const conflictData = {
 const flight = { id: 'flight-1', lat: 51.5, lon: -0.1 } as never;
 
 async function makeLoader() {
+  const refreshOpenCountryMilitary = vi.fn();
   const refreshOpenCountryTimeline = vi.fn();
   const ctx = {
     intelligenceCache: {},
@@ -224,9 +225,10 @@ async function makeLoader() {
   const loader = new DataLoaderManager(ctx, {
     renderCriticalBanner: () => undefined,
     refreshOpenCountryBrief: () => undefined,
+    refreshOpenCountryMilitary,
     refreshOpenCountryTimeline,
   });
-  return { loader, ctx, refreshOpenCountryTimeline };
+  return { loader, ctx, refreshOpenCountryMilitary, refreshOpenCountryTimeline };
 }
 
 describe('DataLoaderManager cache-to-timeline callbacks', () => {
@@ -321,7 +323,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
   it('invokes refreshOpenCountryTimeline after loadMilitary assigns tracks', async () => {
     mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [] });
-    const { loader, ctx, refreshOpenCountryTimeline } = await makeLoader();
+    const { loader, ctx, refreshOpenCountryMilitary, refreshOpenCountryTimeline } = await makeLoader();
     refreshOpenCountryTimeline.mockImplementation(() => {
       expect(ctx.intelligenceCache.military).toEqual({
         flights: [flight],
@@ -334,12 +336,13 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     await loader.loadMilitary();
 
     expect(refreshOpenCountryTimeline).toHaveBeenCalledOnce();
+    expect(refreshOpenCountryMilitary).toHaveBeenCalledOnce();
     expect(ctx.intelligenceCache.military?.flights).toEqual([flight]);
   });
 
   it('invokes refreshOpenCountryTimeline after the intelligence military path assigns cache', async () => {
     mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [] });
-    const { loader, ctx, refreshOpenCountryTimeline } = await makeLoader();
+    const { loader, ctx, refreshOpenCountryMilitary, refreshOpenCountryTimeline } = await makeLoader();
     refreshOpenCountryTimeline.mockImplementation(() => {
       expect(ctx.intelligenceCache.military).toEqual({
         flights: [flight],
@@ -352,6 +355,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     await loader.loadIntelligenceSignals();
 
     expect(refreshOpenCountryTimeline).toHaveBeenCalledOnce();
+    expect(refreshOpenCountryMilitary).toHaveBeenCalledOnce();
     expect(ctx.intelligenceCache.military?.flights).toEqual([flight]);
   });
 });
