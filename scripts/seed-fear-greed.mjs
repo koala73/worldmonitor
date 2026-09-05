@@ -2,7 +2,7 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxyForConnect } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { fetchSp500Breadth } from './_sp500-breadth.mjs';
+import { readPublishedPctAbove200d } from './_sp500-breadth.mjs';
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -53,7 +53,7 @@ async function fetchCBOE() {
       headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!resp.ok) { console.warn(`  Barchart $CPC: HTTP ${resp.status}`); return {}; }
+    if (resp.status !== 200) { console.warn(`  Barchart $CPC: HTTP ${resp.status}`); return {}; }
     const html = await resp.text();
     const block = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? html;
     const m = block.match(/"lastPrice"\s*:\s*"?([\d.]+)"?/);
@@ -64,11 +64,22 @@ async function fetchCBOE() {
   } catch (e) { console.warn(`  Barchart $CPC: ${e.message}`); return {}; }
 }
 
-// --- % of S&P 500 above 200d MA, from the TradingView constituent scan ---
+// --- % of S&P 500 above 200d MA, from the published breadth-history series ---
+// One TradingView scan lives in seed-market-breadth. Reading that key keeps
+// Fear & Greed on last-good 200d when the scanner is down, instead of scoring
+// a quiet 50 while the dedicated seeder crash-loops.
 async function fetchPctAbove200d() {
   try {
-    return (await fetchSp500Breadth()).readings.pctAbove200d;
-  } catch (e) { console.warn('  S&P 500 breadth scan failed:', e.message); return null; }
+    const value = await readPublishedPctAbove200d({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    if (value == null) console.warn('  S&P 500 % above 200d: unpublished (using RSP/SPY proxy if possible)');
+    return value;
+  } catch (e) {
+    console.warn('  S&P 500 % above 200d: unread:', e.message);
+    return null;
+  }
 }
 
 // --- CNN Fear & Greed ---

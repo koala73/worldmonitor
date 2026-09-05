@@ -48,10 +48,14 @@ const resp = await fetchImpl('https://scanner.tradingview.com/america/scan', {
   signal: AbortSignal.timeout(timeoutMs),
 });
 // Strict 200: a bot-challenge interstitial arrives as 202 and passes resp.ok.
-if (resp.status !== 200) throw new Error(`TradingView scan HTTP ${resp.status}`);
+if (resp.status !== 200) {
+  const err = httpRetryError(resp);
+  err.message = `TradingView scan HTTP ${resp.status}`;
+  throw err;
+}
 ```
 
-Two guards carry the lesson. The status must be exactly 200 and the body must parse as scan rows, so an interstitial throws instead of passing as three nulls. A window with fewer than 450 valid rows (the index has about 503) reads as `null`, because a percentage of a partial universe is not S&P 500 breadth.
+Two guards carry the lesson. The status must be exactly 200 and the body must parse as scan rows, so an interstitial throws instead of passing as three nulls. A 202/4xx throw is `nonRetryable` so `runSeed`'s `withRetry` does not sleep through a challenge. A window with fewer than 450 valid rows (the index has about 503) reads as `null`, because a percentage of a partial universe is not S&P 500 breadth. Incomplete three-window readings fail the tick so last-good stays published. `seed-fear-greed` reads `current.pctAbove200d` from `market:breadth-history:v1` instead of posting a second scan.
 
 Verification before merge: nine unit tests in `tests/sp500-breadth.test.mjs`, a live scan (503 constituents, 20d 35.39, 50d 46.92, 200d 64.07 against Barchart's 9/1 values of 31.8, 45.52, 62.62), and an end-to-end run of the seeder through the real `runSeed` against a local Upstash REST fake that answered GET with null, SET with OK, and EVAL with 1. That run walked lock, scan, validate, staging SET, canonical SET, seed-meta, lock release, exit 0.
 
@@ -72,4 +76,4 @@ The replacement removes the dependence on a rendered page entirely. The scanner 
 
 - PR #7723 (the fix).
 - `docs/solutions/integration-issues/upstash-max-request-size-counts-one-command-and-answers-http-200.md`: another upstream that reports success on the status line while the body says otherwise.
-- `seed-fear-greed.mjs` still scrapes `$CPC` (total put/call) from Barchart the same way; it degrades to null and needs its own source. TradingView lists `USI:PCC` but the scanner does not serve it.
+- `seed-fear-greed.mjs` still scrapes `$CPC` (total put/call) from Barchart; the status gate is now `status !== 200` so a 202 logs as HTTP 202 instead of "price not found". It still degrades to null and needs its own source. TradingView lists `USI:PCC` but the scanner does not serve it.
