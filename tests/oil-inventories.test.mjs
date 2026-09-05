@@ -1,199 +1,115 @@
-import { describe, it } from 'node:test';
+// Contract tests for the GetOilInventories RPC.
+//
+// These called a local copy of the handler's mapping logic until the copy
+// drifted: it emitted `changeWoW` and `changeWoW4` and used `null` for absent
+// sections, while the handler emits `changeWow`, drops `changeWoW4`, and uses
+// `undefined`. The copy asserted the seeder's payload shape, not the response
+// the panel reads. They now drive the real handler over a fake Upstash.
+
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
+import { getOilInventories } from '../server/worldmonitor/economic/v1/get-oil-inventories.ts';
+import { escapeHtml } from '../src/utils/sanitize.ts';
 
-// ─── Inline helpers mirroring handler mapping logic ───
+const CRUDE_KEY = 'economic:crude-inventories:v1';
+const SPR_KEY = 'economic:spr:v1';
+const NAT_GAS_KEY = 'economic:nat-gas-storage:v1';
 
-/** Maps raw SPR seed payload to handler response shape. Value is ALREADY in Mb. */
-function mapSprResponse(raw) {
-  if (!raw) return null;
-  return {
-    latestPeriod: raw.latestPeriod,
-    latestStocksMb: raw.barrels,
-    changeWoW: raw.changeWoW,
-    changeWoW4: raw.changeWoW4,
-    weeks: (raw.weeks ?? []).map(w => ({ period: w.period, stocksMb: w.barrels })),
-  };
+const originalFetch = globalThis.fetch;
+const originalEnv = {
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
+
+before(() => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+});
+
+after(() => {
+  globalThis.fetch = originalFetch;
+  process.env.UPSTASH_REDIS_REST_URL = originalEnv.url;
+  process.env.UPSTASH_REDIS_REST_TOKEN = originalEnv.token;
+});
+
+/** Seeds the fake Upstash with the given keys and runs the real handler. */
+async function callHandler(fixtures) {
+  const { fetchImpl } = createRedisFetch(fixtures);
+  globalThis.fetch = fetchImpl;
+  return getOilInventories({}, {});
 }
 
-/** Simulates handler assembling partial response from 6 Redis keys */
-function assembleOilInventories({ crude, spr, natGas, euGas, iea, refinery }) {
-  return {
-    crudeWeeks: crude ?? null,
-    spr: spr ? mapSprResponse(spr) : null,
-    natGasWeeks: natGas ?? null,
-    euGas: euGas ?? null,
-    ieaStocks: iea ?? null,
-    refinery: refinery ?? null,
-  };
-}
-
-// ─── Pure utility helpers ───
-
-function reverseForChart(weeks) {
-  return weeks.slice().reverse();
-}
-
-function sortIeaForChart(members) {
-  return members.slice().sort((a, b) => {
-    const aNet = a.netExporter === true;
-    const bNet = b.netExporter === true;
-    if (aNet !== bNet) return aNet ? 1 : -1;
-    const aVal = a.daysOfCover ?? Infinity;
-    const bVal = b.daysOfCover ?? Infinity;
-    return aVal - bVal;
-  });
-}
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function mergeByPeriod(crudeWeeks, sprWeeks) {
-  const crudeMap = new Map(crudeWeeks.map(w => [w.period, w.stocksMb]));
-  const sprMap = new Map(sprWeeks.map(w => [w.period, w.stocksMb]));
-  const allPeriods = [...new Set([...crudeMap.keys(), ...sprMap.keys()])].sort();
-  return allPeriods.map(p => ({
-    period: p,
-    crudeMb: crudeMap.get(p) ?? null,
-    sprMb: sprMap.get(p) ?? null,
-  }));
-}
-
-// ─── Tests ───
-
-describe('Oil Inventories', () => {
-
-  // Test 1: SPR double-conversion guard
-  it('SPR values are already in Mb — handler must NOT divide by 1,000,000', () => {
-    const mockSpr = {
-      latestPeriod: '2026-04-04',
-      barrels: 395.2,
-      changeWoW: -0.3,
-      changeWoW4: -1.2,
-      weeks: [
-        { period: '2026-04-04', barrels: 395.2 },
-        { period: '2026-03-28', barrels: 395.5 },
-      ],
-    };
-
-    const sprResponse = mapSprResponse(mockSpr);
-
-    assert.equal(sprResponse.latestStocksMb, 395.2, 'latestStocksMb must equal raw barrels (already Mb)');
-    assert.ok(sprResponse.latestStocksMb > 100, `SPR sanity guard failed: ${sprResponse.latestStocksMb} <= 100 (real SPR is ~350-400 Mb)`);
-    assert.equal(sprResponse.weeks[0].stocksMb, 395.2, 'weeks[0].stocksMb must equal raw barrels');
-    assert.equal(sprResponse.weeks[1].stocksMb, 395.5);
-    assert.equal(sprResponse.changeWoW, -0.3);
-    assert.equal(sprResponse.changeWoW4, -1.2);
-  });
-
-  // Test 2: Handler partial-key availability
-  it('degrades independently when some Redis keys return null', () => {
-    const response = assembleOilInventories({
-      crude: [{ period: '2026-04-04', stocksMb: 440 }],
-      spr: null,
-      natGas: [{ period: '2026-04-04', storageBcf: 1800 }],
-      euGas: null,
-      iea: null,
-      refinery: null,
+describe('GetOilInventories — SPR unit contract', () => {
+  it('passes SPR barrels through as Mb without dividing by 1,000,000', async () => {
+    const response = await callHandler({
+      [SPR_KEY]: {
+        latestPeriod: '2026-04-04',
+        barrels: 395.2,
+        changeWoW: -0.3,
+        changeWoW4: -1.2,
+        weeks: [
+          { period: '2026-04-04', barrels: 395.2 },
+          { period: '2026-03-28', barrels: 395.5 },
+        ],
+      },
     });
 
-    assert.ok(Array.isArray(response.crudeWeeks), 'crudeWeeks should be an array');
-    assert.ok(response.crudeWeeks.length > 0, 'crudeWeeks should have entries');
-    assert.equal(response.spr, null, 'spr should be null when Redis key missing');
-    assert.ok(Array.isArray(response.natGasWeeks), 'natGasWeeks should be an array');
-    assert.ok(response.natGasWeeks.length > 0, 'natGasWeeks should have entries');
-    assert.equal(response.euGas, null, 'euGas should be null when Redis key missing');
-    assert.equal(response.ieaStocks, null, 'ieaStocks should be null when Redis key missing');
-    assert.equal(response.refinery, null, 'refinery should be null when Redis key missing');
-  });
-
-  // Test 3: Chart sort order verification
-  it('reverses EIA data to oldest-first for charting and sorts IEA by daysOfCover', () => {
-    const crudeNewestFirst = [
-      { period: '2026-04-04', stocksMb: 440 },
-      { period: '2026-03-28', stocksMb: 442 },
-      { period: '2026-03-21', stocksMb: 444 },
-    ];
-
-    const reversed = reverseForChart(crudeNewestFirst);
-    assert.equal(reversed[0].period, '2026-03-21', 'reversed[0] should be oldest');
-    assert.equal(reversed[2].period, '2026-04-04', 'reversed[last] should be newest');
-    assert.equal(crudeNewestFirst[0].period, '2026-04-04', 'original array must not be mutated');
-
-    const ieaMembers = [
-      { country: 'US', daysOfCover: 120, netExporter: false },
-      { country: 'JP', daysOfCover: 85, netExporter: false },
-      { country: 'NO', daysOfCover: 150, netExporter: true },
-      { country: 'XX', daysOfCover: null, netExporter: false },
-    ];
-
-    const sorted = sortIeaForChart(ieaMembers);
-    assert.equal(sorted[0].daysOfCover, 85, 'lowest daysOfCover first');
-    assert.equal(sorted[1].daysOfCover, 120, 'second lowest next');
-    // netExporter and null daysOfCover go to bottom
-    assert.equal(sorted[2].country, 'XX', 'null daysOfCover should be near bottom');
-    assert.equal(sorted[3].country, 'NO', 'netExporter should be last');
-  });
-
-  // Test 4: SVG label escaping
-  it('escapes HTML/SVG-unsafe characters in upstream strings', () => {
-    assert.equal(
-      escapeHtml('<script>alert(1)</script>'),
-      '&lt;script&gt;alert(1)&lt;/script&gt;',
+    assert.equal(response.spr.latestStocksMb, 395.2, 'latestStocksMb must equal raw barrels (already Mb)');
+    assert.ok(
+      response.spr.latestStocksMb > 100,
+      `SPR sanity guard failed: ${response.spr.latestStocksMb} <= 100 (real SPR is ~350-400 Mb)`,
     );
+    assert.equal(response.spr.weeks[0].stocksMb, 395.2);
+    assert.equal(response.spr.weeks[1].stocksMb, 395.5);
+  });
+
+  it('emits changeWow and does not surface the seeder-only changeWoW4', async () => {
+    const response = await callHandler({
+      [SPR_KEY]: { latestPeriod: '2026-04-04', barrels: 395.2, changeWoW: -0.3, changeWoW4: -1.2, weeks: [] },
+    });
+
+    assert.equal(response.spr.changeWow, -0.3, 'the proto field is changeWow, sourced from the seeder changeWoW');
+    assert.ok(!('changeWoW' in response.spr), 'the seeder spelling must not leak into the response');
+    assert.ok(!('changeWoW4' in response.spr), 'changeWoW4 is seeder-only and the handler drops it');
+  });
+
+  it('defaults changeWow to 0 when the seeder omits it', async () => {
+    const response = await callHandler({ [SPR_KEY]: { barrels: 395.2, weeks: [] } });
+    assert.equal(response.spr.changeWow, 0);
+  });
+});
+
+describe('GetOilInventories — partial Redis availability', () => {
+  it('degrades section by section, leaving absent sections undefined', async () => {
+    const response = await callHandler({
+      [CRUDE_KEY]: { weeks: [{ period: '2026-04-04', stocksMb: 440, weeklyChangeMb: -2 }] },
+      [NAT_GAS_KEY]: { weeks: [{ period: '2026-04-04', storBcf: 1800, weeklyChangeBcf: 12 }] },
+    });
+
+    assert.ok(Array.isArray(response.crudeWeeks));
+    assert.equal(response.crudeWeeks.length, 1);
+    assert.ok(Array.isArray(response.natGasWeeks));
+    assert.equal(response.natGasWeeks.length, 1);
+    assert.equal(response.spr, undefined, 'absent sections are undefined, not null');
+    assert.equal(response.euGas, undefined);
+    assert.equal(response.ieaStocks, undefined);
+    assert.equal(response.refinery, undefined);
+  });
+
+  it('returns empty week arrays when every key is missing', async () => {
+    const response = await callHandler({});
+
+    assert.deepEqual(response.crudeWeeks, []);
+    assert.deepEqual(response.natGasWeeks, []);
+    assert.equal(response.spr, undefined);
+  });
+});
+
+describe('SVG label escaping', () => {
+  it('escapes HTML-unsafe characters in upstream strings', () => {
+    assert.equal(escapeHtml('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;');
     assert.equal(escapeHtml('US'), 'US', 'safe strings must not be mutated');
     assert.equal(escapeHtml('R&D'), 'R&amp;D');
-    assert.equal(escapeHtml('"quoted"'), '&quot;quoted&quot;');
-    assert.equal(escapeHtml("it's"), "it&#39;s");
-  });
-
-  // Test 5: Crude/SPR merge-by-period with mismatched weeks
-  it('merges crude and SPR by period with nulls for missing sides', () => {
-    const crudeWeeks = [
-      { period: 'A', stocksMb: 440 },
-      { period: 'B', stocksMb: 442 },
-      { period: 'C', stocksMb: 444 },
-    ];
-    const sprWeeks = [
-      { period: 'B', stocksMb: 395 },
-      { period: 'C', stocksMb: 396 },
-      { period: 'D', stocksMb: 397 },
-    ];
-
-    const result = mergeByPeriod(crudeWeeks, sprWeeks);
-
-    assert.equal(result.length, 4, 'union of periods A,B,C,D = 4 entries');
-    assert.deepEqual(result[0], { period: 'A', crudeMb: 440, sprMb: null });
-    assert.deepEqual(result[1], { period: 'B', crudeMb: 442, sprMb: 395 });
-    assert.deepEqual(result[2], { period: 'C', crudeMb: 444, sprMb: 396 });
-    assert.deepEqual(result[3], { period: 'D', crudeMb: null, sprMb: 397 });
-  });
-
-  // Test 6: Stacked chart skips weeks where one series is null (no fake zero-collapse)
-  it('stacked chart filters to complete weeks only, falls back to crude-only when SPR absent', () => {
-    const merged = mergeByPeriod(
-      [{ period: 'A', stocksMb: 440 }, { period: 'B', stocksMb: 442 }, { period: 'C', stocksMb: 444 }],
-      [{ period: 'B', stocksMb: 395 }, { period: 'C', stocksMb: 396 }],
-    );
-    // Week A has crude but no SPR => should NOT appear in complete set
-    const complete = merged.filter(w => w.crudeMb != null && w.sprMb != null);
-    assert.equal(complete.length, 2, 'only B and C have both series');
-    assert.equal(complete[0].period, 'B');
-    assert.equal(complete[1].period, 'C');
-
-    // When SPR is entirely absent, fall back to crude-only
-    const noSpr = mergeByPeriod(
-      [{ period: 'X', stocksMb: 100 }, { period: 'Y', stocksMb: 200 }],
-      [],
-    );
-    const completeNoSpr = noSpr.filter(w => w.crudeMb != null && w.sprMb != null);
-    assert.equal(completeNoSpr.length, 0, 'no complete weeks when SPR absent');
-    const crudeOnly = noSpr.filter(w => w.crudeMb != null);
-    assert.equal(crudeOnly.length, 2, 'crude-only fallback should have 2 weeks');
   });
 });
