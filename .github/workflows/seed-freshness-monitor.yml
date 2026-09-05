@@ -106,9 +106,13 @@ jobs:
         # same durable incident already attached to the operational anchor.
         continue-on-error: true
         run: |
+          summary_args=()
+          if grep -q -- "'markdown-output':" scripts/check-seed-freshness.mjs; then
+            summary_args=(--markdown-output "$RUNNER_TEMP/seed-freshness-summary.md")
+          fi
           node scripts/check-seed-freshness.mjs \
             --json-output "$RUNNER_TEMP/seed-freshness-observation.json" \
-            --markdown-output "$RUNNER_TEMP/seed-freshness-summary.md"
+            "${summary_args[@]}"
 
       - name: Publish ingestion operational transitions
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
@@ -149,6 +153,8 @@ jobs:
         run: |
           if [ -s "$RUNNER_TEMP/seed-freshness-summary.md" ]; then
             cat "$RUNNER_TEMP/seed-freshness-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -s "$RUNNER_TEMP/seed-freshness-observation.json" ]; then
+            printf '## Production ingestion acceptance\n\n**Summary unavailable for this gated revision.** An observation was produced; inspect the retained JSON artifact for its acceptance verdict.\n' >> "$GITHUB_STEP_SUMMARY"
           else
             printf '## Production ingestion acceptance\n\n**Unverified.** No current observation was produced. Inspect the [gate and probe logs](%s/%s/actions/runs/%s).\n' \
               "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
