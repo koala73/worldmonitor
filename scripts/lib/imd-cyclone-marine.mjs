@@ -7,7 +7,12 @@
  * Live fetch requires an API key and IMD account credentials. Disabled is not all-clear.
  */
 
+import { createRequire } from 'node:module';
+
 import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
+
+const require = createRequire(import.meta.url);
+const { parseProxyConfig, proxyFetch } = require('../_proxy-utils.cjs');
 
 export const IMD_HOST = 'api.imd.gov.in';
 export const IMD_API_ORIGIN = 'https://api.imd.gov.in';
@@ -764,10 +769,42 @@ export async function fetchApprovedImdJson(url, {
   return readBoundedJsonResponse(response, maxBytes);
 }
 
+export function createImdProxyFetch(rawProxyUrl, { proxyFetchFn = proxyFetch } = {}) {
+  const proxyUrl = String(rawProxyUrl || '').trim();
+  if (!proxyUrl) throw new Error('IMD_PROXY_URL_MISSING');
+  const proxyConfig = parseProxyConfig(proxyUrl);
+  if (!proxyConfig || proxyConfig.tls !== true) throw new Error('IMD_PROXY_URL_INVALID');
+  return async (url, init = {}) => {
+    if (!isAllowedImdHost(url)) throw new Error('UNTRUSTED_SOURCE_HOST');
+    const headers = init.headers || {};
+    const response = await proxyFetchFn(url, proxyConfig, {
+      accept: headers.Accept || headers.accept || '*/*',
+      headers,
+      method: init.method || 'GET',
+      body: init.body ?? null,
+      maxResponseBytes: IMD_MAX_BYTES,
+      timeoutMs: IMD_TIMEOUT_MS,
+      signal: init.signal,
+    });
+    const responseHeaders = {};
+    if (response.contentType) responseHeaders['Content-Type'] = response.contentType;
+    if (response.location) responseHeaders.Location = response.location;
+    const status = Number(response.status) || 502;
+    const body = status === 204 || status === 205 || status === 304
+      ? null
+      : (response.buffer || Buffer.alloc(0));
+    return new Response(body, { status, headers: responseHeaders });
+  };
+}
+
 function imdAuthFailureReason(err) {
   const message = String(err?.message || '');
+  if (err?.proxyConnect === true && Number.isInteger(err?.status)) {
+    return `IMD_PROXY_CONNECT_HTTP_${err.status}`;
+  }
   if (/^IMD_AUTH_HTTP_[1-5]\d{2}$/.test(message)) return message;
   if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return 'IMD_AUTH_TIMEOUT';
+  if (err?.code === 'RESPONSE_TOO_LARGE') return 'IMD_AUTH_RESPONSE_TOO_LARGE';
   if (/^IMD_RESPONSE_TOO_LARGE:\d+$/.test(message)) return 'IMD_AUTH_RESPONSE_TOO_LARGE';
   if (message === 'IMD_AUTH_RESPONSE_INVALID') return message;
   return 'IMD_AUTH_FAILED';
@@ -820,6 +857,10 @@ async function mintImdApiToken({
 
 function imdFetchFailureReason(err) {
   const message = String(err?.message || '');
+  if (err?.proxyConnect === true && Number.isInteger(err?.status)) {
+    return `IMD_PROXY_CONNECT_HTTP_${err.status}`;
+  }
+  if (err?.code === 'RESPONSE_TOO_LARGE') return 'IMD_RESPONSE_TOO_LARGE';
   if (
     /^HTTP \d{3}$/.test(message)
     || message === 'UNTRUSTED_SOURCE_HOST'

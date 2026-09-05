@@ -11,6 +11,7 @@ import {
   IMD_CANONICAL_KEY,
   IMD_MAX_CONTENT_AGE_MIN,
   IMD_SOURCE_VERSION,
+  createImdProxyFetch,
   declareImdRecords,
   fetchImdCycloneMarine,
   imdAfterPublish,
@@ -45,7 +46,8 @@ async function fetchSnapshot() {
   } catch (err) {
     console.warn(`imd-cyclone-marine: last-good read failed: ${err.message || err}`);
   }
-  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous });
+  const fetchFn = createImdProxyFetch(process.env.PROXY_URL);
+  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, fetchFn });
 }
 
 runSeed('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY, fetchSnapshot, {

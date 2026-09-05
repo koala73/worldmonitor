@@ -42,19 +42,35 @@ not store the JWT in Railway.
    register only one Railway address and assume that the service will keep using
    it.
 
-   Activation requires deterministic single-IP external egress, or another host
-   with one fixed outbound public IP. Register that one address with IMD when
-   you create the production API key. The seeder does not currently define an
-   application-level proxy variable. Do not cycle keys on HTTP 403: that cannot
-   create a deterministic key/IP pair. Treat HTTP 403 from every product as an
-   API key status or public-IP authorization failure.
+   Activation requires deterministic single-IP external egress. Set
+   `PROXY_URL` to a fixed-egress HTTPS CONNECT proxy, using either
+   `https://user:password@host:port` or Decodo's
+   `host:port:user:password` format. The seeder routes the JWT request and every
+   IMD product request through this proxy. It does not proxy Redis traffic and
+   does not fall back to direct Railway egress.
+
+   Verify the proxy's public egress IP from the service environment and register
+   that one address with IMD when you create the production API key. Do not
+   cycle keys on HTTP 403: that cannot create a deterministic key/IP pair. Treat
+   an IMD-origin HTTP 403 from every product as an API key status or public-IP
+   authorization failure. A proxy CONNECT HTTP 403 is a proxy-provider policy
+   failure instead.
+
+   Confirm that the proxy provider permits `api.imd.gov.in` before activation.
+   Decodo's [ISP Pay/IP restricted-target policy](https://help.decodo.com/docs/isp-pay-per-ip-proxy-restricted-targets)
+   lists government sites as restricted and states that this restriction cannot
+   be removed from that proxy product. It returns a proxy CONNECT HTTP 403 before
+   a request reaches IMD, so it cannot provide the IMD route even when its fixed
+   egress IP is correct. Use a fixed-egress proxy that explicitly permits the IMD
+   host.
 3. Add these service variables in Railway. Store each value as a secret.
 
    | Variable | Value |
    |---|---|
-   | `IMD_API_KEY` | The active production key for the Railway outbound IP |
+   | `IMD_API_KEY` | The active production key for the fixed proxy egress IP |
    | `IMD_API_EMAIL` | The registered IMD account email that owns the key |
    | `IMD_API_PASSWORD` | The password for the same IMD account |
+   | `PROXY_URL` | A secret proxy route with one fixed public egress IP registered with IMD |
 
    Do not set `IMD_API_TOKEN`. The seeder sends the account credentials to
    `POST https://api.imd.gov.in/api/oauth/token.php` and keeps the returned JWT

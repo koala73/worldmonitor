@@ -15,6 +15,7 @@ import {
   assembleImdSnapshot,
   buildDisabledSnapshot,
   cycloneEventsFromSnapshot,
+  createImdProxyFetch,
   declareImdRecords,
   dropExpiredRecords,
   fetchImdCycloneMarine,
@@ -427,7 +428,10 @@ test('documents the complete IMD Railway credential setup', () => {
   assert.match(setupText, /Application code cannot select the Railway NAT address.*or reliably probe it in advance/i);
   assert.match(setupText, /native three-IP HA egress cannot satisfy the documented IMD contract/i);
   assert.match(setupText, /requires deterministic single-IP external egress/i);
-  assert.match(setupText, /another host with one fixed outbound public IP/i);
+  assert.match(setupText, /routes the JWT request and every IMD product request through this proxy/i);
+  assert.match(setupText, /does not fall back to direct Railway egress/i);
+  assert.match(setupText, /government sites as restricted/i);
+  assert.match(setupText, /returns a proxy CONNECT HTTP 403 before a request reaches IMD/i);
   assert.match(setupText, /Do not cycle keys on HTTP 403/i);
   assert.doesNotMatch(setupText, /written confirmation from IMD.*all three Railway addresses are authorized/i);
   assert.match(setup, /HTTP 403/i);
@@ -475,25 +479,25 @@ test('mints a fresh IMD JWT before each product batch', async () => {
 
 test('routes IMD authentication and every product through PROXY_URL', async () => {
   const proxyUrl = 'isp.decodo.test:10001:proxy-user:proxy-secret';
-  const directRequests = [];
   const proxyRequests = [];
-  const snapshot = await fetchImdCycloneMarine({
-    env: { ...LIVE_ENV, PROXY_URL: proxyUrl },
-    fetchFn: async (url) => {
-      directRequests.push(String(url));
-      throw new Error('direct IMD request must not run when PROXY_URL is configured');
-    },
+  const fetchFn = createImdProxyFetch(proxyUrl, {
     proxyFetchFn: async (url, proxyConfig, options) => {
       proxyRequests.push({ url: String(url), proxyConfig, options });
       if (String(url) === IMD_OAUTH_TOKEN_URL) {
         return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
       }
+      if (String(url).endsWith('/cyclone_cou')) {
+        return proxyJsonResponse(fixture('imd-cyclone-cou.json'));
+      }
       return proxyJsonResponse([]);
     },
+  });
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn,
     now: NOW,
   });
 
-  assert.deepEqual(directRequests, []);
   assert.equal(proxyRequests.length, 7);
   assert.ok(proxyRequests.every(({ proxyConfig }) => (
     proxyConfig.host === 'isp.decodo.test'
@@ -508,6 +512,77 @@ test('routes IMD authentication and every product through PROXY_URL', async () =
   });
   assert.ok(proxyRequests.slice(1).every(({ options }) => options.headers.Authorization === 'Bearer proxy-token'));
   assert.equal(snapshot.coverageState, 'ok');
+});
+
+test('fails closed without a required or valid IMD proxy', async () => {
+  assert.throws(() => createImdProxyFetch(''), /IMD_PROXY_URL_MISSING/);
+  assert.throws(() => createImdProxyFetch('not-a-proxy'), /IMD_PROXY_URL_INVALID/);
+  assert.throws(
+    () => createImdProxyFetch('http://proxy-user:proxy-secret@isp.decodo.test:10001'),
+    /IMD_PROXY_URL_INVALID/,
+  );
+});
+
+test('redacts proxy credentials from IMD transport failures', async () => {
+  const proxySecret = 'proxy-user:proxy-secret';
+  const fetchFn = createImdProxyFetch(`isp.decodo.test:10001:${proxySecret}`, {
+    proxyFetchFn: async () => {
+      throw new Error(`proxy authentication failed for ${proxySecret}`);
+    },
+  });
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn,
+    now: NOW,
+  });
+
+  assert.equal(snapshot.coverageState, 'unavailable');
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
+  assert.doesNotMatch(JSON.stringify(snapshot), /proxy-secret/);
+});
+
+test('classifies bounded proxy responses without exposing transport details', async () => {
+  const tooLarge = Object.assign(new Error('proxy response too large'), {
+    code: 'RESPONSE_TOO_LARGE',
+  });
+  const authSnapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async () => { throw tooLarge; },
+    }),
+    now: NOW,
+  });
+  assert.equal(authSnapshot.products.cycloneTrack.reason, 'IMD_AUTH_RESPONSE_TOO_LARGE');
+
+  const productSnapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async (url) => {
+        if (String(url) === IMD_OAUTH_TOKEN_URL) {
+          return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
+        }
+        throw tooLarge;
+      },
+    }),
+    now: NOW,
+  });
+  assert.equal(productSnapshot.products.cycloneTrack.reason, 'IMD_RESPONSE_TOO_LARGE');
+});
+
+test('distinguishes a proxy tunnel rejection from an IMD origin rejection', async () => {
+  const proxyRejected = Object.assign(new Error('proxy refused target'), {
+    status: 403,
+    proxyConnect: true,
+  });
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async () => { throw proxyRejected; },
+    }),
+    now: NOW,
+  });
+
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_PROXY_CONNECT_HTTP_403');
 });
 
 test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
@@ -684,6 +759,7 @@ test('seeder stays off weather:alerts:v1 and uses the dedicated canonical key', 
   assert.equal(IMD_CANONICAL_KEY, 'weather:imd-cyclone-marine:v1');
   assert.match(seeder, /#7005/);
   assert.match(seeder, /seed-activated:weather:imd-cyclone-marine/);
+  assert.match(seeder, /createImdProxyFetch\(process\.env\.PROXY_URL\)/);
   const lib = readFileSync(join(root, 'scripts/lib/imd-cyclone-marine.mjs'), 'utf8');
   assert.doesNotMatch(lib, /\/api\/v1\/districtnowcast/);
   assert.doesNotMatch(lib, /\/api\/v1\/districtwarning/);
