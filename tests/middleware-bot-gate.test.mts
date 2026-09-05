@@ -15,9 +15,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import middleware from '../middleware';
 import { WEB_DASHBOARD_VARIANTS } from '../src/config/variant-dashboard-html';
 import { VARIANT_META } from '../src/config/variant-meta';
+
+const vercelConfig = JSON.parse(
+  readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../vercel.json'), 'utf-8'),
+) as { headers?: Array<{ source: string; headers?: Array<{ key: string; value: string }> }> };
 
 const TELEGRAM_BOT_UA = 'TelegramBot (like TwitterBot)';
 const SLACKBOT_UA = 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)';
@@ -442,5 +450,188 @@ describe('middleware /mcp — variant subdomains redirect to apex, POST stays', 
     assert.ok(res instanceof Response);
     assert.equal(res.status, 308);
     assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+  });
+});
+
+// #7660: `/?<map state>` 308'd to `/dashboard?<the same map state>`, forwarding
+// the query into its own redirect. Because any lat/lon/zoom/layer combination
+// is a distinct URL, every shared or bookmarked map link became a permanent
+// entry in Search Console's "Page with redirect" bucket — 301 of the 1,000
+// exported URLs, from only 111 distinct param strings, and the bucket grew
+// 199 -> 1,271 in three months.
+//
+// The canonical is already the param-free `/dashboard`, so a crawler loses
+// nothing by being sent straight there. Humans keep the state: those params
+// are what makes a shared legacy root link still open the right view. The
+// collapse is therefore User-Agent-conditioned (the #7380 pattern), which is
+// why the response must carry Vary + no-store — without them a shared cache
+// could replay the crawler's stripped Location to a human.
+describe('legacy root map-state links (#7660)', () => {
+  const MAP_STATE =
+    'lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts%2Cbases';
+  const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+  it('sends a crawler to the param-free /dashboard document', () => {
+    const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response, 'crawler must be redirected');
+    assert.equal(res.status, 308);
+    assert.equal(
+      res.headers.get('location'),
+      'https://www.worldmonitor.app/dashboard',
+      'the map state must not be forwarded into the redirect'
+    );
+    assert.match(res.headers.get('vary') ?? '', /User-Agent/i);
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  });
+
+  it('keeps bounded dashboard state for crawlers', () => {
+    const boundedState = 'view=mena&layers=conflicts&timeRange=24h';
+    const res = call(`/?${boundedState}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response, 'legacy root state must still reach the dashboard');
+    assert.equal(
+      res.headers.get('location'),
+      `https://www.worldmonitor.app/dashboard?${boundedState}`,
+      'only unbounded coordinate state should be collapsed'
+    );
+  });
+
+  it('collapses attribution params and map state in a single hop', () => {
+    const res = call(`/?ref=affiliate&${MAP_STATE}&utm_source=newsletter`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(res.headers.get('location'), 'https://www.worldmonitor.app/dashboard');
+  });
+
+  it('keeps the map state for humans', () => {
+    const res = call(`/?${MAP_STATE}`, CHROME_UA);
+    assert.ok(res instanceof Response, 'legacy root deep links must still reach the dashboard');
+    assert.equal(res.status, 308);
+    assert.equal(
+      res.headers.get('location'),
+      `https://www.worldmonitor.app/dashboard?${MAP_STATE}`,
+      'a shared legacy link must still open the view it encodes'
+    );
+  });
+
+  it('closes every caching layer on BOTH branches', () => {
+    // One request URL, two Locations, chosen by User-Agent. A 308 is cacheable
+    // by default (RFC 9110 §15.4.9), so a cache that stored either branch
+    // without the key would replay it to the other's client — serving the
+    // crawler the parameterised URL this change exists to keep it off, or
+    // stripping a human's map state.
+    //
+    // `Cache-Control` alone is insufficient here: vercel.json gives `/` a
+    // CDN-Cache-Control of `public, s-maxage=600`, and the CDN directives take
+    // priority over Cache-Control for the shared cache. And per RFC 9111, Vary
+    // on one response cannot protect a sibling that omitted it — so every
+    // layer, on both branches.
+    for (const [label, ua] of [
+      ['crawler', GOOGLEBOT_UA],
+      ['human', CHROME_UA],
+    ] as const) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response, `${label} must be redirected`);
+      assert.match(res.headers.get('vary') ?? '', /User-Agent/i, `${label} branch must declare Vary`);
+      for (const [header, expected] of [
+        ['cache-control', 'private, no-store'],
+        ['cdn-cache-control', 'no-store'],
+        ['vercel-cdn-cache-control', 'no-store'],
+      ] as const) {
+        assert.equal(
+          res.headers.get(header),
+          expected,
+          `${label} branch must set ${header}: a layer left open can store one UA's Location and replay it to the other`
+        );
+      }
+    }
+  });
+
+  it('overrides the s-maxage the / route would otherwise apply', () => {
+    // The concrete number this defends against. If vercel.json ever drops the
+    // CDN cache on `/`, this assertion becomes trivially true rather than
+    // wrong — but while the cache exists, the middleware must out-rank it.
+    const rootRule = (vercelConfig.headers ?? []).find((entry: { source: string }) => entry.source === '/');
+    const cdn = (rootRule?.headers ?? []).find((h: { key: string }) => h.key === 'CDN-Cache-Control');
+    if (!cdn) return;
+    assert.match(cdn.value, /s-maxage=\d+/, 'expected the / route to carry a shared-cache lifetime');
+    const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(
+      res.headers.get('cdn-cache-control'),
+      'no-store',
+      `the / route caches for ${cdn.value} at the CDN; the UA-conditioned redirect must opt out`
+    );
+  });
+
+  it('leaves /dashboard?<map state> alone for everyone', () => {
+    // The canonical tag already consolidates these and robots.txt keeps
+    // crawlers off them. Redirecting would manufacture the very redirects
+    // this change removes.
+    assert.equal(call(`/dashboard?${MAP_STATE}`, GOOGLEBOT_UA), undefined);
+    assert.equal(call(`/dashboard?${MAP_STATE}`, CHROME_UA), undefined);
+  });
+
+  it('keeps the map state for user-triggered assistant fetches', () => {
+    // ChatGPT-User / Claude-User / Perplexity-User fetch a link a HUMAN pasted,
+    // so they should see the view that link encodes — unlike their crawler
+    // siblings GPTBot / ClaudeBot / PerplexityBot. They fall on the right side
+    // of BOT_UA today; this pins that, because widening the regex to catch a
+    // new scraper could silently drag them across.
+    for (const ua of ['ChatGPT-User/1.0', 'Claude-User/1.0', 'Perplexity-User/1.0']) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response, `${ua} must still reach the dashboard`);
+      assert.equal(
+        res.headers.get('location'),
+        `https://www.worldmonitor.app/dashboard?${MAP_STATE}`,
+        `${ua} follows a human's link and must keep the view it encodes`
+      );
+    }
+    for (const ua of ['Mozilla/5.0 GPTBot/1.1', 'Mozilla/5.0 (compatible; ClaudeBot/1.0)']) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response);
+      assert.equal(
+        res.headers.get('location'),
+        'https://www.worldmonitor.app/dashboard',
+        `${ua} crawls on its own account and must get the canonical document`
+      );
+    }
+  });
+
+  it('does not touch a param-free root request', () => {
+    assert.equal(call('/', GOOGLEBOT_UA), undefined);
+    assert.equal(call('/', CHROME_UA), undefined);
+  });
+
+  // #7660 raised this as a "serious problem if it ever fires": agents.md warns
+  // that default HTTP-library UAs may be challenged with 403, and Search
+  // Console reported 26 URLs "blocked due to access forbidden". The gate is
+  // scoped to /api/* by an early return, so no content path can 403 a search
+  // crawler — but nothing asserted it, and the early return is one edit away
+  // from being reordered.
+  it('never 403s a search crawler on a content path', () => {
+    const CRAWLERS = [
+      GOOGLEBOT_UA,
+      'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+      'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot',
+      'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)',
+      'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)',
+    ];
+    const CONTENT_PATHS = [
+      '/',
+      '/dashboard',
+      '/pro',
+      '/countries/iran/',
+      '/chokepoints/strait-of-hormuz/',
+      '/compare/iran-vs-israel/',
+      '/llms.txt',
+      '/sitemap.xml',
+    ];
+    for (const ua of CRAWLERS) {
+      for (const path of CONTENT_PATHS) {
+        const res = call(path, ua);
+        if (res instanceof Response) {
+          assert.notEqual(res.status, 403, `${path} must not 403 a crawler (${ua.slice(0, 40)}…)`);
+        }
+      }
+    }
   });
 });

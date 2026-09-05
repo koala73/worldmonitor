@@ -4,7 +4,7 @@ Last updated: September 1, 2026
 
 World Monitor is the official name of the real-time global intelligence dashboard at [https://www.worldmonitor.app](https://www.worldmonitor.app). Alternate spellings: WorldMonitor, worldmonitor.app.
 
-This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://worldmonitor.app/home.md).
+This page is the crawlable brand-identity record for agents and search indexes: official name, canonical domain, contact channels, and press mentions that already link to the product. The visual homepage is [https://www.worldmonitor.app/](https://www.worldmonitor.app/); the Markdown homepage twin is [home.md](https://www.worldmonitor.app/home.md).
 
 ## Official identity (NAP)
 
@@ -71,11 +71,11 @@ Human about page: https://www.worldmonitor.app/docs/about
 
 ## For agents and developers
 
-- [llms.txt](https://worldmonitor.app/llms.txt) — short product briefing
-- [agents.md](https://worldmonitor.app/agents.md) — how to call MCP, REST, and discovery files
-- [developers.md](https://worldmonitor.app/developers.md) — developer portal
-- [api-versioning.md](https://worldmonitor.app/api-versioning.md) — REST versioning and deprecation policy
-- [OpenAPI](https://worldmonitor.app/openapi.yaml) · [API catalog](https://worldmonitor.app/.well-known/api-catalog)
+- [llms.txt](https://www.worldmonitor.app/llms.txt) — short product briefing
+- [agents.md](https://www.worldmonitor.app/agents.md) — how to call MCP, REST, and discovery files
+- [developers.md](https://www.worldmonitor.app/developers.md) — developer portal
+- [api-versioning.md](https://www.worldmonitor.app/api-versioning.md) — REST versioning and deprecation policy
+- [OpenAPI](https://www.worldmonitor.app/openapi.yaml) · [API catalog](https://worldmonitor.app/.well-known/api-catalog)
 - [MCP server](https://worldmonitor.app/mcp)
 
 ## Important query matches

@@ -12,7 +12,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
@@ -130,8 +130,10 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
 export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
-const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-03';
-const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-03';
+// Exported so the #7533 guard test can recompute every family clock without
+// re-implementing the version constants themselves.
+export const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-03';
+export const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-03';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
 // docs/methodology/country-resilience-index.mdx.
@@ -167,8 +169,11 @@ export const DATASET_SCHEMA_CONTENT_VERSION = {
   tools: '2026-09-03',
 };
 export const CRISIS_PAGE_CONTENT_VERSION = '2026-09-03';
-const TOOLS_PAGE_CONTENT_VERSION = '2026-09-03';
-const RESEARCH_PAGE_CONTENT_VERSION = '2026-09-03';
+// TOOLS_PAGE_CONTENT_VERSION and RESEARCH_PAGE_CONTENT_VERSION are exported
+// for the same reason as the constants above: the #7533 guard recomputes
+// their families' clocks from the real values.
+export const TOOLS_PAGE_CONTENT_VERSION = '2026-09-03';
+export const RESEARCH_PAGE_CONTENT_VERSION = '2026-09-03';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
@@ -296,7 +301,10 @@ const MONTHS = [
 ];
 
 function repoPath(rootDir, relativePath) {
-  return join(rootDir, relativePath);
+  // resolve() (not join()) so an absolute injected snapshot path — the #7533
+  // override reads temp-dir files — is used as-is while relative paths still
+  // anchor to rootDir exactly as join() did.
+  return resolve(rootDir, relativePath);
 }
 
 function readText(rootDir, relativePath) {
@@ -461,6 +469,12 @@ export function laterDate(...values) {
     .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
     .sort()
     .at(-1) ?? null;
+}
+
+function isCanonicalCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
 }
 
 /** Observation window for chokepoint Dataset temporalCoverage and table stamps.
@@ -1482,7 +1496,9 @@ function parseChangelog(source) {
   }).filter((release) => release.label && release.bullets.length > 0);
 }
 
-function latestDatedChangelogRelease(changelog) {
+// Exported for the #7533 family-clock guard, which recomputes the changelog
+// family's fold the same way it does for the content-version constants.
+export function latestDatedChangelogRelease(changelog) {
   const dates = changelog
     .map((release) => release.date)
     .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ''))
@@ -1546,11 +1562,31 @@ export function gitFileLastmod(rootDir, relativePath) {
   }
 }
 
-export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
+// livePulseSnapshotPath (#7533) lets tests inject a pulse snapshot so date
+// clocks stop inheriting whatever the freeze last committed. Relative paths
+// resolve against rootDir (production never passes this), absolute paths are
+// read as-is so tests can point at temp-dir snapshots. Omitting it preserves
+// the default "newest committed snapshot" behaviour exactly. Injected pulses
+// keep the resolver's shape contract (required sections, filename↔capturedAt
+// coherence) but skip its 10-day staleness fuse — that fuse is what tests
+// legitimately need to bypass.
+export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshotPath } = {}) {
   const resilienceSnapshotPath = resolveLatestResilienceSnapshotPath(rootDir);
-  const livePulseSnapshotPath = resolveLatestLivePulseSnapshotPath(rootDir);
+  const pulsePath = livePulseSnapshotPath ?? resolveLatestLivePulseSnapshotPath(rootDir);
   const resilience = readJson(rootDir, resilienceSnapshotPath);
-  const livePulse = readJson(rootDir, livePulseSnapshotPath);
+  const livePulse = readJson(rootDir, pulsePath);
+  if (!livePulse.countries || !livePulse.chokepoints || !livePulse.crises || !livePulse.signalConvergence) {
+    throw new Error(`${pulsePath} is missing required live-pulse sections`);
+  }
+  if (!isCanonicalCalendarDate(livePulse.capturedAt)) {
+    throw new Error(`${pulsePath} capturedAt ${livePulse.capturedAt} is not a canonical calendar date`);
+  }
+  const filenameDate = basename(pulsePath).match(LIVE_PULSE_SNAPSHOT_RE)?.[1];
+  if (filenameDate && livePulse.capturedAt !== filenameDate) {
+    throw new Error(
+      `${pulsePath} filename date ${filenameDate} does not match capturedAt ${livePulse.capturedAt}`,
+    );
+  }
   const microstateTerritoryCodes = new Set(
     (readJson(rootDir, MICROSTATE_TERRITORIES_PATH).iso2 || [])
       .map((code) => String(code || '').toUpperCase())
@@ -1693,7 +1729,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     generatorContentVersion: CORPUS_GENERATOR_CONTENT_VERSION,
     sources: {
       resilienceSnapshot: resilienceSnapshotPath,
-      livePulseSnapshot: livePulseSnapshotPath,
+      livePulseSnapshot: pulsePath,
       microstateTerritories: MICROSTATE_TERRITORIES_PATH,
       countryNames: COUNTRY_NAMES_PATH,
       countryRegions: COUNTRY_REGIONS_PATH,
@@ -4759,8 +4795,9 @@ export async function buildCorpus({
   outDir = DEFAULT_OUT_DIR,
   baseUrl = DEFAULT_BASE_URL,
   clean = true,
+  livePulseSnapshotPath,
 } = {}) {
-  const data = await loadCorpusData({ rootDir });
+  const data = await loadCorpusData({ rootDir, livePulseSnapshotPath });
   if (clean) {
     for (const dir of GENERATED_DIRS) {
       rmSync(join(outDir, dir), { recursive: true, force: true });

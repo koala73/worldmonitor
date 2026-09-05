@@ -5,18 +5,18 @@ description: "只需将任何 AI 智能体、代码生成工具或 MCP 客户端
 
 WorldMonitor 的构建理念是**智能体原生**。一个自主智能体——Claude、Cursor、MCP 客户端，或你自己的 LangChain / LangGraph 工作流——可以从一个根 URL 开始，发现它所需的一切：REST 架构、MCP 传输、OAuth 流程、技能包和人类可读的简报。
 
-无需任何先验知识。只需 `GET https://worldmonitor.app/`。
+无需任何先验知识。只需 `GET https://www.worldmonitor.app/`。
 
 ## 唯一需要记住的 URL
 
 ```
-https://worldmonitor.app/
+https://www.worldmonitor.app/
 ```
 
 HTTP 响应携带一个 [RFC 8288](https://datatracker.ietf.org/doc/html/rfc8288) `Link:` 头部，其 `rel` 值指向下方每一个机器可读的接口。一个跟随链接的智能体无需硬编码任何路径即可解析全貌。
 
 ```bash
-curl -sI https://worldmonitor.app/ | grep -i '^link:'
+curl -sI https://www.worldmonitor.app/ | grep -i '^link:'
 ```
 
 你会看到类似以下的条目：
@@ -48,9 +48,9 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | `/a2a` JSON-RPC 接待智能体的 Agent Card（见下文）——传输方式、协议版本、技能，无需认证 |
 | [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 公钥目录（`application/http-message-signatures-directory+json`），供第三方验证源自 WorldMonitor 的签名自动化请求。密钥携带滚动 24 小时 `nbf`/`exp` 窗口；缓存 `public, max-age=3600` |
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | （自定义） | 预打包智能体技能索引（`fetch-country-brief`、`fetch-resilience-score`……）——每个技能都是一份自包含的配方 |
-| [`/plugin.json`](https://worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | World Monitor 智能体插件清单（`name: worldmonitor`）。GitHub 仓库即插件包：根目录 `plugin.json`、`mcp.json` 与常规 `skills/*/SKILL.md` 文件（不是 git 符号链接——Windows 检出和 zip 解压仍能得到 YAML 前置元数据）。插件配方与 well-known 目录一致，只是 REST 示例使用公开站点源 `https://worldmonitor.app` |
-| [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
-| [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | （扩展） | 完整 LLM 语料：产品简报，外加内联的术语表、咽喉点方法论与解说、国家韧性指数方法论、更正日志，以及已发布的排名快照 |
+| [`/plugin.json`](https://www.worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | World Monitor 智能体插件清单（`name: worldmonitor`）。GitHub 仓库即插件包：根目录 `plugin.json`、`mcp.json` 与常规 `skills/*/SKILL.md` 文件（不是 git 符号链接——Windows 检出和 zip 解压仍能得到 YAML 前置元数据）。插件配方与 well-known 目录一致，只是 REST 示例使用公开站点源 `https://www.worldmonitor.app` |
+| [`/llms.txt`](https://www.worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
+| [`/llms-full.txt`](https://www.worldmonitor.app/llms-full.txt) | （扩展） | 完整 LLM 语料：产品简报，外加内联的术语表、咽喉点方法论与解说、国家韧性指数方法论、更正日志，以及已发布的排名快照 |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | （自定义） | 按密钥的种子状态、新鲜度、记录计数——智能体可据此门控抓取 |
 
 头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`、`/plugin.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
@@ -64,7 +64,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 [NLWeb](https://github.com/microsoft/NLWeb) 风格的前门：发送一个问题，返回能回答它的 MCP 工具。接受 `query`（最长 2048 字符），可通过 JSON body、表单 body 或 `?query=` 传入；可选 `mode`（默认 `"list"`）、`query_id` 和 `streaming`（也可由 `Accept: text/event-stream` 触发）。
 
 ```bash
-curl -s https://worldmonitor.app/ask -H 'Content-Type: application/json' \
+curl -s https://www.worldmonitor.app/ask -H 'Content-Type: application/json' \
   -d '{"query": "台湾附近是否有异常军事空中活动？"}'
 ```
 

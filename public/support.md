@@ -13,7 +13,7 @@ How to reach World Monitor, by concern. Human-readable version: https://www.worl
 | Bug reports & feature requests | https://github.com/koala73/worldmonitor/issues | Public open-source repository |
 | Community & quick questions | https://discord.gg/re63kWKxaz | Community Discord |
 | Service status & incidents | https://status.worldmonitor.app | Email subscription available on the page |
-| In-app contact form | Form on https://worldmonitor.app/pro | Submits `POST /api/leads/v1/submit-contact`; Turnstile-protected, intended for humans in a browser — agents should email support@ instead |
+| In-app contact form | Form on https://www.worldmonitor.app/pro | Submits `POST /api/leads/v1/submit-contact`; Turnstile-protected, intended for humans in a browser — agents should email support@ instead |
 
 ## Response Expectations
 
@@ -25,8 +25,8 @@ How to reach World Monitor, by concern. Human-readable version: https://www.worl
 
 - Find, create, or replace a `wm_` key: https://www.worldmonitor.app/docs/api-keys. Full keys are shown only once and cannot be recovered; revoke a lost key and create a replacement.
 - API key rotation or limit increases: see https://www.worldmonitor.app/docs/usage-auth and https://www.worldmonitor.app/docs/usage-rate-limits, or email support@worldmonitor.app.
-- Pricing and plans: https://worldmonitor.app/pricing.md (markdown) or `GET https://www.worldmonitor.app/api/product-catalog` (JSON, public).
-- Billing portal (invoices, cancel/renew): sign in at https://worldmonitor.app/pro and open the customer portal.
+- Pricing and plans: https://www.worldmonitor.app/pricing.md (markdown) or `GET https://www.worldmonitor.app/api/product-catalog` (JSON, public).
+- Billing portal (invoices, cancel/renew): sign in at https://www.worldmonitor.app/pro and open the customer portal.
 - Security reports: see https://www.worldmonitor.app/.well-known/security.txt
 
 ## Machine-Readable Summary

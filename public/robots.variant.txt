@@ -1,42 +1,85 @@
 # Variant-host robots (#6835). Shared corpus is canonical on www.
 # Prefixes that 308 to www are NOT Disallowed — a crawler must fetch them to
 # observe the redirect. /pro/welcome.html stays 200 here, so /pro is Disallowed.
-# Named AI groups restate the * rules — robots.txt groups do not inherit.
+# `Allow: /dashboard$` is end-anchored (#7660): the bare document stays
+# explicitly crawlable, but unanchored `/dashboard` is 10 characters and so
+# out-ranks `/*?*lat=`, `/*?*lon=` (8) and `/*?*zoom=` (9). Any map URL that
+# omits `layers` would slip straight through on exactly the path that
+# generates the space.
+# Named autonomous crawler groups restate the * rules. User-triggered fetchers
+# omit only the coordinate rules. robots.txt groups do not inherit.
+#
+# Crawl-budget disallows (#7660) mirror robots.www.txt: the unbounded map-state
+# space only. The attribution families (ref, wm_referral, wm_content_*, utm_*)
+# are deliberately left crawlable — robots.txt is a crawl control, not a
+# canonicalization tool, and those already consolidate via a 308 or a
+# rel=canonical that a blocked URL could never serve. Full reasoning is
+# recorded once in robots.www.txt. The variant hosts contributed 415 of the
+# 1,000 exported redirect URLs, and these rules are the ONLY mechanism covering
+# them: Vercel applies vercel.json `redirects` before middleware, and the
+# variant `/` -> `/dashboard` host redirect pre-empts the middleware collapse
+# that handles www (probed against production 2026-09-04). Rules are query-scoped (`/*?*`) so /dashboard
+# and the 308 families stay crawlable, and the /embed carve-outs keep the
+# documented iframe fetchable. /docs/_next/ is left crawlable, also per
+# robots.www.txt.
 
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
 Allow: /
-Allow: /dashboard
+Allow: /dashboard$
 Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /embed?*zoom=
 Disallow: /pro
 Disallow: /api/
 Disallow: /tests/
+Disallow: /tmp/
+Disallow: /*?*lat=
+Disallow: /*?*lon=
+Disallow: /*?*zoom=
 
 User-agent: GPTBot
 User-agent: OAI-SearchBot
-User-agent: ChatGPT-User
 User-agent: ClaudeBot
-User-agent: Claude-User
 User-agent: Claude-SearchBot
 User-agent: PerplexityBot
-User-agent: Perplexity-User
 User-agent: Google-Extended
 User-agent: Applebot-Extended
 User-agent: DuckAssistBot
-User-agent: MistralAI-User
 Content-Signal: ai-train=no, search=yes, ai-input=yes
 Allow: /
-Allow: /dashboard
+Allow: /dashboard$
 Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /embed?*zoom=
 Disallow: /pro
 Disallow: /api/
 Disallow: /tests/
+Disallow: /tmp/
+Disallow: /*?*lat=
+Disallow: /*?*lon=
+Disallow: /*?*zoom=
+
+User-agent: ChatGPT-User
+User-agent: Claude-User
+User-agent: Perplexity-User
+User-agent: MistralAI-User
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+Allow: /
+Allow: /dashboard$
+Allow: /api/story
+Allow: /api/og-story
+Allow: /api/llms.txt
+Allow: /api/product-catalog
+Allow: /embed?*zoom=
+Disallow: /pro
+Disallow: /api/
+Disallow: /tests/
+Disallow: /tmp/
 
 User-agent: CCBot
 User-agent: Bytespider

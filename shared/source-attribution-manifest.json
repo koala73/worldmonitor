@@ -10118,9 +10118,6 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
-          "path": "api/not-found.ts"
-        },
-        {
           "path": "api/oauth/authorize.js"
         },
         {
@@ -10155,9 +10152,6 @@
         },
         {
           "path": "scripts/cross-strait-activity/adapters.mjs"
-        },
-        {
-          "path": "scripts/generate-sandbox-fixtures.mjs"
         },
         {
           "path": "scripts/lib/brief-embedding.mjs"
@@ -14251,6 +14245,9 @@
         },
         {
           "path": "api/not-found.ts"
+        },
+        {
+          "path": "scripts/build-agent-skills-index.mjs"
         },
         {
           "path": "scripts/build-ai-search.mjs"

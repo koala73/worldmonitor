@@ -21,7 +21,7 @@ Browser requests from `worldmonitor.app` get a free pass via CORS Origin trust, 
 ## Endpoint
 
 ```
-GET https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief
+GET https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief
 ```
 
 ## Parameters
@@ -49,7 +49,7 @@ GET https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief
 
 ```bash
 curl -s -H "X-WorldMonitor-Key: $WM_API_KEY" \
-  'https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR' \
+  'https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR' \
   | jq -r '.brief'
 ```
 
@@ -57,7 +57,7 @@ With an analytical framework:
 
 ```bash
 curl -s --get -H "X-WorldMonitor-Key: $WM_API_KEY" \
-  'https://worldmonitor.app/api/intelligence/v1/get-country-intel-brief' \
+  'https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief' \
   --data-urlencode 'country_code=TR' \
   --data-urlencode 'framework=focus on energy corridors and Black Sea shipping'
 ```

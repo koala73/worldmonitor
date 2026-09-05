@@ -76,7 +76,7 @@ No currently supported endpoint sends `Deprecation` or `Sunset` merely because i
 
 ## Related
 
-- [OpenAPI specification](https://worldmonitor.app/openapi.md)
-- [Developer portal](https://worldmonitor.app/developers.md)
-- [Agent operations guide](https://worldmonitor.app/agents.md)
-- [Brand identity](https://worldmonitor.app/world-monitor.md)
+- [OpenAPI specification](https://www.worldmonitor.app/openapi.md)
+- [Developer portal](https://www.worldmonitor.app/developers.md)
+- [Agent operations guide](https://www.worldmonitor.app/agents.md)
+- [Brand identity](https://www.worldmonitor.app/world-monitor.md)

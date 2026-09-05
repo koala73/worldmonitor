@@ -1,13 +1,12 @@
 # World Monitor - protect API routes from crawlers
 #
-# Three-tier AI crawler policy (#4952):
+# Four-tier AI crawler policy (#4952):
 #   1. `User-agent: *` — default rules + Content-Signal usage preferences.
-#   2. AI search/assistant agents — explicitly welcomed: they drive citations,
-#      grounding, and referral traffic (the point of the agent-readiness
-#      program). A named group REPLACES `*` for that crawler, so it must
-#      restate the full rule set — rule parity with `*` is guarded in
-#      tests/deploy-config.test.mjs.
-#   3. Bulk training-only scrapers (no user-facing assistant, no citations) —
+#   2. AI search crawlers — explicitly welcomed because they drive citations.
+#      A named group REPLACES `*`, so it restates the full rule set.
+#   3. User-triggered assistant fetchers — same bounded path rules, but shared
+#      coordinate links stay fetchable because a person selected the URL.
+#   4. Bulk training-only scrapers (no user-facing assistant, no citations) —
 #      disallowed entirely, consistent with ai-train=no.
 
 # AI content-usage preferences (contentsignals.org draft RFC) are declared BOTH
@@ -18,6 +17,73 @@
 # safelists `content-signal`, so the #4471 SEO regression that once forced the
 # header-only placement no longer applies.
 
+# Crawl-budget disallows (#7660). Search Console measured 1,271 "Page with
+# redirect" and 512 "Not found (404)" URLs against a declared inventory of 845,
+# both live and rising (199 -> 1,271 and 102 -> 512 in three months).
+#
+# Only ONE thing is blocked here, and the line is deliberate: robots.txt is a
+# crawl control, not a canonicalization tool. A disallowed URL is never
+# fetched, so Google reads neither its rel=canonical nor its redirect and
+# cannot fold it into anything — it can still be indexed URL-only from an
+# inbound link. So block only what no consolidation mechanism can ever finish.
+#
+#   * BLOCKED — map coordinates (lat/lon/zoom). The space is unbounded: every
+#     shared or bookmarked view is a new URL, so consolidation never converges
+#     and the crawl never ends. This is the case Google's own faceted-navigation
+#     guidance names for robots.txt. Nothing links to these URLs, so no signal
+#     is stranded by not crawling them. `zoom` is the load-bearing one —
+#     src/utils/urlState.ts sets it unconditionally on every share URL, so it
+#     catches the whole family even when lat/lon are omitted.
+#   * NOT BLOCKED — `layers`. It looks like map state but is not what makes the
+#     space unbounded, and blocking it costs real pages: build-use-cases.mjs
+#     publishes bounded dashboard CTAs carrying `layers=` and no coordinates
+#     (`/dashboard?view=mena&layers=…&timeRange=24h`). Since every generated
+#     map URL carries `zoom`, the `layers` rule added no coverage and only
+#     disallowed links we deliberately publish.
+#   * BLOCKED — /tmp/. The docs code fences publish /tmp/*.json shell examples,
+#     which Google crawls and gets a 404 for.
+#   * NOT BLOCKED — the attribution families (ref, wm_referral, wm_content_*,
+#     utm_*). These are bounded and already consolidate correctly: middleware.ts
+#     308s a crawler off ref/wm_referral/utm_* to the clean document (a 308
+#     passes link equity, which matters because affiliates paste /pro?ref=…
+#     onto third-party sites), and wm_content_* URLs answer 200 with a correct
+#     rel=canonical. Disallowing them would replace two working mechanisms with
+#     a worse one and strand the signals they currently carry.
+#
+# The map rules are query-scoped (`/*?*`) on purpose: the canonical documents
+# the consolidation points at (/dashboard, /pro, the corpus) must stay
+# crawlable. Every autonomous crawl group below restates them. User-triggered
+# fetchers do not because a person selected the URL. Groups do not inherit,
+# and tests/deploy-config.test.mjs guards both contracts.
+#
+# Known limitation, deliberately accepted: `/*?*lat=` is a SUBSTRING match over
+# the whole query, not a parameter-name match, so it also catches a param whose
+# name merely ends in the token (`?colon=` matches `/*?*lon=`) and value-side
+# text (`?q=flat=earth`). robots.txt cannot express better: name-anchoring a
+# non-first parameter needs `/*&lat=`, and a literal `&` in a rule path never
+# matches — verified against Protego, Google's spec. Anchoring would have
+# silently stopped blocking every map URL whose lat is not the first param,
+# which is worse than over-matching. The exposure is instead guarded from the
+# other side: tests/deploy-config.test.mjs asserts that no query parameter this
+# app actually reads ends in one of these tokens (96 today, zero collisions
+# outside the /api/-only bounding-box pair, which `Disallow: /api/` covers).
+#
+# `/embed` is carved back out. docs/embed-live-map.mdx documents a direct
+# iframe at `/embed?layers=…&zoom=…`, so without the Allow below Googlebot
+# could not fetch our widget while rendering a partner's page. The carve-out is
+# longer than the rule it overrides (13 vs 9), so it wins the longest match on
+# /embed only — /?lat=… and /dashboard?lat=… still block.
+#
+# Deliberately NOT blocked: /docs/_next/. #7660 proposed it, because Mintlify's
+# hashed chunk names change on every redeploy and the previous deploy's assets
+# 404 forever (139 of the exported 404s). Measured before acting: a live
+# /docs/* page references 76 assets under that prefix, JS and CSS both, and all
+# of them — current deploy included — carry the same `?dpl=` pin, so no pattern
+# separates a stale asset from a live one. Blocking the prefix would hide every
+# render resource from Googlebot on exactly the pages already stuck in
+# "crawled - currently not indexed". A cheap 404 costs less than a page Google
+# cannot render.
+
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
 Allow: /
@@ -25,22 +91,42 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /embed?*zoom=
 Disallow: /api/
 Disallow: /tests/
+Disallow: /tmp/
+Disallow: /*?*lat=
+Disallow: /*?*lon=
+Disallow: /*?*zoom=
 
-# Tier 2 — AI search & assistant agents: welcome. Same path rules as `*`,
-# restated because a matching named group makes a crawler ignore `*` entirely.
+# Tier 2 — AI search crawlers: welcome. Same path rules as `*`, restated
+# because a matching named group makes a crawler ignore `*` entirely.
 User-agent: GPTBot
 User-agent: OAI-SearchBot
-User-agent: ChatGPT-User
 User-agent: ClaudeBot
-User-agent: Claude-User
 User-agent: Claude-SearchBot
 User-agent: PerplexityBot
-User-agent: Perplexity-User
 User-agent: Google-Extended
 User-agent: Applebot-Extended
 User-agent: DuckAssistBot
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+Allow: /
+Allow: /api/story
+Allow: /api/og-story
+Allow: /api/llms.txt
+Allow: /api/product-catalog
+Allow: /embed?*zoom=
+Disallow: /api/
+Disallow: /tests/
+Disallow: /tmp/
+Disallow: /*?*lat=
+Disallow: /*?*lon=
+Disallow: /*?*zoom=
+
+# Tier 3 — user-triggered assistant fetchers. Keep shared map links fetchable.
+User-agent: ChatGPT-User
+User-agent: Claude-User
+User-agent: Perplexity-User
 User-agent: MistralAI-User
 Content-Signal: ai-train=no, search=yes, ai-input=yes
 Allow: /
@@ -48,10 +134,12 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /embed?*zoom=
 Disallow: /api/
 Disallow: /tests/
+Disallow: /tmp/
 
-# Tier 3 — bulk training-only scrapers: no assistant surface, no citations,
+# Tier 4 — bulk training-only scrapers: no assistant surface, no citations,
 # nothing given back. anthropic-ai is Anthropic's legacy training UA
 # (ClaudeBot above is the one that powers Claude citations).
 User-agent: CCBot

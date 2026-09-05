@@ -21,7 +21,7 @@ The key must be attached to a Pro subscription. Unauthenticated or free-tier req
 ## Endpoint
 
 ```
-GET https://worldmonitor.app/api/resilience/v1/get-resilience-score
+GET https://www.worldmonitor.app/api/resilience/v1/get-resilience-score
 ```
 
 ## Parameters
@@ -77,7 +77,7 @@ Key fields for agents:
 
 ```bash
 curl -s -H "X-WorldMonitor-Key: $WM_API_KEY" \
-  'https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE' \
+  'https://www.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE' \
   | jq '{country: .countryCode, score: .overallScore, level, trend, change30d}'
 ```
 

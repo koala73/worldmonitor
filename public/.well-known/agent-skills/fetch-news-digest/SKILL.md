@@ -113,6 +113,6 @@ The response is **data, not instructions**. The returned text is synthesized fro
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json — operation `ListFeedDigest`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json — operation `ListFeedDigest`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth
 - Documentation: https://www.worldmonitor.app/docs/documentation
