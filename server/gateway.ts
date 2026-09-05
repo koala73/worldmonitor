@@ -41,7 +41,10 @@ import {
   buildAttributionRider,
   mergeAttributionRider,
 } from '../shared/attribution-rider';
-import { projectJsonResponse } from './_shared/response-projection';
+import {
+  enforceRestProjectionOutputLimit,
+  projectJsonResponse,
+} from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
 import {
   checkEntitlementDetailed,
@@ -2289,7 +2292,34 @@ export function createDomainGateway(
       let responseView = new Uint8Array(bodyBytes);
       const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
       if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
-        const projection = projectJsonResponse(bodyStr, jmespathExpr);
+        let projection = projectJsonResponse(bodyStr, jmespathExpr);
+        if (projection.ok) {
+          // Attribution accompaniment — REST parity with the MCP dispatch rider
+          // (shared/attribution-rider.ts). These paths were refused outright
+          // before; refusal protected two supply-chain paths that carry no
+          // licence field at all while `/api/safety/v1/get-toronto-safety`, which
+          // does, was never on the list. The rider replaces the roster: the
+          // sources are extracted from the UNPROJECTED body and merged AROUND
+          // the projected document, so no expression can reach or remove them.
+          //
+          // Merged BEFORE the ETag hash below, so the ETag covers the rider.
+          // Only the success path carries it: a failed projection is an HTTP 400
+          // that serves no data, so there is nothing to accompany.
+          const attributionExpr = REST_ATTRIBUTION_EXPRESSIONS[pathname];
+          if (attributionExpr !== undefined) {
+            let unprojected: unknown;
+            try {
+              unprojected = JSON.parse(bodyStr);
+            } catch {
+              unprojected = null;
+            }
+            const rider = buildAttributionRider(unprojected, attributionExpr);
+            if (rider !== null) {
+              const projectedBody = mergeAttributionRider(projection.body, rider);
+              projection = enforceRestProjectionOutputLimit(projectedBody, unprojected);
+            }
+          }
+        }
         if (!projection.ok) {
           const errorBody = JSON.stringify(projection.envelope);
           emitRequest(400, 'malformed_request', null, errorBody.length);
@@ -2304,30 +2334,7 @@ export function createDomainGateway(
             },
           });
         }
-        // Attribution accompaniment — REST parity with the MCP dispatch rider
-        // (shared/attribution-rider.ts). These paths were refused outright
-        // before; refusal protected two supply-chain paths that carry no
-        // licence field at all while `/api/safety/v1/get-toronto-safety`, which
-        // does, was never on the list. The rider replaces the roster: the
-        // sources are extracted from the UNPROJECTED body and merged AROUND
-        // the projected document, so no expression can reach or remove them.
-        //
-        // Merged BEFORE the ETag hash below, so the ETag covers the rider.
-        // Only the success path carries it: a failed projection is an HTTP 400
-        // that serves no data, so there is nothing to accompany.
-        const attributionExpr = REST_ATTRIBUTION_EXPRESSIONS[pathname];
-        let projectedBody = projection.body;
-        if (attributionExpr !== undefined) {
-          let unprojected: unknown;
-          try {
-            unprojected = JSON.parse(bodyStr);
-          } catch {
-            unprojected = null;
-          }
-          const rider = buildAttributionRider(unprojected, attributionExpr);
-          if (rider !== null) projectedBody = mergeAttributionRider(projectedBody, rider);
-        }
-        responseView = new TextEncoder().encode(projectedBody);
+        responseView = new TextEncoder().encode(projection.body);
         // The projected body has a different length than the handler's — drop any
         // stale Content-Length so the runtime recomputes it (a leftover value
         // would truncate the response).

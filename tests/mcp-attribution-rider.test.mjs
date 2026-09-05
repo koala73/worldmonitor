@@ -127,37 +127,62 @@ describe('attribution rider — extraction against real payload shapes', () => {
     return tool._attribution;
   }
 
-  test('get_resilience_indicators flattens and dedupes indicator sources', () => {
-    const source = {
+  test('get_resilience_indicators keeps each source URL tied to its indicator and retrieval date', () => {
+    const firstSource = {
       key: 'worldbank-wdi',
       name: 'World Bank WDI',
       attribution: 'World Bank',
       license: 'CC BY 4.0',
-      url: 'https://data.worldbank.org',
+      url: 'https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.LOSS.ZS',
       licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
       attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
     };
     const payload = {
       countryCode: 'DE',
       indicators: [
-        // Same source cited by two indicators with DIFFERENT per-indicator
-        // provenance flags — the flattened rider must carry it once.
-        { id: 'a', sources: [{ ...source, observationProvenance: true }], rawValue: { available: true, numericValue: 1 } },
-        { id: 'b', sources: [{ ...source, observationProvenance: false }], rawValue: { available: true, numericValue: 2 } },
-        { id: 'c', sources: [{ key: 'iea', name: 'IEA', attribution: 'IEA', license: 'IEA Terms', url: 'https://iea.org', licenseUrl: '', attributionUrl: '' }] },
+        {
+          id: 'power-losses',
+          retrievedAt: '2026-09-01T00:00:00.000Z',
+          sources: [{ ...firstSource, observationProvenance: true }],
+          rawValue: { available: true, numericValue: 1 },
+        },
+        {
+          id: 'renewable-output',
+          retrievedAt: '2026-09-02T00:00:00.000Z',
+          sources: [{
+            ...firstSource,
+            url: 'https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.RNEW.ZS',
+            observationProvenance: false,
+          }],
+          rawValue: { available: true, numericValue: 2 },
+        },
+        {
+          id: 'energy-security',
+          retrievedAt: '2026-09-03T00:00:00.000Z',
+          sources: [{ key: 'iea', name: 'IEA', attribution: 'IEA', license: 'IEA Terms', url: 'https://iea.org', licenseUrl: '', attributionUrl: '' }],
+        },
       ],
     };
     const rider = buildAttributionRider(payload, extractionFor('get_resilience_indicators'));
     assert.ok(rider);
     assert.equal(rider.required, true);
     assert.equal(rider.notice, ATTRIBUTION_RIDER_NOTICE);
-    assert.equal(rider.sources.length, 2);
-    assert.deepEqual(rider.sources[0], source);
-    // Per-indicator provenance is meaningless once flattened, so the
-    // extraction must not carry it into the rider.
-    assert.equal('observationProvenance' in rider.sources[0], false);
-    // Empty licence strings are pruned rather than shipped as noise.
+    assert.equal(rider.sources.length, 3);
+    assert.deepEqual(rider.sources[0], {
+      indicatorId: 'power-losses',
+      retrievedAt: '2026-09-01T00:00:00.000Z',
+      ...firstSource,
+    });
     assert.deepEqual(rider.sources[1], {
+      indicatorId: 'renewable-output',
+      retrievedAt: '2026-09-02T00:00:00.000Z',
+      ...firstSource,
+      url: 'https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.RNEW.ZS',
+    });
+    assert.equal('observationProvenance' in rider.sources[0], false);
+    assert.deepEqual(rider.sources[2], {
+      indicatorId: 'energy-security',
+      retrievedAt: '2026-09-03T00:00:00.000Z',
       key: 'iea', name: 'IEA', attribution: 'IEA', license: 'IEA Terms', url: 'https://iea.org',
     });
   });
@@ -260,6 +285,20 @@ describe('attribution rider — extraction against real payload shapes', () => {
 });
 
 describe('buildAttributionRider — contract', () => {
+  test('does not collapse distinct exact URLs that share a source key', () => {
+    const rider = buildAttributionRider({
+      sources: [
+        { key: 'shared', url: 'https://example.test/indicator-a' },
+        { key: 'shared', url: 'https://example.test/indicator-b' },
+      ],
+    }, 'sources');
+    assert.ok(rider);
+    assert.deepEqual(rider.sources.map((source) => source.url), [
+      'https://example.test/indicator-a',
+      'https://example.test/indicator-b',
+    ]);
+  });
+
   test('returns null when the payload carries no sources', () => {
     assert.equal(buildAttributionRider({ data: { reported_occurrences: null } }, 'data.reported_occurrences.{attribution: attribution}'), null);
     assert.equal(buildAttributionRider(null, 'indicators[].sources[]'), null);

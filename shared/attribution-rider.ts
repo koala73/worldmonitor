@@ -84,7 +84,7 @@ export const REST_ATTRIBUTION_EXPRESSIONS: Readonly<Record<string, string>> = {
   // Same payload as the get_resilience_indicators tool: its `_execute` returns
   // this endpoint's JSON verbatim, so the expression is identical.
   '/api/resilience/v1/get-resilience-indicators':
-    'indicators[].sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}',
+    'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
   // Flat response, one dataset per request (`?dataset=`), with the licence
   // assertion at the top level — see queryTorontoSafety's return shape.
   '/api/safety/v1/get-toronto-safety':
@@ -106,16 +106,38 @@ function pruneEmpty(entry: Record<string, unknown>): Record<string, unknown> | n
   return Object.keys(kept).length > 0 ? kept : null;
 }
 
-/**
- * Dedupe identity. `key` is the stable source identifier on a resilience
- * source, and one source is cited by many indicators, so a flattened
- * `indicators[].sources[]` repeats it dozens of times. Everything else dedupes
- * on its full canonical form.
- */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+/** Dedupe on the complete attribution identity, including exact source URLs. */
 function dedupeIdentity(entry: Record<string, unknown>): string {
-  const key = entry.key;
-  if (typeof key === 'string' && key !== '') return `key:${key}`;
-  return `json:${JSON.stringify(entry, Object.keys(entry).sort())}`;
+  return canonicalJson(entry);
+}
+
+/**
+ * A grouped extraction carries parent context alongside its nested sources.
+ * Flatten it into source rows so each exact URL keeps the indicator and
+ * retrieval date that make the attribution claim valid.
+ */
+function expandCandidate(candidate: unknown): Array<Record<string, unknown>> {
+  if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+  const record = candidate as Record<string, unknown>;
+  if (!Array.isArray(record.sources)) return [record];
+
+  const { sources, ...context } = record;
+  return sources.flatMap((source) => (
+    source !== null && typeof source === 'object' && !Array.isArray(source)
+      ? [{ ...context, ...(source as Record<string, unknown>) }]
+      : []
+  ));
 }
 
 /**
@@ -148,12 +170,11 @@ export function buildAttributionRider(
     return null;
   }
 
-  const candidates = Array.isArray(extracted) ? extracted : [extracted];
+  const candidates = (Array.isArray(extracted) ? extracted : [extracted]).flatMap(expandCandidate);
   const sources: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
-    if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
-    const pruned = pruneEmpty(candidate as Record<string, unknown>);
+    const pruned = pruneEmpty(candidate);
     if (pruned === null) continue;
     const identity = dedupeIdentity(pruned);
     if (seen.has(identity)) continue;

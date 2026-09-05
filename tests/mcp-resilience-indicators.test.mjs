@@ -24,7 +24,7 @@ describe('get_resilience_indicators MCP tool', () => {
     assert.equal(tool._jmespathDisabled, undefined);
     assert.equal(
       tool._attribution,
-      'indicators[].sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}',
+      'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
     );
     assert.deepEqual(tool._apiPaths, ['GET /api/resilience/v1/get-resilience-indicators']);
     assert.deepEqual(tool.inputSchema.required, ['country_code']);

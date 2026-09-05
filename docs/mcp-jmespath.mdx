@@ -49,11 +49,13 @@ When you project such a tool, the result is wrapped:
     "notice": "The values in `data` are derived from the sources listed here. Redistribution requires this attribution block to travel with them.",
     "sources": [
       {
+        "indicatorId": "power-losses",
+        "retrievedAt": "2026-08-30T00:00:00.000Z",
         "key": "worldbank-wdi",
         "name": "World Bank WDI",
         "attribution": "World Bank",
         "license": "CC BY 4.0",
-        "url": "https://data.worldbank.org",
+        "url": "https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.LOSS.ZS",
         "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
       }
     ]
@@ -62,6 +64,10 @@ When you project such a tool, the result is wrapped:
 ```
 
 Three things worth knowing:
+
+- **Resilience source rows keep their value association.** Each row includes
+  the indicator ID, retrieval date, and exact source URL needed to attribute
+  the projected value correctly.
 
 - **Your expression only ever sees `data`.** The rider is extracted from the
   unprojected payload and merged after your expression runs, so it cannot be

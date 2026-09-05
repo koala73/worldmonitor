@@ -46,11 +46,13 @@ curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=c
     "notice": "The values in `data` are derived from the sources listed here. Redistribution requires this attribution block to travel with them.",
     "sources": [
       {
+        "indicatorId": "power-losses",
+        "retrievedAt": "2026-08-30T00:00:00.000Z",
         "key": "worldbank-wdi",
         "name": "World Bank WDI",
         "attribution": "World Bank",
         "license": "CC BY 4.0",
-        "url": "https://data.worldbank.org",
+        "url": "https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.LOSS.ZS",
         "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
       }
     ]
@@ -59,6 +61,8 @@ curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=c
 ```
 
 三点需要知道：
+
+- **韧性数据源条目会保留数值关联。** 每条记录都包含正确归属投影值所需的指标 ID、抓取日期和精确数据源 URL。
 
 - **你的表达式只会看到 `data`。** 附带块是从未投影的载荷中提取的，并在你的表达式执行**之后**合并进来，因此无法被选掉——即使表达式本身投影出一个 `_attribution` 键，它也只会无害地落在 `data` 里面。
 - **省略 `jmespath` 则一切照旧。** 未投影的响应本身就内联携带署名，因此会原样返回，既没有包裹层也没有 `_attribution` 键。

@@ -34,11 +34,13 @@ const APEX_SERVED = [
   /^\/security\.txt$/,
 ];
 
-// Bare-origin apex strings that are identifiers, not links. An OAuth issuer /
-// protected-resource identifier is compared byte-for-byte by clients, so
-// rewriting it to www breaks the flow it documents; world-monitor.md's brand
-// table names the apex precisely because it is describing the apex.
+// Bare-origin apex strings that are identifiers, not links. OAuth issuer,
+// authorization-server, and protected-resource identifiers are compared
+// byte-for-byte by clients, so rewriting them to www breaks the flow they
+// document; world-monitor.md's brand table names the apex precisely because it
+// is describing the apex.
 const APEX_IDENTIFIERS = [/"(?:issuer|resource)":/, /^\| Apex domain \|/];
+const APEX_IDENTIFIER_ARRAY = /"authorization_servers":\s*\[$/;
 
 // public/blog and public/pro are BUILD OUTPUT — scanning them would report the
 // same defect twice and cannot be fixed there. Their sources are scanned
@@ -80,16 +82,16 @@ function apexOffenders() {
   const offenders = [];
   for (const file of [...scanFiles(PUBLIC_DIR), ...scanFiles(BLOG_SOURCE_DIR)]) {
     const rel = relative(ROOT, file);
-    readFileSync(file, 'utf-8')
-      .split('\n')
-      .forEach((line, index) => {
-        for (const match of line.matchAll(APEX_URL_RE)) {
-          const path = match[1] ?? '';
-          if (path && APEX_SERVED.some((re) => re.test(path))) continue;
-          if (!path && APEX_IDENTIFIERS.some((re) => re.test(line.trim()))) continue;
-          offenders.push({ file: rel, line: index + 1, url: match[0] });
-        }
-      });
+    const lines = readFileSync(file, 'utf-8').split('\n');
+    lines.forEach((line, index) => {
+      for (const match of line.matchAll(APEX_URL_RE)) {
+        const path = match[1] ?? '';
+        if (path && APEX_SERVED.some((re) => re.test(path))) continue;
+        if (!path && APEX_IDENTIFIERS.some((re) => re.test(line.trim()))) continue;
+        if (!path && APEX_IDENTIFIER_ARRAY.test(lines[index - 1]?.trim() ?? '')) continue;
+        offenders.push({ file: rel, line: index + 1, url: match[0] });
+      }
+    });
   }
   return offenders;
 }
@@ -151,6 +153,11 @@ describe('published agent corpus names the serving host (#7660)', () => {
       card.authentication.resource,
       'https://worldmonitor.app',
       'the OAuth protected-resource identifier is compared byte-for-byte by clients'
+    );
+    assert.deepEqual(
+      card.authentication.authorization_servers,
+      ['https://worldmonitor.app'],
+      'the OAuth authorization-server identifier must stay on the resource origin'
     );
 
     // The other half of the same identity pair, and the one #4938 was about.

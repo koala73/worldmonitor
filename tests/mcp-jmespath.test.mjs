@@ -430,10 +430,23 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       name: 'World Bank WDI',
       attribution: 'World Bank',
       license: 'CC BY 4.0',
-      url: 'https://data.worldbank.org',
       licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
       attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
     };
+    const RESILIENCE_ATTRIBUTION_SOURCES = [
+      {
+        indicatorId: 'power-losses',
+        retrievedAt: '2026-09-01T00:00:00.000Z',
+        ...RESILIENCE_SOURCE,
+        url: 'https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.LOSS.ZS',
+      },
+      {
+        indicatorId: 'education-attainment',
+        retrievedAt: '2026-09-02T00:00:00.000Z',
+        ...RESILIENCE_SOURCE,
+        url: 'https://api.worldbank.org/v2/country/DE/indicator/SE.SEC.CUAT.UP.ZS',
+      },
+    ];
 
     function mockResilienceIndicators() {
       const payload = {
@@ -442,12 +455,14 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         indicators: [
           {
             id: 'power-losses',
-            sources: [{ ...RESILIENCE_SOURCE, observationProvenance: true }],
+            retrievedAt: '2026-09-01T00:00:00.000Z',
+            sources: [{ ...RESILIENCE_SOURCE, url: RESILIENCE_ATTRIBUTION_SOURCES[0].url, observationProvenance: true }],
             rawValue: { available: true, numericValue: 4.2, numericValueAvailable: true, unit: 'percent', status: 'available' },
           },
           {
             id: 'education-attainment',
-            sources: [{ ...RESILIENCE_SOURCE, observationProvenance: false }],
+            retrievedAt: '2026-09-02T00:00:00.000Z',
+            sources: [{ ...RESILIENCE_SOURCE, url: RESILIENCE_ATTRIBUTION_SOURCES[1].url, observationProvenance: false }],
             rawValue: { available: true, numericValue: 91.3, numericValueAvailable: true, unit: 'percent', status: 'available' },
           },
         ],
@@ -476,10 +491,9 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         { available: true, numericValue: 4.2, numericValueAvailable: true, unit: 'percent', status: 'available' },
         { available: true, numericValue: 91.3, numericValueAvailable: true, unit: 'percent', status: 'available' },
       ]);
-      // And the licence travelled with them anyway — deduped to one entry
-      // even though two indicators cite the source with different provenance.
+      // And each value keeps its exact source URL and retrieval date.
       assert.equal(parsed._attribution.required, true);
-      assert.deepEqual(parsed._attribution.sources, [RESILIENCE_SOURCE]);
+      assert.deepEqual(parsed._attribution.sources, RESILIENCE_ATTRIBUTION_SOURCES);
       assert.match(parsed._attribution.notice, /Redistribution requires/);
     });
 
@@ -493,7 +507,7 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       // The projection's own `_attribution` lands under `data`, untouched;
       // the real rider is merged outside the projected document.
       assert.deepEqual(parsed.data, { _attribution: 'stripped' });
-      assert.deepEqual(parsed._attribution.sources, [RESILIENCE_SOURCE]);
+      assert.deepEqual(parsed._attribution.sources, RESILIENCE_ATTRIBUTION_SOURCES);
     });
 
     it('the rider rides on the _jmespath_error soft-fail envelope', async () => {
@@ -505,7 +519,7 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const parsed = JSON.parse(body.result.content[0].text);
       assert.match(parsed.data._jmespath_error, /invalid_expression/);
       assert.ok(Array.isArray(parsed.data.original_keys));
-      assert.deepEqual(parsed._attribution.sources, [RESILIENCE_SOURCE]);
+      assert.deepEqual(parsed._attribution.sources, RESILIENCE_ATTRIBUTION_SOURCES);
     });
 
     it('omitting jmespath on a licence-bearing tool returns the payload with no rider', async () => {
