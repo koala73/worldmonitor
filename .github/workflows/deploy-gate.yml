@@ -13,12 +13,6 @@ run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inp
 # stranded PR heals within 30 minutes, and a success from an older gate cannot
 # stay mergeable after the required set changes (#5851).
 
-# Required workflow_run events can target the same SHA. Keep only the newest
-# evaluator so their retry windows do not multiply the installation API load.
-concurrency:
-  group: deploy-gate-${{ github.event.workflow_run.head_sha || github.event.inputs.sha || 'sweep' }}
-  cancel-in-progress: true
-
 on:
   workflow_run:
     workflows: ["Test", "Typecheck", "Lint Code", "Security Audit", "Stacked Merge Guard", "Proto Generation Check"]
@@ -33,438 +27,141 @@ on:
         type: string
 
 permissions:
+  contents: read
   actions: read
   checks: read
   pull-requests: read
   statuses: write
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+
 jobs:
-  gate:
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      discovery: ${{ steps.plan.outputs.discovery }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - id: plan
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.event.inputs.sha }}
+        run: bash -e .github/scripts/deploy-gate.sh discover
+
+  invalidate:
+    needs: discover
+    if: ${{ needs.discover.result == 'success' && needs.discover.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - env:
+          SHA: ${{ matrix.sha }}
+          RESULT_PATH: ${{ runner.temp }}/invalidation/result.json
+        run: |
+          mkdir -p "$(dirname "$RESULT_PATH")"
+          bash -e .github/scripts/deploy-gate.sh invalidate
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: deploy-gate-invalidate-${{ github.run_attempt }}-${{ matrix.sha }}
+          path: ${{ runner.temp }}/invalidation/result.json
+          if-no-files-found: error
+          retention-days: 1
+
+  recover:
+    needs: [discover, invalidate]
+    if: ${{ always() && needs.discover.result == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+      invalidation_failed: ${{ steps.plan.outputs.invalidation_failed }}
+      protocol_failed: ${{ steps.plan.outputs.protocol_failed }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - if: ${{ needs.discover.outputs.count != '0' }}
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: deploy-gate-invalidate-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/invalidations
+      - id: plan
+        env:
+          DISCOVERY: ${{ needs.discover.outputs.discovery }}
+          RESULTS_DIR: ${{ runner.temp }}/invalidations
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: bash -e .github/scripts/deploy-gate.sh recover
+
+  evaluate:
+    needs: recover
+    if: ${{ always() && needs.recover.result == 'success' && needs.recover.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.recover.outputs.matrix) }}
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
       - name: Check required PR gates passed for this SHA
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha || github.event.inputs.sha }}
+          SHA: ${{ matrix.sha }}
+          CHECK_ATTEMPTS: ${{ matrix.check_attempts }}
+        run: bash -e .github/scripts/deploy-gate.sh evaluate
+
+  gate:
+    needs: [discover, invalidate, recover, evaluate]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate deploy gate execution
+        env:
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          set -o pipefail
-          # A commit-status description is capped at 140 characters and GitHub
-          # answers 422 past it. Splicing the whole required-name list in made
-          # this job CRASH instead of posting its status once enough names were
-          # in the list — about seven (#6389, run 31357392032, all 20 pending).
-          # The failure arm is the dangerous one: no `gate` status posted at all
-          # reads as "missing", not "failure", to branch protection, to
-          # check-railway-deploy-drift.mjs and to the Seed Freshness Monitor.
-          # Keep the state and the COUNT, which survive truncation; the full
-          # list is already in this log. Reserve space for the contract stamp:
-          # the sweep uses it to distinguish current evidence from a stale
-          # success that covered an older required list (#5851).
-          gate_description() {
-            text="$1"
-            suffix=" $gate_stamp"
-            text_limit=$((140 - ${#suffix}))
-            if [ "${#text}" -le "$text_limit" ]; then
-              printf '%s%s' "$text" "$suffix"
-            else
-              preview_length=$((text_limit - 3))
-              printf '%s...%s' "${text:0:$preview_length}" "$suffix"
-            fi
-          }
-          name_count() {
-            printf '%s\n' "$1" | tr ',' '\n' | wc -l | tr -d ' '
-          }
-          # Retry a primary-rate-limit response once at GitHub's published
-          # reset time. The rate_limit endpoint does not spend primary budget;
-          # keeping this bounded avoids turning an outage into an infinite job.
-          gh_api_with_rate_limit_retry() {
-            local resource="$1"
-            shift
-            local error_file output result reset now wait_seconds
-            error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-error.XXXXXX")
-            if output=$(gh api "$@" 2>"$error_file"); then
-              rm -f "$error_file"
-              printf '%s\n' "$output"
-              return 0
-            else
-              result=$?
-            fi
-
-            cat "$error_file" >&2
-            if ! grep -qi 'rate limit exceeded' "$error_file"; then
-              rm -f "$error_file"
-              return "$result"
-            fi
-
-            reset=$(gh api rate_limit --jq ".resources.$resource.reset" 2>/dev/null || true)
-            if ! [ "$reset" -eq "$reset" ] 2>/dev/null; then
-              echo "::error::GitHub API rate limit was exhausted and its reset time was unavailable."
-              rm -f "$error_file"
-              return "$result"
-            fi
-
-            now=$(date +%s)
-            wait_seconds=$((reset - now + 5))
-            if [ "$wait_seconds" -lt 1 ]; then wait_seconds=1; fi
-            echo "GitHub $resource API budget exhausted; retrying once in ${wait_seconds}s." >&2
-            rm -f "$error_file"
-            sleep "$wait_seconds"
-            gh api "$@"
-          }
-          post_gate_status() {
-            local state="$1"
-            local description previous error_file result read_failed=0
-            description=$(gate_description "$2")
-            gate_status_exhausted=0
-            if previous=$(gh_api_with_rate_limit_retry core \
-              "repos/$REPO/commits/$SHA/status?per_page=100" --paginate --slurp |
-              jq -ce 'if type == "array" and length > 0 and all(.[]; (.statuses | type) == "array")
-                then [.[].statuses[] | select(.context == "gate")] | sort_by(.id) | last // {}
-                else error("Incomplete commit-status response") end'); then
-              if printf '%s\n' "$previous" | jq -e --arg state "$state" --arg description "$description" \
-                '.state == $state and .description == $description' >/dev/null; then
-                echo "gate unchanged for $SHA ($state)"
-                return 0
-              fi
-            else
-              echo "::error::Could not read the current gate status for $SHA"
-              state="pending"
-              description=$(gate_description "Deploy Gate could not read status; retry scheduled")
-              read_failed=1
-            fi
-            error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-status.XXXXXX")
-            if gh_api_with_rate_limit_retry core "repos/$REPO/statuses/$SHA" --method POST \
-              --field state="$state" \
-              --field context="gate" \
-              --field description="$description" 2>"$error_file"; then
-              rm -f "$error_file"
-              if [ "$read_failed" -eq 1 ]; then
-                gate_fallback_handled=1
-              fi
-              return "$read_failed"
-            else
-              result=$?
-            fi
-            cat "$error_file" >&2
-            if grep -qi 'This SHA and context has reached the maximum number of statuses' "$error_file"; then
-              gate_status_exhausted=1
-              echo "::error::Gate status capacity exhausted for $SHA; this head needs a new commit before its status can change."
-            fi
-            rm -f "$error_file"
-            return "$result"
-          }
-          # The runner invokes this block with `bash -e`. If anything escapes
-          # the bounded API retry after evaluation starts, make one last status
-          # attempt. BASHPID keeps command-substitution subshells from posting
-          # duplicate statuses; only the SHA's evaluation shell owns the fallback.
-          gate_shell_pid=$BASHPID
-          active_sha=""
-          post_pending_on_exit() {
-            exit_code=$?
-            if [ "$exit_code" -eq 0 ] || [ "$BASHPID" != "$gate_shell_pid" ] || [ -z "$active_sha" ] ||
-              [ "${gate_status_exhausted:-0}" -eq 1 ] || [ "${gate_fallback_handled:-0}" -eq 1 ]; then
-              return
-            fi
-            SHA="$active_sha"
-            post_gate_status "pending" "Deploy Gate could not evaluate; retry scheduled" || true
-          }
-          trap post_pending_on_exit EXIT
-          evaluation_failures=0
-          exhausted_shas=""
-          # Every job of every workflow named in the workflow_run trigger above.
-          # A job missing here is never inspected, so it reports red on the PR
-          # while this gate still posts success — CI theatre, not a gate (#5402).
-          # tests/ci-workflow-coverage.test.mts fails when this list and those
-          # workflows drift apart in either direction. `audit-lockfile` is
-          # deliberately absent: it is a matrix job whose check runs are named
-          # `audit-lockfile (root)`, `audit-lockfile (scripts)`, … so a bare
-          # entry would wait on a check run that is never published; the
-          # always()-running `security-audit` aggregate blocks for it instead.
-          #
-          # Entries are check-run NAMES, and the lookup below keeps only the
-          # last-completed run per name. Test, Typecheck and Lint Code each
-          # define a job with the id `changes`; the latter two publish under
-          # `typecheck-changes` / `lint-changes` so all three are evaluated
-          # instead of two being masked by the third (#5822).
-          required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
-          gate_contract=$(REQUIRED_JOBS="$required" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["REQUIRED_JOBS"].encode()).hexdigest()[:12])')
-          gate_stamp="[gate-contract:$gate_contract]"
-          repo_owner=${REPO%%/*}
-          repo_name=${REPO#*/}
-          # GraphQL is the cheap rollup, but GitHub outages often 503 the
-          # query endpoint while REST check-runs still answers. Falling back
-          # lets a SHA-specific dispatch post `gate` instead of stranding the
-          # PR on the EXIT-trap pending status.
-          fetch_required_check_runs() {
-            local eval_sha="$1"
-            local gql_error gql_pages rest_pages
-            gql_error=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-graphql.XXXXXX")
-            if gql_pages=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
-              -f owner="$repo_owner" \
-              -f name="$repo_name" \
-              -F sha="$eval_sha" \
-              -f query='query($owner: String!, $name: String!, $sha: GitObjectID!, $endCursor: String) {
-                repository(owner: $owner, name: $name) {
-                  object(oid: $sha) {
-                    ... on Commit {
-                      statusCheckRollup {
-                        contexts(first: 100, after: $endCursor) {
-                          nodes {
-                            ... on CheckRun { name conclusion databaseId startedAt completedAt }
-                          }
-                          pageInfo { hasNextPage endCursor }
-                        }
-                      }
-                    }
-                  }
-                }
-              }' 2>"$gql_error"); then
-              rm -f "$gql_error"
-              printf '%s\n' "$gql_pages" | jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
-              return 0
-            fi
-            cat "$gql_error" >&2
-            rm -f "$gql_error"
-            echo "GraphQL check-runs unavailable; falling back to REST" >&2
-            rest_pages=$(gh_api_with_rate_limit_retry core \
-              "repos/$REPO/commits/$eval_sha/check-runs?per_page=100" \
-              --paginate --slurp) || return $?
-            printf '%s\n' "$rest_pages" | jq -c --argjson required "$required" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
-          }
-
-          if [ -n "$SHA" ]; then
-            # workflow_run or a sha-input dispatch — evaluate exactly that SHA.
-            shas="$SHA"
-          else
-            # schedule / workflow_dispatch — read every open PR head and its
-            # `gate` context in one paginated GraphQL query. Pending statuses
-            # and statuses without the exact current required-set stamp are
-            # re-evaluated. A failed event-driven run normally posts pending
-            # through the EXIT trap. If even that write fails, cross-reference
-            # missing contexts with recent failed runs of this workflow. That
-            # recovers an old head whose checks were rerun without evaluating
-            # every dormant legacy PR with no gate context (#5851).
-            pr_gate_states=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
-              -f owner="$repo_owner" \
-              -f name="$repo_name" \
-              -f query='query($owner: String!, $name: String!, $endCursor: String) {
-                repository(owner: $owner, name: $name) {
-                  pullRequests(first: 100, states: [OPEN], after: $endCursor) {
-                    nodes {
-                      headRefOid
-                      commits(last: 1) {
-                        nodes {
-                          commit {
-                            status { context(name: "gate") { state description } }
-                          }
-                        }
-                      }
-                    }
-                    pageInfo { hasNextPage endCursor }
-                  }
-                }
-              }')
-            stale_terminal_shas=$(printf '%s\n' "$pr_gate_states" |
-              jq -r --arg gate_stamp "$gate_stamp" '
-                .[].data.repository.pullRequests.nodes[] |
-                .commits.nodes[0].commit.status.context as $gate |
-                select(
-                  $gate != null and
-                  $gate.state != "PENDING" and
-                  (($gate.description // "") | endswith($gate_stamp) | not)
-                ) |
-                .headRefOid
-              ' |
-              awk '!seen[$0]++')
-            pending_shas=$(printf '%s\n' "$pr_gate_states" |
-              jq -r '
-                .[].data.repository.pullRequests.nodes[] |
-                select(.commits.nodes[0].commit.status.context.state == "PENDING") |
-                .headRefOid
-              ' |
-              awk '!seen[$0]++')
-            missing_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
-              .[].data.repository.pullRequests.nodes[] |
-              select(.commits.nodes[0].commit.status.context == null) |
-              .headRefOid
-            ')
-
-            # Invalidate every stale terminal result before any slower recovery
-            # reads start. If the first write pass has partial failures, retry
-            # every failed SHA once so the EXIT trap is not the only fallback
-            # for a multi-SHA cohort.
-            remaining_invalidation_shas="$stale_terminal_shas"
-            for invalidation_attempt in 1 2; do
-              if [ -z "$remaining_invalidation_shas" ]; then
-                break
-              fi
-              if [ "$invalidation_attempt" -eq 2 ]; then
-                echo "sweep: retrying stale gate invalidation for: $remaining_invalidation_shas"
-              fi
-              stale_invalidation_failures=""
-              for SHA in $remaining_invalidation_shas; do
-                active_sha="$SHA"
-                if ! post_gate_status "pending" "Required PR gate contract changed; re-evaluation scheduled"; then
-                  if [ "$gate_status_exhausted" -eq 1 ]; then
-                    exhausted_shas=$(printf '%s\n%s\n' "$exhausted_shas" "$SHA" | sed '/^$/d')
-                    evaluation_failures=1
-                  else
-                    stale_invalidation_failures=$(printf '%s\n%s\n' "$stale_invalidation_failures" "$SHA" | sed '/^$/d')
-                  fi
-                fi
-                active_sha=""
-              done
-              remaining_invalidation_shas="$stale_invalidation_failures"
-            done
-            if [ -n "$remaining_invalidation_shas" ]; then
-              echo "::error::Could not invalidate stale gate statuses for: $remaining_invalidation_shas"
-              evaluation_failures=1
-            fi
-
-            failed_missing_shas=""
-            if [ -n "$missing_shas" ]; then
-              recent_run_cutoff=$(($(date +%s) - 86400))
-              recent_run_cutoff_iso=$(date -u -d "@$recent_run_cutoff" +%Y-%m-%dT%H:%M:%SZ)
-              failed_gate_shas=$(gh_api_with_rate_limit_retry core \
-                "repos/$REPO/actions/workflows/deploy-gate.yml/runs?event=workflow_run&status=failure&created=>=$recent_run_cutoff_iso&per_page=100" \
-                --paginate --slurp |
-                jq -r --argjson cutoff "$recent_run_cutoff" '
-                  .[].workflow_runs[] |
-                  select(
-                    (.created_at | fromdateiso8601) >= $cutoff and
-                    (.display_title | test("^Deploy Gate [0-9a-f]{40}$"))
-                  ) |
-                  .display_title |
-                  sub("^Deploy Gate "; "")
-                ')
-              failed_missing_shas=$(printf '%s\n' "$missing_shas" | while read -r missing_sha; do
-                if printf '%s\n' "$failed_gate_shas" | grep -qx "$missing_sha"; then
-                  echo "$missing_sha"
-                fi
-              done)
-            fi
-            # A SHA can head more than one open PR. Deduplicate without sorting:
-            # stale terminal candidates must stay ahead of already-fail-closed
-            # pending candidates so a busy sweep cannot starve stale greens.
-            shas=$(printf '%s\n%s\n%s\n' "$stale_terminal_shas" "$pending_shas" "$failed_missing_shas" |
-              sed '/^$/d' |
-              awk '!seen[$0]++')
-            if [ -z "$shas" ]; then
-              echo "sweep: no open PRs with a pending or stale gate status"
-              exit 0
-            fi
-            echo "sweep: re-evaluating pending or stale gate on:"
-            echo "$shas"
-          fi
-
-          evaluate_sha() {
-          echo "── evaluating $SHA"
-          active_sha="$SHA"
-
-          # Poll check-runs for this SHA and find the latest result for each required job.
-          #
-          # #5479: the check-runs API can lag ~1 minute behind a job's completion,
-          # and workflow_run fires a bounded number of times per SHA — when the
-          # LAST event's single poll got a stale read, the posted "pending"
-          # status was never refreshed and the PR stayed stuck until a manual
-          # re-run (PRs #5476/#5475/#5481). When jobs still read as pending,
-          # re-poll once after a longer delay before concluding pending. The
-          # all-complete case breaks on the first pass. GraphQL has a separate
-          # installation budget from REST core and returns the current rollup in
-          # two pages (115 contexts measured on 2026-08-12). Publication reads
-          # the combined status once and writes only when the result changes.
-          # NOTE: the python3 -c body must stay at column 0 of the block scalar —
-          # indenting it with the loops would be a Python IndentationError.
-          max_attempts=2
-          if [ -n "$stale_terminal_shas" ] && printf '%s\n' "$stale_terminal_shas" | grep -qx "$SHA"; then
-            # The stale result is already fail-closed above. Do not let its
-            # 60-second retry delay starve the rest of the sweep.
-            max_attempts=1
-          fi
-          for attempt in 1 2; do
-            runs=$(fetch_required_check_runs "$SHA")
-
-            status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+          python3 - <<'PY'
           import json
           import os
+          import sys
 
-          runs = json.loads(os.environ['RUNS_JSON'])
-          required = json.loads(os.environ['REQUIRED_JOBS'])
-          latest = {}
-
-          for name in required:
-            matches = [r for r in runs if r.get('name') == name]
-            if matches:
-              latest_run = sorted(
-                  matches,
-                  key=lambda r: (
-                      r.get('databaseId') or 0,
-                      r.get('completedAt') or r.get('startedAt') or '',
-                  ),
-              )[-1]
-              conclusion = latest_run.get('conclusion')
-              latest[name] = conclusion.lower() if conclusion else 'pending'
-            else:
-              latest[name] = 'pending'
-
-          print(' '.join(f'{name}={latest[name]}' for name in required))
-          print('pending=' + ','.join(name for name in required if latest[name] == 'pending'))
-          print('failed=' + ','.join(name for name in required if latest[name] not in ('success', 'skipped')))
-          ")
-
-            echo "attempt $attempt: $status"
-            pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
-            failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
-
-            if [ -z "$pending" ]; then
-              break
-            fi
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              break
-            fi
-            if [ "$attempt" -lt 2 ]; then
-              sleep 60
-            fi
-          done
-
-          if [ -n "$pending" ]; then
-            post_gate_status "pending" "Waiting for required PR gates ($(name_count "$pending")): $pending"
-            active_sha=""
-            return 0
-          fi
-
-          # Treat "skipped" as passing (docs-only PRs skip code checks)
-          if [ -n "$failed" ]; then
-            post_gate_status "failure" "Required PR gates did not pass ($(name_count "$failed")): $failed"
-            active_sha=""
-            return 0
-          fi
-
-          post_gate_status "success" "All required PR gates passed"
-          active_sha=""
-          }
-
-          for SHA in $shas; do
-            if printf '%s\n' "$exhausted_shas" | grep -qx "$SHA"; then
-              continue
-            fi
-            # A conditional function call disables errexit inside that function.
-            # Capture a standalone subshell's result so API errors still stop
-            # its evaluation while the parent can continue the sweep.
-            set +e
-            (
-              set -e
-              gate_shell_pid=$BASHPID
-              gate_status_exhausted=0
-              gate_fallback_handled=0
-              trap post_pending_on_exit EXIT
-              evaluate_sha
-            )
-            evaluation_result=$?
-            set -e
-            if [ "$evaluation_result" -ne 0 ]; then
-              echo "::error::Deploy Gate evaluation failed for $SHA"
-              evaluation_failures=1
-            fi
-          done
-          exit "$evaluation_failures"
+          jobs = json.loads(os.environ["RESULTS"])
+          failed = [name for name, job in jobs.items() if job["result"] in ("failure", "cancelled")]
+          for phase, planner in (("invalidate", "discover"), ("evaluate", "recover")):
+              if jobs[phase]["result"] == "skipped" and not (
+                  jobs[planner]["result"] == "success"
+                  and jobs[planner]["outputs"].get("count") == "0"
+              ):
+                  failed.append(phase)
+          for phase in ("discover", "recover"):
+              if jobs[phase]["result"] != "success":
+                  failed.append(phase)
+          for flag in ("invalidation_failed", "protocol_failed"):
+              if jobs["recover"]["outputs"].get(flag) != "false":
+                  failed.append(flag)
+          if failed:
+              print("::error::Deploy Gate execution failed: " + ", ".join(sorted(set(failed))))
+              sys.exit(1)
+          PY

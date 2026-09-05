@@ -13,22 +13,132 @@ import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import YAML from 'yaml';
-
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const workflowPath = resolve(repoRoot, '.github/workflows/deploy-gate.yml');
-const workflow = YAML.parse(readFileSync(workflowPath, 'utf8'));
-const gateStep = workflow.jobs.gate.steps.find(
-  (step) => step.name === 'Check required PR gates passed for this SHA',
-);
+const gateScriptPath = resolve(repoRoot, '.github/scripts/deploy-gate.sh');
+const gateScript = readFileSync(gateScriptPath, 'utf8');
 const SHA = 'fedcba9876543210fedcba9876543210fedcba98';
 
-// The whole required list, read from the workflow so the test cannot pass by
+// The whole required list, read from the script so the test cannot pass by
 // pinning a shorter list than production actually gates on.
-const REQUIRED_LITERAL = gateStep.run.match(/required='(\[[^']*\])'/)[1];
+const REQUIRED_LITERAL = gateScript.match(/required='(\[[^']*\])'/)[1];
 const REQUIRED = JSON.parse(REQUIRED_LITERAL);
 const GATE_STAMP = `[gate-contract:${createHash('sha256').update(REQUIRED_LITERAL).digest('hex').slice(0, 12)}]`;
 const stamped = (description) => `${description} ${GATE_STAMP}`;
+
+function runPhases(options, tempDir) {
+  const outputPath = join(tempDir, 'outputs');
+  const resultsDir = join(tempDir, 'invalidations');
+  rmSync(resultsDir, { recursive: true, force: true });
+  mkdirSync(resultsDir);
+  let status = 0;
+  let stdout = '';
+  let stderr = '';
+  const execute = (phase, env = {}) => {
+    writeFileSync(outputPath, '');
+    const result = spawnSync('bash', ['-e', gateScriptPath, phase], {
+      ...options,
+      env: { ...options.env, GITHUB_OUTPUT: outputPath, ...env },
+    });
+    stdout += result.stdout ?? '';
+    stderr += result.stderr ?? '';
+    if (result.status !== 0) status = result.status ?? 1;
+    const outputs = Object.fromEntries(readFileSync(outputPath, 'utf8').trim().split('\n')
+      .filter(Boolean).map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
+    return { result, outputs };
+  };
+  const discovered = execute('discover');
+  if (discovered.result.status !== 0) return { status, stdout, stderr };
+  for (const { sha } of JSON.parse(discovered.outputs.matrix).include) {
+    const directory = join(resultsDir, `deploy-gate-invalidate-1-${sha}`);
+    mkdirSync(directory);
+    execute('invalidate', { SHA: sha, RESULT_PATH: join(directory, 'result.json') });
+  }
+  const recovered = execute('recover', {
+    DISCOVERY: discovered.outputs.discovery,
+    RESULTS_DIR: resultsDir,
+    RUN_ATTEMPT: '1',
+  });
+  if (recovered.result.status !== 0) return { status, stdout, stderr };
+  if (recovered.outputs.invalidation_failed !== 'false' || recovered.outputs.protocol_failed !== 'false') status = 1;
+  for (const { sha, check_attempts: attempts } of JSON.parse(recovered.outputs.matrix).include) {
+    execute('evaluate', { SHA: sha, CHECK_ATTEMPTS: String(attempts) });
+  }
+  return { status, stdout, stderr };
+}
+
+function recoverPlan(discovery, artifacts) {
+  const directory = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
+  try {
+    const resultsDir = join(directory, 'invalidations');
+    mkdirSync(resultsDir);
+    for (const [name, value] of Object.entries(artifacts)) {
+      const artifact = join(resultsDir, name);
+      mkdirSync(artifact);
+      writeFileSync(join(artifact, 'result.json'), typeof value === 'string' ? value : JSON.stringify(value));
+    }
+    const output = join(directory, 'output');
+    writeFileSync(output, '');
+    const result = spawnSync('bash', ['-e', gateScriptPath, 'recover'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DISCOVERY: JSON.stringify(discovery),
+        GITHUB_OUTPUT: output,
+        RESULTS_DIR: resultsDir,
+        RUN_ATTEMPT: '1',
+        REPO: 'koala73/worldmonitor',
+        SHA: '',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map((line) => {
+      const separator = line.indexOf('=');
+      return [line.slice(0, separator), JSON.parse(line.slice(separator + 1))];
+    }));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+describe('deploy gate phase results', () => {
+  const stale = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const pending = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const plan = { kind: 'sweep', stale: [stale], pending: [pending], missing: [] };
+  const artifact = `deploy-gate-invalidate-1-${stale}`;
+
+  it('emits a real empty matrix after an empty invalidation phase', () => {
+    assert.deepEqual(recoverPlan({ kind: 'sweep', stale: [], pending: [], missing: [] }, {}), {
+      matrix: { include: [] }, count: 0, invalidation_failed: false, protocol_failed: false,
+    });
+  });
+
+  it('keeps ordinary failures eligible and excludes exhausted heads', () => {
+    for (const outcome of ['invalidated', 'failed', 'exhausted']) {
+      const result = recoverPlan(plan, { [artifact]: { version: 1, sha: stale, outcome } });
+      assert.deepEqual(result.matrix.include, [
+        ...(outcome === 'exhausted' ? [] : [{ sha: stale, check_attempts: 1 }]),
+        { sha: pending, check_attempts: 2 },
+      ]);
+      assert.equal(result.invalidation_failed, outcome !== 'invalidated');
+      assert.equal(result.protocol_failed, false);
+    }
+  });
+
+  it('excludes unknown worker outcomes while continuing independent heads', () => {
+    for (const artifacts of [
+      {},
+      { [artifact]: 'not json' },
+      { [artifact]: { version: 1, sha: pending, outcome: 'invalidated' } },
+      { [artifact]: { version: 2, sha: stale, outcome: 'invalidated' } },
+      { [artifact]: { version: 1, sha: stale, outcome: 'invalidated', extra: true } },
+      { [`deploy-gate-invalidate-2-${stale}`]: { version: 1, sha: stale, outcome: 'invalidated' } },
+    ]) {
+      const result = recoverPlan(plan, artifacts);
+      assert.deepEqual(result.matrix.include, [{ sha: pending, check_attempts: 2 }]);
+      assert.equal(result.protocol_failed, true);
+    }
+  });
+});
 
 /**
  * Run the gate step against a fabricated check-runs answer.
@@ -52,6 +162,7 @@ function runGate(conclusions, {
   restFailures = 0,
   restFailureKind = 'generic',
   statusFailures = 0,
+  statusFailuresPerSha = 0,
   statusFailureKind = 'generic',
   statusReadFailures = 0,
   malformedStatusResponse = false,
@@ -79,6 +190,9 @@ function runGate(conclusions, {
     writeFileSync(failuresFile, String(graphQlFailures));
     writeFileSync(restFailuresFile, String(restFailures));
     writeFileSync(statusFailuresFile, String(statusFailures));
+    for (const { sha } of sweepStatuses ?? []) {
+      writeFileSync(`${statusFailuresFile}-${sha}`, String(statusFailuresPerSha));
+    }
     writeFileSync(postedFile, '');
     writeFileSync(postTargetsFile, '');
     writeFileSync(rejectedFile, '');
@@ -308,9 +422,11 @@ function runGate(conclusions, {
         '      echo "gh: This SHA and context has reached the maximum number of statuses. (HTTP 422)" >&2',
         '      exit 1',
         '    fi',
-        '    status_failures=$(cat "$FAKE_STATUS_FAILURES")',
+        '    status_failures_file=$FAKE_STATUS_FAILURES',
+        '    [ "$FAKE_STATUS_FAILURES_PER_SHA" = "1" ] && status_failures_file="$FAKE_STATUS_FAILURES-$target_sha"',
+        '    status_failures=$(cat "$status_failures_file")',
         '    if [ "$status_failures" -gt 0 ]; then',
-        '      echo $((status_failures - 1)) > "$FAKE_STATUS_FAILURES"',
+        '      echo $((status_failures - 1)) > "$status_failures_file"',
         '      if [ "$FAKE_STATUS_FAILURE_KIND" = "rate_limit" ]; then',
         '        echo "gh: API rate limit exceeded for installation (HTTP 403)" >&2',
         '      else',
@@ -372,7 +488,7 @@ function runGate(conclusions, {
     let result;
     const exitCodes = [];
     for (let repetition = 0; repetition < repetitions; repetition++) {
-      result = spawnSync('bash', ['-e', '-c', gateStep.run], {
+      result = runPhases({
         cwd: repoRoot,
         encoding: 'utf8',
         timeout: 30_000,
@@ -400,6 +516,7 @@ function runGate(conclusions, {
           FAKE_RESET_AVAILABLE: resetAvailable ? '1' : '0',
           FAKE_STATUS_FAILURE_KIND: statusFailureKind,
           FAKE_STATUS_FAILURES: statusFailuresFile,
+          FAKE_STATUS_FAILURES_PER_SHA: statusFailuresPerSha ? '1' : '0',
           FAKE_SWEEP_RESPONSES: sweepFile,
           FAKE_SHA: SHA,
           GH_TOKEN: 'test-token',
@@ -408,7 +525,7 @@ function runGate(conclusions, {
           RUNNER_TEMP: tempDir,
           SHA: sweepStatus === undefined && sweepStatuses === undefined ? SHA : '',
         },
-      });
+      }, tempDir);
       exitCodes.push(result.status);
     }
 
@@ -777,7 +894,7 @@ describe('deploy gate commit-status description', () => {
     const firstStaleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const secondStaleSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
     const result = runGate(conclusionsFor('success'), {
-      statusFailures: 2,
+      statusFailuresPerSha: 1,
       sweepStatuses: [
         {
           sha: firstStaleSha,
