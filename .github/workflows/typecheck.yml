@@ -57,3 +57,14 @@ jobs:
       # and `--no-verify` bypasses can't land stale convex/_generated
       # types. See .husky/pre-push for the rationale.
       - run: npx tsc --noEmit -p convex/tsconfig.json
+      # The marketing bundle has its own tsconfig and node_modules, so nothing
+      # above reaches it and no other workflow ran its `lint` — `pro-test` was
+      # sitting on six undetected type errors, five of them at the Sentry
+      # `beforeSend` boundary that decides what gets filtered. Installed
+      # separately because it is a distinct package root; scripts stay blocked,
+      # matching `build:pro`. Same required context as the checks above, so no
+      # branch-protection list has to change.
+      - run: npm --prefix pro-test ci --prefer-offline
+        env:
+          npm_config_allow_scripts: ''
+      - run: npm --prefix pro-test run lint

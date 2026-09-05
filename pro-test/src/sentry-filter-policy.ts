@@ -26,6 +26,14 @@
  * than re-deriving them from source text — same reason as `./sentry-allow-urls.ts`.
  */
 
+/**
+ * Mirror of `@sentry/core`'s `Primitive`, restated rather than imported to keep
+ * this module dependency-free. It must stay a superset of what the SDK puts in
+ * `tags`, or `ErrorEvent` stops satisfying `PolicyEvent` and every
+ * `marketingBeforeSend` call site fails to compile.
+ */
+type PolicyPrimitive = number | string | boolean | bigint | symbol | null | undefined;
+
 /** Minimal structural view of the Sentry event fields this policy reads. */
 interface PolicyFrame {
   filename?: string;
@@ -37,7 +45,7 @@ interface PolicyException {
 }
 export interface PolicyEvent {
   exception?: { values?: PolicyException[] };
-  tags?: Record<string, string | number | boolean | undefined>;
+  tags?: { [key: string]: PolicyPrimitive };
   /**
    * Where Sentry parks the rejected value when a promise rejects with a
    * non-Error: `eventFromUnknownInput` synthesises the exception and copies the
