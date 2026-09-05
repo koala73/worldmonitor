@@ -52,6 +52,17 @@ function jsonResponse(body, status = 200) {
   });
 }
 
+function proxyJsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    buffer: Buffer.from(JSON.stringify(body)),
+    contentType: 'application/json',
+    headers: { 'content-type': 'application/json' },
+    location: '',
+  };
+}
+
 test('allows only https://api.imd.gov.in product URLs', () => {
   assert.equal(isAllowedImdHost(imdProductUrl(IMD_PRODUCTS.cycloneTrack)), true);
   assert.equal(isAllowedImdHost('http://api.imd.gov.in/api/v1/cyclone_track'), false);
@@ -405,6 +416,8 @@ test('documents the complete IMD Railway credential setup', () => {
   for (const name of railwayService.requiredEnv.filter((entry) => entry.startsWith('IMD_'))) {
     assert.ok(setup.includes(name), `missing documented Railway variable ${name}`);
   }
+  assert.ok(railwayService.requiredEnv.includes('PROXY_URL'));
+  assert.ok(setup.includes('PROXY_URL'), 'missing documented Railway proxy variable');
   assert.ok(setup.includes(railwayService.cronSchedule));
   assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
   assert.match(setup, /static public IP/i);
@@ -458,6 +471,43 @@ test('mints a fresh IMD JWT before each product batch', async () => {
     'Bearer fresh-token-1',
     'Bearer fresh-token-2',
   ]));
+});
+
+test('routes IMD authentication and every product through PROXY_URL', async () => {
+  const proxyUrl = 'isp.decodo.test:10001:proxy-user:proxy-secret';
+  const directRequests = [];
+  const proxyRequests = [];
+  const snapshot = await fetchImdCycloneMarine({
+    env: { ...LIVE_ENV, PROXY_URL: proxyUrl },
+    fetchFn: async (url) => {
+      directRequests.push(String(url));
+      throw new Error('direct IMD request must not run when PROXY_URL is configured');
+    },
+    proxyFetchFn: async (url, proxyConfig, options) => {
+      proxyRequests.push({ url: String(url), proxyConfig, options });
+      if (String(url) === IMD_OAUTH_TOKEN_URL) {
+        return proxyJsonResponse({ access_token: 'proxy-token', token_type: 'Bearer', expires_in: 3600 });
+      }
+      return proxyJsonResponse([]);
+    },
+    now: NOW,
+  });
+
+  assert.deepEqual(directRequests, []);
+  assert.equal(proxyRequests.length, 7);
+  assert.ok(proxyRequests.every(({ proxyConfig }) => (
+    proxyConfig.host === 'isp.decodo.test'
+    && proxyConfig.port === 10001
+    && proxyConfig.auth === 'proxy-user:proxy-secret'
+    && proxyConfig.tls === true
+  )));
+  assert.equal(proxyRequests[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(proxyRequests[0].options.body), {
+    email: 'operator@example.com',
+    password: 'railway-secret',
+  });
+  assert.ok(proxyRequests.slice(1).every(({ options }) => options.headers.Authorization === 'Bearer proxy-token'));
+  assert.equal(snapshot.coverageState, 'ok');
 });
 
 test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
