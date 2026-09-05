@@ -31,10 +31,18 @@ not store the JWT in Railway.
    ```
 
    Register the outbound address with IMD when you create the production API
-   key. Railway can assign several addresses to a high-availability service. If
-   the command lists more than one address, confirm with IMD how to authorize
-   each address. A key that is bound to one address can fail when Railway uses
-   another one.
+   key. Railway assigns three static outbound IPv4 addresses to a
+   high-availability service and balances traffic across them. The IMD portal
+   documents a maximum of 2 Development keys and 2 Production keys, and each
+   key is associated with one server public IP. The native Railway HA address
+   set therefore does not fit the documented IMD key model.
+
+   Do not register only one Railway address and assume that the service will
+   keep using it. Before activation, either get written confirmation from IMD
+   that all three Railway addresses are authorized for this account, or route
+   the IMD requests through an egress gateway with one static public IP and
+   register that address with IMD. Treat HTTP 403 from every product as an API
+   key status or public-IP authorization failure.
 3. Add these service variables in Railway. Store each value as a secret.
 
    | Variable | Value |
