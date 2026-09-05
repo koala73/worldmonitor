@@ -5083,7 +5083,11 @@ describe('live-pulse snapshot injection (#7533)', () => {
             'reference/changelog/index.html',
           ]],
           ['comparisons', [
-            laterDate(COMPARISONS_CONTENT_VERSION, gitFileLastmod(repoRoot, 'scripts/build-comparison-pages.mjs')),
+            laterDate(
+              COMPARISONS_CONTENT_VERSION,
+              gitFileLastmod(repoRoot, 'scripts/build-comparison-pages.mjs'),
+              gitFileLastmod(repoRoot, 'scripts/comparison-page-narratives.mjs'),
+            ),
             pageFor(manifest.sections.comparisons.index),
           ]],
         ]);

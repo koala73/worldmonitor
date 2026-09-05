@@ -10,9 +10,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
+import {
+  COMPARE_HUB_NARRATIVE,
+  COMPARISON_NARRATIVES,
+} from './comparison-page-narratives.mjs';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const COMPARISONS_CONTENT_VERSION = '2026-09-04';
+export const COMPARISONS_CONTENT_VERSION = '2026-09-05';
 
 /**
  * Universal comparison-matrix columns. Engines lift these cells verbatim, so
@@ -56,7 +60,7 @@ export const COMPARISON_HUB_MATRIX_ROWS = [
   ['International SOS', 'Undisclosed (enterprise-negotiated)', '24/7 assistance centers', 'Medical and security assistance', 'Yes (enterprise)', 'Yes (enterprise)', MCP_UNVERIFIED, 'Proprietary', 'Global assistance network', 'Case archive', 'Assistance delivery: medical evacuation and response'],
 ];
 
-export const COMPARISON_PAGES = [
+const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'liveuamap-alternatives',
     path: '/compare/liveuamap-alternatives/',
@@ -406,6 +410,85 @@ export const COMPARISON_PAGES = [
   },
 ];
 
+function applyComparisonNarrative(page) {
+  const narrative = COMPARISON_NARRATIVES[page.slug];
+  if (!narrative) {
+    throw new Error('Missing comparison narrative for ' + page.slug);
+  }
+  const faqs = [...page.faqs, ...(narrative.extraFaqs ?? [])];
+  if (faqs.length < 8 || faqs.length > 12) {
+    throw new Error(page.slug + ' FAQ count must be 8-12, got ' + faqs.length);
+  }
+  const faqNames = new Set();
+  for (const [question] of faqs) {
+    const key = String(question).trim().toLowerCase();
+    if (faqNames.has(key)) {
+      throw new Error(page.slug + ' duplicate FAQ question: ' + question);
+    }
+    faqNames.add(key);
+  }
+  const merged = { ...page, ...narrative, faqs };
+  delete merged.extraFaqs;
+  const whyBody = (merged.whyWeWinBody ?? []).join(' ').replace(/\s+/g, ' ').trim();
+  if (!whyBody) {
+    throw new Error(page.slug + ' is missing whyWeWinBody');
+  }
+  if (whyBody === merged.whyWeWin.replace(/\s+/g, ' ').trim()) {
+    throw new Error(page.slug + ' whyWeWinBody must not repeat whyWeWin');
+  }
+  if (merged.heading && !(merged.headingProse?.length || merged.competitorProfiles?.length)) {
+    throw new Error(page.slug + ' H2 "' + merged.heading + '" has no following prose');
+  }
+  if (!merged.evaluationHeading || !merged.evaluationProse?.length) {
+    throw new Error(page.slug + ' is missing the evaluation section');
+  }
+  if (!merged.switchHeading || !merged.switchProse?.length) {
+    throw new Error(page.slug + ' is missing the switch-trigger section');
+  }
+  if (!merged.methodologyProse?.length) {
+    throw new Error(page.slug + ' is missing methodology prose');
+  }
+  return merged;
+}
+
+export const COMPARISON_PAGES = COMPARISON_PAGE_SEEDS.map(applyComparisonNarrative);
+
+function renderParagraphs(paragraphs, escapeHtml) {
+  return (paragraphs ?? []).map((paragraph) => '      <p>' + escapeHtml(paragraph) + '</p>');
+}
+
+function renderHeadingSection(heading, paragraphs, escapeHtml, label) {
+  if (!heading) return [];
+  const body = renderParagraphs(paragraphs, escapeHtml);
+  if (body.length === 0) {
+    throw new Error((label || heading) + ' is missing following prose');
+  }
+  return ['      <h2>' + escapeHtml(heading) + '</h2>', ...body];
+}
+
+function renderKeywordSection(page, escapeHtml) {
+  const headingProse = page.headingProse ?? [];
+  const profiles = page.competitorProfiles ?? [];
+  const profileBlocks = profiles.flatMap((profile) => {
+    if (!profile.paragraphs?.length) {
+      throw new Error(page.slug + ' profile "' + profile.name + '" has no prose');
+    }
+    const tag = page.heading ? 'h3' : 'h2';
+    return [
+      '      <' + tag + '>' + escapeHtml(profile.name) + '</' + tag + '>',
+      ...renderParagraphs(profile.paragraphs, escapeHtml),
+    ];
+  });
+  if (page.heading) {
+    const inner = [...renderParagraphs(headingProse, escapeHtml), ...profileBlocks];
+    if (inner.length === 0) {
+      throw new Error(page.slug + ' H2 "' + page.heading + '" has no following content');
+    }
+    return ['      <h2>' + escapeHtml(page.heading) + '</h2>', ...inner];
+  }
+  return profileBlocks;
+}
+
 function renderMatrix(rows, escapeHtml) {
   for (const row of rows) {
     if (row.length !== COMPARISON_MATRIX_COLUMNS.length) {
@@ -503,9 +586,8 @@ function renderComparePage(page, { tpl, baseUrl, lastmod }) {
     '      <h1>' + escapeHtml(page.h1) + '</h1>',
     '      <p class="lede"><strong>Direct answer:</strong> ' + escapeHtml(page.whyWeWin) + '</p>',
     '',
-    ...(page.heading
-      ? ['      <h2>' + escapeHtml(page.heading) + '</h2>', '']
-      : []),
+    ...renderKeywordSection(page, escapeHtml),
+    '',
     '      <h2>Comparison matrix</h2>',
     renderMatrix(page.matrixRows, escapeHtml),
     '',
@@ -516,8 +598,36 @@ function renderComparePage(page, { tpl, baseUrl, lastmod }) {
       '        <li><strong>' + escapeHtml(name) + '</strong> wins on ' + escapeHtml(cells) + '.</li>'),
     '      </ul>',
     '',
+    ...renderHeadingSection(
+      page.evaluationHeading,
+      page.evaluationProse,
+      escapeHtml,
+      page.slug + ' evaluation',
+    ),
+    '',
+    ...renderHeadingSection(
+      page.switchHeading,
+      page.switchProse,
+      escapeHtml,
+      page.slug + ' switch',
+    ),
+    '',
+    ...renderHeadingSection(
+      page.usageHeading,
+      page.usageProse,
+      escapeHtml,
+      page.slug + ' usage',
+    ),
+    '',
     '      <h2>Why World Monitor wins on ' + escapeHtml(page.claim) + '</h2>',
-    '      <p>' + escapeHtml(page.whyWeWin) + '</p>',
+    ...renderParagraphs(page.whyWeWinBody, escapeHtml),
+    '',
+    ...renderHeadingSection(
+      'How these figures were checked',
+      page.methodologyProse,
+      escapeHtml,
+      page.slug + ' methodology',
+    ),
     '',
     '      <h2>Frequently asked questions</h2>',
     ...page.faqs.flatMap(([question, answer]) => [
@@ -564,16 +674,38 @@ function renderCompareHub({ tpl, baseUrl, lastmod }) {
   const body = [
     '      <p class="eyebrow">Compare</p>',
     '      <h1>Compare World Monitor</h1>',
-    '      <p class="lede">Every comparison page uses the same matrix columns, states what each competitor wins, and answers the questions engines lift verbatim.</p>',
+    '      <p class="lede">' + escapeHtml(COMPARE_HUB_NARRATIVE.lede) + '</p>',
+    '',
+    ...renderHeadingSection(
+      COMPARE_HUB_NARRATIVE.howToRead.heading,
+      COMPARE_HUB_NARRATIVE.howToRead.paragraphs,
+      escapeHtml,
+      'hub how-to-read',
+    ),
     '',
     '      <h2>Master comparison matrix</h2>',
     renderMatrix(COMPARISON_HUB_MATRIX_ROWS, escapeHtml),
+    '',
+    ...renderHeadingSection(
+      COMPARE_HUB_NARRATIVE.concessions.heading,
+      COMPARE_HUB_NARRATIVE.concessions.paragraphs,
+      escapeHtml,
+      'hub concessions',
+    ),
+    '',
+    ...renderHeadingSection(
+      COMPARE_HUB_NARRATIVE.methodology.heading,
+      COMPARE_HUB_NARRATIVE.methodology.paragraphs,
+      escapeHtml,
+      'hub methodology',
+    ),
     '',
     '      <div class="grid">',
     cards,
     '      </div>',
     '      <h2>Editorial comparison</h2>',
     '      <p>The blog post <a href="/blog/posts/worldmonitor-vs-traditional-intelligence-tools/">World Monitor vs Bloomberg, Palantir, Dataminr, and Recorded Future</a> compares their capabilities and distinguishes published prices from enterprise-negotiated licensing.</p>',
+    ...renderParagraphs(COMPARE_HUB_NARRATIVE.editorial, escapeHtml),
     '      <p class="source">Prices and capabilities were checked at publication time and can change.</p>',
   ].join('\n');
   return pageDocument({

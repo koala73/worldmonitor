@@ -1699,6 +1699,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshot
   const comparisonsLastmod = laterDate(
     COMPARISONS_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-comparison-pages.mjs'),
+    gitFileLastmod(rootDir, 'scripts/comparison-page-narratives.mjs'),
   );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
   // Production generators share the validated attribution predicate and stats.
