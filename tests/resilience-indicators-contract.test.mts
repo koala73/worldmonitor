@@ -144,7 +144,57 @@ describe('resilience indicator RPC contract', () => {
               schemaVersion: '2.0',
               constructVersions: { energy: 'legacy', education: 'active', financialSystemExposure: 'rollback' },
               dimensions: [],
-              indicators: [],
+              // One indicator with a licensed source, so the projection below
+              // has both something to project and an attribution to carry.
+              indicators: [{
+                id: 'power-losses',
+                dimension: 'energy',
+                tier: 'core',
+                active: true,
+                includedInDimensionScore: true,
+                state: 'observed',
+                reason: '',
+                normalizedScoreAvailable: true,
+                normalizedScore: 0.62,
+                nominalWeight: 0.1,
+                runtimeWeightAvailable: true,
+                runtimeWeight: 0.1,
+                scoringWeightShareAvailable: true,
+                scoringWeightShare: 0.1,
+                literalContribution: 0.062,
+                effectiveContribution: 0.062,
+                imputationClass: 'observed',
+                sourceYearAvailable: true,
+                sourceYear: 2024,
+                observationAgeAvailable: true,
+                observationAgeValue: 2,
+                observationAgeUnit: 'years',
+                observationAgeBasis: 'source-year',
+                retrievedAtAvailable: true,
+                retrievedAt: '2026-08-30T00:00:00.000Z',
+                observedAtAvailable: false,
+                observedAt: '',
+                sources: [{
+                  key: 'worldbank-wdi',
+                  name: 'World Bank WDI',
+                  attribution: 'World Bank',
+                  license: 'CC BY 4.0',
+                  url: 'https://data.worldbank.org',
+                  observationProvenance: true,
+                  licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+                  attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
+                }],
+                rawValue: {
+                  available: true,
+                  numericValue: 4.2,
+                  numericValueAvailable: true,
+                  textValue: '',
+                  textValueAvailable: false,
+                  unit: 'percent',
+                  status: 'available',
+                  reason: '',
+                },
+              }],
             },
       }, gatewayModule.serverOptions);
       const gateway = gatewayModule.createDomainGateway(routes);
@@ -175,15 +225,29 @@ describe('resilience indicator RPC contract', () => {
       assert.equal(success.status, 200);
       assert.equal((await success.json() as { countryCode?: string }).countryCode, 'DE');
 
+      // The projection is no longer refused. It is served WITH the attribution
+      // rider merged around it, so a caller that selects only raw values still
+      // receives the licence that permits redistributing them.
       const projected = await gateway(new Request(
         `${url}&jmespath=indicators%5B%5D.rawValue`,
         { headers },
       ));
-      assert.equal(projected.status, 400);
-      assert.match(
-        (await projected.json() as { violations?: Array<{ description?: string }> }).violations?.[0]?.description ?? '',
-        /JMESPath.*attribution-bound/,
-      );
+      assert.equal(projected.status, 200);
+      const projectedBody = await projected.json() as {
+        data?: Array<{ numericValue?: number }>;
+        _attribution?: { required?: boolean; sources?: Array<Record<string, unknown>> };
+      };
+      assert.deepEqual(projectedBody.data?.map((entry) => entry.numericValue), [4.2]);
+      assert.equal(projectedBody._attribution?.required, true);
+      assert.deepEqual(projectedBody._attribution?.sources, [{
+        key: 'worldbank-wdi',
+        name: 'World Bank WDI',
+        attribution: 'World Bank',
+        license: 'CC BY 4.0',
+        url: 'https://data.worldbank.org',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+        attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
+      }]);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
