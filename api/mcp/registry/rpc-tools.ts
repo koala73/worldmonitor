@@ -2054,7 +2054,13 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_resilience_indicators',
     _outputBudgetBytes: 262144,
-    _jmespathDisabled: true,
+    // Raw values here are redistribution-permitted (decideIndicatorRawRedistribution
+    // already dropped the rest), but only while accompanied by their source's
+    // licence and attribution. Extract each indicator as a source group so the
+    // rider can preserve its retrieval date and exact per-indicator source URL.
+    // `observationProvenance` is deliberately not selected because it is not
+    // part of the licence claim.
+    _attribution: 'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
     description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.',
     inputSchema: {
       type: 'object',
@@ -2942,10 +2948,12 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_supply_vulnerabilities',
-    // Payload carries BGS mineral evidence under an attribution-required,
-    // redistribution-restricted licence; a projection could strip the
-    // source/licence/retrieval fields that authorise reuse.
-    _jmespathDisabled: true,
+    // No `_attribution`: enforceCommodityRedistributionPolicy has already
+    // blanked score/band/source-concentration and dropped every
+    // redistribution-restricted input before the payload reaches the
+    // projection boundary, and the surviving shape declares no licence field
+    // for a rider to carry. The gate test re-derives that from the
+    // outputSchema on every run.
     // A full reviewed portfolio currently carries 23 commodities and the
     // complete 13-route provenance set per commodity. Production-shape
     // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
@@ -2999,10 +3007,8 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_chokepoint_dependencies',
-    // Payload carries BGS mineral evidence under an attribution-required,
-    // redistribution-restricted licence; a projection could strip the
-    // source/licence/retrieval fields that authorise reuse.
-    _jmespathDisabled: true,
+    // Same redaction path and same empty licence surface as
+    // get_supply_vulnerabilities above — no rider to attach.
     _outputBudgetBytes: 131072,
     description: 'An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
     inputSchema: {

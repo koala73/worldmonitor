@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { getRequiredTier, TIER_GATED_PATHS } from '../server/_shared/entitlement-check.ts';
+import { REST_JMESPATH_MAX_OUTPUT_BYTES } from '../server/_shared/response-projection.ts';
 import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
@@ -132,6 +133,7 @@ describe('resilience indicator RPC contract', () => {
         import('../src/generated/server/worldmonitor/resilience/v1/service_server.ts'),
         import('../server/worldmonitor/resilience/v1/handler.ts'),
       ]);
+      const boundaryText = 'x'.repeat(REST_JMESPATH_MAX_OUTPUT_BYTES - 64);
       const routes = generated.createResilienceServiceRoutes({
         ...handlerModule.resilienceHandler,
         getResilienceIndicators: async (ctx, request) => request.countryCode === 'DEU'
@@ -144,7 +146,57 @@ describe('resilience indicator RPC contract', () => {
               schemaVersion: '2.0',
               constructVersions: { energy: 'legacy', education: 'active', financialSystemExposure: 'rollback' },
               dimensions: [],
-              indicators: [],
+              // One indicator with a licensed source, so the projection below
+              // has both something to project and an attribution to carry.
+              indicators: [{
+                id: 'power-losses',
+                dimension: 'energy',
+                tier: 'core',
+                active: true,
+                includedInDimensionScore: true,
+                state: 'observed',
+                reason: '',
+                normalizedScoreAvailable: true,
+                normalizedScore: 0.62,
+                nominalWeight: 0.1,
+                runtimeWeightAvailable: true,
+                runtimeWeight: 0.1,
+                scoringWeightShareAvailable: true,
+                scoringWeightShare: 0.1,
+                literalContribution: 0.062,
+                effectiveContribution: 0.062,
+                imputationClass: 'observed',
+                sourceYearAvailable: true,
+                sourceYear: 2024,
+                observationAgeAvailable: true,
+                observationAgeValue: 2,
+                observationAgeUnit: 'years',
+                observationAgeBasis: 'source-year',
+                retrievedAtAvailable: true,
+                retrievedAt: '2026-08-30T00:00:00.000Z',
+                observedAtAvailable: false,
+                observedAt: '',
+                sources: [{
+                  key: 'worldbank-wdi',
+                  name: 'World Bank WDI',
+                  attribution: 'World Bank',
+                  license: 'CC BY 4.0',
+                  url: 'https://data.worldbank.org',
+                  observationProvenance: true,
+                  licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+                  attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
+                }],
+                rawValue: {
+                  available: true,
+                  numericValue: 4.2,
+                  numericValueAvailable: true,
+                  textValue: request.countryCode === 'FR' ? boundaryText : '',
+                  textValueAvailable: request.countryCode === 'FR',
+                  unit: 'percent',
+                  status: 'available',
+                  reason: '',
+                },
+              }],
             },
       }, gatewayModule.serverOptions);
       const gateway = gatewayModule.createDomainGateway(routes);
@@ -175,15 +227,41 @@ describe('resilience indicator RPC contract', () => {
       assert.equal(success.status, 200);
       assert.equal((await success.json() as { countryCode?: string }).countryCode, 'DE');
 
+      // The projection is no longer refused. It is served WITH the attribution
+      // rider merged around it, so a caller that selects only raw values still
+      // receives the licence that permits redistributing them.
       const projected = await gateway(new Request(
         `${url}&jmespath=indicators%5B%5D.rawValue`,
         { headers },
       ));
-      assert.equal(projected.status, 400);
-      assert.match(
-        (await projected.json() as { violations?: Array<{ description?: string }> }).violations?.[0]?.description ?? '',
-        /JMESPath.*attribution-bound/,
-      );
+      assert.equal(projected.status, 200);
+      const projectedBody = await projected.json() as {
+        data?: Array<{ numericValue?: number }>;
+        _attribution?: { required?: boolean; sources?: Array<Record<string, unknown>> };
+      };
+      assert.deepEqual(projectedBody.data?.map((entry) => entry.numericValue), [4.2]);
+      assert.equal(projectedBody._attribution?.required, true);
+      assert.deepEqual(projectedBody._attribution?.sources, [{
+        indicatorId: 'power-losses',
+        retrievedAt: '2026-08-30T00:00:00.000Z',
+        key: 'worldbank-wdi',
+        name: 'World Bank WDI',
+        attribution: 'World Bank',
+        license: 'CC BY 4.0',
+        url: 'https://data.worldbank.org',
+        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+        attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
+      }]);
+
+      const boundaryProjection = JSON.stringify(boundaryText);
+      assert.ok(new TextEncoder().encode(boundaryProjection).length < REST_JMESPATH_MAX_OUTPUT_BYTES);
+      const overBudget = await gateway(new Request(
+        `${url.replace('countryCode=DE', 'countryCode=FR')}&jmespath=indicators%5B0%5D.rawValue.textValue`,
+        { headers },
+      ));
+      assert.equal(overBudget.status, 400);
+      const overBudgetBody = await overBudget.json() as { _jmespath_error?: string };
+      assert.match(overBudgetBody._jmespath_error ?? '', /^projection_too_large:/);
     } finally {
       globalThis.fetch = originalFetch;
       if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;

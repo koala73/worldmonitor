@@ -36,7 +36,15 @@ import {
   appendDeprecationPolicyLinkToRecord,
   DEPRECATION_POLICY_LINK,
 } from './_shared/deprecation-policy';
-import { projectJsonResponse } from './_shared/response-projection';
+import {
+  REST_ATTRIBUTION_EXPRESSIONS,
+  buildAttributionRider,
+  mergeAttributionRider,
+} from '../shared/attribution-rider';
+import {
+  enforceRestProjectionOutputLimit,
+  projectJsonResponse,
+} from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
 import {
   checkEntitlementDetailed,
@@ -197,17 +205,6 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   'no-store': null,
   live: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=300',
 };
-
-// REST parity with the MCP dispatch reject: these responses carry
-// attribution-bound provider evidence (resilience indicators, and the BGS
-// mineral evidence behind supply vulnerability), so a projection that strips the
-// source/licence/retrieval fields is refused rather than served.
-const PROJECTION_DISABLED_PATHS: ReadonlySet<string> = new Set([
-  '/api/resilience/v1/get-resilience-indicators',
-  '/api/supply-chain/v1/get-country-vulnerabilities',
-  '/api/supply-chain/v1/get-chokepoint-dependencies',
-  '/api/supply-chain/v1/list-vulnerability-rankings',
-]);
 
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // 'live' tier — bbox-quantized + tanker-aware caching upstream of the
@@ -2294,30 +2291,35 @@ export function createDomainGateway(
       // See server/_shared/response-projection.ts + /docs/mcp-jmespath.
       let responseView = new Uint8Array(bodyBytes);
       const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
-      if (
-        PROJECTION_DISABLED_PATHS.has(pathname)
-        && jmespathExpr
-      ) {
-        const errorBody = JSON.stringify({
-          violations: [{
-            field: 'jmespath',
-            description: 'JMESPath projection is not available for this attribution-bound response',
-          }],
-        });
-        emitRequest(400, 'malformed_request', null, errorBody.length);
-        maybeAttachDevHealthHeader(mergedHeaders);
-        return new Response(errorBody, {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json; charset=utf-8',
-            'X-Content-Type-Options': 'nosniff',
-            'Cache-Control': 'no-store',
-          },
-        });
-      }
       if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
-        const projection = projectJsonResponse(bodyStr, jmespathExpr);
+        let projection = projectJsonResponse(bodyStr, jmespathExpr);
+        if (projection.ok) {
+          // Attribution accompaniment — REST parity with the MCP dispatch rider
+          // (shared/attribution-rider.ts). These paths were refused outright
+          // before; refusal protected two supply-chain paths that carry no
+          // licence field at all while `/api/safety/v1/get-toronto-safety`, which
+          // does, was never on the list. The rider replaces the roster: the
+          // sources are extracted from the UNPROJECTED body and merged AROUND
+          // the projected document, so no expression can reach or remove them.
+          //
+          // Merged BEFORE the ETag hash below, so the ETag covers the rider.
+          // Only the success path carries it: a failed projection is an HTTP 400
+          // that serves no data, so there is nothing to accompany.
+          const attributionExpr = REST_ATTRIBUTION_EXPRESSIONS[pathname];
+          if (attributionExpr !== undefined) {
+            let unprojected: unknown;
+            try {
+              unprojected = JSON.parse(bodyStr);
+            } catch {
+              unprojected = null;
+            }
+            const rider = buildAttributionRider(unprojected, attributionExpr);
+            if (rider !== null) {
+              const projectedBody = mergeAttributionRider(projection.body, rider);
+              projection = enforceRestProjectionOutputLimit(projectedBody, unprojected);
+            }
+          }
+        }
         if (!projection.ok) {
           const errorBody = JSON.stringify(projection.envelope);
           emitRequest(400, 'malformed_request', null, errorBody.length);

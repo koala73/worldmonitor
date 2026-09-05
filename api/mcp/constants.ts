@@ -308,9 +308,20 @@ export const SERVER_NAME = 'worldmonitor';
 //     portfolio and the single-pass chokepoint dependency inverse index.
 //   - Provider-restricted mineral evidence remains display-only and fails
 //     closed on verified MCP redistribution paths.
+// Bumped 1.18.0 → 1.19.0 (2026-09-05) reflecting a wire-visible capability
+// change, even though the published registry manifest is unaffected (its
+// payload is server.json's fields plus the tool count, and the count is still
+// 74):
+//   - `jmespath` is now universal. Three tools that never advertised it gained
+//     the input property, so `tools/list` genuinely differs.
+//   - A projected response from a licence-bearing tool is a NEW wire shape,
+//     {data, _attribution}, and initialize.instructions now says so.
+// Leaving the version at 1.18.0 would let one version string describe two
+// different tool surfaces, which is exactly what discovery scanners read it to
+// rule out.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.18.0';
+export const SERVER_VERSION = '1.19.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -363,7 +374,7 @@ export const TOOL_DESCRIPTION_MAX_BYTES = 120;
 const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
 
 export const SERVER_INSTRUCTIONS = [
-  `Use optional \`jmespath\` only when a tool input schema advertises it. Server-side projection is applied AFTER per-tool filter/summary; attribution-bound tools can omit it. Typical 80-95% token reduction. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
+  `Every tool accepts optional \`jmespath\`. Server-side projection is applied AFTER per-tool filter/summary. Typical 80-95% token reduction. A projected response from a tool whose data is licensed for reuse with attribution comes back as {data, _attribution} — keep the _attribution block with the values if you redistribute them. Grammar: ${JMESPATH_SPEC_URL}. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.`,
   '',
   `Limits: request body ≤ ${MAX_JSON_RPC_BODY_BYTES}B (over-cap POSTs are rejected before parsing with HTTP 413 + -32600 and error.data.reason 'body-too-large'; shrink the payload, do not retry it), expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',

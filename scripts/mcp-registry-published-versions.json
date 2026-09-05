@@ -8,6 +8,10 @@
     "1.18.0": {
       "tools": 74,
       "manifestSha256": "bb153560ee54f85f9b00bccd5474f04b9abc256e31049a1040c176f505e8fcef"
+    },
+    "1.19.0": {
+      "tools": 74,
+      "manifestSha256": "cce31fc35eb392a49394ea38321d52ed0136122af0d9e95137da873c3717e71c"
     }
   }
 }
