@@ -267,7 +267,8 @@ export async function captureObservation(record, {
     const active = orderByRecency(service.activeDeployments ?? []);
     const deployed = newestRunning(active);
     if (active.length !== 1 || !deployed || !SHA.test(deployed.meta?.commitHash)
-      || deployed.meta?.repo !== REPOSITORY || deployed.meta?.branch !== 'main' || !iso(deployed.createdAt)) fail('DEPLOYMENT_UNVERIFIED');
+      || deployed.meta?.repo !== REPOSITORY || deployed.meta?.branch !== 'main'
+      || !iso(deployed.createdAt) || time(deployed.createdAt) > now + 30_000) fail('DEPLOYMENT_UNVERIFIED');
     const registry = JSON.parse(readFileSync(new URL('./railway-services.json', import.meta.url), 'utf8'));
     const expectedCron = registry.find((entry) => entry.service === config.service)?.cronSchedule;
     if (!expectedCron || service.cronSchedule !== expectedCron
@@ -363,5 +364,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   main().then((record) => {
     console.log(`${record.source}: ${record.verdict.status} (${record.verdict.reason})`);
     process.exitCode = record.verdict.status === 'passed' ? 0 : ['failed', 'unverified'].includes(record.verdict.status) ? 1 : 2;
-  }).catch(() => { console.error('Recovery capture failed; check arguments, checkpoint, and read credentials. No acceptance was proved.'); process.exitCode = 1; });
+  }).catch((error) => {
+    const reason = CAPTURE_ERRORS.has(error.message) || /^(?:BASELINE_UNVERIFIED|(?:DEPLOYMENT|HEALTH|METADATA|LOG)_READ_FAILED)$/.test(error.message)
+      ? error.message : 'INVALID_ARGUMENTS_OR_CHECKPOINT';
+    console.error(`Recovery capture failed: ${reason}. No acceptance was proved.`);
+    process.exitCode = 1;
+  });
 }

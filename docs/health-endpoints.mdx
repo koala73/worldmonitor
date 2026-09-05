@@ -700,7 +700,7 @@ fi
 
 Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only the registered source metadata keys. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
 
-Start before the first run you intend to count. Set a concrete UTC deadline once:
+Use the repair's merge commit on `main`, then start before the first run you intend to count. A PR branch SHA can lose its ancestry after a squash merge. Set a concrete UTC deadline once:
 
 ```bash
 node scripts/capture-seed-recovery.mjs \
@@ -718,6 +718,8 @@ The first successful capture fixes the baseline success time. Resume the same ch
 | `wildfires` | Three distinct consecutive successful runs, full 27-request coverage, zero source failures, and a successful run that used the primary retry | 60 minutes from deployment confirmation |
 | `crossStraitActivityTaiwanMnd` | Two separate three-hour member runs that advance Taiwan's success time and clear its error | 6 hours 30 minutes from deployment confirmation |
 | `physicalDivergence` | One successful publication with two records, future `inputFreshUntil`, and healthy status | Through 09:25 UTC on the first eligible schedule day |
+
+Wildfire acceptance targets the primary-retry repair in [PR #7701](https://github.com/koala73/worldmonitor/pull/7701). Its producer emits `trying primary retry`. An older producer's `trying secondary` message does not prove that repair. Use #7701's merge commit as the required revision after it merges.
 
 Each observation checks the active image, commit ancestry, and configured cron. Source success must advance after both the baseline and the first observation that verifies that image. Deployment changes reset the run sequence. A source failure or a missed member observation also breaks consecutive proof. Polls with the same success time do not add runs.
 
