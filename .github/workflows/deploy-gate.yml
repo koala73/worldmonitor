@@ -113,27 +113,62 @@ jobs:
           }
           post_gate_status() {
             local state="$1"
-            local description="$2"
-            gh_api_with_rate_limit_retry core "repos/$REPO/statuses/$SHA" --method POST \
+            local description previous error_file result read_failed=0
+            description=$(gate_description "$2")
+            gate_status_exhausted=0
+            if previous=$(gh_api_with_rate_limit_retry core \
+              "repos/$REPO/commits/$SHA/status?per_page=100" --paginate --slurp |
+              jq -ce 'if type == "array" and length > 0 and all(.[]; (.statuses | type) == "array")
+                then [.[].statuses[] | select(.context == "gate")] | sort_by(.id) | last // {}
+                else error("Incomplete commit-status response") end'); then
+              if printf '%s\n' "$previous" | jq -e --arg state "$state" --arg description "$description" \
+                '.state == $state and .description == $description' >/dev/null; then
+                echo "gate unchanged for $SHA ($state)"
+                return 0
+              fi
+            else
+              echo "::error::Could not read the current gate status for $SHA"
+              state="pending"
+              description=$(gate_description "Deploy Gate could not read status; retry scheduled")
+              read_failed=1
+              gate_fallback_handled=1
+            fi
+            error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-status.XXXXXX")
+            if gh_api_with_rate_limit_retry core "repos/$REPO/statuses/$SHA" --method POST \
               --field state="$state" \
               --field context="gate" \
-              --field description="$(gate_description "$description")"
+              --field description="$description" 2>"$error_file"; then
+              rm -f "$error_file"
+              return "$read_failed"
+            else
+              result=$?
+            fi
+            cat "$error_file" >&2
+            if grep -qi 'This SHA and context has reached the maximum number of statuses' "$error_file"; then
+              gate_status_exhausted=1
+              echo "::error::Gate status capacity exhausted for $SHA; this head needs a new commit before its status can change."
+            fi
+            rm -f "$error_file"
+            return "$result"
           }
           # The runner invokes this block with `bash -e`. If anything escapes
           # the bounded API retry after evaluation starts, make one last status
           # attempt. BASHPID keeps command-substitution subshells from posting
-          # duplicate statuses; only this top-level shell owns the fallback.
+          # duplicate statuses; only the SHA's evaluation shell owns the fallback.
           gate_shell_pid=$BASHPID
           active_sha=""
           post_pending_on_exit() {
             exit_code=$?
-            if [ "$exit_code" -eq 0 ] || [ "$BASHPID" != "$gate_shell_pid" ] || [ -z "$active_sha" ]; then
+            if [ "$exit_code" -eq 0 ] || [ "$BASHPID" != "$gate_shell_pid" ] || [ -z "$active_sha" ] ||
+              [ "${gate_status_exhausted:-0}" -eq 1 ] || [ "${gate_fallback_handled:-0}" -eq 1 ]; then
               return
             fi
             SHA="$active_sha"
             post_gate_status "pending" "Deploy Gate could not evaluate; retry scheduled" || true
           }
           trap post_pending_on_exit EXIT
+          evaluation_failures=0
+          exhausted_shas=""
           # Every job of every workflow named in the workflow_run trigger above.
           # A job missing here is never inspected, so it reports red on the PR
           # while this gate still posts success — CI theatre, not a gate (#5402).
@@ -268,7 +303,12 @@ jobs:
               for SHA in $remaining_invalidation_shas; do
                 active_sha="$SHA"
                 if ! post_gate_status "pending" "Required PR gate contract changed; re-evaluation scheduled"; then
-                  stale_invalidation_failures=$(printf '%s\n%s\n' "$stale_invalidation_failures" "$SHA" | sed '/^$/d')
+                  if [ "$gate_status_exhausted" -eq 1 ]; then
+                    exhausted_shas=$(printf '%s\n%s\n' "$exhausted_shas" "$SHA" | sed '/^$/d')
+                    evaluation_failures=1
+                  else
+                    stale_invalidation_failures=$(printf '%s\n%s\n' "$stale_invalidation_failures" "$SHA" | sed '/^$/d')
+                  fi
                 fi
                 active_sha=""
               done
@@ -276,8 +316,7 @@ jobs:
             done
             if [ -n "$remaining_invalidation_shas" ]; then
               echo "::error::Could not invalidate stale gate statuses for: $remaining_invalidation_shas"
-              active_sha=$(printf '%s\n' "$remaining_invalidation_shas" | sed -n '1p')
-              exit 1
+              evaluation_failures=1
             fi
 
             failed_missing_shas=""
@@ -316,7 +355,7 @@ jobs:
             echo "$shas"
           fi
 
-          for SHA in $shas; do
+          evaluate_sha() {
           echo "── evaluating $SHA"
           active_sha="$SHA"
 
@@ -330,10 +369,8 @@ jobs:
           # re-poll once after a longer delay before concluding pending. The
           # all-complete case breaks on the first pass. GraphQL has a separate
           # installation budget from REST core and returns the current rollup in
-          # two pages (115 contexts measured on 2026-08-12). The measured request
-          # totals are three for a complete SHA and five for a still-pending SHA;
-          # the old two-page/five-poll REST path cost three and eleven, all from
-          # core.
+          # two pages (115 contexts measured on 2026-08-12). Publication reads
+          # the combined status once and writes only when the result changes.
           # NOTE: the python3 -c body must stay at column 0 of the block scalar —
           # indenting it with the loops would be a Python IndentationError.
           max_attempts=2
@@ -391,16 +428,41 @@ jobs:
           if [ -n "$pending" ]; then
             post_gate_status "pending" "Waiting for required PR gates ($(name_count "$pending")): $pending"
             active_sha=""
-            continue
+            return 0
           fi
 
           # Treat "skipped" as passing (docs-only PRs skip code checks)
           if [ -n "$failed" ]; then
             post_gate_status "failure" "Required PR gates did not pass ($(name_count "$failed")): $failed"
             active_sha=""
-            continue
+            return 0
           fi
 
           post_gate_status "success" "All required PR gates passed"
           active_sha=""
+          }
+
+          for SHA in $shas; do
+            if printf '%s\n' "$exhausted_shas" | grep -qx "$SHA"; then
+              continue
+            fi
+            # A conditional function call disables errexit inside that function.
+            # Capture a standalone subshell's result so API errors still stop
+            # its evaluation while the parent can continue the sweep.
+            set +e
+            (
+              set -e
+              gate_shell_pid=$BASHPID
+              gate_status_exhausted=0
+              gate_fallback_handled=0
+              trap post_pending_on_exit EXIT
+              evaluate_sha
+            )
+            evaluation_result=$?
+            set -e
+            if [ "$evaluation_result" -ne 0 ]; then
+              echo "::error::Deploy Gate evaluation failed for $SHA"
+              evaluation_failures=1
+            fi
           done
+          exit "$evaluation_failures"

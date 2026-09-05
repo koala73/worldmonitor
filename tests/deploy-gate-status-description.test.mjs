@@ -46,11 +46,16 @@ function runGate(conclusions, {
   graphQlFailures = 0,
   graphQlFailureKind = 'generic',
   previousConclusions,
+  previousStatus,
+  repetitions = 1,
   resetAvailable = true,
   restFailures = 0,
   restFailureKind = 'generic',
   statusFailures = 0,
   statusFailureKind = 'generic',
+  statusReadFailures = 0,
+  malformedStatusResponse = false,
+  exhaustedSha = '',
   sweepStatus,
   sweepStatuses,
 } = {}) {
@@ -66,6 +71,8 @@ function runGate(conclusions, {
   const postTargetsFile = join(tempDir, 'post-targets');
   const rejectedFile = join(tempDir, 'rejected');
   const callsFile = join(tempDir, 'calls');
+  const currentStatusesFile = join(tempDir, 'current-statuses.json');
+  const statusReadFailuresFile = join(tempDir, 'status-read-failures');
 
   try {
     mkdirSync(fakeBin);
@@ -76,6 +83,12 @@ function runGate(conclusions, {
     writeFileSync(postTargetsFile, '');
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
+    writeFileSync(statusReadFailuresFile, String(statusReadFailures));
+    writeFileSync(currentStatusesFile, JSON.stringify(Object.fromEntries(
+      (sweepStatuses ?? [{ sha: SHA, status: previousStatus ?? sweepStatus }])
+        .filter(({ status }) => status)
+        .map(({ sha, status }) => [sha, { ...status, context: 'gate', state: status.state.toLowerCase() }]),
+    )));
     const runsFor = (values, timestamp, idBase) => REQUIRED.flatMap((name, index) => values?.[name]
       ? [{
         name,
@@ -291,6 +304,10 @@ function runGate(conclusions, {
         '      esac',
         '    done',
         '    echo "status:$state" >> "$FAKE_CALLS"',
+        '    if [ "$target_sha" = "$FAKE_EXHAUSTED_SHA" ]; then',
+        '      echo "gh: This SHA and context has reached the maximum number of statuses. (HTTP 422)" >&2',
+        '      exit 1',
+        '    fi',
         '    status_failures=$(cat "$FAKE_STATUS_FAILURES")',
         '    if [ "$status_failures" -gt 0 ]; then',
         '      echo $((status_failures - 1)) > "$FAKE_STATUS_FAILURES"',
@@ -308,6 +325,25 @@ function runGate(conclusions, {
         '    fi',
         '    printf \'%s|%s\\n\' "$state" "$description" >> "$FAKE_POSTED"',
         '    printf \'%s\\n\' "$target_sha" >> "$FAKE_POST_TARGETS"',
+        '    jq --arg sha "$target_sha" --arg state "$state" --arg description "$description" \'.[$sha] = {context: "gate", state: $state, description: $description}\' "$FAKE_CURRENT_STATUSES" > "$FAKE_CURRENT_STATUSES.next"',
+        '    mv "$FAKE_CURRENT_STATUSES.next" "$FAKE_CURRENT_STATUSES"',
+        '    exit 0',
+        '    ;;',
+        '  *"/status?per_page=100"*)',
+        '    echo "status-read" >> "$FAKE_CALLS"',
+        '    failures=$(cat "$FAKE_STATUS_READ_FAILURES")',
+        '    if [ "$failures" -gt 0 ]; then',
+        '      echo $((failures - 1)) > "$FAKE_STATUS_READ_FAILURES"',
+        '      echo "gh: forced status read failure (HTTP 503)" >&2',
+        '      exit 1',
+        '    fi',
+        '    target_sha=${2%/status?*}',
+        '    target_sha=${target_sha##*/}',
+        '    if [ "$FAKE_MALFORMED_STATUS" = "1" ]; then',
+        '      echo \'[{"message":"unavailable"}]\'',
+        '      exit 0',
+        '    fi',
+        '    jq --arg sha "$target_sha" \'[{statuses: []}, {statuses: [.[$sha] // empty]}]\' "$FAKE_CURRENT_STATUSES"',
         '    exit 0',
         '    ;;',
         'esac',
@@ -333,38 +369,48 @@ function runGate(conclusions, {
     ].join('\n'));
     for (const command of ['gh', 'date', 'sleep']) chmodSync(join(fakeBin, command), 0o755);
 
-    const result = spawnSync('bash', ['-e', '-c', gateStep.run], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        FAKE_CALLS: callsFile,
-        FAKE_CHECK_RUNS: runsFile,
-        FAKE_CUTOFF_ISO: '2026-08-11T12:30:00Z',
-        FAKE_FAILED_RUN_CREATED_AT: failedRunCreatedAt,
-        FAKE_FAILED_RUN_SHA: failedRunSha,
-        FAKE_FAILURE_KIND: graphQlFailureKind,
-        FAKE_FAILURES: failuresFile,
-        FAKE_REST_CHECK_RUNS: restRunsFile,
-        FAKE_REST_FAILURE_KIND: restFailureKind,
-        FAKE_REST_FAILURES: restFailuresFile,
-        FAKE_POSTED: postedFile,
-        FAKE_POST_TARGETS: postTargetsFile,
-        FAKE_REJECTED: rejectedFile,
-        FAKE_NOW: String(Date.parse('2026-08-12T12:30:00Z') / 1000),
-        FAKE_RESET_AT: String(Date.parse('2026-08-12T12:30:10Z') / 1000),
-        FAKE_RESET_AVAILABLE: resetAvailable ? '1' : '0',
-        FAKE_STATUS_FAILURE_KIND: statusFailureKind,
-        FAKE_STATUS_FAILURES: statusFailuresFile,
-        FAKE_SWEEP_RESPONSES: sweepFile,
-        FAKE_SHA: SHA,
-        GH_TOKEN: 'test-token',
-        PATH: `${fakeBin}:${process.env.PATH}`,
-        REPO: 'koala73/worldmonitor',
-        RUNNER_TEMP: tempDir,
-        SHA: sweepStatus === undefined && sweepStatuses === undefined ? SHA : '',
-      },
-    });
+    let result;
+    const exitCodes = [];
+    for (let repetition = 0; repetition < repetitions; repetition++) {
+      result = spawnSync('bash', ['-e', '-c', gateStep.run], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          FAKE_CALLS: callsFile,
+          FAKE_CURRENT_STATUSES: currentStatusesFile,
+          FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
+          FAKE_MALFORMED_STATUS: malformedStatusResponse ? '1' : '0',
+          FAKE_EXHAUSTED_SHA: exhaustedSha,
+          FAKE_CHECK_RUNS: runsFile,
+          FAKE_CUTOFF_ISO: '2026-08-11T12:30:00Z',
+          FAKE_FAILED_RUN_CREATED_AT: failedRunCreatedAt,
+          FAKE_FAILED_RUN_SHA: failedRunSha,
+          FAKE_FAILURE_KIND: graphQlFailureKind,
+          FAKE_FAILURES: failuresFile,
+          FAKE_REST_CHECK_RUNS: restRunsFile,
+          FAKE_REST_FAILURE_KIND: restFailureKind,
+          FAKE_REST_FAILURES: restFailuresFile,
+          FAKE_POSTED: postedFile,
+          FAKE_POST_TARGETS: postTargetsFile,
+          FAKE_REJECTED: rejectedFile,
+          FAKE_NOW: String(Date.parse('2026-08-12T12:30:00Z') / 1000),
+          FAKE_RESET_AT: String(Date.parse('2026-08-12T12:30:10Z') / 1000),
+          FAKE_RESET_AVAILABLE: resetAvailable ? '1' : '0',
+          FAKE_STATUS_FAILURE_KIND: statusFailureKind,
+          FAKE_STATUS_FAILURES: statusFailuresFile,
+          FAKE_SWEEP_RESPONSES: sweepFile,
+          FAKE_SHA: SHA,
+          GH_TOKEN: 'test-token',
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          REPO: 'koala73/worldmonitor',
+          RUNNER_TEMP: tempDir,
+          SHA: sweepStatus === undefined && sweepStatuses === undefined ? SHA : '',
+        },
+      });
+      exitCodes.push(result.status);
+    }
 
     const parse = (file) => readFileSync(file, 'utf8')
       .split('\n')
@@ -376,7 +422,9 @@ function runGate(conclusions, {
 
     return {
       ...result,
-      calls: readFileSync(callsFile, 'utf8').split('\n').filter(Boolean),
+      exitCodes,
+      statusReads: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call === 'status-read').length,
+      calls: readFileSync(callsFile, 'utf8').split('\n').filter((call) => call && call !== 'status-read'),
       postTargets: readFileSync(postTargetsFile, 'utf8').split('\n').filter(Boolean),
       posted: parse(postedFile),
       rejected: parse(rejectedFile),
@@ -389,6 +437,86 @@ function runGate(conclusions, {
 const conclusionsFor = (value) => Object.fromEntries(REQUIRED.map((name) => [name, value]));
 
 describe('deploy gate commit-status description', () => {
+  it('publishes one status across repeated unchanged evaluations', () => {
+    for (const conclusion of ['success', 'pending', 'failure']) {
+      const result = runGate(conclusionsFor(conclusion), { repetitions: 2 });
+      assert.deepEqual(result.exitCodes, [0, 0], result.stderr);
+      assert.equal(result.posted.length, 1, conclusion);
+      assert.equal(result.statusReads, 2);
+    }
+  });
+
+  it('replaces a previous green when a newer check is pending', () => {
+    const result = runGate({ ...conclusionsFor('success'), unit: 'pending' }, {
+      previousConclusions: conclusionsFor('success'),
+      previousStatus: { state: 'success', description: stamped('All required PR gates passed') },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted[0].state, 'pending');
+  });
+
+  it('continues a sweep after an exhausted head without repeating its rejected write', () => {
+    const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      exhaustedSha: SHA,
+      sweepStatuses: [SHA, secondSha].map((sha) => ({
+        sha, status: { state: 'PENDING', description: stamped('Waiting for checks') },
+      })),
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.postTargets, [secondSha], result.stderr);
+    assert.equal(result.calls.filter((call) => call.startsWith('status:')).length, 2);
+  });
+
+  it('keeps evaluating other heads when a stale green cannot be invalidated', () => {
+    const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      exhaustedSha: SHA,
+      sweepStatuses: [
+        { sha: SHA, status: { state: 'SUCCESS', description: 'Old contract' } },
+        { sha: secondSha, status: { state: 'PENDING', description: stamped('Waiting for checks') } },
+      ],
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.postTargets, [secondSha], result.stderr);
+    assert.equal(result.calls.filter((call) => call.startsWith('status:')).length, 2);
+  });
+
+  it('fails closed when the previous status is unavailable', () => {
+    const result = runGate(conclusionsFor('success'), {
+      statusReadFailures: 10,
+      previousStatus: { state: 'success', description: stamped('All required PR gates passed') },
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.posted.map(({ state }) => state), ['pending']);
+  });
+
+  it('fails closed on an incomplete status response', () => {
+    const result = runGate(conclusionsFor('success'), { malformedStatusResponse: true });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.posted.map(({ state }) => state), ['pending']);
+  });
+
+  it('continues the sweep after the first SHA cannot read its check results', () => {
+    const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 1,
+      restFailures: 1,
+      sweepStatuses: [SHA, secondSha].map((sha) => ({
+        sha, status: { state: 'PENDING', description: stamped('Waiting for checks') },
+      })),
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(result.postTargets, [SHA, secondSha], result.stderr);
+    assert.deepEqual(result.posted.map(({ state }) => state), ['pending', 'success']);
+  });
+
+  it('recovers on replay after both publication attempts fail', () => {
+    const result = runGate(conclusionsFor('success'), { statusFailures: 2, repetitions: 3 });
+    assert.deepEqual(result.exitCodes, [1, 0, 0], result.stderr);
+    assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
+  });
+
   it('gates on enough checks for the cap to be reachable', () => {
     // Anti-vacuity: with three required names the untruncated description fits
     // and every assertion below would pass against the broken step too.
@@ -424,8 +552,9 @@ describe('deploy gate commit-status description', () => {
         'graphql-check-page',
         'status:pending',
       ],
-      'the pending path must use five HTTP calls, down from eleven, with one bounded wait',
+      'the pending path must use four check pages and one write, with one bounded wait',
     );
+    assert.equal(result.statusReads, 1);
   });
 
   it('posts a failure status when every required check failed', () => {
