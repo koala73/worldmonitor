@@ -391,19 +391,31 @@ test('requires valid IMD API key and account credentials', async () => {
 
 test('documents the complete IMD Railway credential setup', () => {
   const docs = readFileSync(join(root, 'docs/natural-disasters.mdx'), 'utf8');
+  const railwayServices = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
+  const railwayService = railwayServices.find((entry) => entry.service === 'seed-imd-cyclone-marine');
+  assert.ok(railwayService, 'missing IMD Railway service registry entry');
   const heading = '## Configure the IMD Railway seeder';
   const start = docs.indexOf(heading);
   assert.notEqual(start, -1, `missing ${heading}`);
   const nextHeading = docs.indexOf('\n## ', start + heading.length);
   const setup = docs.slice(start, nextHeading === -1 ? docs.length : nextHeading);
 
-  assert.match(setup, /IMD_API_KEY/);
-  assert.match(setup, /IMD_API_EMAIL/);
-  assert.match(setup, /IMD_API_PASSWORD/);
+  assert.ok(setup.includes(railwayService.service));
+  for (const name of railwayService.requiredEnv.filter((entry) => entry.startsWith('IMD_'))) {
+    assert.ok(setup.includes(name), `missing documented Railway variable ${name}`);
+  }
+  assert.ok(setup.includes(railwayService.cronSchedule));
   assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
   assert.match(setup, /static public IP/i);
-  assert.match(setup, /api\/oauth\/token\.php/);
+  assert.match(setup, /three static outbound IPv4 addresses/i);
+  assert.match(setup, /maximum of 2 Development keys and 2 Production keys/i);
+  assert.match(setup, /one static public IP/i);
+  assert.match(setup, /HTTP 403/i);
+  assert.ok(setup.includes(IMD_OAUTH_TOKEN_URL));
   assert.match(setup, /Do\s+not store the JWT/i);
+  assert.match(setup, /stale: false/);
+  assert.match(setup, /generatedAt.*later than the deployment time/is);
+  assert.match(setup, /imdCycloneMarine.*problems/is);
   assert.doesNotMatch(setup, /IMD_API_TOKEN=/);
 });
 

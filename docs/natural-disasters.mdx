@@ -31,10 +31,19 @@ not store the JWT in Railway.
    ```
 
    Register the outbound address with IMD when you create the production API
-   key. Railway can assign several addresses to a high-availability service. If
-   the command lists more than one address, confirm with IMD how to authorize
-   each address. A key that is bound to one address can fail when Railway uses
-   another one.
+   key. Railway assigns three static outbound IPv4 addresses to a
+   high-availability service and balances traffic across them. The IMD portal
+   documents a maximum of 2 Development keys and 2 Production keys, and each
+   key is associated with one server public IP. The native Railway HA address
+   set therefore does not fit the documented IMD key model.
+
+   Do not register only one Railway address and assume that the service will
+   keep using it. Before activation, either get written confirmation from IMD
+   that all three Railway addresses are authorized for this account, or put the
+   service behind network infrastructure that presents one static public IP and
+   register that address with IMD. The seeder does not currently define an
+   application-level proxy variable. Treat HTTP 403 from every product as an
+   API key status or public-IP authorization failure.
 3. Add these service variables in Railway. Store each value as a secret.
 
    | Variable | Value |
@@ -46,10 +55,20 @@ not store the JWT in Railway.
    Do not set `IMD_API_TOKEN`. The seeder sends the account credentials to
    `POST https://api.imd.gov.in/api/oauth/token.php` and keeps the returned JWT
    only for the current run.
-4. Deploy from `main`. Wait for the next `*/15 * * * *` cron run. Confirm that
-   the published IMD snapshot has `coverageState: ok`. A successful Railway
-   deployment or an `OK_ZERO` process result does not prove that IMD accepted
-   the credentials.
+4. Deploy from `main` and record the deployment time. Confirm that the active
+   deployment manifest uses the registry schedule, `*/15 * * * *`, then wait
+   for its next natural cron run.
+5. Call the WorldMonitor MCP tool `get_imd_cyclone_marine`. Accept the setup
+   only when the response has `stale: false`, its IMD snapshot has
+   `coverageState: ok`, and `generatedAt` is later than the deployment time.
+   Each enabled product must have `status: ok`; its record count can be zero
+   during a quiet period. Also confirm that
+   `https://api.worldmonitor.app/api/health?compact=1` does not list
+   `imdCycloneMarine` in `problems`.
+
+   A successful Railway deployment, an older green cache value, or an
+   `OK_ZERO` process result does not prove that IMD accepted the current
+   credentials and egress path.
 
 ## GDACS (Global Disaster Alert and Coordination System)
 
