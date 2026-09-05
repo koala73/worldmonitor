@@ -666,7 +666,10 @@ instead of publishing, and lost nothing.
 It must not crash the bundle: one rate-limited source firing a deploy-crash
 alert is the alert fatigue that makes the alarm worthless. Real staleness is
 caught by freshness monitoring on the published data, never by the tick's exit
-status.
+status. A seeder running as its own cron handles the same failure the same way
+but exits non-zero on purpose, so the platform's crash badge is what surfaces a
+source that has stopped answering; a bundle member's tick absorbs that exit,
+which is the difference between the two.
 
 ### Starved Tick
 
