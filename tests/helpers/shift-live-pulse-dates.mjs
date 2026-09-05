@@ -1,19 +1,23 @@
 // Coherent date-shifting for crawlable live-pulse snapshots (#7533).
 //
 // Every clock in a pulse must move by the same delta or downstream validators
-// reject it: the chokepoint/CII validators compare each `asOf`/`asOfMs` against
-// the pulse's own `capturedAtMs` +/- a skew window, and 6-digit microseconds
-// break `Date.parse`. A naive string replace of the date produces four
-// unrelated validation failures. This helper shifts the whole document at once:
+// reject it: the chokepoint/CII validators compare each `asOf` (an ISO string
+// they Date.parse themselves) against the pulse's own `capturedAtMs` +/- a
+// skew window. This helper shifts the whole document at once:
 //
 //   - `YYYY-MM-DD` strings -> shifted calendar dates
-//   - `YYYY-MM-DDTHH:MM:SS(.mmm)?(Z|±hh:mm)` strings -> shifted instants,
-//     re-emitted at millisecond precision in UTC (never microseconds)
+//   - `YYYY-MM-DDTHH:MM:SS(.fraction)?(Z|±hh:mm)` strings -> shifted instants,
+//     re-emitted at millisecond precision in UTC (extra fraction digits are
+//     truncated, and non-UTC offsets are normalized to Z, so every emitted
+//     instant stays canonical)
 //   - numeric epoch-millisecond values -> shifted by the same delta
 //   - everything else (prose, month labels like `2026-08`, repo paths,
 //     scores) -> untouched
 //
 // Month labels and prose stay fixed on purpose: they are content, not clocks.
+// Timezone-less datetime strings are left untouched too — the pulse format
+// always carries Z today; if a freeze ever emits a tz-less datetime this
+// helper must be extended, not silently desynced.
 export function shiftLivePulseDates(pulse, deltaDays) {
   const deltaMs = deltaDays * 86_400_000;
   const DATE = /^\d{4}-\d{2}-\d{2}$/;

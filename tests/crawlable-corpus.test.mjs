@@ -38,6 +38,7 @@ import {
   describeHeadlineIneligibilityReason,
   describeInventoryScope,
   developmentsHasDatedItem,
+  latestDatedChangelogRelease,
   RESEARCH_PAGE_CONTENT_VERSION,
   SUPPORTED_READING_MIN_COVERAGE,
   GENERATED_DIRS,
@@ -81,6 +82,7 @@ import { buildMicrostateCoverageStoryContent } from '../scripts/microstate-cover
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 import { USE_CASES_CONTENT_VERSION } from '../scripts/build-use-cases.mjs';
+import { COMPARISONS_CONTENT_VERSION } from '../scripts/build-comparison-pages.mjs';
 import { shiftLivePulseDates } from './helpers/shift-live-pulse-dates.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
 
@@ -4725,8 +4727,11 @@ describe('live-pulse snapshot injection (#7533)', () => {
   };
 
   const writeShiftedPulseDir = (capturedAt) => {
+    // Build the payload BEFORE creating the temp dir so a shift-helper
+    // regression cannot leak an empty directory behind its assertion.
+    const payload = shiftedPulseJson(capturedAt);
     const dir = mkdtempSync(join(tmpdir(), 'wm-pulse-inject-'));
-    writeFileSync(join(dir, `crawlable-live-pulse-${capturedAt}.json`), shiftedPulseJson(capturedAt));
+    writeFileSync(join(dir, `crawlable-live-pulse-${capturedAt}.json`), payload);
     return dir;
   };
 
@@ -4742,32 +4747,75 @@ describe('live-pulse snapshot injection (#7533)', () => {
     const data = await loadCorpusData({ rootDir: repoRoot, livePulseSnapshotPath: FIXTURE_RELATIVE_PATH });
     assert.equal(data.sources.livePulseSnapshot, FIXTURE_RELATIVE_PATH);
     assert.equal(data.livePulse.capturedAt, FIXTURE_PULSE_DATE);
-    // Pulse-coupled clocks fold the injected date in. Expected values are
-    // recomputed from the fixture's OWN date, so these derivations stay
-    // falsifiable on any calendar day.
-    assert.equal(
-      data.lastmod.chokepoints,
-      laterDate(
-        ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
-        FIXTURE_PULSE_DATE,
-        CHOKEPOINT_PAGE_CONTENT_VERSION,
-      ),
-      'chokepoints lastmod must fold the injected pulse date',
+    // NOTE: this fixture's date is deliberately far in the past, so it does
+    // NOT drive the family clocks — the content versions dominate the fold.
+    // These assertions pin the derivation shape with the fixture date folded
+    // in; the coupling itself (a family clock tracking the pulse date) is
+    // proven with teeth by the dominating-pulse guard test below, whose
+    // injected date strictly exceeds every other fold input.
+  });
+
+  it('rejects an injected snapshot that is missing or shape-invalid', async () => {
+    await assert.rejects(
+      () => loadCorpusData({ rootDir: repoRoot, livePulseSnapshotPath: 'tests/fixtures/no-such-pulse.json' }),
+      /ENOENT|no such file/i,
+      'a missing injected snapshot must fail loudly, not silently fall back to the resolver',
     );
-    assert.equal(
-      data.lastmod.crises,
-      laterDate(
-        gitFileLastmod(repoRoot, data.sources.crisisRegistry),
-        FIXTURE_PULSE_DATE,
-        CRISIS_PAGE_CONTENT_VERSION,
-      ),
-      'crises lastmod must fold the injected pulse date',
-    );
+    // A correctly-named pulse file whose capturedAt contradicts its filename
+    // must fail the same coherence check the default path enforces.
+    const mismatchDir = mkdtempSync(join(tmpdir(), 'wm-pulse-mismatch-'));
+    try {
+      writeFileSync(
+        join(mismatchDir, 'crawlable-live-pulse-1999-12-31.json'),
+        readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH)),
+      );
+      await assert.rejects(
+        () => loadCorpusData({
+          rootDir: repoRoot,
+          livePulseSnapshotPath: join(mismatchDir, 'crawlable-live-pulse-1999-12-31.json'),
+        }),
+        /does not match capturedAt/,
+        'an injected snapshot whose filename date contradicts capturedAt must be rejected',
+      );
+      // And so must one that is structurally incomplete: the injected path
+      // keeps the resolver's shape contract even though it skips its fuse.
+      const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+      const { crises: _dropped, ...sectionless } = fixture;
+      writeFileSync(
+        join(mismatchDir, 'crawlable-live-pulse-1999-12-30.json'),
+        JSON.stringify(sectionless),
+      );
+      await assert.rejects(
+        () => loadCorpusData({
+          rootDir: repoRoot,
+          livePulseSnapshotPath: join(mismatchDir, 'crawlable-live-pulse-1999-12-30.json'),
+        }),
+        /missing required live-pulse sections/,
+        'an injected snapshot missing a required section must be rejected',
+      );
+    } finally {
+      rmSync(mismatchDir, { recursive: true, force: true });
+    }
   });
 
   it('builds the full corpus against the injected fixture snapshot', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-pulse-fixture-corpus-'));
     try {
+      // The fixture is a frozen copy of a real freeze output: its shape must
+      // stay in lockstep with the live snapshot schema, or the injection path
+      // would keep testing a structure production no longer produces.
+      const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+      const live = JSON.parse(readFileSync(join(repoRoot, resolveLatestLivePulseSnapshotPath(repoRoot)), 'utf8'));
+      assert.deepEqual(Object.keys(fixture).sort(), Object.keys(live).sort());
+      assert.equal(fixture.schemaVersion, live.schemaVersion);
+      for (const section of ['countries', 'chokepoints', 'crises', 'signalConvergence']) {
+        assert.deepEqual(
+          Object.keys(fixture[section] ?? {}).sort(),
+          Object.keys(live[section] ?? {}).sort(),
+          `fixture section ${section} must carry the same keys as the committed snapshot`,
+        );
+      }
+
       const manifest = await buildCorpus({
         rootDir: repoRoot,
         outDir,
@@ -4898,7 +4946,27 @@ describe('live-pulse snapshot injection (#7533)', () => {
             }),
             pageFor(manifest.sections.sources.index),
           ]],
+          ['changelog', [
+            laterDate(
+              gitFileLastmod(repoRoot, data.sources.changelog),
+              latestDatedChangelogRelease(data.changelog),
+            ),
+            'reference/changelog/index.html',
+          ]],
+          ['comparisons', [
+            laterDate(COMPARISONS_CONTENT_VERSION, gitFileLastmod(repoRoot, 'scripts/build-comparison-pages.mjs')),
+            pageFor(manifest.sections.comparisons.index),
+          ]],
         ]);
+        // Population floor: the guard must account for EVERY family the
+        // builder emits, so a future family (or a new pulse fold inside an
+        // existing one) cannot silently join lastmod without a clock
+        // assertion (#7533 class).
+        assert.deepEqual(
+          [...expectations.keys()].sort(),
+          Object.keys(data.lastmod).sort(),
+          'the guard must cover every lastmod family the builder emits',
+        );
         const failures = [];
         for (const [family, [expected, pagePath]] of expectations) {
           if (data.lastmod[family] !== expected) {
@@ -4925,14 +4993,63 @@ describe('live-pulse snapshot injection (#7533)', () => {
     }
   });
 
-  // #7533 lint guard. Every single-quoted calendar-date literal in this file
-  // must appear on one of the #7533-allowlist lines below. An undocumented
+  describe('shiftLivePulseDates invariants', () => {
+    const sample = () => ({
+      capturedAt: '2026-01-15',
+      capturedAtMs: Date.parse('2026-01-15T08:21:30.873Z'),
+      asOf: '2026-01-15T08:12:23.057Z',
+      offsetAsOf: '2026-01-15T13:42:00.250+05:30',
+      tzless: '2026-01-15T10:00:00',
+      referencePeriod: '2025-12',
+      snapshotPath: 'docs/snapshots/resilience-ranking-2026-08-29.json',
+      note: 'Founded in 1905; peak season 2019-2020.',
+      counts: [0, 42, 1_499_999_999_999],
+      nested: { publishedAt: '2026-01-15T23:45:00.000Z' },
+    });
+
+    it('moves every clock by one shared delta and leaves content fixed', () => {
+      const shifted = shiftLivePulseDates(sample(), 30);
+      assert.equal(shifted.capturedAt, '2026-02-14');
+      assert.equal(shifted.capturedAtMs, Date.parse('2026-01-15T08:21:30.873Z') + 30 * 86_400_000);
+      assert.equal(shifted.asOf, '2026-02-14T08:12:23.057Z');
+      // Non-UTC offsets normalize to canonical UTC millisecond precision.
+      assert.equal(shifted.offsetAsOf, '2026-02-14T08:12:00.250Z');
+      // Tz-less datetimes are NOT clocks this helper understands: leaving
+      // them fixed fails loudly at the skew validators instead of silently
+      // desyncing one clock from the cohort.
+      assert.equal(shifted.tzless, '2026-01-15T10:00:00');
+      // Content, not clocks.
+      assert.equal(shifted.referencePeriod, '2025-12');
+      assert.equal(shifted.snapshotPath, 'docs/snapshots/resilience-ranking-2026-08-29.json');
+      assert.equal(shifted.note, 'Founded in 1905; peak season 2019-2020.');
+      // Sub-cutoff numbers (scores, counts, epoch-seconds) stay put.
+      assert.deepEqual(shifted.counts, [0, 42, 1_499_999_999_999]);
+      assert.equal(shifted.nested.publishedAt, '2026-02-14T23:45:00.000Z');
+    });
+
+    it('shifts backwards with the same coherence', () => {
+      const shifted = shiftLivePulseDates(sample(), -232);
+      assert.equal(shifted.capturedAt, '2025-05-28');
+      assert.equal(shifted.capturedAtMs, Date.parse('2026-01-15T08:21:30.873Z') - 232 * 86_400_000);
+      assert.equal(shifted.asOf, '2025-05-28T08:12:23.057Z');
+    });
+  });
+
+  // #7533 lint guard. Every calendar-date token in this file's code must
+  // appear on one of the #7533-allowlist lines below. An undocumented
   // date is a new calendar pin — the exact defect class that broke CI one
   // assertion per month as the freeze rewrote the pulse snapshot. A literal
   // earns its allowlist entry only by being genuinely static (a content
   // version, a pure-function fixture) or deliberately test-owned (the fixture
   // date). Snapshot-coupled dates must be derived from the loaded clock.
+  // The scan deliberately covers every carrier, not just whole single-quoted
+  // literals: double quotes, template literals, tz-less datetimes, and dates
+  // embedded inside longer strings (HTML fixtures, snapshot paths) are all
+  // counted. Full-line comments are stripped first so this allowlist — and
+  // prose comments — are never misread as pins.
   // #7533-allowlist: 2026-01-02 2026-01-05 2026-01-09 2026-01-15 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
+  // #7533-allowlist: 2026-01-01 2026-01-31 — datasetTemporalCoverage observation-interval range fixture
+  // #7533-allowlist: 2025-05-28 2026-02-14 — shiftLivePulseDates unit-test fixtures (derived from 2026-01-15 +-30/232d)
   // #7533-allowlist: 2026-02-03 2026-02-30 2026-02-31 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
   // #7533-allowlist: 2026-03-04 2026-03-14 2026-04-09 2026-05-01 — laterDate unit pin; resolveChokepointObservation fallback constants
   // #7533-allowlist: 2026-05-28 — datasetTemporalCoverage pure-function fixture
@@ -4944,18 +5061,18 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-09-03 — genuinely static: research lastmod, DataCatalog render fixture, datasetObservationCoverage fixtures
   it('rejects undocumented calendar-date literals in this file', () => {
     const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+    const code = source.replace(/^\s*\/\/.*$/gm, ' ');
     const allowed = new Set(
       [...source.matchAll(/^\s*\/\/ #7533-allowlist: (.+)$/gm)]
         .flatMap(([, line]) => [...line.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((match) => match[1])),
     );
     assert.ok(allowed.size >= 20, 'the #7533-allowlist comment must stay populated');
-    const literals = [...source.matchAll(/'(20\d{2}-\d{2}-\d{2}(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2}))?)'/g)]
-      .map((match) => match[1].slice(0, 10));
-    const undocumented = [...new Set(literals)].filter((date) => !allowed.has(date));
+    const tokens = [...code.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((match) => match[1]);
+    const undocumented = [...new Set(tokens)].filter((date) => !allowed.has(date));
     assert.deepEqual(
       undocumented,
       [],
-      'new calendar-date literals must be documented on a `// #7533-allowlist:` line or derived from the loaded clock (#7533)',
+      'new calendar-date tokens must be documented on a `// #7533-allowlist:` line or derived from the loaded clock (#7533)',
     );
   });
 });

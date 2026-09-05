@@ -12,7 +12,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
@@ -169,6 +169,9 @@ export const DATASET_SCHEMA_CONTENT_VERSION = {
   tools: '2026-09-03',
 };
 export const CRISIS_PAGE_CONTENT_VERSION = '2026-09-03';
+// TOOLS_PAGE_CONTENT_VERSION and RESEARCH_PAGE_CONTENT_VERSION are exported
+// for the same reason as the constants above: the #7533 guard recomputes
+// their families' clocks from the real values.
 export const TOOLS_PAGE_CONTENT_VERSION = '2026-09-03';
 export const RESEARCH_PAGE_CONTENT_VERSION = '2026-09-03';
 const DATASET_LICENSE = {
@@ -298,7 +301,10 @@ const MONTHS = [
 ];
 
 function repoPath(rootDir, relativePath) {
-  return join(rootDir, relativePath);
+  // resolve() (not join()) so an absolute injected snapshot path — the #7533
+  // override reads temp-dir files — is used as-is while relative paths still
+  // anchor to rootDir exactly as join() did.
+  return resolve(rootDir, relativePath);
 }
 
 function readText(rootDir, relativePath) {
@@ -1484,7 +1490,9 @@ function parseChangelog(source) {
   }).filter((release) => release.label && release.bullets.length > 0);
 }
 
-function latestDatedChangelogRelease(changelog) {
+// Exported for the #7533 family-clock guard, which recomputes the changelog
+// family's fold the same way it does for the content-version constants.
+export function latestDatedChangelogRelease(changelog) {
   const dates = changelog
     .map((release) => release.date)
     .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ''))
@@ -1552,12 +1560,24 @@ export function gitFileLastmod(rootDir, relativePath) {
 // clocks stop inheriting whatever the freeze last committed. Relative paths
 // resolve against rootDir (production never passes this), absolute paths are
 // read as-is so tests can point at temp-dir snapshots. Omitting it preserves
-// the default "newest committed snapshot" behaviour exactly.
+// the default "newest committed snapshot" behaviour exactly. Injected pulses
+// keep the resolver's shape contract (required sections, filename↔capturedAt
+// coherence) but skip its 10-day staleness fuse — that fuse is what tests
+// legitimately need to bypass.
 export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshotPath } = {}) {
   const resilienceSnapshotPath = resolveLatestResilienceSnapshotPath(rootDir);
   const pulsePath = livePulseSnapshotPath ?? resolveLatestLivePulseSnapshotPath(rootDir);
   const resilience = readJson(rootDir, resilienceSnapshotPath);
-  const livePulse = JSON.parse(readFileSync(resolve(rootDir, pulsePath), 'utf8'));
+  const livePulse = readJson(rootDir, pulsePath);
+  if (!livePulse.countries || !livePulse.chokepoints || !livePulse.crises || !livePulse.signalConvergence) {
+    throw new Error(`${pulsePath} is missing required live-pulse sections`);
+  }
+  const filenameDate = basename(pulsePath).match(LIVE_PULSE_SNAPSHOT_RE)?.[1];
+  if (filenameDate && livePulse.capturedAt !== filenameDate) {
+    throw new Error(
+      `${pulsePath} filename date ${filenameDate} does not match capturedAt ${livePulse.capturedAt}`,
+    );
+  }
   const microstateTerritoryCodes = new Set(
     (readJson(rootDir, MICROSTATE_TERRITORIES_PATH).iso2 || [])
       .map((code) => String(code || '').toUpperCase())
