@@ -545,9 +545,9 @@ describe('zh-TW catalogues — the generator is the freshness gate', () => {
   });
 
   test('requires the unit job before deploying', () => {
-    const gate = readFileSync(repoPath('.github/workflows/deploy-gate.yml'), 'utf8');
+    const gate = readFileSync(repoPath('.github/scripts/deploy-gate.sh'), 'utf8');
     const required = gate.match(/required='(\[[^']*\])'/);
-    assert.ok(required, 'could not read the required-job list from deploy-gate.yml');
+    assert.ok(required, 'could not read the required-job list from deploy-gate.sh');
     assert.ok(
       (JSON.parse(required[1]!) as string[]).includes('unit'),
       'the unit job is no longer gate-required, so the catalogue check stopped blocking merges',

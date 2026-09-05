@@ -10,7 +10,7 @@ import { parse as parseYaml } from 'yaml';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(root, '.github/workflows/proto-check.yml');
 const workflowSource = readFileSync(workflowPath, 'utf8');
-const deployGateSource = readFileSync(resolve(root, '.github/workflows/deploy-gate.yml'), 'utf8');
+const deployGateScript = readFileSync(resolve(root, '.github/scripts/deploy-gate.sh'), 'utf8');
 const contributing = readFileSync(resolve(root, 'CONTRIBUTING.md'), 'utf8');
 const agentInstructions = readFileSync(resolve(root, 'AGENTS.md'), 'utf8');
 const scorecardMirrorSource = readFileSync(
@@ -883,7 +883,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       'internal-merge-freshness',
       'proto-freshness',
     ]) {
-      assert.match(deployGateSource, new RegExp(`"${checkName}"`), `${checkName} must remain required`);
+      assert.match(deployGateScript, new RegExp(`"${checkName}"`), `${checkName} must remain required`);
     }
     const aggregateStep = stepByName('proto-freshness', 'Publish aggregate proto freshness result');
     assert.equal(aggregateStep.env?.TRUSTED_FORK, '${{ needs.changes.outputs.trusted_fork }}');

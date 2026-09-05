@@ -10,7 +10,7 @@ const read = (p) => readFileSync(resolve(root, p), 'utf8');
 
 const visualWorkflowSource = read('.github/workflows/e2e-visual.yml');
 const publishWorkflowSource = read('.github/workflows/publish-e2e-screenshots.yml');
-const deployGateSource = read('.github/workflows/deploy-gate.yml');
+const deployGateScript = read('.github/scripts/deploy-gate.sh');
 const packageJson = JSON.parse(read('package.json'));
 const visual = YAML.parse(visualWorkflowSource);
 const publish = YAML.parse(publishWorkflowSource);
@@ -32,8 +32,8 @@ describe('E2E visual workflow contract', () => {
     assert.equal(publish.name, 'Publish E2E Screenshots');
     assert.ok(!GATED_WORKFLOW_NAMES.has(publish.name));
 
-    const required = deployGateSource.match(/required='(\[[^\n]+])'/);
-    assert.ok(required, 'deploy-gate.yml must still declare required checks');
+    const required = deployGateScript.match(/required='(\[[^\n]+])'/);
+    assert.ok(required, 'deploy-gate.sh must still declare required checks');
     const requiredChecks = JSON.parse(required[1]);
     for (const jobId of Object.keys(visual.jobs)) {
       assert.ok(
