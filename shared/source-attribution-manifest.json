@@ -531,6 +531,9 @@
           "path": "api/_usage-telemetry.js"
         },
         {
+          "path": "scripts/deploy-error-canary.mjs"
+        },
+        {
           "path": "scripts/lib/llm-telemetry.cjs"
         },
         {
