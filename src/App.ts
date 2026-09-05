@@ -103,6 +103,7 @@ import type { NqPulsePanel } from '@/components/NqPulsePanel';
 import type { NqCatalystsPanel } from '@/components/NqCatalystsPanel';
 import type { YieldCurvePanel } from '@/components/YieldCurvePanel';
 import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
+import type { MaterialEventsPanel } from '@/components/MaterialEventsPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
 import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
@@ -856,6 +857,10 @@ export class App {
     if (shouldPrime('earnings-calendar')) {
       const panel = this.state.panels['earnings-calendar'] as EarningsCalendarPanel | undefined;
       if (panel) primeTask('earnings-calendar', () => panel.fetchData());
+    }
+    if (shouldPrime('material-events')) {
+      const panel = this.state.panels['material-events'] as MaterialEventsPanel | undefined;
+      if (panel) primeTask('material-events', () => panel.fetchData());
     }
     if (shouldPrime('economic-calendar')) {
       const panel = this.state.panels['economic-calendar'] as EconomicCalendarPanel | undefined;
@@ -4025,6 +4030,12 @@ export class App {
       () => (this.state.panels['earnings-calendar'] as EarningsCalendarPanel).fetchData(),
       REFRESH_INTERVALS.earningsCalendar,
       () => this.isPanelNearViewport('earnings-calendar')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'material-events',
+      () => (this.state.panels['material-events'] as MaterialEventsPanel).fetchData(),
+      REFRESH_INTERVALS.materialEvents,
+      () => this.isPanelNearViewport('material-events')
     );
     this.refreshScheduler.scheduleRefresh(
       'economic-calendar',
