@@ -94,6 +94,13 @@ function mndListWithCount(count: number, firstId = 90_000): string {
   </div>`;
 }
 
+function mndDetailWithoutPublicationMetadata(): string {
+  return fixture('mnd-detail.html').replace(
+    /<div class="newsInfo">[\s\S]*?<\/div>/,
+    '',
+  );
+}
+
 function mndObservationForDay(day: number, aircraft = day) {
   const date = new Date(Date.UTC(2026, 3, day, 22));
   const reportingDay = date.toISOString().slice(0, 10);
@@ -2615,8 +2622,10 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
     assert.equal(mnd?.transportStatus, 'error');
     assert.ok(mnd?.errorCodes.includes('MND_LIST_ROWS_MISSING'));
+    assert.ok(mnd?.errorCodes.includes('MND_PUBLICATION_METADATA_MISSING'));
     assert.match(mndRequests[0] ?? '', /plaactlist/i);
-    assert.equal(mndRequests.length, 1 + MND_REFRESH_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(mndRequests.length, 1 + MND_REFRESH_DETAIL_REQUESTS_PER_RUN * 2);
+    assert.equal(mnd?.requestCount, mndRequests.length);
     assert.equal(
       snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
       MND_REQUIRED_REPORTING_DAYS,
@@ -2871,6 +2880,114 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(
       snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
       1,
+    );
+  });
+
+  it('retries transient missing MND publication metadata within the detail request cap', async () => {
+    const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    const detailCalls: string[] = [];
+    const firstUrl = 'https://www.mnd.gov.tw/en/News/PLAAct/90000';
+    let firstUrlAttempts = 0;
+    const missingMetadata = mndDetailWithoutPublicationMetadata();
+    const fetchFn = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+      if (url.includes('plaactlist')) return new Response(list);
+      detailCalls.push(url);
+      if (url === firstUrl) {
+        firstUrlAttempts += 1;
+        if (firstUrlAttempts === 1) return new Response(missingMetadata);
+      }
+      return new Response(fixture('mnd-detail.html'));
+    };
+
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn,
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+    });
+    const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+
+    assert.equal(firstUrlAttempts, 2);
+    assert.ok(detailCalls.length <= MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(mnd?.requestCount, detailCalls.length + 1);
+    assert.equal(mnd?.transportStatus, 'fresh');
+    assert.deepEqual(mnd?.errorCodes, []);
+  });
+
+  it('keeps missing metadata hard when the detail request cap blocks its retry', async () => {
+    const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    const detailCalls: string[] = [];
+    const lastUrl = `https://www.mnd.gov.tw/en/News/PLAAct/${90_000 + MND_MAX_DETAIL_REQUESTS_PER_RUN - 1}`;
+    const fetchFn = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+      if (url.includes('plaactlist')) return new Response(list);
+      detailCalls.push(url);
+      return new Response(
+        url === lastUrl ? mndDetailWithoutPublicationMetadata() : fixture('mnd-detail.html'),
+      );
+    };
+
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn,
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+    });
+    const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+
+    assert.equal(detailCalls.length, MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(detailCalls.filter((url) => url === lastUrl).length, 1);
+    assert.equal(mnd?.requestCount, MND_MAX_DETAIL_REQUESTS_PER_RUN + 1);
+    assert.equal(mnd?.transportStatus, 'error');
+    assert.ok(mnd?.errorCodes.includes('MND_PUBLICATION_METADATA_MISSING'));
+  });
+
+  it('retains metadata failure when the outbound budget expires before retry', async () => {
+    const retained = Array.from(
+      { length: MND_REQUIRED_REPORTING_DAYS },
+      (_, index) => mndObservationForDay(index + 1),
+    );
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt,
+      previousSnapshot: null,
+      mndOutcome: { ok: true, requestCount: 0, observations: retained },
+      japanOutcome: { ok: true, requestCount: 0, availableDocumentUrls: [] },
+    });
+    const previousMnd = previousSnapshot.sources.find(
+      (source: { id: string }) => source.id === 'taiwan-mnd',
+    );
+    let clock = 0;
+    const mndRequests: string[] = [];
+    const fetchFn = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+      mndRequests.push(url);
+      if (url.includes('plaactlist')) return new Response(mndListWithCount(1));
+      clock = MND_OUTBOUND_BUDGET_MS;
+      return new Response(mndDetailWithoutPublicationMetadata());
+    };
+
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn,
+      now: Date.parse(retrievedAt),
+      previousSnapshot,
+      nowFn: () => clock,
+      sleepFn: async () => {},
+    });
+    const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+
+    assert.equal(mndRequests.length, 2);
+    assert.equal(mnd?.requestCount, mndRequests.length);
+    assert.equal(mnd?.transportStatus, 'error');
+    assert.ok(mnd?.errorCodes.includes('MND_PUBLICATION_METADATA_MISSING'));
+    assert.ok(mnd?.errorCodes.includes('OUTBOUND_BUDGET_EXHAUSTED'));
+    assert.equal(mnd?.lastSuccessAt, previousMnd?.lastSuccessAt);
+    assert.equal(
+      snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
+      retained.length,
     );
   });
 
