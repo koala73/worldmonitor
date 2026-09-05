@@ -17,6 +17,7 @@ const SOCIAL_PREVIEW_UA =
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
+const UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
 // auth (API key, shared secret, or intentionally-public semantics) because
@@ -134,6 +135,10 @@ function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
+function hasUnboundedDashboardRootState(searchParams: URLSearchParams): boolean {
+  return UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
+}
+
 function clientAcceptsSse(request: Request): boolean {
   const accept = request.headers.get('accept') ?? '';
   return accept.split(',').some((entry) => {
@@ -207,7 +212,7 @@ function crawlerCanonicalUrl(url: URL): URL | null {
       changed = true;
     }
   }
-  if (next.pathname === '/' && hasLegacyDashboardRootState(next.searchParams)) {
+  if (next.pathname === '/' && hasUnboundedDashboardRootState(next.searchParams)) {
     next.pathname = '/dashboard';
     for (const key of LEGACY_DASHBOARD_ROOT_QUERY_KEYS) {
       next.searchParams.delete(key);

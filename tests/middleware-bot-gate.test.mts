@@ -484,6 +484,17 @@ describe('legacy root map-state links (#7660)', () => {
     assert.equal(res.headers.get('cache-control'), 'private, no-store');
   });
 
+  it('keeps bounded dashboard state for crawlers', () => {
+    const boundedState = 'view=mena&layers=conflicts&timeRange=24h';
+    const res = call(`/?${boundedState}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response, 'legacy root state must still reach the dashboard');
+    assert.equal(
+      res.headers.get('location'),
+      `https://www.worldmonitor.app/dashboard?${boundedState}`,
+      'only unbounded coordinate state should be collapsed'
+    );
+  });
+
   it('collapses attribution params and map state in a single hop', () => {
     const res = call(`/?ref=affiliate&${MAP_STATE}&utm_source=newsletter`, GOOGLEBOT_UA);
     assert.ok(res instanceof Response);

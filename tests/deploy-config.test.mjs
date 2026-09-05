@@ -3944,11 +3944,10 @@ describe('agent readiness: Content-Signal declarations', () => {
   });
 });
 
-// #4952 — three-tier AI crawler policy. A named `User-agent` group REPLACES
-// the `*` group for that crawler (robots.txt groups do not inherit), so the
-// AI search/assistant allow-group must restate the full `*` rule set or those
-// crawlers would lose the /api/ protections. The training-only group must
-// stay a hard `Disallow: /`.
+// #4952 — a named `User-agent` group replaces the `*` group for that crawler.
+// Autonomous search crawlers restate the full `*` rule set. User-triggered
+// fetchers keep the bounded path protections but can open shared map links.
+// The training-only group stays a hard `Disallow: /`.
 describe('agent readiness: robots.txt AI crawler policy', () => {
   const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
@@ -3985,30 +3984,35 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   const groups = parseGroups(robotsSource);
   const starGroup = groups.find((g) => g.agents.includes('*'));
   const aiAllowGroup = groups.find((g) => g.agents.includes('gptbot'));
+  const userFetchGroup = groups.find((g) => g.agents.includes('chatgpt-user'));
   const trainingBlockGroup = groups.find((g) => g.agents.includes('ccbot'));
 
-  // The agents AEO scanners score by name (search/assistant tier).
   const REQUIRED_AI_SEARCH_AGENTS = [
     'gptbot',
     'claudebot',
-    'chatgpt-user',
     'perplexitybot',
     'google-extended',
     'applebot-extended',
   ];
+  const REQUIRED_USER_FETCH_AGENTS = [
+    'chatgpt-user',
+    'claude-user',
+    'perplexity-user',
+    'mistralai-user',
+  ];
   const BLOCKED_TRAINING_AGENTS = ['ccbot', 'bytespider', 'anthropic-ai'];
 
-  it('explicitly allows the AI search/assistant agents in one named group', () => {
-    assert.ok(aiAllowGroup, 'robots.txt must have a named AI search/assistant group (GPTBot et al.)');
+  it('explicitly allows the AI search crawlers in one named group', () => {
+    assert.ok(aiAllowGroup, 'robots.txt must have a named AI search group (GPTBot et al.)');
     for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
       assert.ok(
         aiAllowGroup.agents.includes(agent),
-        `AI search/assistant group must include User-agent: ${agent}`
+        `AI search group must include User-agent: ${agent}`
       );
     }
     assert.ok(
       aiAllowGroup.rules.includes('allow: /'),
-      'AI search/assistant group must Allow: /'
+      'AI search group must Allow: /'
     );
   });
 
@@ -4019,6 +4023,15 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
       [...starGroup.rules].sort(),
       'the AI allow-group must restate the exact `*` rule set — named groups do not inherit, so a drift here silently opens /api/ (or blocks paths) for AI crawlers'
     );
+  });
+
+  it('keeps user-triggered fetchers in their own crawl-permitting group', () => {
+    assert.ok(userFetchGroup, 'robots.txt must have a user-triggered assistant group');
+    for (const agent of REQUIRED_USER_FETCH_AGENTS) {
+      assert.ok(userFetchGroup.agents.includes(agent), `user fetch group must include User-agent: ${agent}`);
+      assert.ok(!aiAllowGroup.agents.includes(agent), `${agent} must not inherit autonomous crawl limits`);
+    }
+    assert.ok(userFetchGroup.rules.includes('allow: /'), 'user fetch group must Allow: /');
   });
 
   it('disallows the bulk training-only scrapers entirely', () => {
@@ -4037,7 +4050,7 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   });
 
   it('never lists an allowed AI agent in the blocked group (and vice versa)', () => {
-    for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
+    for (const agent of [...REQUIRED_AI_SEARCH_AGENTS, ...REQUIRED_USER_FETCH_AGENTS]) {
       assert.ok(
         !trainingBlockGroup.agents.includes(agent),
         `${agent} drives citations and must not be in the blocked group`
@@ -4063,25 +4076,8 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   });
 });
 
-// #7660: Search Console reported 1,271 "Page with redirect" and 512 "Not found
-// (404)" URLs against a declared inventory of 845 — both live and growing
-// (199 → 1,271 and 102 → 512 in three months). The export identified two
-// self-generated crawl spaces:
-//
-//   1. Parameterised URLs. Map state (`lat`/`lon`/`zoom`/`layers`) is
-//      effectively infinite, and the attribution families (`ref`,
-//      `wm_referral`, `wm_content_*`, `utm_*`) multiply every landing page.
-//      Canonicals already consolidate them, so blocking the crawl costs
-//      nothing in indexing and stops the redirect chains at source.
-//   2. `/tmp/` paths. The docs code fences publish `/tmp/*.json` shell
-//      examples, which Google crawls and gets a 404 for.
-//
-// Both robots files must carry these in EVERY crawl-permitting group: robots
-// groups do not inherit, so a named AI group that omits them keeps crawling
-// the space `*` no longer does.
-//
-// `/docs/_next/` is NOT here — see the crawlable-corpus assertion below for
-// the measurement that ruled it out.
+// #7660: autonomous crawl groups block unbounded coordinate state and /tmp/
+// paths. User-triggered fetchers can follow shared map links.
 describe('agent readiness: crawl-budget disallows (#7660)', () => {
   const CRAWL_BUDGET_DISALLOWS = [
     'disallow: /tmp/',
@@ -4138,11 +4134,30 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
   };
 
   for (const file of ['robots.www.txt', 'robots.variant.txt']) {
-    it(`${file} carries every crawl-budget disallow in every crawl-permitting group`, () => {
+    it(`${file} lets user-triggered assistant fetchers open shared map links`, () => {
+      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const starGroup = groups.find((group) => group.agents.includes('*'));
+      const userFetchGroup = groups.find((group) => group.agents.includes('chatgpt-user'));
+      assert.ok(starGroup, `${file} must have a default group`);
+      assert.ok(userFetchGroup, `${file} must have a user-triggered assistant group`);
+      for (const agent of ['chatgpt-user', 'claude-user', 'perplexity-user', 'mistralai-user']) {
+        assert.ok(userFetchGroup.agents.includes(agent), `${file} must include ${agent}`);
+      }
+      const coordinateRules = new Set(CRAWL_BUDGET_DISALLOWS.slice(1));
+      const expectedRules = starGroup.rules.filter((rule) => !coordinateRules.has(rule));
+      assert.deepStrictEqual(
+        [...userFetchGroup.rules].sort(),
+        [...expectedRules].sort(),
+        `${file} user-triggered fetchers must omit only the coordinate rules`
+      );
+    });
+
+    it(`${file} carries every crawl-budget disallow in every autonomous crawl group`, () => {
       const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
       const crawling = groups.filter((g) => g.rules.includes('allow: /'));
-      assert.ok(crawling.length >= 2, `${file} must have a * group and a named AI group that crawl`);
-      for (const group of crawling) {
+      const autonomous = crawling.filter((g) => !g.agents.includes('chatgpt-user'));
+      assert.ok(autonomous.length >= 2, `${file} must have a * group and a named AI group that crawl`);
+      for (const group of autonomous) {
         for (const rule of CRAWL_BUDGET_DISALLOWS) {
           assert.ok(
             group.rules.includes(rule),
@@ -4150,6 +4165,8 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
               'robots groups do not inherit, so this crawler still burns budget on the space the others no longer crawl'
           );
         }
+      }
+      for (const group of crawling) {
         for (const rule of MUST_STAY_CRAWLABLE) {
           assert.ok(
             !group.rules.includes(rule),
