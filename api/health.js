@@ -2601,7 +2601,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     ? ctx.educationPayloadRankableCount
     : metaRankableCount;
   // IMD is optional before its first successful publish, but a deployment that
-  // has already activated and then loses IMD_API_KEY needs operator action.
+  // has already activated and then loses its IMD credentials needs operator action.
   // Do not let the generic unconfigured-source exemption hide that regression.
   const sourceUnavailableAfterActivation = sourceUnavailable
     && name === 'imdCycloneMarine'

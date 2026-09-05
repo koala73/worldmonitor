@@ -190,6 +190,10 @@ function assertRegistryEntry(entry) {
     && typeof entry.cronSchedule !== 'string') {
     throw new Error(`${name} cronSchedule must be a string or null`);
   }
+  if (hasOwn(entry, 'startCommand')
+    && (typeof entry.startCommand !== 'string' || entry.startCommand.trim().length === 0)) {
+    throw new Error(`${name} startCommand must be a non-empty string`);
+  }
   if (hasOwn(entry, 'requiredEnv')) {
     if (!Array.isArray(entry.requiredEnv)) {
       throw new Error(`${name} requiredEnv must be an array`);
@@ -224,6 +228,7 @@ export function managedRailwayServices(registry) {
       && (
         hasOwn(entry, 'watchPatterns')
         || (hasOwn(entry, 'cronSchedule') && entry.cronSchedule !== null)
+        || hasOwn(entry, 'startCommand')
       ),
   );
 }
@@ -406,7 +411,13 @@ export function auditRailwayServiceConfig(
         ? { actual: actualCronSchedule, expected: expectedCronSchedule }
         : null;
 
-      if (!watchPatterns && !cronSchedule && !rootDirectory && !dockerfilePath
+      const actualStartCommand = service?.deploy?.startCommand ?? null;
+      const startCommand = hasOwn(entry, 'startCommand')
+        && actualStartCommand !== entry.startCommand
+        ? { actual: actualStartCommand, expected: entry.startCommand }
+        : null;
+
+      if (!watchPatterns && !cronSchedule && !startCommand && !rootDirectory && !dockerfilePath
         && !missingWatchPatterns && missingRequiredEnv.length === 0) return [];
       return [{
         service: entry.service,
@@ -414,6 +425,7 @@ export function auditRailwayServiceConfig(
         missingService: false,
         watchPatterns,
         cronSchedule,
+        ...(startCommand ? { startCommand } : {}),
         ...(rootDirectory ? { rootDirectory } : {}),
         ...(dockerfilePath ? { dockerfilePath } : {}),
         ...(missingWatchPatterns ? { missingWatchPatterns } : {}),
@@ -468,8 +480,14 @@ export function buildRailwayServiceConfigPatch(drift) {
         patch.build.dockerfilePath = entry.dockerfilePath.expected;
       }
     }
-    if (entry.cronSchedule) {
-      patch.deploy = { cronSchedule: entry.cronSchedule.expected };
+    if (entry.cronSchedule || entry.startCommand) {
+      patch.deploy = {};
+      if (entry.cronSchedule) {
+        patch.deploy.cronSchedule = entry.cronSchedule.expected;
+      }
+      if (entry.startCommand) {
+        patch.deploy.startCommand = entry.startCommand.expected;
+      }
     }
     if (Object.keys(patch).length > 0) services[entry.serviceId] = patch;
   }
@@ -583,6 +601,11 @@ export function printAudit(drift) {
     if (entry.cronSchedule) {
       details.push(
         `cron ${JSON.stringify(entry.cronSchedule.actual)} != ${JSON.stringify(entry.cronSchedule.expected)}`,
+      );
+    }
+    if (entry.startCommand) {
+      details.push(
+        `startCommand ${JSON.stringify(entry.startCommand.actual)} != ${JSON.stringify(entry.startCommand.expected)}`,
       );
     }
     if (entry.missingRequiredEnv?.length > 0) {

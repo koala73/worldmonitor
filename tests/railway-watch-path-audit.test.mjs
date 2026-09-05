@@ -910,10 +910,14 @@ describe('registry shape validation', () => {
     );
   });
 
-  it('rejects a malformed cronSchedule or requiredEnv declaration', () => {
+  it('rejects a malformed cronSchedule, startCommand, or requiredEnv declaration', () => {
     assert.throws(
       () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], cronSchedule: 15 }]),
       /cronSchedule must be a string or null/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], startCommand: '  ' }]),
+      /startCommand must be a non-empty string/,
     );
     assert.throws(
       () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], requiredEnv: [[]] }]),
@@ -1006,9 +1010,11 @@ describe('planned Railway service lifecycle', () => {
     assert.ok(imd, 'seed-imd-cyclone-marine must remain in the Railway registry');
     assert.equal(Object.hasOwn(imd, 'lifecycle'), false);
     assert.equal(imd.cronSchedule, '*/15 * * * *');
+    assert.equal(imd.startCommand, 'node seed-imd-cyclone-marine.mjs');
     assert.deepEqual(imd.requiredEnv, [
       'IMD_API_KEY',
-      'IMD_API_TOKEN',
+      'IMD_API_EMAIL',
+      'IMD_API_PASSWORD',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
     ]);

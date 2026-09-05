@@ -79,7 +79,7 @@ function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha, queryLog 
       rootDirectory,
       watchPatterns: entry?.watchPatterns ?? [],
       dockerfilePath: entry?.dockerfile ?? null,
-      startCommand: null,
+      startCommand: entry?.startCommand ?? null,
       cronSchedule: entry?.cronSchedule ?? null,
     };
   };

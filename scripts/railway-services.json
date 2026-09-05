@@ -1614,9 +1614,11 @@
     "entry": "scripts/seed-imd-cyclone-marine.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-imd-cyclone-marine",
+    "startCommand": "node seed-imd-cyclone-marine.mjs",
     "requiredEnv": [
       "IMD_API_KEY",
-      "IMD_API_TOKEN",
+      "IMD_API_EMAIL",
+      "IMD_API_PASSWORD",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN"
     ],
