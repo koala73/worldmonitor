@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import YAML from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -427,6 +428,40 @@ describe('MCP live smoke — the production detection net', () => {
     assert.match(smokeJob, /^\s{4}concurrency:\s*$/m);
     assert.match(smokeJob, /group:\s*mcp-live-smoke-\$\{\{[^}]*deployment\.environment/);
     assert.match(smokeJob, /cancel-in-progress:\s*false/);
+  });
+});
+
+describe('live cache sweep deployment timing', () => {
+  it('runs after successful production deploys and retains scheduled and manual checks', () => {
+    const workflow = YAML.parse(read(resolve(workflowsDir, 'live-api-cache-auth.yml')));
+    assert.ok(Object.hasOwn(workflow.on, 'deployment_status'));
+    assert.equal(workflow.on.push, undefined, 'a merge is not a completed production deployment');
+    assert.deepEqual(workflow.on.schedule, [{ cron: '47 */6 * * *' }]);
+    assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
+
+    const job = workflow.jobs.sweep;
+    for (const [event, state, environment, creator, expected] of [
+      ['deployment_status', 'success', 'Production', 'vercel[bot]', true],
+      ['deployment_status', 'pending', 'Production', 'vercel[bot]', false],
+      ['deployment_status', 'failure', 'Production', 'vercel[bot]', false],
+      ['deployment_status', 'success', 'Preview', 'vercel[bot]', false],
+      ['deployment_status', 'success', 'Production', 'railway[bot]', false],
+      ['schedule', '', '', '', true],
+      ['workflow_dispatch', '', '', '', true],
+    ]) {
+      const github = { event_name: event, event: event === 'deployment_status' ? {
+        deployment_status: { state },
+        deployment: { environment, creator: { login: creator } },
+      } : {} };
+      assert.equal(runInNewContext(job.if, { github }, { timeout: 1000 }), expected, `${event}/${state}/${environment}/${creator}`);
+    }
+    assert.equal(workflow.concurrency, undefined);
+    assert.equal(job.concurrency['cancel-in-progress'], false);
+    assert.match(job.steps[0].with.ref, /github\.event\.deployment\.sha/);
+    const probe = job.steps.find((step: { env?: Record<string, string> }) => step.env?.LIVE_API_CACHE_TESTS === '1');
+    assert.ok(probe);
+    assert.match(probe.run, /pass_count.*-lt 9/);
+    assert.match(probe.run, /corpus-edge-cache document-edge-cache/);
   });
 });
 
