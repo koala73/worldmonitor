@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events';
 import {
   YahooQuoteSummaryClient,
   buildCurlConfig,
+  collectV7Valuations,
   buildSectorSeedMeta,
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
@@ -1664,3 +1665,183 @@ describe('YahooQuoteSummaryClient exit rotation', () => {
     assert.equal(result.stopReason, 'single_exit');
   });
 });
+
+// #6279 -- the per-symbol tier's proxy leg always used the CONFIGURED exit,
+// never the remembered one. Yahoo's fundamentals cache is per exit IP and ~70%
+// of exits truncate XLK/XLV/XLY/SMH, so on a cycle whose pinned exit is a
+// truncating one those per-symbol proxy requests were spent on symbols they
+// could not recover -- metered Decodo bandwidth plus BATCH_BUDGET_MS the
+// rotating batch then no longer had. The per-symbol tier now skips its proxy
+// leg whenever the client has a batch fallback, making the rotating batch the
+// single proxy path (one exit policy) -- and since the batch is also what
+// records/renews the remembered exit, the recorder now runs strictly MORE
+// often, not less.
+describe('per-symbol v7 tier defers its proxy leg to the rotating batch (#6279)', () => {
+  const SECTORS = ['XLK', 'XLF', 'XLV'];
+  const TRUNCATED = ['XLK', 'XLV'];
+
+  const singleSymbolProxyQuotes = (harness) => harness.quoteRequests()
+    .filter((r) => r.transport === 'proxy' && symbolsFromQuoteUrl(r.url).length === 1);
+
+  it('spends zero per-symbol proxy requests; the rotating batch recovers the truncated symbols', async () => {
+    // Direct truncates XLK/XLV; the configured exit-0 (and exit-1) truncate
+    // them too -- the exact cycle the issue measures the waste on.
+    const harness = exitHarness({ badExits: ['exit-0', 'exit-1'], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await collectV7Valuations(SECTORS, { client, sleepFn: async () => {} });
+
+    assert.deepEqual(
+      singleSymbolProxyQuotes(harness), [],
+      'the per-symbol tier must not spend proxy requests the batch exists to make unnecessary',
+    );
+    assert.deepEqual(
+      Object.keys(result.valuations).sort(), ['XLF', 'XLK', 'XLV'],
+      'every truncated symbol is recovered by the rotating batch',
+    );
+    assert.equal(
+      result.winningExitAttempt, 2,
+      'the single proxy path still records the exit preference',
+    );
+  });
+
+  it('keeps the per-symbol proxy leg for an injected client with no batch fallback', async () => {
+    // A narrower client (test doubles, older callers) has no batch to defer
+    // to -- dropping its proxy leg would remove its ONLY proxy path.
+    const harness = exitHarness({ badExits: [], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+    const narrowClient = {
+      fetchV7Detailed: (symbol, opts) => client.fetchV7Detailed(symbol, opts),
+    };
+
+    const result = await collectV7Valuations(SECTORS, { client: narrowClient, sleepFn: async () => {} });
+
+    assert.ok(
+      singleSymbolProxyQuotes(harness).length >= 1,
+      'without a batch fallback the per-symbol proxy leg must survive',
+    );
+    assert.deepEqual(Object.keys(result.valuations).sort(), ['XLF', 'XLK', 'XLV']);
+  });
+
+  it('fetchV7Detailed({ skipProxy: true }) fails over to nothing and says so in diagnostics', async () => {
+    const harness = exitHarness({ badExits: [], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7Detailed('XLK', { skipProxy: true });
+
+    assert.notEqual(result.kind, 'success');
+    assert.equal(result.proxyAttempted, false);
+    assert.equal(result.proxyKind, 'skipped_for_batch');
+    assert.equal(
+      harness.quoteRequests().filter((r) => r.transport === 'proxy').length, 0,
+      'skipProxy must not touch the proxy',
+    );
+  });
+
+  it('falls back to per-symbol proxy when the batch budget gate blocks after deferral', async () => {
+    const start = Date.now();
+    let clock = start;
+    const deadlineAt = start + 2_500;
+    const harness = exitHarness({ badExits: [], truncated: ['XLK'], directTruncated: true });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async (url, options) => {
+        const result = await harness.directRequest(url, options);
+        clock = deadlineAt - 1_900;
+        return result;
+      },
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await collectV7Valuations(['XLK'], {
+      client,
+      sleepFn: async () => {},
+      deadlineAt,
+      now: () => clock,
+    });
+
+    assert.ok(
+      singleSymbolProxyQuotes(harness).length >= 1,
+      'when batch cannot run, configured-exit proxy must recover direct failures',
+    );
+    assert.equal(result.valuations.XLK?.trailingPE, 31.2);
+  });
+
+  it('defers per-symbol proxy for fetchV7BatchDetailed-only injected clients', async () => {
+    const harness = exitHarness({ badExits: [], truncated: TRUNCATED, directTruncated: true });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+    let batchDetailedCalls = 0;
+    const narrowClient = {
+      fetchV7Detailed: (symbol, opts) => client.fetchV7Detailed(symbol, opts),
+      fetchV7BatchDetailed: async (symbols, opts) => {
+        batchDetailedCalls += 1;
+        return client.fetchV7BatchDetailed(symbols, opts);
+      },
+    };
+
+    const result = await collectV7Valuations(SECTORS, { client: narrowClient, sleepFn: async () => {} });
+
+    assert.deepEqual(
+      singleSymbolProxyQuotes(harness),
+      [],
+      'BatchDetailed-only clients still defer per-symbol proxy to the batch tier',
+    );
+    assert.ok(batchDetailedCalls >= 1, 'the batch fallback must run for uncovered symbols');
+    assert.deepEqual(Object.keys(result.valuations).sort(), ['XLF', 'XLK', 'XLV']);
+  });
+
+  it('falls back to per-symbol proxy when the rotating batch throws', async () => {
+    const harness = exitHarness({ badExits: [], truncated: ['XLK'], directTruncated: true });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+    const throwingClient = {
+      fetchV7Detailed: (symbol, opts) => client.fetchV7Detailed(symbol, opts),
+      fetchV7BatchAcrossExits: async () => {
+        throw new Error('batch boom');
+      },
+    };
+
+    const result = await collectV7Valuations(['XLK'], { client: throwingClient, sleepFn: async () => {} });
+
+    assert.ok(
+      singleSymbolProxyQuotes(harness).length >= 1,
+      'a thrown batch must not leave direct failures with zero proxy recovery',
+    );
+    assert.equal(result.valuations.XLK?.trailingPE, 31.2);
+  });
+});
+
