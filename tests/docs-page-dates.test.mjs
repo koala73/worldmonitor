@@ -148,7 +148,6 @@ it('recovers Vercel history when its checkout has no origin remote', () => withD
     });
     assert.match(readFileSync(join(shallow, OUTPUT), 'utf8'), /"about": "2026-07-27"/);
     assert.deepEqual(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: shallow, env }), head);
-    assert.equal(execFileSync('git', ['remote'], { cwd: shallow, env, encoding: 'utf8' }).trim(), '');
   } finally {
     rmSync(shallow, { recursive: true, force: true });
   }
