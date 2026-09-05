@@ -860,12 +860,12 @@ const SEED_META = {
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
   temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // rebuild-stamped ONLY (TEMPORAL_ANOMALIES_REBUILD_AFTER_MS=20min in infrastructure/v1/_shared.ts) — only producer-route traffic can rebuild and refresh this request-driven stamp, so a traffic lull can age it past 45min; 45min leaves ~2.25x margin. Data TTL is 60min so health reaches STALE_SEED before EMPTY. Content freshness is a separate clock: the producer stamps newestItemAt/maxContentAgeMin from all five COUNT_SOURCE_KEYS payloads (news, FIRMS, military flights, theater-posture vessels, AIS gaps — TEMPORAL_ANOMALIES_MAX_CONTENT_AGE_MIN); a frozen-but-200 upstream keeps fetchedAt fresh and reads STALE_CONTENT.
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
-  // Planned/key-gated seeder (#7005). Live fetch requires IMD_API_KEY, so this
+  // Key-gated seeder (#7005). Live fetch requires IMD_API_KEY, so this
   // is an activation-marker cutover rather than a 24h expiring acknowledgement.
   // Softening stays on-demand until the durable marker is written.
   imdCycloneMarine: {
     key: 'seed-meta:weather:imd-cyclone-marine',
-    maxStaleMin: 45, // 3× */15 once the planned Railway cron is provisioned
+    maxStaleMin: 45, // 3× the live */15 Railway cron
     activationKey: 'seed-activated:weather:imd-cyclone-marine',
     cutover: {
       mode: 'activation-marker',
