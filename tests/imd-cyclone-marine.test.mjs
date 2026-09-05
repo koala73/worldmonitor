@@ -399,6 +399,7 @@ test('documents the complete IMD Railway credential setup', () => {
   assert.notEqual(start, -1, `missing ${heading}`);
   const nextHeading = docs.indexOf('\n## ', start + heading.length);
   const setup = docs.slice(start, nextHeading === -1 ? docs.length : nextHeading);
+  const setupText = setup.replace(/\s+/g, ' ');
 
   assert.ok(setup.includes(railwayService.service));
   for (const name of railwayService.requiredEnv.filter((entry) => entry.startsWith('IMD_'))) {
@@ -408,8 +409,14 @@ test('documents the complete IMD Railway credential setup', () => {
   assert.match(setup, /https:\/\/api\.imd\.gov\.in\/public\/IMD_API_Portal_User_Guide\.pdf/);
   assert.match(setup, /static public IP/i);
   assert.match(setup, /three static outbound IPv4 addresses/i);
-  assert.match(setup, /maximum of 2 Development keys and 2 Production keys/i);
-  assert.match(setup, /one static public IP/i);
+  assert.match(setupText, /maximum of 2 Development keys and 2 Production keys/i);
+  assert.match(setupText, /balances traffic across them/i);
+  assert.match(setupText, /Application code cannot select the Railway NAT address.*or reliably probe it in advance/i);
+  assert.match(setupText, /native three-IP HA egress cannot satisfy the documented IMD contract/i);
+  assert.match(setupText, /requires deterministic single-IP external egress/i);
+  assert.match(setupText, /another host with one fixed outbound public IP/i);
+  assert.match(setupText, /Do not cycle keys on HTTP 403/i);
+  assert.doesNotMatch(setupText, /written confirmation from IMD.*all three Railway addresses are authorized/i);
   assert.match(setup, /HTTP 403/i);
   assert.ok(setup.includes(IMD_OAUTH_TOKEN_URL));
   assert.match(setup, /Do\s+not store the JWT/i);

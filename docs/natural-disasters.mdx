@@ -30,19 +30,23 @@ not store the JWT in Railway.
      --json
    ```
 
-   Register the outbound address with IMD when you create the production API
-   key. Railway assigns three static outbound IPv4 addresses to a
-   high-availability service and balances traffic across them. The IMD portal
-   documents a maximum of 2 Development keys and 2 Production keys, and each
-   key is associated with one server public IP. The native Railway HA address
-   set therefore does not fit the documented IMD key model.
+   Railway assigns three static outbound IPv4 addresses to a high-availability
+   service and balances traffic across them. Application code cannot select the
+   Railway NAT address for an IMD request or reliably probe it in advance: an
+   IP-check request is a separate connection and can use a different address
+   from the later IMD request.
 
-   Do not register only one Railway address and assume that the service will
-   keep using it. Before activation, either get written confirmation from IMD
-   that all three Railway addresses are authorized for this account, or put the
-   service behind network infrastructure that presents one static public IP and
-   register that address with IMD. The seeder does not currently define an
-   application-level proxy variable. Treat HTTP 403 from every product as an
+   The IMD portal documents a maximum of 2 Development keys and 2 Production keys,
+   and each key is associated with one server public IP. Railway's native
+   three-IP HA egress cannot satisfy the documented IMD contract. Do not
+   register only one Railway address and assume that the service will keep using
+   it.
+
+   Activation requires deterministic single-IP external egress, or another host
+   with one fixed outbound public IP. Register that one address with IMD when
+   you create the production API key. The seeder does not currently define an
+   application-level proxy variable. Do not cycle keys on HTTP 403: that cannot
+   create a deterministic key/IP pair. Treat HTTP 403 from every product as an
    API key status or public-IP authorization failure.
 3. Add these service variables in Railway. Store each value as a secret.
 
