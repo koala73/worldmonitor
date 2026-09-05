@@ -518,6 +518,29 @@ Selected thresholds from `SEED_META`:
 
 > These are illustrative; `SEED_META` in `api/health.js` is the source of truth and each entry documents its own cadence rationale.
 
+### Scheduled monitor results
+
+The Seed Freshness Monitor publishes a production acceptance summary on each
+workflow run and retains its JSON observation for seven days. The summary lists
+active incidents, acknowledged degradation, stale-content grace deadlines, and
+baseline entries that no longer appear in health.
+
+A successful workflow run can still have active source incidents. The workflow
+alerts on new or changed incidents and suppresses repeat alerts for unchanged
+failures. Read the production acceptance summary to determine whether the data
+passed. An unavailable observation is **Unverified**, never healthy.
+
+Generate the same report locally without publishing GitHub statuses:
+
+```bash
+node scripts/check-seed-freshness.mjs \
+  --json-output /tmp/seed-freshness.json \
+  --markdown-output /tmp/seed-freshness.md
+```
+
+The command still exits nonzero when operational acceptance fails. It writes
+both reports from the same health observation before returning that verdict.
+
 ### Example Requests
 
 ```bash
