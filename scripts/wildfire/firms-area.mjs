@@ -1,9 +1,6 @@
 import { CHROME_UA, sleep } from '../_seed-utils.mjs';
 
-export const FIRMS_API_BASE_URLS = Object.freeze([
-  'https://firms.modaps.eosdis.nasa.gov',
-  'https://firms2.modaps.eosdis.nasa.gov',
-]);
+export const FIRMS_API_BASE_URL = 'https://firms.modaps.eosdis.nasa.gov';
 
 export const FIRMS_SOURCES = Object.freeze([
   'VIIRS_SNPP_NRT',
@@ -72,14 +69,10 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
   logger = console,
 } = {}) {
   const failures = [];
-  // A valid primary MAP_KEY can be rejected by the secondary. Give a transient
-  // primary failure one more paced attempt before declaring this slot missing.
-  const attempts = [...FIRMS_API_BASE_URLS, FIRMS_API_BASE_URLS[0]];
-  const labels = ['primary', 'secondary', 'primary retry'];
-  for (let index = 0; index < attempts.length; index++) {
-    const baseUrl = attempts[index];
+  const labels = ['primary', 'primary retry'];
+  for (let index = 0; index < labels.length; index++) {
     try {
-      const response = await fetchFn(buildAreaUrl(baseUrl, apiKey, source, bbox), {
+      const response = await fetchFn(buildAreaUrl(FIRMS_API_BASE_URL, apiKey, source, bbox), {
         headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(30_000),
       });
@@ -92,7 +85,10 @@ export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
     } catch (error) {
       const endpoint = labels[index];
       failures.push(`${endpoint} ${safeFailureReason(error)}`);
-      if (index + 1 < attempts.length) {
+      const retryable = !Number.isInteger(error?.status) || error.status === 408
+        || error.status === 429 || (error.status >= 500 && error.status <= 599);
+      if (!retryable) break;
+      if (index + 1 < labels.length) {
         logger.warn(`  [FIRMS] ${source}/${regionName}: ${failures.at(-1)}; trying ${labels[index + 1]}`);
         await sleepFn(REQUEST_PACE_MS);
       }
