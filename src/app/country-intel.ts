@@ -1193,6 +1193,15 @@ export class CountryIntelManager implements AppModule {
       });
   }
 
+  refreshOpenMilitaryActivity(): void {
+    const page = this.ctx.countryBriefPage;
+    if (!page?.isVisible()) return;
+    const code = page.getCode();
+    if (!code || code === '__loading__' || code === '__error__') return;
+    const country = page.getName() ?? TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
+    page.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
+  }
+
   refreshOpenTimeline(): void {
     const page = this.ctx.countryBriefPage;
     if (!page?.isVisible()) return;

@@ -95,6 +95,14 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
+      # Deliberately NO `cache:` on setup-node and no npm ci anywhere in this
+      # job (#7593): a deployment_status run is privileged — repo secrets and a
+      # write-capable GITHUB_TOKEN are in scope — and the step above checks out
+      # github.event.deployment.sha, so a dependency install here would resolve
+      # THAT commit's lockfile and could write its package cache into the
+      # shared scope that main-branch runs restore from. The probe needs
+      # nothing from npm; the absence is pinned by
+      # tests/ci-workflow-coverage.test.mts.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'

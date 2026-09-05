@@ -538,12 +538,21 @@ export function installWebApiRedirect(): void {
           const enriched = await enrichInitForPremium(input, init);
           return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
-        // Absolute URL already targeting the API base (generated clients call fetch
-        // with full URLs like https://api.worldmonitor.app/api/...) — just inject auth.
+        // Generated clients construct an absolute API-base URL, so they cannot
+        // rely on the relative-path branch above for origin recovery. Keep the
+        // same fallback here: browser extensions and network policy can block
+        // api.worldmonitor.app while the page's own /api/ route remains usable.
+        // Only idempotent methods may retry automatically: replaying a mutation
+        // whose response was lost could enqueue or apply it twice server-side.
         if (input.startsWith(`${API_BASE}/api/`)) {
           const pathAndSearch = input.slice(API_BASE.length);
+          const method = (init?.method ?? 'GET').toUpperCase();
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
+          const initWithCredentials = enriched ? withCredentials(enriched) : withCredentials(init);
+          if (method === 'GET' || method === 'HEAD') {
+            return fetchWithRedirectFallback(input, pathAndSearch, initWithCredentials);
+          }
+          return nativeFetch(input, initWithCredentials);
         }
       }
       if (input instanceof URL) {
