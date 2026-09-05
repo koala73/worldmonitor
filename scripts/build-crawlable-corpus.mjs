@@ -471,6 +471,12 @@ export function laterDate(...values) {
     .at(-1) ?? null;
 }
 
+function isCanonicalCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
 /** Observation window for chokepoint Dataset temporalCoverage and table stamps.
  *  Git lastmod wins when history is present; committed dates keep Docker
  *  corpus builds (no `.git`) from publishing capturedAt: null. */
@@ -1571,6 +1577,9 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshot
   const livePulse = readJson(rootDir, pulsePath);
   if (!livePulse.countries || !livePulse.chokepoints || !livePulse.crises || !livePulse.signalConvergence) {
     throw new Error(`${pulsePath} is missing required live-pulse sections`);
+  }
+  if (!isCanonicalCalendarDate(livePulse.capturedAt)) {
+    throw new Error(`${pulsePath} capturedAt ${livePulse.capturedAt} is not a canonical calendar date`);
   }
   const filenameDate = basename(pulsePath).match(LIVE_PULSE_SNAPSHOT_RE)?.[1];
   if (filenameDate && livePulse.capturedAt !== filenameDate) {

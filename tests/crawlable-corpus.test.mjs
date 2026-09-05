@@ -98,6 +98,74 @@ function read(outDir, path) {
   return readFileSync(join(outDir, path), 'utf8');
 }
 
+const LIVE_PULSE_SECTIONS = ['countries', 'chokepoints', 'crises', 'signalConvergence'];
+
+function collectJsonShape(value, path, shapes) {
+  if (value === null) {
+    shapes.add(`${path}:null`);
+    return;
+  }
+  if (Array.isArray(value)) {
+    shapes.add(`${path}:array`);
+    for (const item of value) collectJsonShape(item, `${path}[]`, shapes);
+    return;
+  }
+  if (typeof value === 'object') {
+    shapes.add(`${path}:object`);
+    for (const [key, child] of Object.entries(value)) {
+      collectJsonShape(child, `${path}.${key}`, shapes);
+    }
+    return;
+  }
+  shapes.add(`${path}:${typeof value}`);
+}
+
+function pulseSectionShape(value) {
+  const shapes = new Set();
+  collectJsonShape(value, '$', shapes);
+  return [...shapes].sort();
+}
+
+function assertPulseFixtureShape(fixture, live) {
+  assert.deepEqual(Object.keys(fixture).sort(), Object.keys(live).sort());
+  assert.equal(fixture.schemaVersion, live.schemaVersion);
+  for (const section of LIVE_PULSE_SECTIONS) {
+    assert.deepEqual(
+      Object.keys(fixture[section] ?? {}).sort(),
+      Object.keys(live[section] ?? {}).sort(),
+      `fixture section ${section} must carry the same keys as the committed snapshot`,
+    );
+    assert.deepEqual(
+      pulseSectionShape(fixture[section]),
+      pulseSectionShape(live[section]),
+      `fixture section ${section} nested shape must match the committed snapshot`,
+    );
+  }
+}
+
+function calendarDateAllowances(source) {
+  const allowances = new Map();
+  for (const [, line] of source.matchAll(/^[^\S\r\n]*\/\/ #7533-allowlist: (.+)$/gm)) {
+    for (const [, date, count] of line.matchAll(/(?<!\d)(20\d{2}-\d{2}-\d{2})\s+x([1-9]\d*)(?!\d)/g)) {
+      allowances.set(date, (allowances.get(date) ?? 0) + Number(count));
+    }
+  }
+  return allowances;
+}
+
+function calendarDateAllowanceViolations(source) {
+  const code = source.replace(/^[^\S\r\n]*\/\/.*$/gm, ' ');
+  const allowed = calendarDateAllowances(source);
+  const actual = new Map();
+  for (const [, date] of code.matchAll(/(?<!\d)(20\d{2}-\d{2}-\d{2})(?!\d)/g)) {
+    actual.set(date, (actual.get(date) ?? 0) + 1);
+  }
+  return [...new Set([...allowed.keys(), ...actual.keys()])]
+    .sort()
+    .filter((date) => (allowed.get(date) ?? 0) !== (actual.get(date) ?? 0))
+    .map((date) => `${date}: expected ${allowed.get(date) ?? 0}, found ${actual.get(date) ?? 0}`);
+}
+
 function writeRankedAuditSnapshot(corpusDir, {
   code,
   slug,
@@ -4777,9 +4845,21 @@ describe('live-pulse snapshot injection (#7533)', () => {
         /does not match capturedAt/,
         'an injected snapshot whose filename date contradicts capturedAt must be rejected',
       );
+      const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+      writeFileSync(
+        join(mismatchDir, 'crawlable-live-pulse-fixture.json'),
+        JSON.stringify({ ...fixture, capturedAt: 'not-a-date' }),
+      );
+      await assert.rejects(
+        () => loadCorpusData({
+          rootDir: repoRoot,
+          livePulseSnapshotPath: join(mismatchDir, 'crawlable-live-pulse-fixture.json'),
+        }),
+        /capturedAt/,
+        'an injected snapshot with a noncanonical filename must still reject an invalid capturedAt',
+      );
       // And so must one that is structurally incomplete: the injected path
       // keeps the resolver's shape contract even though it skips its fuse.
-      const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
       const { crises: _dropped, ...sectionless } = fixture;
       writeFileSync(
         join(mismatchDir, 'crawlable-live-pulse-1999-12-30.json'),
@@ -4806,15 +4886,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
       // would keep testing a structure production no longer produces.
       const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
       const live = JSON.parse(readFileSync(join(repoRoot, resolveLatestLivePulseSnapshotPath(repoRoot)), 'utf8'));
-      assert.deepEqual(Object.keys(fixture).sort(), Object.keys(live).sort());
-      assert.equal(fixture.schemaVersion, live.schemaVersion);
-      for (const section of ['countries', 'chokepoints', 'crises', 'signalConvergence']) {
-        assert.deepEqual(
-          Object.keys(fixture[section] ?? {}).sort(),
-          Object.keys(live[section] ?? {}).sort(),
-          `fixture section ${section} must carry the same keys as the committed snapshot`,
-        );
-      }
+      assertPulseFixtureShape(fixture, live);
 
       const manifest = await buildCorpus({
         rootDir: repoRoot,
@@ -4834,6 +4906,18 @@ describe('live-pulse snapshot injection (#7533)', () => {
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
+  });
+
+  it('detects nested fixture schema drift', () => {
+    const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+    const drifted = structuredClone(fixture);
+    const [firstCountry] = Object.values(drifted.countries);
+    assert.ok(firstCountry, 'the fixture must contain a country record');
+    delete firstCountry.methodologyVersion;
+    assert.throws(
+      () => assertPulseFixtureShape(drifted, fixture),
+      /nested shape/,
+    );
   });
 
   it('derives every family lastmod from a pulse that dominates every other input', async () => {
@@ -5035,44 +5119,56 @@ describe('live-pulse snapshot injection (#7533)', () => {
     });
   });
 
-  // #7533 lint guard. Every calendar-date token in this file's code must
-  // appear on one of the #7533-allowlist lines below. An undocumented
-  // date is a new calendar pin — the exact defect class that broke CI one
+  // #7533 lint guard. Every calendar-date occurrence in this file's code must
+  // be counted on one of the #7533-allowlist lines below. A changed count is
+  // a new calendar pin — the exact defect class that broke CI one
   // assertion per month as the freeze rewrote the pulse snapshot. A literal
-  // earns its allowlist entry only by being genuinely static (a content
+  // earns its allowance only by being genuinely static (a content
   // version, a pure-function fixture) or deliberately test-owned (the fixture
   // date). Snapshot-coupled dates must be derived from the loaded clock.
   // The scan deliberately covers every carrier, not just whole single-quoted
   // literals: double quotes, template literals, tz-less datetimes, and dates
   // embedded inside longer strings (HTML fixtures, snapshot paths) are all
-  // counted. Full-line comments are stripped first so this allowlist — and
+  // counted. Full-line comments are stripped first so this allowance list — and
   // prose comments — are never misread as pins.
-  // #7533-allowlist: 2026-01-02 2026-01-05 2026-01-09 2026-01-15 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
-  // #7533-allowlist: 2026-01-01 2026-01-31 — datasetTemporalCoverage observation-interval range fixture
-  // #7533-allowlist: 2025-05-28 2026-02-14 — shiftLivePulseDates unit-test fixtures (derived from 2026-01-15 +-30/232d)
-  // #7533-allowlist: 2026-02-03 2026-02-30 2026-02-31 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
-  // #7533-allowlist: 2026-03-04 2026-03-14 2026-04-09 2026-05-01 — laterDate unit pin; resolveChokepointObservation fallback constants
-  // #7533-allowlist: 2026-05-28 — datasetTemporalCoverage pure-function fixture
-  // #7533-allowlist: 2026-06-01 2026-07-28 — synthetic git-commit and sitemap stub dates
-  // #7533-allowlist: 2026-08-08 2026-08-09 2026-08-10 2026-08-11 2026-08-12 2026-08-13 — sourcePageLastmod pure-function fixtures
-  // #7533-allowlist: 2026-08-29 — STORY_CAPTURED_AT synthetic story clock (structure asserted, never the date)
-  // #7533-allowlist: 2026-09-01 — CORPUS_GENERATOR_CONTENT_VERSION pin
-  // #7533-allowlist: 2026-09-02 — synthetic developments timestamps
-  // #7533-allowlist: 2026-09-03 — genuinely static: research lastmod, DataCatalog render fixture, datasetObservationCoverage fixtures
+  // #7533-allowlist: 2026-01-02 x10 2026-01-05 x1 2026-01-09 x1 2026-01-15 x10 — laterDate unit pins, synthetic resolver-test snapshots, committed pulse fixture date (test-owned)
+  // #7533-allowlist: 2026-01-01 x2 2026-01-31 x2 — datasetTemporalCoverage observation-interval range fixture
+  // #7533-allowlist: 2025-05-28 x2 2026-02-14 x4 — shiftLivePulseDates unit-test fixtures (derived from 2026-01-15 +-30/232d)
+  // #7533-allowlist: 2026-02-03 x1 2026-02-30 x1 2026-02-31 x1 — laterDate unit pin; invalid-calendar CII/chokepoint timestamp fixtures
+  // #7533-allowlist: 2026-03-04 x4 2026-03-14 x2 2026-04-09 x1 2026-05-01 x2 — laterDate unit pin; resolveChokepointObservation fallback constants
+  // #7533-allowlist: 2026-05-28 x2 — datasetTemporalCoverage pure-function fixture
+  // #7533-allowlist: 2026-06-01 x2 2026-07-28 x3 — synthetic git-commit and sitemap stub dates
+  // #7533-allowlist: 2026-08-08 x3 2026-08-09 x4 2026-08-10 x4 2026-08-11 x3 2026-08-12 x3 2026-08-13 x4 — sourcePageLastmod pure-function fixtures
+  // #7533-allowlist: 2026-08-29 x5 — STORY_CAPTURED_AT synthetic story clock and static snapshot-path fixtures
+  // #7533-allowlist: 2026-09-01 x4 — CORPUS_GENERATOR_CONTENT_VERSION and synthetic development fixtures
+  // #7533-allowlist: 2026-09-02 x11 — synthetic developments timestamps
+  // #7533-allowlist: 2026-09-03 x13 — genuinely static: research lastmod, DataCatalog render fixture, datasetObservationCoverage fixtures
   it('rejects undocumented calendar-date literals in this file', () => {
     const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
-    const code = source.replace(/^\s*\/\/.*$/gm, ' ');
-    const allowed = new Set(
-      [...source.matchAll(/^\s*\/\/ #7533-allowlist: (.+)$/gm)]
-        .flatMap(([, line]) => [...line.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((match) => match[1])),
-    );
-    assert.ok(allowed.size >= 20, 'the #7533-allowlist comment must stay populated');
-    const tokens = [...code.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((match) => match[1]);
-    const undocumented = [...new Set(tokens)].filter((date) => !allowed.has(date));
+    assert.ok(calendarDateAllowances(source).size >= 20, 'the #7533-allowlist comment must stay populated');
     assert.deepEqual(
-      undocumented,
+      calendarDateAllowanceViolations(source),
       [],
-      'new calendar-date tokens must be documented on a `// #7533-allowlist:` line or derived from the loaded clock (#7533)',
+      'calendar-date occurrences must match the documented `// #7533-allowlist:` counts or be derived from the loaded clock (#7533)',
+    );
+  });
+
+  it('rejects new occurrences that reuse an allowlisted date', () => {
+    const date = ['2026', '09', '03'].join('-');
+    const source = `// #7533-allowlist: ${date} x1 — synthetic fixture
+const fixture = '${date}';
+const snapshotCoupledPin = '${date}';`;
+    assert.deepEqual(
+      calendarDateAllowanceViolations(source),
+      [`${date}: expected 1, found 2`],
+    );
+  });
+
+  it('detects calendar dates embedded in ISO instants', () => {
+    const date = ['2026', '09', '03'].join('-');
+    assert.deepEqual(
+      calendarDateAllowanceViolations(`const capturedAt = '${date}T00:00:00.000Z';`),
+      [`${date}: expected 0, found 1`],
     );
   });
 });
