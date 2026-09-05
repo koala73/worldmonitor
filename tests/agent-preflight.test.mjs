@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -7,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   actionReadiness,
@@ -45,7 +47,7 @@ function readyChecks() {
   };
 }
 
-function localRunner(root, { offline = true, status = '', detached = false, behind = false } = {}) {
+function localRunner(root, { offline = true, status = '', detached = false, behind = false, origin = 'https://github.com/koala73/worldmonitor.git' } = {}) {
   const calls = [];
   const runner = (file, args) => {
     const command = args.join(' ');
@@ -62,7 +64,7 @@ function localRunner(root, { offline = true, status = '', detached = false, behi
     if (file === 'git') {
       if (command.startsWith('status ')) return result(status);
       if (command === 'branch --show-current') return result(detached ? '' : 'codex/agent-tools\n');
-      if (command === 'remote get-url origin') return result('https://github.com/koala73/worldmonitor.git\n');
+      if (command === 'remote get-url origin') return result(origin ?? '', origin === null ? 1 : 0);
       if (command.startsWith('rev-parse --path-format')) return result(join(root, '.git'));
       if (command === 'rev-parse HEAD' || command === 'rev-parse --verify HEAD^{commit}') return result(headOid);
       if (command === 'rev-parse origin/main') return result(behind ? 'b'.repeat(40) : headOid);
@@ -99,6 +101,45 @@ describe('agent preflight', () => {
     }
     assert.throws(() => parseArgs(['--mode=typo']), /--mode must be/);
     assert.throws(() => runAgentPreflight({ mode: 'typo' }), /--mode must be/);
+  });
+
+  it('reviews local commits without a supported origin and skips unavailable live checks', () => {
+    for (const origin of [null, 'https://example.invalid/owner/repo.git']) {
+      const options = localFixture({ inventory: true });
+      const { calls, runner } = localRunner(options.rootDir, { origin, offline: false });
+      const result = runAgentPreflight({ ...options, mode: 'review', pr: '123', issue: '123' }, runner);
+      assert.equal(result.status, 'ready');
+      assert.equal(result.schema, 'worldmonitor-agent-preflight/v2');
+      assert.equal(result.repository, null);
+      assert.equal(result.checks.source.headOid, headOid);
+      assert.equal(result.checks.source.scope, 'local_commit');
+      assert.equal(result.coverage.livePrState, false);
+      assert.ok(result.coverage.gaps.some(gap => /origin/.test(gap)));
+      assert.equal(result.checks.originMain.fetched, false);
+      assert.equal(result.checks.duplicatePullRequests.checked, false);
+      assert.equal(result.readiness.repair.ready, false);
+      assert.equal(result.expensiveTestsAllowed, false);
+      assert.equal(calls.some(call => /git fetch| api | pr list|npm ci|generate-inventory-facts\.mjs/.test(call)), false);
+      for (const mode of [null, 'tests', 'repair']) {
+        assert.throws(() => runAgentPreflight({ ...options, mode }, runner), /origin/);
+      }
+    }
+  });
+
+  it('preserves the selected schema and mode when the CLI encounters a runtime error', () => {
+    const root = makeRoot();
+    const script = fileURLToPath(new URL('../scripts/agent-preflight.mjs', import.meta.url));
+    for (const mode of [null, 'review', 'tests', 'repair']) {
+      const args = [script, '--root', root, ...(mode ? ['--mode', mode] : [])];
+      const result = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 10_000 });
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 1);
+      const output = JSON.parse(result.stdout);
+      assert.equal(output.status, 'error');
+      assert.match(output.error, /\.nvmrc/);
+      assert.equal(output.schema, `worldmonitor-agent-preflight/${mode ? 'v2' : 'v1'}`);
+      assert.equal(output.mode, mode ?? undefined);
+    }
   });
 
   it('keeps source review and tests available when repair-only gates fail', () => {
