@@ -58,6 +58,19 @@ import {
   withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
 import {
+  briefTextLines,
+  developmentsHasDatedItem,
+  isBriefBullet,
+  isBriefOutlookRow,
+  isBriefSectionHeader,
+  normalizeFrozenDevelopments,
+  stripBriefBullet,
+} from './crawlable-developments.mjs';
+
+// One predicate for the freeze's coverage counters and this build's
+// tripwire; re-exported so the corpus tests keep their import path.
+export { developmentsHasDatedItem };
+import {
   CHOKEPOINT_CONTENT,
   CHOKEPOINT_PAGE_CONTENT_PATH,
   CHOKEPOINT_SCORE_CONTEXT_ONLY,
@@ -128,7 +141,9 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
+// 2026-09-05: briefs render as structure, single-publisher briefs are
+// withheld, and the "WHAT THIS MEANS FOR" heading carries the name (#7748).
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-05';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
 // Exported so the #7533 guard test can recompute every family clock without
 // re-implementing the version constants themselves.
@@ -653,7 +668,7 @@ function countryCiiDatasetDownload(country, ciiEntry, { capturedAt, snapshotPath
   });
 }
 
-function countriesIndexDatasetDownload(countries, { capturedAt, snapshotPath }) {
+function countriesIndexDatasetDownload(countries, { capturedAt, snapshotPath, developmentsByCode = null }) {
   return stableJson({
     dataset: 'country-resilience-ranking',
     capturedAt,
@@ -662,6 +677,9 @@ function countriesIndexDatasetDownload(countries, { capturedAt, snapshotPath }) 
     countries: countries.map((country) => ({
       code: country.code,
       name: country.name,
+      // Whether the country page carries a dated development (#7748): the
+      // enrichment tail is otherwise invisible to an agent reading the index.
+      ...(developmentsByCode ? { hasDevelopments: developmentsByCode.has(country.code) } : {}),
       rank: country.headlineEligible === false ? null : country.rank,
       overallScore: country.headlineEligible === false ? null : country.overallScore,
       dimensionCoverage: country.dimensionCoverage,
@@ -1630,6 +1648,24 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshot
     ...country,
     microstateTerritory: microstateTerritoryCodes.has(country.code),
   }));
+  // Publish rules for the frozen developments (#7738, #7748), applied once
+  // here so the page, its dataset download, its WebPage dateModified and the
+  // coverage tripwire all read the same rows: a brief withheld for thin
+  // grounding must not still stamp dateModified or ship in the JSON.
+  for (const country of countries) {
+    const row = livePulse.countries[country.code];
+    if (row && typeof row === 'object' && 'developments' in row) {
+      // Validate the committed shape before the rules run: a malformed brief
+      // (no sources, no citation) must red the build here, not be quietly
+      // withheld as thin grounding.
+      const brief = row.developments?.brief;
+      if (brief && typeof brief === 'object') assertDevelopmentsBrief(brief);
+      row.developments = normalizeFrozenDevelopments(row.developments, {
+        countryCode: country.code,
+        countryName: country.name,
+      });
+    }
+  }
   const ciiRanking = buildCiiRankingEntries(countries, livePulse);
   const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
@@ -3000,10 +3036,27 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
 // numbers moved in the same window the reporting was captured. Asserting that
 // a headline *drove* a score move would be fabrication — only an analyst (or
 // the brief, which cites its sources) may draw that link.
-export function renderCountryDevelopments({ countryName, developments, ciiEntry = null, pulse = null }) {
+export function renderCountryDevelopments({
+  countryCode = '',
+  countryName,
+  developments,
+  ciiEntry = null,
+  pulse = null,
+}) {
   const name = String(countryName || '').trim();
   if (!name) throw new Error('renderCountryDevelopments requires a country name');
-  const rows = developments && typeof developments === 'object' ? developments : null;
+  const rawRows = developments && typeof developments === 'object' ? developments : null;
+  // Validate the frozen shape before the publish rules run: a malformed brief
+  // must red the build, not be quietly withheld as thin grounding.
+  if (rawRows?.brief && typeof rawRows.brief === 'object') assertDevelopmentsBrief(rawRows.brief);
+  // Publish rules (#7738, #7748): markdown emphasis stripped, model preamble
+  // dropped, the ISO-code heading repaired to the country name, and briefs
+  // grounded on fewer than MIN_BRIEF_GROUNDING_PUBLISHERS withheld. loadCorpusData
+  // already applied them to the committed snapshot; this call is idempotent
+  // so direct callers get the same page.
+  const rows = rawRows
+    ? normalizeFrozenDevelopments(rawRows, { countryCode, countryName: name })
+    : null;
   const headlines = Array.isArray(rows?.headlines) ? rows.headlines : [];
   const brief = rows?.brief && typeof rows.brief === 'object' ? rows.brief : null;
   const timeline = Array.isArray(rows?.timeline) ? rows.timeline : [];
@@ -3037,9 +3090,9 @@ export function renderCountryDevelopments({ countryName, developments, ciiEntry 
     parts.push(`        <ul>\n${items}\n        </ul>`);
   }
   if (brief) {
-    const briefHtml = escapeHtml(brief.text).replace(/\n/g, '<br>');
     const generatedLine = `Brief generated <time datetime="${escapeHtml(brief.generatedAt)}">${escapeHtml(formatStaticDateTime(brief.generatedAt))}</time>`;
-    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n          <p>${briefHtml}</p>\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${brief.sources.length} grounding sources.</p>\n        </div>`);
+    const sourceCount = brief.sources.length;
+    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n${renderCountryBriefBody(brief.text)}\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${sourceCount} grounding source${sourceCount === 1 ? '' : 's'}.</p>\n        </div>`);
   }
   if (timeline.length > 0) {
     const events = timeline
@@ -3054,6 +3107,40 @@ export function renderCountryDevelopments({ countryName, developments, ciiEntry 
   }
   const inner = parts.join('\n');
   return `      <section data-country-developments aria-label="Recent developments in ${escapeHtml(name)}">\n        <h2>Recent developments in ${escapeHtml(name)}</h2>\n${inner}\n      </section>`;
+}
+
+// The five-section brief as HTML, mirroring src/utils/format-intel-brief.ts:
+// section headers become <h4>, bullet runs become <ul>, "NEXT 24H:" rows keep
+// their label, everything else is a paragraph. The text arrives normalized
+// (no `**`, no preamble), so this never has to interpret markdown; it only
+// gives a crawler structure instead of a <br>-joined blob (#7738).
+export function renderCountryBriefBody(text) {
+  const out = [];
+  let bullets = [];
+  const flushBullets = () => {
+    if (bullets.length === 0) return;
+    out.push(`          <ul>\n${bullets.map((item) => `            <li>${item}</li>`).join('\n')}\n          </ul>`);
+    bullets = [];
+  };
+  for (const line of briefTextLines(text)) {
+    if (isBriefBullet(line)) {
+      bullets.push(escapeHtml(stripBriefBullet(line)));
+      continue;
+    }
+    flushBullets();
+    if (isBriefSectionHeader(line)) {
+      out.push(`          <h4>${escapeHtml(line)}</h4>`);
+    } else if (isBriefOutlookRow(line)) {
+      // The label is wrapped, the text is left verbatim (spacing included):
+      // assertCountryDevelopmentsRendered anchors on the tag-stripped line.
+      const colon = line.indexOf(':');
+      out.push(`          <p><strong>${escapeHtml(line.slice(0, colon + 1))}</strong>${escapeHtml(line.slice(colon + 1))}</p>`);
+    } else {
+      out.push(`          <p>${escapeHtml(line)}</p>`);
+    }
+  }
+  flushBullets();
+  return out.join('\n');
 }
 
 function isValidHttpsUrl(value) {
@@ -3142,24 +3229,22 @@ export function newestDevelopmentsInstant(developments) {
   return instants.length > 0 ? instants.at(-1) : null;
 }
 
-// True when the frozen developments carry at least one dated,
-// sourced, country-specific item: a headline, a brief with text, or a
-// timeline event. The dated-absence note (data-developments-empty) does not
-// count — it is a marker, not an item.
-export function developmentsHasDatedItem(developments) {
-  if (!developments || typeof developments !== 'object') return false;
-  if (Array.isArray(developments.headlines) && developments.headlines.length > 0) return true;
-  if (developments.brief && typeof developments.brief.text === 'string' && developments.brief.text.trim()) return true;
-  return Array.isArray(developments.timeline) && developments.timeline.length > 0;
-}
-
 // Durable guard (#7615): the enrichment must be permanent, not a one-off
 // content pass. After rendering, every frozen developments row for this
 // country must be present in the page HTML — a silent drop (wrong slug, lost
 // prop, over-eager filter) fails the build instead of shipping a page whose
 // snapshot claims items the crawler cannot see.
-export function assertCountryDevelopmentsRendered({ pagePath, html, developments }) {
-  const rows = developments && typeof developments === 'object' ? developments : null;
+export function assertCountryDevelopmentsRendered({
+  pagePath,
+  html,
+  developments,
+  countryCode = '',
+  countryName = '',
+}) {
+  const rawRows = developments && typeof developments === 'object' ? developments : null;
+  // Same publish rules as the renderer, so a withheld thin brief is not
+  // reported as dropped and a repaired heading is looked for as repaired.
+  const rows = rawRows ? normalizeFrozenDevelopments(rawRows, { countryCode, countryName }) : null;
   if (!rows || !developmentsHasDatedItem(rows)) return;
   if (!html.includes('data-country-developments')) {
     throw new Error(`${pagePath} is missing its recent-developments section`);
@@ -3174,14 +3259,15 @@ export function assertCountryDevelopmentsRendered({ pagePath, html, developments
   if (rows.brief && typeof rows.brief.text === 'string' && rows.brief.text.trim()) {
     // Anchor on the first AND last non-empty lines: every generated brief
     // opens with the same boilerplate header, so the first line alone cannot
-    // catch a cross-country brief swap. The renderer escapes newlines to
-    // <br>, so raw multi-line slices never appear verbatim.
-    const nonEmpty = rows.brief.text.trim().split('\n').map((line) => line.trim()).filter(Boolean);
+    // catch a cross-country brief swap. The renderer wraps lines in <h4>,
+    // <li> and <p>, so anchors are checked against the tag-stripped page.
+    const nonEmpty = briefTextLines(rows.brief.text).map((line) => stripBriefBullet(line));
     const anchors = [nonEmpty[0], nonEmpty.at(-1)]
       .filter((line, index, all) => line && all.indexOf(line) === index)
       .map((line) => escapeHtml(line.slice(0, 120)));
+    const pageText = html.replace(/<[^>]+>/g, '');
     for (const anchor of anchors) {
-      if (!html.includes(anchor)) {
+      if (!pageText.includes(anchor)) {
         throw new Error(`${pagePath} dropped its frozen intel brief`);
       }
     }
@@ -3335,7 +3421,7 @@ ${liveGrid}
         <noscript><p>Enable JavaScript to refresh the current API result. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The structural resilience snapshot remains available below.'}</p></noscript>
       </section>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(country.name)} on the live map →</a>
-${renderCountryDevelopments({ countryName: country.name, developments, ciiEntry, pulse })}
+${renderCountryDevelopments({ countryCode: country.code, countryName: country.name, developments, ciiEntry, pulse })}
       <h2>Structural resilience snapshot</h2>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
@@ -3474,8 +3560,44 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     body,
     scriptSrcs: ['/tools/live-tools.js'],
   });
-  assertCountryDevelopmentsRendered({ pagePath: path, html, developments });
+  assertCountryDevelopmentsRendered({
+    pagePath: path,
+    html,
+    developments,
+    countryCode: country.code,
+    countryName: country.name,
+  });
+  assertCountryPagePresentation({ pagePath: path, html });
   return html;
+}
+
+// Presentation guard (#7738): the enrichment is generated prose injected as
+// text, and the first round shipped literal `**` markdown on 7 of 11 sampled
+// briefs plus "WHAT THIS MEANS FOR NO" headings. Both are cheap string checks
+// on the rendered <main>, and both would have caught the defect before deploy.
+//
+// The leak is a heading that ENDS in a bare two-letter token after FOR.
+// Anchored to the end on purpose: "WHAT THIS MEANS FOR EL SALVADOR" starts
+// its name with two letters and must pass. UK/EU/UN are English initialisms
+// a brief legitimately writes, not ISO codes the server interpolated.
+const BARE_CODE_HEADING_LEAK_RE = /\bFOR ([A-Z]{2})\s*:?$/;
+const HEADING_INITIALISM_ALLOWLIST = new Set(['UK', 'EU', 'UN']);
+
+export function assertCountryPagePresentation({ pagePath, html }) {
+  const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] ?? html;
+  // Rendered text only: a marker inside an href is not what a reader sees.
+  const mainText = main.replace(/<[^>]+>/g, '');
+  const marker = mainText.match(/\*\*|__/);
+  if (marker) {
+    throw new Error(`${pagePath} renders literal markdown emphasis (${marker[0]}) inside <main>`);
+  }
+  for (const match of main.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/g)) {
+    const heading = match[1].replace(/<[^>]+>/g, '').trim();
+    const leak = heading.match(BARE_CODE_HEADING_LEAK_RE);
+    if (leak && !HEADING_INITIALISM_ALLOWLIST.has(leak[1])) {
+      throw new Error(`${pagePath} leaks an ISO code into a heading: ${heading}`);
+    }
+  }
 }
 
 const CHOKEPOINT_HUB_STATUS_LABELS = new Set(['Green', 'Yellow', 'Red']);
@@ -4896,6 +5018,11 @@ export async function buildCorpus({
     countriesIndexDatasetDownload(data.countries, {
       capturedAt: data.resilience.capturedAt,
       snapshotPath: data.sources.resilienceSnapshot,
+      developmentsByCode: new Set(
+        data.countries
+          .filter((country) => developmentsHasDatedItem(data.livePulse?.countries?.[country.code]?.developments))
+          .map((country) => country.code),
+      ),
     }),
   );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;

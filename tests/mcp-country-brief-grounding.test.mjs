@@ -231,6 +231,26 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     assert.deepEqual(payload.digestCoverage, digestCoverage);
   });
 
+  it('grounds through the shared matcher: demonyms count, a bare ISO code does not', async () => {
+    // The tool's own term list matched the code case-insensitively, so
+    // "rally in Europe" grounded India (#7748). Now shared/country-mention.js.
+    stubDownstream({
+      digestItems: [
+        digestItem({ title: 'French regulator opens inquiry into port fees', link: 'https://example.com/fr-demonym' }),
+        digestItem({ title: 'FR ministry raises target', link: 'https://example.com/fr-code' }),
+        digestItem({ title: 'Markets rally in Europe on rate-cut hopes', link: 'https://example.com/eu' }),
+      ],
+    });
+
+    const payload = await callCountryBrief();
+
+    assert.deepEqual(
+      payload.groundingStories.map((story) => story.url),
+      ['https://example.com/fr-demonym'],
+      'only the demonym-matched story grounds the brief',
+    );
+  });
+
   it('emits groundingStories even when the upstream supplies its own sources', async () => {
     // The decision this pins: sources keeps the gateway's proto BriefSource
     // list untouched, and corroboration arrives on a sibling field that is

@@ -4,10 +4,6 @@ import { describe, it } from 'node:test';
 import {
   deriveCountryIntelCacheKey,
   buildSharedCountryContext,
-  countryBriefSearchTerms,
-  includesCountryTerm,
-  includesCountryCodeToken,
-  matchesCountry,
 } from '../server/worldmonitor/intelligence/v1/_country-brief-context.ts';
 
 describe('country intel brief cache key derivation', () => {
@@ -21,7 +17,7 @@ describe('country intel brief cache key derivation', () => {
       contextHash: 'bbbbbbbbbbbbbbbb', frameworkHash: '', energyYear: '2024', energyImportYear: '2023',
     });
     assert.equal(a, b, 'anon key must not vary with client context');
-    assert.ok(a.startsWith('ci-sebuf:v6:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
+    assert.ok(a.startsWith('ci-sebuf:v7:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
   });
 
   it('anon key ignores framework hash (framework is premium-only input)', () => {
@@ -54,7 +50,7 @@ describe('country intel brief cache key derivation', () => {
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', ''), mk('bbbbbbbbbbbbbbbb', ''), 'premium context must personalize the key');
     assert.equal(mk('aaaaaaaaaaaaaaaa', ''), mk('aaaaaaaaaaaaaaaa', ''), 'same premium context must share the key');
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', 'deadbeef'), mk('aaaaaaaaaaaaaaaa', ''), 'framework must personalize the key');
-    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v6:FR:en:aaaaaaaaaaaaaaaa'));
+    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v7:FR:en:aaaaaaaaaaaaaaaa'));
     assert.ok(!mk('aaaaaaaaaaaaaaaa', '').includes(':shared'));
   });
 });
@@ -108,47 +104,10 @@ describe('shared country context from the news digest', () => {
   });
 });
 
-describe('country term matching', () => {
-  it('derives an uppercase code + lowercase display names', () => {
-    const terms = countryBriefSearchTerms('fr');
-    assert.equal(terms.code, 'FR');
-    assert.deepEqual(terms.names, ['france']);
-  });
-
-  it('does not treat the Intl code echo for unknown regions as a name', () => {
-    const terms = countryBriefSearchTerms('ZZ');
-    assert.equal(terms.code, 'ZZ');
-    assert.deepEqual(terms.names, [], 'an echoed code must not become a lowercase word-match term');
-  });
-
-  it('matches display names on word boundaries, case-insensitively', () => {
-    assert.equal(includesCountryTerm('France announces plan', 'france'), true);
-    assert.equal(includesCountryTerm('shipment from Indiana port', 'india'), false, '"india" inside "Indiana" must not match');
-  });
-
-  it('matches ISO codes only as uppercase tokens in the raw text', () => {
-    assert.equal(includesCountryCodeToken('Exports from IN surge on new deal', 'IN'), true);
-    assert.equal(includesCountryCodeToken('Prices rise in Europe as inflation cools', 'IN'), false, 'lowercase "in" must not match the IN code');
-    assert.equal(includesCountryCodeToken('US announces sanctions package', 'US'), true);
-    assert.equal(includesCountryCodeToken('tell us more about the plan', 'US'), false);
-    assert.equal(includesCountryCodeToken('INDIA expands exports', 'IN'), false, 'code token must not match inside a longer uppercase word');
-  });
-
-  it('matchesCountry rejects the stopword-collision codes that over-matched shared briefs', () => {
-    const cases = [
-      { cc: 'IN', hit: 'India launches lunar mission', miss: 'Markets rally in Europe' },
-      { cc: 'US', hit: 'United States imposes tariffs', miss: 'tell us what happened next' },
-      { cc: 'NO', hit: 'Norway boosts energy exports', miss: 'no deal reached in talks' },
-      { cc: 'AT', hit: 'Austria tightens border rules', miss: 'explosion at refinery injures three' },
-    ];
-    for (const { cc, hit, miss } of cases) {
-      const terms = countryBriefSearchTerms(cc);
-      assert.equal(matchesCountry(hit, terms), true, `${cc} should match "${hit}"`);
-      assert.equal(matchesCountry(miss, terms), false, `${cc} must NOT match "${miss}"`);
-    }
-  });
-
-  it('shared context no longer sweeps unrelated items into stopword-code briefs', () => {
+describe('shared country grounding', () => {
+  // The matcher itself is covered in tests/country-mention.test.mjs; these
+  // pin that the shared anonymous grounding routes through it.
+  it('no longer sweeps unrelated items into stopword-code briefs', () => {
     const digest = {
       items: [
         { title: 'Markets rally in Europe on rate-cut hopes', source: 'Reuters', link: 'https://example.com/eu' },
@@ -158,5 +117,28 @@ describe('country term matching', () => {
     const { sources } = buildSharedCountryContext(digest, 'IN');
     assert.equal(sources.length, 1, 'only the India item should ground the IN brief');
     assert.equal(sources[0].url, 'https://example.com/india');
+  });
+
+  it('never grounds a country on a bare code that is someone else\'s acronym', () => {
+    // The freeze published Australia's brief grounded on this headline (#7748).
+    const digest = {
+      items: [
+        { title: 'Sudanese anti-war forces reject AU backing for El Burhan dialogue', source: 'Wire', link: 'https://example.com/au-sudan' },
+        { title: 'Australian PM opens Canberra summit', source: 'Wire', link: 'https://example.com/australia' },
+      ],
+    };
+    const { sources } = buildSharedCountryContext(digest, 'AU');
+    assert.deepEqual(sources.map((source) => source.url), ['https://example.com/australia']);
+  });
+
+  it('reaches a country through an alias or demonym the display name misses', () => {
+    const digest = {
+      items: [
+        { title: 'UK inflation cools further', source: 'Wire', link: 'https://example.com/uk' },
+        { title: 'Ethiopian Airlines adds routes', source: 'Wire', link: 'https://example.com/et' },
+      ],
+    };
+    assert.deepEqual(buildSharedCountryContext(digest, 'GB').sources.map((source) => source.url), ['https://example.com/uk']);
+    assert.deepEqual(buildSharedCountryContext(digest, 'ET').sources.map((source) => source.url), ['https://example.com/et']);
   });
 });

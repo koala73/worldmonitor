@@ -28,7 +28,10 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The freeze fetches five digest variants and requests a brief for every
+    # country with two-publisher grounding (#7748); the LLM calls dominate the
+    # wall clock, so leave headroom above the ~20 minutes a keyed run takes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -103,7 +106,9 @@ jobs:
           npm run teasers:welcome
           node --import tsx --test --test-concurrency=1 \
             tests/crawlable-corpus.test.mjs \
+            tests/crawlable-developments.test.mjs \
             tests/crawlable-live-tools.test.mjs \
+            tests/country-mention.test.mjs \
             tests/freeze-crawlable-live-pulse.test.mjs \
             tests/welcome-teasers.test.mjs \
             tests/sitemap-generation.test.mjs

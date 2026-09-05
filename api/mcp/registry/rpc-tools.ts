@@ -1,5 +1,6 @@
 import COUNTRY_BBOXES from '../../../shared/country-bboxes.js';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
+import { countryMentionTerms, mentionsCountry } from '../../../shared/country-mention.js';
 import { isOpenSkyProvider } from '../../../shared/provider-redistribution';
 import {
   CHINA_DECISION_SIGNAL_GROUP_IDS,
@@ -146,21 +147,6 @@ function clipBriefText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
   const text = value.replace(/\s+/g, ' ').trim();
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function countryTermIndex(text: string, term: string): number {
-  const normalizedTerm = term.trim().toLowerCase();
-  if (!normalizedTerm) return -1;
-  const match = new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
-  return match ? match.index + (match[1] ?? '').length : -1;
-}
-
-function includesCountryTerm(text: string, term: string): boolean {
-  return countryTermIndex(text, term) !== -1;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -418,17 +404,6 @@ function projectSeededWorldBrief(raw: unknown, nowMs = Date.now()): SeededWorldB
     ageMinutes,
     sources: sources as McpBriefSource[],
   } };
-}
-
-function countryBriefSearchTerms(countryCode: string): string[] {
-  const terms = [countryCode.toLowerCase()];
-  try {
-    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(countryCode);
-    if (name) terms.push(name.toLowerCase());
-  } catch {
-    /* Intl.DisplayNames can be missing in constrained runtimes. */
-  }
-  return [...new Set(terms.filter(Boolean))];
 }
 
 const PROCUREMENT_TOOL_DEFAULT_PAGE_SIZE = 10;
@@ -1617,11 +1592,13 @@ export const RPC_TOOLS: ToolDef[] = [
           const allItems = Object.values(digest.categories ?? {})
             .flatMap(cat => cat.items ?? [])
             .filter(item => typeof item.title === 'string' && item.title.length > 0);
-          const terms = countryBriefSearchTerms(countryCode);
-          const countryItems = allItems.filter((item) => {
-            const text = `${item.title ?? ''} ${item.snippet ?? ''}`.toLowerCase();
-            return terms.some(term => includesCountryTerm(text, term));
-          });
+          // Shared matcher (shared/country-mention.js) — the local term list
+          // matched the ISO code case-insensitively, so "rally in Europe"
+          // grounded India's brief (#7748).
+          const terms = countryMentionTerms(countryCode);
+          const countryItems = allItems.filter((item) => (
+            mentionsCountry(`${item.title ?? ''} ${item.snippet ?? ''}`, terms)
+          ));
           const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, 15);
           sources = collectMcpBriefSources(groundingItems, 6);
           // Built from groundingItems rather than from `sources`, because the

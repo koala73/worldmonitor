@@ -17,6 +17,7 @@ import {
   resolveEnergyImportDependency,
   UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY,
 } from './_energy-import-dependency';
+import { countryDisplayName } from '../../../../shared/country-mention.js';
 
 const INTEL_CACHE_TTL = 21600;
 
@@ -176,7 +177,12 @@ export async function getCountryIntelBrief(
     energyYear,
     energyImportYear,
   });
-  const countryName = TIER1_COUNTRIES[req.countryCode.toUpperCase()] || req.countryCode;
+  // Every country gets its name, not just the tier-1 table: the code fallback
+  // put "WHAT THIS MEANS FOR NO" in the heading and "TG is a net
+  // energy-independent nation" in the body of prerendered country pages
+  // (#7738). The bare code stays only for a code ICU cannot name.
+  const upperCode = req.countryCode.toUpperCase();
+  const countryName = TIER1_COUNTRIES[upperCode] || countryDisplayName(upperCode) || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
   const systemPrompt = `You are a senior intelligence analyst. Current date: ${dateStr}.

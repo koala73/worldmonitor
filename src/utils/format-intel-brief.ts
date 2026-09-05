@@ -1,6 +1,10 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-
-const SECTION_HEADERS = ['SITUATION NOW', 'WHAT THIS MEANS FOR', 'KEY RISKS', 'OUTLOOK', 'WATCH ITEMS'];
+import {
+  isBriefBullet,
+  isBriefOutlookRow,
+  isBriefSectionHeader,
+  stripBriefBullet,
+} from '../../shared/brief-format.js';
 
 export interface IntelBriefCitationSource {
   title?: string;
@@ -28,25 +32,23 @@ export function formatIntelBrief(
   const out: string[] = [];
   let inSection = false;
 
+  // Line classification is shared with the crawlable corpus renderer
+  // (shared/brief-format.js) so the dashboard and the prerendered page agree
+  // on what is a header, a bullet and an outlook row.
   for (const line of lines) {
     const trimmed = line.trim();
-    const isHeader = SECTION_HEADERS.some(h => trimmed.toUpperCase().startsWith(h));
 
-    if (isHeader) {
+    if (isBriefSectionHeader(trimmed)) {
       if (inSection) out.push('</div>');
       out.push(`<div class="brief-section"><div class="brief-section-header">${trimmed}</div>`);
       inSection = true;
-    } else if (trimmed.startsWith('•') || trimmed.startsWith('-')) {
-      out.push(`<div class="brief-bullet">${trimmed.replace(/^[•-]\s*/, '')}</div>`);
-    } else if (trimmed.startsWith('NEXT ')) {
+    } else if (isBriefBullet(trimmed)) {
+      out.push(`<div class="brief-bullet">${stripBriefBullet(trimmed)}</div>`);
+    } else if (isBriefOutlookRow(trimmed)) {
       const colonIdx = trimmed.indexOf(':');
-      if (colonIdx !== -1) {
-        const label = trimmed.slice(0, colonIdx);
-        const body = trimmed.slice(colonIdx + 1).trim();
-        out.push(`<div class="brief-outlook-row"><strong class="brief-outlook-label">${label}:</strong> ${body}</div>`);
-      } else {
-        out.push(`<div class="brief-para">${trimmed}</div>`);
-      }
+      const label = trimmed.slice(0, colonIdx);
+      const body = trimmed.slice(colonIdx + 1).trim();
+      out.push(`<div class="brief-outlook-row"><strong class="brief-outlook-label">${label}:</strong> ${body}</div>`);
     } else if (trimmed) {
       out.push(`<div class="brief-para">${trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>`);
     }

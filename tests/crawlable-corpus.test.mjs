@@ -21,6 +21,7 @@ import {
   buildCorpus,
   buildMicrostateCoverageStory,
   assertCountryDevelopmentsRendered,
+  assertCountryPagePresentation,
   assertDevelopmentsCoverage,
   CHOKEPOINT_PAGE_CONTENT_VERSION,
   CHOKEPOINT_PAGE_LASTMOD_PATHS,
@@ -5187,7 +5188,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-08-29 x5 — STORY_CAPTURED_AT synthetic story clock and static snapshot-path fixtures
   // #7533-allowlist: 2026-09-01 x4 — CORPUS_GENERATOR_CONTENT_VERSION and synthetic development fixtures
   // #7533-allowlist: 2026-09-02 x11 — synthetic developments timestamps
-  // #7533-allowlist: 2026-09-03 x13 — genuinely static: research lastmod, DataCatalog render fixture, datasetObservationCoverage fixtures
+  // #7533-allowlist: 2026-09-03 x14 — genuinely static: research lastmod, DataCatalog render fixture, datasetObservationCoverage fixtures, synthetic thin-grounding developments capturedAt
   it('rejects undocumented calendar-date literals in this file', () => {
     const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
     assert.ok(calendarDateAllowances(source).size >= 20, 'the #7533-allowlist comment must stay populated');
@@ -5276,15 +5277,191 @@ describe('country recent developments', () => {
     assert.ok(html.includes('62.5/100'));
     assert.ok(html.includes('Reporting captured in the same window is listed below.'));
     assert.ok(!html.toLowerCase().includes('driven by'));
-    // Brief body, generation line and grounding source count.
+    // Brief body as structure (section heading + paragraph, never a <br>
+    // blob), generation line and grounding source count.
     assert.ok(html.includes('data-intel-brief'));
-    assert.ok(html.includes('SITUATION NOW<br>Convoys move under escort [1].'));
+    assert.ok(html.includes('<h4>SITUATION NOW</h4>'));
+    assert.ok(html.includes('<p>Convoys move under escort [1].</p>'));
+    assert.ok(!html.includes('<br>'), 'the brief is rendered as elements, not <br>-joined text');
     assert.ok(html.includes('<time datetime="2026-09-02T12:00:00.000Z">'));
     assert.ok(html.includes('from 2 grounding sources'));
     // Timeline event with summary, domain and source link.
     assert.ok(html.includes('data-intel-timeline'));
     assert.ok(html.includes('Port call logged in SD'));
     assert.ok(html.includes('<a href="https://example.test/port-call">source</a>'));
+  });
+
+  it('renders the five-section brief as headings, lists and outlook rows', () => {
+    const html = renderCountryDevelopments({
+      countryCode: 'SD',
+      countryName: 'Sudan',
+      developments: {
+        ...DEVELOPMENTS,
+        brief: {
+          ...BRIEF,
+          text: [
+            'SITUATION NOW',
+            'Convoys move under escort [1].',
+            '',
+            'WHAT THIS MEANS FOR SD',
+            '• **Port Sudan**: closed to traffic [2].',
+            '- Red Sea lanes: rerouted.',
+            '',
+            'OUTLOOK',
+            'NEXT 24H: Talks resume.',
+            'NEXT 48H:  Ports  reopen.',
+            '',
+            'WATCH ITEMS',
+            'Convoy schedule · Port reopening',
+          ].join('\n'),
+        },
+      },
+    });
+    assert.ok(html.includes('<h4>SITUATION NOW</h4>'));
+    assert.ok(html.includes('<h4>WHAT THIS MEANS FOR SUDAN</h4>'), 'the ISO-code heading is repaired to the page country');
+    assert.ok(!html.includes('FOR SD'));
+    assert.ok(html.includes('<li>Port Sudan: closed to traffic [2].</li>'));
+    assert.ok(html.includes('<li>Red Sea lanes: rerouted.</li>'), 'dash bullets are bullets too');
+    assert.ok(html.includes('<p><strong>NEXT 24H:</strong> Talks resume.</p>'));
+    assert.ok(html.includes('<p><strong>NEXT 48H:</strong>  Ports  reopen.</p>'), 'outlook text keeps its spacing so the render guard anchor matches');
+    assert.ok(html.includes('<p>Convoy schedule · Port reopening</p>'));
+    assert.ok(!html.includes('**'), 'markdown emphasis never reaches the page');
+    assert.ok(!html.includes('<br>'));
+    // The render guard sees the repaired heading, not the raw one, and an
+    // outlook row that ends the brief anchors verbatim.
+    assertCountryDevelopmentsRendered({
+      pagePath: '/countries/sudan/',
+      html,
+      developments: { ...DEVELOPMENTS, brief: { ...BRIEF, text: 'SITUATION NOW\nConvoys move under escort [1].\n\nWHAT THIS MEANS FOR SD' } },
+      countryCode: 'SD',
+      countryName: 'Sudan',
+    });
+    assertCountryDevelopmentsRendered({
+      pagePath: '/countries/sudan/',
+      html,
+      developments: { ...DEVELOPMENTS, brief: { ...BRIEF, text: 'SITUATION NOW\nConvoys move under escort [1].\n\nOUTLOOK\nNEXT 48H:  Ports  reopen.' } },
+      countryCode: 'SD',
+      countryName: 'Sudan',
+    });
+    assertCountryPagePresentation({ pagePath: '/countries/sudan/', html: `<main>${html}</main>` });
+  });
+
+  it('drops a model preamble and never publishes it', () => {
+    const html = renderCountryDevelopments({
+      countryCode: 'GE',
+      countryName: 'Georgia',
+      developments: {
+        ...DEVELOPMENTS,
+        brief: {
+          ...BRIEF,
+          text: '**INTELLIGENCE BRIEF: GE (GEORGIA)**\n**CLASSIFICATION:** CONFIDENTIAL\n\n**SITUATION NOW**\nEnergy inflection point [1].',
+        },
+      },
+    });
+    assert.ok(!html.includes('CONFIDENTIAL'));
+    assert.ok(!html.includes('INTELLIGENCE BRIEF'));
+    assert.ok(html.includes('<h4>SITUATION NOW</h4>'));
+    assert.ok(html.includes('<p>Energy inflection point [1].</p>'));
+  });
+
+  it('withholds a brief grounded on a single source but keeps the dated headline', () => {
+    const html = renderCountryDevelopments({
+      countryCode: 'BT',
+      countryName: 'Bhutan',
+      developments: {
+        headlines: [HEADLINE],
+        brief: { ...BRIEF, sources: [HEADLINE] },
+        timeline: [],
+        briefSkipped: null,
+        capturedAt: '2026-09-03T00:00:00.000Z',
+      },
+    });
+    assert.ok(html.includes('data-country-developments'));
+    assert.ok(html.includes(`href="${HEADLINE.url}"`));
+    assert.ok(!html.includes('data-intel-brief'), 'a 24/48/72h outlook off one article is not published');
+    // The render guard applies the same rule, so the withheld brief is not "dropped".
+    assertCountryDevelopmentsRendered({
+      pagePath: '/countries/bhutan/',
+      html,
+      developments: { headlines: [HEADLINE], brief: { ...BRIEF, sources: [HEADLINE] }, timeline: [], briefSkipped: null },
+      countryCode: 'BT',
+      countryName: 'Bhutan',
+    });
+  });
+
+  it('fails the build on literal markdown or an ISO code in a heading', () => {
+    assertCountryPagePresentation({ pagePath: '/countries/norway/', html: '<main><h2>Recent developments in Norway</h2><p>ok</p></main>' });
+    assert.throws(
+      () => assertCountryPagePresentation({ pagePath: '/countries/norway/', html: '<main><p>• **NBIM**: sells</p></main>' }),
+      /renders literal markdown emphasis \(\*\*\)/,
+    );
+    assert.throws(
+      () => assertCountryPagePresentation({ pagePath: '/countries/norway/', html: '<main><p>__NBIM__ sells</p></main>' }),
+      /renders literal markdown emphasis \(__\)/,
+      'the guard is not pinned to the one marker the first audit happened to see',
+    );
+    // Markup attributes are not rendered text: a double underscore in an href is fine.
+    assertCountryPagePresentation({ pagePath: '/countries/norway/', html: '<main><a href="https://example.test/a__b">link</a></main>' });
+    assert.throws(
+      () => assertCountryPagePresentation({ pagePath: '/countries/norway/', html: '<main><h4>WHAT THIS MEANS FOR NO</h4></main>' }),
+      /leaks an ISO code into a heading: WHAT THIS MEANS FOR NO/,
+    );
+    assert.throws(
+      () => assertCountryPagePresentation({ pagePath: '/countries/spain/', html: '<main><h4>WHAT THIS MEANS FOR ES:</h4></main>' }),
+      /leaks an ISO code into a heading/,
+      'a trailing colon does not hide the bare code',
+    );
+    // A name whose first word is two letters is not a leak; neither is an
+    // English initialism the model legitimately writes.
+    assertCountryPagePresentation({ pagePath: '/countries/el-salvador/', html: '<main><h4>WHAT THIS MEANS FOR EL SALVADOR</h4></main>' });
+    assertCountryPagePresentation({ pagePath: '/countries/united-kingdom/', html: '<main><h4>WHAT THIS MEANS FOR UK</h4></main>' });
+    // Only <main> is judged: a `**` in a <script> payload is not page text.
+    assertCountryPagePresentation({ pagePath: '/countries/norway/', html: '<script>"**"</script><main><p>ok</p></main>' });
+  });
+
+  it('fails the build on a malformed committed brief instead of withholding it', async () => {
+    const fixturePath = join(repoRoot, 'tests/fixtures/crawlable-live-pulse-fixture.json');
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+    const today = new Date().toISOString().slice(0, 10);
+    const deltaDays = Math.round(
+      (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${fixture.capturedAt}T00:00:00Z`)) / 86_400_000,
+    );
+    const shifted = shiftLivePulseDates(fixture, deltaDays);
+    const withBrief = Object.entries(shifted.countries).find(([, row]) => row.developments?.brief);
+    assert.ok(withBrief, 'the fixture carries at least one brief');
+    withBrief[1].developments.brief.sources = [];
+    const dir = mkdtempSync(join(tmpdir(), 'wm-pulse-malformed-'));
+    const snapshotPath = join(dir, `crawlable-live-pulse-${today}.json`);
+    writeFileSync(snapshotPath, JSON.stringify(shifted));
+    try {
+      await assert.rejects(
+        loadCorpusData({ rootDir: repoRoot, livePulseSnapshotPath: snapshotPath }),
+        /brief carries no grounding sources/,
+        'load-time normalization must not hide a malformed brief behind thin-grounding',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('applies the publish rules to the committed snapshot at load time', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const rows = Object.entries(data.livePulse.countries)
+      .map(([code, row]) => [code, row.developments])
+      .filter(([, developments]) => developments && typeof developments === 'object');
+    assert.ok(rows.length > 0, 'the fixture snapshot carries developments');
+    let briefs = 0;
+    for (const [code, developments] of rows) {
+      if (developments.brief) {
+        briefs += 1;
+        assert.ok(developments.brief.sources.length >= 2, `${code} publishes a brief off ${developments.brief.sources.length} source`);
+        assert.ok(!developments.brief.text.includes('**'), `${code} brief still carries markdown`);
+        assert.ok(!/^WHAT THIS MEANS FOR [A-Z]{2}\s*$/m.test(developments.brief.text), `${code} brief still carries the ISO code heading`);
+      } else if (developments.briefSkipped === 'thin-grounding') {
+        assert.ok(developments.headlines.length >= 1, `${code} withheld a brief but kept no headline`);
+      }
+    }
+    assert.ok(briefs > 0, 'the fixture snapshot carries publishable briefs');
   });
 
   it('appends brief-only sources without duplicating headline URLs', () => {
