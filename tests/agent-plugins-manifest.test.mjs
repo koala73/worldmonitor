@@ -305,14 +305,19 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.doesNotThrow(() => materializePluginSkills({ check: true, ...paths }));
   });
 
-  it('rewrites worldmonitor API subdomains to the public site origin', () => {
+  // Rewrites to www, not the apex (#7660): `/api/*` is not on the Cloudflare
+  // apex-exemption list, so an apex REST example 301s and a plain
+  // `curl -s` (no -L) against the documented URL returns an empty body.
+  it('rewrites worldmonitor API subdomains to the www site origin', () => {
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://edge.worldmonitor.app/api/foo'),
-      'GET https://worldmonitor.app/api/foo',
+      'GET https://www.worldmonitor.app/api/foo',
     );
+    // The apex is rewritten too — `/api/*` is not on the exemption list, so an
+    // apex REST example 301s exactly like a variant-host one.
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://worldmonitor.app/api/foo'),
-      'GET https://worldmonitor.app/api/foo',
+      'GET https://www.worldmonitor.app/api/foo',
     );
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://www.worldmonitor.app/api/foo'),
@@ -361,9 +366,10 @@ describe('agent readiness: Agent Plugins manifest', () => {
     const hrefs = catalog.linkset.flatMap((ctx) =>
       Object.values(ctx).flatMap((value) => (Array.isArray(value) ? value.map((entry) => entry.href) : [])),
     );
-    assert.ok(hrefs.includes('https://worldmonitor.app/plugin.json'), 'api-catalog must advertise /plugin.json');
+    // www, not apex: /plugin.json 301s off the apex (#7660).
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/plugin.json'), 'api-catalog must advertise /plugin.json');
     const view = JSON.parse(readFileSync(join(ROOT, 'public/agent-view.json'), 'utf-8'));
-    assert.equal(view.discovery.agentPlugin, 'https://worldmonitor.app/plugin.json');
+    assert.equal(view.discovery.agentPlugin, 'https://www.worldmonitor.app/plugin.json');
     for (const path of ['docs/agent-discovery.mdx', 'docs/zh/agent-discovery.mdx']) {
       const body = readFileSync(join(ROOT, path), 'utf-8');
       assert.ok(

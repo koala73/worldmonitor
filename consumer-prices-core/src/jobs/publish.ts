@@ -160,6 +160,7 @@ export async function publishAll() {
 
     let pagesOk = 0;
     let pagesFailed = 0;
+    let pagesSkipped = 0;
 
     try {
       const coverage = await buildCoverageSnapshot(marketCode);
@@ -198,8 +199,17 @@ export async function publishAll() {
     for (const days of [7, 30]) {
       try {
         const movers = await buildMoversSnapshot(marketCode, days);
-        await writeSnapshot(url, token, makeKey(['consumer-prices', 'movers', marketCode, `${days}d`]), movers, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
-        pagesOk++;
+        // Null is a data-quality skip, not an infrastructure failure: every
+        // candidate was gated, so the last good snapshot outlives its would-be
+        // replacement. It must not count toward pagesFailed or the whole cron
+        // exits 1 over one thin market.
+        if (movers === null) {
+          pagesSkipped++;
+          logger.warn(`movers:${marketCode}:${days}d skipped: all candidates gated as implausible`);
+        } else {
+          await writeSnapshot(url, token, makeKey(['consumer-prices', 'movers', marketCode, `${days}d`]), movers, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
+          pagesOk++;
+        }
       } catch (err) {
         pagesFailed++;
         logger.error(`movers:${marketCode}:${days}d failed: ${err}`);
@@ -266,7 +276,10 @@ export async function publishAll() {
 
     const totalSnapshots = pagesOk + pagesFailed;
     const completionRatio = totalSnapshots > 0 ? Number((pagesOk / totalSnapshots).toFixed(4)) : 0;
-    logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}`);
+    // Skips are neither ok nor failed, so they are absent from the ratio. Say
+    // so rather than logging a clean "N/N ok, ratio=1" over withheld writes.
+    const skipNote = pagesSkipped > 0 ? `, ${pagesSkipped} skipped` : '';
+    logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}${skipNote}`);
     totalPagesFailed += pagesFailed;
   }
 

@@ -17,7 +17,7 @@ Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these p
 
 ## Machine-readable discovery
 
-Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
+Building an agent or codegen pipeline? Point at `https://www.worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
 
 The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for **the generated domain services** in one pass. Platform endpoints documented in prose only (`/api/bootstrap`, `/api/health`, `/api/product-catalog`, the brief/notification/commerce routes, …) are not in the bundle. `CompanyMonitoringService` is a further exception: it is published as a contract only and is not routed yet, so generated clients for its operations will not receive a response.
 

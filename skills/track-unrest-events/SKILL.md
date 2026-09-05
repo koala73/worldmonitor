@@ -21,7 +21,7 @@ Issue a key at https://www.worldmonitor.app/pro for authenticated and Pro-gated 
 ## Endpoint
 
 ```
-GET https://worldmonitor.app/api/unrest/v1/list-unrest-events
+GET https://www.worldmonitor.app/api/unrest/v1/list-unrest-events
 ```
 
 ## Parameters
@@ -74,7 +74,7 @@ Recent unrest in France over the last seven days:
 START_MS=$(node -e 'console.log(Date.now() - 7 * 24 * 60 * 60 * 1000)')
 curl -s --get \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
-  'https://worldmonitor.app/api/unrest/v1/list-unrest-events' \
+  'https://www.worldmonitor.app/api/unrest/v1/list-unrest-events' \
   --data-urlencode 'country=FR' \
   --data-urlencode "start=$START_MS" \
   | jq '.events[:10] | .[] | {title, city, eventType, severity, occurredAt}'
@@ -100,5 +100,5 @@ Use this skill for aggregate situational awareness and source-attributed reporti
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json - operation `ListUnrestEvents`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json - operation `ListUnrestEvents`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth

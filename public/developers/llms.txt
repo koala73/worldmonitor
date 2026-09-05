@@ -8,11 +8,11 @@ All developer surfaces share one tool inventory and one subscription auth model 
 
 - [MCP server](https://worldmonitor.app/mcp): recommended agent surface — Streamable HTTP, JSON-RPC 2.0. `tools/list`, `prompts/list`, and `resources/list` are anonymous; `describe_tool` requires subscription credentials. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - [Docs MCP server](https://www.worldmonitor.app/docs/mcp): public search-and-retrieval over the documentation — no auth. Card: https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json
-- [REST API](https://api.worldmonitor.app): OpenAPI 3.1 contract at https://worldmonitor.app/openapi.yaml (JSON: https://worldmonitor.app/openapi.json) · API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
+- [REST API](https://api.worldmonitor.app): OpenAPI 3.1 contract at https://www.worldmonitor.app/openapi.yaml (JSON: https://www.worldmonitor.app/openapi.json) · API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
 - [CLI](https://www.npmjs.com/package/worldmonitor): `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the command
-- [SDKs](https://worldmonitor.app/sdks.md): Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript (npm `worldmonitor`)
+- [SDKs](https://www.worldmonitor.app/sdks.md): Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript (npm `worldmonitor`)
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): installable skills manifest — `npx skills add koala73/worldmonitor`
-- [Agent Plugin metadata](https://worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
+- [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
 
 ## Test Without a Key
 
@@ -23,12 +23,12 @@ All developer surfaces share one tool inventory and one subscription auth model 
 
 ## Auth, Limits, Support
 
-- [auth.md](https://worldmonitor.app/auth.md): agent auth walkthrough — API keys and OAuth 2.1 with dynamic client registration; issue a key at https://worldmonitor.app/pro
-- [pricing.md](https://worldmonitor.app/pricing.md): machine-readable plans and limits · live catalog: https://www.worldmonitor.app/api/product-catalog
-- [support.md](https://worldmonitor.app/support.md): support channels · status: https://status.worldmonitor.app
+- [auth.md](https://www.worldmonitor.app/auth.md): agent auth walkthrough — API keys and OAuth 2.1 with dynamic client registration; issue a key at https://www.worldmonitor.app/pro
+- [pricing.md](https://www.worldmonitor.app/pricing.md): machine-readable plans and limits · live catalog: https://www.worldmonitor.app/api/product-catalog
+- [support.md](https://www.worldmonitor.app/support.md): support channels · status: https://status.worldmonitor.app
 
 ## Related Section Files
 
-- [Site-wide llms.txt](https://worldmonitor.app/llms.txt) · [API section](https://worldmonitor.app/api/llms.txt) · [Docs section](https://www.worldmonitor.app/docs/llms.txt) · [Blog section](https://www.worldmonitor.app/blog/llms.txt)
-- [Developer portal (human)](https://worldmonitor.app/developers.md) · [agents.md](https://worldmonitor.app/agents.md)
-- [World Monitor brand identity](https://worldmonitor.app/world-monitor.md) · [REST versioning and deprecation](https://worldmonitor.app/api-versioning.md)
+- [Site-wide llms.txt](https://www.worldmonitor.app/llms.txt) · [API section](https://www.worldmonitor.app/api/llms.txt) · [Docs section](https://www.worldmonitor.app/docs/llms.txt) · [Blog section](https://www.worldmonitor.app/blog/llms.txt)
+- [Developer portal (human)](https://www.worldmonitor.app/developers.md) · [agents.md](https://www.worldmonitor.app/agents.md)
+- [World Monitor brand identity](https://www.worldmonitor.app/world-monitor.md) · [REST versioning and deprecation](https://www.worldmonitor.app/api-versioning.md)

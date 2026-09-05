@@ -4,13 +4,42 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
   if (typeof content === 'string') {
     return content.replace(/\r\n/g, '\n');
   }
   return content;
+}
+
+// Consecutive User-agent lines share one robots.txt group. A blank line, or a
+// User-agent line after rules, starts a new group; comments do not end a group.
+function parseRobotsGroups(source) {
+  const groups = [];
+  let current = null;
+  for (const raw of source.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      current = null;
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim().toLowerCase();
+    const value = line.slice(colon + 1).trim();
+    if (key === 'user-agent') {
+      if (!current || current.rules.length > 0) {
+        current = { agents: [], rules: [] };
+        groups.push(current);
+      }
+      current.agents.push(value.toLowerCase());
+    } else if (current && (key === 'allow' || key === 'disallow')) {
+      current.rules.push(`${key}: ${value}`);
+    }
+  }
+  return groups;
 }
 import { fileURLToPath } from 'node:url';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
@@ -1241,10 +1270,25 @@ describe('welcome landing page routing', () => {
       /dashboardUrl\.pathname = '\/dashboard'/,
       'middleware must move legacy dashboard-state root links to /dashboard',
     );
+    // Hand-built rather than Response.redirect() so the response can carry
+    // Vary (#7660). The same URL now yields two different Locations depending
+    // on the User-Agent, and a 308 is cacheable by default (RFC 9110
+    // §15.4.9) — an unkeyed cache would replay one branch's Location to the
+    // other's client.
     assert.match(
       middlewareSource,
+      /headers: uaConditionedRedirectHeaders\(dashboardUrl\)/,
+      'the legacy root redirect must preserve the query string AND declare the User-Agent cache key',
+    );
+    assert.match(
+      middlewareSource,
+      /'CDN-Cache-Control': 'no-store',\n\s*'Vercel-CDN-Cache-Control': 'no-store',/,
+      'Cache-Control alone loses to the CDN directives on the / route',
+    );
+    assert.doesNotMatch(
+      middlewareSource,
       /Response\.redirect\(dashboardUrl\.toString\(\), 308\)/,
-      'middleware must redirect, preserving the original query string',
+      'Response.redirect() cannot set Vary, so it cannot be used for a UA-conditioned redirect',
     );
   });
 
@@ -3103,16 +3147,18 @@ describe('agent readiness: api-catalog + openapi build', () => {
     const meta = apiEntry['service-meta'];
     assert.ok(Array.isArray(meta) && meta.length > 0, 'api context must carry service-meta entries');
     const hrefs = meta.map((entry) => entry.href);
-    assert.ok(hrefs.includes('https://worldmonitor.app/pricing.md'), 'service-meta must advertise pricing.md');
+    // www, not apex: neither path is on the Cloudflare apex-exemption list, so
+    // the apex form is a 301 an agent pays for before reaching the file (#7660).
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/pricing.md'), 'service-meta must advertise pricing.md');
     assert.ok(
       hrefs.includes('https://www.worldmonitor.app/api/product-catalog'),
       'service-meta must advertise the live product-catalog JSON endpoint'
     );
-    assert.ok(hrefs.includes('https://worldmonitor.app/support.md'), 'service-meta must advertise support.md');
-    assert.ok(hrefs.includes('https://worldmonitor.app/agents.md'), 'service-meta must advertise agents.md (#4952)');
-    assert.ok(hrefs.includes('https://worldmonitor.app/world-monitor.md'), 'service-meta must advertise world-monitor.md');
-    assert.ok(hrefs.includes('https://worldmonitor.app/api-versioning.md'), 'service-meta must advertise api-versioning.md');
-    assert.ok(hrefs.includes('https://worldmonitor.app/plugin.json'), 'service-meta must advertise /plugin.json');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/support.md'), 'service-meta must advertise support.md');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/agents.md'), 'service-meta must advertise agents.md (#4952)');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/world-monitor.md'), 'service-meta must advertise world-monitor.md');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/api-versioning.md'), 'service-meta must advertise api-versioning.md');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/plugin.json'), 'service-meta must advertise /plugin.json');
     // The Commerce spec lives outside the root openapi bundle (size budget,
     // #4853) — without this link no advertised descriptor reaches it
     // (post-#4867 review finding); Mintlify serves the raw YAML at this URL.
@@ -3927,71 +3973,45 @@ describe('agent readiness: Content-Signal declarations', () => {
   });
 });
 
-// #4952 — three-tier AI crawler policy. A named `User-agent` group REPLACES
-// the `*` group for that crawler (robots.txt groups do not inherit), so the
-// AI search/assistant allow-group must restate the full `*` rule set or those
-// crawlers would lose the /api/ protections. The training-only group must
-// stay a hard `Disallow: /`.
+// #4952 — a named `User-agent` group replaces the `*` group for that crawler.
+// Autonomous search crawlers restate the full `*` rule set. User-triggered
+// fetchers keep the bounded path protections but can open shared map links.
+// The training-only group stays a hard `Disallow: /`.
 describe('agent readiness: robots.txt AI crawler policy', () => {
   const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
-  // Minimal robots.txt group parser: consecutive User-agent lines share one
-  // group; a blank line or a User-agent line following rules starts a new one;
-  // comments never end a group.
-  const parseGroups = (source) => {
-    const groups = [];
-    let current = null;
-    for (const raw of source.split('\n')) {
-      const line = raw.trim();
-      if (line === '') {
-        current = null;
-        continue;
-      }
-      if (line.startsWith('#')) continue;
-      const colon = line.indexOf(':');
-      if (colon === -1) continue;
-      const key = line.slice(0, colon).trim().toLowerCase();
-      const value = line.slice(colon + 1).trim();
-      if (key === 'user-agent') {
-        if (!current || current.rules.length > 0) {
-          current = { agents: [], rules: [] };
-          groups.push(current);
-        }
-        current.agents.push(value.toLowerCase());
-      } else if (current && (key === 'allow' || key === 'disallow')) {
-        current.rules.push(`${key}: ${value}`);
-      }
-    }
-    return groups;
-  };
-
-  const groups = parseGroups(robotsSource);
+  const groups = parseRobotsGroups(robotsSource);
   const starGroup = groups.find((g) => g.agents.includes('*'));
   const aiAllowGroup = groups.find((g) => g.agents.includes('gptbot'));
+  const userFetchGroup = groups.find((g) => g.agents.includes('chatgpt-user'));
   const trainingBlockGroup = groups.find((g) => g.agents.includes('ccbot'));
 
-  // The agents AEO scanners score by name (search/assistant tier).
   const REQUIRED_AI_SEARCH_AGENTS = [
     'gptbot',
     'claudebot',
-    'chatgpt-user',
     'perplexitybot',
     'google-extended',
     'applebot-extended',
   ];
+  const REQUIRED_USER_FETCH_AGENTS = [
+    'chatgpt-user',
+    'claude-user',
+    'perplexity-user',
+    'mistralai-user',
+  ];
   const BLOCKED_TRAINING_AGENTS = ['ccbot', 'bytespider', 'anthropic-ai'];
 
-  it('explicitly allows the AI search/assistant agents in one named group', () => {
-    assert.ok(aiAllowGroup, 'robots.txt must have a named AI search/assistant group (GPTBot et al.)');
+  it('explicitly allows the AI search crawlers in one named group', () => {
+    assert.ok(aiAllowGroup, 'robots.txt must have a named AI search group (GPTBot et al.)');
     for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
       assert.ok(
         aiAllowGroup.agents.includes(agent),
-        `AI search/assistant group must include User-agent: ${agent}`
+        `AI search group must include User-agent: ${agent}`
       );
     }
     assert.ok(
       aiAllowGroup.rules.includes('allow: /'),
-      'AI search/assistant group must Allow: /'
+      'AI search group must Allow: /'
     );
   });
 
@@ -4002,6 +4022,15 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
       [...starGroup.rules].sort(),
       'the AI allow-group must restate the exact `*` rule set — named groups do not inherit, so a drift here silently opens /api/ (or blocks paths) for AI crawlers'
     );
+  });
+
+  it('keeps user-triggered fetchers in their own crawl-permitting group', () => {
+    assert.ok(userFetchGroup, 'robots.txt must have a user-triggered assistant group');
+    for (const agent of REQUIRED_USER_FETCH_AGENTS) {
+      assert.ok(userFetchGroup.agents.includes(agent), `user fetch group must include User-agent: ${agent}`);
+      assert.ok(!aiAllowGroup.agents.includes(agent), `${agent} must not inherit autonomous crawl limits`);
+    }
+    assert.ok(userFetchGroup.rules.includes('allow: /'), 'user fetch group must Allow: /');
   });
 
   it('disallows the bulk training-only scrapers entirely', () => {
@@ -4020,7 +4049,7 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   });
 
   it('never lists an allowed AI agent in the blocked group (and vice versa)', () => {
-    for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
+    for (const agent of [...REQUIRED_AI_SEARCH_AGENTS, ...REQUIRED_USER_FETCH_AGENTS]) {
       assert.ok(
         !trainingBlockGroup.agents.includes(agent),
         `${agent} drives citations and must not be in the blocked group`
@@ -4043,6 +4072,410 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
         );
       }
     }
+  });
+});
+
+// #7660: autonomous crawl groups block unbounded coordinate state and /tmp/
+// paths. User-triggered fetchers can follow shared map links.
+describe('agent readiness: crawl-budget disallows (#7660)', () => {
+  const CRAWL_BUDGET_DISALLOWS = [
+    'disallow: /tmp/',
+    'disallow: /*?*lat=',
+    'disallow: /*?*lon=',
+    'disallow: /*?*zoom=',
+  ];
+
+  // The inverse half of the contract, and the more important one. robots.txt is
+  // a crawl control, not a canonicalization tool: a disallowed URL is never
+  // fetched, so Google reads neither its rel=canonical nor its redirect. These
+  // families already consolidate — middleware 308s a crawler off ref/
+  // wm_referral/utm_* (a 308 passes the link equity that affiliates' pasted
+  // /pro?ref=… URLs carry), and wm_content_* answers 200 with a canonical.
+  // Blocking them would replace a working mechanism with a worse one.
+  const MUST_STAY_CRAWLABLE = [
+    'disallow: /*?*ref=',
+    'disallow: /*?*wm_referral=',
+    'disallow: /*?*wm_content_',
+    'disallow: /*?*utm_',
+    // `layers` looks like map state but is not what makes the space unbounded.
+    // src/utils/urlState.ts sets `zoom` unconditionally on every share URL, so
+    // `/*?*zoom=` already catches the whole family; `layers` added no coverage
+    // and disallowed the bounded dashboard CTAs build-use-cases.mjs publishes
+    // with layers and no coordinates (PR #7689 review).
+    'disallow: /*?*layers=',
+  ];
+
+  for (const file of ['robots.www.txt', 'robots.variant.txt']) {
+    it(`${file} lets user-triggered assistant fetchers open shared map links`, () => {
+      const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const starGroup = groups.find((group) => group.agents.includes('*'));
+      const userFetchGroup = groups.find((group) => group.agents.includes('chatgpt-user'));
+      assert.ok(starGroup, `${file} must have a default group`);
+      assert.ok(userFetchGroup, `${file} must have a user-triggered assistant group`);
+      for (const agent of ['chatgpt-user', 'claude-user', 'perplexity-user', 'mistralai-user']) {
+        assert.ok(userFetchGroup.agents.includes(agent), `${file} must include ${agent}`);
+      }
+      const coordinateRules = new Set(CRAWL_BUDGET_DISALLOWS.slice(1));
+      const expectedRules = starGroup.rules.filter((rule) => !coordinateRules.has(rule));
+      assert.deepStrictEqual(
+        [...userFetchGroup.rules].sort(),
+        [...expectedRules].sort(),
+        `${file} user-triggered fetchers must omit only the coordinate rules`
+      );
+    });
+
+    it(`${file} carries every crawl-budget disallow in every autonomous crawl group`, () => {
+      const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const crawling = groups.filter((g) => g.rules.includes('allow: /'));
+      const autonomous = crawling.filter((g) => !g.agents.includes('chatgpt-user'));
+      assert.ok(autonomous.length >= 2, `${file} must have a * group and a named AI group that crawl`);
+      for (const group of autonomous) {
+        for (const rule of CRAWL_BUDGET_DISALLOWS) {
+          assert.ok(
+            group.rules.includes(rule),
+            `${file} group [${group.agents.join(', ')}] is missing \`${rule.replace('disallow:', 'Disallow:')}\` — ` +
+              'robots groups do not inherit, so this crawler still burns budget on the space the others no longer crawl'
+          );
+        }
+      }
+      for (const group of crawling) {
+        for (const rule of MUST_STAY_CRAWLABLE) {
+          assert.ok(
+            !group.rules.includes(rule),
+            `${file} group [${group.agents.join(', ')}] added \`${rule.replace('disallow:', 'Disallow:')}\` — ` +
+              'that family already consolidates via a 308 or a rel=canonical, and a disallowed URL is never ' +
+              'fetched, so blocking it strands the signal instead of folding it'
+          );
+        }
+      }
+    });
+  }
+
+  it('leaves the canonical param-free documents crawlable', () => {
+    // The disallows are query-scoped on purpose: `/dashboard` and `/pro` are
+    // the consolidation targets the canonicals point at, so blocking the bare
+    // paths would delete the pages this change exists to protect.
+    for (const file of ['robots.www.txt', 'robots.variant.txt']) {
+      const body = readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8');
+      assert.doesNotMatch(body, /^Disallow: \/dashboard$/m, `${file} must keep /dashboard crawlable`);
+      assert.doesNotMatch(body, /^Disallow: \/docs$/m, `${file} must keep /docs crawlable`);
+      for (const line of body.split('\n')) {
+        const match = /^Disallow: (\/\*.*)$/.exec(line.trim());
+        if (!match) continue;
+        assert.match(
+          match[1],
+          /^\/\*\?\*/,
+          `${line.trim()} must be query-scoped (\`/*?*\`) — a bare wildcard would block the canonical document too`
+        );
+      }
+    }
+  });
+
+  // Rule presence is not the contract — what the rules MATCH is. This resolves
+  // real request paths against the `*` group using Google's documented
+  // semantics (`*` = any sequence, `$` = end of URL, longest match wins,
+  // Allow beats an equal-length Disallow) so a future edit that quietly
+  // narrows or widens a pattern fails here rather than in Search Console.
+  describe('resolved against the paths Search Console actually reported', () => {
+    const escapeRe = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Google's robots.txt path matching: `*` is any sequence, a trailing `$`
+    // anchors the end of the URL (query string included), everything else is
+    // a literal prefix match.
+    const pathMatches = (pattern, path) => {
+      const source = pattern.endsWith('$')
+        ? `^${pattern.slice(0, -1).split('*').map(escapeRe).join('.*')}$`
+        : `^${pattern.split('*').map(escapeRe).join('.*')}`;
+      return new RegExp(source).test(path);
+    };
+
+    const ruleCache = new Map();
+    const starGroupRules = (file) => {
+      if (!ruleCache.has(file)) {
+        const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+        const star = groups.find((g) => g.agents.includes('*'));
+        assert.ok(star, `${file} must have a * group`);
+        ruleCache.set(
+          file,
+          star.rules.map((rule) => {
+            const [key, ...rest] = rule.split(': ');
+            return { allow: key === 'allow', pattern: rest.join(': ') };
+          })
+        );
+      }
+      return ruleCache.get(file);
+    };
+
+    const isCrawlable = (file, path) => {
+      let best = null;
+      for (const rule of starGroupRules(file)) {
+        if (!pathMatches(rule.pattern, path)) continue;
+        if (!best || rule.pattern.length > best.pattern.length) best = rule;
+        else if (rule.pattern.length === best.pattern.length && rule.allow) best = rule;
+      }
+      return best ? best.allow : true;
+    };
+
+    // Verbatim shapes from the 2026-09-04 GSC "Page with redirect" and
+    // "Not found (404)" exports.
+    const BLOCKED = [
+      '/?lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts,bases',
+      '/index?lat=NaN&lon=NaN&zoom=2.50&view=america&timeRange=7d&layers=conflicts',
+      '/dashboard?lat=20.0000&lon=0.0000&zoom=1.00',
+      '/tmp/gem-pipelines.json',
+    ];
+    const CRAWLABLE = [
+      '/',
+      '/dashboard',
+      '/pro',
+      '/countries/iran/',
+      '/compare/iran-vs-israel/',
+      '/docs/mcp-overview',
+      // #7660 proposed Disallow: /docs/_next/ for the 139 stale hashed chunks
+      // that 404 after every Mintlify redeploy. Measured instead: a live
+      // /docs/* page pulls 76 assets from that prefix, JS and CSS both, and
+      // the current deploy's assets carry the same `?dpl=` pin as the stale
+      // ones — no pattern separates them. Blocking it would hide every render
+      // resource from Googlebot on the pages already stuck in "crawled -
+      // currently not indexed", which costs more than a cheap 404.
+      '/docs/_next/static/chunks/462bacc63bed9960.css?dpl=dpl_6TpKozpvfbf2eKSzPrrzWSvEC9fx',
+      // docs/embed-live-map.mdx documents this exact iframe src. The map-param
+      // rules would otherwise stop Googlebot fetching our widget while it
+      // renders a partner's page.
+      '/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full',
+      '/embed?panel=fear-greed&theme=dark',
+      // Bounded, already-consolidating families: the middleware 308 and the
+      // rel=canonical only work if the crawler is allowed to fetch them.
+      '/pro?ref=affiliate',
+      '/pro?wm_referral=abc123',
+      '/pro?wm_content_source=use-cases&wm_content_medium=internal',
+      '/countries/iran/?utm_source=newsletter',
+      '/blog/',
+      '/api/llms.txt',
+    ];
+
+    for (const file of ['robots.www.txt', 'robots.variant.txt']) {
+      it(`${file} blocks the reported crawl-waste URLs`, () => {
+        for (const path of BLOCKED) {
+          assert.equal(isCrawlable(file, path), false, `${file} must block ${path}`);
+        }
+      });
+
+      it(`${file} still allows the canonical corpus`, () => {
+        for (const path of CRAWLABLE) {
+          // /pro and its query forms are deliberately Disallowed on variant
+          // hosts (#6835) — /pro/welcome.html stays 200 there.
+          if (file === 'robots.variant.txt' && path.startsWith('/pro')) continue;
+          assert.equal(isCrawlable(file, path), true, `${file} must keep ${path} crawlable`);
+        }
+      });
+    }
+
+    // Probed against production 2026-09-04: Vercel applies vercel.json
+    // `redirects` BEFORE middleware. On a variant host, `/?ref=x` answers
+    // 308 -> `/dashboard?ref=x` with the param intact, while the same request
+    // on www answers 308 -> `/` with it stripped — so the middleware never
+    // runs for `/` there, and crawlerCanonicalUrl() cannot collapse variant
+    // map-state URLs.
+    //
+    // That makes the variant robots rules load-bearing rather than
+    // belt-and-braces: they are the ONLY thing keeping a compliant crawler off
+    // the variant hosts' share of the space (415 of the 1,000 exported
+    // redirect URLs). If the `/` -> `/dashboard` host redirect is ever
+    // removed, middleware takes over and this coupling changes — so assert the
+    // pair together rather than leaving the dependency unwritten.
+    it('keeps the variant map-state rules load-bearing while the / host redirect exists', () => {
+      const variantRootRedirect = vercelConfig.redirects.find(
+        (r) =>
+          r.source === '/' &&
+          Array.isArray(r.has) &&
+          r.has.some((h) => h.type === 'host' && /tech|finance|commodity|happy|energy/.test(h.value))
+      );
+      if (!variantRootRedirect) return;
+      assert.equal(variantRootRedirect.destination, '/dashboard');
+      for (const path of [
+        '/?lat=20.0000&lon=0.0000&zoom=1.00',
+        '/dashboard?lat=20.0000&lon=0.0000&zoom=1.00',
+      ]) {
+        assert.equal(
+          isCrawlable('robots.variant.txt', path),
+          false,
+          `robots.variant.txt must block ${path} itself — the middleware collapse never runs on a variant host`
+        );
+      }
+    });
+
+    // The sitemap covers the documents we declare. This covers the links those
+    // documents CONTAIN — a different failure, and the one a crawl-budget rule
+    // is most likely to cause: publishing a link on ~240 generated pages while
+    // telling Google it may not follow it. Blocking a link you keep emitting is
+    // the worst of both, and it moves the volume into "Blocked by robots.txt"
+    // rather than removing it.
+    //
+    // Shapes are the ones the corpus builders actually emit
+    // (scripts/build-crawlable-corpus.mjs withUtmSource, scripts/build-use-cases.mjs
+    // content attribution, scripts/crawlable-sources-page.mjs,
+    // scripts/build-research-reports.mjs).
+    // `/*?*lat=` is a substring match over the whole query, not a parameter-NAME
+    // match: it also catches any param ending in the token (`?colon=` matches
+    // `/*?*lon=`) and value-side text (`?q=flat=earth` matches `/*?*lat=`).
+    //
+    // That cannot be fixed in robots.txt. Name-anchoring needs `/*&lat=` for a
+    // non-first parameter, and a literal `&` in a rule path never matches —
+    // verified against Protego, which implements Google's spec: `/*&lat=` does
+    // not match `/d?view=g&lat=1` while `/*?*lat=` does. Anchoring would have
+    // silently stopped blocking every map URL whose lat is not the first param.
+    //
+    // So the exposure is real and permanent, and the guard is on the other
+    // side: no parameter this application actually reads may end in one of the
+    // blocked tokens. 96 params read via searchParams today, zero collisions —
+    // this fails the day someone adds `?colon=`, `?salon=`, `?pylon=` or
+    // `?flat=`, which is when it matters.
+    it('has no live collision between a blocked token and a real parameter', () => {
+      const BLOCKED_TOKENS = ['lat', 'lon', 'zoom', 'layers'];
+      const SOURCE_DIRS = ['src', 'server', 'api', 'scripts', 'shared'];
+      // Both spellings: `url.searchParams.get('x')` and the bare
+      // `params.get('x')` / `params.set('x', …)` used once a URLSearchParams is
+      // in a local (src/utils/urlState.ts reads zoom and layers that way).
+      const PARAM_RE = /(?:searchParams|params)\.(?:get|has|set)\(\s*['"]([A-Za-z0-9_]+)['"]/g;
+
+      const collectParams = (dir, acc) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            collectParams(full, acc);
+            continue;
+          }
+          if (!/\.(ts|tsx|mts|mjs|js|cjs)$/.test(entry.name)) continue;
+          for (const m of readFileSync(full, 'utf-8').matchAll(PARAM_RE)) acc.add(m[1]);
+        }
+        return acc;
+      };
+
+      const params = new Set();
+      for (const dir of SOURCE_DIRS) collectParams(resolve(__dirname, '..', dir), params);
+      assert.ok(params.size > 50, `expected to find the app's query params, got ${params.size}`);
+      for (const token of BLOCKED_TOKENS) assert.ok(params.has(token), `${token} must be a real param`);
+
+      // The bounding-box params collide on the token but never on a crawlable
+      // URL: they exist only on `/api/*` RPC routes, which `Disallow: /api/`
+      // has covered since long before these rules. Allowlisted explicitly, and
+      // re-proved below, so a NEW collision on a crawlable surface still fails.
+      const API_ONLY_COLLISIONS = ['sw_lat', 'sw_lon', 'ne_lat', 'ne_lon'];
+
+      const collisions = [...params].filter(
+        (name) => !BLOCKED_TOKENS.includes(name) && BLOCKED_TOKENS.some((t) => name.endsWith(t))
+      );
+      assert.deepEqual(
+        collisions.filter((name) => !API_ONLY_COLLISIONS.includes(name)).sort(),
+        [],
+        'these parameters end in a blocked token, so `/*?*<token>=` would disallow every URL ' +
+          `carrying them: ${collisions.join(', ')}. Rename the param, or drop the rule.`
+      );
+
+      // The allowlist cannot rot: every file that names one of these must also
+      // name an /api/ path, so the day one is used on a crawlable URL this
+      // fails instead of quietly widening the exemption.
+      const filesNaming = (needle, dir, acc = []) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            filesNaming(needle, full, acc);
+            continue;
+          }
+          if (!/\.(ts|tsx|mts|mjs|js|cjs)$/.test(entry.name)) continue;
+          const body = readFileSync(full, 'utf-8');
+          // As a query KEY only — quoted, or written into a query string. A
+          // bare prose mention (`// [sw_lat, sw_lon, …]` documenting an array
+          // order) is not a parameter and must not trip this.
+          const asQueryKey = new RegExp(`['"\`]${needle}['"\`]|[?&]${needle}=`);
+          if (asQueryKey.test(body)) acc.push({ path: full, apiScoped: body.includes('/api/') });
+        }
+        return acc;
+      };
+      for (const name of API_ONLY_COLLISIONS) {
+        for (const dir of SOURCE_DIRS) {
+          for (const hit of filesNaming(name, resolve(__dirname, '..', dir))) {
+            assert.ok(
+              hit.apiScoped,
+              `${name} is allowlisted as /api/-only, but ${relative(resolve(__dirname, '..'), hit.path)} ` +
+                'names it without any /api/ path — if it now reaches a crawlable URL, `/*?*lat=` disallows that URL'
+            );
+          }
+        }
+      }
+    });
+
+    it('never blocks a link shape our own build emits', () => {
+      // Read the hrefs out of the builders rather than sampling them by hand.
+      // The hand-written sample was the bug: it listed twelve shapes and missed
+      // the two `layers=` dashboard CTAs in build-use-cases.mjs, so the rules
+      // shipped blocking links the site publishes (PR #7689 review).
+      const BUILDERS = [
+        'scripts/build-crawlable-corpus.mjs',
+        'scripts/build-use-cases.mjs',
+        'scripts/crawlable-sources-page.mjs',
+        'scripts/build-research-reports.mjs',
+      ];
+      // A quoted or backticked literal that starts with `/` and has a query.
+      const HREF_RE = /['"`](\/[A-Za-z0-9._\-/${}]*\?[^'"`]*)['"`]/g;
+
+      const emitted = new Map();
+      for (const builder of BUILDERS) {
+        const src = readFileSync(resolve(__dirname, '..', builder), 'utf-8');
+        src.split('\n').forEach((line, index) => {
+          for (const match of line.matchAll(HREF_RE)) {
+            const raw = match[1];
+            if (raw.includes('://')) continue;
+            // Template interpolation stands in as a concrete value; the rules
+            // key on parameter names, so the substituted value is irrelevant.
+            emitted.set(raw.replace(/\$\{[^}]*\}/g, 'X'), `${builder}:${index + 1}`);
+          }
+        });
+      }
+
+      assert.ok(
+        emitted.size >= 8,
+        `expected to read the corpus builders' query-bearing hrefs, found ${emitted.size} — ` +
+          'the extraction regex probably stopped matching, which would make this test vacuous'
+      );
+
+      // The attribution wrappers every builder applies on top of those literals.
+      const TAGGED = (href) =>
+        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case`;
+
+      const blocked = [];
+      for (const [href, where] of emitted) {
+        for (const candidate of [href, TAGGED(href)]) {
+          if (!isCrawlable('robots.www.txt', candidate)) blocked.push(`  ${where}  ${candidate}`);
+        }
+      }
+      assert.deepEqual(
+        blocked,
+        [],
+        'robots.www.txt blocks links the build emits on generated pages. Blocking a link you keep ' +
+          'publishing does not remove the crawl volume, it relabels it "Blocked by robots.txt" and ' +
+          `tells Google not to follow your own internal graph:\n${blocked.join('\n')}`
+      );
+    });
+
+    it('blocks nothing we declare in the sitemap', () => {
+      // The failure mode worth guarding: a crawl-budget rule that also deletes
+      // part of the 845-URL declared inventory it exists to protect. Resolved
+      // against every <loc> rather than a sample.
+      const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
+      const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+      assert.ok(locs.length > 100, `expected a populated sitemap, got ${locs.length} entries`);
+      for (const loc of locs) {
+        const { pathname, search } = new URL(loc);
+        assert.equal(
+          isCrawlable('robots.www.txt', `${pathname}${search}`),
+          true,
+          `robots.www.txt blocks a sitemap-declared URL: ${loc}`
+        );
+      }
+    });
   });
 });
 
@@ -4386,7 +4819,8 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       'utf-8'
     );
     for (const page of DEV_PAGES) {
-      const url = `https://worldmonitor.app${page.path}`;
+      // www, not apex (#7660): the developer-resource pages 301 off the apex.
+      const url = `https://www.worldmonitor.app${page.path}`;
       assert.ok(catalogHrefs.includes(url), `api-catalog must advertise ${url}`);
       for (const [name, content] of surfaces) {
         assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
@@ -4499,9 +4933,9 @@ describe('section-scoped llms.txt files', () => {
   it('the site-wide llms.txt cross-links every section file and the sandbox', () => {
     const llms = readFileSync(resolve(__dirname, '../public/llms.txt'), 'utf-8');
     for (const url of [
-      'https://worldmonitor.app/api/llms.txt',
+      'https://www.worldmonitor.app/api/llms.txt',
       'https://www.worldmonitor.app/docs/llms.txt',
-      'https://worldmonitor.app/developers/llms.txt',
+      'https://www.worldmonitor.app/developers/llms.txt',
       'https://www.worldmonitor.app/blog/llms.txt',
       'https://www.worldmonitor.app/sandbox/index.json',
       'https://www.worldmonitor.app/schemamap.xml',
@@ -4788,8 +5222,14 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     for (const path of ['/pro', '/api/', '/tests/']) {
       assert.match(body, new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'), `variant robots must Disallow ${path}`);
     }
-    assert.match(body, /^Allow: \/dashboard$/m);
-    assert.doesNotMatch(body, /^Disallow: \/dashboard$/m);
+    // End-anchored since #7660. Unanchored, `/dashboard` is 10 characters and
+    // out-ranks the 8-9 character `/*?*lat=`, `/*?*lon=`, `/*?*zoom=`,
+    // `/*?*ref=` and `/*?*utm_` rules, so any map URL omitting `layers` slipped
+    // straight through on the one path that generates the space. `$` keeps the
+    // bare document explicitly crawlable without covering its query forms.
+    assert.match(body, /^Allow: \/dashboard\$$/m);
+    assert.doesNotMatch(body, /^Allow: \/dashboard$/m);
+    assert.doesNotMatch(body, /^Disallow: \/dashboard\$?$/m);
     assert.match(body, /^Sitemap: https:\/\/www\.worldmonitor\.app\/sitemap\.xml$/m);
   });
 
@@ -4842,35 +5282,8 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
   });
 
   it('variant and api robots keep AI-group rule parity with their own * group (#6835)', () => {
-    const parseGroups = (source) => {
-      const groups = [];
-      let current = null;
-      for (const raw of source.split('\n')) {
-        const line = raw.trim();
-        if (line === '') {
-          current = null;
-          continue;
-        }
-        if (line.startsWith('#')) continue;
-        const colon = line.indexOf(':');
-        if (colon === -1) continue;
-        const key = line.slice(0, colon).trim().toLowerCase();
-        const value = line.slice(colon + 1).trim();
-        if (key === 'user-agent') {
-          if (!current || current.rules.length > 0) {
-            current = { agents: [], rules: [] };
-            groups.push(current);
-          }
-          current.agents.push(value.toLowerCase());
-        } else if (current && (key === 'allow' || key === 'disallow')) {
-          current.rules.push(`${key}: ${value}`);
-        }
-      }
-      return groups;
-    };
-
     for (const file of ['robots.variant.txt', 'robots.api.txt']) {
-      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const groups = parseRobotsGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
       const star = groups.find((g) => g.agents.includes('*'));
       const ai = groups.find((g) => g.agents.includes('gptbot'));
       const training = groups.find((g) => g.agents.includes('ccbot'));

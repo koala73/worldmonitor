@@ -47,7 +47,7 @@ Data surfaces include source identity, timestamps, methodology, or related conte
 
 ## Access and plans
 
-The public dashboard is free and does not require an account. Pro adds advanced analysis, research, customization, and higher-value workflows. API plans cover programmatic and business use. Current features, limits, prices, and licensing terms are in the [machine-readable pricing guide](https://worldmonitor.app/pricing.md) and on the [visual pricing page](https://www.worldmonitor.app/pro#pricing).
+The public dashboard is free and does not require an account. Pro adds advanced analysis, research, customization, and higher-value workflows. API plans cover programmatic and business use. Current features, limits, prices, and licensing terms are in the [machine-readable pricing guide](https://www.worldmonitor.app/pricing.md) and on the [visual pricing page](https://www.worldmonitor.app/pro#pricing).
 
 Public discovery endpoints do not make every data operation anonymous. An MCP or REST call can require OAuth or a World Monitor API key. Read the [authentication guide](https://www.worldmonitor.app/docs/usage-auth) and [rate-limit guide](https://www.worldmonitor.app/docs/usage-rate-limits.md) before building an integration.
 
@@ -62,13 +62,13 @@ Public discovery endpoints do not make every data operation anonymous. An MCP or
 
 ## For AI agents
 
-Start with the short [llms.txt briefing](https://worldmonitor.app/llms.txt), then use this Markdown page or the [extended LLM reference](https://worldmonitor.app/llms-full.txt) when you need more context.
+Start with the short [llms.txt briefing](https://www.worldmonitor.app/llms.txt), then use this Markdown page or the [extended LLM reference](https://www.worldmonitor.app/llms-full.txt) when you need more context.
 
 - [MCP server](https://worldmonitor.app/mcp): Streamable HTTP for structured tool calls. Run `tools/list` to get the current tool inventory instead of relying on a copied count.
-- [REST API](https://api.worldmonitor.app): structured endpoints described by the [OpenAPI contract](https://worldmonitor.app/openapi.yaml).
+- [REST API](https://api.worldmonitor.app): structured endpoints described by the [OpenAPI contract](https://www.worldmonitor.app/openapi.yaml).
 - [Agent-mode homepage](https://www.worldmonitor.app/?mode=agent): a compact JSON summary of endpoints, authentication, capabilities, and discovery files.
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): task-focused instructions for common country, resilience, and intelligence workflows.
-- [Agent Plugin metadata](https://worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files).
+- [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files).
 - [A2A agent card](https://worldmonitor.app/.well-known/agent-card.json): service identity and protocol discovery for agent-to-agent clients.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks) and [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): supported clients for applications and shell workflows.
 
@@ -80,8 +80,8 @@ World Monitor is not a general web-search engine, a complete historical archive,
 
 ## Documentation
 
-- [Brand identity](https://worldmonitor.app/world-monitor.md) — official name, canonical domain, NAP, and press mentions
+- [Brand identity](https://www.worldmonitor.app/world-monitor.md) — official name, canonical domain, NAP, and press mentions
 - [Product and API documentation](https://www.worldmonitor.app/docs/documentation)
 - [Source catalog](https://www.worldmonitor.app/sources/)
-- [Support and contact](https://worldmonitor.app/support.md)
+- [Support and contact](https://www.worldmonitor.app/support.md)
 - [GitHub repository](https://github.com/koala73/worldmonitor)

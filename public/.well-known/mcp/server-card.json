@@ -583,7 +583,7 @@
     "toolReference": "https://www.worldmonitor.app/docs/mcp-tools-reference",
     "apiReference": "https://www.worldmonitor.app/docs/api-reference",
     "support": "https://www.worldmonitor.app/docs/support",
-    "pricing": "https://worldmonitor.app/pricing.md",
+    "pricing": "https://www.worldmonitor.app/pricing.md",
     "productCatalog": "https://www.worldmonitor.app/api/product-catalog"
   },
   "rateLimits": {

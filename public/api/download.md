@@ -22,13 +22,13 @@ One published binary serves every in-app variant. `variant` is an identity hint,
 
 ## Examples
 
-- [Windows .exe](https://worldmonitor.app/api/download?platform=windows-exe)
-- [macOS Apple Silicon](https://worldmonitor.app/api/download?platform=macos-arm64)
-- [macOS Intel](https://worldmonitor.app/api/download?platform=macos-x64)
-- [Linux AppImage](https://worldmonitor.app/api/download?platform=linux-appimage)
+- [Windows .exe](https://www.worldmonitor.app/api/download?platform=windows-exe)
+- [macOS Apple Silicon](https://www.worldmonitor.app/api/download?platform=macos-arm64)
+- [macOS Intel](https://www.worldmonitor.app/api/download?platform=macos-x64)
+- [Linux AppImage](https://www.worldmonitor.app/api/download?platform=linux-appimage)
 
 ## Related
 
 - Latest GitHub release: https://github.com/koala73/worldmonitor/releases/latest
-- Version API: https://worldmonitor.app/api/version
-- Homepage markdown twin: https://worldmonitor.app/index.md
+- Version API: https://www.worldmonitor.app/api/version
+- Homepage markdown twin: https://www.worldmonitor.app/index.md

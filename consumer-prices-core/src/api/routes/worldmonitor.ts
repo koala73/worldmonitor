@@ -36,6 +36,13 @@ export async function worldmonitorRoutes(fastify: FastifyInstance) {
     const { market = 'ae', days = '30' } = request.query as { market?: string; days?: string };
     try {
       const data = await buildMoversSnapshot(market, parseInt(days, 10));
+      // Null means every candidate was gated as a parse artifact. Sending it
+      // would answer 200 with a body of `null`; answering 200 with an empty
+      // snapshot would be worse still, reporting an untrustworthy window as a
+      // quiet market. Say unavailable instead.
+      if (data === null) {
+        return reply.status(503).send({ error: 'movers snapshot unavailable: all candidates gated as implausible' });
+      }
       return reply.send(data);
     } catch (err) {
       fastify.log.error(err);

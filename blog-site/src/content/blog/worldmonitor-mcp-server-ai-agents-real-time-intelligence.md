@@ -105,7 +105,7 @@ World Monitor treats autonomous agents as first-class clients. From the root URL
 - `/.well-known/mcp/server-card.json`: transport, endpoint, OAuth scopes, capability flags
 - `/openapi.yaml`: one bundled OpenAPI 3.1 spec covering the complete REST service registry
 
-So an agent that has never heard of World Monitor can start from `https://worldmonitor.app/`, read the Link headers, and wire itself up without a human in the loop. If you prefer raw REST over MCP, the same data is available through the [developer API](/blog/posts/build-on-worldmonitor-developer-api-open-source/), and the two share authentication.
+So an agent that has never heard of World Monitor can start from `https://www.worldmonitor.app/`, read the Link headers, and wire itself up without a human in the loop. If you prefer raw REST over MCP, the same data is available through the [developer API](/blog/posts/build-on-worldmonitor-developer-api-open-source/), and the two share authentication.
 
 ## Quotas, Honestly
 
