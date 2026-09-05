@@ -5,6 +5,7 @@ import {
   buildCountryMarketIndex,
   countCountryMarkets,
   projectCountryMarketIndex,
+  selectKalshiSeriesTickers,
 } from '../scripts/_prediction-country-index.mjs';
 
 const NOW = Date.parse('2026-08-31T00:00:00Z');
@@ -258,5 +259,68 @@ describe('projectCountryMarketIndex', () => {
   it('projects the country index when every source segment succeeded', () => {
     const index = projectCountryMarketIndex([usMarket], { complete: true, now: NOW });
     assert.deepEqual(index.US.map((entry) => entry.title), [usMarket.title]);
+  });
+});
+
+describe('selectKalshiSeriesTickers', () => {
+  it('selects two high-volume non-sports series for each requested country', () => {
+    const series = [
+      { ticker: 'KXIRANSPORT', title: 'Iran match winner', category: 'Sports', volume_fp: '90000000' },
+      { ticker: 'KXIRANSTALE', title: 'Ali Khamenei out?', tags: ['Iran'], category: 'Politics', volume_fp: '54513052' },
+      { ticker: 'KXIRANDEAL', title: 'US Iran nuclear deal', tags: ['Iran'], category: 'World', volume_fp: '21065356' },
+      { ticker: 'KXIRANLOW', title: 'Iran trade agreement', category: 'World', volume_fp: '4999' },
+      { ticker: 'KXIRANUNKNOWN', title: 'A new Iran agreement', category: 'World' },
+      { ticker: 'KXLEBANONPARLI', title: 'Lebanon parliament', category: 'Elections', volume_fp: '28888' },
+      { ticker: 'KXLEBUSFLIGHT', title: 'Lebanon-US flight resumption', category: 'World', volume_fp: '11181' },
+      { ticker: 'KXFRANCE', title: 'France election', category: 'Elections', volume_fp: '500000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB']),
+      ['KXIRANSTALE', 'KXIRANDEAL', 'KXLEBANONPARLI', 'KXLEBUSFLIGHT'],
+    );
+    assert.deepEqual(selectKalshiSeriesTickers(series, ['LB']), ['KXLEBANONPARLI', 'KXLEBUSFLIGHT']);
+  });
+
+  it('deduplicates a series that matches more than one requested country', () => {
+    const series = [{
+      ticker: 'KXUSIRAN',
+      title: 'United States and Iran nuclear deal',
+      category: 'World',
+      volume_fp: '100000',
+    }];
+
+    assert.deepEqual(selectKalshiSeriesTickers(series, ['US', 'IR']), ['KXUSIRAN']);
+  });
+
+  it('selects the next ranked series after an earlier series produced no eligible markets', () => {
+    const series = [
+      { ticker: 'KXIRANEMPTY', title: 'Iran agreement', category: 'World', volume_fp: '50000' },
+      { ticker: 'KXIRANACTIVE', title: 'Iran election', category: 'Elections', volume_fp: '40000' },
+      { ticker: 'KXLEBANONACTIVE', title: 'Lebanon election', category: 'Elections', volume_fp: '30000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB'], {
+        perCountryLimit: 1,
+        excludedTickers: ['KXIRANEMPTY'],
+      }),
+      ['KXIRANACTIVE', 'KXLEBANONACTIVE'],
+    );
+  });
+
+  it('caps a selection round by the remaining global request budget', () => {
+    const series = [
+      { ticker: 'KXIRAN', title: 'Iran election', category: 'Elections', volume_fp: '50000' },
+      { ticker: 'KXLEBANON', title: 'Lebanon election', category: 'Elections', volume_fp: '40000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB'], {
+        perCountryLimit: 1,
+        totalLimit: 1,
+      }),
+      ['KXIRAN'],
+    );
   });
 });

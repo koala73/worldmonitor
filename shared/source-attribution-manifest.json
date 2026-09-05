@@ -4287,15 +4287,29 @@
     },
     {
       "host": "firms.modaps.eosdis.nasa.gov",
-      "provider": "firms.modaps.eosdis.nasa.gov",
+      "provider": "NASA FIRMS",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit firms.modaps.eosdis.nasa.gov and link to the original upstream API/dataset.",
+      "license": "NASA FIRMS provider terms apply; redistribution terms require review",
+      "attribution": "Credit NASA FIRMS and link to the original upstream API or dataset.",
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/seed-fire-detections.mjs"
+          "path": "scripts/wildfire/firms-area.mjs"
+        }
+      ]
+    },
+    {
+      "host": "firms2.modaps.eosdis.nasa.gov",
+      "provider": "NASA FIRMS",
+      "kind": "structured",
+      "observed": true,
+      "license": "NASA FIRMS provider terms apply; redistribution terms require review",
+      "attribution": "Credit NASA FIRMS and link to the original upstream API or dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/wildfire/firms-area.mjs"
         }
       ]
     },

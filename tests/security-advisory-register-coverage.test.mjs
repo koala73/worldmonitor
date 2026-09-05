@@ -156,6 +156,27 @@ describe('seed-security-advisories — advisory level index coverage', () => {
     assert.equal(byCountry.TH, 'normal');
   });
 
+  it('accepts a one MiB-plus country register within the bounded response budget', async () => {
+    const xml = rssFor(registerItems()).replace('</channel>', `${' '.repeat(1_100_000)}</channel>`);
+    const bytes = Buffer.byteLength(xml, 'utf8');
+    const mapped = await fetchFeed(STATE_DEPT, async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (name) => name === 'content-length' ? String(bytes) : null },
+      text: async () => xml,
+    }));
+
+    assert.equal(
+      MAX_ADVISORY_FEED_BYTES,
+      2 * 1024 * 1024,
+      'feed limit must stay at the reviewed two MiB bound',
+    );
+    assert.ok(bytes > 1024 * 1024, 'fixture must exceed the former one MiB limit');
+    assert.ok(bytes <= MAX_ADVISORY_FEED_BYTES, 'fixture must remain inside the configured limit');
+    assert.equal(mapped.length, REGISTER.length);
+    assert.ok(Object.keys(buildByCountryMap(mapped)).length >= REGISTER.length - 1);
+  });
+
   it('uses the injected fetcher for every feed', async () => {
     let requestCount = 0;
     const report = await fetchAll({

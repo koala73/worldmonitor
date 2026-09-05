@@ -63,6 +63,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['military:cross-strait-activity:v1:source:taiwan-mnd',
     'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
+  ['maritime:ais-gaps:v1',
+    'intermediate: relay-published dark-ship count consumed server-side by the temporal-anomalies rebuild as the ais_gaps count source (COUNT_SOURCE_KEYS #7574); the signal surfaces through the temporal anomalies tool, not a standalone MCP slice.'],
   ['military:cross-strait-activity:v1:source:japan-mod',
     'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
   ['market:china:stock-connect:v1',

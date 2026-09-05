@@ -8783,6 +8783,14 @@ const MAX_VESSEL_META = 50000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
+// mmsi → timestamp of the vessel's most recent position fix. Retention must
+// exceed GAP_THRESHOLD: the dark-ship return check compares the CURRENT fix
+// against this value, and the vesselHistory equivalent loses the prior fix
+// to its 30-minute DENSITY_WINDOW prune and 10-entry cap long before a >1h
+// silence ends. Bounded by the same retention prune + recency eviction
+// cleanupAggregates applies to vesselHistory.
+const vesselLastFixSeen = new Map();
+const LAST_FIX_RETENTION_MS = 6 * 60 * 60 * 1000; // 6h — 6× GAP_THRESHOLD
 const densityGrid = new Map();
 const candidateReports = new Map();
 // Parallel store for tanker (AIS ship type 80-89) position reports — populated
@@ -8846,6 +8854,17 @@ const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
+
+// Dark-ship (AIS gap) count envelope — the trusted producer behind the
+// temporal anomalies `ais_gaps` count source (#7574). Written on its own
+// slow loop, not on the per-snapshot build: detectDisruptions runs every
+// SNAPSHOT_INTERVAL_MS, which would be a Redis write per relay heartbeat.
+const AIS_GAPS_REDIS_KEY = 'maritime:ais-gaps:v1';
+// 60min — must STRICTLY exceed the 30min health maxStaleMin (api/health.js
+// aisGaps entry) so a dead relay reads warn STALE_SEED before the envelope
+// expires to crit EMPTY; 6x the seed interval.
+const AIS_GAPS_TTL = 3600;
+const AIS_GAPS_SEED_INTERVAL_MS = 10 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_INTERVAL_MS = 10 * 60 * 1000;
 
 const NAVAL_PREFIX_RE = /^(USS|USNS|HMS|HMAS|HMCS|INS|JS|ROKS|TCG|FS|BNS|RFS|PLAN|PLA|CGC|PNS|KRI|ITS|SNS|MMSI)/i;
@@ -9101,6 +9120,18 @@ function processPositionReportForSnapshot(data) {
   });
 
   const history = vesselHistory.get(mmsi) || [];
+  // Dark-ship return detection (#7574): a fix arriving more than
+  // GAP_THRESHOLD after the previous one marks the vessel as returned from
+  // extended AIS silence. The prior fix is read from vesselLastFixSeen, NOT
+  // from vesselHistory — cleanupAggregates prunes vesselHistory to the
+  // 30-min DENSITY_WINDOW and caps it at 10 entries, so by the time a >1h
+  // silence ends the old fix is long gone from that structure and a
+  // history-diffing form of this check can never fire.
+  const lastFixAt = vesselLastFixSeen.get(mmsi);
+  if (lastFixAt && now - lastFixAt > GAP_THRESHOLD) {
+    darkShipReturns.set(mmsi, now);
+  }
+  vesselLastFixSeen.set(mmsi, now);
   history.push(now);
   if (history.length > 10) history.shift();
   vesselHistory.set(mmsi, history);
@@ -9187,6 +9218,14 @@ function cleanupAggregates() {
       vesselHistory.set(mmsi, filtered);
     }
   }
+  // Retention prune + recency cap for the dark-ship last-fix map: entries
+  // older than the retention window can never be part of a live >1h silence
+  // comparison again, and the cap bounds memory against vessel churn.
+  const lastFixCutoff = now - LAST_FIX_RETENTION_MS;
+  for (const [mmsi, ts] of vesselLastFixSeen) {
+    if (ts < lastFixCutoff) vesselLastFixSeen.delete(mmsi);
+  }
+  evictMapByTimestamp(vesselLastFixSeen, MAX_VESSEL_HISTORY, (ts) => ts);
   // Hard cap: keep the most recent vessel histories.
   evictMapByTimestamp(vesselHistory, MAX_VESSEL_HISTORY, (history) => history[history.length - 1] || 0);
 
@@ -9275,6 +9314,29 @@ function cleanupAggregates() {
   }
 }
 
+// Vessels seen again after extended AIS silence: mmsi → the return-seen
+// timestamp. Entries are bounded by the 10-minute freshness window in
+// countDarkShips (pruned on read) and the 10-entry vesselHistory cap, so the
+// map cannot grow unbounded even in a flood of simultaneous returns.
+const darkShipReturns = new Map();
+
+/**
+ * Vessels that returned after extended AIS silence and were seen again
+ * within the last 10 minutes — the signal the retired client-side ais_gaps
+ * baseline counted per browser session (#7574). Sightings are recorded at
+ * ingestion (processPositionReportForSnapshot) because cleanupAggregates
+ * prunes vesselHistory to the 30-minute DENSITY_WINDOW, which can never
+ * span the 1-hour GAP_THRESHOLD.
+ */
+function countDarkShips(now = Date.now()) {
+  let darkShipCount = 0;
+  for (const [mmsi, seenAt] of darkShipReturns) {
+    if (now - seenAt >= 10 * 60 * 1000) darkShipReturns.delete(mmsi);
+    else darkShipCount++;
+  }
+  return darkShipCount;
+}
+
 function detectDisruptions() {
   const disruptions = [];
   const now = Date.now();
@@ -9308,17 +9370,7 @@ function detectDisruptions() {
     }
   }
 
-  let darkShipCount = 0;
-  for (const history of vesselHistory.values()) {
-    if (history.length >= 2) {
-      const lastSeen = history[history.length - 1];
-      const secondLast = history[history.length - 2];
-      if (lastSeen - secondLast > GAP_THRESHOLD && now - lastSeen < 10 * 60 * 1000) {
-        darkShipCount++;
-      }
-    }
-  }
-
+  const darkShipCount = countDarkShips(now);
   if (darkShipCount >= 1) {
     disruptions.push({
       id: 'global-gap-spike',
@@ -9544,6 +9596,39 @@ async function seedChokepointTransits() {
   await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: Object.keys(transits).length }, 604800);
   console.log(`[Transit] Seeded ${Object.keys(transits).length} chokepoint transit counts`);
 }
+
+/**
+ * seedAisGaps publishes the dark-ship count envelope + seed-meta.
+ *
+ * `sampledAt` is the content clock the temporal-anomalies rebuild reads
+ * (gapsContentClock); computing `now` once and threading it through both
+ * writes keeps `_seed.fetchedAt` and seed-meta in agreement (#6775).
+ *
+ * The publish is gated on AIS position freshness: while the aisstream feed
+ * is down or stale the relay cannot observe returns, so publishing a count
+ * (most robusly a zero) would stamp OK on a blind sensor. Skipping BOTH
+ * writes instead lets the 30min health budget age the missing stamp into
+ * STALE_SEED — the honest signal.
+ */
+async function seedAisGaps() {
+  const now = Date.now();
+  if (!getAisPositionFreshness(now).currentPositionReady) {
+    console.log(`[AisGaps] Skipping publish: AIS positions not fresh (ageMs=${getAisPositionFreshness(now).positionAgeMs})`);
+    return;
+  }
+  const darkShips = countDarkShips(now);
+  const envelopeOk = await envelopeWrite(AIS_GAPS_REDIS_KEY, { darkShips, sampledAt: now }, AIS_GAPS_TTL, { fetchedAt: now, recordCount: darkShips, sourceVersion: 'ais-gaps', zeroOk: true });
+  const metaOk = await upstashSet('seed-meta:maritime:ais-gaps', { fetchedAt: now, recordCount: darkShips }, 604800);
+  if (!envelopeOk || !metaOk) {
+    console.warn(`[AisGaps] Seed write FAILED (envelope=${envelopeOk} meta=${metaOk})`);
+    return;
+  }
+  console.log(`[AisGaps] Seeded dark-ship count: ${darkShips}`);
+}
+
+setTimeout(() => {
+  startBootSeedLoop('AisGaps', 'seed-meta:maritime:ais-gaps', AIS_GAPS_SEED_INTERVAL_MS, seedAisGaps, err => console.error('[AisGaps] Initial seed error:', err.message), err => console.error('[AisGaps] Seed error:', err.message));
+}, 30_000);
 
 setTimeout(() => {
   startBootSeedLoop('Transit', 'seed-meta:supply_chain:chokepoint_transits', CHOKEPOINT_TRANSIT_INTERVAL_MS, seedChokepointTransits, err => console.error('[Transit] Initial seed error:', err.message), err => console.error('[Transit] Seed error:', err.message));
