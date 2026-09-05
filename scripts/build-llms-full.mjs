@@ -79,6 +79,41 @@ function briefPrefix(existing) {
   return prefix.replace(/\s+$/, '');
 }
 
+export const VERSION_HEADER_RE = /^> Version: \d+\.\d+\.\d+ · Last updated: \d{4}-\d{2}-\d{2}$/m;
+
+/**
+ * llms.txt declares the corpus version and date; llms-full.txt did not, so a
+ * consumer had no way to tell whether the 240 KB file was current (#6038).
+ * Copy the short briefing's header verbatim rather than restating it, so the
+ * two files cannot claim different versions of the same product.
+ */
+export function readVersionHeader(rootDir) {
+  const header = read(rootDir, 'public/llms.txt').match(VERSION_HEADER_RE)?.[0];
+  if (!header) {
+    throw new Error('public/llms.txt must carry a "> Version: X.Y.Z · Last updated: YYYY-MM-DD" line');
+  }
+  return header;
+}
+
+export function withVersionHeader(prefix, versionHeader) {
+  if (prefix.trim() === '') {
+    throw new Error(`${OUTPUT_PATH} must exist with its hand-authored brief — this generator appends a corpus, it does not author the file`);
+  }
+  const lines = prefix.split('\n').filter((line) => !line.startsWith('> Version: '));
+  const summaryAt = lines.findIndex((line) => line.startsWith('> '));
+  if (summaryAt === -1) {
+    throw new Error(`${OUTPUT_PATH} must open with the llms.txt-style summary blockquote`);
+  }
+  // Past the WHOLE first blockquote, not just its opening line: a two-line
+  // summary would otherwise be split in half by the inserted header.
+  let insertAt = summaryAt;
+  while (lines[insertAt + 1]?.startsWith('> ')) insertAt += 1;
+  const rest = lines.slice(insertAt + 1);
+  // Collapse the blank left behind by a removed header so re-runs are stable.
+  while (rest[0] === '' && rest[1] === '') rest.shift();
+  return [...lines.slice(0, insertAt + 1), '', versionHeader, ...rest].join('\n');
+}
+
 function renderGlossary() {
   const lines = ['## Glossary', ''];
   for (const term of GLOSSARY_TERMS) {
@@ -133,7 +168,7 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   const existing = existsSync(join(rootDir, OUTPUT_PATH))
     ? read(rootDir, OUTPUT_PATH)
     : '';
-  const prefix = briefPrefix(existing);
+  const prefix = withVersionHeader(briefPrefix(existing), readVersionHeader(rootDir));
   const generated = [
     LLMS_FULL_GENERATED_HEADING,
     '',

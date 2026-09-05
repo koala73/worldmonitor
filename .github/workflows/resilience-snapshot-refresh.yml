@@ -70,14 +70,24 @@ jobs:
       - name: Rebuild and verify published artifacts
         if: steps.reconcile.outputs.skip != 'true'
         run: |
+          # `npm ci --ignore-scripts` above skips the postinstall that writes
+          # the gitignored inventory-facts boot artifacts, which the verifying
+          # tests read. Generate them explicitly rather than relying on install.
+          npm run inventory:facts
           npm run build:crawlable-corpus
           npm run build:sitemap
           npm run build:llms-full
+          # ai-search.md publishes the ranked-country count and the snapshot's
+          # captured date, so it rotates with the snapshot exactly as the
+          # llms-full corpus does. Omitting it here would leave the committed
+          # figures a month stale and turn the drift test red on main.
+          npm run build:ai-search
           node --import tsx --test \
             tests/resilience-published-snapshot.test.mjs \
             tests/resilience-ranking-snapshot.test.mts \
             tests/sitemap-generation.test.mjs \
-            tests/seo-geo-residue.test.mjs
+            tests/seo-geo-residue.test.mjs \
+            tests/ai-search-product-facts.test.mjs
       - name: Open the monthly snapshot PR
         if: steps.reconcile.outputs.skip != 'true'
         env:
@@ -89,7 +99,7 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
           gh pr create \

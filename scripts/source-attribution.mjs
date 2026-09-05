@@ -128,6 +128,15 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The English publisher host and the direct feed host belong to one Interfax provider identity.',
     reviewReference: 'PR #6840 follow-up',
   }),
+  'nasa-firms': Object.freeze({
+    provider: 'NASA FIRMS',
+    memberHosts: Object.freeze([
+      'firms.modaps.eosdis.nasa.gov',
+      'firms2.modaps.eosdis.nasa.gov',
+    ]),
+    reason: 'The primary and official secondary Area API hosts serve one NASA FIRMS dataset identity.',
+    reviewReference: 'Review #20260904 FIRMS partial-coverage incident',
+  }),
   'opensky-network': Object.freeze({
     provider: 'opensky-network.org',
     memberHosts: Object.freeze(['auth.opensky-network.org', 'opensky-network.org']),
@@ -169,6 +178,20 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 const PROVIDER_OVERRIDES = {
   'api.adsb.lol': { provider: 'adsb.lol' },
   'api.airplanes.live': { provider: 'airplanes.live' },
+  'firms.modaps.eosdis.nasa.gov': {
+    provider: 'NASA FIRMS',
+    identityGroup: 'nasa-firms',
+    license: 'NASA FIRMS provider terms apply; redistribution terms require review',
+    attribution: 'Credit NASA FIRMS and link to the original upstream API or dataset.',
+    status: 'terms-review',
+  },
+  'firms2.modaps.eosdis.nasa.gov': {
+    provider: 'NASA FIRMS',
+    identityGroup: 'nasa-firms',
+    license: 'NASA FIRMS provider terms apply; redistribution terms require review',
+    attribution: 'Credit NASA FIRMS and link to the original upstream API or dataset.',
+    status: 'terms-review',
+  },
   'api.imd.gov.in': {
     provider: 'India Meteorological Department',
     identityGroup: 'imd',
@@ -909,13 +932,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '2ce115029a352d9faa4625b542bbd88eb149148821712779c7842bd5df1f1a59',
-  reason: 'Preserve reviewed provider identities and register the current two-host City of Toronto Calls package identity.',
+  sha256: 'b95aa14699deb45fe8ece9e9806dc03038b4fb378024c824afc32b6ef2a4b159',
+  reason: 'Preserve reviewed provider identities and register the two official NASA FIRMS Area API hosts as one provider identity.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, and the 2026-09-01 FAOSTAT transport identity review.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, and the 2026-09-04 FIRMS partial-coverage incident.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
