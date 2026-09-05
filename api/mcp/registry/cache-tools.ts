@@ -355,6 +355,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_reported_occurrences',
     _outputBudgetBytes: 65536,
+    // TPS rows are licensed for reuse with attribution. Extract it from the
+    // cache envelope so a projection over `records` cannot leave the rows
+    // without the licence assertion that permits redistributing them.
+    _attribution: 'data.reported_occurrences.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
     description: 'Bounded Toronto Police Service Major Crime Indicators rows. Retrospective reported occurrences only; coordinates are approximate and this is not live dispatch.',
     inputSchema: {
       type: 'object',
@@ -401,6 +405,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_toronto_calls_attended',
     _outputBudgetBytes: 65536,
+    // Read AFTER `_postFilter`, which rewrites `attribution` from the source
+    // descriptor — a pre-CKAN cached blob still carries the retired
+    // OGL-Ontario claim, and the rider must publish the current licence.
+    _attribution: 'data.annual_aggregates.{attribution: attribution, source: source, fetchedAt: fetchedAt}',
     description: 'Bounded Toronto Police Service Calls for Service Attended annual aggregates. These are neighbourhood and division counts, not incident points.',
     inputSchema: {
       type: 'object',
@@ -2149,6 +2157,10 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_imd_cyclone_marine',
     _outputBudgetBytes: 65536,
+    // IMD bulletins are reusable with attribution to the issuing office. The
+    // snapshot carries it inline; the rider keeps it attached when a caller
+    // projects only `cyclones` or `portWarnings`.
+    _attribution: 'data.imd_cyclone_marine.{attribution: attribution, sourceName: sourceName, sourceUrl: sourceUrl}',
     description:
       'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
       'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY. ' +

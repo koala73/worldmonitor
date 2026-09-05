@@ -2054,7 +2054,14 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_resilience_indicators',
     _outputBudgetBytes: 262144,
-    _jmespathDisabled: true,
+    // Raw values here are redistribution-permitted (decideIndicatorRawRedistribution
+    // already dropped the rest), but only while accompanied by their source's
+    // licence and attribution. Flatten every indicator's sources into one
+    // deduped list the dispatcher re-attaches to any projection.
+    // `observationProvenance` is deliberately NOT selected: it is a
+    // per-indicator flag with no meaning in a flattened list, and carrying it
+    // would split one source into two rider entries.
+    _attribution: 'indicators[].sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}',
     description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. Requires an ISO-2 country code and a WorldMonitor Pro subscription.',
     inputSchema: {
       type: 'object',

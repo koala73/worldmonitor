@@ -71,6 +71,17 @@ export interface BaseToolDef {
   // permitted value unsafe to redistribute. The dispatcher also enforces the
   // denial as defence in depth.
   _jmespathDisabled?: true;
+  // JMESPath expression extracting this tool's source list from its
+  // UNPROJECTED payload. Declared by every tool whose `outputSchema` carries a
+  // licence marker (`shared/attribution-rider.ts::LICENCE_MARKER_FIELDS`), and
+  // enforced by `tests/mcp-attribution-rider.test.mjs` — a new tool with an
+  // `attribution` field and no extraction fails the build.
+  //
+  // When a caller projects such a tool, the dispatcher re-attaches the
+  // extracted sources as `_attribution` AFTER `jmespath.search`, so the
+  // projection cannot separate the values from the attribution that licenses
+  // their redistribution.
+  _attribution?: string;
   // U7 (R7, R9): membership in the always-free subset — servable to an
   // uncredentialed caller, consuming no quota for any principal. Declared HERE,
   // on the tool itself, so the roster and the tool definition cannot drift
