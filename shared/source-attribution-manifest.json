@@ -4303,15 +4303,10 @@
       "host": "firms2.modaps.eosdis.nasa.gov",
       "provider": "NASA FIRMS",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "NASA FIRMS provider terms apply; redistribution terms require review",
       "attribution": "Credit NASA FIRMS and link to the original upstream API or dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/wildfire/firms-area.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "focustaiwan.tw",
