@@ -111,7 +111,8 @@ async function main() {
     // ranks its top-500 over every detection FIRMS returned — capping here cannot change what
     // the dashboard renders. Capping inside fetchAllRegions would not have that property.
     publishTransform: capCanonicalPayload,
-    lockTtlMs: 2_400_000, // 40 min — 27 slots × ~72s worst case (30s timeout + 6s backoff + 30s retry + 6s pace) ≈ 32.4 min; pad headroom. Next cron tick sees lock held and safely skips.
+    lockTtlMs: 3_600_000, // 60 min — 27 slots × 108s (3 × 30s attempts + 3 × 6s pace) = 48.6 min; leave publication headroom. Overlapping cron ticks skip the held lock.
+    fetchPhaseTimeoutMs: 3_300_000, // 55 min — bound whole-fetch retries if all upstreams fail, before the lock expires.
     sourceVersion: CANONICAL_SOURCE_VERSION,
     extraKeys: [{
       key: BOOTSTRAP_KEY,

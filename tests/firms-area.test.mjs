@@ -1,5 +1,10 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import {
+  hasCompleteWorldwideWildfireCoverage,
+  mergeWildfireSourcesWithBc,
+} from '../scripts/wildfire/bc-fire-points.mjs';
 
 import {
   fetchAllFirmsRegions,
@@ -29,6 +34,73 @@ function captureLogger() {
 }
 
 describe('NASA FIRMS Area API sequence', () => {
+  it('recovers complete coverage after a primary transport error and secondary MAP_KEY rejection', async () => {
+    const urls = [];
+    const sleeps = [];
+    const { logger, messages } = captureLogger();
+    const failedPath = `/${FIRMS_SOURCES[0]}/${MONITORED_REGIONS.Ukraine}/`;
+    let affectedAttempts = 0;
+    const firms = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async (url) => {
+        urls.push(url);
+        if (new URL(url).pathname.includes(failedPath)) {
+          affectedAttempts++;
+          if (affectedAttempts === 1) throw new TypeError('fetch failed');
+          if (affectedAttempts === 2) return response(400, 'Invalid MAP_KEY.');
+          return response(200, DETECTION_CSV);
+        }
+        return response(200);
+      },
+      sleepFn: async (ms) => sleeps.push(ms),
+      logger,
+    });
+    const merged = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => firms,
+      fetchCwfis: async () => ({ fireDetections: [] }),
+      fetchBcWildfire: async () => ({ fireDetections: [] }),
+    });
+    assert.equal(hasCompleteWorldwideWildfireCoverage(merged), true);
+    assert.equal(firms._firmsFulfilledCalls, 27);
+    assert.equal(firms._firmsFailedCalls, 0);
+    assert.equal(firms.fireDetections.length, 1);
+    assert.deepEqual(urls.slice(0, 3).map((url) => new URL(url).origin), [
+      ...FIRMS_API_BASE_URLS, FIRMS_API_BASE_URLS[0],
+    ]);
+    assert.equal(new Set(urls.slice(0, 3).map((url) => new URL(url).pathname)).size, 1);
+    assert.equal(urls.length, 29);
+    assert.equal(sleeps.length, 29);
+    assert.ok(sleeps.every((ms) => ms === 6_000));
+    assert.equal(messages.error.length, 0);
+    assert.doesNotMatch(messages.warn.join('\n'), /test-map-key/);
+  });
+
+  it('bounds an exhausted run below the seed lock with publication headroom', async (t) => {
+    let attempts = 0;
+    let budgetMs = 0;
+    t.mock.method(AbortSignal, 'timeout', (ms) => {
+      budgetMs += ms;
+      return new AbortController().signal;
+    });
+    const { logger } = captureLogger();
+    const firms = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async () => {
+        attempts++;
+        throw new DOMException('timed out', 'TimeoutError');
+      },
+      sleepFn: async (ms) => { budgetMs += ms; },
+      logger,
+    });
+    assert.equal(attempts, 81);
+    assert.equal(firms._firmsFulfilledCalls, 0);
+    assert.equal(firms._firmsFailedCalls, 27);
+    const source = readFileSync(new URL('../scripts/seed-fire-detections.mjs', import.meta.url), 'utf8');
+    const lockMs = Number(source.match(/lockTtlMs:\s*([\d_]+)/)[1].replaceAll('_', ''));
+    const deadlineMatch = source.match(/fetchPhaseTimeoutMs:\s*([\d_]+)/);
+    assert.ok(deadlineMatch, 'bound outer all-source retries before the seed lock expires');
+    const deadlineMs = Number(deadlineMatch[1].replaceAll('_', ''));
+    assert.ok(deadlineMs >= budgetMs + 5 * 60_000, `${deadlineMs} must cover ${budgetMs} plus fetch headroom`);
+    assert.ok(lockMs >= deadlineMs + 5 * 60_000, 'leave publication and cleanup headroom inside the lock');
+  });
   it('tries the official secondary host after a primary HTTP failure', async () => {
     const urls = [];
     const sleeps = [];
@@ -118,10 +190,10 @@ describe('NASA FIRMS Area API sequence', () => {
 
     assert.equal(result._firmsFulfilledCalls, 26);
     assert.equal(result._firmsFailedCalls, 1);
-    assert.equal(urls.length, 28);
+    assert.equal(urls.length, 29);
     assert.match(
       messages.error[0],
-      /VIIRS_SNPP_NRT\/Ukraine failed \(primary HTTP 500, secondary HTTP 500\)/,
+      /VIIRS_SNPP_NRT\/Ukraine failed \(primary HTTP 500, secondary HTTP 500, primary retry HTTP 500\)/,
     );
     assert.doesNotMatch(messages.error[0], /test-map-key/);
   });
