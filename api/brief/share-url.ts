@@ -217,6 +217,12 @@ export default async function handler(
   // JSON.parse's the Redis value; a bare colon-delimited string would
   // throw at parse time and the public route would 503 instead of
   // resolving the pointer.
+  //
+  // App-owned pointer (#7674): share-url routes are the only writers of
+  // brief:public-pointer:*, so this write and the public route's read ride
+  // the deployment-prefixed helper default — a share URL resolves on the
+  // deployment family that minted it (share URLs are origin-pinned, so
+  // this matches how they circulate).
   const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${hash}`;
   const pointerValue = JSON.stringify(encodePublicPointer(session.userId, issueSlot));
   const writeResult = await redisPipeline([

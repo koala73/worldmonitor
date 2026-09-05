@@ -28,24 +28,19 @@ export function getKeyPrefix() {
   return `${env}:${sha}:`;
 }
 
-let cachedKeyPrefix;
 /**
  * Apply the deployment prefix to an app-owned key. Exported for the mixed
  * pipelines that must name per-key ownership at command-construction time
- * (api/health.js sweep, api/bootstrap.js) and then pass `raw = true` so the
- * pipeline helpers do not prefix again.
+ * (api/health.js sweep) and then pass `raw = true` so the pipeline helpers do
+ * not prefix again.
+ *
+ * Computed per call, NOT memoized — mirrors server/_shared/pro-mcp-token.ts's
+ * envPrefix: tests may mutate VERCEL_ENV between calls, and the cost is one
+ * trivial string read.
  */
 export function applyRedisKeyPrefix(key) {
-  if (cachedKeyPrefix === undefined) cachedKeyPrefix = getKeyPrefix();
-  return cachedKeyPrefix ? `${cachedKeyPrefix}${key}` : key;
-}
-
-// Test-only: invalidate the memoized key prefix so a test that mutates
-// process.env.VERCEL_ENV / VERCEL_GIT_COMMIT_SHA sees the new value on the
-// next read. Mirrors server/_shared/redis.ts's hook. No production caller
-// should ever invoke this.
-export function __resetKeyPrefixCacheForTests() {
-  cachedKeyPrefix = undefined;
+  const prefix = getKeyPrefix();
+  return prefix ? `${prefix}${key}` : key;
 }
 
 /**

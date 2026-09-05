@@ -95,6 +95,12 @@ const RATE_LIMIT_PER_MINUTE = 60;
 const ALLOWED_COHORTS = new Set(['event', 'critical-event', 'identify']);
 const ALLOWED_FAILURE_KINDS = new Set(['network', 'timeout', 'missing-receipt', 'none']);
 
+// App-owned collector-health counters (#7674): this route is the only writer,
+// so reads and writes ride the deployment-prefixed helper default ON TOP of
+// this coarse env segment. Production keeps the bare historical shape
+// (deployment prefix is '' there); on preview the counters are scoped to this
+// exact deployment — intentional, since per-deploy collector cohorts should
+// not blend with other branches' baselines.
 function keyPrefix() {
   const environment = process.env.VERCEL_ENV || 'production';
   return `analytics:collector-health:v1:${environment}`;

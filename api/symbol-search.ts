@@ -48,6 +48,9 @@ const UPSTREAM_TIMEOUT_MS = 8_000;
 // shared quota. Symbol→company mappings are stable; a 10-minute TTL is
 // a comfortable margin. Empty results are cached too, so a typo query
 // can't repeatedly hammer Finnhub.
+// App-owned self-caches (#7674): this route is the only writer of both the
+// result cache and the Finnhub 429 cooldown, so every read and write rides
+// the deployment-prefixed helper default.
 const CACHE_KEY_PREFIX = 'symsearch:v1:';
 const CACHE_TTL_SECONDS = 600;
 const FINNHUB_429_COOLDOWN_KEY = 'symsearch-cooldown:v1:finnhub-429';

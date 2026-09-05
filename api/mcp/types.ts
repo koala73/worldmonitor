@@ -353,6 +353,13 @@ export interface PublicToolShape {
 // otherwise-successful 200 — the shape readExistsFlags branches on. While this
 // omitted `error`, a consumer could not read that field without a local cast
 // (api/mcp/dispatch.ts carried one, with a comment saying so, until #6152).
+//
+// PRECONDITION (#7674): the production binding (PRODUCTION_DEPS.redisPipeline)
+// sends commands VERBATIM (raw = true default) because the MCP quota and
+// free-account-allowance counters are already deployment-prefixed by
+// quota.ts / free-account-allowance.ts at construction. Only pass logical,
+// unprefixed keys through this dep if you also flip the binding — the raw
+// default is deliberate and inverts the shared helpers' prefix-by-default.
 export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number, raw?: boolean) => Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export interface QuotaReserved {

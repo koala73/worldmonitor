@@ -24,12 +24,22 @@
  * key's writes.
  */
 const APP_OWNED_KEYS = Object.freeze([
-  // Written by server/worldmonitor/infrastructure/v1/list-temporal-anomalies
-  // (request-driven rebuild + seed-meta stamp) through the prefix-aware
-  // server helpers — the snapshot and its freshness stamp live in the
-  // deployment's own namespace on preview.
-  'temporal:anomalies:v1',
+  // Written solely by Vercel RPC routes through the prefix-aware server
+  // helpers (setCachedJson / cachedFetchJson / runRedisPipeline with
+  // raw = false), so the snapshot and its freshness stamp live in the
+  // deployment's own namespace on preview. The Railway CII/chokepoint
+  // warm-pings only hit the routes over HTTP — they never write these keys
+  // to Redis directly (scripts/ais-relay.cjs: "The RPC handler owns
+  // seed-meta:intelligence:risk-scores").
+  'temporal:anomalies:v1', // infrastructure/v1/list-temporal-anomalies
   'seed-meta:temporal:anomalies',
+  'risk:scores:sebuf:v8', // intelligence/v1/get-risk-scores (live + stale fallback + meta)
+  'risk:scores:sebuf:stale:v8',
+  'seed-meta:intelligence:risk-scores',
+  'supply_chain:chokepoints:v4', // supply-chain/v1/get-chokepoint-status (+ meta)
+  'seed-meta:supply_chain:chokepoints',
+  'cable-health-v1', // infrastructure/v1/get-cable-health (+ meta)
+  'seed-meta:cable-health',
 ]);
 
 const APP_OWNED_KEY_SET = new Set(APP_OWNED_KEYS);

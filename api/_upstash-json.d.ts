@@ -6,7 +6,8 @@ export interface UpstashJsonReadResult {
 /**
  * Deployment key prefix — mirror of server/_shared/redis.ts::getKeyPrefix.
  * '' in production (and in any runtime without VERCEL_ENV, e.g. the Railway
- * digest service importing this module).
+ * digest service importing this module). Computed per call (never memoized),
+ * so tests may mutate VERCEL_ENV between calls.
  */
 export declare function getKeyPrefix(): string;
 
@@ -15,9 +16,6 @@ export declare function getKeyPrefix(): string;
  * pre-finalize each key and then pass raw = true to the helpers.
  */
 export declare function applyRedisKeyPrefix(key: string): string;
-
-/** Test-only: recompute the memoized key prefix on the next read. */
-export declare function __resetKeyPrefixCacheForTests(): void;
 
 /**
  * `raw = true` reads/writes the key verbatim (seeder-owned or already-final

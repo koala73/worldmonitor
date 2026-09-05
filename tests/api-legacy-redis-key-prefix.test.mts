@@ -58,7 +58,11 @@ after(() => {
 });
 
 beforeEach(() => {
-  upstash.__resetKeyPrefixCacheForTests();
+  // Restore the module-level preview env in case a prior test in this file
+  // juggled it; the api prefix is computed per call, so no cache reset hook
+  // exists or is needed.
+  process.env.VERCEL_ENV = 'preview';
+  process.env.VERCEL_GIT_COMMIT_SHA = SHA;
   resetRecordings();
 });
 
@@ -169,15 +173,64 @@ describe('api/_upstash-json.js deployment key prefix mechanics (#7674)', () => {
     assert.deepEqual(pipelineBodies, [[['GET', 42]]]);
   });
 
-  it('the memoized prefix recomputes after the test reset hook', () => {
+  it('the prefix recomputes per call when the env changes (never memoized)', () => {
     process.env.VERCEL_GIT_COMMIT_SHA = 'cafe0001abcd';
     try {
-      upstash.__resetKeyPrefixCacheForTests();
       assert.equal(upstash.getKeyPrefix(), 'preview:cafe0001:');
       assert.equal(upstash.applyRedisKeyPrefix('k'), 'preview:cafe0001:k');
     } finally {
       process.env.VERCEL_GIT_COMMIT_SHA = SHA;
-      upstash.__resetKeyPrefixCacheForTests();
+    }
+    assert.equal(upstash.getKeyPrefix(), PREFIX);
+    assert.equal(upstash.applyRedisKeyPrefix('k'), `${PREFIX}k`);
+  });
+
+  it('production and non-Vercel runtimes get an empty prefix (byte-identical wire keys)', () => {
+    const savedEnv = process.env.VERCEL_ENV;
+    const savedSha = process.env.VERCEL_GIT_COMMIT_SHA;
+    try {
+      process.env.VERCEL_ENV = 'production';
+      assert.equal(upstash.getKeyPrefix(), '');
+      assert.equal(upstash.applyRedisKeyPrefix('seed:owned:v1'), 'seed:owned:v1');
+
+      delete process.env.VERCEL_ENV;
+      assert.equal(upstash.getKeyPrefix(), '', 'the Railway digest runtime (no VERCEL_ENV) must stay bare');
+
+      delete process.env.VERCEL_GIT_COMMIT_SHA;
+      process.env.VERCEL_ENV = 'preview';
+      assert.equal(upstash.getKeyPrefix(), 'preview:dev:', 'a missing SHA falls back to dev');
+    } finally {
+      if (savedEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = savedEnv;
+      if (savedSha === undefined) delete process.env.VERCEL_GIT_COMMIT_SHA;
+      else process.env.VERCEL_GIT_COMMIT_SHA = savedSha;
+    }
+  });
+
+  it('the api prefix implementation stays byte-identical to the server mirror', async () => {
+    const serverRedis = await import('../server/_shared/redis.ts');
+    const savedEnv = process.env.VERCEL_ENV;
+    const savedSha = process.env.VERCEL_GIT_COMMIT_SHA;
+    try {
+      for (const [env, sha] of [
+        ['preview', SHA],
+        ['production', undefined],
+        [undefined, undefined],
+      ] as const) {
+        if (env === undefined) delete process.env.VERCEL_ENV;
+        else process.env.VERCEL_ENV = env;
+        if (sha === undefined) delete process.env.VERCEL_GIT_COMMIT_SHA;
+        else process.env.VERCEL_GIT_COMMIT_SHA = sha;
+        serverRedis.__resetKeyPrefixCacheForTests();
+        assert.equal(upstash.getKeyPrefix(), serverRedis.getKeyPrefix(),
+          `api and server prefixes must agree for VERCEL_ENV=${env ?? '<unset>'}`);
+      }
+    } finally {
+      if (savedEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = savedEnv;
+      if (savedSha === undefined) delete process.env.VERCEL_GIT_COMMIT_SHA;
+      else process.env.VERCEL_GIT_COMMIT_SHA = savedSha;
+      serverRedis.__resetKeyPrefixCacheForTests();
     }
   });
 });
@@ -186,8 +239,16 @@ describe('isAppOwnedRedisKey (#7674)', () => {
   it('names the route-owned exceptions and leaves the seeder fleet raw', () => {
     assert.equal(isAppOwnedRedisKey('temporal:anomalies:v1'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:temporal:anomalies'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:v8'), true);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v8'), true);
+    assert.equal(isAppOwnedRedisKey('seed-meta:intelligence:risk-scores'), true);
+    assert.equal(isAppOwnedRedisKey('supply_chain:chokepoints:v4'), true);
+    assert.equal(isAppOwnedRedisKey('seed-meta:supply_chain:chokepoints'), true);
+    assert.equal(isAppOwnedRedisKey('cable-health-v1'), true);
+    assert.equal(isAppOwnedRedisKey('seed-meta:cable-health'), true);
     assert.equal(isAppOwnedRedisKey('seed-meta:market:crypto'), false);
     assert.equal(isAppOwnedRedisKey('temporal:anomalies:v1:lookalike'), false);
+    assert.equal(isAppOwnedRedisKey('risk:scores:sebuf:stale:v7'), false);
     assert.equal(isAppOwnedRedisKey(undefined), false);
   });
 });
@@ -314,10 +375,21 @@ describe('health sweep classifies the temporal producer keys into the preview na
 
     // The verdict snapshot read happened through the deployment-prefixed key
     // (health.js pre-prefixes its own verdict keys via healthVerdictRedisKey
-    // and sends those pipelines verbatim).
+    // and sends those pipelines verbatim). Asserted exactly, plus a negative
+    // guard: a doubled prefix (preview:<sha>:preview:<sha>:…) would still
+    // start with the prefix, so the verdict paths must contain exactly one.
+    const verdictSnapshotKeys = pipelineBodies
+      .flat()
+      .map((command) => String(command[1]))
+      .filter((key) => key.includes('health:verdict'));
     assert.ok(
-      pipelineBodies.some((commands) => String(commands[0]?.[1] ?? '').startsWith(`${PREFIX}health:verdict`)),
+      verdictSnapshotKeys.some((key) => key === `${PREFIX}health:verdict:v2`
+        || key === `${PREFIX}health:verdict:compact:v2`),
       'the verdict snapshot must be read from the deployment namespace',
+    );
+    assert.ok(
+      verdictSnapshotKeys.every((key) => key.indexOf(PREFIX) === key.lastIndexOf(PREFIX)),
+      'no verdict key may carry the deployment prefix twice',
     );
 
     // The sweep is the pipeline that starts with the data-key STRLEN/LLEN
@@ -329,6 +401,9 @@ describe('health sweep classifies the temporal producer keys into the preview na
     // Route-owned temporal keys: this deployment's own snapshot and stamp.
     assert.ok(sweepKeys.has(`${PREFIX}temporal:anomalies:v1`), 'temporal snapshot must be prefixed');
     assert.ok(sweepKeys.has(`${PREFIX}seed-meta:temporal:anomalies`), 'temporal stamp must be prefixed');
+    // The other RPC-written producer keys follow the same rule.
+    assert.ok(sweepKeys.has(`${PREFIX}seed-meta:intelligence:risk-scores`), 'risk-scores stamp must be prefixed');
+    assert.ok(sweepKeys.has(`${PREFIX}seed-meta:cable-health`), 'cable-health stamp must be prefixed');
     // Seeder-owned fleet keys: raw, or every preview would classify nothing.
     assert.ok(sweepKeys.has('seed-meta:market:crypto'), 'seeder seed-meta must stay raw');
     assert.ok(sweepKeys.has('seed-activated:prediction:markets-country-index'), 'activation markers must stay raw');
@@ -358,6 +433,28 @@ describe('getRiskScores reads the app-owned temporal snapshot prefixed (#7674)',
     assert.ok(requested.has(`${PREFIX}temporal:anomalies:v1`), 'app-owned snapshot must be prefixed');
     assert.ok(requested.has('news:insights:v1'), 'seeder count sources must stay raw');
     assert.ok(!requested.has('temporal:anomalies:v1'), 'no bare app-owned snapshot read may remain');
+  });
+});
+
+describe('PRODUCTION_DEPS.redisPipeline sends pre-prefixed quota keys verbatim (#7674)', () => {
+  it('raw=true default keeps the envPrefix()-built counters single-prefixed', async () => {
+    const { PRODUCTION_DEPS } = await import('../api/mcp/auth.ts');
+    const { freeAccountCallsKey } = await import('../api/mcp/free-account-allowance.ts');
+    const sent: string[][] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input, init = {}) => {
+      sent.push(JSON.parse(init.body).map((command) => command[1]));
+      return Response.json(JSON.parse(init.body).map(() => ({ result: 1 })));
+    }) as typeof fetch;
+    try {
+      const counterKey = freeAccountCallsKey('user_quotapin', Date.now());
+      assert.ok(counterKey.startsWith(PREFIX), 'the allowance key builder must pre-prefix');
+      await PRODUCTION_DEPS.redisPipeline([['INCR', counterKey]]);
+      assert.deepEqual(sent, [[counterKey]],
+        'the MCP dep pipeline must send the already-prefixed counter verbatim — exactly one prefix segment');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

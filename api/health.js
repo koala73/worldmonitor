@@ -3442,6 +3442,11 @@ export async function handleHealth(req, ctx, options = {}) {
   // See WM 2026-05-10 — added after a night of UptimeRobot flips that needed
   // direct Upstash inspection to diagnose.
   if (wantsHistory) {
+    // App-owned incident log (#7674): health.js is the only writer of these
+    // keys, so the read below and the persist/clear pipelines after the sweep
+    // all ride the deployment-prefixed helper default — a preview
+    // deployment's failure history stays inside its own namespace, and
+    // production keeps the bare historical shape.
     const results = await redisPipeline(
       [
         ['GET', 'health:last-failure'],
