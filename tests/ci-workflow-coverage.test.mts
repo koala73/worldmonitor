@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import YAML from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowsDir = resolve(root, '.github/workflows');
@@ -439,13 +440,26 @@ describe('MCP live smoke — the production detection net', () => {
 // ever genuinely needs npm, extend this guard consciously with the
 // event-scoping argument rather than special-casing around it.
 describe('deployment_status triggers — npm cache scope hygiene (#7593)', () => {
-  // YAML comment lines are not executable: the workflows themselves explain
-  // the absence ("no npm ci", #7593) and must not self-trip the guard.
+  // Comment lines are not executable: the workflows themselves explain the
+  // absence ("no npm ci", #7593) and must not self-trip the guard. Round-trip
+  // through the YAML parser, which drops comments AND normalizes flow-map
+  // inputs (with: {cache: 'npm'}) into the same block form the ban patterns
+  // match, so neither spelling can hide behind syntax. If a future workflow
+  // carries YAML this parser rejects, fall back to the plain comment-line
+  // filter: weaker (comments survive), but the ban patterns themselves stay
+  // fail-closed on whatever text remains.
   const executableText = (source: string): string =>
-    source
-      .split('\n')
-      .filter((line) => !/^\s*#/.test(line))
-      .join('\n');
+  {
+    try {
+      const doc = YAML.parse(source);
+      return doc == null ? '' : YAML.stringify(doc);
+    } catch {
+      return source
+        .split('\n')
+        .filter((line) => !/^\s*#/.test(line))
+        .join('\n');
+    }
+  }
 
   // Block-style (`on:\n  deployment_status:`) and flow-style (`on: [ … ]`)
   // triggers; the block is the `on:` value up to the next column-0 key. Both
@@ -465,11 +479,16 @@ describe('deployment_status triggers — npm cache scope hygiene (#7593)', () =>
   // The sweep asserts real workflows stay clean; the self-test asserts the
   // patterns can still fire, so a corrupted pattern reddens this suite
   // instead of silently covering nothing.
-  const CACHE_BAN_PATTERN = /^[ \t]+cache:[ \t]*(?!false\b)\S/m;
+  // After the YAML round-trip a truthy cache input always appears as a
+  // block-mapping key, so the line-start anchor no longer depends on the
+  // author's block vs flow-map spelling. Only falsy scalars (false, null, ~)
+  // are exempt.
+  const CACHE_BAN_PATTERN = /^[ \t]*cache:[ \t]*(?!false\b)(?!null\b)(?!~)[^\s#]/m;
   // `npm i` resolves the deployed SHA's lockfile exactly like `npm install`,
-  // so the alias spelling is banned too; the word boundaries keep `npm info`,
-  // `npm init` and `pnpm i` out of the ban.
-  const NPM_INSTALL_BAN_PATTERN = /\bnpm (?:ci|install|i)\b/;
+  // so the alias spelling is banned too, under any shell whitespace
+  // (double space or a tab before the verb is the same command). The word
+  // boundaries keep npm info, npm init and pnpm i out of the ban.
+  const NPM_INSTALL_BAN_PATTERN = /\bnpm[ \t]+(?:ci|install|i)\b/;
 
   const deploymentCacheProblems = (executable: string): string[] => {
     const problems: string[] = [];
@@ -539,6 +558,23 @@ describe('deployment_status triggers — npm cache scope hygiene (#7593)', () =>
     ].join('\n');
     assert.deepEqual(deploymentCacheProblems(executableText(offender)), [cacheProblem, npmProblem]);
 
+    // Flow-map syntax must trip the same bans: the parser normalizes the
+    // mapping, so the block-style fixture reshaped into a flow map detects
+    // identically (review finding: line-anchored pattern missed
+    // with: {node-version: '24', cache: 'npm'}).
+    const flowMapOffender = [
+      "name: flow-map-offender",
+      'on:',
+      '  deployment_status:',
+      'jobs:',
+      '  smoke:',
+      '    steps:',
+      "      - uses: actions/setup-node@v4",
+      "        with: { node-version: '24', cache: 'npm' }",
+      "      - run: npm ci --ignore-scripts --omit=optional",
+    ].join('\n');
+    assert.deepEqual(deploymentCacheProblems(executableText(flowMapOffender)), [cacheProblem, npmProblem]);
+
     const aliasOffender = offender.replace(
       'npm ci --ignore-scripts --omit=optional',
       'npm i --omit=optional',
@@ -548,11 +584,24 @@ describe('deployment_status triggers — npm cache scope hygiene (#7593)', () =>
       'npm i must be flagged the same as npm install',
     );
 
+    // Shell whitespace between npm and the verb is legal and equally
+    // dangerous: double space and tab must fire like the single-space form
+    // (review finding: literal single space escaped detection).
+    for (const spaced of ['npm  ci --ignore-scripts', 'npm\tinstall --no-audit', 'npm\ti']) {
+      assert.ok(
+        deploymentCacheProblems(executableText(offender.replace('npm ci --ignore-scripts --omit=optional', spaced)))
+          .includes(npmProblem),
+        'irregular shell whitespace before the npm verb must not escape the ban: ' + spaced,
+      );
+    }
+
     for (const safe of [
       '        with:\n          cache: false',
       "      # cache: 'npm'",
       '        with:\n          cache-dependency-path: package-lock.json',
       '      - run: npm run build',
+      "      - run: pnpm i --frozen-lockfile",
+      "      - run: npm info webpack",
     ]) {
       assert.deepEqual(deploymentCacheProblems(executableText(safe)), [], `must not flag safe input:\n${safe}`);
     }
