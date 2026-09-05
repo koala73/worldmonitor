@@ -8,6 +8,7 @@ import {
   __resetServerInsightsCacheForTests,
 } from '../src/services/insights-loader';
 import { __testing__ as bootstrapTesting } from '../src/services/bootstrap';
+import { insightsSnapshotRejection } from '../shared/insights-snapshot.js';
 
 describe('insights-loader', () => {
   describe('MAX_AGE_MS — server-cadence-aligned freshness window', () => {
@@ -24,63 +25,88 @@ describe('insights-loader', () => {
     });
   });
 
-  describe('getServerInsights (logic validation)', () => {
-    function isFresh(generatedAt) {
-      const age = Date.now() - new Date(generatedAt).getTime();
-      return age < MAX_AGE_MS;
-    }
-
-    it('rejects data older than the freshness window', () => {
-      const old = new Date(Date.now() - MAX_AGE_MS - 60_000).toISOString();
-      assert.equal(isFresh(old), false);
+  // These asserted against a local isFresh copy and against object literals
+  // the test had just written ("assert.equal(degraded.worldBrief, '')" on a
+  // literal ''), so neither block could fail. Both gates live in the shared
+  // validator, which names the reason it rejects.
+  describe('insightsSnapshotRejection — freshness gate', () => {
+    const now = Date.parse('2026-09-05T12:00:00.000Z');
+    const snapshotAt = (ageMs) => ({
+      topStories: [{ primaryTitle: 'Test', sourceCount: 2 }],
+      generatedAt: new Date(now - ageMs).toISOString(),
     });
 
-    it('accepts data younger than the freshness window', () => {
-      const fresh = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      assert.equal(isFresh(fresh), true);
+    it('accepts a snapshot generated now', () => {
+      assert.equal(insightsSnapshotRejection(snapshotAt(0), now), null);
     });
 
-    it('accepts data from now', () => {
-      assert.equal(isFresh(new Date().toISOString()), true);
+    it('accepts a snapshot inside the window', () => {
+      assert.equal(insightsSnapshotRejection(snapshotAt(5 * 60 * 1000), now), null);
     });
 
-    it('rejects exactly window-aged data', () => {
-      const exact = new Date(Date.now() - MAX_AGE_MS).toISOString();
-      assert.equal(isFresh(exact), false);
+    it('rejects a snapshot exactly the window old', () => {
+      assert.equal(insightsSnapshotRejection(snapshotAt(MAX_AGE_MS), now), 'stale-snapshot');
+    });
+
+    it('rejects a snapshot past the window', () => {
+      assert.equal(insightsSnapshotRejection(snapshotAt(MAX_AGE_MS + 60_000), now), 'stale-snapshot');
+    });
+
+    it('rejects a snapshot generated in the future', () => {
+      assert.equal(insightsSnapshotRejection(snapshotAt(-60_000), now), 'future-generated-at');
     });
   });
 
-  describe('ServerInsights payload shape', () => {
-    it('validates required fields', () => {
-      const valid = {
+  describe('insightsSnapshotRejection — payload shape gate', () => {
+    const now = Date.parse('2026-09-05T12:00:00.000Z');
+    const generatedAt = new Date(now).toISOString();
+
+    it('accepts a full payload', () => {
+      assert.equal(insightsSnapshotRejection({
         worldBrief: 'Test brief',
         worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
         briefProvider: 'groq',
         status: 'ok',
         topStories: [{ primaryTitle: 'Test', sourceCount: 2 }],
-        generatedAt: new Date().toISOString(),
+        generatedAt,
         clusterCount: 10,
         multiSourceCount: 5,
         fastMovingCount: 3,
-      };
-      assert.ok(valid.topStories.length >= 1);
-      assert.ok(['ok', 'degraded'].includes(valid.status));
+      }, now), null);
     });
 
-    it('allows degraded status with empty brief', () => {
-      const degraded = {
+    it('accepts a degraded payload with an empty brief', () => {
+      assert.equal(insightsSnapshotRejection({
         worldBrief: '',
         status: 'degraded',
         topStories: [{ primaryTitle: 'Test' }],
-        generatedAt: new Date().toISOString(),
-      };
-      assert.equal(degraded.worldBrief, '');
-      assert.equal(degraded.status, 'degraded');
+        generatedAt,
+      }, now), null);
     });
 
     it('rejects empty topStories', () => {
-      const empty = { topStories: [] };
-      assert.equal(empty.topStories.length >= 1, false);
+      assert.equal(insightsSnapshotRejection({ topStories: [], generatedAt }, now), 'malformed-snapshot');
+    });
+
+    it('rejects a payload with no topStories array', () => {
+      assert.equal(insightsSnapshotRejection({ generatedAt }, now), 'malformed-snapshot');
+    });
+
+    it('rejects a non-object payload', () => {
+      assert.equal(insightsSnapshotRejection(null, now), 'malformed-snapshot');
+    });
+
+    it('rejects a payload with no generatedAt', () => {
+      assert.equal(insightsSnapshotRejection({
+        topStories: [{ primaryTitle: 'Test' }],
+      }, now), 'missing-generated-at');
+    });
+
+    it('rejects an unparseable generatedAt', () => {
+      assert.equal(insightsSnapshotRejection({
+        topStories: [{ primaryTitle: 'Test' }],
+        generatedAt: 'not-a-date',
+      }, now), 'missing-generated-at');
     });
   });
 
