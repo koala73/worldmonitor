@@ -2609,8 +2609,8 @@ export async function fetchCrossStraitActivitySnapshot({
     }
     try {
       if (cadenceMs) await sleepFn(cadenceMs);
-      const html = await fetchBoundedText(fetchFn, url, mndContract);
       requestCount += 1;
+      const html = await fetchBoundedText(fetchFn, url, mndContract);
       const rows = parseTaiwanMndList(html).map((row) => {
         const previous = previousMndByUrl.get(row.sourceUrl);
         return {
@@ -2639,7 +2639,6 @@ export async function fetchCrossStraitActivitySnapshot({
         break;
       }
     } catch (error) {
-      requestCount += 1;
       mndErrors.push(errorCode(error));
       if (page === 1) break;
     }
@@ -2661,29 +2660,46 @@ export async function fetchCrossStraitActivitySnapshot({
   const candidates = [...primaryCandidates, ...refreshCandidates]
     .slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
   const parsedMnd = [];
+  let detailRequestCount = 0;
+  candidateLoop:
   for (const candidate of candidates) {
-    if (!hasMndOutboundBudget({
-      runStartedAt,
-      nowFn,
-      cadenceMs: REQUEST_CADENCE_MS,
-    })) {
-      mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
-      break;
-    }
-    try {
-      await sleepFn(REQUEST_CADENCE_MS);
-      const html = await fetchBoundedText(fetchFn, candidate.sourceUrl, mndContract);
-      requestCount += 1;
-      parsedMnd.push(parseTaiwanMndDetail(html, {
-        sourceUrl: candidate.sourceUrl,
-        retrievedAt: generatedAt,
-        expectedPublicationDay: candidate.publicationDay,
-        allowPublicationAdvance: candidate.allowPublicationAdvance === true,
-        expectedReportingDay: candidate.expectedReportingDay ?? null,
-      }));
-    } catch (error) {
-      requestCount += 1;
-      mndErrors.push(errorCode(error));
+    let retryingMissingMetadata = false;
+    while (detailRequestCount < MND_MAX_DETAIL_REQUESTS_PER_RUN) {
+      if (!hasMndOutboundBudget({
+        runStartedAt,
+        nowFn,
+        cadenceMs: REQUEST_CADENCE_MS,
+      })) {
+        if (retryingMissingMetadata) mndErrors.push('MND_PUBLICATION_METADATA_MISSING');
+        mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
+        break candidateLoop;
+      }
+      try {
+        await sleepFn(REQUEST_CADENCE_MS);
+        detailRequestCount += 1;
+        requestCount += 1;
+        const html = await fetchBoundedText(fetchFn, candidate.sourceUrl, mndContract);
+        parsedMnd.push(parseTaiwanMndDetail(html, {
+          sourceUrl: candidate.sourceUrl,
+          retrievedAt: generatedAt,
+          expectedPublicationDay: candidate.publicationDay,
+          allowPublicationAdvance: candidate.allowPublicationAdvance === true,
+          expectedReportingDay: candidate.expectedReportingDay ?? null,
+        }));
+        break;
+      } catch (error) {
+        const code = errorCode(error);
+        if (
+          code === 'MND_PUBLICATION_METADATA_MISSING'
+          && !retryingMissingMetadata
+          && detailRequestCount < MND_MAX_DETAIL_REQUESTS_PER_RUN
+        ) {
+          retryingMissingMetadata = true;
+          continue;
+        }
+        mndErrors.push(code);
+        break;
+      }
     }
   }
 
