@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { join, resolve } from 'node:path';
@@ -493,14 +492,5 @@ describe('docs article injection for bare WebPage output', () => {
         `date manifest must not retain removed page docs/${slug}.mdx`,
       );
     }
-  });
-
-  it('keeps the committed date manifest fresh against git history', () => {
-    assert.doesNotThrow(() => {
-      execFileSync(process.execPath, ['scripts/generate-docs-page-dates.mjs', '--check'], {
-        cwd: repoRoot,
-        stdio: 'pipe',
-      });
-    });
   });
 });

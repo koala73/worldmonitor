@@ -4,7 +4,7 @@
  *
  * Mintlify serves docs HTML with no per-page dates, and routing middleware
  * cannot reach git history at request time — so the Article dateModified
- * injected by src/config/docs-locale-seo.ts comes from this committed map of
+ * injected by src/config/docs-locale-seo.ts comes from this build-time map of
  * docs slug to the file's latest git commit date (YYYY-MM-DD).
  *
  * Slugs mirror Mintlify's path mapping: docs/architecture.mdx serves at
@@ -12,7 +12,8 @@
  *
  * Usage:
  *   npm run docs:dates          # regenerate src/config/docs-page-dates.generated.ts
- *   npm run docs:dates:check    # fail when the committed map is stale
+ *   npm run docs:dates -- --fetch-history  # prepare a shallow web-build checkout
+ *   npm run docs:dates:check    # validate the generated build output
  */
 
 import { execFileSync } from 'node:child_process';
@@ -23,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT = 'src/config/docs-page-dates.generated.ts';
 const CHECK = process.argv.includes('--check');
+const FETCH_HISTORY = process.argv.includes('--fetch-history');
 
 function listDocFiles() {
   const files = [];
@@ -37,10 +39,16 @@ function listDocFiles() {
 }
 
 function latestCommitDates() {
-  const shallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+  const isShallow = () => execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
     cwd: ROOT, encoding: 'utf8',
   }).trim() === 'true';
-  if (shallow) {
+  if (isShallow() && FETCH_HISTORY) {
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+    execFileSync('git', ['fetch', '--unshallow', '--no-tags', '--filter=blob:none', '--no-write-fetch-head', 'origin', sha], {
+      cwd: ROOT, stdio: 'pipe', timeout: 120_000,
+    });
+  }
+  if (isShallow()) {
     throw new Error(
       'docs page dates need full git history (fetch-depth: 0); a shallow checkout resolves every file to HEAD',
     );

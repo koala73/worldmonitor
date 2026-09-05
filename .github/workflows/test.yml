@@ -209,7 +209,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Docs page dates derive from git history; a shallow checkout would
-          # resolve every file to HEAD and fail the freshness gate spuriously.
+          # resolve every file to HEAD instead of its last content change.
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -220,8 +220,11 @@ jobs:
           node scripts/generate-inventory-facts.mjs --check
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
-      - name: Docs page dates match git history
-        run: node scripts/generate-docs-page-dates.mjs --check
+      - name: Generate and validate docs page dates for this revision
+        run: |
+          node scripts/generate-docs-page-dates.mjs
+          node scripts/generate-docs-page-dates.mjs --check
+          node --test tests/docs-page-dates.test.mjs
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
       - name: Homepage teaser strip matches the committed pulse snapshot
