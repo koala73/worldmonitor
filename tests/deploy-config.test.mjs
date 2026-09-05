@@ -4075,7 +4075,6 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     'disallow: /*?*lat=',
     'disallow: /*?*lon=',
     'disallow: /*?*zoom=',
-    'disallow: /*?*layers=',
   ];
 
   // The inverse half of the contract, and the more important one. robots.txt is
@@ -4090,6 +4089,12 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     'disallow: /*?*wm_referral=',
     'disallow: /*?*wm_content_',
     'disallow: /*?*utm_',
+    // `layers` looks like map state but is not what makes the space unbounded.
+    // src/utils/urlState.ts sets `zoom` unconditionally on every share URL, so
+    // `/*?*zoom=` already catches the whole family; `layers` added no coverage
+    // and disallowed the bounded dashboard CTAs build-use-cases.mjs publishes
+    // with layers and no coordinates (PR #7689 review).
+    'disallow: /*?*layers=',
   ];
 
   const parseGroups = (source) => {
@@ -4401,27 +4406,56 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     });
 
     it('never blocks a link shape our own build emits', () => {
-      const INTERNAL_CTA_SHAPES = [
-        '/dashboard?utm_source=seo-cii',
-        '/?country=JP&expanded=1&utm_source=seo-tool',
-        '/?chokepoint=strait-of-hormuz&utm_source=seo-chokepoint',
-        '/countries/iran/?utm_source=seo-country',
-        '/dashboard?utm_source=seo-crisis',
-        '/dashboard?utm_source=sources-hub',
-        '/docs/source-attribution?utm_source=seo-sources',
-        '/pro?utm_source=research-report',
-        '/dashboard?wm_content_source=worldmonitor-use-cases&wm_content_medium=owned-content&wm_content_campaign=use-cases&wm_content_destination=dashboard&wm_content_placement=hero&utm_source=seo-use-case',
-        '/pro?wm_content_source=worldmonitor-use-cases&wm_content_destination=pro&utm_source=seo-use-case',
-        '/docs/api-reference?wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case',
-        '/docs/mcp-quickstart?utm_source=seo-use-case',
+      // Read the hrefs out of the builders rather than sampling them by hand.
+      // The hand-written sample was the bug: it listed twelve shapes and missed
+      // the two `layers=` dashboard CTAs in build-use-cases.mjs, so the rules
+      // shipped blocking links the site publishes (PR #7689 review).
+      const BUILDERS = [
+        'scripts/build-crawlable-corpus.mjs',
+        'scripts/build-use-cases.mjs',
+        'scripts/crawlable-sources-page.mjs',
+        'scripts/build-research-reports.mjs',
       ];
-      for (const shape of INTERNAL_CTA_SHAPES) {
-        assert.equal(
-          isCrawlable('robots.www.txt', shape),
-          true,
-          `robots.www.txt blocks an internal CTA the build emits: ${shape}`
-        );
+      // A quoted or backticked literal that starts with `/` and has a query.
+      const HREF_RE = /['"`](\/[A-Za-z0-9._\-/${}]*\?[^'"`]*)['"`]/g;
+
+      const emitted = new Map();
+      for (const builder of BUILDERS) {
+        const src = readFileSync(resolve(__dirname, '..', builder), 'utf-8');
+        src.split('\n').forEach((line, index) => {
+          for (const match of line.matchAll(HREF_RE)) {
+            const raw = match[1];
+            if (raw.includes('://')) continue;
+            // Template interpolation stands in as a concrete value; the rules
+            // key on parameter names, so the substituted value is irrelevant.
+            emitted.set(raw.replace(/\$\{[^}]*\}/g, 'X'), `${builder}:${index + 1}`);
+          }
+        });
       }
+
+      assert.ok(
+        emitted.size >= 8,
+        `expected to read the corpus builders' query-bearing hrefs, found ${emitted.size} — ` +
+          'the extraction regex probably stopped matching, which would make this test vacuous'
+      );
+
+      // The attribution wrappers every builder applies on top of those literals.
+      const TAGGED = (href) =>
+        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case`;
+
+      const blocked = [];
+      for (const [href, where] of emitted) {
+        for (const candidate of [href, TAGGED(href)]) {
+          if (!isCrawlable('robots.www.txt', candidate)) blocked.push(`  ${where}  ${candidate}`);
+        }
+      }
+      assert.deepEqual(
+        blocked,
+        [],
+        'robots.www.txt blocks links the build emits on generated pages. Blocking a link you keep ' +
+          'publishing does not remove the crawl volume, it relabels it "Blocked by robots.txt" and ' +
+          `tells Google not to follow your own internal graph:\n${blocked.join('\n')}`
+      );
     });
 
     it('blocks nothing we declare in the sitemap', () => {

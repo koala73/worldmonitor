@@ -31,7 +31,7 @@ So the test is not "is this URL crawl waste?" but **"can any mechanism ever fini
 | The space is unbounded — consolidation never converges because every new share mints a new URL | The space is bounded and already consolidates via a 301/308 or a `rel=canonical` |
 | Nothing links to it, so no signal is stranded by not crawling | External links point at it, so blocking strands their equity |
 
-For this repo that resolved to: block `lat`, `lon`, `zoom`, `layers` (`public/robots.www.txt:91-94`) and nothing else. The attribution families stay crawlable because:
+For this repo that resolved to: block `lat`, `lon`, `zoom` and nothing else. `zoom` is the load-bearing one — `src/utils/urlState.ts:188` sets it unconditionally on every share URL, so it catches the whole family even when lat/lon are omitted. The attribution families stay crawlable because:
 
 - `ref` and `wm_referral` are **affiliate codes with revenue semantics** — see [?ref= is affiliate attribution](./ref-param-is-affiliate-attribution-use-utm-for-internal-source-tags.md). `src/services/referral-capture.ts:33` reads both, and affiliates paste `/pro?ref=<code>` onto third-party sites. `middleware.ts:211` (`crawlerCanonicalUrl`) already 308s a crawler off them to the clean document, and a 308 passes that link equity. Disallowing means the crawler never issues the request, so the 308 is never seen and the equity is stranded on the conversion page.
 - `wm_content_*` URLs answer 200 with a correct canonical.
@@ -39,9 +39,15 @@ For this repo that resolved to: block `lat`, `lon`, `zoom`, `layers` (`public/ro
 
 ### Corollary: never block a link shape your own build emits
 
-The `utm_*` rule would have disallowed the dashboard CTA on ~240 of 263 sitemap-declared pages. Blocking a link you keep publishing does not remove the crawl volume — it relabels it "Blocked by robots.txt" and tells Google not to follow your own internal graph. `tests/deploy-config.test.mjs:4403` now resolves twelve shapes taken from the corpus builders and fails if any is blocked.
+The `utm_*` rule would have disallowed the dashboard CTA on ~240 of 263 sitemap-declared pages. Blocking a link you keep publishing does not remove the crawl volume — it relabels it "Blocked by robots.txt" and tells Google not to follow your own internal graph. `tests/deploy-config.test.mjs:4403` guards this — see the derivation corollary below.
 
-The same class caught `/embed`: `docs/embed-live-map.mdx:53` publishes a direct iframe at `/embed?layers=…&zoom=…`, so the map-param rules would have stopped Googlebot fetching the widget while rendering a *partner's* page. Carved back out with longer `Allow:` rules that win the longest match on `/embed` alone.
+The same class caught `/embed`: `docs/embed-live-map.mdx:53` publishes a direct iframe at `/embed?layers=…&zoom=…`, so the map-param rules would have stopped Googlebot fetching the widget while rendering a *partner's* page. Carved back out with a longer `Allow:` that wins the longest match on `/embed` alone.
+
+It caught `layers` too, and that one changed the rule set rather than adding a carve-out. `layers` *looks* like map state, but it is not what makes the space unbounded — coordinates are, and every generated share URL carries `zoom`. Meanwhile `scripts/build-use-cases.mjs:430` and `:621` publish bounded dashboard CTAs with `layers=` and no coordinates. The rule therefore added no coverage and only disallowed links the site deliberately publishes, so it was dropped. **When a rule blocks something you publish, check whether the rule is earning anything before reaching for a carve-out.**
+
+### Corollary: derive the guard's inputs, don't sample them
+
+The first version of that test listed twelve hand-picked shapes — and missed both `layers=` CTAs, which is how the rule shipped in the first place. A sampled guard tests the sample, not the contract. `tests/deploy-config.test.mjs:4403` now reads the query-bearing href literals out of the four corpus builders at test time and asserts every one resolves crawlable, so a new CTA shape is covered the day it is written.
 
 ## Why This Matters
 
@@ -57,6 +63,7 @@ Any time a `Disallow` is proposed to reduce crawl waste. Ask in order:
 2. Is the space actually unbounded, or merely large? Bounded spaces converge on their own.
 3. Does anything external link to it? If yes, blocking strands that signal.
 4. Does our own build emit this shape as an internal link? If yes, blocking it is self-harm.
+5. Is *this particular rule* earning anything the other rules do not? A parameter that only ever co-occurs with an already-blocked one adds no coverage and can only over-block.
 
 ## Verification Notes
 

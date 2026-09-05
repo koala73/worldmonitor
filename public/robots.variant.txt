@@ -30,7 +30,6 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
-Allow: /embed?*layers=
 Allow: /embed?*zoom=
 Disallow: /pro
 Disallow: /api/
@@ -39,7 +38,6 @@ Disallow: /tmp/
 Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
-Disallow: /*?*layers=
 
 User-agent: GPTBot
 User-agent: OAI-SearchBot
@@ -60,7 +58,6 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
-Allow: /embed?*layers=
 Allow: /embed?*zoom=
 Disallow: /pro
 Disallow: /api/
@@ -69,7 +66,6 @@ Disallow: /tmp/
 Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
-Disallow: /*?*layers=
 
 User-agent: CCBot
 User-agent: Bytespider

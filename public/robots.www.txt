@@ -28,11 +28,19 @@
 # cannot fold it into anything — it can still be indexed URL-only from an
 # inbound link. So block only what no consolidation mechanism can ever finish.
 #
-#   * BLOCKED — map state (lat/lon/zoom/layers). The space is unbounded: every
+#   * BLOCKED — map coordinates (lat/lon/zoom). The space is unbounded: every
 #     shared or bookmarked view is a new URL, so consolidation never converges
 #     and the crawl never ends. This is the case Google's own faceted-navigation
 #     guidance names for robots.txt. Nothing links to these URLs, so no signal
-#     is stranded by not crawling them.
+#     is stranded by not crawling them. `zoom` is the load-bearing one —
+#     src/utils/urlState.ts sets it unconditionally on every share URL, so it
+#     catches the whole family even when lat/lon are omitted.
+#   * NOT BLOCKED — `layers`. It looks like map state but is not what makes the
+#     space unbounded, and blocking it costs real pages: build-use-cases.mjs
+#     publishes bounded dashboard CTAs carrying `layers=` and no coordinates
+#     (`/dashboard?view=mena&layers=…&timeRange=24h`). Since every generated
+#     map URL carries `zoom`, the `layers` rule added no coverage and only
+#     disallowed links we deliberately publish.
 #   * BLOCKED — /tmp/. The docs code fences publish /tmp/*.json shell examples,
 #     which Google crawls and gets a 404 for.
 #   * NOT BLOCKED — the attribution families (ref, wm_referral, wm_content_*,
@@ -61,10 +69,10 @@
 # outside the /api/-only bounding-box pair, which `Disallow: /api/` covers).
 #
 # `/embed` is carved back out. docs/embed-live-map.mdx documents a direct
-# iframe at `/embed?layers=…&zoom=…`, so without these two Allows Googlebot
-# could not fetch our widget while rendering a partner's page. The carve-outs
-# are longer than the rules they override (15 and 13 vs 11 and 9), so they win
-# the longest match on /embed only — /?lat=… and /dashboard?lat=… still block.
+# iframe at `/embed?layers=…&zoom=…`, so without the Allow below Googlebot
+# could not fetch our widget while rendering a partner's page. The carve-out is
+# longer than the rule it overrides (13 vs 9), so it wins the longest match on
+# /embed only — /?lat=… and /dashboard?lat=… still block.
 #
 # Deliberately NOT blocked: /docs/_next/. #7660 proposed it, because Mintlify's
 # hashed chunk names change on every redeploy and the previous deploy's assets
@@ -83,7 +91,6 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
-Allow: /embed?*layers=
 Allow: /embed?*zoom=
 Disallow: /api/
 Disallow: /tests/
@@ -91,7 +98,6 @@ Disallow: /tmp/
 Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
-Disallow: /*?*layers=
 
 # Tier 2 — AI search & assistant agents: welcome. Same path rules as `*`,
 # restated because a matching named group makes a crawler ignore `*` entirely.
@@ -113,7 +119,6 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
-Allow: /embed?*layers=
 Allow: /embed?*zoom=
 Disallow: /api/
 Disallow: /tests/
@@ -121,7 +126,6 @@ Disallow: /tmp/
 Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
-Disallow: /*?*layers=
 
 # Tier 3 — bulk training-only scrapers: no assistant surface, no citations,
 # nothing given back. anthropic-ai is Anthropic's legacy training UA
