@@ -6,7 +6,50 @@ The Natural layer combines two authoritative sources for comprehensive disaster 
 
 ## IMD RSMC New Delhi cyclones
 
-North Indian Ocean cyclone tracks, forecast wind radii, and cones of uncertainty come from the official IMD API (`weather:imd-cyclone-marine:v1`). Observed positions stay distinct from forecast positions. Wind radii and the cone of uncertainty are forecast/uncertainty geometry, never an observed storm footprint. The seeder does not flatten these products into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`; a disabled or empty snapshot is not an all-clear.
+North Indian Ocean cyclone tracks, forecast wind radii, and cones of uncertainty come from the official IMD API (`weather:imd-cyclone-marine:v1`). Observed positions stay distinct from forecast positions. Wind radii and the cone of uncertainty are forecast/uncertainty geometry, never an observed storm footprint. The seeder does not flatten these products into `weather:alerts:v1`. Live fetch requires `IMD_API_KEY`, `IMD_API_EMAIL`, and `IMD_API_PASSWORD`; the seeder mints a short-lived JWT for each run. A disabled or empty snapshot is not an all-clear.
+
+## Configure the IMD Railway seeder
+
+IMD authenticates each API request with both an API key and a JWT. The API key
+identifies the approved server and static public IP. Railway calls this address
+a static outbound IP. The JWT authenticates the IMD account and expires after
+3,600 seconds. WorldMonitor mints a new JWT at the start of each seed run. Do
+not store the JWT in Railway.
+
+1. Create an account in the [IMD API portal](https://api.imd.gov.in/public/index.php).
+   Use the same account to create the API key and mint JWTs. Follow the
+   [IMD API Portal User Guide](https://api.imd.gov.in/public/IMD_API_Portal_User_Guide.pdf).
+2. Enable [Railway Static Outbound IPs](https://docs.railway.com/networking/static-outbound-ips)
+   for the service. Run the following command to list the addresses Railway can
+   use:
+
+   ```bash
+   railway outbound-network static-ip status \
+     --service seed-imd-cyclone-marine \
+     --environment production \
+     --json
+   ```
+
+   Register the outbound address with IMD when you create the production API
+   key. Railway can assign several addresses to a high-availability service. If
+   the command lists more than one address, confirm with IMD how to authorize
+   each address. A key that is bound to one address can fail when Railway uses
+   another one.
+3. Add these service variables in Railway. Store each value as a secret.
+
+   | Variable | Value |
+   |---|---|
+   | `IMD_API_KEY` | The active production key for the Railway outbound IP |
+   | `IMD_API_EMAIL` | The registered IMD account email that owns the key |
+   | `IMD_API_PASSWORD` | The password for the same IMD account |
+
+   Do not set `IMD_API_TOKEN`. The seeder sends the account credentials to
+   `POST https://api.imd.gov.in/api/oauth/token.php` and keeps the returned JWT
+   only for the current run.
+4. Deploy from `main`. Wait for the next `*/15 * * * *` cron run. Confirm that
+   the published IMD snapshot has `coverageState: ok`. A successful Railway
+   deployment or an `OK_ZERO` process result does not prove that IMD accepted
+   the credentials.
 
 ## GDACS (Global Disaster Alert and Coordination System)
 

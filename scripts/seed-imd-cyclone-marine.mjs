@@ -2,8 +2,7 @@
 /**
  * IMD cyclone, port, coastal, and marine seeder (#7005).
  *
- * Planned Railway service for cyclone/port/coastal/marine products only.
- * Does not write the NWS/ECCC/SWIC weather-alerts key. Live fetch requires IMD_API_KEY.
+ * Does not write the NWS/ECCC/SWIC weather-alerts key.
  */
 
 import { loadEnvFile, CHROME_UA, readCanonicalValue, runSeed } from './_seed-utils.mjs';

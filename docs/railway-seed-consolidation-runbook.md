@@ -1458,8 +1458,8 @@ entries.
 > include valid imports outside `scripts/`. Active rows must instead follow the
 > deploy mode and exact `watchPatterns` recorded in `scripts/railway-services.json`.
 > These rows are intentionally **not** part of the 100-service inventory count
-> above and are registered in `scripts/railway-services.json` with deploy mode
-> `nixpacks-root-repo`.
+> above. The planned rows are registered with deploy mode
+> `nixpacks-root-repo`; active rows use their verified live mode.
 >
 > **Cadence below is inferred from each seed's cache TTL** as a documentation
 > aid; confirm the live cron schedule and Service ID against the Railway
@@ -1493,6 +1493,10 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — only scheduled consumer of the keyed 500/mo Comtrade quota |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
+| seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+
+Configure the IMD account credentials and the IP-bound production key before
+you activate this service. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
 
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
 under the provider's 500-call monthly quota. The authenticated route requests

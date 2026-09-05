@@ -110,6 +110,7 @@ describe('audit service identity boundary', () => {
 function service({
   cronSchedule = '0 * * * *',
   dockerfilePath,
+  startCommand = 'node seed-example.mjs',
   variables = {},
   watchPatterns = [],
 } = {}) {
@@ -119,7 +120,7 @@ function service({
       watchPatterns,
       ...(dockerfilePath === undefined ? {} : { dockerfilePath }),
     },
-    deploy: { cronSchedule, startCommand: 'node seed-example.mjs' },
+    deploy: { cronSchedule, startCommand },
     variables,
   };
 }
@@ -516,6 +517,7 @@ const managedRegistry = [
   {
     entry: 'scripts/seed-example.mjs',
     service: 'seed-example',
+    startCommand: 'node seed-example.mjs',
     watchPatterns: [
       'scripts/seed-example.mjs',
       'scripts/_seed-utils.mjs',
@@ -620,6 +622,31 @@ describe('Railway operational-config audit', () => {
       JSON.parse(serializeRailwayServiceConfigPatch(drift)),
       buildRailwayServiceConfigPatch(drift),
     );
+  });
+
+  it('audits and patches the managed start command', () => {
+    const config = {
+      services: {
+        'svc-example': service({
+          startCommand: 'node ais-relay.cjs',
+          watchPatterns: managedRegistry[0].watchPatterns,
+          cronSchedule: managedRegistry[0].cronSchedule,
+        }),
+      },
+    };
+    const drift = auditRailwayServiceConfig(config, serviceIds, managedRegistry);
+
+    assert.deepEqual(drift[0].startCommand, {
+      actual: 'node ais-relay.cjs',
+      expected: 'node seed-example.mjs',
+    });
+    assert.deepEqual(buildRailwayServiceConfigPatch(drift), {
+      services: {
+        'svc-example': {
+          deploy: { startCommand: 'node seed-example.mjs' },
+        },
+      },
+    });
   });
 
   it('refuses to apply when a registry-managed production service is absent', () => {
@@ -883,10 +910,14 @@ describe('registry shape validation', () => {
     );
   });
 
-  it('rejects a malformed cronSchedule or requiredEnv declaration', () => {
+  it('rejects a malformed cronSchedule, startCommand, or requiredEnv declaration', () => {
     assert.throws(
       () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], cronSchedule: 15 }]),
       /cronSchedule must be a string or null/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], startCommand: '  ' }]),
+      /startCommand must be a non-empty string/,
     );
     assert.throws(
       () => auditRailwayServiceConfig(liveConfig, serviceIds, [{ ...managedRegistry[0], requiredEnv: [[]] }]),
@@ -952,7 +983,6 @@ describe('planned Railway service lifecycle', () => {
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',
-      'seed-imd-cyclone-marine',
     ].sort();
     const plannedEntries = RAILWAY_SERVICE_REGISTRY.filter(
       (entry) => entry.lifecycle === 'planned',
@@ -975,12 +1005,20 @@ describe('planned Railway service lifecycle', () => {
     );
   });
 
-  it('does not attach watchPatterns to planned seed-imd-cyclone-marine', () => {
+  it('audit-manages provisioned seed-imd-cyclone-marine', () => {
     const imd = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-imd-cyclone-marine');
     assert.ok(imd, 'seed-imd-cyclone-marine must remain in the Railway registry');
-    assert.equal(imd.lifecycle, 'planned');
-    assert.equal(Object.hasOwn(imd, 'watchPatterns'), false);
-    assert.equal(Object.hasOwn(imd, 'cronSchedule'), false);
+    assert.equal(Object.hasOwn(imd, 'lifecycle'), false);
+    assert.equal(imd.cronSchedule, '*/15 * * * *');
+    assert.equal(imd.startCommand, 'node seed-imd-cyclone-marine.mjs');
+    assert.deepEqual(imd.requiredEnv, [
+      'IMD_API_KEY',
+      'IMD_API_EMAIL',
+      'IMD_API_PASSWORD',
+      'UPSTASH_REDIS_REST_URL',
+      'UPSTASH_REDIS_REST_TOKEN',
+    ]);
+    assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(imd));
   });
 
   it('does not attach watchPatterns to planned seed-weather-alerts (no dual-SET of weather:alerts:v1)', () => {

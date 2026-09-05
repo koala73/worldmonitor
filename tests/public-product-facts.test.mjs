@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test';
 import { guardProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  cpSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -34,44 +35,28 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
 
-function makeAttributionFixture({ kind = 'structured', references = [{ path: 'scripts/stale-source.mjs' }] } = {}) {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-attribution-fixture-'));
-  for (const path of ['api', 'docs', 'scripts', 'server', 'shared', 'src']) {
-    mkdirSync(join(fixtureRoot, path), { recursive: true });
+function makeInventoryFixture({ malformed = false } = {}) {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-fixture-'));
+  const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' });
+  for (const path of tracked.split('\0').filter(Boolean)) {
+    mkdirSync(dirname(join(fixtureRoot, path)), { recursive: true });
+    cpSync(join(ROOT, path), join(fixtureRoot, path), { recursive: true, verbatimSymlinks: true });
   }
-  writeFileSync(join(fixtureRoot, 'scripts/live-source.mjs'), "export const DATA_URL = 'https://upstream.example/data';\n");
-  writeFileSync(join(fixtureRoot, 'docs/source-attribution.mdx'), '# Attribution\n');
-  writeFileSync(join(fixtureRoot, 'shared/source-attribution-manifest.json'), `${JSON.stringify({
-    version: 1,
-    entries: [{
-      host: 'upstream.example',
-      provider: 'upstream.example',
-      license: 'Provider terms',
-      attribution: 'Credit upstream.example.',
-      observed: true,
-      kind,
-      status: 'reviewed',
-      references,
-    }],
-    logicalEntries: [],
-  }, null, 2)}\n`);
+  const manifest = readJson('shared/source-attribution-manifest.json');
+  const entry = manifest.entries.find((row) => row.observed && row.kind === 'structured');
+  assert.ok(entry, 'fixture needs an observed structured source');
+  entry.references = [{ path: 'scripts/stale-source.mjs' }];
+  if (malformed) entry.kind = 'not-a-source-kind';
+  writeFileSync(join(fixtureRoot, 'shared/source-attribution-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return fixtureRoot;
 }
 
-function inventoryStatsFromAttributionFixture(fixtureRoot, warnings) {
-  const baseStats = computeStats();
-  return () => loadStatsForInventoryFacts({
-    compute: ({ sourceAttribution } = {}) => {
-      const attribution = sourceAttribution
-        ?? buildSourceAttributionStats({ rootDir: fixtureRoot });
-      return {
-        ...baseStats,
-        sourceAttribution: attribution,
-        sourceAttributionHosts: attribution.activeHosts,
-      };
-    },
-    fallbackAttribution: () => buildSourceAttributionStats({ rootDir: fixtureRoot, validate: false }),
-    warn: (message) => warnings.push(message),
+function runInventoryFixture(fixtureRoot, script = 'scripts/generate-inventory-facts.mjs', args = []) {
+  return spawnSync(process.execPath, [script, ...args], {
+    cwd: fixtureRoot,
+    encoding: 'utf8',
+    timeout: 30_000,
+    env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot },
   });
 }
 
@@ -350,29 +335,49 @@ describe('public product facts generation contract', () => {
   });
 
   it('publishes all default inventory outputs from a stale but structurally valid attribution ledger', () => {
-    const warnings = [];
-    const fixtureRoot = makeAttributionFixture();
-    const publishRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-default-publication-'));
+    const fixtureRoot = makeInventoryFixture();
     try {
       const strict = checkSourceAttribution(fixtureRoot);
       assert.ok(strict.errors.length > 0, 'strict source attribution checking must remain red for parity drift');
       assert.match(strict.errors.join('\n'), /stale manifest entry/);
 
-      const loadStats = inventoryStatsFromAttributionFixture(fixtureRoot, warnings);
-      generateInventoryFacts({ rootDir: publishRoot, loadStats });
-      for (const path of [
+      const result = runInventoryFixture(fixtureRoot);
+      assert.equal(result.status, 0, result.stderr);
+      const outputs = [
         'public/product-facts.json',
         'scripts/shared/inventory-facts.generated.json',
         'api/_inventory-facts.generated.js',
         'docs/generated/stats.json',
-      ]) {
-        assert.ok(existsSync(join(publishRoot, path)), `default generator did not publish ${path}`);
+      ];
+      const original = outputs.map((path) => readFileSync(join(fixtureRoot, path), 'utf8'));
+      const publicFacts = JSON.parse(original[0]);
+      const relayFacts = JSON.parse(original[1]);
+      const stats = JSON.parse(original[3]);
+      assert.deepEqual(publicFacts.capabilities, relayFacts.capabilities);
+      assert.equal(publicFacts.capabilities.sourceAttributionHosts, stats.sourceAttributionHosts);
+      assert.equal(stats.sourceAttributionHosts, buildSourceAttributionStats({ rootDir: fixtureRoot, validate: false }).activeHosts);
+      const edge = runInventoryFixture(fixtureRoot, '--input-type=module', ['-e',
+        "import { PUBLIC_INVENTORY_FACTS } from './api/_inventory-facts.generated.js'; console.log(JSON.stringify(PUBLIC_INVENTORY_FACTS));",
+      ]);
+      assert.equal(edge.status, 0, edge.stderr);
+      assert.deepEqual(JSON.parse(edge.stdout), relayFacts);
+      assert.match(result.stderr, /proceeding with committed attribution counts/);
+      for (const args of [[], ['--check']]) {
+        const replay = runInventoryFixture(fixtureRoot, 'scripts/generate-inventory-facts.mjs', args);
+        assert.equal(replay.status, 0, replay.stderr);
+        assert.deepEqual(outputs.map((path) => readFileSync(join(fixtureRoot, path), 'utf8')), original);
       }
-      assert.doesNotThrow(() => generateInventoryFacts({ check: true, rootDir: publishRoot, loadStats }));
-      assert.match(warnings.join('\n'), /proceeding with committed attribution counts/);
+      const strictCli = runInventoryFixture(fixtureRoot, 'scripts/source-attribution.mjs', ['--check']);
+      assert.notEqual(strictCli.status, 0, 'bootstrap must not weaken the strict attribution gate');
+      assert.match(strictCli.stderr + strictCli.stdout, /stale manifest entry/);
+
+      writeFileSync(join(fixtureRoot, 'src/config/finance-geo.ts'), 'export const UNRELATED = [];\n');
+      const brokenInventory = runInventoryFixture(fixtureRoot);
+      assert.notEqual(brokenInventory.status, 0);
+      assert.match(brokenInventory.stderr, /could not isolate STOCK_EXCHANGES/);
+      assert.deepEqual(outputs.map((path) => readFileSync(join(fixtureRoot, path), 'utf8')), original);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
-      rmSync(publishRoot, { recursive: true, force: true });
     }
   });
 
@@ -388,33 +393,26 @@ describe('public product facts generation contract', () => {
   });
 
   it('does not publish inventory outputs from a malformed attribution ledger', () => {
-    const warnings = [];
-    const fixtureRoot = makeAttributionFixture({ kind: 'not-a-source-kind' });
-    const publishRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-invalid-ledger-'));
+    const fixtureRoot = makeInventoryFixture({ malformed: true });
     try {
       const strict = checkSourceAttribution(fixtureRoot);
       assert.ok(strict.errors.length > 0, 'strict source attribution checking must reject malformed ledger entries');
       assert.match(strict.errors.join('\n'), /invalid manifest kind/);
 
-      assert.throws(
-        () => generateInventoryFacts({
-          rootDir: publishRoot,
-          loadStats: inventoryStatsFromAttributionFixture(fixtureRoot, warnings),
-        }),
-        /invalid manifest kind/,
-      );
+      const result = runInventoryFixture(fixtureRoot);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /invalid manifest kind/);
       for (const path of [
         'public/product-facts.json',
         'scripts/shared/inventory-facts.generated.json',
         'api/_inventory-facts.generated.js',
         'docs/generated/stats.json',
       ]) {
-        assert.equal(existsSync(join(publishRoot, path)), false, `malformed ledger published ${path}`);
+        assert.equal(existsSync(join(fixtureRoot, path)), false, `malformed ledger published ${path}`);
       }
-      assert.equal(warnings.length, 0, 'a malformed ledger must not emit a proceeding warning');
+      assert.doesNotMatch(result.stderr, /proceeding with committed attribution counts/);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
-      rmSync(publishRoot, { recursive: true, force: true });
     }
   });
 
