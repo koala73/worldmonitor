@@ -26,6 +26,8 @@ name: Live API Cache/Auth Sweep
 #     cleanly for an anonymous caller, and tools/call is a 401 carrying the
 #     OAuth resource_metadata hint.
 #   - OAuth metadata stays discoverable and cacheable on both hosts.
+#   - denied API User-Agents receive the shared JSON 403 on apex and www;
+#     descriptive clients still receive the origin JSON 404 on missing routes.
 #   - the crawlable corpus is EDGE-cacheable at Cloudflare, not merely at
 #     Vercel: `cf-cache-status` on a corpus document is anything but DYNAMIC
 #     (the fingerprint of a cache rule declaring it ineligible, #7659), while
@@ -41,7 +43,7 @@ name: Live API Cache/Auth Sweep
 # add `WM_LIVE_TEST_KEY: ${{ secrets.WM_LIVE_TEST_KEY }}` to the run step's env
 # and the case self-enables with no other change.
 #
-# No `npm ci`: the suite imports only `node:assert` and `node:test`, so it runs
+# No `npm ci`: the suite uses Node built-ins and the shared JSON policy, so it runs
 # under plain `node --test` on the Node 24 runner. It is invoked directly rather
 # than via `npm run test:data` both to avoid installing the repo's full
 # dependency tree for one file and because test:data would drag in the entire
@@ -105,16 +107,17 @@ jobs:
         # INSIDE the skipped describe.
         #
         # So assert that all mandatory work actually happened. The suite has one
-        # self-check plus eight mandatory production-probe groups; the authenticated
-        # canary is a ninth probe group but remains an explicit skip until
-        # WM_LIVE_TEST_KEY is provisioned. Requiring nine passes means the
+        # self-check plus ten mandatory production-probe groups; the authenticated
+        # canary is an eleventh probe group but remains an explicit skip until
+        # WM_LIVE_TEST_KEY is provisioned. Requiring eleven passes means the
         # documentation-only self-check cannot keep this workflow green if any
         # mandatory production group stops registering or starts skipping. Both
         # numbers below are load-bearing and must be raised together whenever a
         # mandatory probe is added — leaving the count at the old value lets the
         # NEW probe vanish silently while the total still clears the bar, which is
         # the very vacuous-pass this step exists to prevent (#7659 added
-        # corpus-edge-cache and had to move both; #7747 added document-edge-cache). Each
+        # corpus-edge-cache and had to move both; #7747 added document-edge-cache;
+        # #7804 added entry-document-edge-cache). Each
         # group also emits a named completion marker so an unrelated new test or
         # the optional canary cannot compensate for a missing mandatory probe.
         # `--test-reporter=tap` is pinned
@@ -126,11 +129,11 @@ jobs:
           set -o pipefail
           node --test --test-reporter=tap tests/live-api-cache-auth-regression.test.mjs 2>&1 | tee /tmp/sweep.log
           pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/sweep.log)
-          if [ "$pass_count" -lt 9 ]; then
-            echo "::error::Live sweep completed only $pass_count/9 mandatory checks — one or more production probe groups did not run."
+          if [ "$pass_count" -lt 11 ]; then
+            echo "::error::Live sweep completed only $pass_count/11 mandatory checks — one or more production probe groups did not run."
             exit 1
           fi
-          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata corpus-edge-cache document-edge-cache; do
+          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata corpus-edge-cache document-edge-cache entry-document-edge-cache agent-api-errors; do
             if ! grep -qE "^[[:space:]]*# LIVE_SWEEP_PROBE_COMPLETED ${probe}$" /tmp/sweep.log; then
               echo "::error::Live sweep did not complete mandatory production probe group: ${probe}"
               exit 1

@@ -136,8 +136,55 @@ What the widening surfaced:
   HEAD probe reports DYNAMIC on a route every real client gets as HIT. Verify
   with `curl -s -o /dev/null -D -`.
 
+## Fourth time: #7804 (2026-09-06)
+
+The corpus rule's representation guard was correct and inert on the two
+busiest URLs on the site. A dashboard-managed sibling, `WWW entry HTML - use
+origin CDN cache headers`, sat one position earlier and set `cache: true` for
+any query-free `GET /` or `GET /dashboard` with no guard at all. Cloudflare
+takes the last matching writer of a field, so a request the corpus rule
+declined — `Accept: text/markdown`, which Vercel answers with a markdown
+rendering of the homepage under the same cacheable header — still found
+`cache: true` there. `--check` said "current" throughout: the managed rule
+*was* current; the hole was in a rule the generator did not know existed.
+
+What this adds to the convention:
+
+- **A sibling rule with the same action and no guard reopens the hole.** The
+  generator now owns the whole document surface (`ENTRY_DOCUMENTS` joined the
+  model) and knows which rules it superseded (`RETIRED_CACHE_RULES`):
+  `--check` reports one still in the zone as drift wherever it sits, and
+  `--apply` deletes it after the claim lands.
+- **Pin the invariant, not the two names that broke it.** The retired list
+  names the rules that were wrong; a third dashboard rule under a fresh name
+  would have slipped past it, which is the shape
+  `pinned-value-allowlist-freezes-a-snapshot-not-the-invariant.md` warns
+  about. So `--check` also scans structurally: any enabled earlier rule that
+  sets `cache: true` and quotes a path the generator claims is reported, and
+  it blocks `--apply` rather than being deleted — a name the generator does
+  not know is a human's call. The claim set comes from the surface model, not
+  from the generated expression, because the expression also quotes its own
+  carve-outs (`/blog/_astro/`) and the zone's static-asset rule quotes that
+  one legitimately.
+- **A document that varies by User-Agent needs the UA in the guard.**
+  `middleware.ts` routes the declared AI agents on `/` to `/home.md` under
+  `Vary: User-Agent`, which Cloudflare ignores. The origin's `no-store` keeps
+  that markdown out of the edge, but not the reverse: a crawler on a warm edge
+  server was handed the stored browser HTML before middleware ran. The `/`
+  claim carves those agents out; the corpus is UA-invariant and keeps them.
+  The UA-keyed bypass `scripts/cloudflare-agent-readiness.mjs` used to append
+  for the same purpose is gone — two scripts each insisting on the last
+  position would have moved each other's rule on every run.
+- **The safe probe for a representation is the query-bearing URL.** The rule
+  requires an empty query, so `/?probe=1` with the suspect `Accept` or UA
+  falls through to the bypass and shows the origin's answer without storing
+  anything. Sending the suspect request to the bare URL *is* the poisoning.
+
 ## Related
 
+- `docs/solutions/design-patterns/pinned-value-allowlist-freezes-a-snapshot-not-the-invariant.md`
+  — why `RETIRED_CACHE_RULES` is paired with a structural earlier-writer scan
+  instead of standing alone.
 - `docs/solutions/conventions/verify-the-verifier-mutation-test-every-detection-layer.md`
   — the corpus probe is registered in the sweep's mandatory-probe gate
   (threshold *and* marker list) so it cannot itself go silently missing.

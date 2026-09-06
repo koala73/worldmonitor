@@ -2,13 +2,13 @@
 /**
  * Browser/CPU-throttled twin of scripts/profile-news-hybrid-clustering-7782.mjs.
  * Bundles the shared clustering core with production minify, then times the
- * synchronous Jaccard stage and a blob-worker round trip in Chromium.
+ * synchronous Jaccard stage and a real analysis-worker round trip in Chromium.
  *
  * Usage:
  *   node scripts/profile-news-hybrid-clustering-7782-browser.mjs <minimized-fixture.json>
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { bundleProfileInput, bundleAnalysisWorker, budgetEvidence } from './news-clustering-profile-input.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { chromium } from '@playwright/test';
@@ -42,27 +42,6 @@ function summarize(samples) {
   };
 }
 
-function bundleCore() {
-  mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
-  const outfile = resolve(ROOT, 'tmp/news-clustering-core.min.js');
-  const result = spawnSync(
-    resolve(ROOT, 'node_modules/.bin/esbuild'),
-    [
-      resolve(ROOT, 'shared/news-clustering-core.js'),
-      '--bundle',
-      '--minify',
-      '--format=iife',
-      '--global-name=NewsClustering',
-      `--outfile=${outfile}`,
-    ],
-    { encoding: 'utf8' },
-  );
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'esbuild failed');
-  }
-  return readFileSync(outfile, 'utf8');
-}
-
 function makeHighDiversity(count) {
   return Array.from({ length: count }, (_, i) => ({
     source: `Outlet${String(i % 47).padStart(2, '0')}`,
@@ -73,18 +52,9 @@ function makeHighDiversity(count) {
   }));
 }
 
-async function measurePage(page, items, samples) {
-  return page.evaluate(async ({ items: fixtureItems, samples: sampleCount, longTaskMs }) => {
-    const news = fixtureItems.map((item) => ({
-      source: item.source,
-      title: item.title,
-      link: item.link,
-      pubDate: new Date(item.publishedAt),
-      isAlert: Boolean(item.isAlert),
-      ...(item.threat ? { threat: item.threat } : {}),
-      ...(Number.isFinite(item.credibilityScore) ? { credibilityScore: item.credibilityScore } : {}),
-      ...(item.lat != null && item.lon != null ? { lat: item.lat, lon: item.lon } : {}),
-    }));
+async function measurePage(page, items, samples, workerSource) {
+  return page.evaluate(async ({ items: fixtureItems, samples: sampleCount, longTaskMs, workerSource }) => {
+    const news = fixtureItems.map(globalThis.NewsClustering.protoItemToNewsItem);
 
     const longtasks = [];
     try {
@@ -93,7 +63,7 @@ async function measurePage(page, items, samples) {
           longtasks.push({ duration: entry.duration, startTime: entry.startTime });
         }
       });
-      observer.observe({ type: 'longtask', buffered: true });
+      observer.observe({ type: 'longtask' });
     } catch {
       /* longtask unsupported */
     }
@@ -105,19 +75,21 @@ async function measurePage(page, items, samples) {
 
     const yieldTick = () => new Promise((resolve) => setTimeout(resolve, 0));
     await yieldTick();
-    const clusteringLongTasksBefore = longtasks.length;
     const syncTimings = [];
+    const syncWindows = [];
     let clusterCount = 0;
-    clusteringApi.clusterNewsCore(news, () => 4);
+    clusteringApi.clusterNewsCore(news, clusteringApi.getSourceTier);
     await yieldTick();
     for (let i = 0; i < sampleCount; i++) {
       const start = performance.now();
-      const clusters = clusteringApi.clusterNewsCore(news, () => 4);
-      syncTimings.push(performance.now() - start);
+      const clusters = clusteringApi.clusterNewsCore(news, clusteringApi.getSourceTier);
+      const end = performance.now();
+      syncTimings.push(end - start);
+      syncWindows.push({ start, end });
       clusterCount = clusters.length;
       await yieldTick();
     }
-    const clusteringLongTasks = longtasks.slice(clusteringLongTasksBefore);
+    const clusteringLongTasks = longtasks.filter((task) => syncWindows.some(({ start, end }) => task.startTime < end && task.startTime + task.duration > start));
 
     const serializeTimings = [];
     let itemBytes = 0;
@@ -138,32 +110,28 @@ async function measurePage(page, items, samples) {
       await yieldTick();
     }
 
-    const workerSource = `${document.getElementById('clustering-bundle').textContent}
-self.onmessage = (event) => {
-  const items = event.data.items.map((item) => ({
-    ...item,
-    pubDate: new Date(item.pubDate),
-  }));
-  const clusters = NewsClustering.clusterNewsCore(items, () => 4);
-  self.postMessage({ clusters });
-};
-self.postMessage({ type: 'ready' });`;
+    const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    function spawnWorker() { return new Worker(workerUrl); }
 
-    function spawnWorker() {
-      const blob = new Blob([workerSource], { type: 'text/javascript' });
-      return new Worker(URL.createObjectURL(blob));
-    }
-
+    const workerMainThreadTimings = [];
     function requestCluster(worker, payload) {
       return new Promise((resolve, reject) => {
+        let postMs = 0;
+        const timer = setTimeout(() => reject(new Error('Worker profile request timed out')), 30_000);
         const onMessage = (event) => {
           if (event.data?.type === 'ready') return;
+          clearTimeout(timer);
           worker.removeEventListener('message', onMessage);
-          resolve(hydrateWorkerClusters(event.data));
+          const start = performance.now();
+          const clusters = hydrateWorkerClusters(event.data);
+          workerMainThreadTimings.push(postMs + performance.now() - start);
+          resolve(clusters);
         };
         worker.addEventListener('message', onMessage);
         worker.addEventListener('error', reject, { once: true });
-        worker.postMessage({ items: payload });
+        const postStart = performance.now();
+        worker.postMessage({ type: 'cluster', id: 'profile', items: payload, sourceTiers: clusteringApi.SOURCE_TIERS });
+        postMs = performance.now() - postStart;
       });
     }
 
@@ -180,10 +148,11 @@ self.postMessage({ type: 'ready' });`;
       }));
     }
 
-    const payload = news.map((item) => ({
-      ...item,
-      pubDate: item.pubDate.toISOString(),
-    }));
+    const payload = news;
+    const expected = JSON.stringify(clusteringApi.clusterNewsCore(news, clusteringApi.getSourceTier));
+    function assertParity(clusters) {
+      if (JSON.stringify(clusters) !== expected) throw new Error('Real analysis worker output differs from synchronous clustering');
+    }
 
     const coldStarted = performance.now();
     const coldWorker = spawnWorker();
@@ -199,8 +168,9 @@ self.postMessage({ type: 'ready' });`;
     });
     const coldReadyMs = performance.now() - coldStarted;
     const coldRequestStarted = performance.now();
-    await requestCluster(coldWorker, payload);
+    const coldClusters = await requestCluster(coldWorker, payload);
     const coldRoundTripMs = performance.now() - coldRequestStarted;
+    assertParity(coldClusters);
     coldWorker.terminate();
 
     const warmWorker = spawnWorker();
@@ -214,19 +184,24 @@ self.postMessage({ type: 'ready' });`;
       warmWorker.addEventListener('message', onMessage);
       warmWorker.addEventListener('error', reject, { once: true });
     });
-    await requestCluster(warmWorker, payload);
+    assertParity(await requestCluster(warmWorker, payload));
     const warmTimings = [];
     for (let i = 0; i < sampleCount; i++) {
       const start = performance.now();
-      await requestCluster(warmWorker, payload);
+      const clusters = await requestCluster(warmWorker, payload);
       warmTimings.push(performance.now() - start);
+      assertParity(clusters);
     }
     warmWorker.terminate();
+    URL.revokeObjectURL(workerUrl);
 
     return {
+      workerOutputParity: true,
       clusterCount,
       itemCount: news.length,
       syncTimings,
+      syncWindows,
+      workerMainThreadTimings,
       serializeTimings,
       cloneTimings,
       itemBytes,
@@ -236,7 +211,7 @@ self.postMessage({ type: 'ready' });`;
       longtasks: clusteringLongTasks.filter((entry) => entry.duration >= longTaskMs),
       allLongtasks: longtasks.filter((entry) => entry.duration >= longTaskMs),
     };
-  }, { items, samples, longTaskMs: LONG_TASK_MS });
+  }, { items, samples, longTaskMs: LONG_TASK_MS, workerSource });
 }
 
 async function main() {
@@ -247,7 +222,10 @@ async function main() {
   }
 
   const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
-  const bundle = bundleCore();
+  if (!Array.isArray(fixture.items) || fixture.items.length === 0) throw new Error('A nonempty representative fixture is required');
+  mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+  const bundle = bundleProfileInput();
+  const workerSource = await bundleAnalysisWorker();
   const cases = {
     representative: fixture.items,
     highDiversity1500: makeHighDiversity(1500),
@@ -262,12 +240,12 @@ async function main() {
         await page.setContent(
           `<!doctype html><html><head></head><body>
 <script id="clustering-bundle">${bundle}</script>
-<script>${bundle}</script>
+
 </body></html>`,
         );
         const session = await page.context().newCDPSession(page);
         await session.send('Emulation.setCPUThrottlingRate', { rate: cpu });
-        const raw = await measurePage(page, items, SAMPLES);
+        const raw = await measurePage(page, items, SAMPLES, workerSource);
         await page.close();
         const sync = summarize(raw.syncTimings);
         reports.push({
@@ -284,12 +262,13 @@ async function main() {
           workerColdReadyMs: round(raw.coldReadyMs),
           workerColdRoundTripMs: round(raw.coldRoundTripMs),
           workerWarmRoundTripMs: summarize(raw.warmTimings),
+          workerMainThreadScriptMs: summarize(raw.workerMainThreadTimings),
           clusteringLongTaskCount: raw.longtasks.length,
           clusteringLongTaskDurationsMs: raw.longtasks.map((entry) => round(entry.duration)),
           pageLongTaskCount: raw.allLongtasks.length,
           pageLongTaskDurationsMs: raw.allLongtasks.map((entry) => round(entry.duration)),
-          exceedsFrameBudget: sync.median >= FRAME_BUDGET_MS,
-          exceedsLongTask: sync.median >= LONG_TASK_MS || raw.longtasks.length > 0,
+          ...budgetEvidence(raw.syncTimings),
+          raw,
         });
       }
     }
@@ -299,10 +278,12 @@ async function main() {
 
   const justified = reports
     .filter((row) => row.name === 'representative' || row.name === 'highDiversity1500')
-    .some((row) => row.exceedsLongTask || row.exceedsFrameBudget);
+    .some((row) => row.repeatableBudgetExceedance);
 
   const report = {
     issue: 7782,
+    generatedAt: new Date().toISOString(),
+    surface: 'isolated production-minified core and real analysis worker; not dashboard interaction latency',
     budgets: { frameMs: FRAME_BUDGET_MS, longTaskMs: LONG_TASK_MS },
     samplesPerCase: SAMPLES,
     fixture: {
@@ -313,8 +294,8 @@ async function main() {
     },
     cases: reports,
     gate: {
-      syncStageCausesRepeatableBudgetMiss: justified,
-      recommendation: justified ? 'implementation-justified' : 'stop-without-moving-work',
+      isolatedStageHasRepeatableBudgetExceedance: justified,
+      recommendation: justified ? 'requires-dashboard-attribution' : 'stop-without-moving-work',
     },
   };
   writeFileSync(resolve(ROOT, 'tmp/news-hybrid-clustering-7782-browser.json'), JSON.stringify(report, null, 2));

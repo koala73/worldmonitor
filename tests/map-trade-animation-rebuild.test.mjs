@@ -154,8 +154,64 @@ describe('trade animation still full-rebuilds (#7781 characterization)', () => {
     assert.match(harnessSrc, /deckCommitMs/);
     assert.match(
       harnessSrc,
-      /layerManager\.updateLayers/,
+      /layerManagerPrototype\.updateLayers/,
       'profiler must time LayerManager.updateLayers, not only overlay.setProps',
     );
   });
+});
+
+import ts from 'typescript';
+import { runInNewContext } from 'node:vm';
+
+it('profiles a sealed layer manager without consuming hint invalidation or counting flush frames', async () => {
+  const source = ts.createSourceFile('harness.ts', harnessSrc, ts.ScriptTarget.Latest, true);
+  const declaration = source.statements.find((node) => ts.isVariableStatement(node)
+    && node.declarationList.declarations.some((d) => d.name.getText(source) === 'runTradeAnimationProfile'));
+  const js = ts.transpileModule(declaration.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  let clock = 0;
+  let active = false;
+  let invalidated = true;
+  let controlUpdates = 0;
+  let deckUpdates = 0;
+  class Manager { updateLayers() { deckUpdates++; clock += 3; } }
+  const manager = Object.seal(new Manager());
+  const originalDeckUpdate = Manager.prototype.updateLayers;
+  const guard = { shouldScan() { const result = invalidated; invalidated = false; return result; } };
+  const originalGuard = guard.shouldScan;
+  const map = {
+    deckOverlay: { _deck: { layerManager: manager } }, zoomHintGuard: guard,
+    tradeTrips: [], tradeRouteSegments: [],
+    setProtests() {}, updateHotspotActivity() {}, setNewsLocations() {}, setRenderPaused() {},
+    render() { active = true; }, stopTradeAnimation() { active = false; },
+    buildLayers() { clock += 2; return [{ id: 'nuclear-layer' }, { id: 'trade-route-trips-layer' }]; },
+    updateZoomHints() { if (guard.shouldScan({}, {})) controlUpdates++; },
+    updateLayers() { this.buildLayers(); this.updateZoomHints(); clock += 1; },
+  };
+  const originalUpdate = map.updateLayers;
+  const profile = runInNewContext(js + '; runTradeAnimationProfile', {
+    map, internals: {}, performance: { now: () => clock },
+    TRADE_ANIMATION_PROFILE_LAYERS: ['nuclear', 'tradeRoutes'], SEEDED_NEWS_LOCATIONS: [],
+    setLayersForSnapshot() {}, setCamera() {}, makeNewsLocationsNonRecent() {},
+    getDeckLayerSnapshot: () => [], getLayerDataCount: () => 0, readGlRenderer: () => 'Fixture GPU',
+    waitAnimationFrames: async (count, callback) => {
+      for (let i = 0; i < count; i++) {
+        if (active) { invalidated = true; map.updateLayers(); manager.updateLayers(); }
+        clock += 17;
+        callback?.(clock);
+      }
+    },
+  });
+  const result = await profile({ warmupFrames: 2, displayFrames: 5 });
+  assert.equal(result.buildCount, 5);
+  assert.equal(result.samples.length, 5);
+  assert.equal(result.hintScanCount, 5);
+  assert.equal(controlUpdates, 7, 'one actual hint update per invalidation, including warmup');
+  assert.equal(deckUpdates, 7, 'flush frames must not generate new animation updates');
+  assert.equal(result.samples[0].jsBuildMs, 2);
+  assert.equal(result.samples[0].updateLayersMs, 3);
+  assert.equal(result.samples[0].deckCommitMs, 3);
+  assert.equal(result.samples[0].totalMs, 6);
+  assert.equal(Manager.prototype.updateLayers, originalDeckUpdate);
+  assert.equal(guard.shouldScan, originalGuard);
+  assert.equal(map.updateLayers, originalUpdate);
 });

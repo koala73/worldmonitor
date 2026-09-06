@@ -8,6 +8,7 @@ import { openStockResearchOverlay } from '@/features/stock-research/stock-resear
 import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
+import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import {
   REFRESH_INTERVALS,
   DEFAULT_PANELS,
@@ -535,8 +536,9 @@ export class App {
 
     if (keySet.has(STORAGE_KEYS.mapMode)) {
       const mode = getStoredMapModePreference();
-      if (mode === 'globe') void this.state.map?.switchToGlobe();
-      else void this.state.map?.switchToFlat();
+      if (this.state.map) {
+        void applyVisibleMapDimension(this.state, mode === 'globe' ? '3d' : '2d');
+      }
     }
 
     if (

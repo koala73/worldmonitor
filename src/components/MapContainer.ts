@@ -10,6 +10,7 @@ import {
   isLayerToggleAllowed,
   isLayerEntitled,
   sanitizeLockedLayers,
+  sanitizeResilienceScoreForRenderer,
   shouldSanitizeLockedLayers,
   type RendererKind,
 } from '@/config/map-layer-definitions';
@@ -285,8 +286,11 @@ export class MapContainer {
     this.container.addEventListener('touchstart', this.invalidateViewportAuthority, { passive: true });
     this.container.addEventListener('keydown', this.invalidateViewportAuthority);
 
-    if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
-      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    if (this.initialState.layers) {
+      const layers = sanitizeResilienceScoreForRenderer(this.initialState.layers, this.useDeckGL);
+      if (layers !== this.initialState.layers) {
+        this.initialState = { ...this.initialState, layers };
+      }
     }
 
     // init() attaches the resize observer synchronously (before its first await),
@@ -366,8 +370,11 @@ export class MapContainer {
   }
 
   private sanitizeNonDeckLayers(): void {
-    if (this.initialState.layers?.resilienceScore) {
-      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    if (this.initialState.layers) {
+      const layers = sanitizeResilienceScoreForRenderer(this.initialState.layers, false);
+      if (layers !== this.initialState.layers) {
+        this.initialState = { ...this.initialState, layers };
+      }
     }
   }
 
@@ -693,7 +700,8 @@ export class MapContainer {
       this.destroyFlatMap();
       this.useGlobe = true;
       this.useDeckGL = false;
-      this.initialState = snapshot;
+      const layers = sanitizeResilienceScoreForRenderer(snapshot.layers, false);
+      this.initialState = layers === snapshot.layers ? snapshot : { ...snapshot, layers };
       this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
       void this.init();
     }
@@ -717,9 +725,8 @@ export class MapContainer {
       this.globeMap = null;
       this.useGlobe = false;
       this.useDeckGL = this.shouldUseDeckGL();
-      this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
-        ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
-        : snapshot;
+      const layers = sanitizeResilienceScoreForRenderer(snapshot.layers, this.useDeckGL);
+      this.initialState = layers === snapshot.layers ? snapshot : { ...snapshot, layers };
       this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
       // Cancel any pending deck demand gate from a prior flat init before
       // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
@@ -990,7 +997,7 @@ export class MapContainer {
   public setLayers(layers: MapLayers, options: { bypassEntitlementSanitization?: boolean } = {}): void {
     // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
     // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.
-    let sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    let sanitized = sanitizeResilienceScoreForRenderer(layers, this.useDeckGL);
     if (!options.bypassEntitlementSanitization && shouldSanitizeLockedLayers(
       hasPremiumAccess(getAuthState()),
       isProTierResolved(),

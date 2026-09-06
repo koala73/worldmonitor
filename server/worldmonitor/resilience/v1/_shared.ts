@@ -11,7 +11,7 @@ export type { ScoreInterval };
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline, setCachedJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
-import { detectTrend, round } from '../../../_shared/resilience-stats';
+import { detectTrend, getResilienceStressFactor, round } from '../../../_shared/resilience-stats';
 import { isInRankableUniverse } from './_rankable-universe';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
@@ -912,7 +912,7 @@ async function buildResilienceScoreGeneration(
   }
   const baselineScore = round(coverageWeightedMean(baselineDims));
   const stressScore = round(coverageWeightedMean(stressDims));
-  const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
+  const stressFactor = round(getResilienceStressFactor(stressScore), 4);
   // Phase 2 T2.3 activation: `overallScore` is either the legacy
   // 6-domain weighted aggregate (compensatory, `Σ domain.score *
   // domain.weight`) or the pillar-combined penalized form (non-

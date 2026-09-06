@@ -330,8 +330,12 @@ function defineBrowserGlobals(): MiniDocument {
 async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   const tempDir = mkdtempSync(join(tmpdir(), 'mission-handler-test-'));
   const outfile = join(tempDir, 'event-handlers.mjs');
+  // The URL-sync predicate is pure and lives beside its type, so the stub
+  // re-exports the real one rather than carrying a copy that could drift.
+  const urlStateModule = JSON.stringify(fileURLToPath(new URL('../src/utils/urlState.ts', import.meta.url)));
   const stubs = new Map<string, string>([
     ['@/utils', `
+      export { urlHasAsyncFlyTo } from ${urlStateModule};
       export function buildMapUrl(baseUrl, state) {
         const url = new URL(baseUrl);
         if (state.center) {
@@ -513,6 +517,9 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       buildApi.onLoad({ filter: /.*/, namespace: 'mission-stub' }, (args) => ({
         contents: stubs.get(args.path) ?? '',
         loader: 'js' as const,
+        // A stub may re-export a real source file; without a resolve
+        // directory esbuild refuses to look on disk even for absolute paths.
+        resolveDir: fileURLToPath(new URL('..', import.meta.url)),
       }));
       buildApi.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'css' as const }));
     },

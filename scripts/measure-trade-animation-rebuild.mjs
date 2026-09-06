@@ -13,13 +13,13 @@
  *     [--repeats 3] [--frames 61] [--warmup 20] [--json]
  *     [--software-gl] [--headed] [--start-server]
  *
- * Default URL: http://127.0.0.1:4173/tests/map-harness.html
- * --start-server launches Vite in production mode for that URL.
+ * Default URL: http://127.0.0.1:4173/tests/map-harness.html?alert=false
+ * --start-server builds production assets and serves them with Vite preview.
  * Software WebGL (SwiftShader) is labeled and is not a hardware FPS claim.
  */
 import { createServer } from 'node:net';
 import { pathToFileURL } from 'node:url';
-import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export const FRAME_BUDGET_MS = 16;
@@ -107,10 +107,10 @@ export function decideTradeAnimationIsolation(tradeOn, tradeOff, options = {}) {
   const softwareGl = Boolean(options.softwareGl) || isSoftwareGlRenderer(tradeOn?.glRenderer);
   const hardware = Boolean(options.hardware) && !softwareGl;
   const perBuildOn = tradeOn.buildCount
-    ? (tradeOn.jsBuildMs + tradeOn.deckCommitMs) / tradeOn.buildCount
+    ? tradeOn.totalMs / tradeOn.buildCount
     : 0;
   const perBuildOff = tradeOff.buildCount
-    ? (tradeOff.jsBuildMs + tradeOff.deckCommitMs) / tradeOff.buildCount
+    ? tradeOff.totalMs / tradeOff.buildCount
     : 0;
   const extraPerBuildMs = round(Math.max(0, perBuildOn - perBuildOff));
   const extraTotalMs = round(Math.max(0, tradeOn.totalMs - tradeOff.totalMs));
@@ -134,11 +134,11 @@ export function decideTradeAnimationIsolation(tradeOn, tradeOff, options = {}) {
   }
 
   const fpsOnly = repeatableMissedFrames && !repeatableBudgetMiss && !repeatableLongTask;
-  if (fpsOnly && softwareGl && !hardware) {
+  if (fpsOnly && !hardware) {
     return {
       decision: 'unmet',
       reason:
-        'Only software-GL missed frames were observed. That is not a hardware frame-budget miss; re-run headed without SwiftShader.',
+        softwareGl ? 'Only software-GL missed frames were observed. That is not a hardware frame-budget miss; re-run headed without SwiftShader.' : 'Missed frames were observed without a verified hardware renderer; hardware attribution is unmet.',
       extraPerBuildMs,
       extraTotalMs,
     };
@@ -165,7 +165,7 @@ export function decideTradeAnimationIsolation(tradeOn, tradeOff, options = {}) {
 
 export function parseArgs(argv) {
   const args = {
-    url: 'http://127.0.0.1:4173/tests/map-harness.html',
+    url: 'http://127.0.0.1:4173/tests/map-harness.html?alert=false',
     cpu: 1,
     repeats: 3,
     frames: 61,
@@ -223,31 +223,43 @@ async function waitForUrl(url, timeoutMs = 120_000) {
 }
 
 async function startViteServer() {
+  const { build, preview } = await import('vite');
   const port = await freePort();
-  const child = spawn(
-    process.execPath,
-    ['./node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--mode', 'production', '--strictPort'],
-    {
-      env: {
-        ...process.env,
-        VITE_E2E: '1',
-        VITE_VARIANT: 'full',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
-  const url = `http://127.0.0.1:${port}/tests/map-harness.html`;
+  // A local measurement must never publish source maps or runtime telemetry.
+  process.env.SENTRY_AUTH_TOKEN = '';
+  process.env.VITE_SENTRY_DSN = '';
+  process.env.VITE_E2E = '1';
+  process.env.VITE_VARIANT = 'full';
+  const outDir = resolve('tmp/trade-animation-production');
+  const config = {
+    mode: 'production',
+    // Keep machine-readable stdout reserved for the report.
+    customLogger: { info: () => {}, warn: (msg) => console.error(msg),
+      warnOnce: (msg) => console.error(msg), error: (msg) => console.error(msg),
+      clearScreen: () => {}, hasErrorLogged: () => false, hasWarned: false },
+    build: { outDir, rollupOptions: { input: { mapHarness: resolve('tests/map-harness.html') } } },
+  };
+  const originalWrite = process.stdout.write;
+  try {
+    process.stdout.write = process.stderr.write.bind(process.stderr);
+    await build(config);
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+  const server = await preview({ ...config, preview: { host: '127.0.0.1', port, strictPort: true } });
+  const url = `http://127.0.0.1:${port}/tests/map-harness.html?alert=false`;
   try {
     await waitForUrl(url);
-    return { child, url };
+    return { server, url };
   } catch (error) {
-    child.kill('SIGTERM');
+    await new Promise((resolve) => server.httpServer.close(resolve));
     throw error;
   }
 }
 
 async function runProfile(page, options) {
   await page.waitForFunction(() => Boolean(window.__mapHarness?.ready), null, { timeout: 30_000 });
+  if (await page.locator('.layer-warn-overlay').count()) throw new Error('Dismiss the layer warning before profiling; it obscures the map');
   return page.evaluate(async (profileOptions) => {
     const harness = window.__mapHarness;
     if (!harness?.runTradeAnimationProfile) {
@@ -274,33 +286,29 @@ async function measure(args) {
     const page = await context.newPage();
     const client = await context.newCDPSession(page);
     if (args.cpu > 1) {
-      try {
-        await client.send('Emulation.setCPUThrottlingRate', { rate: args.cpu });
-      } catch {
-        /* CDP throttle unavailable */
-      }
+      await client.send('Emulation.setCPUThrottlingRate', { rate: args.cpu });
     }
     await page.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     const tradeOn = [];
     const tradeOff = [];
     for (let i = 0; i < args.repeats; i++) {
-      tradeOn.push(await runProfile(page, {
-        displayFrames: args.frames,
-        warmupFrames: args.warmup,
-        zoom: 5,
-        enabledLayers: ['nuclear', 'datacenters', 'tradeRoutes'],
-        includeNews: true,
-      }));
-      tradeOff.push(await runProfile(page, {
-        displayFrames: args.frames,
-        warmupFrames: args.warmup,
-        zoom: 5,
-        enabledLayers: ['nuclear', 'datacenters'],
-        includeNews: true,
-      }));
+      // Alternate order to reduce warm-cache and elapsed-time bias.
+      for (const on of i % 2 === 0 ? [true, false] : [false, true]) {
+        const profile = await runProfile(page, {
+          displayFrames: args.frames, warmupFrames: args.warmup, zoom: 5,
+          enabledLayers: on ? ['nuclear', 'datacenters', 'tradeRoutes'] : ['nuclear', 'datacenters'],
+          includeNews: true,
+        });
+        (on ? tradeOn : tradeOff).push(profile);
+        if (on && i === args.repeats - 1) await page.screenshot({ path: 'tmp/trade-animation-profile.png' });
+      }
+    }
+    const assetScripts = await page.locator('script[src]').evaluateAll((scripts) => scripts.map((s) => s.getAttribute('src')));
+    if (args.startServer && (assetScripts.some((src) => src.includes('/@vite/')) || !assetScripts.some((src) => src.startsWith('/assets/')))) {
+      throw new Error('Profile did not load production-built assets');
     }
     const userAgent = await page.evaluate(() => navigator.userAgent);
-    return { tradeOn, tradeOff, userAgent };
+    return { tradeOn, tradeOff, userAgent, assetScripts };
   } finally {
     await browser.close();
   }
@@ -345,24 +353,28 @@ export function buildReport(result, args) {
   const tradeOn = meanSummaries(onSummaries);
   const tradeOff = meanSummaries(offSummaries);
   const softwareGl = Boolean(args?.softwareGl) || isSoftwareGlRenderer(tradeOn.glRenderer);
+  const hardwareGl = /Apple|NVIDIA|AMD|Intel|Adreno|Mali|PowerVR|Radeon/i.test(tradeOn.glRenderer || '') && !softwareGl;
   const decision = decideTradeAnimationIsolation(tradeOn, tradeOff, {
     softwareGl,
-    hardware: Boolean(args?.headed) && !softwareGl,
+    hardware: hardwareGl && Boolean(args?.headed),
   });
   return {
     generatedAt: new Date().toISOString(),
     url: args?.url,
+    surface: args?.startServer ? 'Vite production build + preview' : 'externally supplied URL; build unverified',
     cpuThrottleRate: Number(args?.cpu) || 1,
     repeats: Number(args?.repeats) || 1,
     softwareGl,
+    hardwareGl,
     headed: Boolean(args?.headed),
     userAgent: result?.userAgent ?? null,
+    assetScripts: result?.assetScripts ?? [],
     tradeOn,
     tradeOff,
     decision,
     repeatsRaw: {
-      tradeOn: onSummaries,
-      tradeOff: offSummaries,
+      tradeOn: result.tradeOn,
+      tradeOff: result.tradeOff,
     },
   };
 }
@@ -415,9 +427,7 @@ async function main() {
     else printHuman(report);
     if (report.decision.decision === 'implement') process.exitCode = 2;
   } finally {
-    if (server?.child) {
-      server.child.kill('SIGTERM');
-    }
+    if (server?.server) await new Promise((resolve) => server.server.httpServer.close(resolve));
   }
 }
 

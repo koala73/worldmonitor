@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEiaSprRow, parseEiaRefineryRow, SPR_TTL, REFINERY_INPUTS_TTL } from '../scripts/seed-economy.mjs';
+import {
+  fetchSprLevels,
+  parseEiaSprRow,
+  parseEiaRefineryRow,
+  SPR_TTL,
+  REFINERY_INPUTS_TTL,
+} from '../scripts/seed-economy.mjs';
 
 // ─── Key constants (imported from cache-keys pattern) ───
 // These tests intentionally cross-check the seed's internal strings against
@@ -86,27 +92,63 @@ describe('parseEiaSprRow', () => {
   });
 });
 
-// ─── computeSprWoW (inline logic mirroring fetchSprLevels) ───
+// ─── SPR weekly changes ───
 
-describe('computeSprWoW', () => {
-  it('computes correct WoW delta', () => {
-    const latest = { barrels: 370.2 };
-    const prev = { barrels: 371.6 };
-    const changeWoW = +(latest.barrels - prev.barrels).toFixed(3);
-    assert.equal(changeWoW, -1.4);
+describe('fetchSprLevels', () => {
+  it('computes weekly and four-week changes from EIA rows', async (t) => {
+    const previousApiKey = process.env.EIA_API_KEY;
+    process.env.EIA_API_KEY = 'test-eia-key';
+    t.after(() => {
+      if (previousApiKey === undefined) delete process.env.EIA_API_KEY;
+      else process.env.EIA_API_KEY = previousApiKey;
+    });
+
+    const rows = [
+      { value: '370.2', period: '2026-03-28' },
+      { value: '371.6', period: '2026-03-21' },
+      { value: '372.0', period: '2026-03-14' },
+      { value: '373.0', period: '2026-03-07' },
+      { value: '375.4', period: '2026-02-28' },
+    ];
+    t.mock.method(globalThis, 'fetch', async (input) => {
+      const url = new URL(String(input));
+      assert.equal(url.pathname, '/v2/petroleum/stoc/wstk/data/');
+      assert.equal(url.searchParams.get('facets[series][]'), 'WCSSTUS1');
+      return Response.json({ response: { data: rows } });
+    });
+
+    const result = await fetchSprLevels();
+
+    assert.equal(result.changeWoW, -1.4);
+    assert.equal(result.changeWoW4, -5.2);
+    assert.deepEqual(result.weeks, rows.map((row) => ({
+      period: row.period,
+      barrels: Number(row.value),
+    })));
   });
 
-  it('returns null when prev is null', () => {
-    const prev = null;
-    const changeWoW = prev ? +(370.2 - prev.barrels).toFixed(3) : null;
-    assert.equal(changeWoW, null);
-  });
+  it('returns no four-week change when a fifth valid week is unavailable', async (t) => {
+    const previousApiKey = process.env.EIA_API_KEY;
+    process.env.EIA_API_KEY = 'test-eia-key';
+    t.after(() => {
+      if (previousApiKey === undefined) delete process.env.EIA_API_KEY;
+      else process.env.EIA_API_KEY = previousApiKey;
+    });
 
-  it('computes correct 4-week change', () => {
-    const latest = { barrels: 370.2 };
-    const prev4 = { barrels: 375.4 };
-    const changeWoW4 = +(latest.barrels - prev4.barrels).toFixed(3);
-    assert.equal(changeWoW4, -5.2);
+    t.mock.method(globalThis, 'fetch', async () => Response.json({
+      response: {
+        data: [
+          { value: '370.2', period: '2026-03-28' },
+          { value: '371.6', period: '2026-03-21' },
+          { value: '372.0', period: '2026-03-14' },
+          { value: '373.4', period: '2026-03-07' },
+        ],
+      },
+    }));
+
+    const result = await fetchSprLevels();
+
+    assert.equal(result.changeWoW4, null);
   });
 });
 

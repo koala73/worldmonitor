@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildReport,
   FRAME_BUDGET_MS,
   decideTradeAnimationIsolation,
   isSoftwareGlRenderer,
@@ -179,7 +180,7 @@ describe('decideTradeAnimationIsolation (#7781)', () => {
 describe('parseArgs', () => {
   it('defaults to the settled harness URL and production-profile flags off', () => {
     const args = parseArgs(['node', 'scripts/measure-trade-animation-rebuild.mjs']);
-    assert.equal(args.url, 'http://127.0.0.1:4173/tests/map-harness.html');
+    assert.equal(args.url, 'http://127.0.0.1:4173/tests/map-harness.html?alert=false');
     assert.equal(args.cpu, 1);
     assert.equal(args.repeats, 3);
     assert.equal(args.frames, 61);
@@ -209,4 +210,15 @@ describe('summarizeProfile buildCount', () => {
     assert.equal(summary.buildCount, 0);
     assert.equal(summary.sampleCount, 1);
   });
+});
+
+it('does not infer hardware from a generic WebGL renderer name', () => {
+  const on = cheapProfile({ glRenderer: 'WebKit WebGL',
+    rafIntervalsMs: Array.from({ length: 60 }, () => 28),
+    samples: Array.from({ length: 30 }, () => sample({ totalMs: 2 })),
+  });
+  const off = cheapProfile({ buildCount: 0, samples: [] });
+  const report = buildReport({ tradeOn: [on], tradeOff: [off] }, { headed: true });
+  assert.equal(report.hardwareGl, false);
+  assert.equal(report.decision.decision, 'unmet');
 });

@@ -16,6 +16,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import widgetResponseParser from '../scripts/_widget-response-parser.cjs';
+
+const { parseWidgetAgentResponse } = widgetResponseParser;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -377,26 +380,17 @@ describe('widget-store — constants and logic', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Title regex (hyphens-in-titles bug fix)
+// 3. Widget response parsing
 // ---------------------------------------------------------------------------
-describe('widget-agent relay — title extraction regex', () => {
+describe('widget-agent relay — response parsing', () => {
   const relay = src('scripts/ais-relay.cjs');
 
-  it('title regex does NOT exclude hyphens (fixed bug: [^\\n\\-] → [^\\n])', () => {
-    // Extract the title extraction regex from the relay source
-    const match = relay.match(/titleMatch\s*=\s*text\.match\(([^;]+)\)/);
-    assert.ok(match, 'Title extraction line not found (expected: titleMatch = text.match(...))');
-    const regexStr = match[1];
-    // Must NOT have \- inside a character class (the old bug)
-    assert.ok(
-      !regexStr.includes('\\-') && !regexStr.includes('\\\\-'),
-      `Title regex must not exclude hyphens. Found: ${regexStr}`,
-    );
+  it('relay delegates completed and recovered responses to the shared parser', () => {
+    const calls = relay.match(/parseWidgetAgentResponse\(/g) ?? [];
+    assert.equal(calls.length, 2);
   });
 
-  it('title regex correctly parses hyphenated titles', () => {
-    // Simulate the regex from the source
-    const regex = /<!--\s*title:\s*([^\n]+?)\s*-->/;
+  it('parses hyphenated titles through the production parser', () => {
     const cases = [
       { input: '<!-- title: Market-Tracker -->', expected: 'Market-Tracker' },
       { input: '<!-- title: US-China Trade Watch -->', expected: 'US-China Trade Watch' },
@@ -404,34 +398,29 @@ describe('widget-agent relay — title extraction regex', () => {
       { input: '<!-- title:  Leading Spaces -->', expected: 'Leading Spaces' },
     ];
     for (const { input, expected } of cases) {
-      const m = input.match(regex);
-      assert.ok(m, `No match for: ${input}`);
-      assert.equal(m[1].trim(), expected, `Wrong title extracted from: ${input}`);
+      const result = parseWidgetAgentResponse(input, 50_000);
+      assert.equal(result.title, expected, `Wrong title extracted from: ${input}`);
     }
   });
 
-  it('title regex falls back to "Custom Widget" when comment absent', () => {
-    const regex = /<!--\s*title:\s*([^\n]+?)\s*-->/;
+  it('falls back to "Custom Widget" when the title comment is absent', () => {
     const text = 'Some widget HTML without title comment';
-    const m = text.match(regex);
-    const title = m?.[1]?.trim() ?? 'Custom Widget';
-    assert.equal(title, 'Custom Widget');
+    assert.equal(parseWidgetAgentResponse(text, 50_000).title, 'Custom Widget');
   });
 
-  it('html extraction regex handles multiline content', () => {
-    const regex = /<!--\s*widget-html\s*-->([\s\S]*?)<!--\s*\/widget-html\s*-->/;
-    const html = `<!-- widget-html -->\n<div>hello</div>\n<!-- /widget-html -->`;
-    const m = html.match(regex);
-    assert.ok(m, 'HTML extraction must match');
-    assert.ok(m[1].includes('<div>hello</div>'), 'Must capture content between markers');
+  it('extracts multiline HTML between markers', () => {
+    const text = `<!-- widget-html -->\n<div>hello</div>\n<!-- /widget-html -->`;
+    const result = parseWidgetAgentResponse(text, 50_000);
+    assert.equal(result.hasHtmlMarkers, true);
+    assert.ok(result.html.includes('<div>hello</div>'));
+    assert.ok(!result.html.includes('widget-html'));
   });
 
-  it('html extraction falls back to full text when markers missing', () => {
-    const regex = /<!--\s*widget-html\s*-->([\s\S]*?)<!--\s*\/widget-html\s*-->/;
+  it('falls back to full text when HTML markers are missing', () => {
     const text = '<div>fallback</div>';
-    const m = text.match(regex);
-    const html = (m?.[1] ?? text).slice(0, 50000);
-    assert.equal(html, '<div>fallback</div>');
+    const result = parseWidgetAgentResponse(text, 50_000);
+    assert.equal(result.hasHtmlMarkers, false);
+    assert.equal(result.html, text);
   });
 });
 

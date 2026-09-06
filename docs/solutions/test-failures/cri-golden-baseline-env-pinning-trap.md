@@ -77,27 +77,18 @@ Importing the binding is exact — it is the same value the scorer uses — and 
 **4. Mechanical exhaustiveness guard.** `tests/cri-golden-baseline-guards.test.mts` replaces the prose claim with a proof, re-derived on every test run:
 
 ```ts
-const KNOWN_MODULE_LOAD_READS = new Set(['RESILIENCE_SCHEMA_V2_ENABLED']);
-
-it('keeps every RESILIENCE_* env read in the scorer tree accounted for', () => {
-  const unexpected: string[] = [];
+it('pins every RESILIENCE_* env-read occurrence to its file and capture timing', () => {
+  const reads: ResilienceEnvRead[] = [];
   for (const entry of readdirSync(SCORER_TREE_DIR, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
     const filePath = path.join(entry.parentPath, entry.name);
-    const source = readFileSync(filePath, 'utf8');
-    for (const match of source.matchAll(/process\.env\.(RESILIENCE_[A-Z_0-9]+)/g)) {
-      const name = match[1];
-      if (!(name in GOLDEN_ENV_FLAGS) && !KNOWN_MODULE_LOAD_READS.has(name)) {
-        unexpected.push(`${name} (${path.relative(REPO_ROOT, filePath)})`);
-      }
-    }
+    reads.push(...collectResilienceEnvReads(filePath, readFileSync(filePath, 'utf8')));
   }
-  assert.deepEqual(unexpected, [], '…Dynamic reads must be pinned in GOLDEN_ENV_FLAGS and ' +
-    'module-load reads guarded by assertFrozenScorerDefaults(), then regenerate the baseline.');
+  assert.deepEqual(reads.map(formatEnvRead).sort(), EXPECTED_ENV_READS);
 });
 ```
 
-It recursively scans every `.ts` in `server/worldmonitor/resilience/v1`, extracts every `process.env.RESILIENCE_*` read, and asserts each is either a key of `GOLDEN_ENV_FLAGS` (dynamic → pinned) or in `KNOWN_MODULE_LOAD_READS` (module-load → guarded by the fail-fast). A future env read can no longer silently reintroduce ambient sensitivity: the failure names the variable, its file, and the two sanctioned remedies.
+It parses every `.ts` file in `server/worldmonitor/resilience/v1`, records each `process.env.RESILIENCE_*` occurrence, and classifies the occurrence as call-time or module-load from its AST ancestors. A top-level immediately invoked function inherits module-load timing from its call site; an IIFE inside a deferred function remains call-time. Repository paths are normalized to `/` on every operating system. The expected multiset pins the variable, file, and capture timing. A separate assertion requires the call-time variable set to match `GOLDEN_ENV_FLAGS`. Moving a known call-time flag to module scope, adding another occurrence, or adding a new flag now fails with the two sanctioned remedies.
 
 **5. Corollary hardening in the same PR — one shared harness module and a timestamp-free artifact.** The generator exports the frozen harness (clock, reader, byte computation) and the test imports it, so the generator and the test cannot compute different bytes from drift. The artifact carries no wall-clock timestamp (`frozenClockIso` is the pinned constant, `inputFixture.capturedAt` is the fixture's committed capture date), so regenerating on the same commit is a git no-op (confirmed during the authoring session by hashing two consecutive generations).
 
@@ -106,7 +97,7 @@ It recursively scans every `.ts` in `server/worldmonitor/resilience/v1`, extract
 - **The fix targets the actual capture mechanism.** A module-load `const` is fixed at import time; the only reliable way to know and control it is to read the exported binding — the same object the scorer dereferences — and refuse to proceed when it is not the intended default. Import-and-assert has no ordering hazard: the value checked is exactly the value used, for the whole process lifetime.
 - **Each hermeticity mechanism matches its target's read timing.** Module-load capture → import the binding and fail fast. Per-call read → `process.env` writes in hooks. The original bug was applying mechanism #2 to a target that only mechanism #1 can reach.
 - **Failure moves earlier and gets attributed correctly.** Instead of a delayed failure in a downstream assertion whose message blames the scorer and advises regeneration, the guard fires before any scoring runs, with the cause (ambient env) and the fix (unset it) in the message.
-- **The invariant became mechanical.** "All env reads are accounted for" is now re-derived by source scan on every run. Drift — a new `RESILIENCE_*` read — fails loudly with instructions instead of silently widening the golden bytes' ambient sensitivity.
+- **The invariant became mechanical.** "All env reads and their capture timing are accounted for" is now re-derived by an AST scan on every run. A new read, an extra occurrence, or a move between call time and module load fails loudly instead of silently widening the golden bytes' ambient sensitivity.
 - **Shared harness + timestamp-free artifact close the sibling failure classes.** One implementation imported by both generator and test eliminates byte-drift between them; a timestamp-free artifact makes the sanctioned "regenerate" flow idempotent, so the advice is safe to follow when it is actually correct.
 
 ## Prevention

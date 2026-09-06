@@ -53,7 +53,7 @@ latest[name] = 'pending'                                    # deploy-gate.sh:424
 print('failed=' + ','.join(... latest[name] not in ('success', 'skipped')))  # deploy-gate.sh:428
 ```
 
-A required name with no check run on the SHA is `pending`, so the gate waits and the 30-minute sweep (`.github/workflows/deploy-gate.yml:21`) keeps retrying forever. A `skipped` conclusion is accepted as passing. A workflow with a top-level `paths:` filter publishes no check run at all on a PR that does not match it, so any of its jobs in `required` strands every non-matching PR. An `if:`-gated job inside an always-triggered workflow publishes `skipped` instead, which the gate accepts. `desktop-rust` and `umami-postgres` in `.github/workflows/test.yml` already worked this way; the new `markdown` job in `.github/workflows/lint-code.yml:69` now does too.
+A required name with no check run on the SHA is `pending`. The 30-minute sweep retries for 24 hours after the latest pending status publication, then leaves the commit blocked and lists it in the run summary. A `skipped` conclusion is accepted as passing. A workflow with a top-level `paths:` filter publishes no check run at all on a PR that does not match it, so any of its jobs in `required` strands every non-matching PR. An `if:`-gated job inside an always-triggered workflow publishes `skipped` instead, which the gate accepts. `desktop-rust` and `umami-postgres` in `.github/workflows/test.yml` already worked this way; the new `markdown` job in `.github/workflows/lint-code.yml:69` now does too.
 
 ```yaml
   markdown:
@@ -73,7 +73,11 @@ MARKDOWN=$(printf '%s\n' "$FILES" | grep -cE '\.md$|^\.markdownlint|^package(-lo
 
 That set is `LINT_MD_INPUTS` from `.husky/pre-push:428` plus the lockfile, which the local pre-push gate omits, so CI treats a strict superset of what the local gate treats as a markdown change. Per this session's conclusion, the `.md`-only version of this filter passed the author's own review and was caught only by a multi-reviewer pass that included a cross-model Codex review. The same principle already existed in the workflow: the `VALIDATION` filter counts `package.json` and `package-lock.json` at `.github/workflows/test.yml:184`, and the `CODE` filter carves `src-tauri` node suites back in at `.github/workflows/test.yml:144` because `sidecar` and `unit` both run them and both are gated on `code`.
 
-**4. Expect a transitional pending on every open PR after you edit `required`.** The list is hashed into a gate contract stamp (`.github/scripts/deploy-gate.sh:141`), and the sweep uses that stamp to tell current evidence from a success posted against an older list, posting `Required PR gate contract changed; re-evaluation scheduled` (`.github/scripts/deploy-gate.sh:293`). Open PRs will show the new check pending until they push again. That is designed behaviour from #5851, not a regression.
+**4. Expect a transitional pending on previously green PRs after you edit `required`.** The list is hashed into a gate contract stamp, and the sweep uses that stamp to tell current evidence from a success posted against an older list, posting `Required PR gate contract changed; re-evaluation scheduled`. A PR missing the new check stays pending until it runs current CI. This preserves the stale-success protection from #5851.
+
+Scheduled recovery expires when a pending status has been unchanged for 24 hours. Update the branch to run current checks, or use **Deploy Gate → Run workflow → sha** to evaluate that exact commit after resolving its checks. Workflow completion events also evaluate their SHA regardless of this cutoff. Failed or errored gates are already blocked and are not reopened by a contract change; stale successes must still be invalidated at any age.
+
+GitHub can exhaust commit-status capacity on a SHA. If the latest gate is verified as pending, failure, or error, the commit remains blocked and the run reports the required branch update without failing independent recovery. An exhausted success or an unreadable previous gate still fails the run because the gate cannot prove that the commit is blocked. A new commit is required to restore status publication on an exhausted SHA; dispatch alone cannot do that.
 
 ## Why This Matters
 

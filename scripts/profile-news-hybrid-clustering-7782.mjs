@@ -13,9 +13,10 @@
 import { readFileSync } from 'node:fs';
 import { cpus, hostname, platform, arch, totalmem } from 'node:os';
 import { performance } from 'node:perf_hooks';
-import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { clusterNewsCore, protoThreatLevelToLabel } from '../shared/news-clustering-core.js';
+import { pathToFileURL } from 'node:url';
+import { runInNewContext } from 'node:vm';
+import { bundleProfileInput, budgetEvidence } from './news-clustering-profile-input.mjs';
+const { clusterNewsCore, protoItemToNewsItem, getSourceTier } = runInNewContext(bundleProfileInput() + '; NewsClustering');
 
 export const FRAME_BUDGET_MS = 16.7;
 export const LONG_TASK_MS = 50;
@@ -24,44 +25,6 @@ const WARMUP = 1;
 
 export function isGateCase(name) {
   return name === 'representative-digest' || name.startsWith('high-diversity-');
-}
-
-if (!isMainThread) {
-  const { items } = workerData;
-  const hydrated = items.map(hydrateItem);
-  const clusters = clusterNewsCore(hydrated, () => 4);
-  parentPort.postMessage({
-    clusterCount: clusters.length,
-    payloadBytes: Buffer.byteLength(JSON.stringify(clusters)),
-  });
-  process.exit(0);
-}
-
-function hydrateItem(item) {
-  return {
-    ...item,
-    pubDate: item.pubDate instanceof Date ? item.pubDate : new Date(item.pubDate),
-  };
-}
-
-function protoItemToNewsItem(p) {
-  const level = protoThreatLevelToLabel(p.threat?.level);
-  return {
-    source: p.source,
-    title: p.title,
-    link: p.link,
-    pubDate: new Date(p.publishedAt),
-    isAlert: Boolean(p.isAlert),
-    threat: p.threat
-      ? {
-          level,
-          category: p.threat.category,
-          confidence: p.threat.confidence,
-          source: p.threat.source || 'keyword',
-        }
-      : undefined,
-    ...(p.location ? { lat: p.location.latitude, lon: p.location.longitude } : {}),
-  };
 }
 
 function flattenDigest(digest) {
@@ -157,7 +120,7 @@ function timeSync(items, samples = SAMPLES, warmup = WARMUP) {
   let lastClusters = [];
   for (let i = 0; i < warmup + samples; i++) {
     const start = performance.now();
-    lastClusters = clusterNewsCore(items, () => 4);
+    lastClusters = clusterNewsCore(items, getSourceTier);
     const elapsed = performance.now() - start;
     if (i >= warmup) timings.push(elapsed);
   }
@@ -182,34 +145,9 @@ function timeSerialization(items, clusters) {
   return { timings, itemBytes, clusterBytes };
 }
 
-function timeWorkerRoundTrip(items, { cold } = { cold: false }) {
-  const payload = items.map((item) => ({
-    ...item,
-    pubDate: item.pubDate.toISOString(),
-  }));
-  return new Promise((resolve, reject) => {
-    const start = performance.now();
-    const worker = new Worker(fileURLToPath(import.meta.url), {
-      workerData: { items: payload },
-    });
-    worker.once('message', (message) => {
-      const elapsed = performance.now() - start;
-      worker.terminate().then(() => {
-        resolve({ elapsed, ...message, cold });
-      }, reject);
-    });
-    worker.once('error', reject);
-  });
-}
-
 async function profileCase(name, items) {
   const sync = timeSync(items);
   const serialization = timeSerialization(items, sync.clusters);
-  const coldWorker = await timeWorkerRoundTrip(items, { cold: true });
-  const warmWorkers = [];
-  for (let i = 0; i < SAMPLES; i++) {
-    warmWorkers.push(await timeWorkerRoundTrip(items));
-  }
   const syncStats = summarize(sync.timings);
   return {
     name,
@@ -225,11 +163,7 @@ async function profileCase(name, items) {
       items: serialization.itemBytes,
       clusters: serialization.clusterBytes,
     },
-    workerColdStartMs: round(coldWorker.elapsed),
-    workerWarmRoundTripMs: summarize(warmWorkers.map((row) => row.elapsed)),
-    exceedsFrameBudget: syncStats.median >= FRAME_BUDGET_MS,
-    exceedsLongTask: syncStats.median >= LONG_TASK_MS,
-    workerFasterThanSync: summarize(warmWorkers.map((row) => row.elapsed)).median < syncStats.median,
+    ...budgetEvidence(sync.timings),
   };
 }
 
@@ -275,7 +209,7 @@ async function main() {
   cases.push(await profileCase('high-diversity-1000', makeHighDiversity(1000)));
 
   const gateCases = cases.filter((row) => isGateCase(row.name));
-  const justified = gateCases.some((row) => row.exceedsLongTask || row.exceedsFrameBudget);
+  const justified = gateCases.some((row) => row.repeatableBudgetExceedance);
   const report = {
     issue: 7782,
     host: hostInfo(),
@@ -284,9 +218,9 @@ async function main() {
     warmup: WARMUP,
     cases,
     gate: {
-      syncStageCausesRepeatableBudgetMiss: justified,
+      isolatedStageHasRepeatableBudgetExceedance: justified,
       recommendation: justified
-        ? 'implementation-justified'
+        ? 'requires-dashboard-attribution'
         : 'stop-without-moving-work',
     },
   };
@@ -294,7 +228,7 @@ async function main() {
 }
 
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly && isMainThread) {
+if (invokedDirectly) {
   main().catch((error) => {
     console.error(error);
     process.exit(1);

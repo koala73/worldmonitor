@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
+import { carouselUrlsFrom } from '../scripts/lib/digest-orchestration-helpers.mjs';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const RENDERER_SOURCE_PATH = resolve(TEST_DIR, '../server/_shared/brief-carousel-render.ts');
@@ -74,28 +75,6 @@ async function renderCarouselImageResponseForTest(...args) {
   return renderCarouselImageResponse(...args);
 }
 
-// Import the URL helper via dynamic eval of the private function.
-// The digest cron is .mjs; we re-declare the same logic here to lock
-// the behaviour. If the cron's copy drifts, this test stops guarding
-// the contract and should be migrated to shared import.
-//
-// Kept in-sync via a grep assertion at the bottom of this file.
-function carouselUrlsFrom(magazineUrl) {
-  try {
-    const u = new URL(magazineUrl);
-    const m = u.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/);
-    if (!m) return null;
-    const [, userId, issueSlot] = m;
-    const token = u.searchParams.get('t');
-    if (!token) return null;
-    return [0, 1, 2].map(
-      (p) => `${u.origin}/api/brief/carousel/${userId}/${issueSlot}/${p}?t=${token}`,
-    );
-  } catch {
-    return null;
-  }
-}
-
 describe('pageFromIndex', () => {
   it('maps 0 → cover, 1 → threads, 2 → story', () => {
     assert.equal(pageFromIndex(0), 'cover');
@@ -149,18 +128,6 @@ describe('carouselUrlsFrom', () => {
     assert.equal(carouselUrlsFrom('not a url'), null);
     assert.equal(carouselUrlsFrom(''), null);
     assert.equal(carouselUrlsFrom(null), null);
-  });
-});
-
-describe('carouselUrlsFrom — contract parity with seed-digest-notifications.mjs', () => {
-  it('the cron embeds the same function body (guards drift)', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, resolve } = await import('node:path');
-    const __d = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(resolve(__d, '../scripts/seed-digest-notifications.mjs'), 'utf-8');
-    assert.match(src, /function carouselUrlsFrom\(magazineUrl\)/, 'cron must export carouselUrlsFrom');
-    assert.match(src, /\/api\/brief\/carousel\/\$\{userId\}\/\$\{issueSlot\}\/\$\{p\}\?t=\$\{token\}/, 'cron path template must match test fixture');
   });
 });
 

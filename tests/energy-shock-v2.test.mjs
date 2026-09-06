@@ -23,8 +23,82 @@ import {
   REFINERY_YIELD,
   REFINERY_YIELD_BASIS,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
+import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
+
+const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_REDIS_ENV = {
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  vercelEnv: process.env.VERCEL_ENV,
+  localApiMode: process.env.LOCAL_API_MODE,
+};
+function restoreEnergyShockEnvironment() {
+  globalThis.fetch = ORIGINAL_FETCH;
+  for (const [name, value] of [
+    ['UPSTASH_REDIS_REST_URL', ORIGINAL_REDIS_ENV.url],
+    ['UPSTASH_REDIS_REST_TOKEN', ORIGINAL_REDIS_ENV.token],
+    ['VERCEL_ENV', ORIGINAL_REDIS_ENV.vercelEnv],
+    ['LOCAL_API_MODE', ORIGINAL_REDIS_ENV.localApiMode],
+  ]) {
+    if (value == null) delete process.env[name];
+    else process.env[name] = value;
+  }
+}
+
+function installEnergyShockRedis(seed = {}) {
+  const { redis } = installRedis(seed);
+  delete process.env.LOCAL_API_MODE;
+
+  return {
+    set(key, value) {
+      redis.set(key, JSON.stringify(value));
+    },
+    delete(key) {
+      redis.delete(key);
+    },
+  };
+}
+
+function liveChokepointSeed(flowRatio = 1) {
+  return {
+    'energy:chokepoint-flows:v1': {
+      hormuz_strait: { flowRatio },
+      malacca_strait: { flowRatio },
+    },
+  };
+}
+
+const US_OIL_SEED = {
+  'energy:jodi-oil:v1:US': {
+    crude: { importsKbd: 100 },
+    gasoline: { demandKbd: 80 },
+    diesel: { demandKbd: 60 },
+  },
+  'energy:iea-oil-stocks:v1:US': {
+    daysOfCover: 90,
+    netExporter: false,
+    anomaly: false,
+  },
+  'comtrade:flows:842:2709': [
+    { reporterCode: '842', partnerCode: '682', cmdCode: '2709', tradeValueUsd: 100, year: 2025 },
+  ],
+};
+
+const US_GAS_SEED = {
+  'energy:jodi-gas:v1:US': {
+    lngImportsTj: 1_000,
+    pipeImportsTj: 200,
+    totalDemandTj: 5_000,
+    lngShareOfImports: 0.8,
+  },
+};
+
+async function computeShock(request) {
+  return computeEnergyShockScenario({}, request);
+}
 
 // ---------------------------------------------------------------------------
 // deriveCoverageLevel
@@ -333,27 +407,73 @@ describe('deriveCoverageLevel accounts for IEA and degraded state', () => {
 });
 
 // ---------------------------------------------------------------------------
-// live_flow_ratio absent when portwatchCoverage=false
+// Production response construction
 // ---------------------------------------------------------------------------
 
-describe('liveFlowRatio is absent (undefined) when PortWatch unavailable', () => {
-  it('liveFlowRatio should be undefined, not 0, when portwatch is absent', () => {
-    // This tests the response contract: callers must check portwatchCoverage,
-    // not rely on liveFlowRatio===0 to detect missing data.
-    const liveFlowRatioFromServer = null; // PortWatch unavailable
-    const fieldOnWire = liveFlowRatioFromServer !== null
-      ? Math.round(liveFlowRatioFromServer * 1000) / 1000
-      : undefined;
-    assert.equal(fieldOnWire, undefined, 'field should be absent on wire when portwatch unavailable');
+describe('computeEnergyShockScenario response construction', () => {
+  it('distinguishes a missing PortWatch ratio from a real zero-flow ratio', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const redis = installEnergyShockRedis();
+
+    const missing = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 40, fuelMode: 'oil',
+    });
+    assert.equal(missing.portwatchCoverage, false);
+    assert.equal(missing.liveFlowRatio, undefined, 'missing PortWatch data must omit liveFlowRatio');
+
+    redis.set('energy:chokepoint-flows:v1', { hormuz_strait: { flowRatio: 0 } });
+    const zero = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 41, fuelMode: 'oil',
+    });
+    assert.equal(zero.portwatchCoverage, true);
+    assert.equal(zero.liveFlowRatio, 0, 'a real zero-flow ratio must remain distinct from missing data');
+
+    redis.set('energy:chokepoint-flows:v1', { hormuz_strait: { flowRatio: -0.5 } });
+    const clampedLow = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 42, fuelMode: 'oil',
+    });
+    assert.equal(clampedLow.liveFlowRatio, 0, 'negative ratios must clamp to zero');
+
+    redis.set('energy:chokepoint-flows:v1', { hormuz_strait: { flowRatio: 3 } });
+    const clampedHigh = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 43, fuelMode: 'oil',
+    });
+    assert.equal(clampedHigh.liveFlowRatio, 1.5, 'oversized ratios must clamp to 1.5');
   });
 
-  it('liveFlowRatio=0 is valid and distinct from "unavailable" when portwatchCoverage=true', () => {
-    // True zero flow (chokepoint collapse) is a real and distinct signal
-    const liveFlowRatioFromServer = 0; // portwatchCoverage=true, chokepoint collapsed
-    const fieldOnWire = liveFlowRatioFromServer !== null
-      ? Math.round(liveFlowRatioFromServer * 1000) / 1000
-      : undefined;
-    assert.equal(fieldOnWire, 0, 'true 0 flow should serialize as 0, not undefined');
+  it('derives IEA stock coverage from the production response path', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const redis = installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED });
+
+    redis.set('energy:iea-oil-stocks:v1:US', { daysOfCover: null, netExporter: false, anomaly: false });
+    const missing = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 20, fuelMode: 'oil',
+    });
+    assert.equal(missing.ieaStocksCoverage, false, 'a non-exporter needs finite, non-negative cover days');
+
+    redis.set('energy:iea-oil-stocks:v1:US', { daysOfCover: 0, netExporter: false, anomaly: false });
+    const exhausted = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 21, fuelMode: 'oil',
+    });
+    assert.equal(exhausted.ieaStocksCoverage, true, 'zero cover days is valid observed data');
+
+    redis.set('energy:iea-oil-stocks:v1:US', { daysOfCover: -1, netExporter: false, anomaly: false });
+    const invalid = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 22, fuelMode: 'oil',
+    });
+    assert.equal(invalid.ieaStocksCoverage, false, 'negative cover days must not count as coverage');
+
+    redis.set('energy:iea-oil-stocks:v1:US', { daysOfCover: 90, netExporter: false, anomaly: true });
+    const anomalous = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 24, fuelMode: 'oil',
+    });
+    assert.equal(anomalous.ieaStocksCoverage, false, 'anomalous positive cover days must not count as coverage');
+
+    redis.set('energy:iea-oil-stocks:v1:US', { daysOfCover: null, netExporter: true, anomaly: false });
+    const exporter = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 23, fuelMode: 'oil',
+    });
+    assert.equal(exporter.ieaStocksCoverage, true, 'net exporters do not require cover days');
   });
 });
 
@@ -434,141 +554,40 @@ describe('buildAssessment proxy text is tied to comtradeCoverage, not coverageLe
 });
 
 // ---------------------------------------------------------------------------
-// ieaStocksCoverage requires daysOfCover for non-exporters
-// ---------------------------------------------------------------------------
-
-describe('ieaStocksCoverage requires daysOfCover for non-exporters', () => {
-  it('ieaStocksCoverage is false when daysOfCover is null and not a net exporter', () => {
-    const ieaStocks = { anomaly: false, daysOfCover: null, netExporter: false };
-    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
-      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
-    assert.equal(coverage, false, 'null daysOfCover for non-exporter should be false');
-  });
-
-  it('ieaStocksCoverage is true when daysOfCover is 0 (genuinely exhausted)', () => {
-    const ieaStocks = { anomaly: false, daysOfCover: 0, netExporter: false };
-    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
-      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
-    assert.equal(coverage, true, 'daysOfCover=0 is real data, should be true');
-  });
-
-  it('ieaStocksCoverage is true for net exporter even without daysOfCover', () => {
-    const ieaStocks = { anomaly: false, daysOfCover: null, netExporter: true };
-    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
-      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
-    assert.equal(coverage, true, 'net exporters do not need daysOfCover');
-  });
-
-  it('ieaStocksCoverage is false when anomaly is true', () => {
-    const ieaStocks = { anomaly: true, daysOfCover: 90, netExporter: false };
-    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
-      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
-    assert.equal(coverage, false, 'anomaly should override');
-  });
-
-  it('ieaStocksCoverage is false when ieaStocks is null', () => {
-    const ieaStocks = null;
-    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
-      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
-    assert.equal(coverage, false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ieaStocksCoverage rejects non-finite and negative daysOfCover
-// ---------------------------------------------------------------------------
-
-describe('ieaStocksCoverage rejects non-finite and negative daysOfCover', () => {
-  function checkCoverage(ieaStocks) {
-    return ieaStocks != null && ieaStocks.anomaly !== true
-      && (ieaStocks.netExporter === true || (Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
-  }
-
-  it('rejects NaN daysOfCover', () => {
-    assert.equal(checkCoverage({ anomaly: false, daysOfCover: NaN, netExporter: false }), false);
-  });
-
-  it('rejects Infinity daysOfCover', () => {
-    assert.equal(checkCoverage({ anomaly: false, daysOfCover: Infinity, netExporter: false }), false);
-  });
-
-  it('rejects negative daysOfCover', () => {
-    assert.equal(checkCoverage({ anomaly: false, daysOfCover: -1, netExporter: false }), false);
-  });
-
-  it('accepts zero daysOfCover (genuinely exhausted)', () => {
-    assert.equal(checkCoverage({ anomaly: false, daysOfCover: 0, netExporter: false }), true);
-  });
-
-  it('accepts positive finite daysOfCover', () => {
-    assert.equal(checkCoverage({ anomaly: false, daysOfCover: 90, netExporter: false }), true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// liveFlowRatio clamped to 0..1.5
-// ---------------------------------------------------------------------------
-
-describe('liveFlowRatio clamped to 0..1.5', () => {
-  it('clamps negative flowRatio to 0', () => {
-    const raw = -0.5;
-    const clamped = Math.max(0, Math.min(1.5, raw));
-    assert.equal(clamped, 0);
-  });
-
-  it('clamps oversized flowRatio to 1.5', () => {
-    const raw = 3.0;
-    const clamped = Math.max(0, Math.min(1.5, raw));
-    assert.equal(clamped, 1.5);
-  });
-
-  it('passes through valid flowRatio unchanged', () => {
-    const raw = 0.85;
-    const clamped = Math.max(0, Math.min(1.5, raw));
-    assert.equal(clamped, 0.85);
-  });
-
-  it('passes through zero flowRatio (chokepoint collapsed)', () => {
-    const raw = 0;
-    const clamped = Math.max(0, Math.min(1.5, raw));
-    assert.equal(clamped, 0);
-  });
-
-  it('passes through 1.5 (max valid ratio)', () => {
-    const raw = 1.5;
-    const clamped = Math.max(0, Math.min(1.5, raw));
-    assert.equal(clamped, 1.5);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // cache key includes degraded state
 // ---------------------------------------------------------------------------
 
 describe('cache key includes degraded state and fuelMode', () => {
-  it('degraded and non-degraded produce different cache keys', () => {
-    const code = 'US';
-    const chokepointId = 'hormuz';
-    const disruptionPct = 50;
-    const fuelMode = 'oil';
+  it('does not reuse a live response after PortWatch degrades', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const redis = installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED });
 
-    const keyDegraded = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:d:${fuelMode}`;
-    const keyLive = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:l:${fuelMode}`;
+    const live = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'oil',
+    });
+    assert.equal(live.degraded, false);
 
-    assert.notEqual(keyDegraded, keyLive, 'cache keys must differ by degraded state');
-    assert.ok(keyDegraded.endsWith(':d:oil'));
-    assert.ok(keyLive.endsWith(':l:oil'));
+    redis.delete('energy:chokepoint-flows:v1');
+    const degraded = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'oil',
+    });
+    assert.equal(degraded.degraded, true, 'degraded and live requests must not share a cached response');
   });
 
-  it('different fuelMode values produce different cache keys', () => {
-    const base = 'energy:shock:v2:US:hormuz:50:l';
-    const keyOil = `${base}:oil`;
-    const keyGas = `${base}:gas`;
-    const keyBoth = `${base}:both`;
+  it('does not reuse an oil response for gas-only mode', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED, ...US_GAS_SEED });
 
-    assert.notEqual(keyOil, keyGas);
-    assert.notEqual(keyOil, keyBoth);
-    assert.notEqual(keyGas, keyBoth);
+    const oil = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 60, fuelMode: 'oil',
+    });
+    assert.ok(oil.products.length > 0);
+
+    const gas = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 60, fuelMode: 'gas',
+    });
+    assert.equal(gas.products.length, 0, 'gas-only mode must not receive the oil cache entry');
+    assert.equal(gas.gasImpact?.dataAvailable, true);
   });
 });
 
@@ -721,16 +740,31 @@ describe('exposureMult composes baseExposure with liveFlowRatio', () => {
 // ---------------------------------------------------------------------------
 
 describe('gasDataAvailable distinguishes zero-LNG from missing data', () => {
-  it('pipeline-only country (lngImportsTj=0) has dataAvailable=true', () => {
-    const jodiGas = { lngImportsTj: 0, totalDemandTj: 5000, lngShareOfImports: 0 };
-    const gasDataAvailable = jodiGas != null;
-    assert.equal(gasDataAvailable, true, 'JODI gas exists, so data is available');
+  it('reports pipeline-only JODI gas as available through the production response', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...liveChokepointSeed(),
+      'energy:jodi-gas:v1:US': { lngImportsTj: 0, totalDemandTj: 5_000, lngShareOfImports: 0 },
+    });
+
+    const response = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'gas',
+    });
+    assert.equal(response.dataAvailable, true, 'an existing JODI gas record is available even with zero LNG');
+    assert.equal(response.gasImpact?.dataAvailable, true);
+    assert.match(response.assessment, /pipeline only/i);
   });
 
-  it('missing JODI gas (null) has dataAvailable=false', () => {
-    const jodiGas = null;
-    const gasDataAvailable = jodiGas != null;
-    assert.equal(gasDataAvailable, false);
+  it('reports missing JODI gas as unavailable through the production response', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis(liveChokepointSeed());
+
+    const response = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'gas',
+    });
+    assert.equal(response.dataAvailable, false);
+    assert.equal(response.gasImpact, undefined);
+    assert.equal(response.coverageLevel, 'unsupported');
   });
 });
 
@@ -774,32 +808,32 @@ describe('buildGasAssessment pipeline-only branch', () => {
 // ---------------------------------------------------------------------------
 
 describe('grid-tightness limitation from Ember fossilShare', () => {
-  it('appends limitation when fossilShare > 70', () => {
-    const limitations = [];
-    const fossilShare = 75.3;
-    if (fossilShare !== null && fossilShare > 70) {
-      limitations.push('high fossil grid dependency: limited electricity substitution capacity');
-    }
-    assert.equal(limitations.length, 1);
-    assert.ok(limitations[0].includes('fossil grid dependency'));
+  it('appends the limitation from a high-fossil Ember record', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...liveChokepointSeed(),
+      ...US_OIL_SEED,
+      'energy:ember:v1:US': { fossilShare: 75.3 },
+    });
+
+    const response = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 70, fuelMode: 'oil',
+    });
+    assert.ok(response.limitations.some((limitation) => limitation.includes('fossil grid dependency')));
   });
 
-  it('does not append when fossilShare <= 70', () => {
-    const limitations = [];
-    const fossilShare = 55.0;
-    if (fossilShare !== null && fossilShare > 70) {
-      limitations.push('high fossil grid dependency: limited electricity substitution capacity');
-    }
-    assert.equal(limitations.length, 0);
-  });
+  it('does not append the limitation for a lower-fossil Ember record', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      ...liveChokepointSeed(),
+      ...US_OIL_SEED,
+      'energy:ember:v1:US': { fossilShare: 55 },
+    });
 
-  it('does not append when fossilShare is null (no Ember data)', () => {
-    const limitations = [];
-    const fossilShare = null;
-    if (fossilShare !== null && fossilShare > 70) {
-      limitations.push('high fossil grid dependency: limited electricity substitution capacity');
-    }
-    assert.equal(limitations.length, 0);
+    const response = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 71, fuelMode: 'oil',
+    });
+    assert.ok(!response.limitations.some((limitation) => limitation.includes('fossil grid dependency')));
   });
 });
 
@@ -828,110 +862,40 @@ describe('computeGasDisruption uses liveFlowRatio when available', () => {
 // gas-only mode coverage override
 // ---------------------------------------------------------------------------
 
-describe('gas-only mode coverage override', () => {
-  it('gas-only with valid gas data (not degraded) should be full', () => {
-    const needsOil = false;
-    const gasImpact = { dataAvailable: true };
-    const degraded = false;
-    let coverageLevel = 'unsupported';
-    if (!needsOil && gasImpact?.dataAvailable) {
-      coverageLevel = degraded ? 'partial' : 'full';
-    }
-    assert.equal(coverageLevel, 'full');
-  });
+describe('gas-only mode response', () => {
+  it('uses gas coverage and removes all oil-only response data', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED, ...US_GAS_SEED });
 
-  it('gas-only with valid gas data (degraded) should be partial', () => {
-    const needsOil = false;
-    const gasImpact = { dataAvailable: true };
-    const degraded = true;
-    let coverageLevel = 'unsupported';
-    if (!needsOil && gasImpact?.dataAvailable) {
-      coverageLevel = degraded ? 'partial' : 'full';
-    }
-    assert.equal(coverageLevel, 'partial');
-  });
+    const response = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 80, fuelMode: 'gas',
+    });
 
-  it('gas-only limitations exclude oil-specific strings', () => {
-    const limitations = [
-      REFINERY_YIELD_BASIS,
-      'Gulf crude share proxied at 40% (no Comtrade data)',
-      'IEA strategic stock data unavailable',
-      'LNG chokepoint exposure estimates based on global trade route shares',
-    ];
-    const filtered = limitations.filter(l =>
-      !l.includes('refinery yield') &&
-      !l.includes('Gulf crude share') &&
-      !l.includes('IEA strategic stock')
-    );
-    assert.equal(filtered.length, 1);
-    assert.ok(filtered[0].includes('LNG'));
-  });
-});
-
-describe('gas-only coverageLevel respects degraded state', () => {
-  it('gas-only with degraded=true should be partial, not full', () => {
-    const gasImpact = { dataAvailable: true };
-    const degraded = true;
-    const needsOil = false;
-    let coverageLevel = 'unsupported';
-    if (!needsOil && gasImpact?.dataAvailable) {
-      coverageLevel = degraded ? 'partial' : 'full';
-    }
-    assert.equal(coverageLevel, 'partial');
-  });
-
-  it('gas-only with degraded=false should be full', () => {
-    const gasImpact = { dataAvailable: true };
-    const degraded = false;
-    const needsOil = false;
-    let coverageLevel = 'unsupported';
-    if (!needsOil && gasImpact?.dataAvailable) {
-      coverageLevel = degraded ? 'partial' : 'full';
-    }
-    assert.equal(coverageLevel, 'full');
-  });
-
-  it('gas-only with no gas data should be unsupported', () => {
-    const gasImpact = { dataAvailable: false };
-    const degraded = false;
-    const needsOil = false;
-    let coverageLevel = 'unsupported';
-    if (!needsOil && gasImpact?.dataAvailable) {
-      coverageLevel = degraded ? 'partial' : 'full';
-    }
-    assert.equal(coverageLevel, 'unsupported');
-  });
-});
-
-describe('gas-only mode zeros oil fields', () => {
-  it('products should be empty array in gas-only mode', () => {
-    const needsOil = false;
-    const gasImpact = { dataAvailable: true };
-    const response = {
-      products: [{ product: 'Diesel', outputLossKbd: 5, demandKbd: 100, deficitPct: 4 }],
-      gulfCrudeShare: 0.35,
-      crudeLossKbd: 50,
-      effectiveCoverDays: 90,
-      jodiOilCoverage: true,
-      comtradeCoverage: true,
-      ieaStocksCoverage: true,
-    };
-    if (!needsOil && gasImpact) {
-      response.products = [];
-      response.gulfCrudeShare = 0;
-      response.crudeLossKbd = 0;
-      response.effectiveCoverDays = 0;
-      response.jodiOilCoverage = false;
-      response.comtradeCoverage = false;
-      response.ieaStocksCoverage = false;
-    }
-    assert.equal(response.products.length, 0);
+    assert.equal(response.coverageLevel, 'full');
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.gasImpact?.dataAvailable, true);
+    assert.deepEqual(response.products, []);
     assert.equal(response.gulfCrudeShare, 0);
     assert.equal(response.crudeLossKbd, 0);
     assert.equal(response.effectiveCoverDays, 0);
     assert.equal(response.jodiOilCoverage, false);
     assert.equal(response.comtradeCoverage, false);
     assert.equal(response.ieaStocksCoverage, false);
+    assert.ok(response.limitations.some((limitation) => limitation.includes('LNG chokepoint exposure')));
+    assert.ok(!response.limitations.some((limitation) => limitation.includes('refinery yield')));
+    assert.ok(!response.limitations.some((limitation) => limitation.includes('Gulf crude share')));
+    assert.ok(!response.limitations.some((limitation) => limitation.includes('IEA strategic stock')));
+  });
+
+  it('marks a valid degraded gas-only response as partial', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis(US_GAS_SEED);
+
+    const response = await computeShock({
+      countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 80, fuelMode: 'gas',
+    });
+    assert.equal(response.degraded, true);
+    assert.equal(response.coverageLevel, 'partial');
   });
 });
 

@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import { describe, it, before, after } from 'node:test';
 import { generateKeyPair, exportJWK, jwtVerify, SignJWT } from 'jose';
+import { userPrefsOptionsHttpHandler } from '../convex/http.ts';
 
 const EXPECTED_CLOCK_TOLERANCE_SECONDS = 5;
 
@@ -611,50 +612,41 @@ describe('validateBearerToken (with JWKS)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 3: CORS origin matching -- pure logic (independent of auth provider)
+// Suite 3: Convex user-preferences CORS preflight
 // ---------------------------------------------------------------------------
 
-describe('CORS origin matching (convex/http.ts)', () => {
-  function matchOrigin(origin: string, pattern: string): boolean {
-    if (pattern.startsWith('*.')) {
-      return origin.endsWith(pattern.slice(1));
+describe('userPrefsOptionsHttpHandler CORS', () => {
+  const invokePreflight = (origin?: string) => userPrefsOptionsHttpHandler(
+    {} as Parameters<typeof userPrefsOptionsHttpHandler>[0],
+    new Request('https://convex.example/api/user-prefs', {
+      method: 'OPTIONS',
+      headers: origin ? { Origin: origin } : undefined,
+    }),
+  );
+
+  it('emits CORS headers for each trusted origin shape', async () => {
+    for (const origin of [
+      'https://worldmonitor.app',
+      'https://preview-xyz.worldmonitor.app',
+      'http://localhost:3000',
+    ]) {
+      const response = await invokePreflight(origin);
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('access-control-allow-origin'), origin);
+      assert.equal(response.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
     }
-    return origin === pattern;
-  }
-
-  function allowedOrigin(origin: string | null, trusted: string[]): string | null {
-    if (!origin) return null;
-    return trusted.some((p) => matchOrigin(origin, p)) ? origin : null;
-  }
-
-  const TRUSTED = [
-    'https://worldmonitor.app',
-    '*.worldmonitor.app',
-    'http://localhost:3000',
-  ];
-
-  it('allows exact match', () => {
-    assert.equal(allowedOrigin('https://worldmonitor.app', TRUSTED), 'https://worldmonitor.app');
   });
 
-  it('allows wildcard subdomain', () => {
-    const origin = 'https://preview-xyz.worldmonitor.app';
-    assert.equal(allowedOrigin(origin, TRUSTED), origin);
-  });
-
-  it('allows localhost', () => {
-    assert.equal(allowedOrigin('http://localhost:3000', TRUSTED), 'http://localhost:3000');
-  });
-
-  it('blocks unknown origin', () => {
-    assert.equal(allowedOrigin('https://evil.com', TRUSTED), null);
-  });
-
-  it('blocks partial domain match', () => {
-    assert.equal(allowedOrigin('https://attackerworldmonitor.app', TRUSTED), null);
-  });
-
-  it('returns null for null origin -- no ACAO header emitted', () => {
-    assert.equal(allowedOrigin(null, TRUSTED), null);
+  it('omits CORS headers for untrusted and absent origins', async () => {
+    for (const origin of [
+      'https://evil.com',
+      'https://attackerworldmonitor.app',
+      undefined,
+    ]) {
+      const response = await invokePreflight(origin);
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('access-control-allow-origin'), null);
+      assert.equal(response.headers.get('access-control-allow-methods'), null);
+    }
   });
 });

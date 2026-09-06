@@ -125,6 +125,16 @@ describe('cloud prefs panel sync guardrails', () => {
       'App must update an already-mounted My Monitors panel when cloud prefs change monitors',
     );
     assert.match(
+      cloudApplyHandler,
+      /void applyVisibleMapDimension\(this\.state, mode === 'globe' \? '3d' : '2d'\)/,
+      'cloud map-mode changes must reconcile renderer, application layer state, and persistence through the visible control path',
+    );
+    assert.doesNotMatch(
+      cloudApplyHandler,
+      /this\.state\.map\?\.switchTo(?:Globe|Flat)\(\)/,
+      'cloud map-mode changes must not bypass application layer-state reconciliation',
+    );
+    assert.match(
       appSrc,
       /const panelOrderKey = this\.state\.PANEL_ORDER_KEY;/,
       'App must derive the panel order key from PANEL_ORDER_KEY',

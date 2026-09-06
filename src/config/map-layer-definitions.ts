@@ -439,6 +439,15 @@ export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant)
   return sanitized;
 }
 
+export function sanitizeResilienceScoreForRenderer(
+  layers: MapLayers,
+  isDeckGLActive: boolean,
+): MapLayers {
+  return layers.resilienceScore && !isDeckGLActive
+    ? { ...layers, resilienceScore: false }
+    : layers;
+}
+
 /**
  * Checks whether a layer can actually render under the active renderer. Used
  * by both the layer picker UI and the CMD+K dispatcher to hide / silently-skip

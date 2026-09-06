@@ -139,13 +139,11 @@ export class NationalDebtPanel extends Panel {
         this.visibleCount = PAGE_SIZE;
         this.applyFilters();
         this.render();
-        this.restartTicker();
         return;
       }
       if (target.closest('.debt-load-more')) {
         this.visibleCount += PAGE_SIZE;
         this.render();
-        this.restartTicker();
       }
     });
 
@@ -156,7 +154,6 @@ export class NationalDebtPanel extends Panel {
         this.visibleCount = PAGE_SIZE;
         this.applyFilters();
         this.render();
-        this.restartTicker();
       }
     });
   }
@@ -183,7 +180,6 @@ export class NationalDebtPanel extends Panel {
       this.applyFilters();
       this.setCount(this.filteredEntries.length);
       this.render();
-      this.startTicker();
     } catch (err) {
       if (!this.element?.isConnected) return;
       console.error('[NationalDebtPanel] Error fetching data:', err);
@@ -295,6 +291,7 @@ export class NationalDebtPanel extends Panel {
 
   private render(): void {
     if (this.entries.length === 0) {
+      this.stopTicker();
       this.showError('No data available');
       return;
     }
@@ -338,7 +335,12 @@ export class NationalDebtPanel extends Panel {
       </div>
     `;
 
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    // The ticker caches the cells it updates and setSafeContent commits
+    // through a debounce, so the cache must be rebuilt after the commit, not
+    // when this call returns. Starting it here (rather than after render() at
+    // each call site) is what makes the clock tick after the first load: the
+    // old ordering cached against the loading placeholder and found no rows.
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'), () => this.startTicker());
   }
 
   private renderRow(entry: NationalDebtEntry, rank: number): string {
@@ -415,11 +417,6 @@ export class NationalDebtPanel extends Panel {
     }
     this.tickerElements.clear();
     this.lastTickerValues.clear();
-  }
-
-  private restartTicker(): void {
-    this.stopTicker();
-    this.startTicker();
   }
 
   public override destroy(): void {

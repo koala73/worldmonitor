@@ -16,6 +16,7 @@ import {
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
+import { getResilienceStressFactor } from '../server/_shared/resilience-stats.ts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -242,7 +243,7 @@ describe('resilience scorer contracts', () => {
 
     const baselineScore = round(coverageWeightedMean(baselineDims));
     const stressScore = round(coverageWeightedMean(stressDims));
-    const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
+    const stressFactor = round(getResilienceStressFactor(stressScore), 4);
 
     // PR 3 §3.5: 62.64 → 63.63 (fuelStockDays retirement) → 60.12
     // (externalDebtCoverage goalpost tightened).
@@ -487,14 +488,11 @@ describe('resilience scorer contracts', () => {
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
-    function clampStressFactor(stressScore: number) {
-      return Math.max(0, Math.min(1 - stressScore / 100, 0.5));
-    }
-    assert.equal(clampStressFactor(100), 0, 'perfect stress score = zero factor');
-    assert.equal(clampStressFactor(0), 0.5, 'zero stress score = max factor 0.5');
-    assert.equal(clampStressFactor(50), 0.5, 'stress 50 = clamped to 0.5');
-    assert.ok(clampStressFactor(70) >= 0 && clampStressFactor(70) <= 0.5, 'stress 70 within bounds');
-    assert.ok(clampStressFactor(110) >= 0, 'stress above 100 still clamped');
+    assert.equal(getResilienceStressFactor(100), 0, 'perfect stress score = zero factor');
+    assert.equal(getResilienceStressFactor(0), 0.5, 'zero stress score = max factor 0.5');
+    assert.equal(getResilienceStressFactor(50), 0.5, 'stress 50 = clamped to 0.5');
+    assert.ok(getResilienceStressFactor(70) >= 0 && getResilienceStressFactor(70) <= 0.5, 'stress 70 within bounds');
+    assert.ok(getResilienceStressFactor(110) >= 0, 'stress above 100 still clamped');
   });
 });
 

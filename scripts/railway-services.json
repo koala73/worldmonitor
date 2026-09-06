@@ -27,6 +27,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/_wb-tech-readiness-projection.cjs",
       "scripts/_weather-alert-select.mjs",
+      "scripts/_widget-response-parser.cjs",
       "scripts/_yahoo-sector-valuations.cjs",
       "scripts/ais-relay.cjs",
       "scripts/docs-stats.mjs",

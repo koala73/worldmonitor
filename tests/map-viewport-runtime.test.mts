@@ -53,6 +53,10 @@ before(async () => {
             export const sanitizeLockedLayers = (layers) => layers;
             export const shouldSanitizeLockedLayers = () => false;
             export const getLayersForVariant = () => [];
+            export const sanitizeResilienceScoreForRenderer = (layers, isDeckGLActive) =>
+              layers.resilienceScore && !isDeckGLActive
+                ? { ...layers, resilienceScore: false }
+                : layers;
             export const resolveLayerLabel = (key) => key;
             export const bindLayerSearch = () => () => {};
             export const getLayerExplanation = () => null;
@@ -295,6 +299,37 @@ describe('map viewport runtime lifecycle', () => {
       (error: unknown) => error instanceof Error
         && error.name === 'ViewportTransitionError'
         && (error as Error & { reason?: string }).reason === 'renderer_changed',
+    );
+  });
+
+  it('disables the Deck-only resilience layer when switching to the globe renderer', async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    const snapshot = {
+      view: 'global',
+      zoom: 2,
+      pan: { x: 0, y: 0 },
+      layers: { resilienceScore: true },
+      timeRange: '24h',
+    };
+    internals.deckGLMap = {
+      getState: () => snapshot,
+      getCenter: () => null,
+    };
+    internals.destroyFlatMap = () => {
+      internals.deckGLMap = null;
+    };
+    internals.init = async () => {};
+    internals.waitForRendererSwitch = async () => ({
+      renderer: 'globe',
+      mode: 'globe',
+      fallback: false,
+    });
+
+    await map.switchToGlobe();
+
+    assert.equal(
+      (internals.initialState as { layers: MapLayers }).layers.resilienceScore,
+      false,
     );
   });
 

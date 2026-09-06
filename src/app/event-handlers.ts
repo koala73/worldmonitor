@@ -42,6 +42,7 @@ import {
   saveToStorage,
   getCurrentTheme,
   showToast,
+  urlHasAsyncFlyTo,
 } from '@/utils';
 import { clearPanelColSpans, clearPanelSpans } from '@/utils/panel-storage';
 import {
@@ -1449,22 +1450,9 @@ export class EventHandlerManager implements AppModule {
 
     // Skip the immediate sync only when applyInitialUrlState() will start an
     // async flyTo that makes getCenter() return stale intermediate coordinates.
-    // Two cases qualify:
-    //   (a) lat+lon pair  → setCenter() flyTo; both must be present since
-    //       applyInitialUrlState only calls setCenter when both exist.
-    //   (b) bare zoom     → setZoom() animated zoom (no view preset).
-    //
-    // view is intentionally excluded: all renderers set this.state.view
-    // synchronously at the top of setView(), so the debounced read is always
-    // correct regardless of renderer. The initial Globe/SVG view is applied
-    // before this listener is installed, so neither can rely on that earlier
-    // state change to drive the URL write; they need the immediate debounce.
-    const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
-    const urlHasAsyncFlyTo =
-      (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
-      (!view && zoom !== undefined) ||              // zoom-only → setZoom animated
-      chokepoint !== undefined;                     // chokepoint opens after renderer readiness
-    if (!urlHasAsyncFlyTo) {
+    // The cases, and why `view` alone is not one, are documented on the
+    // predicate in src/utils/urlState.ts.
+    if (!urlHasAsyncFlyTo(this.ctx.initialUrlState)) {
       this.debouncedUrlSync();
     }
   }

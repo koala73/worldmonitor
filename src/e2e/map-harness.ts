@@ -49,6 +49,7 @@ import type { AirportDelayAlert } from '../services/aviation';
 import type { ClimateAnomaly } from '../services/climate';
 import type { Earthquake } from '../services/earthquakes';
 import type { DiseaseOutbreakItem } from '../services/disease-outbreaks';
+import { I18N_RESOURCES_LOADED_EVENT, initI18n, t } from '../services/i18n';
 import { setCachedFuelShortageRegistry } from '../shared/fuel-shortage-registry-store';
 import { setCachedPipelineRegistries } from '../shared/pipeline-registry-store';
 import { setCachedStorageFacilityRegistry } from '../shared/storage-facility-registry-store';
@@ -119,6 +120,7 @@ type TradeAnimationProfileOptions = {
 type TradeAnimationProfileSample = {
   totalMs: number;
   jsBuildMs: number;
+  updateLayersMs: number;
   deckCommitMs: number;
   layerCount: number;
   nuclearIdentityChanged: boolean;
@@ -169,6 +171,7 @@ type MapInternal = {
     shouldScan: (inputs: { zoom: number; layers: MapLayers }, toggleList: Element) => boolean;
   };
   stopPulseAnimation?: () => void;
+  stopTradeAnimation: () => void;
 };
 
 type MapHarness = {
@@ -209,6 +212,14 @@ declare global {
   interface Window {
     __mapHarness?: MapHarness;
   }
+}
+
+const englishResourcesReady = new Promise<void>((resolve) => {
+  window.addEventListener(I18N_RESOURCES_LOADED_EVENT, () => resolve(), { once: true });
+});
+await initI18n();
+if (t('components.deckgl.layerWarningTitle').startsWith('components.')) {
+  await englishResourcesReady;
 }
 
 const app = document.getElementById('app');
@@ -667,7 +678,8 @@ const runTradeAnimationProfile = async (
   if (includeNews) makeNewsLocationsNonRecent();
   else internals.newsLocationFirstSeen?.clear();
   mapInternal.stopPulseAnimation?.();
-  setCamera({ lon: 0, lat: 20, zoom });
+  // Europe/Mediterranean keeps facilities, a news marker and trade routes in view.
+  setCamera({ lon: 15, lat: 42, zoom });
   map.setRenderPaused(false);
   map.render();
 
@@ -676,7 +688,12 @@ const runTradeAnimationProfile = async (
   const origHints = mapInternal.updateZoomHints;
   const overlay = mapInternal.deckOverlay;
   const layerManager = overlay?._deck?.layerManager;
-  const origLayerUpdate = layerManager?.updateLayers.bind(layerManager);
+  const origLayerUpdate = layerManager?.updateLayers;
+  if (!layerManager || !origLayerUpdate) throw new Error('deck.gl layer manager unavailable: profile is not valid');
+  const layerManagerPrototype = Object.getPrototypeOf(layerManager) as DeckLayerManager;
+  const hintGuard = mapInternal.zoomHintGuard;
+  const origShouldScan = hintGuard?.shouldScan;
+  if (!hintGuard || !origShouldScan) throw new Error('Zoom hint guard unavailable: profile is not valid');
 
   let inUpdate = false;
   let lastJsBuild = 0;
@@ -726,7 +743,7 @@ const runTradeAnimationProfile = async (
     const last = samples[samples.length - 1];
     if (last) {
       last.deckCommitMs += elapsed;
-      last.totalMs = last.jsBuildMs + last.deckCommitMs;
+      last.totalMs = last.updateLayersMs + last.deckCommitMs;
       return;
     }
     lastDeckCommit += elapsed;
@@ -735,23 +752,21 @@ const runTradeAnimationProfile = async (
   if (layerManager && origLayerUpdate) {
     // deck.gl queues layers in setProps; matching, lifecycle, and attribute
     // rebuilds run later in LayerManager.updateLayers during the map render.
-    layerManager.updateLayers = function wrappedLayerManagerUpdate() {
+    layerManagerPrototype.updateLayers = function wrappedLayerManagerUpdate() {
+      if (this !== layerManager) return origLayerUpdate.call(this);
       const started = performance.now();
-      origLayerUpdate();
+      origLayerUpdate.call(layerManager);
       applyDeckCommit(performance.now() - started);
     };
   }
 
+  hintGuard.shouldScan = function wrappedShouldScan(inputs, toggleList) {
+    const shouldScan = origShouldScan.call(this, inputs, toggleList);
+    if (shouldScan) hintScanCount += 1;
+    return shouldScan;
+  };
   mapInternal.updateZoomHints = function wrappedUpdateZoomHints() {
     hintCallCount += 1;
-    const toggleList = this.container.querySelector('.deckgl-layer-toggles .toggle-list');
-    const currentZoom = this.maplibreMap?.getZoom() || 2;
-    if (
-      toggleList
-      && this.zoomHintGuard?.shouldScan({ zoom: currentZoom, layers: this.state.layers }, toggleList)
-    ) {
-      hintScanCount += 1;
-    }
     origHints.call(this);
   };
 
@@ -764,6 +779,7 @@ const runTradeAnimationProfile = async (
     const sample: TradeAnimationProfileSample = {
       totalMs: 0,
       jsBuildMs: 0,
+      updateLayersMs: 0,
       deckCommitMs: lastDeckCommit,
       layerCount: 0,
       nuclearIdentityChanged: false,
@@ -771,16 +787,18 @@ const runTradeAnimationProfile = async (
     };
     lastDeckCommit = 0;
     samples.push(sample);
+    const updateStarted = performance.now();
     try {
       origUpdate.call(this, deferred);
     } finally {
       inUpdate = false;
     }
+    sample.updateLayersMs = performance.now() - updateStarted;
     sample.jsBuildMs = lastJsBuild;
     sample.layerCount = lastLayerCount;
     sample.nuclearIdentityChanged = Boolean(lastNuclear) && lastNuclear !== previousNuclear;
     sample.tripsIdentityChanged = Boolean(lastTrips) && lastTrips !== previousTrips;
-    sample.totalMs = sample.jsBuildMs + sample.deckCommitMs;
+    sample.totalMs = sample.updateLayersMs + sample.deckCommitMs;
   };
 
   try {
@@ -800,6 +818,7 @@ const runTradeAnimationProfile = async (
       if (previousRaf > 0) rafIntervalsMs.push(now - previousRaf);
       previousRaf = now;
     });
+    mapInternal.stopTradeAnimation();
     // Flush a deferred LayerManager.updateLayers that is still queued after
     // the last animation-driven setProps.
     await waitAnimationFrames(2);
@@ -832,7 +851,8 @@ const runTradeAnimationProfile = async (
     mapInternal.updateLayers = origUpdate;
     mapInternal.buildLayers = origBuild;
     mapInternal.updateZoomHints = origHints;
-    if (layerManager && origLayerUpdate) layerManager.updateLayers = origLayerUpdate;
+    hintGuard.shouldScan = origShouldScan;
+    layerManagerPrototype.updateLayers = origLayerUpdate;
   }
 };
 

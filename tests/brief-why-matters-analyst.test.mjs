@@ -47,6 +47,7 @@ async function invokeHandlerWithCachedEnvelope(
   providerCompletion = null,
   primary = 'gemini',
   fallbackProviderCompletion = null,
+  requestOverrides = {},
 ) {
   const previousEnv = Object.fromEntries(HANDLER_ENV_KEYS.map((key) => [key, process.env[key]]));
   const originalFetch = globalThis.fetch;
@@ -97,8 +98,9 @@ async function invokeHandlerWithCachedEnvelope(
       headers: {
         Authorization: 'Bearer test-relay-secret',
         'Content-Type': 'application/json',
+        ...requestOverrides.headers,
       },
-      body: JSON.stringify({ story: story() }),
+      body: requestOverrides.body ?? JSON.stringify({ story: story() }),
     });
     const response = await handler(request);
     return { response, body: await response.json(), fetchCalls };
@@ -700,12 +702,6 @@ describe('endpoint validation contract', () => {
   // test regression on the endpoint flow (see "endpoint end-to-end" below).
   const VALID_THREAT = new Set(['critical', 'high', 'medium', 'low']);
   const CAPS = { headline: 400, source: 120, category: 80, country: 80 };
-  // Must match `api/internal/brief-why-matters.ts:116` — bumped to 8192 in
-  // PR #3269 to accommodate v2 output + description. If this ever drifts
-  // again, the bloated-fixture assertion below silently passes for
-  // payloads in the (OLD_VALUE, NEW_VALUE] range that the real endpoint
-  // now accepts (greptile P2, PR #3281).
-  const MAX_BODY_BYTES = 8192;
 
   function validate(raw) {
     if (!raw || typeof raw !== 'object') return { ok: false, msg: 'body' };
@@ -723,10 +719,6 @@ describe('endpoint validation contract', () => {
       if (s.country.length > CAPS.country) return { ok: false, msg: 'country-length' };
     }
     return { ok: true };
-  }
-
-  function measureBytes(obj) {
-    return new TextEncoder().encode(JSON.stringify(obj)).byteLength;
   }
 
   it('accepts a valid payload', () => {
@@ -767,21 +759,34 @@ describe('endpoint validation contract', () => {
     assert.deepEqual(validate({ story: withoutCountry }), { ok: true });
   });
 
-  it('body cap catches oversize payloads (both Content-Length and post-read)', () => {
-    const bloated = {
+  it('rejects oversize payloads through both endpoint body-cap paths', async () => {
+    const cachedEnvelope = {
+      whyMatters: 'The ruling keeps the 2027 race open while reshaping coalition strategy.',
+      producedBy: 'analyst',
+      at: '2026-07-10T00:00:00.000Z',
+    };
+    const oversizedBody = JSON.stringify({
       story: {
         ...story(),
-        // Artificial oversize payload — would need headline cap bypassed
-        // to reach in practice, but the total body-byte cap must still fire.
-        // Sized well above MAX_BODY_BYTES (8192) so a future bump doesn't
-        // silently invalidate the assertion.
         extra: 'x'.repeat(10_000),
       },
-    };
-    assert.ok(measureBytes(bloated) > MAX_BODY_BYTES, 'fixture is oversize');
-    // Note: body-cap is enforced at the handler level, not the validator.
-    // We assert the invariant about the measure here; the handler path is
-    // covered by the endpoint smoke test below.
+    });
+
+    for (const [path, requestOverrides] of [
+      ['Content-Length', { headers: { 'Content-Length': '10000' } }],
+      ['post-read byte length', { body: oversizedBody }],
+    ]) {
+      const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(
+        cachedEnvelope,
+        null,
+        'gemini',
+        null,
+        requestOverrides,
+      );
+      assert.equal(response.status, 400, path);
+      assert.equal(body.error, 'body exceeds 8192 bytes', path);
+      assert.equal(fetchCalls.length, 0, `${path} must reject before cache access`);
+    }
   });
 });
 

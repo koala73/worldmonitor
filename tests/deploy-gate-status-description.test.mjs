@@ -113,13 +113,13 @@ describe('deploy gate phase results', () => {
   });
 
   it('keeps ordinary failures eligible and excludes exhausted heads', () => {
-    for (const outcome of ['invalidated', 'failed', 'exhausted']) {
+    for (const outcome of ['invalidated', 'failed', 'exhausted', 'blocked']) {
       const result = recoverPlan(plan, { [artifact]: { version: 1, sha: stale, outcome } });
       assert.deepEqual(result.matrix.include, [
-        ...(outcome === 'exhausted' ? [] : [{ sha: stale, check_attempts: 1 }]),
+        ...(['exhausted', 'blocked'].includes(outcome) ? [] : [{ sha: stale, check_attempts: 1 }]),
         { sha: pending, check_attempts: 2 },
       ]);
-      assert.equal(result.invalidation_failed, outcome !== 'invalidated');
+      assert.equal(result.invalidation_failed, !['invalidated', 'blocked'].includes(outcome));
       assert.equal(result.protocol_failed, false);
     }
   });
@@ -151,6 +151,7 @@ describe('deploy gate phase results', () => {
  * cannot be masked by its predecessor.
  */
 function runGate(conclusions, {
+  now = '2026-08-12T12:30:00Z',
   failedRunCreatedAt = '2026-08-12T12:15:00Z',
   failedRunSha = SHA,
   graphQlFailures = 0,
@@ -184,6 +185,7 @@ function runGate(conclusions, {
   const callsFile = join(tempDir, 'calls');
   const currentStatusesFile = join(tempDir, 'current-statuses.json');
   const statusReadFailuresFile = join(tempDir, 'status-read-failures');
+  const summaryFile = join(tempDir, 'summary');
 
   try {
     mkdirSync(fakeBin);
@@ -197,6 +199,7 @@ function runGate(conclusions, {
     writeFileSync(postTargetsFile, '');
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
+    writeFileSync(summaryFile, '');
     writeFileSync(statusReadFailuresFile, String(statusReadFailures));
     writeFileSync(currentStatusesFile, JSON.stringify(Object.fromEntries(
       (sweepStatuses ?? [{ sha: SHA, status: previousStatus ?? sweepStatus }])
@@ -277,7 +280,7 @@ function runGate(conclusions, {
         nodes: [{
           commit: {
             status: {
-              context: status,
+              context: status ? { createdAt: now, ...status } : null,
             },
           },
         }],
@@ -511,7 +514,7 @@ function runGate(conclusions, {
           FAKE_POSTED: postedFile,
           FAKE_POST_TARGETS: postTargetsFile,
           FAKE_REJECTED: rejectedFile,
-          FAKE_NOW: String(Date.parse('2026-08-12T12:30:00Z') / 1000),
+          FAKE_NOW: String(Date.parse(now) / 1000),
           FAKE_RESET_AT: String(Date.parse('2026-08-12T12:30:10Z') / 1000),
           FAKE_RESET_AVAILABLE: resetAvailable ? '1' : '0',
           FAKE_STATUS_FAILURE_KIND: statusFailureKind,
@@ -520,6 +523,7 @@ function runGate(conclusions, {
           FAKE_SWEEP_RESPONSES: sweepFile,
           FAKE_SHA: SHA,
           GH_TOKEN: 'test-token',
+          GITHUB_STEP_SUMMARY: summaryFile,
           PATH: `${fakeBin}:${process.env.PATH}`,
           REPO: 'koala73/worldmonitor',
           RUNNER_TEMP: tempDir,
@@ -545,6 +549,7 @@ function runGate(conclusions, {
       postTargets: readFileSync(postTargetsFile, 'utf8').split('\n').filter(Boolean),
       posted: parse(postedFile),
       rejected: parse(rejectedFile),
+      summary: readFileSync(summaryFile, 'utf8'),
     };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -572,7 +577,7 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.posted[0].state, 'pending');
   });
 
-  it('continues a sweep after an exhausted head without repeating its rejected write', () => {
+  it('keeps an exhausted pending head blocked without failing independent recovery', () => {
     const secondSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
     const result = runGate(conclusionsFor('success'), {
       exhaustedSha: SHA,
@@ -580,9 +585,100 @@ describe('deploy gate commit-status description', () => {
         sha, status: { state: 'PENDING', description: stamped('Waiting for checks') },
       })),
     });
-    assert.notEqual(result.status, 0);
+    assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.postTargets, [secondSha], result.stderr);
     assert.equal(result.calls.filter((call) => call.startsWith('status:')).length, 2);
+    assert.match(result.summary, /status capacity exhausted/);
+    assert.match(result.summary, /remains blocked/);
+    assert.doesNotMatch(result.stdout + result.stderr, /::error::/);
+  });
+
+  it('stops polling the unchanged exhausted PR from run 34041600634', () => {
+    const exhausted = '6a6648de9e94cc739866b1c2523aca15ab9e1932';
+    const result = runGate({}, {
+      now: '2026-09-06T15:12:57Z',
+      exhaustedSha: exhausted,
+      repetitions: 2,
+      sweepStatuses: [{
+        sha: exhausted,
+        status: {
+          state: 'PENDING',
+          createdAt: '2026-09-05T06:25:21Z',
+          description: 'Waiting for required PR gates (18): typecheck-changes,lint-changes,consumer-prices,umami-postgres,dom-tests,... [gate-contract:5c196f971bc8]',
+        },
+      }],
+    });
+    assert.deepEqual(result.exitCodes, [0, 0], result.stderr);
+    assert.deepEqual(result.posted, []);
+    assert.equal(result.statusReads, 0);
+    assert.deepEqual(result.calls, Array(2).fill(['graphql-sweep-page', 'graphql-sweep-page']).flat());
+    assert.match(result.summary, new RegExp(exhausted));
+    assert.match(result.summary, /remains blocked/);
+    assert.match(result.summary, /Update the branch/);
+  });
+
+  it('recovers only pending statuses newer than the 24-hour cutoff', () => {
+    const shas = ['a', 'b', 'c'].map((letter) => letter.repeat(40));
+    const publications = ['2026-08-11T12:29:59Z', '2026-08-11T12:30:00Z', '2026-08-11T12:30:01Z'];
+    const result = runGate(conclusionsFor('success'), {
+      sweepStatuses: shas.map((sha, index) => ({
+        sha,
+        status: {
+          state: 'PENDING',
+          createdAt: publications[index],
+          description: stamped('Waiting for checks'),
+        },
+      })),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.postTargets, [shas[2]]);
+    assert.match(result.summary, new RegExp(shas[0]));
+    assert.match(result.summary, new RegExp(shas[1]));
+    assert.doesNotMatch(result.summary, new RegExp(shas[2]));
+  });
+
+  it('allows an exact-SHA evaluation after scheduled recovery expires', () => {
+    const result = runGate(conclusionsFor('success'), {
+      previousStatus: {
+        state: 'pending',
+        createdAt: '2026-06-02T19:27:26Z',
+        description: 'Waiting for old checks',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1).state, 'success');
+  });
+
+  it('does not reopen failed gates when the required contract changes', () => {
+    const result = runGate(conclusionsFor('success'), {
+      sweepStatuses: ['FAILURE', 'ERROR'].map((state, index) => ({
+        sha: String(index + 1).repeat(40),
+        status: { state, description: 'Blocked under an older contract' },
+      })),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ['graphql-sweep-page', 'graphql-sweep-page']);
+    assert.deepEqual(result.posted, []);
+  });
+
+  it('still fails on exhaustion when the previous gate cannot be verified as blocked', () => {
+    for (const statusReadFailures of [0, 10]) {
+      const result = runGate(conclusionsFor('success'), { exhaustedSha: SHA, statusReadFailures });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, /::error::Gate status capacity exhausted/);
+    }
+  });
+
+  it('accepts an exhausted gate already blocked by another writer after discovery', () => {
+    const result = runGate(conclusionsFor('success'), {
+      exhaustedSha: SHA,
+      sweepStatus: { state: 'SUCCESS', description: 'Old contract' },
+      previousStatus: { state: 'pending', description: stamped('Waiting for checks') },
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.deepEqual(result.posted, []);
+    assert.deepEqual(result.calls, ['graphql-sweep-page', 'graphql-sweep-page', 'status:pending']);
+    assert.match(result.summary, /remains blocked/);
   });
 
   it('keeps evaluating other heads when a stale green cannot be invalidated', () => {
@@ -590,7 +686,7 @@ describe('deploy gate commit-status description', () => {
     const result = runGate(conclusionsFor('success'), {
       exhaustedSha: SHA,
       sweepStatuses: [
-        { sha: SHA, status: { state: 'SUCCESS', description: 'Old contract' } },
+        { sha: SHA, status: { state: 'SUCCESS', createdAt: '2026-06-02T19:27:26Z', description: 'Old contract' } },
         { sha: secondSha, status: { state: 'PENDING', description: stamped('Waiting for checks') } },
       ],
     });

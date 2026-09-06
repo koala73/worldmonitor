@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildAgentMarkdownCacheRule, planAgentReadiness, runAgentReadiness } from '../scripts/cloudflare-agent-readiness.mjs';
+import { planAgentReadiness, runAgentReadiness } from '../scripts/cloudflare-agent-readiness.mjs';
+import { AGENT_USER_AGENTS, RETIRED_CACHE_RULES, buildCorpusCacheRule } from '../scripts/cloudflare-cache-rule.mjs';
 import policy from '../shared/agent-request-policy.json' with { type: 'json' };
 
 function fixture() {
@@ -13,12 +14,11 @@ function fixture() {
         id: `block-${i}`, description, action: 'block', enabled: true, expression: `api-policy-${i}`,
       })),
     ] },
-    cache: { id: 'cache', rules: [
-      { id: 'html', action: 'set_cache_settings', action_parameters: { cache: true }, expression: 'homepage' },
-    ] },
   };
 }
 
+// Reads of any phase but the firewall throw: the cache phase belongs to
+// scripts/cloudflare-cache-rule.mjs (#7804) and this script must not touch it.
 function fakeCloudflare(state, { drift = false } = {}) {
   const writes = [];
   let firewallReads = 0;
@@ -31,32 +31,17 @@ function fakeCloudflare(state, { drift = false } = {}) {
         if (drift && ++firewallReads === 2) state.firewall.rules[1].expression = 'changed-by-owner';
         return response(state.firewall);
       }
-      if (path.includes('cache_settings')) return response(state.cache);
       throw new Error(`Unexpected read ${path}`);
     }
     const body = JSON.parse(options.body);
     writes.push({ method: options.method, path, body });
-    const ruleset = path.includes('/rulesets/firewall/') ? state.firewall : state.cache;
+    assert.equal(options.method, 'PATCH');
+    assert.ok(path.includes('/rulesets/firewall/'), `wrote outside the firewall phase: ${path}`);
     const ruleId = path.split('/').at(-1);
-    let rule;
-    if (options.method === 'PATCH') {
-      rule = ruleset.rules.find((item) => item.id === ruleId);
-      assert.ok(rule);
-      const index = ruleset.rules.indexOf(rule);
-      rule = { id: rule.id, ...body };
-      ruleset.rules[index] = rule;
-    } else {
-      assert.equal(options.method, 'POST');
-      rule = { id: 'agent-cache', ...body };
-      ruleset.rules.push(rule);
-    }
-    if (body.position) {
-      ruleset.rules = ruleset.rules.filter((item) => item.id !== rule.id);
-      assert.deepEqual(body.position, { after: '' });
-      ruleset.rules.push(rule);
-      delete rule.position;
-    }
-    return response(ruleset);
+    const index = state.firewall.rules.findIndex((item) => item.id === ruleId);
+    assert.notEqual(index, -1);
+    state.firewall.rules[index] = { id: ruleId, ...body };
+    return response(state.firewall);
   } };
 }
 
@@ -70,14 +55,22 @@ describe('Cloudflare agent readiness', () => {
     assert.equal(result.stdout, '');
   });
 
-  it('limits the cache bypass to homepage GET/HEAD and the declared AI user agents', () => {
-    const rule = buildAgentMarkdownCacheRule();
-    assert.match(rule.expression, /http\.host in \{"worldmonitor\.app" "www\.worldmonitor\.app"\}/);
-    assert.match(rule.expression, /http\.request\.uri\.path eq "\/"/);
-    assert.match(rule.expression, /http\.request\.method in \{"GET" "HEAD"\}/);
-    for (const ua of policy.userAgents) assert.ok(rule.expression.includes(`contains "${ua.toLowerCase()}"`));
-    assert.doesNotMatch(rule.expression, /googlebot|api\.worldmonitor\.app/);
-    assert.deepEqual(rule.action_parameters, { cache: false });
+  it('leaves the homepage cache carve-out to the document rule (#7804)', () => {
+    // The UA-keyed bypass this script used to append LAST in the cache phase
+    // is now a carve-out inside the corpus rule's `/` claim, and that script
+    // deletes the old rule if it ever meets it. Pin the hand-off from both
+    // sides so neither script can quietly start owning the surface again.
+    assert.ok(
+      RETIRED_CACHE_RULES.some((rule) => rule.description === 'Agent homepage Markdown - bypass shared HTML cache'),
+      'the document rule must retire the bypass this script used to manage',
+    );
+    const { expression } = buildCorpusCacheRule();
+    for (const ua of policy.userAgents) {
+      assert.ok(expression.includes(`lower(http.user_agent) contains "${ua.toLowerCase()}"`), `${ua} must be carved out of the / claim`);
+    }
+    assert.deepEqual([...AGENT_USER_AGENTS], policy.userAgents.map((ua) => ua.toLowerCase()));
+    const changes = planAgentReadiness(fixture().firewall);
+    assert.ok(changes.every((change) => change.phase === 'http_request_firewall_custom'), 'this script plans firewall changes only');
   });
 
   it('plans without a write and changes only the block response parameters', async () => {
@@ -86,10 +79,10 @@ describe('Cloudflare agent readiness', () => {
     const api = fakeCloudflare(state);
     const result = await runAgentReadiness('--plan', { env: { CLOUDFLARE_API_TOKEN: 'test' }, fetchImpl: api.fetchImpl });
     assert.equal(result.ready, false);
-    assert.equal(result.changes.length, 3);
+    assert.equal(result.changes.length, 2);
     assert.equal(api.writes.length, 0);
     assert.deepEqual(state, original);
-    for (const change of result.changes.slice(0, 2)) {
+    for (const change of result.changes) {
       const originalRule = original.firewall.rules.find((rule) => rule.id === change.ruleId);
       const { id, ...definition } = originalRule;
       const { action_parameters, ...changedDefinition } = change.body;
@@ -107,19 +100,10 @@ describe('Cloudflare agent readiness', () => {
     const api = fakeCloudflare(state);
     const options = { env: { CLOUDFLARE_API_TOKEN: 'test' }, fetchImpl: api.fetchImpl };
     assert.equal((await runAgentReadiness('--apply', options)).ready, true);
-    assert.deepEqual(api.writes.map((write) => write.method), ['PATCH', 'PATCH', 'POST']);
+    assert.deepEqual(api.writes.map((write) => write.method), ['PATCH', 'PATCH']);
     assert.deepEqual(state.firewall.rules.map(({ action_parameters, ...rest }) => rest), original);
-    assert.equal(state.cache.rules.at(-1).ref, buildAgentMarkdownCacheRule().ref);
     assert.equal((await runAgentReadiness('--apply', options)).ready, true);
-    assert.equal(api.writes.length, 3);
-  });
-
-  it('moves its cache bypass after later cache rules', () => {
-    const state = fixture();
-    state.cache.rules.unshift({ id: 'agent-cache', ...buildAgentMarkdownCacheRule() });
-    const change = planAgentReadiness(state.firewall, state.cache).at(-1);
-    assert.equal(change.ruleId, 'agent-cache');
-    assert.deepEqual(change.body.position, { after: '' });
+    assert.equal(api.writes.length, 2);
   });
 
   it('stops on concurrent rule changes before writing', async () => {
@@ -130,12 +114,9 @@ describe('Cloudflare agent readiness', () => {
     assert.equal(api.writes.length, 0);
   });
 
-  it('refuses missing or disabled block rules and conflicting cache ownership', () => {
+  it('refuses missing or disabled block rules', () => {
     const state = fixture();
     state.firewall.rules[1].enabled = false;
-    assert.throws(() => planAgentReadiness(state.firewall, state.cache), /Expected one enabled block rule/);
-    state.firewall.rules[1].enabled = true;
-    state.cache.rules.push({ id: 'foreign', ...buildAgentMarkdownCacheRule(), ref: 'another-owner' });
-    assert.throws(() => planAgentReadiness(state.firewall, state.cache), /unexpected ref/);
+    assert.throws(() => planAgentReadiness(state.firewall), /Expected one enabled block rule/);
   });
 });

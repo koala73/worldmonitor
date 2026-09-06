@@ -27,6 +27,12 @@ gate_description() {
 name_count() {
   printf '%s\n' "$1" | tr ',' '\n' | wc -l | tr -d ' '
 }
+report_blocked_head() {
+  echo "::notice::$1"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf -- '- %s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
 # Retry a primary-rate-limit response once at GitHub's published
 # reset time. The rate_limit endpoint does not spend primary budget;
 # keeping this bounded avoids turning an outage into an infinite job.
@@ -98,11 +104,19 @@ post_gate_status() {
   else
     result=$?
   fi
-  cat "$error_file" >&2
   if grep -qi 'This SHA and context has reached the maximum number of statuses' "$error_file"; then
     gate_status_exhausted=1
+    # An immutable pending/failure/error still blocks this commit. A stale
+    # success or an unreadable status cannot be treated as safely blocked.
+    if [ "$read_failed" -eq 0 ] && printf '%s\n' "$previous" |
+      jq -e '.state == "pending" or .state == "failure" or .state == "error"' >/dev/null; then
+      report_blocked_head "$SHA remains blocked: gate status capacity exhausted. Update the branch with a new commit before retrying."
+      rm -f "$error_file"
+      return 0
+    fi
     echo "::error::Gate status capacity exhausted for $SHA; this head needs a new commit before its status can change."
   fi
+  cat "$error_file" >&2
   rm -f "$error_file"
   return "$result"
 }
@@ -209,7 +223,7 @@ emit_matrix() {
 }
 
 discover() {
-  local discovery matrix
+  local discovery matrix pending_states recovery_cutoff
   if [ -n "$SHA" ]; then
     SHA=$(printf '%s' "$SHA" | tr 'A-F' 'a-f')
     validate_sha
@@ -226,7 +240,7 @@ discover() {
               commits(last: 1) {
                 nodes {
                   commit {
-                    status { context(name: "gate") { state description } }
+                    status { context(name: "gate") { state description createdAt } }
                   }
                 }
               }
@@ -241,43 +255,55 @@ discover() {
         .commits.nodes[0].commit.status.context as $gate |
         select(
           $gate != null and
-          $gate.state != "PENDING" and
+          $gate.state == "SUCCESS" and
           (($gate.description // "") | endswith($gate_stamp) | not)
         ) |
         .headRefOid
       ' |
       awk '!seen[$0]++')
-    pending_shas=$(printf '%s\n' "$pr_gate_states" |
-      jq -r '
+    # Only recover recent pending publications. An unchanged blocked commit
+    # cannot gain missing CI jobs through polling. workflow_run and exact-SHA
+    # dispatch still evaluate it regardless of age when work resumes.
+    recovery_cutoff=$(($(date +%s) - 86400))
+    pending_states=$(printf '%s\n' "$pr_gate_states" |
+      jq -c --argjson cutoff "$recovery_cutoff" '[
         .[].data.repository.pullRequests.nodes[] |
         select(.commits.nodes[0].commit.status.context.state == "PENDING") |
-        .headRefOid
-      ' |
-      awk '!seen[$0]++')
+        {sha: .headRefOid, expired: ((.commits.nodes[0].commit.status.context.createdAt | fromdateiso8601) <= $cutoff)}
+      ]')
+    pending_shas=$(printf '%s\n' "$pending_states" | jq -r '.[] | select(.expired | not) | .sha')
+    deferred_shas=$(printf '%s\n' "$pending_states" | jq -r '.[] | select(.expired) | .sha')
     missing_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
       .[].data.repository.pullRequests.nodes[] |
       select(.commits.nodes[0].commit.status.context == null) |
       .headRefOid
     ')
 
-    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg pending "$pending_shas" --arg missing "$missing_shas" '
+    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg pending "$pending_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
       def shas: split("\n") | map(select(length > 0)) | reduce .[] as $sha ([]; if index($sha) then . else . + [$sha] end);
-      {kind:"sweep", stale:($stale|shas), pending:($pending|shas), missing:($missing|shas)}')
+      {kind:"sweep", stale:($stale|shas), pending:($pending|shas), missing:($missing|shas), deferred:($deferred|shas)}')
   fi
   printf '%s\n' "$discovery" | jq -e '
-    [.stale[], .pending[], .missing[]] as $shas |
+    [.stale[], .pending[], .missing[], .deferred[]?] as $shas |
     all($shas[]; test("^[0-9a-f]{40}$")) and ($shas|length) == ($shas|unique|length)
   ' >/dev/null
   matrix=$(printf '%s\n' "$discovery" | jq -c '{include:[.stale[]|{sha:.}]}')
   emit_matrix "$matrix"
   emit_output discovery "$discovery"
+  printf '%s\n' "$discovery" | jq -r '.deferred[]?' | while read -r deferred_sha; do
+    report_blocked_head "$deferred_sha remains blocked: pending status unchanged for at least 24 hours; scheduled recovery stopped. Update the branch or dispatch Deploy Gate with this exact SHA after resolving its checks."
+  done
 }
 
 finish_invalidation() {
   local result=$?
   post_pending_on_exit "$result"
   if [ "${gate_status_exhausted:-0}" -eq 1 ]; then
-    invalidation_outcome=exhausted
+    if [ "$result" -eq 0 ]; then
+      invalidation_outcome=blocked
+    else
+      invalidation_outcome=exhausted
+    fi
   fi
   jq -nc --arg sha "$SHA" --arg outcome "${invalidation_outcome:-failed}" \
     '{version:1,sha:$sha,outcome:$outcome}' > "$RESULT_PATH"
@@ -327,7 +353,7 @@ for directory in sorted(root.iterdir()) if root.exists() else []:
         if not directory.is_dir() or list(directory.iterdir()) != [path]:
             raise ValueError("Invalid invalidation artifact contents")
         row = json.loads(path.read_text())
-        if not isinstance(row, dict) or set(row) != {"version", "sha", "outcome"} or row["version"] != 1 or row["sha"] != sha or row["outcome"] not in ("invalidated", "failed", "exhausted"):
+        if not isinstance(row, dict) or set(row) != {"version", "sha", "outcome"} or row["version"] != 1 or row["sha"] != sha or row["outcome"] not in ("invalidated", "failed", "exhausted", "blocked"):
             raise ValueError("Invalid invalidation result")
         results[sha] = row["outcome"]
     except (ValueError, KeyError, TypeError, OSError) as error:
@@ -341,7 +367,7 @@ if unknown:
     protocol_failed = True
 print(json.dumps({
     "stale": [sha for sha in discovery["stale"] if results.get(sha) in {"invalidated", "failed"}],
-    "invalidation_failed": any(value != "invalidated" for value in results.values()),
+    "invalidation_failed": any(value not in {"invalidated", "blocked"} for value in results.values()),
     "protocol_failed": protocol_failed
 }, separators=(",", ":")))
 ')

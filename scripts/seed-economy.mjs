@@ -507,7 +507,7 @@ export function parseEiaSprRow(row) {
   return { barrels: +barrels.toFixed(3), period };
 }
 
-async function fetchSprLevels() {
+export async function fetchSprLevels() {
   const apiKey = process.env.EIA_API_KEY;
   if (!apiKey) throw new Error('Missing EIA_API_KEY');
 

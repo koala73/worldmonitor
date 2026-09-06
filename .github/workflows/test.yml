@@ -297,7 +297,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        # Three shards, not two (#7805): after #7769 split the browser job,
+        # unit-shard (2) became the Test wall at 5m45s, of which ~2 min is
+        # setup and builds every shard repeats and ~3 min is test:data. The
+        # sharder balances by measured durations and is generic in the count,
+        # so the denominator on the test:data step below is the only other
+        # place this number lives. tests/ci-test-selection.test.mjs pins that
+        # denominator to this matrix's length, and tests/data-test-shards.test.mjs
+        # reads the matrix and proves the shards together run the inventory
+        # exactly once.
+        shard: [1, 2, 3]
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -421,7 +430,7 @@ jobs:
           npm run bundle:check
           npm run bundle:check:pro
           npm run bundle:check:embed
-      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --shard=${{ matrix.shard }}/2 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --shard=${{ matrix.shard }}/3 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

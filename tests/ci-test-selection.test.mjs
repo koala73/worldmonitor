@@ -141,9 +141,17 @@ test('required unit aggregate rejects failed, cancelled and unexpected skips', (
   assert.deepEqual(aggregate.needs, ['changes', 'unit-shards']);
   assert.equal(aggregate.if, 'always()');
   const shards = workflow.jobs['unit-shards'];
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3]);
   assert.equal(shards.strategy['fail-fast'], false);
-  assert.match(shards.steps.find((step) => step.run?.includes('WM_EXPECT_BUILT_OUTPUT=1 npm run test:data')).run, /--shard=\$\{\{ matrix.shard \}\}\/2 --concurrency=4/);
+  // The denominator must equal the matrix length: a matrix of three passing
+  // --shard=n/2 would run shard 3 as 3/2, which the runner rejects, while a
+  // matrix of two passing n/3 would silently never run the third of the
+  // inventory.
+  const shardCount = shards.strategy.matrix.shard.length;
+  assert.match(
+    shards.steps.find((step) => step.run?.includes('WM_EXPECT_BUILT_OUTPUT=1 npm run test:data')).run,
+    new RegExp(`--shard=\\$\\{\\{ matrix.shard \\}\\}/${shardCount} --concurrency=4`),
+  );
   for (const changes of ['success', 'failure', 'cancelled', 'skipped']) {
     for (const code of ['true', 'false', '']) {
       for (const result of ['success', 'failure', 'cancelled', 'skipped']) {

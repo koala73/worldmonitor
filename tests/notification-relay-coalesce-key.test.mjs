@@ -301,10 +301,8 @@ describe('market alert producer — asset-family coalesce key', () => {
       /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
       'market coalesce key must separate asset class, instrument, direction, and severity band',
     );
-    // Lock the normalization line itself so a source change (dropping the
-    // 'unknown' fallback or the trim/lowercase) is caught — the behavioral test
-    // below re-derives this logic inline, so without this assertion the two
-    // could drift together silently. PR #4985 review finding #4.
+    // Lock the normalization line itself so dropping the fallback or
+    // trim/lowercase normalization is caught. PR #4985 review finding #4.
     assert.match(
       aisRelaySrc,
       /const stableIdentifier = String\(identifier \|\| 'unknown'\)\.trim\(\)\.toLowerCase\(\)/,
@@ -322,19 +320,6 @@ describe('market alert producer — asset-family coalesce key', () => {
         `market_alert block must pass coalesceKey:\n${block}`,
       );
     }
-  });
-
-  it('rounded percent changes within the same critical commodity surge collapse to one family', () => {
-    const coalesce = (assetClass, identifier, direction, severity) =>
-      `market:${assetClass}:${String(identifier || 'unknown').trim().toLowerCase()}:${direction}:${severity}`;
-    const coffee11 = coalesce('commodity', 'KC=F', 'surge', 'critical');
-    const coffee13 = coalesce('commodity', 'KC=F', 'surge', 'critical');
-    assert.equal(coffee11, coffee13, 'Coffee +11% and +13% critical surge must share one dedup family');
-    assert.notEqual(
-      coffee11,
-      coalesce('commodity', 'KC=F', 'surge', 'high'),
-      'a high-to-critical threshold crossing may notify as a severity upgrade',
-    );
   });
 });
 

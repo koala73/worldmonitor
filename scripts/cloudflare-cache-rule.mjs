@@ -31,6 +31,18 @@
  * discriminator") was a correlation: header and rule were derived from the same
  * prefix list, so every route had both or neither.
  *
+ * #7804 folded `/` and `/dashboard` in as well and retired the dashboard-managed
+ * "WWW entry HTML" rule that had been their answer. That rule set `cache: true`
+ * for any query-free GET of the two URLs with none of the guards below, one
+ * position before this rule — and Cloudflare takes the LAST matching writer of a
+ * field, so a request this rule's guard rejected (`Accept: text/markdown`, which
+ * Vercel answers with a markdown rendering of the homepage under the same
+ * cacheable header) still found `cache: true` one rule earlier. The guard was
+ * inert on the two busiest URLs on the site. A sibling rule outside the
+ * generator is invisible to `--check`, so the generator now knows which rules it
+ * has superseded (RETIRED_CACHE_RULES) and `--apply` deletes them once the claim
+ * has landed.
+ *
  * ## Representations Cloudflare cannot tell apart
  *
  * Several of these URLs answer with more than one body. Vercel converts any HTML
@@ -54,6 +66,16 @@
  * `RSC: 1` (measured 2026-09-05). Guarding them would push the clients most
  * likely to advertise their media type — agents sending `Accept: text/plain` or
  * `text/markdown` — off the cache these files exist to serve.
+ *
+ * The homepage has one more representation that no Accept value selects:
+ * middleware.ts rewrites `GET /` to /home.md for the User-Agents listed in
+ * shared/agent-request-policy.json (`Vary: User-Agent`, `no-store`). The
+ * no-store keeps that markdown out of the edge; the problem is the other
+ * direction. Cloudflare answers from the stored browser HTML before the
+ * middleware runs and ignores Vary: User-Agent, so on a warm edge server a
+ * crawler never sees its document. Those requests are carved out of the `/`
+ * claim alone: /dashboard and the corpus answer one body whatever the UA, and
+ * the AI crawlers are the audience the corpus cache exists to serve.
  *
  * ## Safety of caching these documents at a shared edge
  *
@@ -83,14 +105,16 @@
  * with far more Cloudflare authority than the task needs. Set exactly one token;
  * the script refuses to guess when both variables are present.
  *
- * `--apply` touches only this one rule and then re-reads the zone to confirm it
- * actually wins. Cloudflare keeps prior ruleset versions, so a bad apply is also
- * recoverable from the dashboard's ruleset history.
+ * `--apply` touches only this one rule and the rules it has superseded
+ * (RETIRED_CACHE_RULES), then re-reads the zone to confirm it actually wins.
+ * Cloudflare keeps prior ruleset versions, so a bad apply is also recoverable
+ * from the dashboard's ruleset history.
  */
 
 import { pathToFileURL } from 'node:url';
 
 import { CONTENT_CORPUS_PREFIXES } from './discover-content-corpus-pages.mjs';
+import agentRequestPolicy from './shared/agent-request-policy.json' with { type: 'json' };
 
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 
@@ -182,6 +206,55 @@ export const NEGOTIATED_MEDIA_TYPES = Object.freeze(['text/markdown', 'text/plai
  */
 export const SINGLE_REPRESENTATION_EXTENSIONS = Object.freeze(['md', 'txt', 'xml']);
 
+/**
+ * The two app-shell documents the dashboard-managed "WWW entry HTML" rule used
+ * to cache with no representation guard (#7804). Both carry the shared 600s
+ * header in vercel.json, both answer a markdown rendering for
+ * `Accept: text/markdown` under that same header (measured 2026-09-06 through
+ * the query-bearing form, which every rule keeps on the bypass), and both are
+ * claimed here so the guard block gates them like every other HTML document.
+ * `/dashboard.html`, the rewrite destination behind `/dashboard`, is not a URL
+ * anyone is sent to and stays out.
+ */
+export const ENTRY_DOCUMENTS = Object.freeze(['/', '/dashboard']);
+
+/**
+ * Entry documents whose body also varies by User-Agent: middleware.ts rewrites
+ * `GET /` to /home.md for the declared AI agents. See the header comment for
+ * why those requests must stay out even though the origin says no-store.
+ */
+export const USER_AGENT_ROUTED_DOCUMENTS = Object.freeze(['/']);
+
+/** The User-Agents middleware.ts routes to markdown, lowercased for `lower(http.user_agent)`. */
+export const AGENT_USER_AGENTS = Object.freeze(agentRequestPolicy.userAgents.map((agent) => agent.toLowerCase()));
+
+/**
+ * Cache-phase rules this rule has superseded. `--check` reports one still in
+ * the zone as drift and `--apply` deletes it after the managed rule is in place.
+ * Matched by ref, or by description when the live rule carries Cloudflare's
+ * default ref (its own id): a rule that shares the description but has a ref of
+ * its own belongs to somebody, and is reported as a collision, never deleted.
+ *
+ * "WWW entry HTML": the rule for `/` and `/dashboard`, whose unguarded
+ *   `cache: true` outranked this rule's guard on those URLs (#7804). Read from
+ *   the zone 2026-09-06: position 10 of 12, ref `www_entry_html_origin_cache`.
+ * "Agent homepage Markdown": the UA-keyed bypass scripts/cloudflare-agent-
+ *   readiness.mjs used to append LAST for the same crawlers the `/` claim now
+ *   carves out. Absent from the zone on the same read (never applied), but two
+ *   scripts each insisting on the last position would move each other's rule
+ *   on every run.
+ *
+ * These two are the rules that were wrong. The invariant they broke is wider —
+ * no earlier cache-enabling rule may claim a URL this rule owns — and
+ * diffLiveRuleset checks that structurally as well (earlierUnguardedWriters),
+ * so a third such rule under a new name is reported and blocks --apply without
+ * being listed here.
+ */
+export const RETIRED_CACHE_RULES = Object.freeze([
+  Object.freeze({ description: 'WWW entry HTML - use origin CDN cache headers', ref: 'www_entry_html_origin_cache' }),
+  Object.freeze({ description: 'Agent homepage Markdown - bypass shared HTML cache', ref: 'www_agent_markdown_cache_bypass' }),
+]);
+
 const CORPUS_CACHE_RULE_DESCRIPTION = 'WWW corpus HTML - use origin CDN cache headers';
 
 /** Stable ruleset identity, independent of dashboard description edits. */
@@ -216,6 +289,9 @@ function buildCorpusCacheExpression({
   families = EDGE_CACHED_FAMILIES,
   exclusions = FAMILY_EXCLUSIONS,
   files = AGENT_TEXT_FILES,
+  documents = ENTRY_DOCUMENTS,
+  userAgentRouted = USER_AGENT_ROUTED_DOCUMENTS,
+  agents = AGENT_USER_AGENTS,
 } = {}) {
   const path = 'http.request.uri.path';
   const bare = families
@@ -236,6 +312,25 @@ function buildCorpusCacheExpression({
     ].join('\n');
   });
   const agentFiles = files.map((file) => `"/${file}"`).join(' ');
+  // The entry documents, exact. The homepage carves out the agents middleware.ts
+  // routes to markdown: lower() because the middleware matches the UA
+  // case-insensitively, and `contains` because it is the wider net — excluding
+  // a request only costs a cache hit, admitting one hands a crawler browser HTML.
+  const entryDocuments = documents.map((document) => {
+    // An empty agent list must not emit an empty `and not ( )` group, which
+    // Cloudflare rejects; it simply means there is nobody to carve out.
+    if (!userAgentRouted.includes(document) || !agents.length) return `    or ${path} eq "${document}"`;
+    const carveOuts = agents.map(
+      (agent, index) => `        ${index ? 'or ' : ''}lower(http.user_agent) contains "${agent}"`,
+    );
+    return [
+      `    or (${path} eq "${document}"`,
+      '      and not (',
+      ...carveOuts,
+      '      )',
+      '    )',
+    ].join('\n');
+  });
   // Presence of an RSC header is tested through the `http.request.headers[...]`
   // map, whose keys are the lowercased names, NOT through
   // `http.request.headers.names[*] == "rsc"`: that array keeps the sender's
@@ -284,6 +379,7 @@ function buildCorpusCacheExpression({
     `    ${path} in {${bare}}`,
     ...nested,
     `    or ${path} in {${agentFiles}}`,
+    ...entryDocuments,
     '  ))',
   ].join('\n');
 }
@@ -291,8 +387,9 @@ function buildCorpusCacheExpression({
 /**
  * The full rule object, in the shape the rulesets API expects inside `rules[]`.
  *
- * `action_parameters` mirrors the entry-HTML rule already proven on `/` rather
- * than inventing a second cache policy: one edge TTL, owned by the origin header.
+ * `action_parameters` keeps the cache policy the retired entry-HTML rule proved
+ * on `/` rather than inventing a second one: one edge TTL, owned by the origin
+ * header.
  */
 export function buildCorpusCacheRule(surface = {}) {
   return {
@@ -310,8 +407,8 @@ export function buildCorpusCacheRule(surface = {}) {
         mode: 'bypass_by_default',
         status_code_ttl: [
           // -1 is Cloudflare's no-store; 0 is its no-cache, which STORES the
-          // response and revalidates. The entry-HTML rule this otherwise mirrors
-          // uses 0 here, and production showed the effect: a 404 under a corpus
+          // response and revalidates. The entry-HTML rule this one replaced
+          // used 0 here, and production showed the effect: a 404 under a corpus
           // prefix sat at `cf-cache-status: MISS` on every request rather than
           // DYNAMIC — stored, not excluded. A 404 under these prefixes can be
           // produced by middleware.ts's originNotFoundResponse, which negotiates
@@ -369,16 +466,23 @@ export async function cloudflareRequest(
 ) {
   // A hung API call must not park an `--apply` between the read and the write
   // forever; fail loudly instead so the operator can retry against a fresh read.
-  const response = await fetchImpl(`${CLOUDFLARE_API}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'User-Agent': USER_AGENT,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let response;
+  try {
+    response = await fetchImpl(`${CLOUDFLARE_API}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': USER_AGENT,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    // A timeout or transport failure on a write is ambiguous — the write may
+    // still have landed — so name the request the operator has to re-read for.
+    throw new Error(`Cloudflare ${method} ${path} did not complete (a write may still have landed): ${error.message}`);
+  }
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.success) {
     const detail = JSON.stringify(payload?.errors ?? payload ?? response.statusText);
@@ -467,16 +571,139 @@ function identifyLiveRule(rules, rule) {
   return { status: 'missing' };
 }
 
+const isRetiredRule = (entry) => RETIRED_CACHE_RULES.some(
+  (retired) => (Boolean(entry.ref) && entry.ref === retired.ref)
+    || (entry.description === retired.description && !hasOwnRef(entry)),
+);
+
+/** A rule wearing a retired description under a ref somebody chose: not this script's to delete. */
+const isRetiredDescriptionCollision = (entry) => !isRetiredRule(entry)
+  && hasOwnRef(entry)
+  && RETIRED_CACHE_RULES.some((retired) => entry.description === retired.description);
+
+/** The superseded rules still in the zone, by position, for `--check` to name and `--apply` to delete. */
+function retiredRules(rules) {
+  return (rules ?? []).flatMap((entry, position) => (
+    isRetiredRule(entry) ? [{ id: entry.id, description: entry.description, position }] : []
+  ));
+}
+
+function retiredDescriptionCollisions(rules) {
+  return (rules ?? []).flatMap((entry, position) => (
+    isRetiredDescriptionCollision(entry)
+      ? [{ id: entry.id, description: entry.description, ref: entry.ref, position }]
+      : []
+  ));
+}
+
+const describeRetired = ({ description, position }) => (
+  `retired rule "${description}" is still in the zone at position ${position} and must be deleted`
+);
+
+const describeCollision = ({ description, ref, position }) => (
+  `the rule at position ${position} carries the retired description "${description}" under its own ref "${ref}";`
+  + ' it is not this script\'s to delete — repair the identity collision first'
+);
+
+/**
+ * The path literals this rule claims, as they appear quoted in a wirefilter
+ * expression. Built from the surface model rather than read back from the
+ * generated expression, so the carve-outs the expression also quotes
+ * (`/blog/_astro/`, `/docs/mcp`) do not count as claims — the zone's static
+ * asset rule quotes `/blog/_astro/` legitimately.
+ */
+function claimedPathLiterals({
+  families = EDGE_CACHED_FAMILIES,
+  files = AGENT_TEXT_FILES,
+  documents = ENTRY_DOCUMENTS,
+} = {}) {
+  return new Set([
+    ...documents,
+    ...families.filter((family) => !FAMILIES_WITHOUT_BARE_RULE.has(family)).map((family) => `/${family}`),
+    ...families.map((family) => `/${family}/`),
+    ...files.map((file) => `/${file}`),
+  ]);
+}
+
+const quotedPathLiterals = (expression) => (expression.match(/"\/[^"]*"/g) ?? []).map((literal) => literal.slice(1, -1));
+
+/** The hosts an expression names, if it names any; a host-less expression applies to every host. */
+function namedHosts(expression) {
+  const hosts = [];
+  for (const match of expression.matchAll(/http\.host\s+(?:eq\s+"([^"]+)"|in\s+\{([^}]*)\})/g)) {
+    if (match[1]) hosts.push(match[1]);
+    else for (const literal of match[2].match(/"[^"]+"/g) ?? []) hosts.push(literal.slice(1, -1));
+  }
+  return hosts;
+}
+
+/**
+ * Enabled cache-enabling rules BEFORE position `index` that quote a path this
+ * rule claims. Cloudflare takes the last matching writer, so on any request
+ * this rule's guard declines, such a rule's `cache: true` still wins — exactly
+ * how the entry rule reopened the hole on `/` (#7804), and the shape a future
+ * dashboard rule would take under any name. Retired rules are excluded (they
+ * are deleted, not merely reported) and rules scoped to another host cannot
+ * match a www URL. Measured against the 2026-09-06 zone this flags nothing but
+ * the entry rule: the static-asset, API, proxy, maps and Blog rules quote no
+ * claimed path.
+ */
+function earlierUnguardedWriters(rules, index, surface = {}) {
+  const claimed = claimedPathLiterals(surface);
+  const writers = [];
+  for (let position = 0; position < Math.min(index, (rules ?? []).length); position += 1) {
+    const entry = rules[position];
+    if (entry.enabled === false || entry.action !== 'set_cache_settings') continue;
+    if (entry.action_parameters?.cache !== true || isRetiredRule(entry)) continue;
+    const hosts = namedHosts(entry.expression ?? '');
+    if (hosts.length && !hosts.includes(CORPUS_HOST)) continue;
+    const overlap = [...new Set(quotedPathLiterals(entry.expression ?? ''))].filter((literal) => claimed.has(literal));
+    if (overlap.length) writers.push({ id: entry.id, description: entry.description, position, overlap });
+  }
+  return writers;
+}
+
+const describeEarlierWriter = ({ description, position, overlap }) => (
+  `an earlier cache rule at position ${position} ("${description}") enables the cache for`
+  + ` ${overlap.map((literal) => `"${literal}"`).join(', ')} without this rule's representation guard`
+  + ' and wins whenever the guard declines a request; retire it (RETIRED_CACHE_RULES) or remove it in the dashboard'
+);
+
 /**
  * Report how the live zone differs from the generated rule.
  *
  * Ordering is checked as well as content: a later cache-settings rule can
  * override any field it writes even when this rule looks correct in isolation.
+ * A superseded rule (RETIRED_CACHE_RULES) is drift wherever it sits: the one
+ * that prompted #7804 sat BEFORE this rule, and an earlier writer wins whenever
+ * this rule's guard declines a request. The same check runs structurally for
+ * any earlier cache-enabling rule that quotes a claimed path, and a retired
+ * description under a foreign ref is a collision; both are `blockers` — reported,
+ * never written around. `ruleCurrent` says whether the managed rule itself needs
+ * a write, independent of any leftover or blocker.
  */
 export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   const identity = identifyLiveRule(rules, rule);
+  // Identity first: whatever the managed rule is called today, it is never
+  // its own leftover — a PATCH followed by a DELETE of the same id would
+  // "apply" the rule out of existence.
+  const own = identity.match?.entry.id;
+  const retired = retiredRules(rules).filter(({ id }) => id !== own);
+  const collisions = retiredDescriptionCollisions(rules).filter(({ id }) => id !== own);
+  // With no managed rule in the zone every position is "earlier": the rule
+  // would be appended last, and any cache-enabling claimant would sit above it.
+  const earlierWriters = earlierUnguardedWriters(rules, identity.match?.position ?? (rules ?? []).length);
+  const blockers = [...earlierWriters.map(describeEarlierWriter), ...collisions.map(describeCollision)];
+  const leftovers = retired.map(describeRetired);
+  const shared = { retired, collisions, earlierWriters, blockers };
   if (identity.status === 'missing') {
-    return { status: 'missing', problems: ['the rule is not in the zone'], misordered: false };
+    return {
+      status: 'missing',
+      problems: ['the rule is not in the zone', ...blockers, ...leftovers],
+      misordered: false,
+      ruleCurrent: false,
+      ...shared,
+    };
   }
   if (identity.status === 'ambiguous') {
     const positions = identity.matches.map(({ position }) => position).join(', ');
@@ -485,10 +712,14 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
       problems: [
         `${identity.matches.length} rules match the managed ref or legacy description (positions ${positions});`
         + ' identity is ambiguous and must be repaired before applying',
+        ...blockers,
+        ...leftovers,
       ],
       misordered: false,
       ambiguous: true,
       matches: identity.matches,
+      ruleCurrent: false,
+      ...shared,
     };
   }
 
@@ -513,7 +744,8 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   const laterWriters = [];
   for (let position = index + 1; position < (rules ?? []).length; position += 1) {
     const entry = rules[position];
-    if (entry.enabled === false || entry.action !== 'set_cache_settings') continue;
+    // A retired rule is deleted, not moved below; it is not a reason to reorder.
+    if (entry.enabled === false || entry.action !== 'set_cache_settings' || isRetiredRule(entry)) continue;
     const fields = ['cache', 'browser_ttl', 'edge_ttl'].filter(
       (field) => Object.hasOwn(entry.action_parameters ?? {}, field),
     );
@@ -528,37 +760,44 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   }
 
   return {
-    status: problems.length ? 'drifted' : 'current',
-    problems,
+    status: problems.length || blockers.length || retired.length ? 'drifted' : 'current',
+    problems: [...problems, ...blockers, ...leftovers],
     index,
     misordered: laterWriters.length > 0,
+    ruleCurrent: problems.length === 0,
+    ...shared,
   };
 }
 
 /**
- * Decide the single rule-level operation that reconciles the zone.
+ * Decide the rule-level operations that reconcile the zone: at most one write
+ * to our own rule, plus the deletion of every rule this one has superseded.
  *
  * Deliberately never rewrites the whole ruleset. The phase entrypoint PUT
  * replaces every rule in the phase, so any dashboard edit made between this
  * script's read and its write is reverted silently and without a trace — and
  * that read-modify-write window is exactly when a human is most likely to be in
  * the dashboard looking at the same rules. The per-rule endpoints touch only our
- * own rule, which also means no other rule's user-owned `ref` is ever echoed
- * back or lost.
+ * own rule and the retired ones, which also means no other rule's user-owned
+ * `ref` is ever echoed back or lost.
  */
 export function planApply(rules, rule = buildCorpusCacheRule()) {
   const diff = diffLiveRuleset(rules, rule);
-  if (diff.status === 'missing') return { op: 'create', diff };
+  const retire = diff.retired.map(({ id }) => id);
+  // Nothing is deleted until identity collisions and foreign claimants are
+  // repaired by a human: a write around either would look like success.
   if (diff.ambiguous) {
-    return { op: 'duplicates', duplicates: diff.matches.map(({ entry }) => entry.id), diff };
+    return { op: 'duplicates', duplicates: diff.matches.map(({ entry }) => entry.id), retire: [], diff };
   }
-  if (diff.status === 'current') return { op: 'none', diff };
+  if (diff.blockers.length) return { op: 'blocked', blockers: diff.blockers, retire: [], diff };
+  if (diff.status === 'missing') return { op: 'create', retire, diff };
+  if (diff.ruleCurrent) return { op: 'none', retire, diff };
   const live = rules[diff.index];
   // Cloudflare accepts position on the per-rule PATCH, so drift and movement are
   // one atomic update that preserves the existing rule id. `refLocked` says the
   // live rule carries Cloudflare's default ref, which a PATCH must not try to
   // replace (see hasOwnRef).
-  return { op: 'update', id: live?.id, refLocked: !hasOwnRef(live ?? {}), diff };
+  return { op: 'update', id: live?.id, refLocked: !hasOwnRef(live ?? {}), retire, diff };
 }
 
 const MODES = ['--print', '--check', '--apply'];
@@ -628,6 +867,10 @@ export async function runCloudflareCacheRule(
       );
       return 1;
     }
+    if (plan.op === 'blocked') {
+      writeLine(stderr, `refusing to write: ${plan.blockers.join('; ')}`);
+      return 1;
+    }
     const rulesPath = `/zones/${zoneId}/rulesets/${ruleset.id}/rules`;
     if (plan.op === 'update') {
       const base = plan.refLocked ? withoutRef(rule) : rule;
@@ -638,8 +881,44 @@ export async function runCloudflareCacheRule(
         body,
         fetchImpl,
       });
-    } else {
+    } else if (plan.op === 'create') {
       await cloudflareRequest(rulesPath, { token, method: 'POST', body: rule, fetchImpl });
+    }
+    // The claim lands before a superseded rule goes, so the URLs it covered are
+    // never without an eligible rule in between. Re-read before deleting: a
+    // DELETE is by id and cannot be undone by this script, so a rule that
+    // changed since the plan (a dashboard edit in the window) stops the apply
+    // rather than being removed on the strength of a stale read. The re-read
+    // is compared with the planning snapshot, not re-classified: the ref that
+    // identifies a retired rule is immutable, so an edit to its expression or
+    // description would still classify as retired and be deleted.
+    let retiredCount = 0;
+    if (plan.retire.length) {
+      const current = await cloudflareRequest(
+        `/zones/${zoneId}/rulesets/phases/${CACHE_PHASE}/entrypoint`,
+        { token, fetchImpl },
+      );
+      const planned = new Map(ruleset.rules.map((entry) => [entry.id, stableStringify(entry)]));
+      const targets = plan.retire.map((id) => ({ id, live: current.rules.find((entry) => entry.id === id) }));
+      const changed = targets.filter(({ id, live }) => live && stableStringify(live) !== planned.get(id));
+      if (changed.length) {
+        writeLine(
+          stderr,
+          `not deleting ${changed.map(({ id }) => id).join(', ')}: the rule changed since planning;`
+          + ' the managed rule is in place, re-run --apply against a fresh read to retire the rest',
+        );
+        return 1;
+      }
+      // Gone already (a concurrent apply, or a hand delete) is the state wanted.
+      for (const { id } of targets.filter(({ live }) => !live)) {
+        writeLine(stdout, `already retired: ${id} is no longer in the zone`);
+      }
+      for (const { id, live } of targets.filter(({ live }) => live)) {
+        // Its expression is not recorded anywhere else once it is gone.
+        writeLine(stdout, `retiring "${live.description}" (${id}): ${live.expression}`);
+        await cloudflareRequest(`${rulesPath}/${id}`, { token, method: 'DELETE', fetchImpl });
+        retiredCount += 1;
+      }
     }
 
     // Re-read rather than trusting the write's own echo: the point of this script
@@ -653,9 +932,17 @@ export async function runCloudflareCacheRule(
       writeLine(stderr, `applied but the zone still reports drift (${verify.status}): ${verify.problems.join('; ')}`);
       return 1;
     }
+    const steps = [
+      ...(plan.op === 'none' ? [] : [plan.op]),
+      ...(retiredCount ? [`retired ${retiredCount}`] : []),
+    ];
+    if (!steps.length) {
+      writeLine(stdout, `no change: "${rule.description}" already matches (ruleset version ${after.version})`);
+      return 0;
+    }
     writeLine(
       stdout,
-      `applied (${plan.op}): "${rule.description}" — ruleset version ${ruleset.version} -> ${after.version},`
+      `applied (${steps.join(', ')}): "${rule.description}" — ruleset version ${ruleset.version} -> ${after.version},`
       + ` ${after.rules.length} rules, position ${verify.index}`,
     );
     return 0;

@@ -25,6 +25,7 @@ const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
+const { parseWidgetAgentResponse } = require('./_widget-response-parser.cjs');
 const {
   cooldownKeyForAccount,
   OPENSKY_LEGACY_COOLDOWN_KEY,
@@ -13690,10 +13691,7 @@ async function handleWidgetAgentRequest(req, res) {
       if (response.stop_reason === 'end_turn') {
         const textBlock = response.content.find(b => b.type === 'text');
         const text = textBlock?.text ?? '';
-        const htmlMatch = text.match(/<!--\s*widget-html\s*-->([\s\S]*?)<!--\s*\/widget-html\s*-->/);
-        const html = (htmlMatch?.[1] ?? text).slice(0, maxHtml);
-        const titleMatch = text.match(/<!--\s*title:\s*([^\n]+?)\s*-->/);
-        const title = titleMatch?.[1]?.trim() ?? 'Custom Widget';
+        const { html, title } = parseWidgetAgentResponse(text, maxHtml);
         sendWidgetSSE(res, 'html_complete', { html });
         sendWidgetSSE(res, 'done', { title });
         completed = true;
@@ -13764,11 +13762,10 @@ async function handleWidgetAgentRequest(req, res) {
         const text = Array.isArray(msg.content)
           ? msg.content.filter(b => b.type === 'text').map(b => b.text).join('')
           : String(msg.content ?? '');
-        const htmlMatch = text.match(/<!--\s*widget-html\s*-->([\s\S]*?)<!--\s*\/widget-html\s*-->/);
-        if (htmlMatch?.[1]?.trim()) {
-          const titleMatch = text.match(/<!--\s*title:\s*([^\n]+?)\s*-->/);
-          sendWidgetSSE(res, 'html_complete', { html: htmlMatch[1].slice(0, maxHtml) });
-          sendWidgetSSE(res, 'done', { title: titleMatch?.[1]?.trim() ?? 'Custom Widget' });
+        const parsed = parseWidgetAgentResponse(text, maxHtml);
+        if (parsed.hasHtmlMarkers && parsed.html.trim()) {
+          sendWidgetSSE(res, 'html_complete', { html: parsed.html });
+          sendWidgetSSE(res, 'done', { title: parsed.title });
           recovered = true;
           break;
         }

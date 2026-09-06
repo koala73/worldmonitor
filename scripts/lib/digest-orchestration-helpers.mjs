@@ -9,6 +9,31 @@ import { compareRules, MAX_STORIES_PER_USER } from './brief-compose.mjs';
 import { generateDigestProse } from './brief-llm.mjs';
 
 /**
+ * Derive the three Telegram carousel image URLs from a signed magazine URL.
+ * The HMAC token binds the user and issue slot, so the carousel routes reuse
+ * the same token. Invalid magazine URLs return null so delivery can fall back
+ * to text.
+ *
+ * @param {unknown} magazineUrl
+ * @returns {string[] | null}
+ */
+export function carouselUrlsFrom(magazineUrl) {
+  try {
+    const url = new URL(magazineUrl);
+    const match = url.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/);
+    if (!match) return null;
+    const [, userId, issueSlot] = match;
+    const token = url.searchParams.get('t');
+    if (!token) return null;
+    return [0, 1, 2].map(
+      (page) => `${url.origin}/api/brief/carousel/${userId}/${issueSlot}/${page}?t=${token}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the email subject string. Extracted so the synthesis-level
  * → subject ternary can be unit-tested without standing up the whole
  * cron loop. (Plan acceptance criterion A6.i.)

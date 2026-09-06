@@ -53,6 +53,14 @@ function corsHeaders(origin: string | null): Headers {
   return headers;
 }
 
+export async function userPrefsOptionsHttpHandler(
+  _ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
+  const headers = corsHeaders(request.headers.get("Origin"));
+  return new Response(null, { status: 204, headers });
+}
+
 async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.generateKey(
@@ -268,10 +276,7 @@ http.route({
 http.route({
   path: "/api/user-prefs",
   method: "OPTIONS",
-  handler: httpAction(async (_ctx, request) => {
-    const headers = corsHeaders(request.headers.get("Origin"));
-    return new Response(null, { status: 204, headers });
-  }),
+  handler: httpAction(userPrefsOptionsHttpHandler),
 });
 
 http.route({

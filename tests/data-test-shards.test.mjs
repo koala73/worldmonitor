@@ -4,28 +4,38 @@ import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { parse } from 'yaml';
 import { partitionTests } from '../scripts/run-data-tests.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const runner = join(root, 'scripts/run-data-tests.mjs');
 const durations = JSON.parse(readFileSync(join(root, 'scripts/shared/data-test-durations.json'), 'utf8'));
+// The shard count comes from the workflow, not a literal here: the proof below
+// is that the shards CI actually runs cover the inventory exactly once, and a
+// count pinned in this file would keep passing after the matrix changed.
+const workflow = parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8'));
+const ciShards = workflow.jobs['unit-shards'].strategy.matrix.shard;
+const ciShardCount = ciShards.length;
 const patterns = ['tests/*.test.mjs', 'tests/*.test.mts', 'cli/test/*.test.mjs', 'api/security/report.test.mjs'];
 const inventory = globSync(patterns, { cwd: root });
 const childEnv = { ...process.env };
 delete childEnv.NODE_TEST_CONTEXT;
 const run = (args) => spawnSync(process.execPath, [runner, ...args], { cwd: root, encoding: 'utf8', timeout: 30_000, env: childEnv });
 
-test('both shards execute the complete data inventory exactly once, including new files', () => {
-  const shards = [1, 2].map((index) => {
-    const result = run([...patterns, `--shard=${index}/2`, '--list']);
+test('every CI shard together executes the complete data inventory exactly once, including new files', () => {
+  assert.ok(ciShardCount >= 2, `unit-shards matrix must list at least two shards, got ${JSON.stringify(ciShards)}`);
+  assert.deepEqual(ciShards, Array.from({ length: ciShardCount }, (_, i) => i + 1), 'shard indices must be 1..N');
+  const shards = ciShards.map((index) => {
+    const result = run([...patterns, `--shard=${index}/${ciShardCount}`, '--list']);
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   });
   assert.deepEqual(shards.flat().sort(), [...inventory].sort());
   assert.equal(new Set(shards.flat()).size, inventory.length);
+  assert.ok(shards.every((files) => files.length > 0), 'no CI shard may be empty');
   assert.ok(shards.flat().includes('api/security/report.test.mjs'));
   assert.ok(shards.flat().some((file) => file.startsWith('cli/test/')));
-  const withNewFile = partitionTests([...inventory, 'tests/new-unmeasured.test.mts'], durations, 2).flat();
+  const withNewFile = partitionTests([...inventory, 'tests/new-unmeasured.test.mts'], durations, ciShardCount).flat();
   assert.equal(withNewFile.filter((file) => file === 'tests/new-unmeasured.test.mts').length, 1);
   const full = run([...patterns, '--list']);
   assert.equal(full.status, 0, full.stderr);
@@ -37,9 +47,9 @@ test('duration balancing is deterministic and separates expensive files', () => 
   const expected = [['slow', 'tiny'], ['medium', 'small']];
   assert.deepEqual(partitionTests(Object.keys(costs), costs, 2), expected);
   assert.deepEqual(partitionTests(Object.keys(costs).reverse(), costs, 2), expected);
-  const shards = partitionTests(inventory, durations, 2);
+  const shards = partitionTests(inventory, durations, ciShardCount);
   const weights = shards.map((files) => files.reduce((sum, file) => sum + (durations[file] ?? 1000), 0));
-  assert.ok(Math.abs(weights[0] - weights[1]) <= 1000, `unbalanced estimates: ${weights}`);
+  assert.ok(Math.max(...weights) - Math.min(...weights) <= 1000, `unbalanced estimates: ${weights}`);
 });
 
 test('invalid selection fails instead of succeeding with no tests', () => {

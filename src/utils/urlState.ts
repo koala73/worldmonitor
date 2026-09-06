@@ -56,6 +56,32 @@ export interface ParsedMapUrlState {
   chokepoint?: string;
 }
 
+/**
+ * True when applying this initial URL state starts an async camera move, so
+ * the immediate URL sync after boot must be skipped: getCenter() would report
+ * stale intermediate coordinates until the flight settles. Three cases:
+ *
+ *   - a lat+lon pair: applyInitialUrlState calls setCenter() only when both
+ *     are present, and setCenter flies.
+ *   - a bare zoom with no view preset: setZoom() animates.
+ *   - a chokepoint deep link: it opens after renderer readiness.
+ *
+ * `view` alone never qualifies. Every renderer writes state.view
+ * synchronously at the top of setView(), so the debounced read is correct,
+ * and the initial Globe/SVG view is applied before the sync listener exists,
+ * so those renderers need the immediate write to publish the URL at all.
+ */
+export function urlHasAsyncFlyTo(
+  state: Pick<ParsedMapUrlState, 'view' | 'lat' | 'lon' | 'zoom' | 'chokepoint'> | null | undefined,
+): boolean {
+  const { view, lat, lon, zoom, chokepoint } = state ?? {};
+  return (
+    (lat !== undefined && lon !== undefined)
+    || (!view && zoom !== undefined)
+    || chokepoint !== undefined
+  );
+}
+
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 

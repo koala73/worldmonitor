@@ -82,6 +82,7 @@ import {
   PremiumLayerGate,
 } from './premium-layer-gate';
 import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zoom';
+import { headingToCompass } from '@/utils/heading-to-compass';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -1478,8 +1479,7 @@ export class GlobeMap {
       html = `<span style="color:${sc};font-weight:bold;">🎯 ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">Escalation: ${d.escalationScore}/5</span>`;
     } else if (d._kind === 'flight') {
-      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
-      const compass = dirs[Math.round(((d.heading ?? 0) % 360 + 360) % 360 / 22.5) % 16];
+      const compass = headingToCompass(d.heading);
       html = `<span style="font-weight:bold;">✈ ${esc(d.callsign)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.type)}</span>` +
              `<br><span style="opacity:.5;">Heading: ${compass} (${Math.round(d.heading ?? 0)}°)</span>`;

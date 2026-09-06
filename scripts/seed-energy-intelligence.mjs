@@ -154,7 +154,7 @@ async function fetchFeed(feed) {
   }
 }
 
-async function fetchEnergyIntelligence() {
+export async function fetchEnergyIntelligence() {
   const settled = await Promise.allSettled(FEEDS.map(fetchFeed));
   const allItems = [];
   for (const result of settled) {
