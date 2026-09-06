@@ -1,9 +1,53 @@
 name: Publish Docker image
 
+# The published image is a by-product of releases: this workflow only ran on
+# `release: published` and on a manual dispatch, so nothing rebuilt
+# ghcr.io/koala73/worldmonitor between two releases and the image aged with no
+# ceiling. What the package actually holds today is a pair of `sha-*` images
+# from 2026-07-05 pushed by hand, and no `latest` at all — the last release is
+# v2.5.23 (2026-03-01), so the release trigger has not fired since.
+#
+# `main` keeps moving underneath that. PR #7602 bumped the nginx base digest in
+# docker/Dockerfile on 2026-09-04; nothing republished, so the base fix is on
+# main and in nothing anyone can pull.
+#
+# The schedule below is what puts a ceiling on the age of the published image.
+# It follows `main` rather than the last release tag on purpose: both FROM
+# lines in docker/Dockerfile are pinned to an immutable digest and
+# tests/ci-workflow-coverage.test.mts requires that, so rebuilding a tag
+# verbatim reproduces the same base byte for byte and buys nothing. A base fix
+# reaches the image only once Dependabot has moved the pin on main, which is
+# where the rebuild therefore has to read from.
+#
+# Nothing gates the rebuild beyond the build itself, and that is the safety
+# net: docker/Dockerfile asserts its own output (`test -s dist/product-facts.json`,
+# `test -s dist/pro/index.html`), so a broken main fails the run and pushes
+# nothing — `latest` stays on the previous image and the failure is visible in
+# the Actions tab.
+#
+# /!\ Like every scheduled workflow, this one runs on the default branch only,
+# and GitHub disables scheduled workflows in a public repository after 60 days
+# without repository activity; they then have to be re-enabled by hand from the
+# Actions tab.
+
 on:
   release:
     types: [published]
+  schedule:
+    # Wednesdays at 02:19 UTC. Off the hour because GitHub runs the scheduled
+    # queue late when it is loaded and that load peaks on the hour, and outside
+    # the 03:00–05:00 UTC band the other crons in this directory already share.
+    # Midweek so a base bump Dependabot opened at the start of the week has had
+    # time to be reviewed and merged before the rebuild reads main.
+    - cron: '19 2 * * 3'
   workflow_dispatch:
+
+# A release and a scheduled rebuild can overlap, and both push `latest`; left
+# to race, the release can be the one that loses. Queue them rather than cancel:
+# a rebuild that yields its slot to a release is still worth running afterwards.
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
 
 jobs:
   docker:
@@ -27,12 +71,27 @@ jobs:
 
       - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         id: meta
+        env:
+          # Annotations default to the per-platform manifests alone. The index
+          # is what `docker pull` and `imagetools inspect` resolve first, so the
+          # created/revision pair has to be readable there too.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/koala73/worldmonitor
+          # The two semver entries only ever resolve on a tag ref. Saying so
+          # explicitly keeps a scheduled run from logging a warning about a
+          # pattern that was never meant to match outside a release.
+          #
+          # `latest` was gated on the event being a release, which is why it has
+          # never been published. It now follows the default branch too: a
+          # scheduled run always runs there, and a manual dispatch from main can
+          # repair `latest` after a failed weekly run without cutting a release.
+          # A dispatch from any other branch still publishes its `sha-*` tag
+          # alone, so `latest` cannot be moved onto a feature branch by hand.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-
 
       - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
@@ -44,5 +103,15 @@ jobs:
           sbom: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
+          # metadata-action already computed these, but they were never handed
+          # to the build: the only label on either published image today is the
+          # `maintainer` one inherited from the nginx base. Without
+          # org.opencontainers.image.created and .revision there is no way to
+          # ask the registry how old an image is or what it was built from,
+          # which is the first question anyone asks of a freshness guarantee.
+          labels: ${{ steps.meta.outputs.labels }}
+          # The same facts on the OCI manifests and index, where a registry UI
+          # and `imagetools inspect` read them from.
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
