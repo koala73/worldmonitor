@@ -1,0 +1,78 @@
+name: Dependabot auto-merge
+
+# Dependabot opens the GitHub Actions version bumps; nothing merges them. The
+# minor and patch ones carry no decision — they are the grouped PR the
+# `github-actions-minor-patch` group in .github/dependabot.yml produces — yet
+# they queue behind whatever does need a human, and a full queue is how
+# Dependabot stops proposing version updates at all.
+#
+# This turns GitHub's own auto-merge on for that PR, so it lands by itself once
+# the required checks are green. Auto-merge queues a merge, it does not bypass
+# branch protection: the Deploy Gate is still what decides.
+#
+# The scope is deliberately narrow: github-actions only, minor and patch only.
+# Majors keep waiting for a review — a major of an action can change what ends
+# up in the manifest it produces — and no other ecosystem is touched. In
+# particular the docker base-image bumps are left to a human, because they are
+# what the weekly rebuild in docker-publish.yml then publishes.
+#
+# /!\ Requires "Allow auto-merge" in Settings -> General. Until it is on, the
+# step below fails and this workflow goes red on every Dependabot PR rather
+# than merging anything unchecked.
+#
+# A workflow triggered by a Dependabot pull request runs with a read-only
+# GITHUB_TOKEN unless it asks for more, so the grant below is what the merge
+# needs to work at all. It sits on the job and not on the workflow, following
+# the convention contributor-trust.yml states: workflow-level default-deny, so
+# a job added here later inherits nothing.
+#
+# A pull request from a fork gets a read-only token whatever this file asks
+# for, which is what keeps `on: pull_request` safe to grant write on. Nothing
+# here checks out or runs the pull request's code either way.
+
+on: pull_request
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    name: dependabot-auto-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    # Reads the pull request author rather than github.actor: the actor of a
+    # `synchronize` event is whoever pushed, which for a rebased Dependabot
+    # branch is Dependabot again, but for a maintainer's fixup commit is not.
+    # The author is what stays true for the life of the PR.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # On a grouped PR `update-type` is the highest semver change in the whole
+      # group, so a major that somehow joined the minor/patch group would take
+      # the group out of this condition rather than ride in with it.
+      - name: Enable auto-merge
+        if: >-
+          steps.metadata.outputs.package-ecosystem == 'github_actions' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-patch')
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Deliberately no fallback to a plain `gh pr merge`. That is the usual
+          # recipe when auto-merge is unavailable, and on this repository it
+          # would merge a Dependabot PR without waiting for the Deploy Gate
+          # anywhere branch protection does not already forbid it. Failing costs
+          # one red run per PR and names its own fix.
+          if ! gh pr merge --auto --squash "$PR_URL"; then
+            echo "::error::Could not enable auto-merge on $PR_URL. If the failure above says auto-merge is not allowed, switch on \"Allow auto-merge\" in Settings -> General; the merge then waits for the required checks like any other."
+            exit 1
+          fi
