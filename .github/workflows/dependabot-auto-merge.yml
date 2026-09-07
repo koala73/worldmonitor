@@ -2,22 +2,44 @@ name: Dependabot auto-merge
 
 # Dependabot opens the GitHub Actions version bumps; nothing merges them. The
 # minor and patch ones carry no decision — they are the grouped PR the
-# `github-actions-minor-patch` group in .github/dependabot.yml produces — yet
-# they queue behind whatever does need a human, and a full queue is how
-# Dependabot stops proposing version updates at all.
+# `github-actions` group in .github/dependabot.yml produces — yet they queue
+# behind whatever does need a human, and a full queue is how Dependabot stops
+# proposing version updates at all.
 #
 # This turns GitHub's own auto-merge on for that PR, so it lands by itself once
 # the required checks are green. Auto-merge queues a merge, it does not bypass
 # branch protection: the Deploy Gate is still what decides.
 #
-# The scope is deliberately narrow: github-actions only, minor and patch only.
-# Majors keep waiting for a review — a major of an action can change what ends
-# up in the manifest it produces — and no other ecosystem is touched. In
-# particular the docker base-image bumps are left to a human, because they are
-# what the weekly rebuild in docker-publish.yml then publishes.
+# THE FOUR CONDITIONS, and why each one is load-bearing. Branch protection on
+# this repository requires no approving review, so the merge click a human would
+# otherwise make IS the review step this workflow removes. Each condition below
+# is therefore a guard, not a filter:
+#
+#   1. Author is Dependabot. Whose PR this is.
+#   2. Actor is Dependabot. WHO PUSHED the commit under review. A `synchronize`
+#      from a maintainer's fixup commit keeps the author but changes the actor,
+#      and GitHub's auto-merge, once armed, survives new pushes — so without
+#      this the human's own commit would ride in on the bot's arming. The
+#      disarm step below actively revokes it rather than merely not renewing.
+#   3. Grouped github-actions bump, minor or patch. On a grouped PR
+#      `update-type` is the highest semver change across the whole group, so a
+#      group carrying a major fails this and waits for a human. The
+#      `dependency-group` check keeps an ungrouped or security-advisory action
+#      PR — which this workflow has never claimed to cover — out of scope.
+#   4. Every bumped action is published by a trusted org. The repo SHA-pins
+#      actions as a supply-chain control; auto-merge moves those pins with
+#      nobody reading the diff, and required checks validate this repo's code,
+#      never the action's source. Restricting arming to GitHub- and
+#      Docker-owned publishers keeps that automation off third-party code that
+#      runs elsewhere with real secrets (PyPI/RubyGems publishing, Tauri code
+#      signing). Anything outside the list is not blocked — it simply falls
+#      through to the human path that exists today.
+#
+# In particular the docker base-image bumps are left to a human, because they
+# are what the weekly rebuild in docker-publish.yml then publishes.
 #
 # /!\ Requires "Allow auto-merge" in Settings -> General. Until it is on, the
-# step below fails and this workflow goes red on every Dependabot PR rather
+# arming step fails and this workflow goes red on every Dependabot PR rather
 # than merging anything unchecked.
 #
 # A workflow triggered by a Dependabot pull request runs with a read-only
@@ -42,24 +64,87 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    # Reads the pull request author rather than github.actor: the actor of a
-    # `synchronize` event is whoever pushed, which for a rebased Dependabot
-    # branch is Dependabot again, but for a maintainer's fixup commit is not.
-    # The author is what stays true for the life of the PR.
+    # Gated on the pull request AUTHOR, which stays 'dependabot[bot]' for the
+    # life of the PR. The actor — whoever pushed the commit that triggered this
+    # run — is checked per step below, because the two answer different
+    # questions and a human push has to reach the disarm step rather than skip
+    # the whole job.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
+      # Condition 2. A human pushed to a Dependabot branch: revoke any arming a
+      # previous run left in place. GitHub keeps auto-merge enabled across new
+      # commits, so doing nothing here would let this commit merge on green
+      # without anyone choosing to merge it.
+      - name: Disarm auto-merge when someone other than Dependabot pushed
+        if: github.actor != 'dependabot[bot]'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Actor is $GITHUB_ACTOR, not dependabot[bot] — this commit was not written by the bot."
+          # Ask whether auto-merge is armed rather than calling --disable-auto
+          # and reading its error text: `autoMergeRequest` is null when it is
+          # not armed, so the ordinary case is a value to branch on instead of a
+          # failure to pattern-match, and a real API failure still fails here.
+          armed="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest // empty')"
+          if [ -z "$armed" ]; then
+            echo "Auto-merge is not armed; nothing to disable."
+          else
+            gh pr merge --disable-auto "$PR_URL"
+            echo "::warning::Auto-merge was armed on $PR_URL and has been disabled because a commit not written by Dependabot was pushed to the branch. Review that commit and merge deliberately."
+          fi
+
       - name: Fetch Dependabot metadata
         id: metadata
+        if: github.actor == 'dependabot[bot]'
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # On a grouped PR `update-type` is the highest semver change in the whole
-      # group, so a major that somehow joined the minor/patch group would take
-      # the group out of this condition rather than ride in with it.
+      # Condition 4. `dependency-names` is the comma-separated list of every
+      # dependency in the PR; the group must be trusted as a whole, so a single
+      # untrusted entry withholds arming for all of it.
+      - name: Check every bumped action against the trusted publishers
+        id: publisher
+        if: github.actor == 'dependabot[bot]'
+        env:
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          set -euo pipefail
+          # GitHub- and Docker-owned orgs. Widen this list deliberately, one
+          # publisher at a time, rather than by dropping the check: everything
+          # left out still lands, it just keeps the human merge click.
+          trusted=0
+          untrusted=""
+          IFS=',' read -ra names <<< "$DEPENDENCY_NAMES"
+          for raw in "${names[@]}"; do
+            name="$(echo "$raw" | tr -d '[:space:]')"
+            if [ -n "$name" ]; then
+              case "$name" in
+                actions/*|github/*|docker/*) trusted=$((trusted + 1)) ;;
+                *) untrusted="$untrusted $name" ;;
+              esac
+            fi
+          done
+          if [ -n "$untrusted" ]; then
+            echo "Not arming auto-merge: untrusted publisher(s) in this PR:$untrusted"
+            echo "trusted=false" >> "$GITHUB_OUTPUT"
+          elif [ "$trusted" -eq 0 ]; then
+            echo "Not arming auto-merge: fetch-metadata reported no dependency names."
+            echo "trusted=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "All $trusted bumped action(s) are published by a trusted org."
+            echo "trusted=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Conditions 2, 3 and 4 together. Every term is a guard; see the header.
       - name: Enable auto-merge
         if: >-
+          github.actor == 'dependabot[bot]' &&
+          steps.publisher.outputs.trusted == 'true' &&
           steps.metadata.outputs.package-ecosystem == 'github_actions' &&
+          steps.metadata.outputs.dependency-group == 'github-actions' &&
           (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
            steps.metadata.outputs.update-type == 'version-update:semver-patch')
         env:
