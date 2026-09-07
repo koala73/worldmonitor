@@ -2,39 +2,50 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    # Daily, not weekly. Minor and patch bumps are grouped into one PR and
-    # auto-merged by .github/workflows/dependabot-auto-merge.yml once the
-    # required checks pass, so a shorter interval shortens the delay before a
-    # fix lands without adding review work. Majors are opened sooner too; they
-    # still wait for a human.
+    # Daily, not weekly. Version bumps are grouped into one PR, and the
+    # minor/patch case is auto-merged by
+    # .github/workflows/dependabot-auto-merge.yml once the required checks
+    # pass, so a shorter interval shortens the delay before a fix lands without
+    # adding review work. A group carrying a major still waits for a human.
     schedule:
       interval: "daily"
     # The default is 5, and it caps VERSION updates only — the same distinction
     # the npm block below relies on, read the other way round. Every action in
-    # this repository is SHA-pinned across ~50 workflows, so the queue fills
-    # easily, and each major arrives as its own PR and sits there until someone
-    # reviews it. Once the cap is reached Dependabot stops opening version PRs
+    # this repository is SHA-pinned across dozens of workflows, so the queue
+    # fills easily. Once the cap is reached Dependabot stops opening version PRs
     # silently, naming nothing. 99, not 0: zero does not mean "no limit", it
     # switches version updates off entirely, which is what the npm and cargo
     # blocks use it for on purpose.
     open-pull-requests-limit: 99
     groups:
-      # One PR for all the minor and patch bumps instead of one per action.
-      # Majors stay out of it: a major of an action can change what ends up in
-      # the manifest it produces (docker/build-push-action and provenance
-      # attestations are the live example in docker-publish.yml), so each one
-      # gets its own PR and its own review.
-      github-actions-minor-patch:
+      # One PR for every action version bump instead of one per action.
+      #
+      # No `update-types` filter, deliberately. Restricting the group to
+      # minor/patch reads as though majors would then arrive as their own PRs.
+      # They would not: dependabot-core's DependencyGroup#contains? matches on
+      # patterns / exclude-patterns / dependency-type and never reads
+      # update-types, so once this group has an open PR every action it matches
+      # is marked handled — majors included — and no individual PR is raised for
+      # them at all (dependabot/dependabot-core#14202; the fix, #16113, is open
+      # and unmerged). With `patterns: ["*"]` the group matches every action, so
+      # on a daily interval that suppression would be close to permanent.
+      #
+      # Majors therefore ride in this group, and it is
+      # .github/workflows/dependabot-auto-merge.yml that keeps them away from
+      # auto-merge: fetch-metadata reports the HIGHEST semver change across the
+      # whole group, so a group containing a major fails that workflow's
+      # minor/patch condition and waits for a human. That is the guarantee that
+      # actually matters — a major of an action can change what ends up in the
+      # manifest it produces (docker/build-push-action and provenance
+      # attestations are the live example in docker-publish.yml).
+      github-actions:
         applies-to: version-updates
-        update-types:
-          - "minor"
-          - "patch"
+        patterns: ["*"]
 
   # The three docker directories, folded into one entry with `directories:` the
   # way the npm block below already does it. They only ever differed by path:
   # the same `ignore` rule was repeated verbatim in all three, so keeping them
-  # apart meant maintaining that rule in triplicate. Grouping stays per
-  # directory, so this is still one PR per directory, as before.
+  # apart meant maintaining that rule in triplicate.
   - package-ecosystem: "docker"
     directories:
       - "/"
@@ -49,8 +60,8 @@ updates:
     # it.
     schedule:
       interval: "daily"
-    # Eleven Dockerfiles live under these three directories. The default of 5
-    # is under that floor, so a slow week of reviews can silently stop new base
+    # More Dockerfiles live under these three directories than the default cap
+    # of 5 allows for, so a slow week of reviews can silently stop new base
     # bumps from being proposed at all.
     open-pull-requests-limit: 99
     ignore:
@@ -59,13 +70,18 @@ updates:
       # deliberate manual step once it reaches LTS. See PR #4709.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+      # Same treatment for the Umami Postgres base (Dockerfile.umami,
+      # Dockerfile.umami-retention): a Postgres major is a data-migration
+      # decision, never a base-image refresh, and without this rule it would
+      # join the group below like any other bump.
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
     groups:
-      # One PR per directory instead of one per image. No `update-types` filter
-      # here, unlike the actions group: a digest-only bump (`nginx` from
-      # `db35bfc` to `72ba65e`, PR #7602) is the common case for these
-      # Dockerfiles, and filtering on semver update types would leave it
-      # ungrouped. The one major that could join the group is already excluded
-      # by the `ignore` rule above.
+      # No `update-types` filter here, and unlike the actions group that is not
+      # a workaround: a digest-only bump (`nginx` from `db35bfc` to `72ba65e`,
+      # PR #7602) is the common case for these Dockerfiles, and filtering on
+      # semver update types would leave it ungrouped. The majors that could
+      # otherwise join the group are excluded by the `ignore` rules above.
       docker-base-images:
         applies-to: version-updates
         patterns: ["*"]
