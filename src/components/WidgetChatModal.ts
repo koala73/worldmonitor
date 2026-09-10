@@ -314,6 +314,19 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
           requestBelief,
           requestUserId,
         );
+        const quotaMessage = res.status === 429 && payload?.error === 'Widget quota exhausted. Try again later.'
+          ? t('widgets.quotaExhausted')
+          : res.status === 503 && payload?.error === 'Widget quota unavailable. Try again later.'
+            ? t('widgets.quotaUnavailable')
+            : null;
+        if (quotaMessage) {
+          const retryHeader = res.headers.get('Retry-After') ?? '';
+          const retrySeconds = /^\d+$/.test(retryHeader) ? Number(retryHeader) : NaN;
+          const retryMessage = Number.isSafeInteger(retrySeconds) && retrySeconds > 0 && retrySeconds <= 86_400
+            ? t('widgets.quotaRetryAfter', { count: Math.ceil(retrySeconds / 60) })
+            : t('widgets.quotaRetryLater');
+          throw new Error(`${quotaMessage} ${retryMessage}`);
+        }
         throw new Error(t('widgets.serverError', { status: res.status }));
       }
       if (!res.body) {

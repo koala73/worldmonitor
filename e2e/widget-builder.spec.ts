@@ -455,6 +455,42 @@ test.describe('AI widget builder — PRO tier', () => {
     );
   });
 
+  test('shows safe quota errors and retry guidance while preserving generic failures', async ({ page }, testInfo) => {
+    await installProWidgetAgentMocks(page, []);
+    const denials = [
+      { status: 429, error: 'Widget quota exhausted. Try again later.', retryAfter: '120', expected: 'Widget quota exhausted. Try again in 2 minutes.', screenshot: 'quota-exhausted' },
+      { status: 503, error: 'Widget quota unavailable. Try again later.', retryAfter: '30', expected: 'Widget quota is temporarily unavailable. Try again in 1 minute.', screenshot: 'quota-unavailable' },
+      { status: 503, error: 'Widget quota unavailable. Try again later.', retryAfter: 'invalid', expected: 'Widget quota is temporarily unavailable. Try again later.' },
+      { status: 503, error: 'Internal provider diagnostic: private configuration', retryAfter: '30', expected: 'Server error: 503' },
+      { status: 429, error: 'Unrecognized rate limit diagnostic', retryAfter: '120', expected: 'Server error: 429' },
+    ];
+    let denial = denials[0]!;
+    await page.route('**/widget-agent', (route) => route.fulfill({
+      status: denial.status,
+      contentType: 'application/json',
+      headers: { 'Retry-After': denial.retryAfter },
+      body: JSON.stringify({ error: denial.error }),
+    }));
+
+    await page.goto('/');
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block-pro');
+    const modal = page.locator('.widget-chat-modal');
+    const sendButton = modal.locator('.widget-chat-send');
+    await expect(sendButton).toBeEnabled();
+    for (const response of denials) {
+      denial = response;
+      await modal.locator('.widget-chat-input').fill('Show an oil price chart');
+      await sendButton.click();
+      await expect(modal.locator('.widget-chat-preview')).toContainText(response.expected, { timeout: 3000 });
+      await expect(modal.locator('.widget-chat-footer-status')).toHaveText(response.expected);
+      await expect(modal).not.toContainText('private configuration');
+      await expect(modal).not.toContainText('Unrecognized rate limit diagnostic');
+      await expect(sendButton).toBeEnabled();
+      await expect(modal.locator('.widget-chat-action-btn')).toBeDisabled();
+      if (response.screenshot) await modal.screenshot({ path: testInfo.outputPath(`${response.screenshot}.png`) });
+    }
+  });
+
   test('creates a PRO widget: iframe renders with allow-scripts sandbox and PRO badge visible', async ({
     page,
   }) => {
