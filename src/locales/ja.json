@@ -3546,7 +3546,12 @@
       "sortableTable": "検索フィルター付きの並び替え可能な暗号資産価格テーブル",
       "animatedCounters": "主要経済指標のアニメーション カウンター",
       "tabbedComparison": "地域別紛争イベントのタブ付き比較"
-    }
+    },
+    "quotaExhausted": "widget の利用枠を使い切りました。",
+    "quotaUnavailable": "widget の利用枠は一時的に利用できません。",
+    "quotaRetryLater": "後でもう一度お試しください。",
+    "quotaRetryAfter": "{{count}}分後にもう一度お試しください。",
+    "quotaRetryAfter_other": "{{count}}分後にもう一度お試しください。"
   },
   "connectivity": {
     "offlineCached": "オフライン — {{freshness}}からのキャッシュデータを表示しています。",

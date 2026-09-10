@@ -3546,7 +3546,12 @@
       "sortableTable": "具有搜尋篩選功能的可排序加密貨幣價格表",
       "animatedCounters": "主要經濟指標的動畫計數器",
       "tabbedComparison": "按地區分類的衝突事件選項卡式對比"
-    }
+    },
+    "quotaExhausted": "widget 配額已用盡。",
+    "quotaUnavailable": "widget 配額暫時不可用。",
+    "quotaRetryLater": "請稍後重試。",
+    "quotaRetryAfter": "{{count}} 分鐘後重試。",
+    "quotaRetryAfter_other": "{{count}} 分鐘後重試。"
   },
   "connectivity": {
     "offlineCached": "離線——顯示來自 {{freshness}} 的快取資料。",

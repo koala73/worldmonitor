@@ -3641,7 +3641,17 @@
       "sortableTable": "جدول أسعار العملات المشفرة القابل للفرز مع مرشح البحث",
       "animatedCounters": "عدادات متحركة للمؤشرات الاقتصادية الرئيسية",
       "tabbedComparison": "مقارنة بتبويبات لأحداث النزاع حسب المنطقة"
-    }
+    },
+    "quotaExhausted": "استُنفدت حصة widget.",
+    "quotaUnavailable": "حصة widget غير متاحة مؤقتًا.",
+    "quotaRetryLater": "حاول مرة أخرى لاحقًا.",
+    "quotaRetryAfter": "أعِد المحاولة بعد {{count}} د.",
+    "quotaRetryAfter_zero": "أعِد المحاولة بعد {{count}} د.",
+    "quotaRetryAfter_one": "أعِد المحاولة بعد {{count}} د.",
+    "quotaRetryAfter_two": "أعِد المحاولة بعد {{count}} د.",
+    "quotaRetryAfter_few": "أعِد المحاولة بعد {{count}} د.",
+    "quotaRetryAfter_many": "أعِد المحاولة بعد {{count}} د.",
+    "quotaRetryAfter_other": "أعِد المحاولة بعد {{count}} د."
   },
   "connectivity": {
     "offlineCached": "بلا اتصال — يتم عرض البيانات المخزنة مؤقتاً من {{freshness}}.",

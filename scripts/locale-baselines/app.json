@@ -2867,5 +2867,11 @@
   "components.decisionBrief.loading": "Capturing both scenarios…",
   "components.decisionBrief.captured": "Captured. Review observation dates and constraints before downloading.",
   "components.decisionBrief.failed": "Could not capture the scenarios. Check your access and retry. No result is available to export.",
-  "components.decisionBrief.locked": "Decision brief is available on Pro."
+  "components.decisionBrief.locked": "Decision brief is available on Pro.",
+  "widgets.quotaExhausted": "Widget quota exhausted.",
+  "widgets.quotaRetryAfter": "Try again in {{count}} minutes.",
+  "widgets.quotaRetryAfter_one": "Try again in {{count}} minute.",
+  "widgets.quotaRetryAfter_other": "Try again in {{count}} minutes.",
+  "widgets.quotaRetryLater": "Try again later.",
+  "widgets.quotaUnavailable": "Widget quota is temporarily unavailable."
 }

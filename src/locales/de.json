@@ -3565,7 +3565,13 @@
       "sortableTable": "Sortierbare Krypto-Preistabelle mit Suchfilter",
       "animatedCounters": "Animierte Zähler für Schlüsselindikatoren der Wirtschaft",
       "tabbedComparison": "Tabbasierte Vergleich von Konfliktereignissen nach Region"
-    }
+    },
+    "quotaExhausted": "Das Widget-Kontingent ist ausgeschöpft.",
+    "quotaUnavailable": "Das Widget-Kontingent ist vorübergehend nicht verfügbar.",
+    "quotaRetryLater": "Versuchen Sie es später erneut.",
+    "quotaRetryAfter": "Versuchen Sie es in {{count}} Minuten erneut.",
+    "quotaRetryAfter_one": "Versuchen Sie es in {{count}} Minute erneut.",
+    "quotaRetryAfter_other": "Versuchen Sie es in {{count}} Minuten erneut."
   },
   "connectivity": {
     "offlineCached": "Offline – gecacherte Daten von {{freshness}} werden angezeigt.",

@@ -3565,7 +3565,13 @@
       "sortableTable": "Sortowalna tabela cen kryptowalut z filtrem wyszukiwania",
       "animatedCounters": "Animowane liczniki dla kluczowych wskaźników ekonomicznych",
       "tabbedComparison": "Tabbowe porównanie zdarzeń konfliktowych według regionów"
-    }
+    },
+    "quotaExhausted": "Квотата за widget е изчерпана.",
+    "quotaUnavailable": "Квотата за widget временно не е достъпна.",
+    "quotaRetryLater": "Опитайте отново по-късно.",
+    "quotaRetryAfter": "Опитайте отново след {{count}} минути.",
+    "quotaRetryAfter_one": "Опитайте отново след {{count}} минута.",
+    "quotaRetryAfter_other": "Опитайте отново след {{count}} минути."
   },
   "connectivity": {
     "offlineCached": "Офлайн — показани кеширани данни от {{freshness}}.",

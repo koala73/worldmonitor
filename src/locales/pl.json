@@ -3603,7 +3603,15 @@
       "sortableTable": "Tabela cen kryptowalut z sortowaniem i filtrem wyszukiwania",
       "animatedCounters": "Liczniki animowane dla kluczowych wskaźników gospodarczych",
       "tabbedComparison": "Porównanie wydarzeń konfliktowych w kartach według regionów"
-    }
+    },
+    "quotaExhausted": "Limit widgetu został wyczerpany.",
+    "quotaUnavailable": "Limit widgetu jest tymczasowo niedostępny.",
+    "quotaRetryLater": "Spróbuj ponownie później.",
+    "quotaRetryAfter": "Spróbuj ponownie za {{count}} minuty.",
+    "quotaRetryAfter_one": "Spróbuj ponownie za {{count}} minutę.",
+    "quotaRetryAfter_few": "Spróbuj ponownie za {{count}} minuty.",
+    "quotaRetryAfter_many": "Spróbuj ponownie za {{count}} minut.",
+    "quotaRetryAfter_other": "Spróbuj ponownie za {{count}} minuty."
   },
   "connectivity": {
     "offlineCached": "Offline — wyświetlanie danych z pamięci podręcznej z {{freshness}}.",

@@ -3584,7 +3584,14 @@
       "sortableTable": "Tableau des prix crypto triable avec filtre de recherche",
       "animatedCounters": "Compteurs animés pour les principaux indicateurs économiques",
       "tabbedComparison": "Comparaison par onglets des événements de conflit par région"
-    }
+    },
+    "quotaExhausted": "Le quota du widget est épuisé.",
+    "quotaUnavailable": "Le quota du widget est temporairement indisponible.",
+    "quotaRetryLater": "Réessayez plus tard.",
+    "quotaRetryAfter": "Réessayez dans {{count}} minutes.",
+    "quotaRetryAfter_one": "Réessayez dans {{count}} minute.",
+    "quotaRetryAfter_many": "Réessayez dans {{count}} minutes.",
+    "quotaRetryAfter_other": "Réessayez dans {{count}} minutes."
   },
   "connectivity": {
     "offlineCached": "Hors ligne — affichage des données en cache de {{freshness}}.",

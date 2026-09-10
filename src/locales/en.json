@@ -71,7 +71,8 @@
       "sortableTable": "Sortable crypto price table with search filter",
       "animatedCounters": "Animated counters for key economic indicators",
       "tabbedComparison": "Tabbed comparison of conflict events by region"
-    }
+    },
+    "quotaRetryAfter": "Try again in {{count}} minutes."
   },
   "countryBrief": {
     "identifying": "Identifying country...",

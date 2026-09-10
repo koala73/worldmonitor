@@ -3565,7 +3565,13 @@
       "sortableTable": "Sorteerbare cryptoprijstabel met zoekfilter",
       "animatedCounters": "Geanimeerde tellers voor belangrijkste economische indicatoren",
       "tabbedComparison": "Tabblad-vergelijking van conflictgebeurtenissen per regio"
-    }
+    },
+    "quotaExhausted": "Het widgetquotum is opgebruikt.",
+    "quotaUnavailable": "Het widgetquotum is tijdelijk niet beschikbaar.",
+    "quotaRetryLater": "Probeer het later opnieuw.",
+    "quotaRetryAfter": "Probeer het over {{count}} minuten opnieuw.",
+    "quotaRetryAfter_one": "Probeer het over {{count}} minuut opnieuw.",
+    "quotaRetryAfter_other": "Probeer het over {{count}} minuten opnieuw."
   },
   "connectivity": {
     "offlineCached": "Offline — gegevens uit cache van {{freshness}} worden weergegeven.",

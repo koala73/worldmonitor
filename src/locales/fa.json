@@ -66,7 +66,13 @@
       "sortableTable": "Sortable crypto price table with search filter",
       "animatedCounters": "Animated counters for key economic indicators",
       "tabbedComparison": "Tabbed comparison of conflict events by region"
-    }
+    },
+    "quotaExhausted": "سهمیه widget تمام شده است.",
+    "quotaUnavailable": "سهمیه widget موقتاً در دسترس نیست.",
+    "quotaRetryLater": "بعداً دوباره تلاش کنید.",
+    "quotaRetryAfter": "پس از {{count}} دقیقه دوباره تلاش کنید.",
+    "quotaRetryAfter_one": "پس از {{count}} دقیقه دوباره تلاش کنید.",
+    "quotaRetryAfter_other": "پس از {{count}} دقیقه دوباره تلاش کنید."
   },
   "countryBrief": {
     "identifying": "Identifying country...",
