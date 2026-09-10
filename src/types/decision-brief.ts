@@ -15,6 +15,7 @@ export interface DecisionBriefCapture {
 }
 
 export interface DecisionBriefSnapshot {
+  operationalWorksheet?: import('./operational-balance').OperationalSnapshot | null;
   selection: DecisionBriefSelection;
   capturedAt: string;
   captures: [DecisionBriefCapture, DecisionBriefCapture];

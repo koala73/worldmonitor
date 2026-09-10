@@ -4,6 +4,9 @@ import { h } from '@/utils/dom-utils';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { BRIEF_TOPICS, type BriefTopic, type BriefSectionState } from './country-brief-presentation';
 import briefCss from '@/styles/country-deep-dive.css?inline';
+import { createOperationalExposureForm, renderOperationalWorksheet, type OperationalWorksheetSession } from './OperationalExposureForm';
+
+const operationalSession: OperationalWorksheetSession = {};
 
 export interface BriefOutputSection {
   id: string;
@@ -177,6 +180,8 @@ export function renderDecisionBrief(snapshot: import('@/types/decision-brief').D
     ...snapshot.evidence.map(e => h('p', { id: `decision-${e.id}` }, `[${e.id}] ${e.label}: ${fmt(e.value, e.unit)} · `, h('a', { href: e.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, e.source), ` · observed ${e.observedAt ?? 'unknown'}`)),
     ...snapshot.captures.map((capture, index) => h('p', {}, `${index === 0 ? 'Baseline' : 'Comparison'} retrieved ${capture.retrievedAt}`)),
     h('h2', {}, 'Assumptions'), list(snapshot.assumptions), h('h2', {}, 'Unknowns'), list(snapshot.unknowns));
+  if (snapshot.operationalWorksheet) article.append(renderOperationalWorksheet(snapshot.operationalWorksheet));
+  else if (snapshot.operationalWorksheet === null) article.append(h('p', {}, 'Operational worksheet incomplete or invalid. No operational balance is included.'));
   const data = h('script', { type: 'application/json', id: 'decision-brief-snapshot' });
   data.textContent = JSON.stringify(snapshot).replace(/</g, '\\u003c');
   article.append(data);
@@ -209,6 +214,14 @@ export function createDecisionBriefOutput(
   const html = h('button', { type: 'button', className: 'cdp-action-btn', disabled: true }, t('components.decisionBrief.downloadHtml')) as HTMLButtonElement;
   const json = h('button', { type: 'button', className: 'cdp-action-btn', disabled: true }, t('components.decisionBrief.downloadJson')) as HTMLButtonElement;
   let snapshot: import('@/types/decision-brief').DecisionBriefSnapshot | null = null;
+  let worksheet: import('@/types/operational-balance').OperationalSnapshot | null = null;
+  const worksheetForm = createOperationalExposureForm(value => {
+    worksheet = value;
+    if (snapshot) {
+      snapshot = { ...snapshot, operationalWorksheet: worksheet };
+      paper.replaceChildren(renderDecisionBrief(snapshot));
+    }
+  }, operationalSession, signal);
   let request: AbortController | null = null;
   let generation = 0;
   // Re-enabling refresh here is load-bearing: invalidate() bumps the generation, so
@@ -233,8 +246,8 @@ export function createDecisionBriefOutput(
     try {
       const result = await load({ countryCode: country.code, countryName: country.name, fuelMode: fuel.value as 'gas' | 'oil', chokepointId: route.value, baselinePct: Number(baseline.value), comparisonPct: Number(comparison.value) }, request.signal);
       if (signal.aborted || current !== generation) return;
-      snapshot = result;
-      paper.replaceChildren(renderDecisionBrief(result)); html.disabled = json.disabled = false;
+      snapshot = { ...result, operationalWorksheet: worksheet };
+      paper.replaceChildren(renderDecisionBrief(snapshot)); html.disabled = json.disabled = false;
       status.textContent = t('components.decisionBrief.captured');
     } catch (error) {
       if (signal.aborted || current !== generation) return;
@@ -264,7 +277,7 @@ export function createDecisionBriefOutput(
   });
   controls.append(refresh, html, json, status);
   output.append(h('header', { className: 'cdp-output-header' }, close, h('h2', {}, t('components.decisionBrief.title'))),
-    h('div', { className: 'cdp-output-layout' }, controls, paper));
+    h('div', { className: 'cdp-output-layout' }, controls, paper), worksheetForm);
   return output;
 }
 
