@@ -352,17 +352,7 @@ const BLOCKED_IPV4_RANGES = [
 });
 
 function ipv4FromMappedIPv6(ip) {
-  const normalized = String(ip).replace(/^\[|\]$/g, '');
-  if (isIP(normalized) !== 6) return null;
-
-  let canonical = normalized;
-  try {
-    canonical = new URL(`http://[${normalized}]/`).hostname.slice(1, -1);
-  } catch {
-    return null;
-  }
-
-  const match = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  const match = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
   if (!match) return null;
 
   const high = Number.parseInt(match[1], 16);
@@ -371,10 +361,17 @@ function ipv4FromMappedIPv6(ip) {
 }
 
 function isPrivateIP(ip) {
-  // IPv4-mapped IPv6 — WHATWG URL parsing canonicalizes mapped literals to
-  // hexadecimal (for example, ::ffff:127.0.0.1 -> ::ffff:7f00:1), so
-  // normalize every valid IPv6 spelling before extracting the v4 portion.
-  const addr = ipv4FromMappedIPv6(ip) || ip;
+  let addr = String(ip).replace(/^\[|\]$/g, '');
+  if (isIP(addr) === 6) {
+    // DNS answers do not pass through the URL parser. Normalize all IPv6
+    // spellings before checking loopback, unspecified, or mapped addresses.
+    try {
+      addr = new URL(`http://[${addr}]/`).hostname.slice(1, -1);
+    } catch {
+      return true; // Scoped addresses are not public URL destinations.
+    }
+    addr = ipv4FromMappedIPv6(addr) || addr;
+  }
 
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
