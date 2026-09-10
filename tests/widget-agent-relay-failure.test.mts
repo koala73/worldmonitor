@@ -28,6 +28,9 @@ const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
 delete process.env.NODE_TEST_CONTEXT;
 
 process.env.VITE_SENTRY_DSN = 'https://testpublickey@sentry.test/12345';
+process.env.WIDGET_QUOTA_SIGNING_KEY = 'synthetic-widget-signing-key-32-characters';
+process.env.UPSTASH_REDIS_REST_URL = 'https://quota.test';
+process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 process.env.WIDGET_AGENT_KEY = 'server-widget-key';
 process.env.PRO_WIDGET_KEY = 'server-pro-key';
 process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key';
@@ -65,6 +68,7 @@ function installFetch(behaviour: RelayBehaviour): { envelopeHits: () => number }
   let hits = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url === 'https://quota.test') return Response.json({ result: [200, 0] });
     if (url.startsWith(ENVELOPE_URL_PREFIX)) {
       hits++;
       return new Response('', { status: 200 });

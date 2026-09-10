@@ -13442,17 +13442,18 @@ const WIDGET_ANTHROPIC_KEY = (process.env.ANTHROPIC_API_KEY || '').trim();
 const WIDGET_EXA_KEY = (process.env.EXA_API_KEYS || '').split(/[\n,]+/).map(k => k.trim()).filter(Boolean)[0] || '';
 const WIDGET_BRAVE_KEY = (process.env.BRAVE_API_KEYS || '').split(/[\n,]+/).map(k => k.trim()).filter(Boolean)[0] || '';
 
-async function performWidgetWebSearch(query) {
+async function performWidgetWebSearch(query, reserveSearch) {
   if (WIDGET_EXA_KEY) {
+    await reserveSearch();
     try {
       const res = await fetch('https://api.exa.ai/search', {
         method: 'POST',
+        redirect: 'error',
         headers: { 'Content-Type': 'application/json', 'x-api-key': WIDGET_EXA_KEY },
         body: JSON.stringify({
           query,
           numResults: 8,
-          type: 'auto',
-          useAutoprompt: true,
+          type: 'fast',
           contents: { text: { maxCharacters: 400 } },
         }),
         signal: AbortSignal.timeout(12_000),
@@ -13473,6 +13474,7 @@ async function performWidgetWebSearch(query) {
   }
 
   if (WIDGET_BRAVE_KEY) {
+    await reserveSearch();
     try {
       const url = new URL('https://api.search.brave.com/res/v1/web/search');
       url.searchParams.set('q', query);
@@ -13481,6 +13483,7 @@ async function performWidgetWebSearch(query) {
       url.searchParams.set('search_lang', 'en');
       url.searchParams.set('safesearch', 'moderate');
       const res = await fetch(url.toString(), {
+        redirect: 'error',
         headers: { Accept: 'application/json', 'X-Subscription-Token': WIDGET_BRAVE_KEY },
         signal: AbortSignal.timeout(12_000),
       });
@@ -13501,34 +13504,6 @@ async function performWidgetWebSearch(query) {
 
   return null;
 }
-const WIDGET_RATE_LIMIT = 10;
-const PRO_WIDGET_RATE_LIMIT = 20;
-const WIDGET_RATE_WINDOW_MS = 60 * 60 * 1000;
-const widgetRateLimitMap = new Map();
-const proWidgetRateLimitMap = new Map();
-
-function checkWidgetRateLimit(ip) {
-  const now = Date.now();
-  const entry = widgetRateLimitMap.get(ip);
-  if (!entry || now - entry.windowStart > WIDGET_RATE_WINDOW_MS) {
-    widgetRateLimitMap.set(ip, { windowStart: now, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > WIDGET_RATE_LIMIT;
-}
-
-function checkProWidgetRateLimit(ip) {
-  const now = Date.now();
-  const entry = proWidgetRateLimitMap.get(ip);
-  if (!entry || now - entry.windowStart > WIDGET_RATE_WINDOW_MS) {
-    proWidgetRateLimitMap.set(ip, { windowStart: now, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > PRO_WIDGET_RATE_LIMIT;
-}
-
 function getWidgetAgentStatus() {
   return {
     ok: Boolean(WIDGET_AGENT_KEY && WIDGET_ANTHROPIC_KEY),
@@ -13610,18 +13585,17 @@ async function handleWidgetAgentRequest(req, res) {
     return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'AI backend unavailable' }));
   }
 
-  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
-
   // Allow up to 163840 bytes (160KB) for PRO requests (basic is smaller but we parse tier first)
   const rawContentLength = parseInt(req.headers['content-length'] || '0', 10);
   if (rawContentLength > 163840) {
     return safeEnd(res, 413, {}, '');
   }
 
-  let body;
+  let body, raw;
   try {
-    const raw = await readRequestBody(req, 163840);
+    raw = await readRequestBody(req, 163840);
     body = JSON.parse(raw);
+    if (!body || typeof body !== 'object') throw new Error('Invalid body');
   } catch {
     return safeEnd(res, 400, {}, '');
   }
@@ -13647,12 +13621,6 @@ async function handleWidgetAgentRequest(req, res) {
     }
   }
 
-  // Rate limiting (separate buckets)
-  const rateLimited = isPro ? checkProWidgetRateLimit(clientIp) : checkWidgetRateLimit(clientIp);
-  if (rateLimited) {
-    return safeEnd(res, 429, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Rate limit exceeded' }));
-  }
-
   const { prompt, mode = 'create', currentHtml = null, conversationHistory = [] } = body;
   if (!prompt || typeof prompt !== 'string') return safeEnd(res, 400, {}, '');
   if (!Array.isArray(conversationHistory)) return safeEnd(res, 400, {}, '');
@@ -13663,9 +13631,20 @@ async function handleWidgetAgentRequest(req, res) {
       JSON.stringify({ error: 'Invalid request: widget builder only accepts data visualization requests.' }));
   }
 
+  const quota = await import('../api/_widget-quota.js');
+  let principal;
+  try {
+    const hasProof = ['x-widget-principal', 'x-widget-timestamp', 'x-widget-signature'].some(h => req.headers[h] !== undefined);
+    principal = hasProof
+      ? await quota.verifyWidgetPrincipal(req.headers, tier, raw)
+      : await quota.widgetPrincipal('key', isPro ? getWidgetAgentProvidedProKey(req) : getWidgetAgentProvidedKey(req));
+    await quota.reserveWidgetQuota(principal, tier, 'relay');
+  } catch (err) {
+    return safeEnd(res, err.status || 503, { 'Content-Type': 'application/json', 'Retry-After': String(err.retryAfter || 30) }, JSON.stringify({ error: err.message }));
+  }
+
   // Tier-specific settings
-  const model = isPro ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
-  const maxTokens = isPro ? 8192 : 4096;
+  const { model, maxTokens, microUsd } = quota.WIDGET_MODEL_POLICY[tier];
   const maxTurns = isPro ? 10 : 6;
   const maxHtml = isPro ? WIDGET_PRO_MAX_HTML : WIDGET_MAX_HTML;
   const systemPrompt = isPro ? WIDGET_PRO_SYSTEM_PROMPT : WIDGET_SYSTEM_PROMPT;
@@ -13697,7 +13676,12 @@ async function handleWidgetAgentRequest(req, res) {
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
+    const client = new Anthropic({
+      apiKey: WIDGET_ANTHROPIC_KEY,
+      baseURL: 'https://api.anthropic.com',
+      maxRetries: 0,
+      fetch: (url, options) => globalThis.fetch(url, { ...options, redirect: 'error' }),
+    });
 
     const messages = [
       ...conversationHistory
@@ -13724,8 +13708,11 @@ async function handleWidgetAgentRequest(req, res) {
         ? [...messages, { role: 'user', content: 'FINAL TURN: You have used all available tool calls. You MUST emit the completed widget HTML now using the data you already have. No more tool calls — output <!-- widget-html --> immediately.' }]
         : messages;
 
+      await quota.reserveWidgetQuota(principal, tier, 'paid', microUsd);
+      if (cancelled) break;
       const response = await client.messages.create({
         model,
+        service_tier: 'standard_only',
         max_tokens: maxTokens,
         system: systemPrompt,
         tools: isLastChance ? [] : [WIDGET_FETCH_TOOL, WIDGET_SEARCH_TOOL],
@@ -13751,13 +13738,18 @@ async function handleWidgetAgentRequest(req, res) {
             const { query = '' } = block.input;
             sendWidgetSSE(res, 'tool_call', { endpoint: `search:${String(query).slice(0, 80)}` });
             try {
-              const searchResult = await performWidgetWebSearch(String(query));
+              const searchResult = await performWidgetWebSearch(String(query), async () => {
+                if (cancelled) throw new Error('Request cancelled');
+                await quota.reserveWidgetQuota(principal, tier, 'paid', quota.WIDGET_SEARCH_MICRO_USD);
+                if (cancelled) throw new Error('Request cancelled');
+              });
               if (searchResult) {
                 toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: sanitizeToolContent(JSON.stringify(searchResult.results)) });
               } else {
                 toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'No search results available. No search provider configured.' });
               }
             } catch (err) {
+              if (err instanceof quota.WidgetQuotaError) throw err;
               toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Search failed: ${err.message}` });
             }
             continue;
@@ -13825,7 +13817,7 @@ async function handleWidgetAgentRequest(req, res) {
     // those leak the API key, but the fallback path scrubs sk-* tokens just
     // in case the SDK changes its error shape.
     if (!cancelled) {
-      sendWidgetSSE(res, 'error', { message: classifyWidgetAgentError(err, model) });
+      sendWidgetSSE(res, 'error', { message: err instanceof quota.WidgetQuotaError ? err.message : classifyWidgetAgentError(err, model), ...(err instanceof quota.WidgetQuotaError ? { status: err.status, retryAfter: err.retryAfter } : {}) });
     }
     // Verbose structured log so Railway operators can diagnose without
     // server-side reproduction. Includes status + type + request shape;

@@ -533,6 +533,50 @@ const CABLE_HEALTH_REPAIR_SCRIPT = [
   'end',
   'return 1',
 ].join('\n');
+// Exact copy of api/_widget-quota.js; widget proxy tests enforce byte parity.
+const WIDGET_QUOTA_RESERVE_SCRIPT = [
+  "",
+  "local function integer(v)",
+  "  local n = tonumber(v)",
+  "  if not n or n < 0 or n > 1000000000000 or n ~= math.floor(n) then return nil end",
+  "  return n",
+  "end",
+  "local config = redis.call('HMGET', KEYS[1], 'tariff', 'globalLimit', 'basicLimit', 'proLimit', 'day', 'spent')",
+  "local globalLimit, basicLimit, proLimit = integer(config[2]), integer(config[3]), integer(config[4])",
+  "local globalDay, globalSpent = integer(config[5]), integer(config[6])",
+  "if config[1] ~= ARGV[1] or not globalLimit or not basicLimit or not proLimit or not globalDay or not globalSpent then return {503,30} end",
+  "local now = tonumber(redis.call('TIME')[1])",
+  "local day, hour = math.floor(now / 86400), math.floor(now / 3600)",
+  "if globalDay > day then return {503,30} end",
+  "if globalDay < day then globalSpent = 0 end",
+  "local raw = redis.call('HGET', KEYS[1], ARGV[2])",
+  "local state = {day=day, spent=0, edgeHour=hour, edgeCount=0, relayHour=hour, relayCount=0}",
+  "if raw then",
+  "  local ok, decoded = pcall(cjson.decode, raw)",
+  "  if not ok or type(decoded) ~= 'table' then return {503,30} end",
+  "  state = decoded",
+  "  for _, field in ipairs({'day','spent','edgeHour','edgeCount','relayHour','relayCount'}) do",
+  "    if not integer(state[field]) then return {503,30} end",
+  "  end",
+  "  if state.day > day or state.edgeHour > hour or state.relayHour > hour then return {503,30} end",
+  "end",
+  "if state.day < day then state.day = day; state.spent = 0 end",
+  "local limit = ARGV[3] == 'pro' and proLimit or basicLimit",
+  "local cost = integer(ARGV[5])",
+  "if not cost then return {503,30} end",
+  "if globalSpent + cost > globalLimit or state.spent + cost > limit then return {429,86400 - now % 86400} end",
+  "if ARGV[4] ~= 'paid' then",
+  "  local hourField, countField = ARGV[4] .. 'Hour', ARGV[4] .. 'Count'",
+  "  if state[hourField] < hour then state[hourField] = hour; state[countField] = 0 end",
+  "  local rate = ARGV[3] == 'pro' and 20 or 10",
+  "  if state[countField] >= rate then return {429,3600 - now % 3600} end",
+  "  state[countField] = state[countField] + 1",
+  "end",
+  "state.spent = state.spent + cost",
+  "redis.call('HSET', KEYS[1], 'day', day, 'spent', globalSpent + cost, ARGV[2], cjson.encode(state))",
+  "return {200,0}",
+  "",
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
   CABLE_HEALTH_REPAIR_SCRIPT,
   SOURCE_RETRY_CLAIM_SCRIPT,
@@ -548,6 +592,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
   PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
+  WIDGET_QUOTA_RESERVE_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
   [LEGACY_X_POST_BUDGET_RESERVE_SCRIPT, X_POST_BUDGET_RESERVE_SCRIPT],
@@ -557,6 +602,15 @@ const LEGACY_EVAL_REPLACEMENTS = new Map([
 // Exact-text pin, not a pattern: any change to the script — including
 // whitespace — must land in both copies deliberately.
 function isAllowedEval(args) {
+  if (args[1] === WIDGET_QUOTA_RESERVE_SCRIPT) {
+    const cost = Number(args[8]);
+    return args.length === 9 && String(args[2]) === '1'
+      && args[3] === 'widget:quota:v1' && args[4] === '2026-09-10'
+      && /^(key|user):[a-f0-9]{64}$/.test(args[5])
+      && ['basic', 'pro'].includes(args[6]) && ['edge', 'relay', 'paid'].includes(args[7])
+      && /^\d+$/.test(String(args[8])) && Number.isSafeInteger(cost) && cost <= 1000000000000
+      && (args[7] === 'paid' ? cost > 0 : cost === 0);
+  }
   return args.length >= 2 && ALLOWED_EVAL_SCRIPTS.has(String(args[1]));
 }
 
