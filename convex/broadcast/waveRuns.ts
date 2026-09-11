@@ -1039,7 +1039,8 @@ export const _markContactPushed = internalMutation({
     let stampResult: "stamped" | "alreadyStamped" | "notFound";
     if (!reg) {
       stampResult = "notFound";
-    } else if (reg.proLaunchWave === waveLabel) {
+    } else if (reg.proLaunchWave !== undefined) {
+      // A late worker must preserve ownership and the original assignment time.
       stampResult = "alreadyStamped";
     } else {
       await ctx.db.patch(reg._id, {
