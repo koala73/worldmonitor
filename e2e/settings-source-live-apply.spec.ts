@@ -116,12 +116,23 @@ async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
     'settings-source-live-apply bootUntilNewsSettles',
   );
   try {
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // Navigate first, then observe DIGEST via the route log. waitForRequest
+    // armed before goto can still hang under shard load until Playwright tears
+    // the page down ("Target page, context or browser has been closed"); the
+    // route accountant is race-safe with fulfill() and survives that race.
+    await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      undefined,
+      { timeout: 60_000 },
     );
-    await firstDigest;
+    await expect.poll(
+      () => log.urls.length,
+      {
+        timeout: 60_000,
+        message: 'boot must issue list-feed-digest after event handlers are ready',
+      },
+    ).toBeGreaterThanOrEqual(1);
     await page.waitForTimeout(SETTLE_MS);
   } finally {
     lossWatch.dispose();
