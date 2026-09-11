@@ -1,7 +1,8 @@
 // @ts-check
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse } from './_relay.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
-import { validateApiKey } from './_api-key.js';
+import { getHeaderApiKey, USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from './_api-key.js';
+import { isCanonicalUserApiKey, validateBootstrapUserApiKey, validateBootstrapUserApiAccess } from './_user-api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
@@ -243,7 +244,26 @@ export default async function handler(req) {
   // lock the dashboard out of its own panel.
   const keyCheck = await validateApiKey(req);
   if (keyCheck.required && !keyCheck.valid) {
-    return jsonResponse({ error: keyCheck.error }, 401, { 'Cache-Control': 'no-store', ...corsHeaders });
+    const key = getHeaderApiKey(req);
+    if (keyCheck.error !== USER_API_KEY_GATEWAY_VALIDATION_ERROR || !isCanonicalUserApiKey(key)) {
+      return jsonResponse({ error: keyCheck.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR ? 'Invalid API key' : keyCheck.error }, 401, { 'Cache-Control': 'no-store', ...corsHeaders });
+    }
+    // Bound unauthenticated validation work before looking up the key owner.
+    const validationLimit = await checkRateLimit(req, corsHeaders, {
+      scope: 'telegram-user-key-validation', limit: 60, window: '1 m', failClosed: true,
+    });
+    if (validationLimit) {
+      validationLimit.headers.set('Cache-Control', 'no-store');
+      return validationLimit;
+    }
+    const userKey = await validateBootstrapUserApiKey(key);
+    const access = userKey.ok ? await validateBootstrapUserApiAccess(userKey.userId) : userKey;
+    if (!access.ok) {
+      return jsonResponse({
+        error: access.error,
+        ...(access.headers?.['X-Billing-Verification'] ? { code: access.reason } : {}),
+      }, access.status, { ...corsHeaders, ...access.headers, 'Cache-Control': 'no-store' });
+    }
   }
 
   const url = new URL(req.url);
