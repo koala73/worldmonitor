@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createConflictServiceRoutes } from '../src/generated/server/worldmonitor/conflict/v1/service_server.ts';
 import { conflictHandler } from '../server/worldmonitor/conflict/v1/handler.ts';
 import { ACLED_DEFAULT_WINDOW_MS } from '../server/worldmonitor/conflict/v1/list-acled-events.ts';
+import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { mapGdeltExportToConflictEvents } from '../scripts/_conflict-gdelt-bulk.mjs';
@@ -16,12 +17,15 @@ const originalEnv = { ...process.env };
 const snapshot = { events: [{ id: 'acled-synthetic-1', eventType: 'Battles', country: 'Ukraine', location: { latitude: 48, longitude: 31 }, occurredAt: 1789000000000, fatalities: 0, actors: ['Synthetic actor'], source: 'Synthetic source', admin1: '' }] };
 let now: number;
 let keys: string[];
+let upstreamCalls: string[];
+let responseHeaders: Record<string, string> | undefined;
 beforeEach(() => {
   now = Date.UTC(2026, 8, 11, 12);
   Date.now = () => now;
   for (const key of ['LOCAL_API_MODE', 'VERCEL_ENV', 'VERCEL_GIT_COMMIT_SHA', 'ACLED_EMAIL', 'ACLED_PASSWORD', 'ACLED_ACCESS_TOKEN']) delete process.env[key];
   __resetKeyPrefixCacheForTests();
   keys = [];
+  upstreamCalls = [];
 });
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -34,7 +38,10 @@ function install(fixtures: Record<string, unknown>, failSeed = false) {
   const redis = installRedis(fixtures);
   globalThis.fetch = (async (input, init) => {
     const url = new URL(String(input));
-    assert.equal(url.hostname, 'redis.example', 'seed/cache hits must not call ACLED');
+    if (url.hostname !== 'redis.example') {
+      upstreamCalls.push(url.hostname);
+      return Response.json({ data: [] });
+    }
     if (url.pathname.startsWith('/get/')) {
       const key = decodeURIComponent(url.pathname.slice(5));
       keys.push(key);
@@ -45,7 +52,9 @@ function install(fixtures: Record<string, unknown>, failSeed = false) {
   return redis;
 }
 async function request(query = '') {
-  const response = await route.handler(new Request(`https://api.worldmonitor.app/api/conflict/v1/list-acled-events${query}`));
+  const req = new Request(`https://api.worldmonitor.app/api/conflict/v1/list-acled-events${query}`);
+  const response = await route.handler(req);
+  responseHeaders = drainResponseHeaders(req);
   assert.equal(response.status, 200);
   return response.json();
 }
@@ -85,23 +94,56 @@ test('real GDELT fallback rows without coordinates do not become geographic RPC 
   assert.deepEqual(keys, [seedKey, seedKey]);
 });
 
-test('country and explicit or partial date filters retain their existing per-query cache identities', async () => {
-  const requests = [
-    { query: '?country=UA', key: `conflict:acled:v1:UA:${now - ACLED_DEFAULT_WINDOW_MS}:${now}` },
-    { query: '?start=1000&end=2000', key: 'conflict:acled:v1:all:1000:2000' },
-    { query: '?start=1000', key: `conflict:acled:v1:all:1000:${now}` },
-  ];
-  install({ [seedKey]: { events: [] }, ...Object.fromEntries(requests.map(row => [row.key, snapshot])) });
-  for (const row of requests) assert.deepEqual(await request(row.query), snapshot);
-  assert.deepEqual(keys, requests.map(row => row.key));
+test('country and inclusive date filters read the same seed without writes or provider calls', async () => {
+  const event = snapshot.events[0]!;
+  const other = { ...event, id: 'acled-other', country: 'Sudan' };
+  const redis = install({ [seedKey]: { events: [event, other] } });
+  const cases = [
+    ['?country=UA', [event]],
+    ['?country=Ukraine', [event]],
+    ['?country=ua', [event]],
+    ['?country=SD', [other]],
+    ['?country=unknown', []],
+    [`?start=${event.occurredAt}&end=${event.occurredAt}`, [event, other]],
+    [`?start=${event.occurredAt + 1}`, []],
+    [`?end=${event.occurredAt - 1}`, []],
+    ['?start=1000&end=2000', []],
+    [`?start=${now}&end=${now - 1}`, []],
+    ['?page_size=1&cursor=ignored', [event, other]],
+  ] as const;
+  for (const [query, events] of cases) assert.deepEqual(await request(query), { events }, query);
+  for (let i = 0; i < 20; i++) {
+    assert.deepEqual(await request(`?country=unknown-${i}&start=${now + i}`), { events: [] });
+  }
+  assert.deepEqual(keys, Array(cases.length + 20).fill(seedKey));
+  assert.deepEqual([...redis.redis.keys()], [seedKey]);
+  assert.deepEqual(upstreamCalls, []);
 });
 
-test('missing or unreadable seed retains the existing resolved-window cache fallback', async () => {
+test('seed misses and failures never read per-query caches or call ACLED and can recover', async () => {
+  process.env.ACLED_ACCESS_TOKEN = 'synthetic-token';
   const key = `conflict:acled:v1:all:${now - ACLED_DEFAULT_WINDOW_MS}:${now}`;
   for (const failSeed of [false, true]) {
     keys = [];
     install({ [key]: snapshot }, failSeed);
-    assert.deepEqual(await request(), snapshot);
-    assert.deepEqual(keys, [seedKey, key]);
+    assert.deepEqual(await request(), { events: [] });
+    assert.deepEqual(await request('?country=UA'), { events: [] });
+    assert.deepEqual(keys, [seedKey, seedKey]);
+    assert.equal(responseHeaders?.['X-No-Cache'], '1');
+    assert.deepEqual(upstreamCalls, []);
   }
+  install({ [seedKey]: snapshot });
+  assert.deepEqual(await request(), snapshot);
+  assert.equal(responseHeaders?.['X-No-Cache'], undefined);
+});
+
+test('varying cold queries cannot reach ACLED even when provider credentials are configured', async () => {
+  process.env.ACLED_ACCESS_TOKEN = 'synthetic-token';
+  const redis = install({});
+  for (const query of ['', '?country=Ukraine', '?start=1000&end=2000']) {
+    assert.deepEqual(await request(query), { events: [] });
+  }
+  assert.deepEqual(upstreamCalls, [], 'request handling must never contact ACLED');
+  assert.deepEqual(keys, [seedKey, seedKey, seedKey]);
+  assert.equal(redis.redis.size, 0);
 });
