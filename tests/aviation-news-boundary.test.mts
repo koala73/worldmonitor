@@ -137,3 +137,15 @@ test('bounds the shared snapshot to the existing 30 items per feed', async () =>
   assert.ok(entry);
   assert.equal(JSON.parse(entry[1]).items.length, 270);
 });
+
+
+test('plain-text snippets remove markup and residual tag openings', async () => {
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
+    return new Response('<rss><channel><item><title>Emirates news</title><link>https://news.example/item</link><description><![CDATA[<b>Update</b> <b>safe</b> <script]]></description></item></channel></rss>');
+  }) as typeof fetch;
+  const result = await read(['Emirates']);
+  assert.equal(result.items.length, 9);
+  assert.deepEqual(result.items.map(item => item.snippet), Array(9).fill('Update safe script'));
+});
