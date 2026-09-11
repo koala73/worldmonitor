@@ -57,10 +57,10 @@ describe('stacked merge guard workflow', () => {
 });
 
 describe('orphaned stacked merge monitor workflow', () => {
-  it('runs only after a merge and can open an issue plus a PR comment', () => {
+  it('runs after any PR closure and can reconcile integration alarms', () => {
     assert.equal(monitor.name, 'Orphaned Stacked Merge Monitor');
     assert.deepEqual(monitor.on.pull_request.types, ['closed']);
-    assert.equal(monitor.jobs.monitor.if, "github.event.pull_request.merged == true");
+    assert.equal(monitor.jobs.monitor.if, undefined);
     assert.deepEqual(monitor.permissions, {
       contents: 'read',
       issues: 'write',
@@ -68,11 +68,11 @@ describe('orphaned stacked merge monitor workflow', () => {
     });
   });
 
-  it('checks out the merge commit, refreshes main, and runs the post-merge checker', () => {
+  it('checks out the default branch and reconciles the closed stack', () => {
     const checkout = monitor.jobs.monitor.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
-    const runStep = monitor.jobs.monitor.steps.find((step) => step.name === 'Verify merge commit reached main');
-    assert.ok(checkout, 'workflow must check out the merge commit so the script exists');
-    assert.equal(checkout.with.ref, '${{ github.event.pull_request.merge_commit_sha }}');
+    const runStep = monitor.jobs.monitor.steps.find((step) => step.name === 'Reconcile closed PR and merged descendants');
+    assert.ok(checkout, 'workflow must run trusted code even when the parent closes without merging');
+    assert.equal(checkout.with.ref, '${{ github.event.repository.default_branch }}');
     assert.equal(checkout.with['fetch-depth'], 0);
     assert.equal(checkout.with.filter, 'blob:none');
     pin(checkout.uses);
