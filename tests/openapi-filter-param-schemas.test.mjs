@@ -41,7 +41,7 @@ const EXPECTED_ENUMS = [
     'SERVICE_OPERATIONAL_STATUS_MAINTENANCE',
   ]],
   ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'type', FILTER_PARAM_CONTRACTS.infrastructureTemporalBaselineTypes],
-  ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'region', ['global']],
+  ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'region', ['global', '']],
   ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'chokepoint_id', FILTER_PARAM_CONTRACTS.intelligenceChokepointIds],
   ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'fuel_mode', FILTER_PARAM_CONTRACTS.intelligenceFuelModes],
   ['MarketService', '/api/market/v1/get-country-stock-index', 'get', 'country_code', Object.keys(FILTER_PARAM_CONTRACTS.marketCountryStockIndexes)],

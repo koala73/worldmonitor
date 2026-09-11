@@ -12357,6 +12357,7 @@ paths:
                     type: string
                     enum:
                         - 'global'
+                        - ''
                 - name: count
                   in: query
                   description: Current observed count to compare against baseline.

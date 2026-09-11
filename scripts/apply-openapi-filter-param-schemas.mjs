@@ -48,7 +48,7 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     path: '/api/infrastructure/v1/get-temporal-baseline',
     method: 'get',
     name: 'region',
-    schema: { type: 'string', enum: ['global'] },
+    schema: { type: 'string', enum: ['global', ''] },
   },
   {
     path: '/api/intelligence/v1/compute-energy-shock',
