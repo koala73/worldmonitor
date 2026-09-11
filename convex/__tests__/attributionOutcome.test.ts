@@ -122,3 +122,19 @@ test("uncharged failure explicitly resolves only payment audit attribution", asy
   expect(after.incidents[0].resolved).toBe(true);
   expect(after.entitlements).toHaveLength(0);
 });
+
+test.each([false, true])("a lower-tier fulfillment cannot close a Business payment (matching product ID: %s)", async (matchingProductId) => {
+  const t = convexTest(schema, modules);
+  const rowId = await capture(t, "payment.succeeded");
+  await t.run((ctx) => ctx.db.insert("subscriptions", {
+    userId: USER, dodoSubscriptionId: "sub_attribution",
+    dodoProductId: PRODUCT_CATALOG[matchingProductId ? "api_business" : "pro_monthly"].dodoProductId!,
+    planKey: "pro_monthly", status: "active", currentPeriodStart: NOW, currentPeriodEnd: END,
+    rawPayload: {}, updatedAt: NOW,
+  }));
+  await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, { userId: USER });
+  const before = await state(t);
+  await expect(t.mutation(internal.payments.webhookMutations.attributeUnattributedPayment, { rowId, userId: USER }))
+    .rejects.toThrow("purchased product");
+  expect(await state(t)).toEqual(before);
+});

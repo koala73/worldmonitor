@@ -16,6 +16,7 @@ import {
   handleSubscriptionUpdated,
   handlePaymentOrRefundEvent,
   handleDisputeEvent,
+  resolvePlanKey,
   isCoveringAt,
   compareSubscriptionsByCoverage,
 } from "./subscriptionHelpers";
@@ -668,6 +669,11 @@ export const attributeUnattributedPayment = internalMutation({
 
     const requiresAccess = record.eventType.startsWith("subscription.") || record.eventType === "payment.succeeded";
     if (requiresAccess) {
+      const productId = typeof data?.product_id === "string" ? data.product_id : record.dodoProductId;
+      if (subscription && (!productId || subscription.dodoProductId !== productId
+        || subscription.planKey !== await resolvePlanKey(ctx, productId))) {
+        throw new Error("[webhook] Subscription does not match the purchased product; repair fulfillment before resolving this incident.");
+      }
       const entitlement = await ctx.db.query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
       const now = Date.now();
