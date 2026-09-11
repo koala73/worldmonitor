@@ -20,6 +20,7 @@ import webcamGateway from '../api/webcam/v1/[rpc].ts';
 const REDIS_URL = 'https://redis.test';
 const WINDY_URL = 'https://api.windy.com/webcams/api/v3/webcams';
 const WEBCAM_IMAGE_PATH = '/api/webcam/v1/get-webcam-image';
+const OTHER_FAIL_CLOSED_PATH = '/api/news/v1/summarize-article-cache';
 const ENV_KEYS = [
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
@@ -308,6 +309,36 @@ describe('Windy webcam image proxy access contract', () => {
     assert.deepEqual(calls.map(call => call.url), [
       `${WINDY_URL}/bundled-sidecar-camera-123?include=images,urls`,
     ]);
+  });
+
+  it('keeps other cloud endpoint policies fail closed in Tauri mode', async () => {
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    process.env.WM_SESSION_SECRET = 'webcam-proxy-session-test-secret-at-least-32-chars';
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    __resetRateLimitForTest();
+
+    const { token } = await issueSessionToken();
+    let handlerCalls = 0;
+    const gateway = createDomainGateway([{
+      method: 'GET',
+      path: OTHER_FAIL_CLOSED_PATH,
+      handler: async () => {
+        handlerCalls += 1;
+        return Response.json({ ok: true });
+      },
+    }]);
+
+    const response = await gateway(new Request(`http://127.0.0.1:46123${OTHER_FAIL_CLOSED_PATH}`, {
+      headers: {
+        Origin: 'http://127.0.0.1:46123',
+        Cookie: `wm-session=${token}`,
+      },
+    }));
+
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(handlerCalls, 0, 'only the webcam path may bypass the cloud endpoint limiter');
   });
 
   it('admits browser cookies and header fallback through an available limiter, but requires a credential', async () => {
