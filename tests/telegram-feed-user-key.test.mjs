@@ -30,7 +30,7 @@ beforeEach(() => {
   mock.method(globalThis, 'fetch', async (input, init) => {
     const url = String(input);
     calls.push(url);
-    if (url.startsWith('https://redis.test')) {
+    if (new URL(url).hostname === 'redis.test') {
       const commands = JSON.parse(String(init?.body));
       return new Response(JSON.stringify(commands.map(command => {
         const verb = String(command[0]).toUpperCase();
@@ -71,7 +71,7 @@ for (const name of ['X-WorldMonitor-Key', 'X-Api-Key']) {
     assert.match(response.headers.get('Cache-Control'), /private/);
     assert.ok(calls.some(url => url.endsWith('/api/internal-validate-api-key')));
     assert.ok(calls.some(url => url.endsWith('/api/internal-entitlements')));
-    assert.ok(calls.some(url => url.startsWith('https://relay.test')));
+    assert.ok(calls.some(url => new URL(url).hostname === 'relay.test'));
     assert.doesNotMatch([...errors.mock.calls, ...warnings.mock.calls].flatMap(c => c.arguments).join(' '), /\[rate-limit\]/);
   });
 }
@@ -87,8 +87,8 @@ for (const mode of ['revoked', 'scoped', 'no-access', 'outage', 'malformed', 'li
     const response = await request(mode === 'malformed' ? 'wm_bad' : KEY);
     assert.equal(response.status, mode === 'limited' ? 429 : ['no-access', 'expired'].includes(mode) ? 403 : ['outage', 'limiter-outage'].includes(mode) ? 503 : 401);
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
-    assert.ok(!calls.some(url => url.startsWith('https://relay.test')));
-    if (['malformed', 'limiter-outage', 'limited'].includes(mode)) assert.ok(!calls.some(url => url.startsWith('https://convex.test')));
+    assert.ok(!calls.some(url => new URL(url).hostname === 'relay.test'));
+    if (['malformed', 'limiter-outage', 'limited'].includes(mode)) assert.ok(!calls.some(url => new URL(url).hostname === 'convex.test'));
     if (['outage', 'limiter-outage'].includes(mode)) assert.ok(response.headers.get('Retry-After'));
   });
 }
