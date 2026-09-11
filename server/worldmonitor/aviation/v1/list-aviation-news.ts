@@ -135,7 +135,16 @@ export async function listAviationNews(
             const matched = matchesEntities(textToSearch, entities);
             if (entities.length > 0 && matched.length === 0) continue;
 
-            const snippet = (item.description as string | undefined ?? '').replace(/<[^>]*>?/g, '').slice(0, 200);
+            let snippet = '';
+            let insideTag = false;
+            const description = item.description ?? '';
+            for (let i = 0; i < description.length && snippet.length < 200; i++) {
+                const character = description[i]!;
+                if (character === '<') insideTag = true;
+                else if (insideTag) {
+                    if (character === '>') insideTag = false;
+                } else snippet += character;
+            }
 
             filtered.push({
                 id: btoa(link).slice(0, 32),
