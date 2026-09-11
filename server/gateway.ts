@@ -2003,11 +2003,12 @@ export function createDomainGateway(
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
     if (!internalMcpVerified) {
-      // The local live-flight popup uses the sidecar cache without Upstash.
-      // Keep this exception exact-path; cloud requests retain the provider cap.
-      const isSidecarWingbitsLiveFlight = process.env.LOCAL_API_MODE === 'tauri-sidecar'
-        && pathname === '/api/military/v1/get-wingbits-live-flight';
-      const endpointRlResponse = isSidecarWingbitsLiveFlight ? null : rateLimitPrincipalUserId
+      // These local provider lookups use the sidecar cache without Upstash.
+      // Keep these exceptions exact-path; cloud requests retain the provider cap.
+      const isSidecarProviderLookup = process.env.LOCAL_API_MODE === 'tauri-sidecar'
+        && (pathname === '/api/military/v1/get-wingbits-live-flight'
+          || pathname === '/api/imagery/v1/search-imagery');
+      const endpointRlResponse = isSidecarProviderLookup ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
           })
