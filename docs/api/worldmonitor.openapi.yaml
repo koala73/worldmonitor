@@ -6266,7 +6266,9 @@ paths:
             parameters:
                 - name: year
                   in: query
-                  description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                  description: |-
+                    Data year: 1951 through the current year. Zero returns the latest seeded data.
+                     An explicit year is available only if it matches the published snapshot.
                   required: false
                   example: 1
                   schema:
@@ -39612,9 +39614,12 @@ components:
             properties:
                 year:
                     type: integer
+                    maximum: 9999
                     minimum: 0
                     format: int32
-                    description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                    description: |-
+                        Data year: 1951 through the current year. Zero returns the latest seeded data.
+                         An explicit year is available only if it matches the published snapshot.
                 countryLimit:
                     type: integer
                     minimum: 0
@@ -39635,13 +39640,13 @@ components:
                     type: integer
                     format: int64
                     description: |-
-                        Time the seed or live fallback snapshot was fetched, as Unix epoch
+                        Time the seed snapshot was fetched, as Unix epoch
                          milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
                          that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
                     description: |-
-                        True when summary came from a seed snapshot or live fallback. False means
+                        True when summary came from the requested seed snapshot. False means
                          an absent/empty summary is graceful degradation because the snapshot is
                          unavailable.
             description: GetDisplacementSummaryResponse contains the global displacement summary.
