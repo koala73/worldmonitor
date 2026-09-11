@@ -135,7 +135,7 @@ export async function listAviationNews(
             const matched = matchesEntities(textToSearch, entities);
             if (entities.length > 0 && matched.length === 0) continue;
 
-            const snippet = (item.description as string | undefined ?? '').replace(/<[^>]+>/g, '').replace(/</g, '').slice(0, 200);
+            const snippet = (item.description as string | undefined ?? '').replace(/<[^>]*>?/g, '').slice(0, 200);
 
             filtered.push({
                 id: btoa(link).slice(0, 32),

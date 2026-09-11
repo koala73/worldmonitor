@@ -154,7 +154,7 @@ test('plain-text snippets preserve normal text and remove residual tag openings'
   }) as typeof fetch;
   const result = await read(['Emirates'], 24, 50);
   assert.equal(result.items.length, 45);
-  const expected = ['Normal airline & route update', 'Update safe script', 'script>alert(1)', 'Decoded update script', '&lt;script&gt;encoded text&lt;/script&gt;'];
+  const expected = ['Normal airline & route update', 'Update safe ', 'script>alert(1)', 'Decoded update ', '&lt;script&gt;encoded text&lt;/script&gt;'];
   for (let i = 0; i < expected.length; i++) {
     assert.deepEqual(result.items.filter(item => item.title === `Emirates case ${i}`).map(item => item.snippet), Array(9).fill(expected[i]));
   }
