@@ -722,8 +722,24 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
+let nativeAviationNewsAdmissions: number[] = [];
+
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
+  // Native transport authentication happens before this gateway. Use one
+  // bounded local budget with the in-process cache; cloud and Docker use Redis.
+  if (pathname === '/api/aviation/v1/list-aviation-news'
+    && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const policy = ENDPOINT_RATE_POLICIES[pathname]!;
+    const windowSeconds = durationToSeconds(policy.window);
+    const now = Date.now();
+    nativeAviationNewsAdmissions = nativeAviationNewsAdmissions.filter(time => time > now - windowSeconds * 1000);
+    if (nativeAviationNewsAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, nativeAviationNewsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    }
+    nativeAviationNewsAdmissions.push(now);
+    return null;
+  }
 
   const rl = getEndpointRatelimit(pathname);
   if (!rl) {
@@ -892,6 +908,7 @@ export async function checkFailClosedScopedIpRateLimit(
 }
 
 export function __resetRateLimitForTest(): void {
+  nativeAviationNewsAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();
   scopedLimiters.clear();

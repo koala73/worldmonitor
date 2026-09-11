@@ -166,3 +166,111 @@ test('plain-text snippets preserve normal text and remove residual tag openings'
   }
   assert.ok(result.items.every(item => !item.snippet.includes('<')));
 });
+
+test('prewarmer snapshot serves filtered requests with no reader feed calls', async () => {
+  const { seedAviationNews, NEWS_KEY, NEWS_TTL } = await import('../scripts/seed-aviation.mjs');
+  assert.equal(NEWS_KEY, 'aviation:news:feeds:v2');
+  assert.equal(NEWS_TTL, 2400);
+  const snapshot = await seedAviationNews();
+  redis.redis.set(NEWS_KEY, JSON.stringify(snapshot));
+  calls = [];
+  const recent = await read(['Qantas'], 24, 3);
+  assert.equal(recent.items.length, 3);
+  assert.ok(recent.items.every(item => item.title === 'Qantas SYD expansion'));
+  const older = await read(['older'], 72, 20);
+  assert.equal(older.items.length, 9);
+  assert.equal(feeds().length, 0);
+});
+
+test('producer and reader bound full article fields and serialized snapshot size', async () => {
+  const { seedAviationNews } = await import('../scripts/seed-aviation.mjs');
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
+    const items = Array.from({ length: 30 }, (_, i) => `<item><title>Emirates ${i}</title><link>https://news.example/${i}</link><description><![CDATA[${'x'.repeat(10000)}LATE_MATCH]]></description></item>`).join('');
+    return new Response(`<rss><channel>${items}<item><title>excess</title></item></channel></rss>`);
+  }) as typeof fetch;
+  const produced = await seedAviationNews();
+  await read([], 24, 50);
+  const cached = JSON.parse(redis.redis.get('aviation:news:feeds:v2')!);
+  assert.deepEqual(cached, produced);
+  assert.equal(cached.items.length, 270);
+  assert.ok(cached.items.every((item: { description: string }) => item.description.length === 2048));
+  const { serializeExtraKeyValue } = await import('../scripts/_seed-utils.mjs');
+  const persisted = serializeExtraKeyValue('aviation:news:feeds:v2', produced);
+  assert.ok(Buffer.byteLength(persisted) < 840_000);
+  assert.ok(persisted.length * 2 < 2 * 1024 * 1024);
+  const { buildEnvelope } = await import('../scripts/_seed-envelope-source.mjs');
+  assert.ok(Buffer.byteLength(JSON.stringify(buildEnvelope({ fetchedAt: new Date().toISOString(), recordCount: 270, sourceVersion: 'test', schemaVersion: 1, state: 'ok', data: produced }))) < 2 * 1024 * 1024);
+  assert.equal((await read(['LATE_MATCH'])).items.length, 0);
+  assert.equal((await read(['xxxx'])).items.length, 20);
+});
+
+test('native sidecar gateway uses local cache without Upstash; cloud and Docker stay closed', async () => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  assert.equal((await gateway(request(['Emirates']))).status, 200);
+  assert.equal(feeds().length, 9);
+  assert.equal((await gateway(request(['Qantas']))).status, 200);
+  assert.equal(feeds().length, 9);
+  for (const mode of ['docker', '']) {
+    process.env.LOCAL_API_MODE = mode;
+    __resetRateLimitForTest();
+    assert.equal((await gateway(request(['Emirates']))).status, 503);
+  }
+});
+
+test('drops serialized records above 3KiB in both producer and reader', async () => {
+  const { seedAviationNews } = await import('../scripts/seed-aviation.mjs');
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
+    return new Response(`<rss><channel><item><title>Emirates short</title><link>https://news.example/short</link></item><item><title>Emirates oversized</title><link>https://news.example/long</link><description>${'航'.repeat(2048)}</description></item><item><title>Emirates long URL</title><link>https://news.example/${'x'.repeat(2048)}</link></item></channel></rss>`);
+  }) as typeof fetch;
+  const produced = await seedAviationNews();
+  assert.equal(produced.items.length, 9);
+  const result = await read(['Emirates']);
+  assert.equal(result.items.length, 9);
+  assert.ok(result.items.every(item => item.title === 'Emirates short'));
+  assert.deepEqual(JSON.parse(redis.redis.get('aviation:news:feeds:v2')!), produced);
+});
+
+test('actual native sidecar requires its token before the news gateway', async () => {
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createLocalApiServer } = await import('../src-tauri/sidecar/local-api-server.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'aviation-news-sidecar-'));
+  await mkdir(join(root, 'aviation/v1'), { recursive: true });
+  const serviceUrl = new URL('../src/generated/server/worldmonitor/aviation/v1/service_server.ts', import.meta.url).href;
+  const gatewayUrl = new URL('../server/gateway.ts', import.meta.url).href;
+  const handlerUrl = new URL('../server/worldmonitor/aviation/v1/handler.ts', import.meta.url).href;
+  await writeFile(join(root, 'aviation/v1/list-aviation-news.js'), `import {createAviationServiceRoutes} from ${JSON.stringify(serviceUrl)}; import {createDomainGateway,serverOptions} from ${JSON.stringify(gatewayUrl)}; import {aviationHandler} from ${JSON.stringify(handlerUrl)}; export default createDomainGateway(createAviationServiceRoutes(aviationHandler,serverOptions));`);
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.LOCAL_API_TOKEN = 'synthetic-native-transport';
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  const app = await createLocalApiServer({ port: 0, apiDir: root, dataDir: root, mode: 'tauri-sidecar', cloudFallback: false, logger: { log() {}, warn() {}, error() {} } });
+  const { port } = await app.start();
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    const url = `http://127.0.0.1:${port}${PATH}?window_hours=24&max_items=20&entities=Emirates`;
+    assert.equal((await originalFetch(url, { headers: { 'x-worldmonitor-local-token': 'invalid' } })).status, 401);
+    const headers = { 'x-worldmonitor-local-token': process.env.LOCAL_API_TOKEN, 'X-WorldMonitor-Key': session };
+    for (let i = 0; i < 30; i++) assert.equal((await originalFetch(url, { headers })).status, 200);
+    const denied = await originalFetch(url, { headers });
+    assert.equal(denied.status, 429);
+    assert.equal(Number(denied.headers.get('Retry-After')), 60);
+    now += 59_999;
+    assert.equal((await originalFetch(url, { headers })).status, 429);
+    now += 1;
+    assert.equal((await originalFetch(url, { headers })).status, 200);
+    assert.ok(feeds().length <= 9);
+  } finally {
+    Date.now = realNow;
+    await app.close();
+  }
+});
