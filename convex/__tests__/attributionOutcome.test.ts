@@ -67,7 +67,14 @@ test("paid audit alone cannot resolve; a matching fulfilled subscription enables
   await expect(t.mutation(internal.payments.webhookMutations.attributeUnattributedPayment, { rowId, userId: USER }))
     .rejects.toThrow("subscription access");
   expect(await state(t)).toEqual(before);
-  await seedSubscription(t);
+  await t.run((ctx) => ctx.db.insert("customers", {
+    userId: USER, dodoCustomerId: "cus_attribution", email: "buyer@example.test",
+    normalizedEmail: "buyer@example.test", createdAt: NOW, updatedAt: NOW,
+  }));
+  await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+    webhookId: "wh_subscription_fulfilled", eventType: "subscription.active",
+    rawPayload: payload("subscription.active"), timestamp: NOW,
+  });
   const result = await t.mutation(internal.payments.webhookMutations.attributeUnattributedPayment, { rowId, userId: USER });
   expect(result).toMatchObject({ attributedTo: USER, outcome: "subscription_access_confirmed" });
   const after = await state(t);
