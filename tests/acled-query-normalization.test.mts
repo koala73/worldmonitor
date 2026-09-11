@@ -44,8 +44,7 @@ test('rejects unsupported ACLED queries before authentication, cache, or upstrea
     { eventTypes: '' }, { eventTypes: '%' }, { eventTypes: 'Battles|unknown' },
     { eventTypes: 'Battles||Riots' }, { eventTypes: 'Battles'.repeat(100) },
     { startDate: '' }, { startDate: '2026-02-31' }, { startDate: '2026-2-13' },
-    { startDate: '2026-02-12' }, { startDate: '2025-03-15' },
-    { startDate: '2026-03-15', endDate: '2026-03-14' }, { endDate: '2026-03-16' },
+    { startDate: '2026-03-15', endDate: '2026-03-14' }, { endDate: '10000-01-01' },
     { endDate: '2026-03-15|2099-01-01' }, { endDate: '2026-03-15T00:00:00Z' },
     { limit: 0 }, { limit: -1 }, { limit: 1001 }, { limit: 1.5 },
     { limit: NaN }, { limit: Infinity }, { limit: '500' }, { limit: null },
@@ -117,5 +116,16 @@ test('distinct countries and limits stay separate while empty and omitted countr
   await fetchAcledCached({ ...query, country: 'GB', limit: 1000 });
   assert.deepEqual(provider.map(url => [url.searchParams.get('iso'), url.searchParams.get('limit')]), [
     [null, '500'], ['840', '500'], ['826', '500'], ['826', '1000'],
+  ]);
+});
+
+test('preserves documented historical ranges and explicit future end dates', async t => {
+  const { provider } = setup(t);
+  for (const [startDate, endDate] of [['2020-01-01', '2024-02-29'], ['2020-01-01', '2030-01-01']] as const) {
+    const events = await fetchAcledCached({ ...query, startDate, endDate });
+    assert.equal(events[0]?.event_id_cnty, 'fixture-event');
+  }
+  assert.deepEqual(provider.map(url => url.searchParams.get('event_date')), [
+    '2020-01-01|2024-02-29', '2020-01-01|2030-01-01',
   ]);
 });

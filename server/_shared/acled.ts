@@ -14,7 +14,6 @@ import UN_TO_ISO2 from '../../shared/un-to-iso2.json';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const ACLED_CACHE_TTL = 900; // 15 min — matches ACLED rate-limit window
 const ACLED_TIMEOUT_MS = 15_000;
-const DAY_MS = 86_400_000;
 const EVENT_TYPES = ['Battles', 'Explosions/Remote violence', 'Violence against civilians', 'Protests', 'Riots'];
 const ISO2_TO_NUMERIC = new Map(Object.entries(UN_TO_ISO2).map(([numeric, iso2]) => [iso2, String(Number(numeric))]));
 
@@ -54,9 +53,7 @@ function normalizeAcledQuery(opts: FetchAcledOptions) {
   };
   const start = dateMs(opts.startDate);
   const end = dateMs(opts.endDate);
-  const today = Math.floor(Date.now() / DAY_MS) * DAY_MS;
-  // Current callers use at most the trailing 30 days, including today's partial day.
-  if (start < today - 30 * DAY_MS || end > today || start > end) invalid('date window');
+  if (start > end) invalid('date window');
 
   if (typeof opts.eventTypes !== 'string' || opts.eventTypes.length > 256) invalid('eventTypes');
   const eventTypes = [...new Set(opts.eventTypes.split('|').map(value => {
@@ -81,8 +78,8 @@ function normalizeAcledQuery(opts: FetchAcledOptions) {
  * Fetch ACLED events with automatic Redis caching.
  * Cache key is derived from query parameters so identical queries across
  * different handlers share the same cached result.
- * Rejects unknown filters, dates outside today and the preceding 30 UTC days,
- * and limits outside 1–1000 before authentication or cache access.
+ * Rejects unknown filters, invalid or reversed calendar dates, and limits outside
+ * 1–1000 before authentication or cache access. Historical ranges remain supported.
  */
 export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRawEvent[]> {
   const query = normalizeAcledQuery(opts);
