@@ -48,7 +48,7 @@ beforeEach(() => {
   mock.method(globalThis, 'fetch', async (input, init) => {
     const url = String(input);
     calls.push(url);
-    if (new URL(url).origin === 'https://redis.test') {
+    if (new URL(url).hostname === 'redis.test') {
       const commands = JSON.parse(String(init?.body));
       const accountCommands = commands.some(command => command.some(arg => String(arg).startsWith('rl:apikey:')));
       return new Response(JSON.stringify(commands.map(command => {
@@ -101,7 +101,7 @@ for (const name of ['X-WorldMonitor-Key', 'X-Api-Key']) {
     assert.match(response.headers.get('Cache-Control'), /private/);
     assert.ok(calls.some(url => url.endsWith('/api/internal-validate-api-key')));
     assert.ok(calls.some(url => url.endsWith('/api/internal-entitlements')));
-    assert.ok(calls.some(url => new URL(url).origin === 'https://relay.test'));
+    assert.ok(calls.some(url => new URL(url).hostname === 'relay.test'));
     assert.doesNotMatch([...errors.mock.calls, ...warnings.mock.calls].flatMap(c => c.arguments).join(' '), /\[rate-limit\]/);
   });
 }
@@ -118,8 +118,8 @@ for (const mode of ['revoked', 'scoped', 'no-access', 'outage', 'malformed', 'li
     assert.equal(response.status, mode === 'limited' ? 429 : ['no-access', 'expired'].includes(mode) ? 403 : ['outage', 'limiter-outage'].includes(mode) ? 503 : 401);
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
     assert.ok(!commandsSeen.some(command => command.some(arg => String(arg).startsWith('rl:apikey:'))));
-    assert.ok(!calls.some(url => new URL(url).origin === 'https://relay.test'));
-    if (['malformed', 'limiter-outage', 'limited'].includes(mode)) assert.ok(!calls.some(url => new URL(url).origin === 'https://convex.test'));
+    assert.ok(!calls.some(url => new URL(url).hostname === 'relay.test'));
+    if (['malformed', 'limiter-outage', 'limited'].includes(mode)) assert.ok(!calls.some(url => new URL(url).hostname === 'convex.test'));
     if (['outage', 'limiter-outage'].includes(mode)) assert.ok(response.headers.get('Retry-After'));
   });
 }
@@ -154,7 +154,7 @@ it('shares the gateway daily namespace across two keys owned by the same account
   assert.deepEqual(dailyCommands('INCR').map(command => command[1]), [key, key]);
   assert.equal(dailyCommands('DECR').length, 1);
   assert.equal(burstCommands()[0][3], burstCommands()[1][3]);
-  assert.equal(calls.filter(url => new URL(url).origin === 'https://relay.test').length, 1);
+  assert.equal(calls.filter(url => new URL(url).hostname === 'relay.test').length, 1);
   assert.equal(response.headers.get('RateLimit-Policy'), '"default";q=1000;w=86400');
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
 });
@@ -177,7 +177,7 @@ it('enforces the verified Business burst limit before reserving daily usage', as
   assert.equal(body.plan, 'api_business');
   assert.equal(response.headers.get('RateLimit-Policy'), '"default";q=300;w=60');
   assert.equal(dailyCommands('INCR').length, 0);
-  assert.ok(!calls.some(url => new URL(url).origin === 'https://relay.test'));
+  assert.ok(!calls.some(url => new URL(url).hostname === 'relay.test'));
 });
 it('serves shadow daily excess and retains its increment', async () => {
   process.env.API_RATE_LIMIT_ENFORCE = 'false';
