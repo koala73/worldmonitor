@@ -491,6 +491,38 @@ test.describe('AI widget builder — PRO tier', () => {
     }
   });
 
+  test('shows quota retry guidance when generation fails after streaming starts', async ({ page }, testInfo) => {
+    await installProWidgetAgentMocks(page, []);
+    const denials = [
+      { status: 429, message: 'Widget quota exhausted. Try again later.', retryAfter: 120, expected: 'Widget quota exhausted. Try again in 2 minutes.' },
+      { status: 503, message: 'Widget quota unavailable. Try again later.', retryAfter: 30, expected: 'Widget quota is temporarily unavailable. Try again in 1 minute.' },
+      { status: 503, message: 'Widget quota unavailable. Try again later.', retryAfter: -1, expected: 'Widget quota is temporarily unavailable. Try again later.' },
+      { status: 503, message: 'Widget quota unavailable. Try again later.', retryAfter: 86401, expected: 'Widget quota is temporarily unavailable. Try again later.' },
+      { status: 503, message: 'Request timeout', retryAfter: 30, expected: 'Request timeout' },
+    ];
+    let denial = denials[0]!;
+    await page.route('**/widget-agent', (route) => route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ type: 'error', ...denial })}\n\n`,
+    }));
+    await page.goto('/');
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block-pro');
+    const modal = page.locator('.widget-chat-modal');
+    const sendButton = modal.locator('.widget-chat-send');
+    for (const response of denials) {
+      denial = response;
+      await expect(sendButton).toBeEnabled();
+      await modal.locator('.widget-chat-input').fill('Show an oil price chart');
+      await sendButton.click();
+      await expect(modal.locator('.widget-chat-preview')).toContainText(response.expected);
+      await expect(modal.locator('.widget-chat-footer-status')).toHaveText(response.expected);
+      await expect(sendButton).toBeEnabled();
+      await expect(modal.locator('.widget-chat-action-btn')).toBeDisabled();
+      if (response === denials[0]) await modal.screenshot({ path: testInfo.outputPath('streamed-quota-exhausted.png') });
+    }
+  });
+
   test('creates a PRO widget: iframe renders with allow-scripts sandbox and PRO badge visible', async ({
     page,
   }) => {
