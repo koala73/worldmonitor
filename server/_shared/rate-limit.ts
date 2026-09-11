@@ -294,6 +294,7 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
   // LLM article summarization is Pro-gated, but still needs a scoped,
   // fail-closed budget so Redis degradation cannot silently lift the
   // per-endpoint spend control.
@@ -538,6 +539,7 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
   '/api/news/v1/summarize-article': {
     reason: 'LLM-backed summarization can drive provider spend on cache misses.',
   },
@@ -718,8 +720,24 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
+let nativeGoogleFlightsAdmissions: number[] = [];
+
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
+  // Native transport authentication happens before this gateway. Use one
+  // bounded local budget with the in-process cache; cloud and Docker use Redis.
+  if (pathname === '/api/aviation/v1/search-google-flights'
+    && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const policy = ENDPOINT_RATE_POLICIES[pathname]!;
+    const windowSeconds = durationToSeconds(policy.window);
+    const now = Date.now();
+    nativeGoogleFlightsAdmissions = nativeGoogleFlightsAdmissions.filter(time => time > now - windowSeconds * 1000);
+    if (nativeGoogleFlightsAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, nativeGoogleFlightsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    }
+    nativeGoogleFlightsAdmissions.push(now);
+    return null;
+  }
 
   const rl = getEndpointRatelimit(pathname);
   if (!rl) {
@@ -888,6 +906,7 @@ export async function checkFailClosedScopedIpRateLimit(
 }
 
 export function __resetRateLimitForTest(): void {
+  nativeGoogleFlightsAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();
   scopedLimiters.clear();

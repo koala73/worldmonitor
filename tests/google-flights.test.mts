@@ -54,7 +54,7 @@ describe('searchGoogleFlights — multi-airline filtering', () => {
     const url = new URL(capturedUrl);
     const airlines = url.searchParams.getAll('airlines');
     assert.deepEqual(airlines.sort(), ['AA', 'BA'], 'each airline should be a separate airlines= param');
-    assert.equal(url.searchParams.get('airlines'), 'BA', 'first value sanity check');
+    assert.equal(url.searchParams.get('airlines'), 'AA', 'airlines use canonical order');
   });
 
   it('forwards a single airline correctly', async () => {

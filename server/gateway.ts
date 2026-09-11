@@ -1998,7 +1998,19 @@ export function createDomainGateway(
     // Gateway rate limiting — two-phase: endpoint-specific first, then global fallback.
     // Confirmed paid principals use per-user buckets; other traffic uses IP.
     //
-    // Internal-MCP verified requests skip this gateway layer: the MCP edge
+    // Flight searches need their tighter upstream budget even after MCP admission.
+    if (internalMcpVerified && pathname === '/api/aviation/v1/search-google-flights') {
+      const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
+        principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
+      });
+      if (endpointRlResponse) {
+        const reason = getRateLimitTelemetryReason(endpointRlResponse, 'rate_limit_429_endpoint');
+        emitRequest(endpointRlResponse.status, reason, null);
+        return endpointRlResponse;
+      }
+    }
+
+    // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
