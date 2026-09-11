@@ -119,7 +119,7 @@ test('cloud policy sends10/min to Redis and rejects the11th request', async () =
     const commands = init?.body ? JSON.parse(String(init.body)) : [];
     if (!Array.isArray(commands[0])) return response;
     const result = await response.json();
-    for (let i = 0; i < commands.length; i++) if (String(commands[i][0]).toUpperCase() === 'EVALSHA') result[i] = { result: [10 - ++admitted, 60] };
+    for (let i = 0; i < commands.length; i++) if (String(commands[i][0]).toUpperCase() === 'EVALSHA') result[i] = { result: [10 - ++admitted, 10] };
     return Response.json(result);
   }) as typeof fetch;
   for (let i = 0; i < 10; i++) assert.equal((await gateway(request())).status, 200);
@@ -197,4 +197,91 @@ test('valid leap day and supported aliases reach only the configured relay', asy
   assert.equal(url.searchParams.get('cabin_class'), 'BUSINESS');
   await read({ startDate: '2028-02-29', endDate: '2028-02-29', maxStops: 'NON_STOP', cabinClass: 'BUSINESS', departureWindow: '0-24', airlines: ['U2'] });
   assert.equal(feeds().length, 1);
+});
+
+async function installMcpFixture(outage = false) {
+  const { signInternalMcpRequest, buildInternalMcpHeaders } = await import('../server/_shared/mcp-internal-hmac.ts');
+  process.env.MCP_INTERNAL_HMAC_SECRET = 'synthetic-mcp-date-secret-32-bytes';
+  process.env.CONVEX_SITE_URL = 'https://convex.example';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'synthetic-convex-secret';
+  const transport = globalThis.fetch;
+  let admissions = 0;
+  const wire: { init?: RequestInit }[] = [];
+  const events: { status: number; reason: string }[] = [];
+  const pending: Promise<unknown>[] = [];
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'synthetic-token';
+  globalThis.fetch = (async (input, init) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'api.axiom.co') {
+      events.push(...JSON.parse(String(init?.body)));
+      return Response.json({});
+    }
+    if (url.hostname === 'convex.example') return Response.json({ planKey: 'pro', features: { tier: 1, mcpAccess: true, apiAccess: false, apiRateLimit: 60 }, validUntil: Date.now() + 86400000 });
+    if (url.hostname !== 'redis.example') return transport(input, init);
+    const commands = init?.body ? JSON.parse(String(init.body)) : [];
+    if (!Array.isArray(commands[0])) return transport(input, init);
+    if (commands.some((command: string[]) => String(command[1]).startsWith('internal-mcp-replay:'))) return Response.json(commands.map(() => ({ result: 'OK' })));
+    wire.push({ init });
+    if (commands.some((command: string[]) => command[0].toUpperCase() === 'EVALSHA')) {
+      if (outage) throw new Error('Synthetic endpoint limiter outage');
+      return Response.json(commands.map(() => ({ result: [10 - ++admissions, 10] })));
+    }
+    return transport(input, init);
+  }) as typeof fetch;
+  return {
+    wire,
+    events,
+    ctx: { waitUntil: (promise: Promise<unknown>) => { pending.push(promise); } },
+    settled: () => Promise.all(pending),
+    admissions: () => admissions,
+    signed: async () => {
+      const url = request().url;
+      const signed = await signInternalMcpRequest({ method: 'GET', url, body: '', userId: 'user_dates_pro', secret: process.env.MCP_INTERNAL_HMAC_SECRET! });
+      const headers = new Headers(buildInternalMcpHeaders(signed));
+      const { TRUSTED_USER_ID_HEADER } = await import('../server/_shared/mcp-internal-hmac.ts');
+      headers.set(TRUSTED_USER_ID_HEADER, 'injected_bucket');
+      return new Request(url, { headers });
+    },
+  };
+}
+
+test('verified MCP date searches use the10/min verified user bucket', async () => {
+  const fixture = await installMcpFixture();
+  for (let i = 0; i < 10; i++) assert.equal((await gateway(await fixture.signed())).status, 200);
+  const denied = await gateway(await fixture.signed(), fixture.ctx);
+  assert.equal(denied.status, 429);
+  assert.ok(Number(denied.headers.get('Retry-After')) > 0);
+  assert.deepEqual(await denied.json(), { error: 'Too many requests' });
+  assert.equal(denied.headers.get('RateLimit-Limit'), '10');
+  assert.equal(fixture.admissions(), 11);
+  const sent = readLimiterRequest(fixture.wire);
+  assert.equal(sent?.tokens, 10);
+  assert.equal(sent?.windowMs, 60000);
+  assert.ok(sent?.keys.some((key: string) => key.includes('user_dates_pro')));
+  assert.ok(sent?.keys.every((key: string) => !key.includes('injected_bucket')));
+  assert.equal(feeds().length, 1);
+  await fixture.settled();
+  assert.deepEqual(fixture.events.map(({ status, reason }) => ({ status, reason })), [{ status: 429, reason: 'rate_limit_429_endpoint' }]);
+});
+
+test('verified MCP fails closed after valid replay and entitlement if endpoint store fails', async () => {
+  const fixture = await installMcpFixture(true);
+  const response = await gateway(await fixture.signed(), fixture.ctx);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: 'Rate-limit service temporarily unavailable' });
+  assert.equal(response.headers.get('Retry-After'), '5');
+  assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
+  assert.equal(feeds().length, 0);
+  await fixture.settled();
+  assert.deepEqual(fixture.events.map(({ status, reason }) => ({ status, reason })), [{ status: 503, reason: 'rate_limit_degraded' }]);
+});
+
+test('unsigned trusted-marker spoof cannot create a verified MCP admission', async () => {
+  const fixture = await installMcpFixture();
+  const { INTERNAL_MCP_VERIFIED_HEADER, TRUSTED_USER_ID_HEADER } = await import('../server/_shared/mcp-internal-hmac.ts');
+  const spoof = new Request(request().url, { headers: { [INTERNAL_MCP_VERIFIED_HEADER]: 'spoofed', [TRUSTED_USER_ID_HEADER]: 'user_dates_pro' } });
+  assert.equal((await gateway(spoof)).status, 401);
+  assert.equal(fixture.admissions(), 0);
+  assert.equal(feeds().length, 0);
 });
