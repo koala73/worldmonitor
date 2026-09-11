@@ -89,7 +89,10 @@ test('actual native sidecar requires its token before the flight-search gateway'
   const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
+  const providerFetch = globalThis.fetch;
   const { createLocalApiServer } = await import('../src-tauri/sidecar/local-api-server.mjs');
+  // Sidecar import installs its network transport; keep upstream I/O synthetic.
+  globalThis.fetch = providerFetch;
   const root = await mkdtemp(join(tmpdir(), 'google-flights-sidecar-'));
   await mkdir(join(root, 'aviation/v1'), { recursive: true });
   const serviceUrl = new URL('../src/generated/server/worldmonitor/aviation/v1/service_server.ts', import.meta.url).href;
@@ -109,7 +112,11 @@ test('actual native sidecar requires its token before the flight-search gateway'
     const url = `http://127.0.0.1:${port}${PATH}?origin=DXB&destination=LHR&departure_date=2026-10-01`;
     assert.equal((await originalFetch(url, { headers: { 'x-worldmonitor-local-token': 'invalid' } })).status, 401);
     const headers = { 'x-worldmonitor-local-token': process.env.LOCAL_API_TOKEN, 'X-WorldMonitor-Key': session };
-    for (let i = 0; i < 30; i++) assert.equal((await originalFetch(url, { headers })).status, 200);
+    for (let i = 0; i < 30; i++) {
+      const response = await originalFetch(url, { headers });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { flights: [], degraded: false, error: '' });
+    }
     const denied = await originalFetch(url, { headers });
     assert.equal(denied.status, 429);
     assert.equal(Number(denied.headers.get('Retry-After')), 60);
@@ -117,7 +124,7 @@ test('actual native sidecar requires its token before the flight-search gateway'
     assert.equal((await originalFetch(url, { headers })).status, 429);
     now += 1;
     assert.equal((await originalFetch(url, { headers })).status, 200);
-    assert.ok(feeds().length <= 1);
+    assert.equal(feeds().length, 1);
   } finally {
     Date.now = realNow;
     await app.close();
