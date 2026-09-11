@@ -101,4 +101,5 @@ Missing, unreadable, or nonmatching snapshots return `dataAvailable: false`,
 responses. Existing seeds remain readable with their original fetched timestamp;
 requests never fetch UNHCR or create query cache entries, even when the former
 `SEED_FALLBACK_DISPLACEMENT` flag is set. Country and flow limits still apply to
-the response without changing the shared seed.
+the response without changing the shared seed. Desktop requests use the existing
+cloud proxy because the local sidecar does not hold Railway seeds.

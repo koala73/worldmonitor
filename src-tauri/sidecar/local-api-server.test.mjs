@@ -81,6 +81,41 @@ test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async
   }
 });
 
+test('routes seed-only displacement requests to cloud before a local empty 200', async () => {
+  const endpoint = '/api/displacement/v1/get-displacement-summary';
+  const seeded = { summary: { year: 2025, countries: [{ code: 'SYR' }], topFlows: [] }, fetchedAt: 123456, dataAvailable: true };
+  const hits = [];
+  const remote = createServer((req, res) => {
+    hits.push(req.url);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(seeded));
+  });
+  const remotePort = await listen(remote);
+  const localApi = await setupApiDir({
+    'displacement/v1/get-displacement-summary.js': `export default async function handler() {
+      return Response.json({ dataAvailable: false, fetchedAt: 0 });
+    }`,
+  });
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: `http://127.0.0.1:${remotePort}`, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  try {
+    const query = '?year=0&flow_limit=50';
+    const response = await authFetch(`http://127.0.0.1:${port}${endpoint}${query}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), seeded);
+    assert.deepEqual(hits, [`${endpoint}${query}`]);
+    assert.equal(__testing__.isCloudPreferred(endpoint), true);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => remote.close(error => error ? reject(error) : resolve()));
+  }
+});
+
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
 // an open local-HTTP proxy). Set a stable test token + an authFetch helper

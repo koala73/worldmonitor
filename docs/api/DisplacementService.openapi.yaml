@@ -25,7 +25,7 @@ paths:
                     Data year: 1951 through the current year. Zero returns the latest seeded data.
                      An explicit year is available only if it matches the published snapshot.
                   required: false
-                  example: 1
+                  example: 0
                   schema:
                     type: integer
                     format: int32

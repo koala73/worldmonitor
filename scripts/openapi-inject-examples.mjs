@@ -882,6 +882,8 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     }
   }
 
+  if (context.operationId === 'GetDisplacementSummary' && context.name === 'year'
+    && (context.exampleSurface === 'parameter' || context.exampleSurface === 'request')) return 0;
   if (schema.example !== undefined) return clone(schema.example);
   if (schema.default !== undefined) return clone(schema.default);
   if (schema.const !== undefined) return clone(schema.const);

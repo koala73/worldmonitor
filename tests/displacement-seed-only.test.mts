@@ -138,3 +138,14 @@ test('real gateway retains session and canonical public access while keeping una
   assert.equal(missing.headers.get('Cache-Control'), 'no-store');
   assert.deepEqual(upstream, []);
 });
+
+test('published year example is accepted by the real generated route', async () => {
+  const spec = JSON.parse(await readFile(new URL('../docs/api/DisplacementService.openapi.json', import.meta.url), 'utf8'));
+  const operation = spec.paths['/api/displacement/v1/get-displacement-summary'].get;
+  const example = operation.parameters.find(p => p.name === 'year').example;
+  assert.equal(example, 0);
+  install({ [seedKey]: snapshot, [metaKey]: { fetchedAt } });
+  const response = await request(`?year=${example}`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ...snapshot, fetchedAt, dataAvailable: true });
+});
