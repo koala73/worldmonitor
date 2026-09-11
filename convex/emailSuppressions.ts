@@ -44,17 +44,20 @@ export const suppress = internalMutation({
 });
 
 export const isEmailSuppressed = internalQuery({
-  args: { email: v.string() },
+  args: {
+    email: v.string(),
+    purpose: v.union(v.literal("transactional"), v.literal("marketing")),
+  },
   handler: async (ctx, args) => {
     const normalizedEmail = args.email.trim().toLowerCase();
     const entry = await ctx.db
       .query("emailSuppressions")
       .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
       .first();
-    // Broadcast exporters consume every emailSuppressions row. This query is
-    // used for transactional mail, where a broadcast-only unsubscribe must
-    // not prevent account, payment, or plan-limit delivery.
-    return !!entry && entry.reason !== "unsubscribe";
+    // Broadcast exporters consume every emailSuppressions row. Transactional
+    // senders may deliver account and payment notices after a broadcast
+    // opt-out; marketing senders must retain that opt-out.
+    return !!entry && (entry.reason !== "unsubscribe" || args.purpose === "marketing");
   },
 });
 
@@ -69,6 +72,7 @@ export const bulkSuppress = internalMutation({
   handler: async (ctx, args) => {
     let added = 0;
     let skipped = 0;
+    let upgraded = 0;
     for (const entry of args.emails) {
       const normalizedEmail = entry.email.trim().toLowerCase();
       const existing = await ctx.db
@@ -77,6 +81,17 @@ export const bulkSuppress = internalMutation({
         .first();
 
       if (existing) {
+        // Keep bulk imports consistent with suppress: a later delivery block
+        // upgrades a broadcast-only unsubscribe, so transactional sends stop.
+        if (existing.reason === "unsubscribe") {
+          await ctx.db.patch(existing._id, {
+            reason: entry.reason,
+            suppressedAt: Date.now(),
+            source: entry.source,
+          });
+          upgraded++;
+          continue;
+        }
         skipped++;
         continue;
       }
@@ -89,7 +104,7 @@ export const bulkSuppress = internalMutation({
       });
       added++;
     }
-    return { added, skipped };
+    return { added, skipped, upgraded };
   },
 });
 

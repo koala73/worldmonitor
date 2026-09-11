@@ -1720,8 +1720,8 @@ export default defineSchema({
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
-    // unsubscribe is broadcast-only consent. The other reasons suppress
-    // both broadcast and transactional delivery.
+    // unsubscribe withdraws broadcast and marketing consent. The other
+    // reasons suppress broadcast, marketing, and transactional delivery.
     reason: v.union(
       v.literal("bounce"),
       v.literal("complaint"),
