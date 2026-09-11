@@ -29,6 +29,43 @@ describe("emailSuppressions", () => {
     expect(id1).toEqual(id2);
   });
 
+  test("records an unsubscribe reason and does not downgrade it", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "opted.out@example.com",
+      reason: "bounce",
+      source: "resend-webhook:email_bounced",
+    });
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "OPTED.OUT@example.com",
+      reason: "unsubscribe",
+      source: "resend-webhook:contact_unsubscribed",
+    });
+
+    let rows = await t.run(async (ctx) =>
+      await ctx.db.query("emailSuppressions").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      normalizedEmail: "opted.out@example.com",
+      reason: "unsubscribe",
+      source: "resend-webhook:contact_unsubscribed",
+    });
+
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "opted.out@example.com",
+      reason: "complaint",
+      source: "resend-webhook:email_complained",
+    });
+    rows = await t.run(async (ctx) =>
+      await ctx.db.query("emailSuppressions").collect(),
+    );
+    expect(rows[0]).toMatchObject({
+      reason: "unsubscribe",
+      source: "resend-webhook:contact_unsubscribed",
+    });
+  });
+
   test("suppress normalizes email (case + whitespace)", async () => {
     const t = convexTest(schema, modules);
     const id1 = await t.mutation(internal.emailSuppressions.suppress, {

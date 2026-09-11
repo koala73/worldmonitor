@@ -4,7 +4,12 @@ import { v } from "convex/values";
 export const suppress = internalMutation({
   args: {
     email: v.string(),
-    reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
+    reason: v.union(
+      v.literal("bounce"),
+      v.literal("complaint"),
+      v.literal("manual"),
+      v.literal("unsubscribe"),
+    ),
     source: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -15,7 +20,18 @@ export const suppress = internalMutation({
       .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
       .first();
 
-    if (existing) return existing._id;
+    if (existing) {
+      // An explicit unsubscribe is stronger consent state than a delivery
+      // failure. Keep it if later webhook deliveries report another reason.
+      if (args.reason === "unsubscribe" && existing.reason !== "unsubscribe") {
+        await ctx.db.patch(existing._id, {
+          reason: "unsubscribe",
+          suppressedAt: Date.now(),
+          source: args.source,
+        });
+      }
+      return existing._id;
+    }
 
     return await ctx.db.insert("emailSuppressions", {
       normalizedEmail,
