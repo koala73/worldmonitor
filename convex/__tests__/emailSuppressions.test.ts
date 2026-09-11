@@ -29,7 +29,7 @@ describe("emailSuppressions", () => {
     expect(id1).toEqual(id2);
   });
 
-  test("records an unsubscribe reason and does not downgrade it", async () => {
+  test("keeps a delivery suppression when a broadcast unsubscribe follows", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.emailSuppressions.suppress, {
       email: "opted.out@example.com",
@@ -48,8 +48,8 @@ describe("emailSuppressions", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       normalizedEmail: "opted.out@example.com",
-      reason: "unsubscribe",
-      source: "resend-webhook:contact_unsubscribed",
+      reason: "bounce",
+      source: "resend-webhook:email_bounced",
     });
 
     await t.mutation(internal.emailSuppressions.suppress, {
@@ -61,8 +61,8 @@ describe("emailSuppressions", () => {
       await ctx.db.query("emailSuppressions").collect(),
     );
     expect(rows[0]).toMatchObject({
-      reason: "unsubscribe",
-      source: "resend-webhook:contact_unsubscribed",
+      reason: "bounce",
+      source: "resend-webhook:email_bounced",
     });
   });
 
@@ -88,6 +88,42 @@ describe("emailSuppressions", () => {
     const result = await t.query(
       internal.emailSuppressions.isEmailSuppressed,
       { email: "bad@example.com" },
+    );
+    expect(result).toBe(true);
+  });
+
+  test("isEmailSuppressed returns false for a broadcast-only unsubscribe", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "opted.out@example.com",
+      reason: "unsubscribe",
+    });
+
+    const result = await t.query(
+      internal.emailSuppressions.isEmailSuppressed,
+      { email: "opted.out@example.com" },
+    );
+    expect(result).toBe(false);
+  });
+
+  test("upgrades a broadcast-only unsubscribe when delivery later fails", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "opted.out@example.com",
+      reason: "unsubscribe",
+    });
+    await t.mutation(internal.emailSuppressions.suppress, {
+      email: "opted.out@example.com",
+      reason: "complaint",
+    });
+
+    const rows = await t.run(async (ctx) =>
+      await ctx.db.query("emailSuppressions").collect(),
+    );
+    expect(rows).toMatchObject([{ reason: "complaint" }]);
+    const result = await t.query(
+      internal.emailSuppressions.isEmailSuppressed,
+      { email: "opted.out@example.com" },
     );
     expect(result).toBe(true);
   });

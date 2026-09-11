@@ -173,6 +173,7 @@ describe("Resend webhook signature verification (#4678)", () => {
 
   test("persists a signed contact.updated unsubscribe", async () => {
     vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.env.RESEND_WEBHOOK_SECRET = RESEND_WEBHOOK_SECRET;
     const payload = JSON.stringify({
       type: "contact.updated",
@@ -198,6 +199,11 @@ describe("Resend webhook signature verification (#4678)", () => {
       reason: "unsubscribe",
       source: "resend-webhook:contact_unsubscribed",
     });
+    const message = log.mock.calls
+      .map(([value]) => String(value))
+      .find((value) => value.startsWith("[resend-webhook] Suppressed"));
+    expect(message).toContain("O***@Example.com");
+    expect(message).not.toContain("Opted.Out@Example.com");
   });
 
   test("does not treat a contact.updated resubscribe as an unsubscribe", async () => {

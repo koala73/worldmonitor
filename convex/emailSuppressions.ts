@@ -21,11 +21,12 @@ export const suppress = internalMutation({
       .first();
 
     if (existing) {
-      // An explicit unsubscribe is stronger consent state than a delivery
-      // failure. Keep it if later webhook deliveries report another reason.
-      if (args.reason === "unsubscribe" && existing.reason !== "unsubscribe") {
+      // A Resend unsubscribe applies to broadcasts only. Do not let it erase
+      // a hard delivery suppression that also protects transactional mail.
+      // Conversely, a later delivery failure upgrades a broadcast-only row.
+      if (existing.reason === "unsubscribe" && args.reason !== "unsubscribe") {
         await ctx.db.patch(existing._id, {
-          reason: "unsubscribe",
+          reason: args.reason,
           suppressedAt: Date.now(),
           source: args.source,
         });
@@ -50,7 +51,10 @@ export const isEmailSuppressed = internalQuery({
       .query("emailSuppressions")
       .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
       .first();
-    return !!entry;
+    // Broadcast exporters consume every emailSuppressions row. This query is
+    // used for transactional mail, where a broadcast-only unsubscribe must
+    // not prevent account, payment, or plan-limit delivery.
+    return !!entry && entry.reason !== "unsubscribe";
   },
 });
 

@@ -22,6 +22,13 @@ type ResendWebhookEvent = {
   };
 };
 
+function maskEmail(email: string): string {
+  const trimmed = email.trim();
+  const at = trimmed.indexOf("@");
+  if (at <= 0) return "***";
+  return `${trimmed.slice(0, 1)}***${trimmed.slice(at)}`;
+}
+
 function getSuppressionDetails(
   event: ResendWebhookEvent,
 ): { recipients: string[]; reason: SuppressionReason } | null {
@@ -173,9 +180,9 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
         reason: suppression.reason,
         source: `resend-webhook:${event.data?.email_id ?? event.data?.id ?? "unknown"}`,
       });
-      console.log(`[resend-webhook] Suppressed ${email} (${suppression.reason})`);
-    } catch (err) {
-      console.error(`[resend-webhook] Failed to suppress ${email}:`, err);
+      console.log(`[resend-webhook] Suppressed ${maskEmail(email)} (${suppression.reason})`);
+    } catch {
+      console.error(`[resend-webhook] Failed to suppress ${maskEmail(email)}`);
       return new Response("Internal processing error", { status: 500 });
     }
   }
