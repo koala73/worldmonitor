@@ -188,6 +188,7 @@ const MAP = [
   [/^panel:\w+\.stock-analysis$/,             { cap: 'markets.stock_analysis' }],
   [/^panel:\w+\.stock-backtest$/,             { cap: 'markets.backtest' }],
   [/^panel:\w+\.daily-market-brief$/,         { cap: 'markets.brief' }],
+  [/:\/api\/intelligence\/v1\/list-wsb-tickers$/, { cap: 'markets.wsb' }],
   [/^panel:\w+\.wsb-ticker-scanner$/,         { cap: 'markets.wsb' }],
   [/^panel:\w+\.market-implications$/,        { cap: 'markets.implications' }],
   [/^panel:\w+\.trade-policy$/,               { cap: 'trade.flows' }],

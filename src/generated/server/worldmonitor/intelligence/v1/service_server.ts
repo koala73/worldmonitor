@@ -655,19 +655,9 @@ export interface ListWsbTickersResponse {
 export interface WsbTicker {
   symbol: string;
   mentionCount: number;
-  uniquePosts: number;
   totalScore: number;
-  avgUpvoteRatio: number;
-  topPost?: WsbTopPost;
   subreddits: string[];
   velocityScore: number;
-}
-
-export interface WsbTopPost {
-  title: string;
-  url: string;
-  score: number;
-  subreddit: string;
 }
 
 export interface GetSocialVelocityRequest {

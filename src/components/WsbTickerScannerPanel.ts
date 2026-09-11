@@ -58,7 +58,7 @@ export class WsbTickerScannerPanel extends Panel {
       this.updateData(tickers);
       return true;
     }
-    this.showError('No ticker data available yet', () => { void this.fetchData(); }, 60);
+    if (!this._hasData) this.showError('No ticker data available yet', () => { void this.fetchData(); }, 60);
     return false;
   }
 

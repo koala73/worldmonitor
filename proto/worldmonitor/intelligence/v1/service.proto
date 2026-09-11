@@ -205,7 +205,7 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/list-market-implications", method: HTTP_METHOD_GET};
   }
 
-  // ListWsbTickers returns the premium Reddit ticker scanner feed.
+  // Premium Reddit ticker feed.
   rpc ListWsbTickers(ListWsbTickersRequest) returns (ListWsbTickersResponse) {
     option (sebuf.http.config) = {path: "/list-wsb-tickers", method: HTTP_METHOD_GET};
   }

@@ -1,43 +1,25 @@
 syntax = "proto3";
 package worldmonitor.intelligence.v1;
 
-// WsbTopPost identifies the highest-scoring post mentioning a ticker.
-message WsbTopPost {
-  // Post title.
-  string title = 1;
-  // Original Reddit URL.
-  string url = 2;
-  // Post score.
-  int32 score = 3;
-  // Source subreddit.
-  string subreddit = 4;
-}
-
-// WsbTicker summarizes mentions of one symbol in the scanner window.
+// Mentions by ticker.
 message WsbTicker {
   // Market symbol.
   string symbol = 1;
   // Total mentions.
   int32 mention_count = 2;
-  // Distinct posts mentioning the symbol.
-  int32 unique_posts = 3;
   // Sum of source post scores.
   int32 total_score = 4;
-  // Mean upvote ratio from 0 to 1.
-  double avg_upvote_ratio = 5;
-  // Highest-scoring source post, when available.
-  WsbTopPost top_post = 6;
   // Source subreddits.
   repeated string subreddits = 7;
   // Relative mention velocity score.
   double velocity_score = 8;
 }
 
-// ListWsbTickersRequest selects the current premium scanner snapshot.
+// Current WSB snapshot.
 message ListWsbTickersRequest {}
 
-// ListWsbTickersResponse contains up to 50 ranked ticker summaries.
+// Up to 50 ranked tickers.
 message ListWsbTickersResponse {
-  // Ranked tickers; empty when no seed is available.
+  // Empty without seed.
   repeated WsbTicker tickers = 1;
 }

@@ -16552,7 +16552,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListWsbTickers
-            description: ListWsbTickers returns the premium Reddit ticker scanner feed. PRO-gated. Requires an active Pro subscription.
+            description: Premium Reddit ticker feed. PRO-gated. Requires an active Pro subscription.
             operationId: ListWsbTickers
             security:
                 - WorldMonitorKey: []
@@ -16574,16 +16574,12 @@ paths:
                         application/json:
                             example:
                                 "tickers":
-                                    - "avgUpvoteRatio": 42.5
-                                      "mentionCount": 1
+                                    - "mentionCount": 1
                                       "subreddits":
                                           - "example"
                                       "symbol": "AAPL"
-                                      "topPost":
-                                          "score": 42
-                                          "subreddit": "example"
-                                          "title": "example"
-                                          "url": "https://example.com/worldmonitor"
+                                      "totalScore": 42
+                                      "velocityScore": 42.5
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListWsbTickersResponse'
                 "400":
@@ -45471,7 +45467,7 @@ components:
                     type: string
         worldmonitor_intelligence_v1_ListWsbTickersRequest:
             type: object
-            description: ListWsbTickersRequest selects the current premium scanner snapshot.
+            description: Current WSB snapshot.
         worldmonitor_intelligence_v1_ListWsbTickersResponse:
             type: object
             properties:
@@ -45479,7 +45475,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_intelligence_v1_WsbTicker'
-            description: ListWsbTickersResponse contains up to 50 ranked ticker summaries.
+            description: Up to 50 ranked tickers.
         worldmonitor_intelligence_v1_WsbTicker:
             type: object
             properties:
@@ -45490,20 +45486,10 @@ components:
                     type: integer
                     format: int32
                     description: Total mentions.
-                uniquePosts:
-                    type: integer
-                    format: int32
-                    description: Distinct posts mentioning the symbol.
                 totalScore:
                     type: integer
                     format: int32
                     description: Sum of source post scores.
-                avgUpvoteRatio:
-                    type: number
-                    format: double
-                    description: Mean upvote ratio from 0 to 1.
-                topPost:
-                    $ref: '#/components/schemas/worldmonitor_intelligence_v1_WsbTopPost'
                 subreddits:
                     type: array
                     items:
@@ -45513,24 +45499,7 @@ components:
                     type: number
                     format: double
                     description: Relative mention velocity score.
-            description: WsbTicker summarizes mentions of one symbol in the scanner window.
-        worldmonitor_intelligence_v1_WsbTopPost:
-            type: object
-            properties:
-                title:
-                    type: string
-                    description: Post title.
-                url:
-                    type: string
-                    description: Original Reddit URL.
-                score:
-                    type: integer
-                    format: int32
-                    description: Post score.
-                subreddit:
-                    type: string
-                    description: Source subreddit.
-            description: WsbTopPost identifies the highest-scoring post mentioning a ticker.
+            description: Mentions by ticker.
         worldmonitor_intelligence_v1_GetSocialVelocityRequest:
             type: object
         worldmonitor_intelligence_v1_GetSocialVelocityResponse:

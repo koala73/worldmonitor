@@ -92,6 +92,6 @@ test('WSB RPC rejects public callers and serves enterprise callers without share
   const response = await intelligence(new Request(endpoint, { headers: { 'X-WorldMonitor-Key': 'synthetic-enterprise-wsb' } }));
   assert.equal(response.status, 200);
   assert.match(response.headers.get('Cache-Control') || '', /no-store/);
-  assert.deepEqual((await response.json()).tickers, fixture.tickers);
+  assert.deepEqual((await response.json()).tickers, fixture.tickers.map(({ symbol, mentionCount, totalScore, subreddits, velocityScore }) => ({ symbol, mentionCount, totalScore, subreddits, velocityScore })));
   assert.ok(reads.includes(SEED));
 });
