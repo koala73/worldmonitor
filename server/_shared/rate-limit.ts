@@ -294,6 +294,9 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  // Public relay/HTML discovery has the same scrape fan-out as the legacy
+  // YouTube live endpoint and needs its own fail-closed gateway budget.
+  '/api/aviation/v1/get-youtube-live-stream-info': { limit: 30, window: '60 s' },
   // LLM article summarization is Pro-gated, but still needs a scoped,
   // fail-closed budget so Redis degradation cannot silently lift the
   // per-endpoint spend control.
@@ -538,6 +541,9 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/aviation/v1/get-youtube-live-stream-info': {
+    reason: 'Public live-stream discovery can fan out to relay and YouTube HTML scrapes on cache misses.',
+  },
   '/api/news/v1/summarize-article': {
     reason: 'LLM-backed summarization can drive provider spend on cache misses.',
   },
