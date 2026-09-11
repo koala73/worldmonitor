@@ -347,6 +347,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // paid-provider probe under anonymous or rotating callers.
   '/api/military/v1/get-aircraft-details': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
+  // Live lookups can fan out to position, schedule and photo providers.
+  '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
@@ -606,6 +608,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/military/v1/get-aircraft-details': {
     reason: 'Single aircraft enrichment proxies the external Wingbits provider on cache miss.',
+  },
+  '/api/military/v1/get-wingbits-live-flight': {
+    reason: 'Live aircraft lookups fan out to external providers on short-lived cache misses.',
   },
   '/api/batch/v1/execute': {
     reason: 'Generic batch fan-out multiplies one request into up to 20 gateway sub-requests.',

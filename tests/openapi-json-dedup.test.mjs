@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import {
+  INLINE_DESCRIPTION_MAX_BYTES,
+  INLINE_SUMMARY_OVERRIDES,
+  leadSentence,
   dedupeErrorResponses,
   dedupeSharedParameters,
   ensureInlineTypedInput,
@@ -557,6 +560,124 @@ describe('ensureInlineTypedInput (fixture)', () => {
     assert.equal(spec.paths['/both'].get.parameters[0].name, 'cursor');
     assert.equal(spec.paths['/both'].get.parameters[1].$ref, '#/components/parameters/JmespathParam');
   });
+
+  it('shortens a long description on the restored copy and leaves the component whole', () => {
+    const full = 'Optional JMESPath expression applied server-side (mirrors the MCP argument). '
+      + 'Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the '
+      + '256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. '
+      + 'Grammar and worked examples: https://example.test/docs. The component text is long on purpose, '
+      + 'because only a description over the inline cap is shortened at all.';
+    const spec = {
+      openapi: '3.1.0',
+      paths: { '/only-ref': { get: { parameters: [{ $ref: '#/components/parameters/JmespathParam' }] } } },
+      components: {
+        parameters: {
+          JmespathParam: { name: 'jmespath', in: 'query', description: full, schema: { type: 'string' } },
+        },
+      },
+    };
+
+    ensureInlineTypedInput(spec);
+    const restored = spec.paths['/only-ref'].get.parameters[0];
+    // The copy exists so a JSON-only scanner sees a typed, described input —
+    // not so the component's full caveats are repeated on every operation.
+    assert.equal(restored.schema.type, 'string');
+    // JmespathParam carries a curated summary: the lead sentence plus the two
+    // limits the API contract states on every operation.
+    assert.match(restored.description, /^Optional JMESPath expression applied server-side to project/);
+    assert.match(restored.description, /1024 UTF-8 bytes/);
+    assert.match(restored.description, /256 KB output cap/);
+    assert.match(restored.description, /#\/components\/parameters\/JmespathParam/);
+    assert.ok(
+      Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
+      `restored description is ${Buffer.byteLength(restored.description, 'utf8')} bytes`,
+    );
+    assert.equal(spec.components.parameters.JmespathParam.description, full);
+  });
+
+  it('derives a balanced lead sentence when the lead carries an abbreviation inside a parenthetical', () => {
+    // RegionidParam's real text: splitting on "e.g." before stripping the
+    // bracket produced `Display region id (e.g. Full text: …` in the served spec.
+    const full = 'Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js. '
+      + 'Kebab-case: lowercase alphanumeric groups separated by single hyphens, no trailing or '
+      + 'consecutive hyphens. This sentence only exists to push the description over the inline cap '
+      + 'so the shortener runs on it, and it keeps going until it certainly does that.'.repeat(2);
+    const spec = {
+      openapi: '3.1.0',
+      paths: { '/only-ref': { get: { parameters: [{ $ref: '#/components/parameters/RegionidParam' }] } } },
+      components: {
+        parameters: {
+          RegionidParam: { name: 'region_id', in: 'query', description: full, schema: { type: 'string' } },
+        },
+      },
+    };
+
+    ensureInlineTypedInput(spec);
+    const restored = spec.paths['/only-ref'].get.parameters[0];
+    assert.equal(restored.description, 'Display region id. Full text: #/components/parameters/RegionidParam.');
+    assert.equal(leadSentence('Compare a value (e.g. "x"). Next sentence.'), 'Compare a value.');
+    assert.equal(leadSentence('Values such as e.g. "mena" are fine. Next.'), 'Values such as e.g. "mena" are fine.');
+  });
+
+  it('every curated inline summary restates each numeric limit its component names', () => {
+    const { spec } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    for (const [name, summary] of Object.entries(INLINE_SUMMARY_OVERRIDES)) {
+      const component = spec.components.parameters[name];
+      assert.ok(component, `override for a component that no longer exists: ${name}`);
+      const limits = component.description.match(/\d[\d,]*\s?(?:UTF-8 bytes|bytes|KB|MB)\b/g) ?? [];
+      assert.ok(limits.length > 0, `${name} names no limit, so it does not need a curated summary`);
+      for (const limit of limits) assert.ok(summary.includes(limit), `${name} summary drops the limit "${limit}"`);
+    }
+  });
+
+  it('leaves an already short description untouched on the restored copy', () => {
+    const spec = {
+      openapi: '3.1.0',
+      paths: { '/only-ref': { get: { parameters: [{ $ref: '#/components/parameters/CursorParam' }] } } },
+      components: {
+        parameters: {
+          CursorParam: { name: 'cursor', in: 'query', description: 'Opaque page cursor.', schema: { type: 'string' } },
+        },
+      },
+    };
+
+    ensureInlineTypedInput(spec);
+    assert.equal(spec.paths['/only-ref'].get.parameters[0].description, 'Opaque page cursor.');
+  });
+
+  it('cuts an over-budget lead at a word boundary and marks the cut', () => {
+    // No sentence break and no curated summary: the lead is the whole text, so
+    // only the truncation loop can bring it under the cap. Mixed word lengths
+    // keep the byte cap off a word boundary, so a cut that ignores words ends
+    // mid-word here (one repeated word can line the cap up with a word end).
+    const vocabulary = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
+    const full = Array.from({ length: 80 }, (_, i) => vocabulary[i % vocabulary.length]).join(' ');
+    const spec = {
+      openapi: '3.1.0',
+      paths: { '/only-ref': { get: { parameters: [{ $ref: '#/components/parameters/LongParam' }] } } },
+      components: {
+        parameters: {
+          LongParam: { name: 'long', in: 'query', description: full, schema: { type: 'string' } },
+        },
+      },
+    };
+
+    ensureInlineTypedInput(spec);
+    const restored = spec.paths['/only-ref'].get.parameters[0].description;
+    assert.ok(
+      Buffer.byteLength(restored, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
+      `restored description is ${Buffer.byteLength(restored, 'utf8')} bytes`,
+    );
+    const [lead, pointer] = restored.split('… ');
+    assert.equal(pointer, 'Full text: #/components/parameters/LongParam.');
+    const fullWords = full.split(' ');
+    const leadWords = lead.split(' ');
+    // Whole words from the start of the text: no partial word, no trailing space.
+    assert.deepEqual(leadWords, fullWords.slice(0, leadWords.length), `cut mid-word: "…${lead.slice(-20)}"`);
+    // As many whole words as fit: one more would break the cap.
+    assert.ok(Buffer.byteLength(`${lead} ${fullWords[leadWords.length]}… ${pointer}`, 'utf8') > INLINE_DESCRIPTION_MAX_BYTES);
+    assert.equal(spec.components.parameters.LongParam.description, full);
+  });
 });
 
 describe('public OpenAPI dedupe (real bundle)', () => {
@@ -653,6 +774,40 @@ describe('public OpenAPI dedupe (real bundle)', () => {
       }
     }
     assert.deepEqual(issues, [], `JSON operations missing inline typed input:\n${issues.join('\n')}`);
+  });
+
+  it('keeps the restored copies short while the component keeps the authoritative text', () => {
+    // Carrying JmespathParam's whole 403-byte description on all 62 restored
+    // operations spent ~25 KB of a 950,000-byte budget to say the same thing 62
+    // times. The lead sentence plus a pointer keeps a JSON-only scanner's prose
+    // and the component keeps the caveats, the limits and the doc link.
+    const { spec } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    const component = spec.components.parameters.JmespathParam;
+    assert.match(component.description, /1024 UTF-8 bytes/, 'the component must keep the full description');
+    assert.match(component.description, /docs\/mcp-jmespath/, 'the component must keep the documentation link');
+
+    const restored = [];
+    for (const pathItem of Object.values(spec.paths ?? {})) {
+      for (const [method, operation] of Object.entries(pathItem ?? {})) {
+        if (!HTTP_METHODS.has(method.toLowerCase()) || !operation) continue;
+        for (const param of operation.parameters ?? []) {
+          if (param && !param.$ref && param.name === 'jmespath') restored.push(param);
+        }
+      }
+    }
+    assert.ok(restored.length >= 50, `expected restored inline jmespath copies, got ${restored.length}`);
+    for (const param of restored) {
+      assert.ok(param.schema?.type, 'a restored copy must stay typed or the scanner stops crediting it');
+      assert.ok(param.description, 'a restored copy must still carry prose');
+      // tests/openapi-jmespath-contract.test.mjs requires both limits on every
+      // GET of the YAML; the served copies must not lose them.
+      assert.match(param.description, /1024 UTF-8 bytes/);
+      assert.match(param.description, /256 KB output cap/);
+      assert.doesNotMatch(param.description, /\(e\.g\. Full text/);
+      const bytes = Buffer.byteLength(param.description, 'utf8');
+      assert.ok(bytes <= INLINE_DESCRIPTION_MAX_BYTES, `restored description is ${bytes} bytes, over the ${INLINE_DESCRIPTION_MAX_BYTES} cap`);
+      assert.ok(bytes < Buffer.byteLength(component.description, 'utf8'), 'the restored copy must not restate the component');
+    }
   });
 
   it('documents Deprecation/Sunset header objects and the static policy URL on the JSON bundle', () => {
