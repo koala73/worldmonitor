@@ -945,6 +945,31 @@ describe('OpenAPI curated example values', () => {
     }
   });
 
+  // ProductExporter and CountryProductEvidence have no `required` list and more
+  // fields than MAX_OPTIONAL_PROPERTIES, so the alphabetical slot cap decides
+  // what the GetCountryProducts example shows. Volume and recovery bookkeeping
+  // must not push out the fields each object exists for.
+  it('keeps share, value and source in the GetCountryProducts response example', () => {
+    const specs = [
+      ['SupplyChainService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'SupplyChainService.openapi.json'), 'utf8'))],
+      ['SupplyChainService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'SupplyChainService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+
+    for (const [label, spec] of specs) {
+      const ops = operationEntries(spec).filter(({ op }) => op.operationId === 'GetCountryProducts');
+      assert.ok(ops.length > 0, `${label}: expected a GetCountryProducts operation`);
+      for (const { path, op } of ops) {
+        const example = op.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+        const exporter = example?.products?.[0]?.topExporters?.[0];
+        for (const key of ['partnerCode', 'share', 'value']) {
+          assert.ok(exporter && Object.hasOwn(exporter, key), `${label} ${path}: topExporters example drops ${key}`);
+        }
+        assert.ok(example?.evidence && Object.hasOwn(example.evidence, 'source'), `${label} ${path}: evidence example drops source`);
+      }
+    }
+  });
+
   it('uses a two-digit hs2 example for RouteIntelligence', () => {
     const specs = [
       [

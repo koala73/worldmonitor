@@ -40,12 +40,20 @@ const SCHEMA_SINGLE_KEYS = new Set([
   'unevaluatedItems',
   'unevaluatedProperties',
 ]);
-// Reuse identical schema subtrees when the group saves at least 32 bytes.
-// The WSB endpoint and bootstrap contract together exceeded the scanner cap;
-// this uses the existing lossless transform without raising that cap.
-// The replacement calculation below accounts for each reference's cost.
-const MIN_SHARED_SCHEMA_BYTES = 56;
-const MIN_GROUP_SAVING_BYTES = 32;
+// The schema byte floor was lowered from 80 to 56 and the group saving floor
+// from 256 to 96 when #7400 brought the bundle close to its three-operation
+// reserve. Energy import metadata later left the bundle 276 bytes short of that
+// reserve. Lowering the group floor from 96 to 72 recovers 326 bytes through
+// the same lossless transform. The bilateral evidence-depth fields (#7990) then
+// crossed the hard cap with 81 bytes of headroom on the branch point; 56/72 ->
+// 48/48 recovers a further 387 bytes, and lowering either floor below that
+// yields nothing — the remaining groups are the deliberately inlined typed
+// parameters, not repetition. The floor still exceeds each replacement ref's
+// cost, so selected groups always reduce the served artifact.
+// The pass stays lossless either way — every transform is resolved back to the
+// source document in tests — so the thresholds only trade emit time for bytes.
+const MIN_SHARED_SCHEMA_BYTES = 48;
+const MIN_GROUP_SAVING_BYTES = 48;
 
 function pointerSegment(value) {
   return value.replaceAll('~', '~0').replaceAll('/', '~1');

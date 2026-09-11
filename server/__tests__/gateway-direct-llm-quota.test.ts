@@ -505,7 +505,7 @@ describe("gateway direct LLM quota", () => {
       expect.any(Request),
       CLASSIFY_PATH,
       expect.any(Object),
-      { principalUserId: "user_pro" },
+      { principalUserId: "user_pro", principalScope: "session" },
     );
     expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "user_pro" }),
@@ -530,7 +530,7 @@ describe("gateway direct LLM quota", () => {
       expect.any(Request),
       ANALYZE_PATH,
       expect.any(Object),
-      { principalUserId: "user_pro" },
+      { principalUserId: "user_pro", principalScope: "session" },
     );
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
@@ -553,7 +553,7 @@ describe("gateway direct LLM quota", () => {
       expect.any(Request),
       BACKTEST_PATH,
       expect.any(Object),
-      { principalUserId: "user_pro" },
+      { principalUserId: "user_pro", principalScope: "session" },
     );
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
@@ -580,7 +580,7 @@ describe("gateway direct LLM quota", () => {
     expect(checkRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
       expect.any(Object),
-      { principalUserId: "user_pro" },
+      { principalUserId: "user_pro", principalScope: "session" },
     );
   });
 

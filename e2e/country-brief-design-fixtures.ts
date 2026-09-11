@@ -1,3 +1,4 @@
+import { normalizeComtradeProducts, HS4_CODES, HS4_LABELS } from '../scripts/shared/comtrade.mjs';
 import type { Page } from '@playwright/test';
 import us from './fixtures/country-brief-us.json' with { type: 'json' };
 
@@ -78,12 +79,36 @@ export async function installCommodityBriefData(page: Page) {
   await page.route('**/api/supply-chain/v1/get-country-products*', route => {
     if (state.fail) return route.fulfill({ status: 503, json: { error: 'controlled unavailable' } });
     const iso2 = new URL(route.request().url()).searchParams.get('iso2') ?? 'JP';
-    return route.fulfill({ json: { iso2, fetchedAt: '2026-09-09T00:00:00Z', products: [
-      { hs4: '2804', description: 'Hydrogen and rare gases', totalValue: 1000, year: 2024, topExporters: [
-        { partnerCode: 634, partnerIso2: 'QA', share: 0.6, value: 600 }, { partnerCode: 842, partnerIso2: 'US', share: 0.3, value: 300 }, { partnerCode: 999, partnerIso2: 'ZZ', share: 0.1, value: 100 },
-      ] },
+    // HS 2804 carries the U5 evidence depth: threshold partner basis, net weight
+    // and quantity, world-export scale, and a reviewed transit-hub origin (NL).
+    const products = normalizeComtradeProducts([
+      { hs4: '2804', description: 'Hydrogen and rare gases', totalValue: 1000, year: 2024,
+        partnerBasis: 'share_threshold', omittedPartnerCount: 39, omittedPartnerShare: 0.031, topExporters: [
+          { partnerCode: 634, partnerIso2: 'QA', share: 0.408, value: 408, netWeightKg: 1_204_000, netWeightEstimated: false, quantity: 8600, quantityUnitCode: 12,
+            scale: { worldExportsUsd: 2_100_000_000, worldExportsKg: 2_400_000, rank: 1, year: 2024, reporterCount: 118, unrankedReporterCount: 22 } },
+          { partnerCode: 842, partnerIso2: '', share: 0.392, value: 392, netWeightKg: 839, netWeightEstimated: true,
+            scale: { worldExportsUsd: 1_450_000_000, rank: 2, year: 2024, reporterCount: 118, unrankedReporterCount: 22 } },
+          // A hub origin with neither weight nor scale: the "not reported" states.
+          { partnerCode: 528, partnerIso2: 'NL', share: 0.1, value: 100 },
+          { partnerCode: 999, partnerIso2: 'ZZ', share: 0.1, value: 100 },
+        ] },
       { hs4: '1001', description: 'Wheat', totalValue: 1000, year: 2023, topExporters: [{ partnerCode: 36, partnerIso2: 'AU', share: 1, value: 1000 }] },
-    ] } });
+    ]).map(p => ({ ...p, description: HS4_LABELS[p.hs4] ?? p.description }));
+    return route.fulfill({ json: { iso2, fetchedAt: '2026-09-09T00:00:00Z', products, evidence: { state: 'partial', source: 'UN Comtrade bilateral HS4 (controlled legacy fixture)', requestedHs4s: [], missingHs4s: HS4_CODES.filter(code => !products.some(p => p.hs4 === code)), lastAttemptAt: '', lastAttemptState: 'unknown', recoveredHs4s: [], worldExportsFetchedAt: '2026-09-08T00:00:00Z' } } });
+  });
+  // The brief asks for world production once per mineral commodity, with no iso2.
+  await page.route('**/api/supply-chain/v1/get-mineral-production*', route => {
+    const commodity = new URL(route.request().url()).searchParams.get('commodity');
+    return route.fulfill({ json: {
+      commodities: commodity !== 'helium' ? [] : [{
+        commodityId: 'helium', commodity: 'Helium', year: 2024, unit: 'million cubic metres', sources: ['usgs-mcs'],
+        mine: { year: 2024, unit: 'million cubic metres', hhi: 3200, withheldCount: 0, countries: [
+          { iso2: 'US', country: 'United States', output: 74, share: 46.2, withheld: false, estimated: false, residual: false },
+          { iso2: 'QA', country: 'Qatar', output: 50, share: 31.2, withheld: false, estimated: false, residual: false },
+        ] },
+      }],
+      countries: [], fetchedAt: '2026-09-01T00:00:00Z', upstreamUnavailable: false, dataYear: 2024,
+    } });
   });
   await page.route('**/api/supply-chain/v1/get-country-vulnerabilities*', route => route.fulfill({ json: {
     iso2: new URL(route.request().url()).searchParams.get('iso2') ?? 'JP', country: '', vulnerabilities: [], generatedAt: '', methodologyVersion: '', upstreamUnavailable: true,

@@ -1218,6 +1218,60 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
     );
   });
 
+  // WORLDMONITOR-12A: a customer's own API key and their browser session resolve
+  // to the SAME Clerk user id, so both landed in one `user:<id>` bucket. Observed
+  // in production 2026-09-11T17:47Z: an OSINT scraper on an api_starter key spent
+  // 598 of the 600/min budget, leaving the same person's dashboard 2 successes and
+  // 22 × 429 — their country deep-dive rendered half-empty. Programmatic traffic
+  // must not be able to starve the interactive session behind the same account.
+  it('gives a principal separate API-key and interactive-session buckets (WORLDMONITOR-12A)', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    const incrementedKeys = new Set<string>();
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      for (const command of commands) {
+        if (String(command[0]).toUpperCase() === 'INCR') {
+          incrementedKeys.add(String(command[1]));
+        }
+      }
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.21' });
+    const principalUserId = 'api-customer';
+
+    // Drain the whole per-minute budget through the API key, exactly as the
+    // scraper did.
+    for (let i = 0; i < 600; i++) {
+      assert.equal(
+        await mod.checkRateLimit(req, {}, { principalUserId, principalScope: 'api_key' }),
+        null,
+      );
+    }
+    assert.equal(
+      (await mod.checkRateLimit(req, {}, { principalUserId, principalScope: 'api_key' }))?.status,
+      429,
+      'API-key traffic must still be capped — separation must not become an exemption',
+    );
+
+    // The same human's dashboard must survive their own scraper.
+    assert.equal(
+      await mod.checkRateLimit(req, {}, { principalUserId }),
+      null,
+      'the interactive session must not inherit the API key\'s exhausted bucket',
+    );
+
+    assert.ok(
+      incrementedKeys.has(`rl:fw:apikey-user:${principalUserId}`),
+      'API-key traffic must use its own namespace',
+    );
+    assert.ok(
+      incrementedKeys.has(`rl:fw:user:${principalUserId}`),
+      'session traffic must keep the established user: namespace so live buckets are not reset',
+    );
+  });
+
   it('degrades instead of creating a permanent counter when EXPIRE NX is unsupported', async () => {
     const pipelineHandler = makeProxyPipelineHandler({ expireNxUnsupported: true });
     globalThis.fetch = (async (_url: string, init?: RequestInit) => {

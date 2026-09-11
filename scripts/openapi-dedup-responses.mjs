@@ -32,6 +32,14 @@
  * it 497 bytes over. Compact names bought the headroom back without dropping a
  * single documented response.
  *
+ * The same byte arithmetic applies to the Parameter Objects restored inline by
+ * ensureInlineTypedInput below. Those copies exist so a JSON-only scanner sees
+ * a TYPED input; they were carrying the component's whole description too, and
+ * JmespathParam's is 403 bytes on 62 operations — ~25 KB, or 2.6% of the
+ * 950,000-byte budget, spent restating one paragraph 62 times. The restored
+ * copy now carries a short lead sentence and a pointer; the component keeps the
+ * caveats, the limits and the documentation link.
+ *
  * This runs ONLY when emitting public/openapi.json (build-openapi-json.mjs).
  * The YAML sources under docs/api/ keep their inline copies for Mintlify and
  * the contract tests.
@@ -256,6 +264,75 @@ function requestBodyIsTyped(operation) {
 }
 
 /**
+ * Byte ceiling on the description a restored inline copy may carry.
+ *
+ * A scanner credits an operation for having a typed, described input; it does
+ * not need the component's caveats repeated once per operation. The ceiling is
+ * paid 62 times over for `jmespath` alone, so it buys back roughly 62x whatever
+ * it trims. Pinned by tests/openapi-json-dedup.test.mjs.
+ */
+export const INLINE_DESCRIPTION_MAX_BYTES = 300;
+
+/**
+ * Curated inline summaries for components whose lead sentence alone would drop
+ * a limit the API contract states on every operation (the jmespath byte and
+ * output caps, which tests/openapi-jmespath-contract.test.mjs requires on each
+ * GET). A summary must restate every numeric limit its component names;
+ * tests/openapi-json-dedup.test.mjs checks that against the live component so
+ * the two cannot drift apart.
+ */
+export const INLINE_SUMMARY_OVERRIDES = Object.freeze({
+  JmespathParam: 'Optional JMESPath expression applied server-side to project or reduce the JSON '
+    + 'response before it is returned. Expressions over 1024 UTF-8 bytes or projections '
+    + 'over the 256 KB output cap return HTTP 400.',
+});
+
+/** UTF-8 bytes, not UTF-16 code units: the budget this serves is a byte cap. */
+const utf8Bytes = (text) => Buffer.byteLength(text, 'utf8');
+
+/**
+ * The first sentence of a description with its parentheticals removed.
+ * Parentheticals go first, before the sentence split, so an abbreviation inside
+ * one ("e.g.") cannot end the sentence early and leave a bracket unbalanced. The
+ * split also requires a capital letter after the terminator, so "e.g. \"mena\""
+ * outside a bracket does not end the sentence either.
+ */
+export function leadSentence(text) {
+  const flat = String(text).replaceAll(/\s*\([^()]*\)/g, '').replaceAll(/\s+/g, ' ').trim();
+  return flat.split(/(?<=[.!?])\s+(?=[A-Z])/)[0].trim();
+}
+
+/**
+ * The lead sentence of a long description (or its curated summary) plus a
+ * pointer to the component that holds the rest. Derived from the component
+ * rather than hand-written wherever possible, so the inline prose cannot drift
+ * away from the authoritative text.
+ *
+ * Parentheticals are dropped: they qualify the sentence rather than state it,
+ * and they are the part a reader who wants detail should follow the pointer
+ * for. A lead sentence still over budget is cut at a word boundary and marked,
+ * because a truncation that reads as a finished sentence is a lie.
+ */
+function shortInlineDescription(name, description) {
+  if (typeof description !== 'string' || utf8Bytes(description) <= INLINE_DESCRIPTION_MAX_BYTES) {
+    return description;
+  }
+  const pointer = `Full text: #/components/parameters/${name}.`;
+  const budget = INLINE_DESCRIPTION_MAX_BYTES - utf8Bytes(` ${pointer}`);
+  let lead = INLINE_SUMMARY_OVERRIDES[name] ?? leadSentence(description);
+  if (utf8Bytes(lead) > budget) {
+    while (lead.length > 0 && utf8Bytes(`${lead}…`) > budget) {
+      const space = lead.lastIndexOf(' ');
+      lead = space > 0 ? lead.slice(0, space) : lead.slice(0, -1);
+    }
+    lead = `${lead}…`;
+  }
+  // A pointer with no prose in front of it would leave the scanner nothing to
+  // read, which is the whole reason the copy is restored.
+  return lead ? `${lead} ${pointer}` : description;
+}
+
+/**
  * JSON-only scanners (ora.ai / orank) fetch `/openapi.json` and often do not
  * follow `components.parameters` `$ref`s. After fleet-wide parameter hoisting,
  * GETs whose only typed input was `jmespath` (or another repeated query param)
@@ -266,31 +343,16 @@ function requestBodyIsTyped(operation) {
  * Parameter Object back inline for the rest.
  *
  * Prefer the smallest typed component, not `JmespathParam`. The jmespath stamp
- * is 514 bytes because of its description; expanding the full Parameter Object
- * on every GET that already has a cheaper typed `$ref` (cursor, country,
- * page_size) is what pushed the served artifact through the three-operation
- * reserve. JSON-only scanners credit any inline typed schema, including a
- * schema `$ref`, so the smaller proto input is enough — and is the more useful
- * inline field.
+ * is 514 bytes because of its description; expanding it on every GET that
+ * already has a cheaper typed `$ref` (cursor, country, page_size) is what
+ * pushed the served artifact through the three-operation reserve. JSON-only
+ * scanners credit any inline typed schema, including a schema `$ref`, so the
+ * smaller proto input is enough — and is the more useful inline field. Ops
+ * whose only typed `$ref` is still `JmespathParam` keep inlining that copy,
+ * shortened by shortInlineDescription.
  *
- * When the only typed `$ref` is still `JmespathParam`, inline a *compact*
- * typed copy (name/in/required/schema/example) rather than the full injector
- * description. Full wording stays on `components.parameters.*`. That compact
- * restore is what keeps a single new GET from crossing the 950 KB scanner
- * budget (#8043 list-wsb-tickers was 910 bytes over with full clones).
+ * Mutates `spec` in place; returns { inlined }.
  */
-function compactTypedParameter(param) {
-  const compact = {
-    name: param.name,
-    in: param.in,
-    schema: structuredClone(param.schema),
-  };
-  if (param.required !== undefined) compact.required = param.required;
-  if (param.example !== undefined) compact.example = structuredClone(param.example);
-  return compact;
-}
-
-/** Mutates `spec` in place; returns { inlined }. */
 export function ensureInlineTypedInput(spec) {
   const stats = { inlined: 0 };
   if (!spec || typeof spec !== 'object' || !spec.paths) return stats;
@@ -322,10 +384,7 @@ export function ensureInlineTypedInput(spec) {
         if (!candidate || typeof candidate !== 'object' || !parameterIsInlineTyped(candidate)) {
           continue;
         }
-        // Rank by the compact inline size we will actually emit, not the full
-        // component body — otherwise a short-named param with a long description
-        // loses to a larger proto field that still expands smaller.
-        const size = Buffer.byteLength(JSON.stringify(compactTypedParameter(candidate)), 'utf8');
+        const size = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
         if (size < bestBytes) {
           bestBytes = size;
           pick = index;
@@ -337,7 +396,10 @@ export function ensureInlineTypedInput(spec) {
       const name = String(parameters[pick].$ref).replace('#/components/parameters/', '');
       const target = components[name];
       if (!target || typeof target !== 'object') continue;
-      parameters[pick] = compactTypedParameter(target);
+      const copy = structuredClone(target);
+      // The component stays whole; only this per-operation copy is shortened.
+      if (copy.description != null) copy.description = shortInlineDescription(name, copy.description);
+      parameters[pick] = copy;
       stats.inlined += 1;
     }
   }
