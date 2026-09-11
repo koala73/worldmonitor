@@ -226,6 +226,61 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('coalesces concurrent misses after asynchronous admission', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${String(url)}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      let admissionCalls = 0;
+      const admissionReached = Promise.withResolvers();
+      const admission = Promise.withResolvers();
+      const shouldFetch = async () => {
+        admissionCalls += 1;
+        if (admissionCalls === 3) admissionReached.resolve();
+        return admission.promise;
+      };
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        return { value: 42 };
+      };
+
+      const results = [
+        redis.cachedFetchJsonWithMeta('webcam:test:admission', 60, fetcher, 120, { shouldFetch }),
+        redis.cachedFetchJsonWithMeta('webcam:test:admission', 60, fetcher, 120, { shouldFetch }),
+        redis.cachedFetchJsonWithMeta('webcam:test:admission', 60, fetcher, 120, { shouldFetch }),
+      ];
+      await admissionReached.promise;
+      admission.resolve(true);
+
+      const [a, b, c] = await Promise.all(results);
+      assert.equal(fetcherCalls, 1, 'admitted callers should share one upstream fetch');
+      assert.equal(a.leader, true);
+      assert.equal(b.leader, false);
+      assert.equal(c.leader, false);
+      assert.deepEqual(a.data, { value: 42 });
+      assert.deepEqual(b.data, { value: 42 });
+      assert.deepEqual(c.data, { value: 42 });
+      assert.equal(a.source, 'fresh');
+      assert.equal(b.source, 'fresh');
+      assert.equal(c.source, 'fresh');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('does not positive-cache no-store fallback payloads', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
@@ -397,7 +452,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
-  it('skips a gated cache miss without hiding positive cache hits or writing a sentinel', async () => {
+  it('awaits a gated cache miss without hiding positive cache hits or writing a sentinel', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -436,7 +491,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
         60,
         fetcher,
         120,
-        { shouldFetch: () => false },
+        { shouldFetch: async () => false },
       );
       assert.deepEqual(hit, {
         data: { value: 'cached-data' },
@@ -449,7 +504,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
         60,
         fetcher,
         120,
-        { shouldFetch: () => false },
+        { shouldFetch: async () => false },
       );
       assert.deepEqual(skipped, { data: null, source: 'skipped', leader: false });
       assert.equal(fetcherCalls, 0, 'the provider-local fetcher must remain gated');
