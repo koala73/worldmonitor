@@ -8,10 +8,15 @@
 import { CHROME_UA } from './constants';
 import { cachedFetchJson } from './redis';
 import { getAcledAccessToken } from './acled-auth';
+import { normalizeCountryToIso2 } from './country-normalize';
+import UN_TO_ISO2 from '../../shared/un-to-iso2.json';
 
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const ACLED_CACHE_TTL = 900; // 15 min — matches ACLED rate-limit window
 const ACLED_TIMEOUT_MS = 15_000;
+const DAY_MS = 86_400_000;
+const EVENT_TYPES = ['Battles', 'Explosions/Remote violence', 'Violence against civilians', 'Protests', 'Riots'];
+const ISO2_TO_NUMERIC = new Map(Object.entries(UN_TO_ISO2).map(([numeric, iso2]) => [iso2, String(Number(numeric))]));
 
 export interface AcledRawEvent {
   event_id_cnty?: string;
@@ -39,25 +44,61 @@ interface FetchAcledOptions {
   limit?: number;
 }
 
+function normalizeAcledQuery(opts: FetchAcledOptions) {
+  const invalid = (field: string): never => { throw new Error(`Invalid ACLED query: ${field}`); };
+  const dateMs = (value: string) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return invalid('date');
+    const ms = Date.parse(`${value}T00:00:00Z`);
+    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== value) return invalid('date');
+    return ms;
+  };
+  const start = dateMs(opts.startDate);
+  const end = dateMs(opts.endDate);
+  const today = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+  // Current callers use at most the trailing 30 days, including today's partial day.
+  if (start < today - 30 * DAY_MS || end > today || start > end) invalid('date window');
+
+  if (typeof opts.eventTypes !== 'string' || opts.eventTypes.length > 256) invalid('eventTypes');
+  const eventTypes = [...new Set(opts.eventTypes.split('|').map(value => {
+    const type = EVENT_TYPES.find(candidate => candidate.toLowerCase() === value.trim().toLowerCase());
+    return type ?? invalid('eventTypes');
+  }))].sort().join('|');
+
+  const limit = opts.limit === undefined ? 500 : opts.limit;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) invalid('limit');
+
+  let iso: string | undefined;
+  if (opts.country !== undefined && opts.country !== '') {
+    if (typeof opts.country !== 'string' || opts.country.length > 100) invalid('country');
+    const iso2 = normalizeCountryToIso2(opts.country);
+    iso = iso2 ? ISO2_TO_NUMERIC.get(iso2) : undefined;
+    if (!iso) invalid('country');
+  }
+  return { eventTypes, startDate: opts.startDate, endDate: opts.endDate, iso, limit };
+}
+
 /**
  * Fetch ACLED events with automatic Redis caching.
  * Cache key is derived from query parameters so identical queries across
  * different handlers share the same cached result.
+ * Rejects unknown filters, dates outside today and the preceding 30 UTC days,
+ * and limits outside 1–1000 before authentication or cache access.
  */
 export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRawEvent[]> {
+  const query = normalizeAcledQuery(opts);
   const token = await getAcledAccessToken();
   if (!token) return [];
 
-  const cacheKey = `acled:shared:${opts.eventTypes}:${opts.startDate}:${opts.endDate}:${opts.country || 'all'}:${opts.limit || 500}`;
+  const cacheKey = `acled:shared:v2:${query.eventTypes}:${query.startDate}:${query.endDate}:${query.iso || 'all'}:${query.limit}`;
   const result = await cachedFetchJson<AcledRawEvent[]>(cacheKey, ACLED_CACHE_TTL, async () => {
     const params = new URLSearchParams({
-      event_type: opts.eventTypes,
-      event_date: `${opts.startDate}|${opts.endDate}`,
+      event_type: query.eventTypes,
+      event_date: `${query.startDate}|${query.endDate}`,
       event_date_where: 'BETWEEN',
-      limit: String(opts.limit || 500),
+      limit: String(query.limit),
       _format: 'json',
     });
-    if (opts.country) params.set('country', opts.country);
+    if (query.iso) params.set('iso', query.iso);
 
     const resp = await fetch(`${ACLED_API_URL}?${params}`, {
       headers: {
