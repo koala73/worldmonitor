@@ -451,14 +451,14 @@ async function pickBestAcceptedBusinessGrant(
  * another paid sub still covers the user — see review feedback on PR #3470.
  *
  * Algorithm:
- *   1. Honor a standing comp floor: if compUntil is in the future, leave
- *      the entitlement untouched (goodwill credit outlives Dodo state).
+ *   1. Preserve legacy comp rows without source provenance pending audit.
  *   2. Pick the strongest covering sub via the deterministic comparator
  *      (tier > PLAN_PRECEDENCE > currentPeriodEnd).
  *   3. Also consider any accepted Business Pro grant tied to a covering
  *      `api_business` subscription; it confers Pro-tier features without
  *      creating a fake subscription row.
- *   4. Write the best source's (planKey, currentPeriodEnd) if any cover,
+ *   4. Compare the independent comp source, then write the best source's
+ *      (planKey, currentPeriodEnd) if any cover,
  *      otherwise downgrade to free.
  *
  * Note: callers MUST persist their own subscription row patch BEFORE calling
@@ -473,9 +473,9 @@ export async function recomputeEntitlementFromAllSubs(
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
-  if (entitlement?.compUntil && entitlement.compUntil > observedAt) {
+  if (entitlement?.compUntil && entitlement.compUntil > observedAt && !entitlement.compPlanKey) {
     console.log(
-      `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
+      `[subscriptionHelpers] recompute for ${userId} — legacy comp source unknown; preserving entitlement pending audit`,
     );
     return;
   }
@@ -486,7 +486,7 @@ export async function recomputeEntitlementFromAllSubs(
   // Normalize both sources to the same comparison shape. A Business Pro grant
   // confers Pro-tier features (`pro_monthly`) without creating a fake
   // subscription row; pick whichever source outranks the other.
-  const best =
+  let best =
     bestSub && bestGrant
       ? compareSubscriptionsByCoverage(bestSub, bestGrant) >= 0
         ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
@@ -496,6 +496,15 @@ export async function recomputeEntitlementFromAllSubs(
         : bestGrant
           ? { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
           : null;
+
+  if (entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > observedAt) {
+    const comp = { planKey: entitlement.compPlanKey, currentPeriodEnd: entitlement.compUntil };
+    if (!best || compareSubscriptionsByCoverage(comp, {
+      planKey: best.planKey, currentPeriodEnd: best.validUntil,
+    }) > 0) {
+      best = { planKey: comp.planKey, validUntil: comp.currentPeriodEnd };
+    }
+  }
 
   if (best) {
     await upsertEntitlements(ctx, userId, best.planKey, best.validUntil, observedAt);
