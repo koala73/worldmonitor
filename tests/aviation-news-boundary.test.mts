@@ -147,16 +147,22 @@ test('plain-text snippets preserve normal text and remove residual tag openings'
     '<![CDATA[<<script>script>alert(1)</script>]]>',
     '&lt;b&gt;Decoded update&lt;/b&gt; &lt;script',
     '<![CDATA[&lt;script&gt;encoded text&lt;/script&gt;]]>',
+    '<![CDATA[Fuel < 5 and passengers > 2]]>',
+    '<![CDATA[Fuel < 5]]>',
+    '&amp;lt;script&amp;gt;nested encoding',
+    'Airline &gt; forecast',
+    `<![CDATA[<b>${'x'.repeat(205)}</b>]]>`,
   ];
   globalThis.fetch = (async (input, init) => {
     if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
     return new Response(`<rss><channel>${descriptions.map((description, i) => `<item><title>Emirates case ${i}</title><link>https://news.example/${i}</link><description>${description}</description></item>`).join('')}</channel></rss>`);
   }) as typeof fetch;
   const result = await read(['Emirates'], 24, 50);
-  assert.equal(result.items.length, 45);
-  const expected = ['Normal airline & route update', 'Update safe ', 'script>alert(1)', 'Decoded update ', '&lt;script&gt;encoded text&lt;/script&gt;'];
+  assert.equal(result.items.length, 50);
+  const expected = ['Normal airline & route update', 'Update safe ', 'script>alert(1)', 'Decoded update ', '&lt;script&gt;encoded text&lt;/script&gt;', 'Fuel  2', 'Fuel ', '&lt;script&gt;nested encoding', 'Airline > forecast', 'x'.repeat(200)];
   for (let i = 0; i < expected.length; i++) {
-    assert.deepEqual(result.items.filter(item => item.title === `Emirates case ${i}`).map(item => item.snippet), Array(9).fill(expected[i]));
+    assert.ok(result.items.some(item => item.title === `Emirates case ${i}`));
+    assert.deepEqual(result.items.filter(item => item.title === `Emirates case ${i}`).map(item => item.snippet), Array(result.items.filter(item => item.title === `Emirates case ${i}`).length).fill(expected[i]));
   }
   assert.ok(result.items.every(item => !item.snippet.includes('<')));
 });
