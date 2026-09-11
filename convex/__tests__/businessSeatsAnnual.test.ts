@@ -50,13 +50,15 @@ async function entitlement(t: ReturnType<typeof convexTest>) {
     .withIndex("by_userId", (q) => q.eq("userId", invitee.subject)).unique());
 }
 
-async function webhook(t: ReturnType<typeof convexTest>, type: string, planKey: string, timestamp: number) {
+async function webhook(t: ReturnType<typeof convexTest>, type: string, planKey: string, timestamp: number,
+  period: { start?: number; end?: number } = { end: END }) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
     webhookId: `annual_${type}_${timestamp}`, eventType: type, timestamp,
     rawPayload: { type, data: {
       subscription_id: "sub_annual", product_id: PRODUCT_CATALOG[planKey].dodoProductId!,
       customer: { customer_id: "cus_synthetic" },
-      next_billing_date: new Date(END).toISOString(),
+      ...(period.end === undefined ? {} : { next_billing_date: new Date(period.end).toISOString() }),
+      ...(period.start === undefined ? {} : { previous_billing_date: new Date(period.start).toISOString() }),
     } },
   });
 }
@@ -137,6 +139,32 @@ test("annual expiration immediately revokes accepted seats", async () => {
   await webhook(t, "subscription.expired", "api_business_annual", NOW + 1000);
   expect(await t.run((ctx) => ctx.db.get(grantId))).toMatchObject({ status: "revoked" });
   expect(await entitlement(t)).toMatchObject({ planKey: "free" });
+});
+
+test.each([
+  ["api_business", "api_business_annual", NOW + 30 * 86_400_000, END],
+  ["api_business_annual", "api_business", END, NOW + 30 * 86_400_000],
+] as const)("%s to %s refreshes retained invitee coverage", async (from, to, oldEnd, newEnd) => {
+  const t = await setup(from);
+  await t.run(async (ctx) => {
+    const sub = await ctx.db.query("subscriptions").unique();
+    await ctx.db.patch(sub!._id, { currentPeriodEnd: oldEnd });
+  });
+  const grantId = await seedGrant(t);
+  await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, { userId: invitee.subject });
+  expect(await entitlement(t)).toMatchObject({ validUntil: oldEnd });
+  await webhook(t, "subscription.plan_changed", to, NOW + 1000, { start: NOW, end: newEnd });
+  expect(await t.run((ctx) => ctx.db.query("subscriptions").unique()))
+    .toMatchObject({ currentPeriodStart: NOW, currentPeriodEnd: newEnd });
+  expect(await entitlement(t)).toMatchObject({ planKey: "pro_monthly", validUntil: newEnd });
+  expect(await t.run((ctx) => ctx.db.get(grantId))).toMatchObject({ status: "accepted" });
+
+  // Missing dates and stale events must not replace the last confirmed period.
+  await webhook(t, "subscription.plan_changed", to, NOW + 2000, {});
+  await webhook(t, "subscription.plan_changed", from, NOW + 500, { end: oldEnd });
+  expect(await entitlement(t)).toMatchObject({ validUntil: newEnd });
+  expect(await t.run((ctx) => ctx.db.query("subscriptions").unique()))
+    .toMatchObject({ planKey: to, currentPeriodStart: NOW, currentPeriodEnd: newEnd });
 });
 
 test("paid-through annual cancellation retains seats until scheduled revocation", async () => {

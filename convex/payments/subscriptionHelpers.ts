@@ -1698,6 +1698,12 @@ export async function handleSubscriptionPlanChanged(
   await ctx.db.patch(existing._id, {
     dodoProductId: data.product_id,
     planKey: newPlanKey,
+    currentPeriodStart: data.previous_billing_date == null
+      ? existing.currentPeriodStart
+      : toEpochMs(data.previous_billing_date, "previous_billing_date", existing.currentPeriodStart),
+    currentPeriodEnd: data.next_billing_date == null
+      ? existing.currentPeriodEnd
+      : toEpochMs(data.next_billing_date, "next_billing_date", existing.currentPeriodEnd),
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
@@ -1710,6 +1716,18 @@ export async function handleSubscriptionPlanChanged(
   // planKey defense-in-depth check for the other half of this fix).
   if (leftBusinessPlan) {
     await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  } else if (isBusinessPlan(newPlanKey)) {
+    const grants = await ctx.db
+      .query("businessProGrants")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", existing.dodoSubscriptionId),
+      )
+      .collect();
+    for (const grant of grants) {
+      if (grant.status === "accepted" && grant.inviteeUserId) {
+        await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, Date.now());
+      }
+    }
   }
 
   // Recompute from ALL subs — the new plan may be lower-tier than another
