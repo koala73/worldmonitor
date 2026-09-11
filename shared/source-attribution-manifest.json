@@ -1205,9 +1205,6 @@
       "references": [
         {
           "path": "scripts/seed-displacement-summary.mjs"
-        },
-        {
-          "path": "server/worldmonitor/displacement/v1/get-displacement-summary.ts"
         }
       ]
     },
