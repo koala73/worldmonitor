@@ -100,7 +100,9 @@ to 30 days ago and an unset end defaults to now. `page_size` and `cursor` remain
 accepted no-ops. Rows without valid coordinates are omitted, including GDELT
 fallback rows that carry no location.
 
-A missing or unreadable seed returns `events: []` with caching disabled. An empty
+A missing or unreadable seed returns `events: []` with caching disabled. Composed
+map embeds mark that conflict layer unavailable and disable frame caching until
+a seed read succeeds. An empty
 result does not establish that no conflict occurred. Browser sessions and API
 credentials retain their existing access; credentialless direct RPC calls are
 rejected.

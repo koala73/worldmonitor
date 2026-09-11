@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createConflictServiceRoutes } from '../src/generated/server/worldmonitor/conflict/v1/service_server.ts';
 import { conflictHandler } from '../server/worldmonitor/conflict/v1/handler.ts';
 import { ACLED_DEFAULT_WINDOW_MS } from '../server/worldmonitor/conflict/v1/list-acled-events.ts';
+import { handleEmbedMapFrame } from '../api/embed/map-frame.ts';
 import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
@@ -146,4 +147,28 @@ test('varying cold queries cannot reach ACLED even when provider credentials are
   assert.deepEqual(upstreamCalls, [], 'request handling must never contact ACLED');
   assert.deepEqual(keys, [seedKey, seedKey, seedKey]);
   assert.equal(redis.redis.size, 0);
+});
+
+test('ISO filtering includes the ACLED spelling of DR Congo without matching Congo Republic', async () => {
+  const drc = { ...snapshot.events[0]!, country: 'Democratic Republic of Congo' };
+  install({ [seedKey]: { events: [drc, { ...drc, id: 'other-congo', country: 'Republic of the Congo' }] } });
+  assert.deepEqual(await request('?country=CD'), { events: [drc] });
+  assert.deepEqual(await request('?country=Democratic%20Republic%20of%20the%20Congo'), { events: [drc] });
+});
+
+test('public composed conflict embeds do not cache failed seeds and recover on the next read', async () => {
+  const redis = install({});
+  const url = 'https://worldmonitor.app/api/embed/map-frame?layers=conflicts&public=1';
+  const response = await handleEmbedMapFrame(new Request(url));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal((await response.json()).layers.conflicts, 'unavailable');
+  redis.redis.set(seedKey, JSON.stringify(snapshot));
+  const recovered = await handleEmbedMapFrame(new Request(url));
+  assert.equal(recovered.status, 200);
+  assert.match(recovered.headers.get('Cache-Control')!, /s-maxage=3600/);
+  const frame = await recovered.json();
+  assert.equal(frame.layers.conflicts, 'ok');
+  assert.deepEqual(frame.data.conflicts, snapshot.events);
+  assert.deepEqual(upstreamCalls, []);
 });

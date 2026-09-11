@@ -26,6 +26,12 @@ export function resolveAcledEventWindow(
   };
 }
 
+function acledCountryCode(country: string): string | null {
+  // ACLED omits "the" in the DRC name used by the shared gazetteer.
+  return normalizeCountryToIso2(country)
+    ?? (country.trim().toLowerCase() === 'democratic republic of congo' ? 'CD' : null);
+}
+
 // Railway owns ACLED fetching. Caller filters never create cache entries or live requests.
 export async function listAcledEvents(
   ctx: ServerContext,
@@ -40,10 +46,10 @@ export async function listAcledEvents(
         && Number.isFinite(event.location.longitude) && Math.abs(event.location.longitude) <= 180);
       if (req.country || req.start !== 0 || req.end !== 0) {
         const window = resolveAcledEventWindow(req);
-        const country = normalizeCountryToIso2(req.country);
+        const country = acledCountryCode(req.country);
         events = events.filter(event =>
           (!req.country || event.country === req.country
-            || (country !== null && normalizeCountryToIso2(event.country) === country))
+            || (country !== null && acledCountryCode(event.country) === country))
           && event.occurredAt >= window.startMs && event.occurredAt <= window.endMs);
       }
       return { events, pagination: seeded.pagination };
