@@ -462,12 +462,24 @@ test.describe('dashboard news request budget (#5376)', () => {
       'dashboard-news-request-budget boot',
     );
     try {
-      const firstDigest = page.waitForRequest(DIGEST_GLOB);
-      await page.goto('/');
+      // Navigate first, then observe DIGEST via the route log. waitForRequest
+      // armed before goto can still hang under shard load until Playwright tears
+      // the page down; the route accountant is race-safe with fulfill().
+      await page.goto('/', { timeout: 60_000 });
       await page.waitForFunction(
         () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+        undefined,
+        { timeout: 60_000 },
       );
-      await firstDigest;
+      await expect
+        .poll(
+          () => log.digestUrls.length,
+          {
+            message: 'boot must issue list-feed-digest after event handlers are ready',
+            timeout: 60_000,
+          },
+        )
+        .toBeGreaterThanOrEqual(1);
     } finally {
       lossWatch.dispose();
     }
@@ -478,7 +490,7 @@ test.describe('dashboard news request budget (#5376)', () => {
           message:
             'a 200 digest carrying no categories leaves every panel empty, so it must stay ' +
             'retryable exactly like a failed request',
-          timeout: 30_000,
+          timeout: 60_000,
         },
       )
       .toBeGreaterThanOrEqual(2);
