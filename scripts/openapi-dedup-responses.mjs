@@ -266,15 +266,31 @@ function requestBodyIsTyped(operation) {
  * Parameter Object back inline for the rest.
  *
  * Prefer the smallest typed component, not `JmespathParam`. The jmespath stamp
- * is 514 bytes because of its description; expanding it on every GET that
- * already has a cheaper typed `$ref` (cursor, country, page_size) is what
- * pushed the served artifact through the three-operation reserve. JSON-only
- * scanners credit any inline typed schema, including a schema `$ref`, so the
- * smaller proto input is enough — and is the more useful inline field. Ops
- * whose only typed `$ref` is still `JmespathParam` keep inlining that copy.
+ * is 514 bytes because of its description; expanding the full Parameter Object
+ * on every GET that already has a cheaper typed `$ref` (cursor, country,
+ * page_size) is what pushed the served artifact through the three-operation
+ * reserve. JSON-only scanners credit any inline typed schema, including a
+ * schema `$ref`, so the smaller proto input is enough — and is the more useful
+ * inline field.
  *
- * Mutates `spec` in place; returns { inlined }.
+ * When the only typed `$ref` is still `JmespathParam`, inline a *compact*
+ * typed copy (name/in/required/schema/example) rather than the full injector
+ * description. Full wording stays on `components.parameters.*`. That compact
+ * restore is what keeps a single new GET from crossing the 950 KB scanner
+ * budget (#8043 list-wsb-tickers was 910 bytes over with full clones).
  */
+function compactTypedParameter(param) {
+  const compact = {
+    name: param.name,
+    in: param.in,
+    schema: structuredClone(param.schema),
+  };
+  if (param.required !== undefined) compact.required = param.required;
+  if (param.example !== undefined) compact.example = structuredClone(param.example);
+  return compact;
+}
+
+/** Mutates `spec` in place; returns { inlined }. */
 export function ensureInlineTypedInput(spec) {
   const stats = { inlined: 0 };
   if (!spec || typeof spec !== 'object' || !spec.paths) return stats;
@@ -306,7 +322,10 @@ export function ensureInlineTypedInput(spec) {
         if (!candidate || typeof candidate !== 'object' || !parameterIsInlineTyped(candidate)) {
           continue;
         }
-        const size = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
+        // Rank by the compact inline size we will actually emit, not the full
+        // component body — otherwise a short-named param with a long description
+        // loses to a larger proto field that still expands smaller.
+        const size = Buffer.byteLength(JSON.stringify(compactTypedParameter(candidate)), 'utf8');
         if (size < bestBytes) {
           bestBytes = size;
           pick = index;
@@ -318,7 +337,7 @@ export function ensureInlineTypedInput(spec) {
       const name = String(parameters[pick].$ref).replace('#/components/parameters/', '');
       const target = components[name];
       if (!target || typeof target !== 'object') continue;
-      parameters[pick] = structuredClone(target);
+      parameters[pick] = compactTypedParameter(target);
       stats.inlined += 1;
     }
   }
