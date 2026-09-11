@@ -3784,12 +3784,12 @@ export const claimSubscription = mutation({
               { planKey: existingEntitlement.compPlanKey, validUntil: existingCompUntil },
               { planKey: anonEntitlement.compPlanKey, validUntil: anonCompUntil },
             ) >= 0;
-          if (!existingCompIsStronger) {
-            await ctx.db.patch(existingEntitlement._id, {
-              compPlanKey: anonEntitlement.compPlanKey,
-              compUntil: anonCompUntil,
-            });
-          }
+          await ctx.db.patch(existingEntitlement._id, {
+            compPlanKey: existingCompIsStronger
+              ? existingEntitlement.compPlanKey
+              : anonEntitlement.compPlanKey,
+            compUntil: Math.max(existingCompUntil, anonCompUntil),
+          });
         } else if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
           const realSubscriptions = await ctx.db
             .query("subscriptions")
@@ -3937,6 +3937,9 @@ export const grantComplimentaryEntitlement = internalMutation({
       .first();
     const features = getFeaturesForPlan(args.planKey);
     const existingCompUntil = existing?.compUntil ?? 0;
+    if (existingCompUntil > now && !existing?.compPlanKey) {
+      throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
+    }
     const compUntil = Math.max(existingCompUntil, until);
     const compPlanKey = existing?.compPlanKey && existingCompUntil > now
       && compareEntitlementPlans(

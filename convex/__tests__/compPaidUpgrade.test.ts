@@ -117,3 +117,29 @@ test("claim refuses to combine known and unknown active comp sources", async () 
   })).rejects.toThrow("LEGACY_COMP_SOURCE_REQUIRES_AUDIT");
   expect(await t.run((ctx) => ctx.db.query("entitlements").collect())).toHaveLength(2);
 });
+
+test("claim retains the longest known comp duration when the stronger plan is shorter", async () => {
+  vi.stubEnv("DODO_IDENTITY_SIGNING_SECRET", "synthetic-comp-claim-secret");
+  const t = await setup();
+  const anonId = "11111111-1111-4111-8111-111111111111";
+  await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+    userId: anonId, planKey: "api_starter", days: 30,
+  });
+  await t.withIdentity({ subject: USER }).mutation(api.payments.billing.claimSubscription, {
+    anonId, claimToken: await signAnonClaimToken(anonId),
+  });
+  expect(await read(t)).toMatchObject({ compPlanKey: "api_starter", compUntil: NOW + 90 * DAY });
+});
+
+test("a new grant cannot relabel an unaudited legacy duration", async () => {
+  const t = await setup();
+  await t.run(async (ctx) => {
+    const row = await ctx.db.query("entitlements").unique();
+    await ctx.db.patch(row!._id, { compPlanKey: undefined });
+  });
+  const before = await read(t);
+  await expect(t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+    userId: USER, planKey: "pro_monthly", days: 7,
+  })).rejects.toThrow("LEGACY_COMP_SOURCE_REQUIRES_AUDIT");
+  expect(await read(t)).toEqual(before);
+});
