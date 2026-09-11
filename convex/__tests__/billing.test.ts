@@ -2707,7 +2707,7 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
   test.each([
     ["shared provider customer", "cus_shared", "cus_shared"],
     ["distinct provider customers", "cus_A", "cus_B"],
-  ])("characterizes signed owners and portal requests with %s (#7897)", async (_label, customerA, customerB) => {
+  ])("isolates signed owners and portal requests with %s (#7897)", async (_label, customerA, customerB) => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     process.env.DODO_API_KEY = "synthetic-portal-api-key";
     dodoPortalMock.mockImplementation(async (customerId: string) => ({
@@ -2756,21 +2756,58 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
       .toBe("user_B");
 
     for (const [index, owner] of owners.entries()) {
+      if (customerA === customerB) {
+        await expect(t.withIdentity(owner).action(api.payments.billing.getCustomerPortalUrl, {}))
+          .rejects.toThrow("SHARED_CUSTOMER");
+        await expect(t.action(internal.payments.billing.internalGetCustomerPortalUrl, { userId: owner.subject }))
+          .rejects.toThrow("SHARED_CUSTOMER");
+        continue;
+      }
       const result = await t.withIdentity(owner).action(api.payments.billing.getCustomerPortalUrl, {});
       expect(result).toEqual({ portal_url: `https://portal.example.test/${customerIds[index]}` });
       expect(dodoPortalMock).toHaveBeenNthCalledWith(index + 1, customerIds[index], { send_email: false });
     }
-    expect(dodoPortalMock).toHaveBeenCalledTimes(2);
+    const expectedCalls = customerA === customerB ? 0 : 2;
+    expect(dodoPortalMock).toHaveBeenCalledTimes(expectedCalls);
 
     // Knowing the same email alone provides no local customer mapping.
     await expect(t.withIdentity({ subject: "user_unmapped", email: "billing-alias@example.test" })
       .action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("NO_CUSTOMER");
     await expect(t.action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("AUTH_REQUIRED");
-    expect(dodoPortalMock).toHaveBeenCalledTimes(2);
+    expect(dodoPortalMock).toHaveBeenCalledTimes(expectedCalls);
     expect(await t.run(async (ctx) => ({
       subscriptions: await ctx.db.query("subscriptions").collect(),
       customers: await ctx.db.query("customers").collect(),
     }))).toEqual(beforePortal);
+  });
+
+  test.each(["stable", "legacy", "legacy-empty", "customer"])("rejects another owner's %s mapping for every resolver tier", async (otherTier) => {
+    process.env.DODO_API_KEY = "synthetic-portal-api-key";
+    for (const callerTier of ["stable", "legacy", "customer"]) {
+      const t = convexTest(schema, modules);
+      for (const [userId, tier] of [[TEST_USER_ID, callerTier], ["user_other", otherTier]]) {
+        if (tier === "customer") {
+          await t.run((ctx) => ctx.db.insert("customers", {
+            userId, dodoCustomerId: "cus_collision", email: "fixture@example.test",
+            createdAt: NOW, updatedAt: NOW,
+          }));
+        } else {
+          const id = await seedSubscription(t, {
+            userId, planKey: "pro_annual", dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+            status: "expired", currentPeriodEnd: NOW - DAY_MS, suffix: userId,
+            rawPayload: tier.startsWith("legacy") ? { customer: { customer_id: "cus_collision" } } : {},
+          });
+          if (tier === "stable") {
+            await t.run((ctx) => ctx.db.patch(id, { dodoCustomerId: "cus_collision" }));
+          } else if (tier === "legacy-empty") {
+            await t.run((ctx) => ctx.db.patch(id, { dodoCustomerId: "" }));
+          }
+        }
+      }
+      await expect(t.withIdentity({ subject: TEST_USER_ID })
+        .action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("SHARED_CUSTOMER");
+      expect(dodoPortalMock).not.toHaveBeenCalled();
+    }
   });
 
   test("resolves via the stable dodoCustomerId column even when a later lifecycle payload wiped the rawPayload customer field (P1 regression)", async () => {

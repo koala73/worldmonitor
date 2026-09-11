@@ -416,9 +416,9 @@ function normalizeRemoteSubscription(
  * race. Tier 3 only kicks in when both sub-side tiers miss AND the
  * customers row's `userId` happens to match the requester.
  *
- * Result: every Clerk account with a valid subscription opens the
- * right portal regardless of how many other Clerk accounts share the
- * same Dodo customer. No Clerk REST lookup needed.
+ * A per-user subscription identifies a candidate, not exclusive customer
+ * ownership. The resolver rejects customers linked to another user before
+ * this action creates a customer-wide portal session.
  *
  * WORLDMONITOR-R5: the original opaque `[Request ID: X] Server Error`
  * came from this path throwing on a missing customers row when both
@@ -1048,6 +1048,41 @@ export const getCustomerByUserId = internalQuery({
   },
 });
 
+async function requireExclusivePortalCustomer(
+  ctx: QueryCtx,
+  userId: string,
+  customerId: string,
+): Promise<string> {
+  const linkedSubscription = await ctx.db.query("subscriptions")
+    .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customerId))
+    .filter((q) => q.neq(q.field("userId"), userId))
+    .first();
+  const linkedCustomer = await ctx.db.query("customers")
+    .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customerId))
+    .filter((q) => q.neq(q.field("userId"), userId))
+    .first();
+  if (linkedSubscription || linkedCustomer) {
+    throw new ConvexError({ kind: "NO_CUSTOMER", reason: "SHARED_CUSTOMER" });
+  }
+
+  // Legacy rows can identify the customer only in rawPayload. Keep this
+  // check until all legacy customer IDs have been backfilled; never limit
+  // by subscription status because ended subscriptions still expose invoices.
+  for (const missingId of [undefined, ""] as const) {
+    const legacyOwner = await ctx.db.query("subscriptions")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", missingId))
+      .filter((q) => q.and(
+        q.neq(q.field("userId"), userId),
+        q.eq(q.field("rawPayload.customer.customer_id"), customerId),
+      ))
+      .first();
+    if (legacyOwner) {
+      throw new ConvexError({ kind: "NO_CUSTOMER", reason: "SHARED_CUSTOMER" });
+    }
+  }
+  return customerId;
+}
+
 /**
  * Resolve the Dodo customer_id this user's "Manage Billing" click
  * should open a portal session for.
@@ -1078,7 +1113,8 @@ export const getCustomerByUserId = internalQuery({
  *
  * Returns null only when all three tiers fail (no subs at all OR no
  * customer_id anywhere across subs/customers). Caller throws
- * NO_CUSTOMER → client surfaces the "contact support" toast.
+ * NO_CUSTOMER → client surfaces the "contact support" toast. A candidate
+ * linked to another user throws NO_CUSTOMER with reason SHARED_CUSTOMER.
  */
 export const getDodoCustomerIdForUserPortal = internalQuery({
   args: { userId: v.string() },
@@ -1097,7 +1133,7 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       for (const sub of sorted) {
         // Tier 1: stable column populated by the webhook handler.
         if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
-          return sub.dodoCustomerId;
+          return requireExclusivePortalCustomer(ctx, args.userId, sub.dodoCustomerId);
         }
         // Tier 2: rawPayload fallback for pre-schema-change rows whose
         // rawPayload still carries the customer field.
@@ -1106,7 +1142,9 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
           | null
           | undefined;
         const id = payload?.customer?.customer_id;
-        if (typeof id === "string" && id.length > 0) return id;
+        if (typeof id === "string" && id.length > 0) {
+          return requireExclusivePortalCustomer(ctx, args.userId, id);
+        }
       }
     }
 
@@ -1126,7 +1164,7 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       typeof customer.dodoCustomerId === "string" &&
       customer.dodoCustomerId.length > 0
     ) {
-      return customer.dodoCustomerId;
+      return requireExclusivePortalCustomer(ctx, args.userId, customer.dodoCustomerId);
     }
 
     return null;
