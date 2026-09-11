@@ -95,11 +95,18 @@ export async function registerWebhook(
     secret,
   };
 
-  await runRedisPipeline([
+  const results = await runRedisPipeline([
     ['SET', webhookKey(newSubscriberId), JSON.stringify(record), 'EX', String(WEBHOOK_TTL)],
     ['SADD', ownerIndexKey(ownerTag), newSubscriberId],
     ['EXPIRE', ownerIndexKey(ownerTag), String(WEBHOOK_TTL)],
   ]);
+
+  if (!Array.isArray(results) || results.length !== 3 || results.some(result => !result || result.error)
+    || results[0]?.result !== 'OK'
+    || (results[1]?.result !== 0 && results[1]?.result !== 1)
+    || results[2]?.result !== 1) {
+    throw new ApiError(503, 'Webhook registration could not be confirmed', '');
+  }
 
   return { subscriberId: newSubscriberId, secret };
 }
