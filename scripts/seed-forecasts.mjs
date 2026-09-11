@@ -15622,7 +15622,9 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         const model = json.model || provider.model;
         console.log(`  [LLM:${stage}] ${provider.name} success model=${model}`);
         recordLlmAttempt(provider.name, model, true, attemptT0, tokensExtra);
-        return { text, model, provider: provider.name };
+        return { text, model, provider: provider.name,
+          ...(stage === 'market_implications' ? { completionTokens: json.usage?.completion_tokens } : {}),
+        };
       } catch (err) {
         // All real attempts were recorded inside the retry callback; budget
         // pre-emptions never sent the prompt, so nothing to record here.
@@ -17144,10 +17146,11 @@ const ALL_ALLOWED_TICKERS = new Set([
   ...ALLOWED_INSTRUMENTS.rates,
 ]);
 
-const MARKET_IMPLICATIONS_SYSTEM_PROMPT = `You are a senior macro strategist generating structured trade-implication cards from live world intelligence.
+function buildMarketImplicationsSystemPrompt(cardCount) {
+  return `You are a senior macro strategist generating structured trade-implication cards from live world intelligence.
 
 RULES:
-- Generate 3 to 5 trade-implication cards based ONLY on the provided world-state context.
+- Generate ${cardCount} trade-implication cards based ONLY on the provided world-state context.
 - Each card must reference a specific ticker from the ALLOWED TICKERS list.
 - direction must be exactly one of: LONG, SHORT, HEDGE
 - timeframe must be one of: 1W, 2W, 1M, 3M
@@ -17170,6 +17173,7 @@ RULES:
 
 Respond with ONLY a JSON array:
 [{"ticker":"","name":"","direction":"","timeframe":"","confidence":"","title":"","narrative":"","risk_caveat":"","driver":"","transmission_chain":[{"node":"","impact_type":"","logic":""}]},...]`;
+}
 
 function buildMarketImplicationsContext(inputs) {
   const parts = [];
@@ -17667,7 +17671,8 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const userPrompt = `World state as of ${new Date().toISOString()}:\n\n${context}\n\nAllowed tickers: ${[...ALL_ALLOWED_TICKERS].join(', ')}`;
 
-  const result = await callForecastLLM(MARKET_IMPLICATIONS_SYSTEM_PROMPT, userPrompt, {
+  const synthesisStartedAt = Date.now();
+  const callOptions = {
     ...llmOptions,
     stage: 'market_implications',
     maxTokens: 2500,
@@ -17677,7 +17682,8 @@ async function buildAndSeedMarketImplications(inputs) {
     // providers) would exceed the entire run budget, so a slow primary must fall
     // straight through to the fallback instead of retrying it (#5003 review).
     maxRetries: 0,
-  });
+  };
+  let result = await callForecastLLM(buildMarketImplicationsSystemPrompt('3 to 5'), userPrompt, callOptions);
 
   if (!result?.text) {
     // A budget-exhausted result is the same benign starve as the pre-call guard.
@@ -17693,7 +17699,31 @@ async function buildAndSeedMarketImplications(inputs) {
     return;
   }
 
-  const parsed = extractStructuredLlmPayload(result.text);
+  let parsed = extractStructuredLlmPayload(result.text);
+  if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+    // A malformed completion otherwise waits for the next hourly job. Allow
+    // one smaller generation, only with measured unused completion tokens and
+    // enough time for the responding provider under the original stage deadline.
+    const usedTokens = result.completionTokens;
+    const remainingTokens = Number.isInteger(usedTokens) && usedTokens > 0
+      ? callOptions.maxTokens - usedTokens : 0;
+    const remainingStageMs = getForecastLlmStageBudgetMs(callOptions) - (Date.now() - synthesisStartedAt);
+    const recoveryOptions = { ...callOptions, providerOrder: [result.provider],
+      maxTokens: remainingTokens, stageBudgetMs: remainingStageMs };
+    const recoveryAdmitted = remainingTokens >= 512
+      && Math.min(remainingStageMs, getRemainingForecastLlmRunBudgetMs()) >= getMarketImplicationsMinRunBudgetMs(recoveryOptions);
+    console.log(JSON.stringify({ event: 'llm_market_implications', parseFailure: true,
+      recoveryAdmitted, remainingTokens, parseStage: parsed.diagnostics.stage }));
+    if (recoveryAdmitted) {
+      const recovered = await callForecastLLM(buildMarketImplicationsSystemPrompt('1 or 2 concise'),
+        `${userPrompt}\n\nThe previous response could not be parsed. Return ONLY a valid JSON array with one or two concise cards. Keep every required field.`,
+        recoveryOptions);
+      if (recovered?.text) {
+        result = recovered;
+        parsed = extractStructuredLlmPayload(result.text);
+      }
+    }
+  }
   const rawCards = parsed.items;
 
   if (!Array.isArray(rawCards) || rawCards.length === 0) {

@@ -585,6 +585,7 @@ export class SupplyChainPanel extends Panel {
             isActiveScenario || isRunning ? 'disabled' : '',
           ].filter(Boolean).join(' ');
           return `<div class="sc-scenario-trigger" data-scenario-id="${escapeHtml(template.id)}" data-chokepoint-id="${escapeHtml(cp.id)}">
+            <div class="sc-scenario-section-label">Scenario settings</div>
             <div class="sc-scenario-controls">
               <label class="sc-scenario-control sc-scenario-control--country">Country
                 <select class="sc-scenario-country-select" aria-label="Scenario country">
@@ -596,10 +597,10 @@ export class SupplyChainPanel extends Panel {
                 <input class="sc-scenario-severity" type="number" min="0" max="100" step="1" value="${controls.disruptionPct}" aria-label="Closure severity (%)">
               </label>
             </div>
-            <p class="sc-scenario-hint">${template.durationDays} days is descriptive only; duration does not change the score. Coverage is checked when the run completes.</p>
+            <div class="sc-scenario-actions"><p class="sc-scenario-hint">${template.durationDays} days is descriptive only. Coverage is checked when the run completes.</p>
             <button class="${btnClass}" ${btnAttrs} aria-label="Simulate ${escapeHtml(template.name)}">
               ${btnLabel}
-            </button>
+            </button></div>
           </div>`;
         })() : '';
 
@@ -1018,8 +1019,8 @@ export class SupplyChainPanel extends Panel {
       const suffix = partial
         ? ` <span class="sc-scenario-partial" title="${escapeHtml(`Only ${c.evaluatedRecords ?? 0} of ${c.requestedRecords ?? 0} requested country/sector records were available; this is a lower bound, not low exposure.`)}">(partial evidence)</span>`
         : '';
-      return `<span class="sc-scenario-country">${escapeHtml(c.iso2)} <em>${partial ? '\u2265' : ''}${c.totalImpact.toFixed(2)} score units (${c.impactPct.toFixed(0)}% relative)</em>${suffix}</span>`;
-    }).join(' \u00B7 ');
+      return `<div class="sc-scenario-country"><span class="sc-scenario-country-code">${escapeHtml(c.iso2)}</span><div><strong>${partial ? '\u2265' : ''}${c.totalImpact.toFixed(2)} score units</strong><span class="sc-scenario-relative">${c.impactPct.toFixed(0)}% relative ${suffix}</span></div></div>`;
+    }).join('');
     const banner = document.createElement('div');
     banner.className = 'sc-scenario-banner';
     const scenarioName = SCENARIO_TEMPLATES.find(tmpl => tmpl.id === scenarioId)?.name ?? scenarioId.replace(/-/g, ' ');
@@ -1030,45 +1031,50 @@ export class SupplyChainPanel extends Panel {
     // (durationDays, disruptionPct, costShockMultiplier) come from the scenario
     // worker's result.template — optional field, defaults hide cleanly if absent.
     const tpl = result.template;
-    const durationStr = tpl ? `${tpl.durationDays} days (descriptive only)` : null;
-    const closurePctStr = tpl ? `${tpl.disruptionPct}% closure` : null;
-    const costBumpPct = tpl ? Math.round((tpl.costShockMultiplier - 1) * 100) : null;
-    const costStr = costBumpPct != null && costBumpPct > 0 ? `+${costBumpPct}% cost` : null;
-    const paramsHtml = [durationStr, costStr].filter(Boolean).map(s =>
-      `<span class="sc-scenario-param">${escapeHtml(s!)}</span>`
-    ).join(' \u00B7 ');
-
-    const taglineParts = [durationStr, closurePctStr, costStr].filter(Boolean).join(' / ');
+    const paramsHtml = tpl ? `<dl class="sc-scenario-metrics">
+      <div><dt>Closure</dt><dd aria-label="${tpl.disruptionPct}% closure">${tpl.disruptionPct}%<small>${result.affectedChokepointIds.length} chokepoint${result.affectedChokepointIds.length === 1 ? '' : 's'}</small></dd></div>
+      <div><dt>Duration</dt><dd>${tpl.durationDays} days<small>descriptive only</small></dd></div>
+      <div><dt>Cost multiplier</dt><dd>${tpl.costShockMultiplier.toFixed(2)}×<small>modeled freight cost</small></dd></div>
+    </dl>` : '';
     const mapSummary = tpl?.disruptionPct === 0
       ? 'No physical route disruption is highlighted.'
       : 'Map highlights disrupted routes.';
-    const taglineHtml = taglineParts
-      ? `<div class="sc-scenario-tagline">Simulating ${escapeHtml(taglineParts)} on ${result.affectedChokepointIds.length} chokepoint${result.affectedChokepointIds.length === 1 ? '' : 's'}. Chokepoint card below shows projected score. ${mapSummary}</div>`
-      : '';
 
     const coverage = result.coverage;
     const records = coverage?.records ?? [];
     const count = (state: string) => records.filter(r => r.state === state).length;
     // "could not be read" rather than naming the producer: this branch also covers a
     // manifest the status handler rejected, which is not the seeder's fault.
-    const coverageText = !coverage || coverage.status === 'unknown'
+    const coverageKnown = coverage && coverage.status !== 'unknown';
+    const coverageText = !coverageKnown
       ? 'Unknown coverage: the country/sector manifest could not be read for this run. No broad exposure conclusion is supported.'
-      : `${coverage.status === 'complete' ? 'Complete within seeded scope' : 'Partial coverage'}: ${count('evaluated')}/${records.length} country/sector records evaluated; ${count('missing')} missing; ${count('malformed')} malformed; ${count('incomplete_routes')} incomplete routes; ${count('not_seeded')} not seeded. ${records.filter(r => r.basis === 'flow_weighted').length} flow-weighted; ${records.filter(r => r.basis === 'country_route_fallback').length} geographic fallback; ${records.filter(r => r.rawImpact === 0).length} valid zero impacts.`;
+      : `${coverage.status === 'complete' ? 'Complete within seeded scope' : 'Partial coverage'}: ${count('evaluated')}/${records.length} country/sector records evaluated`;
+    const coverageCounts = [
+      [count('missing'), 'missing'], [count('malformed'), 'malformed'],
+      [count('incomplete_routes'), 'incomplete routes'], [count('not_seeded'), 'not seeded'],
+      [records.filter(r => r.basis === 'flow_weighted').length, 'flow-weighted'],
+      [records.filter(r => r.basis === 'country_route_fallback').length, 'geographic fallback'],
+      [records.filter(r => r.rawImpact === 0).length, 'valid zero impacts'],
+    ] as const;
+    const coverageCountsHtml = coverageKnown ? coverageCounts.filter(([total]) => total > 0)
+      .map(([total, label]) => `<span>${total} ${label}</span>`).join('') : '';
 
     setTrustedHtml(banner, trustedHtml([
-      `<div class="sc-scenario-top">`,
-      `<span class="sc-scenario-icon">\u26A0</span>`,
-      `<span class="sc-scenario-name">${escapeHtml(scenarioName)}</span>`,
-      paramsHtml ? `<span class="sc-scenario-params">${paramsHtml}</span>` : '',
-      `<span class="sc-scenario-countries">${countriesHtml}</span>`,
-      `<button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button>`,
-      `</div>`,
-      taglineHtml,
-      `<p>Country scope: ${escapeHtml(result.scopedIso2 || 'All seeded countries')}. Raw impact is a modeled relative score, not currency or lost trade. Duration does not change the score.</p>`,
+      `<div class="sc-scenario-top"><div class="sc-scenario-heading">`,
+      `<span class="sc-scenario-section-label">Scenario result</span>`,
+      `<h3 class="sc-scenario-name">${escapeHtml(scenarioName)}</h3>`,
+      `<span class="sc-scenario-scope">Country scope: ${escapeHtml(result.scopedIso2 || 'All seeded countries')}</span></div>`,
+      `<button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button></div>`,
+      paramsHtml,
+      countriesHtml ? `<div class="sc-scenario-countries">${countriesHtml}</div>` : '',
+      `<div class="sc-scenario-coverage-block"><span class="sc-scenario-section-label">Evidence coverage</span>`,
       `<p class="sc-scenario-coverage">${escapeHtml(coverageText)}</p>`,
-      `<details><summary>Country/sector evidence (${records.length})</summary><ul style="max-height:220px;overflow:auto"></ul></details>`,
-      `<button class="sc-scenario-export">Download scenario JSON</button>`,
-    ].join(''), "legacy direct innerHTML migration"));
+      coverageCountsHtml ? `<div class="sc-scenario-coverage-counts">${coverageCountsHtml}</div>` : '',
+      `</div>`,
+      `<details class="sc-scenario-evidence"><summary>Country/sector evidence <span>${records.length} records</span></summary><ul></ul></details>`,
+      `<div class="sc-scenario-footer"><p class="sc-scenario-hint">Raw impact is a modeled relative score, not currency or lost trade. Duration does not change the score. ${mapSummary}</p>`,
+      `<button class="sc-scenario-export">Download scenario JSON</button></div>`,
+    ].join(''), "scenario result presentation"));
     const evidenceDetails = banner.querySelector('details')!;
     evidenceDetails.addEventListener('toggle', () => {
       const list = evidenceDetails.querySelector('ul')!;

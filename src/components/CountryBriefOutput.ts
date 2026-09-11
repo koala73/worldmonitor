@@ -4,6 +4,8 @@ import { h } from '@/utils/dom-utils';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { BRIEF_TOPICS, type BriefTopic, type BriefSectionState } from './country-brief-presentation';
 import briefCss from '@/styles/country-deep-dive.css?inline';
+import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
+import { TRADE_ROUTES } from '@/config/trade-routes';
 import { createOperationalExposureForm, renderOperationalWorksheet, type OperationalWorksheetSession } from './OperationalExposureForm';
 
 const operationalSession: OperationalWorksheetSession = {};
@@ -281,36 +283,60 @@ export function createDecisionBriefOutput(
   return output;
 }
 
-export function renderCommodityBrief(snapshot: import('@/types/decision-brief').CommodityBriefSnapshot): HTMLElement {
-  const article = h('article', { className: 'cdp-output-paper cdp-commodity-paper' },
-    h('h1', {}, `${snapshot.selection.countryName} · ${snapshot.commodity} sourcing comparison`),
-    h('p', {}, `HS ${snapshot.hs4} · Assumed blocked: ${snapshot.selection.chokepointId} · Retrieved ${snapshot.capturedAt}`),
-    h('p', {}, snapshot.context), h('p', {}, snapshot.ordering),
-    h('h2', {}, 'Recorded supplier-country comparison'));
+const chokepointName = (id: string) => CHOKEPOINT_REGISTRY.find(cp => cp.id === id)?.displayName ?? id;
+
+export function renderCommodityBrief(snapshot: import('@/types/decision-brief').CommodityBriefSnapshot, preview = false): HTMLElement {
+  const countries = new Intl.DisplayNames(['en'], { type: 'region' });
+  const article = h('article', { className: `cdp-commodity-paper ${preview ? 'cdp-commodity-preview' : 'cdp-output-paper'}`, lang: 'en' },
+    h('header', { className: 'cdp-commodity-heading' },
+      h('p', { className: 'cdp-commodity-eyebrow' }, `${snapshot.selection.countryName} / HS ${snapshot.hs4}`),
+      h('h1', {}, `${snapshot.commodity} sourcing comparison`),
+      h('p', { className: 'cdp-commodity-assumption' }, 'Assumed blocked: ', h('strong', {}, chokepointName(snapshot.selection.chokepointId))),
+      h('p', { className: 'cdp-commodity-note' }, snapshot.caveats[0]),
+      h('p', { className: 'cdp-commodity-note' }, 'Recorded trade and modeled routes. Capacity, qualification, price and lead time remain unknown.')),
+    h('h2', { className: 'cdp-commodity-section-title' }, 'Recorded supplier countries'));
+  const candidates = h('div', { className: 'cdp-commodity-candidates' });
   for (const candidate of snapshot.candidates) {
     const evidence = snapshot.evidence.find(e => e.id === candidate.shareReference)!;
-    article.append(h('section', { className: 'cdp-commodity-candidate', 'data-origin': candidate.origin },
-      h('h3', {}, candidate.origin),
-      h('dl', {}, ...[
-        ['Recorded share', `${candidate.sharePct === null ? 'Unknown' : candidate.sharePct.toLocaleString('en-US', { maximumFractionDigits: 2 }) + '% of import value'} [${candidate.shareReference}]`],
-        ['Modeled routes', candidate.routeIds.join(', ') || 'Unknown'],
-        ['Transit chokepoints', candidate.transitChokepoints.join(', ') || 'Unknown / none identified'],
-        ['Affected chokepoints', candidate.routeState === 'unknown' ? 'Unknown' : candidate.affectedChokepoints.join(', ') || 'Selected chokepoint absent from modeled path'],
-        ['Source date', evidence.observedAt ?? 'Unknown'],
-        ['Evidence basis', `${evidence.source}; geographic route model`],
-        ['Unresolved constraints', candidate.constraints],
-      ].flatMap(([label, value]) => [h('dt', {}, label!), h('dd', {}, value!)])),
-      h('p', {}, candidate.reason)));
+    const share = candidate.sharePct === null ? 'Unknown' : candidate.sharePct > 0 && candidate.sharePct < 0.01
+      ? '<0.01%' : `${candidate.sharePct.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
+    const state = candidate.routeState === 'exposed' ? 'Modeled exposure'
+      : candidate.routeState === 'unknown' ? 'Route unknown' : 'Blockage not on modeled route';
+    candidates.append(h('section', { className: 'cdp-commodity-candidate', 'data-origin': candidate.origin },
+      h('div', { className: 'cdp-commodity-candidate-top' },
+        h('div', {}, h('h3', {}, countries.of(candidate.origin) ?? candidate.origin),
+          h('span', { className: 'cdp-commodity-note' }, `${candidate.origin} · Trade year ${evidence.observedAt ?? 'unknown'}`)),
+        h('div', { className: 'cdp-commodity-share' }, h('strong', {}, share), h('span', {}, 'of import value'))),
+      h('span', { className: 'cdp-commodity-route-state', 'data-state': candidate.routeState }, state),
+      h('p', { className: 'cdp-commodity-route' }, candidate.routeState === 'unknown' ? 'No modeled maritime path for this country pair.'
+        : candidate.transitChokepoints.map(chokepointName).join(' · ') || 'No transit chokepoints identified.'),
+      h('details', { className: 'cdp-commodity-details', open: !preview },
+        h('summary', {}, 'Route & source details'),
+        h('dl', {}, ...[
+          ['Modeled routes', candidate.routeIds.map(id => TRADE_ROUTES.find(route => route.id === id)?.name ?? id).join(', ') || 'Unknown'],
+          ['Affected chokepoints', candidate.routeState === 'unknown' ? 'Unknown' : candidate.affectedChokepoints.map(chokepointName).join(', ') || 'Selected chokepoint absent from modeled path'],
+          ['Evidence basis', `${evidence.source}; geographic route model`],
+          ['Reference', candidate.shareReference],
+          ['Unresolved constraints', candidate.constraints],
+        ].flatMap(([label, value]) => [h('dt', {}, label!), h('dd', {}, value!)])),
+        h('p', {}, candidate.reason))));
   }
-  article.append(h('h2', {}, 'Next action'), h('p', { className: 'cdp-decision-action' }, snapshot.action.text),
-    h('p', {}, `References: ${snapshot.action.references.join(', ') || 'No bilateral evidence available'}`),
-    h('h3', {}, 'Constraint'), h('p', {}, snapshot.action.constraint),
-    h('h3', {}, 'Reassessment trigger'), h('p', {}, snapshot.action.trigger),
-    h('h2', {}, 'Evidence'),
-    ...snapshot.evidence.map(e => h('p', { id: e.id }, `[${e.id}] ${e.label}: ${e.value === null ? 'Unknown' : e.value} ${e.unit} · `,
-      h('a', { href: e.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, e.source), ` · observed ${e.observedAt ?? 'unknown'}`)),
-    h('p', {}, 'Route basis: WorldMonitor country port clusters and trade-route registry; geographic model, observation date unknown.'),
-    h('h2', {}, 'Limitations'), h('ul', {}, ...snapshot.caveats.map(c => h('li', {}, c))));
+  if (!snapshot.candidates.length) candidates.append(h('p', { className: 'cdp-commodity-empty' }, 'No recorded supplier countries for this selection. See the next action below.'));
+  article.append(candidates,
+    h('section', { className: 'cdp-commodity-action' },
+      h('h2', { className: 'cdp-commodity-section-title' }, 'Next action'), h('p', { className: 'cdp-decision-action' }, snapshot.action.text),
+      h('details', { className: 'cdp-commodity-details', open: !preview }, h('summary', {}, 'Constraints & reassessment'),
+        h('p', {}, `References: ${snapshot.action.references.join(', ') || 'No bilateral evidence available'}`),
+        h('h3', {}, 'Constraint'), h('p', {}, snapshot.action.constraint),
+        h('h3', {}, 'Reassessment trigger'), h('p', {}, snapshot.action.trigger))),
+    h('details', { className: 'cdp-commodity-details cdp-commodity-method', open: !preview },
+      h('summary', {}, 'Evidence & limitations'),
+      h('p', {}, snapshot.context), h('p', {}, snapshot.ordering),
+      h('p', {}, `Retrieved ${snapshot.capturedAt}`),
+      ...snapshot.evidence.map(e => h('p', { id: e.id }, `[${e.id}] ${e.label}: ${e.value === null ? 'Unknown' : e.value} ${e.unit} · `,
+        h('a', { href: e.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, e.source), ` · observed ${e.observedAt ?? 'unknown'}`)),
+      h('p', {}, 'Route basis: WorldMonitor country port clusters and trade-route registry; geographic model, observation date unknown.'),
+      h('h3', {}, 'Limitations'), h('ul', {}, ...snapshot.caveats.map(c => h('li', {}, c)))));
   const data = h('script', { type: 'application/json', id: 'commodity-brief-snapshot' });
   data.textContent = JSON.stringify(snapshot).replace(/</g, '\\u003c');
   article.append(data);
@@ -324,7 +350,7 @@ export function createCommodityBriefOutput(
   onClose: () => void,
 ): HTMLElement {
   const title = t('components.decisionBrief.commodityTitle');
-  const output = h('section', { className: 'cdp-output', 'aria-label': title });
+  const output = h('section', { className: 'cdp-output cdp-commodity-output', 'aria-label': title });
   const close = h('button', { type: 'button', className: 'cdp-action-btn' }, t('components.decisionBrief.back'));
   const controls = h('div', { className: 'cdp-output-controls' });
   const paper = h('div', { className: 'cdp-decision-result' });
@@ -334,9 +360,9 @@ export function createCommodityBriefOutput(
   const route = h('select', { 'aria-label': t('components.decisionBrief.blockedChokepoint') }) as HTMLSelectElement;
   for (const [id, label] of [['hormuz_strait', 'Strait of Hormuz'], ['suez', 'Suez Canal'], ['cape_of_good_hope', 'Cape of Good Hope'], ['malacca_strait', 'Strait of Malacca'], ['bab_el_mandeb', 'Bab el-Mandeb']]) route.append(h('option', { value: id! }, label!));
   const status = h('p', { role: 'status' }, t('components.decisionBrief.select'));
-  const refresh = h('button', { type: 'button', className: 'cdp-action-btn' }, t('components.decisionBrief.commodityCapture')) as HTMLButtonElement;
-  const html = h('button', { type: 'button', className: 'cdp-action-btn', disabled: true }, t('components.decisionBrief.downloadHtml')) as HTMLButtonElement;
-  const json = h('button', { type: 'button', className: 'cdp-action-btn', disabled: true }, t('components.decisionBrief.downloadJson')) as HTMLButtonElement;
+  const refresh = h('button', { type: 'button', className: 'cdp-action-btn cdp-export-primary' }, t('components.decisionBrief.commodityCapture')) as HTMLButtonElement;
+  const html = h('button', { type: 'button', className: 'cdp-action-btn', disabled: true, 'aria-label': t('components.decisionBrief.downloadHtml'), title: t('components.decisionBrief.downloadHtml') }, '↓ HTML') as HTMLButtonElement;
+  const json = h('button', { type: 'button', className: 'cdp-action-btn', disabled: true, 'aria-label': t('components.decisionBrief.downloadJson'), title: t('components.decisionBrief.downloadJson') }, '↓ JSON') as HTMLButtonElement;
   let snapshot: import('@/types/decision-brief').CommodityBriefSnapshot | null = null;
   let request: AbortController | null = null;
   let generation = 0;
@@ -355,7 +381,7 @@ export function createCommodityBriefOutput(
     try {
       const result = await load({ countryCode: country.code, countryName: country.name, commodityId: commodity.value, chokepointId: route.value }, AbortSignal.any([signal, request.signal]));
       if (signal.aborted || current !== generation) return;
-      snapshot = result; paper.replaceChildren(renderCommodityBrief(result)); html.disabled = json.disabled = false;
+      snapshot = result; paper.replaceChildren(renderCommodityBrief(result, true)); html.disabled = json.disabled = false;
       status.textContent = t('components.decisionBrief.captured');
     } catch (error) {
       if (signal.aborted || current !== generation) return;
@@ -370,7 +396,9 @@ export function createCommodityBriefOutput(
     h('a', { href: url, download: `${country.code.toLowerCase()}-commodity-decision.json` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
   });
-  controls.append(h('label', {}, t('components.decisionBrief.commodity'), commodity), h('label', {}, t('components.decisionBrief.blockedChokepoint'), route), refresh, html, json, status);
-  output.append(h('header', { className: 'cdp-output-header' }, close, h('h2', {}, title)), h('div', { className: 'cdp-output-layout' }, controls, paper));
+  controls.append(h('div', { className: 'cdp-commodity-selectors' },
+    h('label', {}, t('components.decisionBrief.commodity'), commodity), h('label', {}, t('components.decisionBrief.blockedChokepoint'), route)),
+    h('div', { className: 'cdp-commodity-buttons' }, refresh, html, json), status);
+  output.append(h('header', { className: 'cdp-output-header' }, close, h('h2', {}, title)), controls, paper);
   return output;
 }

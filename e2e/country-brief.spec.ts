@@ -559,11 +559,12 @@ test('decision brief clears and stays usable when a selection change aborts a ca
   await expect(panel.getByRole('button', { name: 'Capture / refresh both' })).toBeEnabled();
 });
 
-for (const mobile of [false, true]) test(`commodity decision brief ${mobile ? 'mobile' : 'desktop'} captures selection and actual exports`, async ({ page, countryBrief }, testInfo) => {
+for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true, light: false }, { mobile: false, light: true }, { mobile: true, light: true }]) test(`commodity decision brief ${mobile ? 'mobile' : 'desktop'} ${light ? 'light' : 'dark'} captures selection and actual exports`, async ({ page, countryBrief }, testInfo) => {
   void countryBrief;
   if (mobile) await page.setViewportSize({ width: 390, height: 844 });
   await installCommodityBriefData(page);
-  await page.goto('/dashboard?country=JP');
+  await page.addInitScript(theme => localStorage.setItem('worldmonitor-theme', theme), light ? 'light' : 'dark');
+  await page.goto(`/dashboard?country=JP${light && !mobile ? '&expanded=1' : ''}`);
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
   await panel.getByRole('button', { name: 'Commodity decision brief', exact: true }).click();
@@ -576,12 +577,25 @@ for (const mobile of [false, true]) test(`commodity decision brief ${mobile ? 'm
     await output.getByRole('button', { name: 'Capture commodity comparison' }).click();
     await expect(output.getByRole('status')).toContainText('Captured.');
     const paper = output.locator('.cdp-commodity-paper');
+    expect(await paper.evaluate(el => getComputedStyle(el).color)).toBe(
+      await output.evaluate(el => getComputedStyle(el).color),
+    );
+    expect(await paper.evaluate(el => getComputedStyle(el).getPropertyValue('--panel-bg').trim())).toBe(
+      await output.evaluate(el => getComputedStyle(el).getPropertyValue('--panel-bg').trim()),
+    );
     const snapshot = JSON.parse(await paper.locator('#commodity-brief-snapshot').textContent() ?? 'null');
     if (commodity === 'helium') {
       await expect(paper).toContainText('hospital helium supplier share');
-      await expect(paper.locator('[data-origin="QA"]')).toContainText('hormuz_strait');
+      await expect(paper.locator('[data-origin="QA"]')).toContainText('Strait of Hormuz');
       expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'QA').routeState).toBe('exposed');
       expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'ZZ').routeState).toBe('unknown');
+      const details = paper.locator('[data-origin="QA"] details');
+      await details.locator('summary').focus();
+      await details.locator('summary').press('Enter');
+      await expect(details).toHaveAttribute('open', '');
+      expect(await details.locator('summary').evaluate(el => getComputedStyle(el).outlineStyle)).not.toBe('none');
+      await expect(details).toContainText('UN Comtrade bilateral HS4');
+      await details.locator('summary').click();
     } else if (commodity === 'wheat') {
       expect(snapshot.candidates.map((c: { origin: string }) => c.origin)).toEqual(['AU']);
       await expect(paper).toContainText('2023');
@@ -605,7 +619,7 @@ for (const mobile of [false, true]) test(`commodity decision brief ${mobile ? 'm
     await expect(exported.locator('body')).toContainText(snapshot.action.trigger);
     await exported.screenshot({ path: testInfo.outputPath(`${commodity}-export.png`), fullPage: true });
     await exported.close();
-    await paper.scrollIntoViewIfNeeded();
+    await panel.locator('.panel-content').evaluate(el => { el.scrollTop = 0; });
     await page.screenshot({ path: testInfo.outputPath(`${commodity}-preview.png`) });
     expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }

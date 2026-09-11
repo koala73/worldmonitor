@@ -168,6 +168,29 @@ describe('decision brief preview and exports', () => {
 });
 
 describe('commodity snapshot lifecycle', () => {
+  it('keeps preview details collapsible and the exported report complete with the same snapshot', async () => {
+    const { renderCommodityBrief } = await import('@/components/CountryBriefOutput');
+    const { buildCommodityBrief } = await import('@/utils/decision-brief');
+    const data = buildCommodityBrief({ countryCode: 'JP', countryName: 'Japan', commodityId: 'helium', chokepointId: 'hormuz_strait' }, {
+      retrievedAt: '2026-09-10', products: { iso2: 'JP', fetchedAt: '', products: [{ hs4: '2804', description: '', totalValue: 100, year: 2024,
+        topExporters: [{ partnerCode: 634, partnerIso2: 'QA', share: 0.5, value: 50 }] }] },
+      vulnerabilities: { iso2: 'JP', country: '', vulnerabilities: [], generatedAt: '', methodologyVersion: '', upstreamUnavailable: true },
+    });
+    const preview = renderCommodityBrief(data, true);
+    const report = renderCommodityBrief(data);
+    expect(preview.classList.contains('cdp-output-paper')).toBe(false);
+    expect(preview.querySelectorAll('details[open]')).toHaveLength(0);
+    expect(report.querySelectorAll('details:not([open])')).toHaveLength(0);
+    expect(preview.querySelector('h3')!.textContent).toBe('Qatar');
+    expect(preview.textContent).toContain('Strait of Hormuz');
+    expect(preview.querySelector('.cdp-commodity-heading')!.textContent).toContain(data.caveats[0]);
+    for (const view of [preview, report]) {
+      expect(JSON.parse(view.querySelector('#commodity-brief-snapshot')!.textContent!)).toEqual(data);
+      expect(view.textContent).toContain(data.action.constraint);
+      expect(view.textContent).toContain(data.action.trigger);
+    }
+  });
+
   it('invalidates exports and ignores an old commodity capture after changing selection', async () => {
     const { createCommodityBriefOutput } = await import('@/components/CountryBriefOutput');
     const { buildCommodityBrief, COMMODITY_BRIEF_OPTIONS } = await import('@/utils/decision-brief');
@@ -183,7 +206,7 @@ describe('commodity snapshot lifecycle', () => {
     }));
     await new Promise(r => setTimeout(r, 0));
     expect(root.querySelector('.cdp-commodity-paper')).toBeNull();
-    expect(Array.from(root.querySelectorAll('button')).find(b => b.textContent === 'Download decision JSON')!.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[aria-label="Download decision JSON"]')!.disabled).toBe(true);
     expect(Array.from(root.querySelectorAll('button')).find(b => b.textContent === 'Capture commodity comparison')!.disabled).toBe(false);
     controller.abort();
   });
@@ -201,7 +224,7 @@ it('commodity denied/failed captures withhold exports and recover with the real 
     click(root, 'Capture commodity comparison');
     await vi.waitFor(() => expect(root.textContent).toContain('Check your access and retry'));
     expect(root.querySelector('.cdp-commodity-paper')).toBeNull();
-    expect(Array.from(root.querySelectorAll('button')).find(b => b.textContent === 'Download decision JSON')!.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[aria-label="Download decision JSON"]')!.disabled).toBe(true);
   }
   click(root, 'Capture commodity comparison');
   await vi.waitFor(() => expect(root.textContent).toContain('No recorded HS 2804 bilateral product evidence'));

@@ -2274,8 +2274,57 @@
 .cdp-decision-paper ul { padding-inline-start: 20px; }
 .cdp-decision-paper li { margin-bottom: 8px; }
 
-.cdp-commodity-candidate { border: 1px solid var(--border); padding: 16px; margin: 16px 0; break-inside: avoid; }
-.cdp-commodity-candidate dl { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 3fr); gap: 8px 16px; }
-.cdp-commodity-candidate dt { font-weight: 600; }
-.cdp-commodity-candidate dd { margin: 0; overflow-wrap: anywhere; }
-@media (max-width: 600px) { .cdp-commodity-candidate dl { grid-template-columns: 1fr; gap: 4px; } .cdp-commodity-candidate dd { margin-bottom: 12px; } }
+.cdp-commodity-output { font-family: var(--font-family, 'Nunito', sans-serif); }
+.cdp-commodity-output .cdp-output-header { gap: 12px; padding-right: 28px; margin-bottom: 20px; padding-bottom: 16px; }
+.cdp-commodity-output .cdp-output-header h2 { font-size: 16px; line-height: 1.4; }
+.cdp-commodity-output .cdp-output-controls { position: static; display: grid; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+.cdp-commodity-selectors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cdp-commodity-output .cdp-output-controls label { width: 100%; min-width: 0; gap: 6px; font-size: 11px; }
+.cdp-commodity-output .cdp-output-controls select { width: 100%; min-width: 0; min-height: 40px; }
+.cdp-commodity-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.cdp-commodity-output .cdp-output-controls button { padding: 8px 12px; font-size: 11px; }
+.cdp-commodity-output .cdp-output-controls .cdp-export-primary { background: var(--green); color: var(--bg); border-color: var(--green); }
+.cdp-commodity-output button:disabled { opacity: .45; cursor: not-allowed; }
+.cdp-commodity-output [role="status"] { margin: 0; font-size: 11px; }
+.cdp-commodity-paper { min-width: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.cdp-commodity-preview { color: var(--text); background: var(--panel-bg); padding-top: 22px; }
+.cdp-commodity-paper p { margin: 0 0 10px; }
+.cdp-commodity-paper h1 { font-size: 24px; line-height: 1.2; letter-spacing: -.4px; margin: 0 0 12px; }
+.cdp-commodity-paper h3 { font-size: 14px; line-height: 1.4; margin: 0; }
+.cdp-commodity-eyebrow { color: var(--text-muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.cdp-commodity-assumption { font-size: 12px; color: var(--text-secondary); }
+.cdp-commodity-assumption strong { color: var(--semantic-elevated); font-weight: 600; }
+.cdp-commodity-note { font-size: 11px; color: var(--text-muted); }
+.cdp-commodity-section-title { margin: 20px 0 12px; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-secondary); }
+.cdp-commodity-candidates { display: grid; gap: 10px; }
+.cdp-commodity-candidate { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 16px; break-inside: avoid; }
+.cdp-commodity-candidate-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cdp-commodity-share { flex-shrink: 0; display: grid; text-align: right; font-variant-numeric: tabular-nums; }
+.cdp-commodity-share strong { font-size: 24px; font-weight: 600; line-height: 1.15; letter-spacing: -.6px; }
+.cdp-commodity-share span { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+.cdp-commodity-route-state { display: inline-block; border: 1px solid var(--border-strong, var(--border)); border-radius: 4px; padding: 2px 7px; font-size: 10px; color: var(--text-secondary); }
+.cdp-commodity-route-state[data-state="exposed"] { color: var(--semantic-elevated); border-color: color-mix(in srgb, var(--semantic-elevated) 45%, transparent); background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent); }
+.cdp-commodity-paper .cdp-commodity-route { color: var(--text-secondary); font-size: 12px; margin: 8px 0 12px; }
+.cdp-commodity-details { font-size: 11px; color: var(--text-muted); }
+.cdp-commodity-details summary { cursor: pointer; color: var(--text-secondary); padding: 8px 0; min-height: 32px; }
+.cdp-commodity-details[open] summary { margin-bottom: 8px; }
+.cdp-commodity-details p:last-child { margin-bottom: 0; }
+.cdp-commodity-details dl { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: 8px 16px; margin: 0 0 12px; }
+.cdp-commodity-details dt { font-weight: 600; color: var(--text-secondary); }
+.cdp-commodity-details dd { margin: 0; }
+.cdp-commodity-details h3 { margin: 12px 0 4px; font-size: 12px; color: var(--text-secondary); }
+.cdp-commodity-details ul { padding-inline-start: 18px; }
+.cdp-commodity-details li { margin-bottom: 8px; }
+.cdp-commodity-details a { color: var(--green); text-underline-offset: 3px; }
+.cdp-commodity-action { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.cdp-commodity-action .cdp-commodity-section-title { margin-top: 0; }
+.cdp-commodity-method { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
+.cdp-commodity-empty { padding: 20px; border: 1px dashed var(--border); border-radius: 6px; color: var(--text-muted); }
+@container country-brief (min-width: 800px) {
+  .cdp-commodity-preview .cdp-commodity-candidates { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+}
+@container country-brief (max-width: 380px) {
+  .cdp-commodity-selectors { grid-template-columns: minmax(0, 1fr); }
+  .cdp-commodity-details dl { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .cdp-commodity-details dd { margin-bottom: 8px; }
+}
