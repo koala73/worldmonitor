@@ -1053,6 +1053,13 @@ async function requireExclusivePortalCustomer(
   userId: string,
   customerId: string,
 ): Promise<string> {
+  const deletedOwner = await ctx.db.query("deletedSubscriptionCustomers")
+    .withIndex("by_customer_user", (q) => q.eq("dodoCustomerId", customerId))
+    .filter((q) => q.neq(q.field("userId"), userId))
+    .first();
+  if (deletedOwner) {
+    throw new ConvexError({ kind: "NO_CUSTOMER", reason: "SHARED_CUSTOMER" });
+  }
   const linkedSubscription = await ctx.db.query("subscriptions")
     .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customerId))
     .filter((q) => q.neq(q.field("userId"), userId))
@@ -3771,18 +3778,20 @@ export const claimSubscription = mutation({
     }
 
     // Parallel reads for all anonId data — bounded to prevent runaway memory
-    const [subs, anonEntitlement, customers, payments] = await Promise.all([
+    const [subs, anonEntitlement, customers, payments, deletedCustomers] = await Promise.all([
       ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(50),
       ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).first(),
       ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(10),
       ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(1000),
+      ctx.db.query("deletedSubscriptionCustomers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).collect(),
     ]);
 
     const hasClaimableRows =
       subs.length > 0 ||
       anonEntitlement !== null ||
       customers.length > 0 ||
-      payments.length > 0;
+      payments.length > 0 ||
+      deletedCustomers.length > 0;
     if (!hasClaimableRows) {
       return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
     }
@@ -3791,6 +3800,10 @@ export const claimSubscription = mutation({
       throw new ConvexError({ kind: "ANON_CLAIM_PROOF_REQUIRED" });
     }
 
+    // Transfer retained ownership only after the same proof used for live rows.
+    for (const deletedCustomer of deletedCustomers) {
+      await ctx.db.patch(deletedCustomer._id, { userId: realUserId });
+    }
     // Reassign subscriptions
     for (const sub of subs) {
       await ctx.db.patch(sub._id, { userId: realUserId });
@@ -4184,7 +4197,9 @@ export const endSubscriptionCoverageNow = internalMutation({
  * Recomputes the entitlement from the user's remaining active subs after
  * deletion. If none remain, downgrades to free.
  *
- * The audit trail (paymentEvents, webhookEvents) is preserved.
+ * The audit trail (paymentEvents, webhookEvents) is preserved. Resolvable
+ * customer ownership is retained separately so cleanup cannot reopen a
+ * customer-wide portal previously blocked by this subscription's owner.
  *
  * Typical usage (CLI):
  *   npx convex run 'payments/billing:deleteSubscriptionByDodoId' \
@@ -4209,6 +4224,23 @@ export const deleteSubscriptionByDodoId = internalMutation({
     }
 
     const userId = sub.userId;
+    const rawCustomerId = (sub.rawPayload as { customer?: { customer_id?: unknown } } | null)
+      ?.customer?.customer_id;
+    let customerId = sub.dodoCustomerId ||
+      (typeof rawCustomerId === "string" ? rawCustomerId : "");
+    if (!customerId) {
+      const customer = await ctx.db.query("customers")
+        .withIndex("by_userId", (q) => q.eq("userId", userId)).first();
+      customerId = customer?.dodoCustomerId ?? "";
+    }
+    if (customerId) {
+      const retainedOwner = await ctx.db.query("deletedSubscriptionCustomers")
+        .withIndex("by_customer_user", (q) => q.eq("dodoCustomerId", customerId).eq("userId", userId))
+        .first();
+      if (!retainedOwner) {
+        await ctx.db.insert("deletedSubscriptionCustomers", { userId, dodoCustomerId: customerId });
+      }
+    }
     // Index prefix — deliberately unfiltered by cohort so deleting a
     // subscription reaps BOTH its day-0 and retro presentation rows.
     const presentations = await ctx.db
