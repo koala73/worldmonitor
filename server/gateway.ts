@@ -2003,18 +2003,26 @@ export function createDomainGateway(
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
     if (!internalMcpVerified) {
-      const endpointRlResponse = rateLimitPrincipalUserId
-        ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
-            principalUserId: rateLimitPrincipalUserId,
-          })
-        : await checkEndpointRateLimit(request, pathname, corsHeaders);
-      if (endpointRlResponse) {
-        const reason = getRateLimitTelemetryReason(
-          endpointRlResponse,
-          'rate_limit_429_endpoint',
-        );
-        emitRequest(endpointRlResponse.status, reason, null);
-        return endpointRlResponse;
+      // The packaged Tauri sidecar has a local authenticated transport and no
+      // Upstash credentials. Its image handler owns the local-cache/provider
+      // path, so do not let this cloud-only endpoint policy reject it first.
+      const skipEndpointRateLimitForTauriWebcam =
+        process.env.LOCAL_API_MODE === 'tauri-sidecar'
+        && pathname === '/api/webcam/v1/get-webcam-image';
+      if (!skipEndpointRateLimitForTauriWebcam) {
+        const endpointRlResponse = rateLimitPrincipalUserId
+          ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
+              principalUserId: rateLimitPrincipalUserId,
+            })
+          : await checkEndpointRateLimit(request, pathname, corsHeaders);
+        if (endpointRlResponse) {
+          const reason = getRateLimitTelemetryReason(
+            endpointRlResponse,
+            'rate_limit_429_endpoint',
+          );
+          emitRequest(endpointRlResponse.status, reason, null);
+          return endpointRlResponse;
+        }
       }
 
       // ── Per-account API rate limit (#3199) ──────────────────────────────

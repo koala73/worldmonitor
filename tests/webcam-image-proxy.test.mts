@@ -15,6 +15,7 @@ import { PUBLIC_NO_AUTH_RPC_PATHS, createDomainGateway } from '../server/gateway
 import { getWebcamImage } from '../server/worldmonitor/webcam/v1/get-webcam-image.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
+import webcamGateway from '../api/webcam/v1/[rpc].ts';
 
 const REDIS_URL = 'https://redis.test';
 const WINDY_URL = 'https://api.windy.com/webcams/api/v3/webcams';
@@ -277,6 +278,36 @@ describe('Windy webcam image proxy access contract', () => {
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
     assert.equal(handlerCalls, 0, 'the gateway must reject before route execution');
+  });
+
+  it('lets the bundled Tauri sidecar webcam gateway run without Upstash', async () => {
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    process.env.WM_SESSION_SECRET = 'webcam-proxy-session-test-secret-at-least-32-chars';
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    __resetRateLimitForTest();
+    const calls = installProviderAndRedisFixture();
+    const { token } = await issueSessionToken();
+
+    const response = await webcamGateway(new Request(`http://127.0.0.1:46123${WEBCAM_IMAGE_PATH}?webcam_id=bundled-sidecar-camera-123`, {
+      headers: {
+        Origin: 'http://127.0.0.1:46123',
+        Cookie: `wm-session=${token}`,
+      },
+    }));
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      thumbnailUrl: 'https://cdn.example/cam.jpg',
+      playerUrl: 'https://player.example/cam',
+      title: 'Test camera',
+      windyUrl: 'https://www.windy.com/webcams/bundled-sidecar-camera-123',
+      lastUpdated: '2026-09-11T00:00:00.000Z',
+      error: '',
+    });
+    assert.deepEqual(calls.map(call => call.url), [
+      `${WINDY_URL}/bundled-sidecar-camera-123?include=images,urls`,
+    ]);
   });
 
   it('admits browser cookies and header fallback through an available limiter, but requires a credential', async () => {
