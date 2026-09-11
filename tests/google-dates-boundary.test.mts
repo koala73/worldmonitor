@@ -1,0 +1,200 @@
+import assert from 'node:assert/strict';
+import { afterEach, beforeEach, test } from 'node:test';
+import type { SearchGoogleDatesRequest } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { searchGoogleDates } from '../server/worldmonitor/aviation/v1/search-google-dates.ts';
+import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
+import { createDomainGateway, serverOptions } from '../server/gateway.ts';
+import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
+import { issueSessionToken } from '../api/_session.js';
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+const PATH = '/api/aviation/v1/search-google-dates';
+const gateway = createDomainGateway(createAviationServiceRoutes(aviationHandler, serverOptions));
+let redis: ReturnType<typeof installRedis>;
+let calls: URL[];
+let session: string;
+beforeEach(async () => {
+  delete process.env.WORLDMONITOR_VALID_KEYS;
+  delete process.env.VERCEL;
+  delete process.env.VERCEL_ENV;
+  process.env.WS_RELAY_URL = 'https://relay.example';
+  delete process.env.LOCAL_API_MODE;
+  process.env.WM_SESSION_SECRET = 'synthetic-aviation-news-session-secret';
+  session = (await issueSessionToken()).token;
+  __resetRateLimitForTest();
+  redis = installRedis({});
+  calls = [];
+  globalThis.fetch = (async (input, init) => {
+    const url = new URL(String(input)); calls.push(url);
+    if (url.hostname === 'redis.example') return redis.fetchImpl(input, init);
+    return Response.json({ dates: [{ date: '2026-10-01', price: 100 }], partial: false });
+  }) as typeof fetch;
+});
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];
+  Object.assign(process.env, originalEnv);
+  __resetRateLimitForTest();
+});
+const defaults: SearchGoogleDatesRequest = { origin: 'DXB', destination: 'LHR', startDate: '2026-10-01', endDate: '2026-10-31', tripDuration: 0, isRoundTrip: false, cabinClass: '', maxStops: '', departureWindow: '', airlines: [], sortByPrice: false, passengers: 1 };
+const request = (overrides: Record<string, string> = {}) => new Request(`https://api.worldmonitor.app${PATH}?${new URLSearchParams({ origin: 'DXB', destination: 'LHR', start_date: '2026-10-01', end_date: '2026-10-31', ...overrides })}`, { headers: { 'X-WorldMonitor-Key': session, 'x-vercel-forwarded-for': '192.0.2.8' } });
+const ctx = () => ({ request: request(), pathParams: {}, headers: {} });
+const feeds = () => calls.filter(url => url.hostname !== 'redis.example');
+const read = (overrides: Partial<typeof defaults> = {}) => searchGoogleDates(ctx(), { ...defaults, ...overrides });
+
+test('rejects malformed or oversized date-grid input before cache or relay work', async () => {
+  const invalid = [{ origin: 'X'.repeat(1000) }, { startDate: '' }, { startDate: '2026-2-01' }, { startDate: '2026-02-29' }, { destination: 'A/B' }, { startDate: '2026-02-30' }, { endDate: '2026-09-30' }, { endDate: '2027-10-02' }, { cabinClass: 'arbitrary' }, { maxStops: '3' }, { departureWindow: '25-26' }, { departureWindow: '20-6' }, { airlines: ['BAD'] }, { airlines: Array(11).fill('BA') }, { isRoundTrip: true, tripDuration: 0 }, { isRoundTrip: true, tripDuration: 366 }];
+  for (const value of invalid) {
+    await assert.rejects(read(value as Partial<typeof defaults>), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    assert.equal(calls.length, 0);
+  }
+});
+test('canonical equivalents share a bounded hashed key and relay query', async () => {
+  await read({ origin: ' dxb ', cabinClass: '', maxStops: '', airlines: ['ba', 'AA', 'BA'], departureWindow: '06-20', passengers: 99 });
+  await read({ cabinClass: 'ECONOMY', maxStops: 'ANY', airlines: ['AA', 'BA'], departureWindow: '6-20', passengers: 9 });
+  assert.equal(feeds().length, 1);
+  assert.deepEqual(feeds()[0]!.searchParams.getAll('airlines'), ['AA', 'BA']);
+  const keys = [...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:'));
+  assert.equal(keys.length, 1);
+  assert.match(keys[0]!, /^aviation:gf-dates:[a-f0-9]{64}:v2$/);
+});
+test('gateway invalid input is400 and missing limiter store is503 without relay calls', async () => {
+  assert.equal((await gateway(request({ origin: 'TOOLONG' }))).status, 400);
+  assert.equal(feeds().length, 0);
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  __resetRateLimitForTest();
+  assert.equal((await gateway(request())).status, 503);
+  assert.equal(feeds().length, 0);
+});
+test('actual native sidecar requires its token before the date-search gateway', async () => {
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createLocalApiServer } = await import('../src-tauri/sidecar/local-api-server.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'google-dates-sidecar-'));
+  await mkdir(join(root, 'aviation/v1'), { recursive: true });
+  const serviceUrl = new URL('../src/generated/server/worldmonitor/aviation/v1/service_server.ts', import.meta.url).href;
+  const gatewayUrl = new URL('../server/gateway.ts', import.meta.url).href;
+  const handlerUrl = new URL('../server/worldmonitor/aviation/v1/handler.ts', import.meta.url).href;
+  await writeFile(join(root, 'aviation/v1/search-google-dates.js'), `import {createAviationServiceRoutes} from ${JSON.stringify(serviceUrl)}; import {createDomainGateway,serverOptions} from ${JSON.stringify(gatewayUrl)}; import {aviationHandler} from ${JSON.stringify(handlerUrl)}; export default createDomainGateway(createAviationServiceRoutes(aviationHandler,serverOptions));`);
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.LOCAL_API_TOKEN = 'synthetic-native-transport';
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  const app = await createLocalApiServer({ port: 0, apiDir: root, dataDir: root, mode: 'tauri-sidecar', cloudFallback: false, logger: { log() {}, warn() {}, error() {} } });
+  const { port } = await app.start();
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    const url = `http://127.0.0.1:${port}${PATH}?origin=DXB&destination=LHR&start_date=2026-10-01&end_date=2026-10-31`;
+    assert.equal((await originalFetch(url, { headers: { 'x-worldmonitor-local-token': 'invalid' } })).status, 401);
+    const headers = { 'x-worldmonitor-local-token': process.env.LOCAL_API_TOKEN, 'X-WorldMonitor-Key': session };
+    for (let i = 0; i < 10; i++) assert.equal((await originalFetch(url, { headers })).status, 200);
+    const denied = await originalFetch(url, { headers });
+    assert.equal(denied.status, 429);
+    assert.equal(Number(denied.headers.get('Retry-After')), 60);
+    now += 59_999;
+    assert.equal((await originalFetch(url, { headers })).status, 429);
+    now += 1;
+    assert.equal((await originalFetch(url, { headers })).status, 200);
+    assert.ok(feeds().length <= 1);
+  } finally {
+    Date.now = realNow;
+    await app.close();
+  }
+});
+
+test('cloud policy sends10/min to Redis and rejects the11th request', async () => {
+  const transport = globalThis.fetch;
+  let admitted = 0;
+  const wire: { init?: RequestInit }[] = [];
+  globalThis.fetch = (async (input, init) => {
+    wire.push({ init });
+    const response = await transport(input, init);
+    const commands = init?.body ? JSON.parse(String(init.body)) : [];
+    if (!Array.isArray(commands[0])) return response;
+    const result = await response.json();
+    for (let i = 0; i < commands.length; i++) if (String(commands[i][0]).toUpperCase() === 'EVALSHA') result[i] = { result: [10 - ++admitted, 60] };
+    return Response.json(result);
+  }) as typeof fetch;
+  for (let i = 0; i < 10; i++) assert.equal((await gateway(request())).status, 200);
+  const denied = await gateway(request());
+  assert.equal(denied.status, 429);
+  assert.ok(Number(denied.headers.get('Retry-After')) > 0);
+  const sent = readLimiterRequest(wire);
+  assert.equal(sent?.tokens, 10);
+  assert.equal(sent?.windowMs, 60000);
+  assert.ok(sent?.keys.some((key: string) => key.includes(PATH)));
+  assert.equal(feeds().length, 1);
+});
+
+test('cloud and Docker fail closed on missing or failing store', async () => {
+  for (const mode of ['', 'docker']) {
+    process.env.LOCAL_API_MODE = mode;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    __resetRateLimitForTest();
+    assert.equal((await gateway(request())).status, 503);
+  }
+  redis = installRedis({});
+  __resetRateLimitForTest();
+  globalThis.fetch = (async () => { throw new Error('Synthetic store outage'); }) as typeof fetch;
+  assert.equal((await gateway(request())).status, 503);
+  assert.equal(feeds().length, 0);
+});
+
+test('distinct effective options keep distinct keys; one-way duration is irrelevant', async () => {
+  await read();
+  await read({ tripDuration: 100 });
+  assert.equal(feeds().length, 1);
+  for (const option of [{ isRoundTrip: true, tripDuration: 7 }, { cabinClass: 'BUSINESS' }, { maxStops: 'NON_STOP' }, { sortByPrice: true }, { passengers: 2 }, { airlines: ['BA'] }, { departureWindow: '6-20' }]) await read(option);
+  assert.equal(feeds().length, 8);
+});
+
+test('actual relay calendar handler makes at most6 chunks for accepted366-day range', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { runInNewContext } = await import('node:vm');
+  const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  const start = source.indexOf('async function handleGoogleFlightsDates(req, res)');
+  // The function ends before the next top-level section; select its closing brace.
+  const functionEnd = source.indexOf('\n}\n', start) + 2;
+  assert.ok(start > 0 && functionEnd > start);
+  let googleCalls = 0;
+  const calendar = runInNewContext(`(${source.slice(start, functionEnd)})`, {
+    URL, Date, Math, JSON, Number, parseInt, console,
+    gfParseAirlines: (values: string[]) => values,
+    gfGlobal429Until: 0, GF_CALENDAR_URL: 'https://google.example/calendar', GF_HEADERS: {},
+    incrementRelayMetric() {}, recordRelayOutcome() {},
+    buildDateFilters: (params: unknown) => params, encodeGfFilters: JSON.stringify,
+    AbortSignal, parseGfDates: () => [],
+    fetch: async () => { googleCalls++; return new Response('[]'); },
+  });
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
+    let status = 200;
+    let body = '';
+    await calendar({ url: String(input) }, { writeHead(code: number) { status = code; }, end(value: string) { body = value; } });
+    return new Response(body, { status });
+  }) as typeof fetch;
+  assert.equal((await gateway(request({ start_date: '2026-01-01', end_date: '2027-01-01' }))).status, 200);
+  assert.equal(googleCalls, 6);
+  assert.equal((await gateway(request({ start_date: '2026-01-01', end_date: '2027-01-02' }))).status, 400);
+  assert.equal(googleCalls, 6);
+});
+
+test('valid leap day and supported aliases reach only the configured relay', async () => {
+  await read({ startDate: '2028-02-29', endDate: '2028-02-29', maxStops: '0', cabinClass: 'business', departureWindow: '0-24', airlines: ['U2'] });
+  const url = feeds()[0]!;
+  assert.equal(url.origin, 'https://relay.example');
+  assert.equal(url.pathname, '/google-flights/search-dates');
+  assert.equal(url.searchParams.get('max_stops'), 'NON_STOP');
+  assert.equal(url.searchParams.get('cabin_class'), 'BUSINESS');
+  await read({ startDate: '2028-02-29', endDate: '2028-02-29', maxStops: 'NON_STOP', cabinClass: 'BUSINESS', departureWindow: '0-24', airlines: ['U2'] });
+  assert.equal(feeds().length, 1);
+});
