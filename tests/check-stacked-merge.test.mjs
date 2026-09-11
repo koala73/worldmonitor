@@ -258,6 +258,38 @@ describe('orphan alarm copy', () => {
 });
 
 describe('checkStackedMerge orchestrator', () => {
+  it('keeps #8035 pending while the open #8003 head contains its merge', () => {
+    const mergeSha = 'dd30a8734b88ecea5f91533172b39cb4d20f5446';
+    const result = checkStackedMerge({
+      mode: 'post-merge',
+      event: pullEvent({
+        number: 8035,
+        merged: true,
+        merge_commit_sha: mergeSha,
+        base: { ref: 'codex/7990-commodity-evidence' },
+      }, { action: 'closed' }),
+      gh: () => JSON.stringify([{
+        number: 8003,
+        state: 'open',
+        merged_at: null,
+        head: { ref: 'codex/7990-commodity-evidence', sha: mergeSha },
+        base: { ref: 'main' },
+      }]),
+      git: (args) => {
+        if (args[0] !== 'merge-base' || args.at(-1) === mergeSha) return '';
+        throw Object.assign(new Error('not an ancestor of main'), { status: 1 });
+      },
+      issues: {
+        search: () => [],
+        create: () => assert.fail('a contained open stack must not create an orphan alarm'),
+        comment: () => assert.fail('a contained open stack must not post an orphan comment'),
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, 'pending-parent-integration');
+    assert.equal(result.exitCode, 0);
+  });
+
   it('passes a push to the default branch without calling GitHub', () => {
     let ghCalls = 0;
     const result = checkStackedMerge({
