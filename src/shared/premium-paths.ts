@@ -39,6 +39,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // published security contract.
   '/api/intelligence/v1/get-country-coverage',
   '/api/intelligence/v1/list-market-implications',
+  '/api/intelligence/v1/list-wsb-tickers',
   '/api/intelligence/v1/get-regional-snapshot',
   '/api/intelligence/v1/get-regime-history',
   '/api/intelligence/v1/get-regional-brief',
