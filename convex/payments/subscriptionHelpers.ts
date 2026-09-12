@@ -12,6 +12,7 @@ import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import {
   PLAN_PRECEDENCE,
+  PRODUCT_CATALOG,
   LEGACY_PRODUCT_ALIASES,
   resolveProductToPlan,
 } from "../config/productCatalog";
@@ -24,6 +25,10 @@ import {
 import { DEV_USER_ID, isDev } from "../lib/auth";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 import { normalizeCheckoutAttributionSource } from "../../shared/mcp-attribution";
+
+export function isBusinessPlan(planKey: string): boolean {
+  return PRODUCT_CATALOG[planKey]?.tierGroup === "api_business";
+}
 
 // ---------------------------------------------------------------------------
 // Types for webhook payload data (narrowed from `any`)
@@ -399,7 +404,7 @@ async function pickBestCoveringSub(
 /**
  * Picks the strongest accepted Business Pro grant for a user.
  *
- * An accepted grant tied to a covering `api_business` subscription confers a
+ * An accepted grant tied to a covering API Business subscription confers a
  * Pro-tier entitlement (planKey `pro_monthly`) valid until the Business
  * subscription's `currentPeriodEnd`. The grant is explicit and revocable;
  * it never creates a fake subscription row in `subscriptions`.
@@ -424,12 +429,12 @@ async function pickBestAcceptedBusinessGrant(
       )
       .unique();
     // Defense-in-depth: a grant only confers Pro while its parent sub is BOTH
-    // covering AND still on the api_business plan. isCoveringAt alone is not
+    // covering AND still in the API Business tier. isCoveringAt alone is not
     // enough — a subscription.plan_changed downgrade leaves status/currentPeriodEnd
     // untouched, so the primary revocation path is the plan_changed handler
     // wiring the grant-revoke call (see handleSubscriptionPlanChanged); this
     // check is the safety net for any lifecycle transition that doesn't.
-    if (!businessSub || businessSub.planKey !== "api_business" || !isCoveringAt(businessSub, at)) continue;
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, at)) continue;
 
     const candidate = { planKey: "pro_monthly", currentPeriodEnd: businessSub.currentPeriodEnd };
     if (best === null || compareSubscriptionsByCoverage(candidate, best) > 0) {
@@ -559,7 +564,7 @@ export const revokeBusinessProGrantsIfNotCovering = internalMutation({
  * lost, or the multi-week-delay `revokeBusinessProGrantsIfNotCovering`
  * mutation itself never fires (e.g. a scheduled-function drop), a live grant
  * can be left pointing at a subscription that no longer covers or is no
- * longer `api_business` — the invitee's own entitlement still self-expires
+ * longer in the API Business tier — the invitee's own entitlement still self-expires
  * correctly via its own `validUntil`, but the stuck grant row keeps counting
  * against the owner's 4-seat cap forever with no product-visible way to
  * clear it. Mirrors `dodo-renewal-reconciliation`'s pattern for the same
@@ -589,7 +594,7 @@ export const reconcileBusinessProGrants = internalMutation({
             q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
           )
           .unique();
-        const stillValid = sub !== null && sub.planKey === "api_business" && isCoveringAt(sub, now);
+        const stillValid = sub !== null && isBusinessPlan(sub.planKey) && isCoveringAt(sub, now);
         if (stillValid) continue;
 
         await ctx.db.patch(grant._id, { status: "revoked" });
@@ -1362,6 +1367,21 @@ export async function handleSubscriptionActive(
   }
 }
 
+async function recomputeAcceptedBusinessInvitees(
+  ctx: MutationCtx,
+  subscriptionId: string,
+  observedAt: number,
+): Promise<void> {
+  const grants = await ctx.db.query("businessProGrants")
+    .withIndex("by_businessSubscriptionId", (q) => q.eq("businessSubscriptionId", subscriptionId))
+    .collect();
+  for (const grant of grants) {
+    if (grant.status === "accepted" && grant.inviteeUserId) {
+      await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, observedAt);
+    }
+  }
+}
+
 /**
  * Handles `subscription.renewed` -- a recurring payment succeeded and the
  * subscription period has been extended.
@@ -1410,6 +1430,9 @@ export async function handleSubscriptionRenewed(
   // Recompute from ALL subs — a renewal on a lower-tier sub must NOT
   // clobber a higher-tier active sub on the same userId.
   await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+  if (isBusinessPlan(existing.planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
+  }
 }
 
 /**
@@ -1646,7 +1669,7 @@ export async function handleSubscriptionCancelled(
   // actually stopped covering (paid-through cancellation still covers). For a
   // still-covering cancellation, schedule the revoke at currentPeriodEnd so
   // grants die with access.
-  if (existing.planKey === "api_business") {
+  if (isBusinessPlan(existing.planKey)) {
     if (!isCoveringAt(cancelledCoverage, eventTimestamp)) {
       await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
     } else {
@@ -1688,23 +1711,31 @@ export async function handleSubscriptionPlanChanged(
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
   const newPlanKey = await resolvePlanKey(ctx, data.product_id);
-  const leftBusinessPlan = existing.planKey === "api_business" && newPlanKey !== "api_business";
+  const leftBusinessPlan = isBusinessPlan(existing.planKey) && !isBusinessPlan(newPlanKey);
 
   await ctx.db.patch(existing._id, {
     dodoProductId: data.product_id,
     planKey: newPlanKey,
+    currentPeriodStart: data.previous_billing_date == null
+      ? existing.currentPeriodStart
+      : toEpochMs(data.previous_billing_date, "previous_billing_date", existing.currentPeriodStart),
+    currentPeriodEnd: data.next_billing_date == null
+      ? existing.currentPeriodEnd
+      : toEpochMs(data.next_billing_date, "next_billing_date", existing.currentPeriodEnd),
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
 
   // Business Pro grants are tied to the owner's dodoSubscriptionId staying on
-  // api_business — status/currentPeriodEnd alone don't change on a plan
+  // the API Business tier — status/currentPeriodEnd alone don't change on a plan
   // change, so without this the grants would otherwise silently outlive the
   // Business plan they were issued under (see pickBestAcceptedBusinessGrant's
   // planKey defense-in-depth check for the other half of this fix).
   if (leftBusinessPlan) {
     await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  } else if (isBusinessPlan(newPlanKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
   }
 
   // Recompute from ALL subs — the new plan may be lower-tier than another
@@ -1749,7 +1780,7 @@ export async function handleSubscriptionExpired(
 
   // Business Pro grants die with the Business sub — revoke them and recompute
   // each invitee before the owner's own recompute below.
-  if (existing.planKey === "api_business") {
+  if (isBusinessPlan(existing.planKey)) {
     await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
   }
 

@@ -1,11 +1,10 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { isCorporateDomain } from "./lib/emailDomain";
 
 // Field length caps. Aligned with `server/worldmonitor/leads/v1/submit-contact.ts`,
-// which already enforces these bounds at the edge — duplicating them here means
-// a direct Convex client call (bypassing the edge) cannot fill the table with
-// arbitrarily large blobs.
+// which already enforces these bounds at the edge. Keep storage bounds as
+// defense in depth for internal callers.
 const MAX_NAME = 500;
 const MAX_EMAIL = 254;          // RFC 5321
 const MAX_ORG = 500;
@@ -16,9 +15,7 @@ const MAX_SOURCE = 100;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Per-email throttle. Convex mutations don't have a request IP, so we bucket
-// by normalized email — a low-effort DoS would have to rotate emails to evade
-// it, which already makes the spam less useful and tends to fail edge-side
-// validation (free-email blocklist + Turnstile).
+// by normalized email in addition to the edge's IP limit and Turnstile check.
 const PER_EMAIL_WINDOW_MS = 60 * 60 * 1000;   // 1h
 const PER_EMAIL_LIMIT = 5;                    // submissions per email per window
 
@@ -44,7 +41,7 @@ function clip(
   return cleaned.slice(0, max);
 }
 
-export const submit = mutation({
+export const submit = internalMutation({
   args: {
     name: v.string(),
     email: v.string(),

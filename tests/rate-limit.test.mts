@@ -410,6 +410,77 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.equal(handlerCalls, 0, 'the gateway must reject before route execution');
   });
 
+  it('anonymous crypto quote requests fail closed before cache or provider I/O', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.WM_SESSION_SECRET = 'synthetic-crypto-session-secret-at-least-32-bytes';
+    __resetRateLimitForTest();
+    const { issueSessionToken } = await import('../api/_session.js');
+    const { createDomainGateway } = await import('../server/gateway.ts');
+    const { createMarketServiceRoutes } = await import('../src/generated/server/worldmonitor/market/v1/service_server.ts');
+    const { marketHandler } = await import('../server/worldmonitor/market/v1/handler.ts');
+    const token = (await issueSessionToken()).token;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      calls.push(String(input));
+      return new Response('unexpected I/O', { status: 500 });
+    }) as typeof fetch;
+    const gateway = createDomainGateway(createMarketServiceRoutes(marketHandler));
+    const response = await gateway(new Request(
+      'https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=dogecoin',
+      { headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': token, 'x-real-ip': '203.0.113.7' } },
+    ));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.deepEqual(calls, [], 'no cache or provider transport reached');
+  });
+
+  it('crypto quote requests stop at the 60/min budget before additional provider work', async () => {
+    const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+    const redis = installRedis({ 'market:crypto:v1': { quotes: [] } });
+    process.env.WM_SESSION_SECRET = 'synthetic-crypto-cap-secret-at-least-32-bytes';
+    __resetRateLimitForTest();
+    const { issueSessionToken } = await import('../api/_session.js');
+    const { createDomainGateway } = await import('../server/gateway.ts');
+    const { createMarketServiceRoutes } = await import('../src/generated/server/worldmonitor/market/v1/service_server.ts');
+    const { marketHandler } = await import('../server/worldmonitor/market/v1/handler.ts');
+    let providerCalls = 0;
+    let admissions = 0;
+    globalThis.fetch = (async (input, init) => {
+      if (new URL(String(input)).hostname === 'api.coingecko.com') {
+        providerCalls += 1;
+        return Response.json([{ id: 'budget-coin', name: 'Budget coin', symbol: 'bud', current_price: 1 }]);
+      }
+      const response = await redis.fetchImpl(input, init);
+      if (init?.body) {
+        const commands = JSON.parse(String(init.body));
+        if (Array.isArray(commands[0])) {
+          const results = await response.json();
+          for (let i = 0; i < commands.length; i += 1) {
+            if (String(commands[i][0]).toUpperCase() === 'EVALSHA') {
+              // The shared fake is always-allow. Model the storage reply for
+              // this route so the real SDK/gateway also exercise exhaustion.
+              results[i] = { result: [60 - ++admissions, 60] };
+            }
+          }
+          return Response.json(results);
+        }
+      }
+      return response;
+    }) as typeof fetch;
+    const token = (await issueSessionToken()).token;
+    const gateway = createDomainGateway(createMarketServiceRoutes(marketHandler));
+    const request = () => new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=budget-coin', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': token, 'x-real-ip': '203.0.113.8' },
+    });
+    for (let i = 0; i < 60; i += 1) assert.equal((await gateway(request())).status, 200);
+    assert.equal(providerCalls, 1, 'successful calls reuse the gap cache');
+    const blocked = await gateway(request());
+    assert.equal(blocked.status, 429);
+    assert.ok(Number(blocked.headers.get('Retry-After')) > 0);
+    assert.equal(providerCalls, 1, 'exhausted callers cannot cause provider work');
+  });
+
   it('paid-provider market routes each have explicit fail-closed policies (#6236)', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -418,6 +489,7 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
       ['/api/market/v1/analyze-stock', { limit: 60, window: '60 s' }],
       ['/api/market/v1/backtest-stock', { limit: 60, window: '60 s' }],
       ['/api/market/v1/get-insider-transactions', { limit: 60, window: '60 s' }],
+      ['/api/market/v1/list-crypto-quotes', { limit: 60, window: '60 s' }],
       ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
       ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
     ] as const);
@@ -618,6 +690,11 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
 
 describe('scoped rate-limit degraded call-site policy (#3531)', () => {
   const SCOPED_RATE_LIMIT_CALLERS = [
+    {
+      path: 'server/worldmonitor/aviation/v1/track-aircraft.ts',
+      expected: /if\s*\(limit\.degraded\)\s*\{[\s\S]*?throw Object\.assign\(new ApiError\(503,/,
+      reason: 'aircraft identifier lookups must fail closed before cache or provider work when the shared limiter is unavailable',
+    },
     {
       path: 'api/reverse-geocode.js',
       expected: /failClosed:\s*true/,

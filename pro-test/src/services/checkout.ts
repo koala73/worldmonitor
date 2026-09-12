@@ -527,6 +527,30 @@ async function doCheckout(
           tags: { surface: 'pro-marketing', code: 'payment_in_progress' },
           extra: { serverMessage: err?.message },
         });
+      } else {
+        // Everything the chain above does not name. Previously this arm was a
+        // bare `return false`: the interstitial unmounted, no toast appeared,
+        // and nothing reached Sentry, so the buyer saw a click that did
+        // nothing and we saw no event at all.
+        //
+        // WORLDMONITOR-Q4 made that gap wider rather than narrower. This
+        // surface shares `checkout-transport.ts` byte-for-byte with the
+        // dashboard (tests/marketing-mirror-parity.test.mts), so it inherited
+        // the widened Cloudflare 52x retry — and with it the 409
+        // `idempotency_conflict` a replay draws when it races a still-running
+        // first attempt. The dashboard classifies that as retryable; here it
+        // has no branch at all. Reporting is the half that was never mirrored.
+        Sentry.captureMessage(`Checkout edge error: ${resp.status}`, {
+          level: 'error',
+          tags: {
+            surface: 'pro-marketing',
+            code: 'service_unavailable',
+            // Claims this as a first-party report for the zero-frame gate, the
+            // same contract src/services/checkout-sentry-policy.ts encodes.
+            kind: 'checkout_request_failed',
+          },
+          extra: { httpStatus: resp.status, serverMessage: err?.message ?? err?.error },
+        });
       }
       return false;
     }
@@ -558,6 +582,20 @@ async function doCheckout(
     return true;
   } catch (err) {
     console.error('[checkout] Failed:', err);
+    // The transport's 15s budget and a double network failure both land here.
+    // Console-only was the reason WORLDMONITOR-Q4 stayed open on this surface
+    // after the dashboard half was fixed: no event is emitted, so no filter
+    // policy — this bundle's or any other — gets a say. `kind` claims it as a
+    // first-party report so a zero-frame rejection is not read as extension
+    // noise wherever this event is filtered.
+    Sentry.captureException(err, {
+      level: 'error',
+      tags: {
+        surface: 'pro-marketing',
+        code: 'service_unavailable',
+        kind: 'checkout_request_failed',
+      },
+    });
     return false;
   } finally {
     checkoutInFlight = false;
