@@ -161,7 +161,7 @@ test('published year example is accepted by the real generated route', async () 
   assert.equal(example, 0);
   assert.deepEqual(yearSchema.oneOf, [
     { const: 0, type: 'integer' },
-    { type: 'integer', format: 'int32', minimum: 1951, maximum: 9999 },
+    { type: 'integer', format: 'int32', minimum: 1951, maximum: year },
   ]);
   assert.deepEqual(yearParameter.schema, { oneOf: yearSchema.oneOf });
   assert.equal(responseExample.dataAvailable, true);

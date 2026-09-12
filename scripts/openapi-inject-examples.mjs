@@ -997,6 +997,7 @@ function successResponses(op) {
 function injectDisplacementYearContract(spec) {
   const year = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
   if (!year) return false;
+  const currentYear = new Date().getFullYear();
 
   // Buf validates the non-zero range but its OpenAPI generator cannot express
   // IGNORE_IF_ZERO_VALUE. Publish the actual union accepted by the route so
@@ -1008,7 +1009,7 @@ function injectDisplacementYearContract(spec) {
       // type for generic OpenAPI consumers. Keep the integer declaration so
       // the sentinel is self-describing as well as exact.
       { const: 0, type: 'integer' },
-      { type: 'integer', format: 'int32', minimum: 1951, maximum: 9999 },
+      { type: 'integer', format: 'int32', minimum: 1951, maximum: currentYear },
     ],
   };
   let changed = false;

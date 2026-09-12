@@ -6277,7 +6277,7 @@ paths:
                           - "type": "integer"
                             "format": "int32"
                             "minimum": 1951
-                            "maximum": 9999
+                            "maximum": 2026
                   example: 0
                 - name: country_limit
                   in: query
@@ -39630,7 +39630,7 @@ components:
                         - "type": "integer"
                           "format": "int32"
                           "minimum": 1951
-                          "maximum": 9999
+                          "maximum": 2026
                 countryLimit:
                     type: integer
                     minimum: 0
