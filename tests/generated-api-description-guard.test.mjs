@@ -237,7 +237,7 @@ const OPERATION_DESCRIPTION_CONTRACTS = [
   },
   {
     path: '/api/economic/v1/get-macro-signals',
-    includes: [/BUY/, /CASH/, /UNKNOWN/, /unavailable/i],
+    includes: [/\bBUY\b/, /\bCASH\b/, /\bUNKNOWN\b/, /unavailable/i],
     rejects: [],
   },
   {
