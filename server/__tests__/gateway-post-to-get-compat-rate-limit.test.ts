@@ -48,7 +48,7 @@ import { createDomainGateway } from "../gateway";
 
 const ENDPOINT_LIMITED_PATH = "/api/market/v1/list-market-quotes";
 // No endpoint policy, so the gateway falls through to the global limiter.
-const GLOBAL_LIMITED_PATH = "/api/market/v1/list-crypto-quotes";
+const GLOBAL_LIMITED_PATH = "/api/market/v1/list-gulf-quotes";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
