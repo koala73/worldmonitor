@@ -110,7 +110,7 @@ export async function fetchCoinGeckoMarkets(
 ): Promise<CoinGeckoMarketItem[]> {
   const { sparkline = true, priceChangePercentage = '24h' } = opts;
   const { baseUrl, headers } = coingeckoEndpoint();
-  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=${sparkline}&price_change_percentage=${encodeURIComponent(priceChangePercentage)}`;
+  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids.join(','))}&order=market_cap_desc&sparkline=${sparkline}&price_change_percentage=${encodeURIComponent(priceChangePercentage)}`;
 
   const resp = await fetch(url, {
     headers,

@@ -66,7 +66,7 @@ export const countPending = internalQuery({
     let withEmail = 0;
     const total = all.length;
     for (const row of all) {
-      if (!row.normalizedEmail || row.normalizedEmail.length === 0) pending++;
+      if (row.normalizedEmail === undefined) pending++;
       if (row.email && row.email.length > 0) withEmail++;
     }
     return { total, pending, withEmail };

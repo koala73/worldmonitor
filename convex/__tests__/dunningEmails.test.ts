@@ -502,6 +502,31 @@ describe("winback", () => {
     expect(again.scheduled).toBe(0);
   });
 
+  test("broadcast unsubscribe blocks the promotional winback", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt: Date.now() - 40 * DAY_MS,
+      currentPeriodEnd: Date.now() - (WINBACK_MIN_AGE_MS + 5 * DAY_MS),
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("emailSuppressions", {
+        normalizedEmail: EMAIL,
+        reason: "unsubscribe",
+        suppressedAt: Date.now(),
+      });
+    });
+
+    await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(0);
+  });
+
   test("annual who cancelled months early gets the winback once access lapses (round-2 F3)", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
