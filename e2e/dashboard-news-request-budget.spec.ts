@@ -860,7 +860,7 @@ type DashboardScrollResult = {
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 const INITIAL_FANOUT_COMPLETE_MARK = 'wm:data:initial-fanout-complete';
 
-async function seedScrollableDashboard(page: Page): Promise<void> {
+async function seedScrollableDashboard(page: Page, panelOrder = SCROLL_HYDRATION_PANEL_ORDER): Promise<void> {
   await seedFreshAnonymousFullVariant(page, {
     stablecoins: { name: 'Stablecoins', enabled: true, priority: 1 },
   });
@@ -870,7 +870,7 @@ async function seedScrollableDashboard(page: Page): Promise<void> {
     localStorage.setItem('worldmonitor-panel-prune-v1', 'done');
     localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
     localStorage.setItem('panel-order', JSON.stringify(panelOrder));
-  }, SCROLL_HYDRATION_PANEL_ORDER);
+  }, panelOrder);
 }
 
 async function installStablecoinContract(page: Page): Promise<string[]> {
@@ -1067,6 +1067,56 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 }
 
 test.describe('dashboard container scroll hydration (#5876)', () => {
+  test('scroll during initial fan-out hydrates an already-mounted panel without another gesture', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const first = [
+      'live-news', 'intel', 'gdelt-intel', 'live-webcams', 'insights',
+      'threat-timeline', 'strategic-posture', 'stablecoins', 'forecast',
+    ];
+    const order = [...first, ...SCROLL_HYDRATION_PANEL_ORDER.filter((key) => !first.includes(key))];
+    await seedScrollableDashboard(page, order);
+    const stablecoinRequests = await installStablecoinContract(page);
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    await page.route(DIGEST_GLOB, async (route) => {
+      await pending;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: digestBody(HEALTHY_DIGEST_CATEGORIES),
+      });
+    });
+    const slowBootstrap = await installDelayedSlowBootstrap(page);
+    try {
+      const navigation = page.goto('/', { waitUntil: 'domcontentloaded' });
+      await slowBootstrap.waitUntilRequested();
+      await page.waitForSelector('[data-panel="stablecoins"]');
+      // Keep this fixture to already-mounted panels: a deferred neighbor's
+      // mount callback would independently prime data and mask the lost scroll.
+      await page.addStyleTag({ content: '[data-deferred-panel="true"] { display: none !important; }' });
+      slowBootstrap.release();
+      await navigation;
+      await waitForLcpMark(page, 'wm:data:initial-fanout-start');
+      const panel = page.locator('[data-panel="stablecoins"]');
+      await expect(panel).not.toHaveAttribute('data-deferred-panel', 'true');
+      const initial = await readScrollMetrics(page);
+      expect(initial.targetTop).toBeGreaterThan(initial.viewportHeight + 400);
+      expect(stablecoinRequests).toHaveLength(0);
+      expect(await lcpMarkCount(page, INITIAL_FANOUT_COMPLETE_MARK)).toBe(0);
+      await scrollDashboardAndCollect(page);
+      expect(stablecoinRequests).toHaveLength(0);
+      release();
+      await waitForLcpMark(page, INITIAL_FANOUT_COMPLETE_MARK);
+      await expect.poll(() => stablecoinRequests.length).toBe(1);
+      await expect(panel.locator('.stable-health')).toContainText('HEALTHY');
+      expect(await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK)).toBe(0);
+      await page.screenshot({ path: testInfo.outputPath('catchup-desktop.png') });
+    } finally {
+      release();
+      slowBootstrap.release();
+    }
+  });
+
   for (const viewport of [
     // From SPLIT_LAYOUT_MIN_WIDTH (900, src/app/split-layout.ts — #6417) the
     // split layout makes .panels-grid the scroll owner; below it the stacked
@@ -1076,7 +1126,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
     { label: 'mobile', width: 390, height: 844, scrollOwner: 'main-content' },
     { label: 'ultra-wide', width: 1720, height: 720, scrollOwner: 'panels-grid' },
   ]) {
-    test(`${viewport.label} container scroll hydrates a panel-specific data path`, async ({ page }) => {
+    test(`${viewport.label} container scroll hydrates a panel-specific data path`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await seedScrollableDashboard(page);
       const stablecoinRequests = await installStablecoinContract(page);
@@ -1138,6 +1188,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       ).toBe(1);
       await expect(stablecoins.locator('.stable-health')).toContainText('HEALTHY');
       expect(stablecoinRequests).toHaveLength(1);
+      await page.screenshot({ path: testInfo.outputPath(`hydrated-${viewport.label}.png`) });
     });
   }
 
@@ -1178,6 +1229,10 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         const target = document.querySelector('[data-panel="stablecoins"]');
         return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
       });
+      expect(
+        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
+        'the App viewport handler must stay dormant while the slow tier is pending',
+      ).toBe(dashboardScroll.hydrationMarksBefore);
       expect(
         stablecoinRequests,
         'the mounted panel callback must remain gated while slow-tier readiness is pending',
