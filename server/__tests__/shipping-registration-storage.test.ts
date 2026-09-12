@@ -67,3 +67,14 @@ test('confirmed pipeline returns the persisted subscriber and secret', async () 
   const result = await registerWebhook(context, payload);
   expect(records.get(`webhook:sub:${result.subscriberId}:v1`)).toMatchObject(result);
 });
+
+test.each([0, 1, '0', '1'])('accepts confirmed SADD result %s with string EXPIRE confirmation', async (added) => {
+  replyOverride = [{ result: 'OK' }, { result: added }, { result: '1' }];
+  const result = await registerWebhook(context, payload);
+  expect(records.get(`webhook:sub:${result.subscriberId}:v1`)).toMatchObject(result);
+});
+
+test.each(['0', false, null, 'OK'])('rejects unconfirmed EXPIRE result %s', async (expiry) => {
+  replyOverride = [{ result: 'OK' }, { result: '1' }, { result: expiry }];
+  await expect(registerWebhook(context, payload)).rejects.toMatchObject({ statusCode: 503 });
+});

@@ -103,8 +103,8 @@ export async function registerWebhook(
 
   if (!Array.isArray(results) || results.length !== 3 || results.some(result => !result || result.error)
     || results[0]?.result !== 'OK'
-    || (results[1]?.result !== 0 && results[1]?.result !== 1)
-    || results[2]?.result !== 1) {
+    || ![0, 1, '0', '1'].includes(results[1]?.result as number | string)
+    || (results[2]?.result !== 1 && results[2]?.result !== '1')) {
     throw new ApiError(503, 'Webhook registration could not be confirmed', '');
   }
 
