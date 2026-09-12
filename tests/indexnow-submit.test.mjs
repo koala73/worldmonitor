@@ -543,7 +543,8 @@ describe('IndexNow published inventory (#8071)', () => {
       ])],
       [`${origin}/blog/sitemap-index.xml`, xml('sitemapindex', [`${origin}/blog/sitemap-0.xml`])],
       [`${origin}/blog/sitemap-0.xml`, xml('urlset', [`${origin}/blog/new-published-post/`])],
-      [`${origin}/docs/sitemap.xml`, xml('urlset', [flagged, `${origin}/docs/zh/methodology/resilience-indicators`])],
+      [`${origin}/docs/sitemap.xml`, xml('urlset', [flagged, `${origin}/docs/zh/methodology/resilience-indicators`])
+        .replace('<urlset>', `<urlset><!-- <url><loc>${origin}/docs/commented-out</loc></url> -->`)],
     ]);
   }
 
@@ -566,6 +567,7 @@ describe('IndexNow published inventory (#8071)', () => {
       assert.ok(www.urlList.includes(url), `${url} must reach the search engine`);
     }
     assert.ok(!www.urlList.includes(`${origin}/blog/authors/elie-habib/`), 'unpublished checkout URLs must not replace the published inventory');
+    assert.ok(!www.urlList.includes(`${origin}/docs/commented-out`), 'comments must not contribute page URLs');
     assert.ok(posts.every(post => post.urlList.every(url => new URL(url).hostname === post.host && !url.endsWith('.xml'))));
   });
 
@@ -623,6 +625,20 @@ globalThis.fetch = async (url, init) => {
     assert.ok(workflowDoc.on.schedule?.length, 'docs-only publication needs a catch-up trigger because Vercel can skip docs changes');
     assert.match(workflowDoc.jobs['submit-indexnow'].if, /github.event_name == 'schedule'/);
     assert.equal((await runRelevanceGate([], 'schedule')).submit_www, 'true');
+  });
+
+  it('rejects missing or extra direct root sitemap members before reading children', async () => {
+    for (const members of [
+      [`${origin}/sitemap-main.xml`, `${origin}/blog/sitemap-index.xml`],
+      [`${origin}/sitemap-main.xml`, `${origin}/blog/sitemap-index.xml`, `${origin}/docs/sitemap.xml`, `${origin}/extra.xml`],
+    ]) {
+      const requests = [];
+      await assert.rejects(indexNow.getPublishedBatches({ fetchImpl: async (url) => {
+        requests.push(url);
+        return new Response(xml('sitemapindex', members));
+      } }), /root sitemap members/);
+      assert.deepEqual(requests, [`${origin}/sitemap.xml`]);
+    }
   });
 
   it('submits www after production deployment even when the last commit is unrelated', async () => {

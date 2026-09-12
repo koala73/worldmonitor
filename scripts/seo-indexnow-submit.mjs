@@ -179,12 +179,12 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
       headers: { Accept: 'application/xml', 'User-Agent': USER_AGENT },
     });
     if (response.status !== 200) throw new Error(`${location} returned ${response.status}, expected direct 200`);
-    const source = (await response.text()).replace(/<!--[\s\S]*?-->/g, '').trim();
+    const source = (await response.text()).trim();
     const root = /^(?:<\?xml[^?]*\?>\s*)?<(sitemapindex|urlset)\b[^>]*>([\s\S]*)<\/\1>\s*$/.exec(source);
     if (!root) throw new Error(`invalid sitemap document: ${location}`);
     const tag = root[1] === 'sitemapindex' ? 'sitemap' : 'url';
-    const entryPattern = new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
-    const entries = [...root[2].matchAll(entryPattern)];
+    const entryPattern = new RegExp(`<!--[\\s\\S]*?-->|<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
+    const entries = [...root[2].matchAll(entryPattern)].filter(([entry]) => !entry.startsWith('<!--'));
     if (root[2].replace(entryPattern, '').trim()) throw new Error(`invalid sitemap entries: ${location}`);
     const urls = entries.map(([entry]) => {
       const locations = [...entry.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)];
@@ -192,6 +192,11 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
       return decodeXml(locations[0][1].trim());
     });
     if (urls.length === 0) throw new Error(`empty sitemap: ${location}`);
+    if (location === `${origin}/sitemap.xml`
+      && (root[1] !== 'sitemapindex' || urls.length !== SITEMAP_INDEX_MEMBERS.length
+        || new Set(urls).size !== urls.length || urls.some(url => !SITEMAP_INDEX_MEMBERS.includes(url)))) {
+      throw new Error('published root sitemap members do not match the declared inventory');
+    }
     if (root[1] === 'sitemapindex') {
       pending.push(...urls);
     } else {
@@ -203,9 +208,6 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
         pages.add(url);
       }
     }
-  }
-  for (const member of SITEMAP_INDEX_MEMBERS) {
-    if (!seen.has(member)) throw new Error(`published sitemap omits ${member}`);
   }
   for (const family of ['docs', 'blog']) {
     if (![...pages].some(url => url.startsWith(`${origin}/${family}/`))) {
