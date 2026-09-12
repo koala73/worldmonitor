@@ -30,6 +30,21 @@
   <a href="https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go"><img src="https://img.shields.io/badge/go%20get-sdk%2Fgo-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="go get github.com/koala73/worldmonitor/sdk/go"></a>
 </p>
 
+<p align="center">
+  <a href="https://www.worldmonitor.app/api/download?platform=windows-exe"><img src="https://img.shields.io/badge/Download-Windows_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows"></a>&nbsp;
+  <a href="https://www.worldmonitor.app/api/download?platform=macos-arm64"><img src="https://img.shields.io/badge/Download-macOS_Apple_Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS ARM"></a>&nbsp;
+  <a href="https://www.worldmonitor.app/api/download?platform=macos-x64"><img src="https://img.shields.io/badge/Download-macOS_Intel-555555?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Intel"></a>&nbsp;
+  <a href="https://www.worldmonitor.app/api/download?platform=linux-appimage"><img src="https://img.shields.io/badge/Download-Linux_(.AppImage)-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download Linux"></a>
+</p>
+
+<p align="center">
+  <a href="https://www.worldmonitor.app/docs/documentation"><strong>Documentation</strong></a> &nbsp;·&nbsp;
+  <a href="https://github.com/koala73/worldmonitor/releases/latest"><strong>Releases</strong></a> &nbsp;·&nbsp;
+  <a href="https://www.worldmonitor.app/docs/contributing"><strong>Contributing</strong></a>
+</p>
+
+![World Monitor Dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
+
 ---
 
 ## What It Does
@@ -137,44 +152,6 @@ WorldMonitor aggregates attributed upstream sources across geopolitics, finance,
 
 ---
 
-## 🛡️ Security Assessment Platform
-
-A deterministic, evidence-gated Security Assessment & Risk Scoring Platform built for **World Monitor** (SIH Problem Statement 26163).
-
-### Architecture
-```
-security-assessment/
-├── engine/
-│   ├── scoring.py              # Deterministic risk-scoring engine (0-100) & CVSS metrics validator
-│   ├── correlation.py          # Evidence-based correlation & Potential Attack Path graph builder
-│   ├── failsafe.py             # Backup fallback engine & failure logger
-│   └── comparison.py           # Comparative delta analysis engine (14 scenarios)
-├── frontend/
-│   └── index.html              # Modern dark SOC security dashboard UI & Contributor view
-├── tests/
-│   └── test_failsafe.py        # Comprehensive unit test suite
-├── data/
-│   ├── findings.json           # Input evidence findings dataset (Synthetic Benchmark Data)
-│   ├── assessment_results.json # Generated assessment output artifact
-│   ├── history.json            # Assessment run execution log
-│   └── comparisons.json        # Comparative assessment delta results
-├── run_assessment.py           # Main launcher & HTTP web server script
-└── README.md
-```
-
-> [!IMPORTANT]
-> **SYNTHETIC / DEMONSTRATION DATA NOTICE**
-> Benchmark findings (`SEC-001` through `SEC-005`) in `security-assessment/data/findings.json` are **SYNTHETIC / DEMONSTRATION DATA**. Live target reviews (`TARGET-001` to `TARGET-004`) remain **`SOURCE-PROTECTED`**.
-
-### Execution Commands
-```bash
-python security-assessment/run_assessment.py --no-server   # CLI Assessment
-python security-assessment/run_assessment.py             # Interactive SOC Console (http://localhost:8050)
-python -m unittest discover -s security-assessment/tests -v # Test Suite
-```
-
----
-
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
@@ -210,26 +187,6 @@ Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
 ## Contributors
 
-<table align="left">
-  <tr>
-    <td align="center" width="160">
-      <a href="https://github.com/varunsai20-a11y" target="_blank">
-        <img src="https://github.com/varunsai20-a11y.png" width="100" height="100" style="border-radius: 50%;" alt="Varun" />
-        <br />
-        <sub><b>Varun</b></sub>
-      </a>
-      <br />
-      <a href="https://github.com/varunsai20-a11y"><code>@varunsai20-a11y</code></a>
-    </td>
-    <td>
-      <b>Role:</b> Security Assessment Contributor<br />
-      <b>Contribution:</b> Security assessment framework and security research for World Monitor, including source reconnaissance, security target reviews, evidence-gated finding analysis, risk scoring, fail-safe assessment, comparison analysis, and controlled remediation workflow.
-    </td>
-  </tr>
-</table>
-
-<br clear="all" />
-
 <a href="https://github.com/koala73/worldmonitor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=koala73/worldmonitor" />
 </a>
@@ -238,7 +195,6 @@ Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
 We thank the following researchers for responsibly disclosing security issues:
 
-- **Varun** (`varunsai20-a11y`) — Contributed the Security Assessment & Risk Scoring Platform, evidence-gated methodology framework, and target reconnaissance reviews for World Monitor (2026)
 - **Cody Richard** — Disclosed three security findings covering IPC command exposure, renderer-to-sidecar trust boundary analysis, and fetch patch credential injection architecture (2026)
 
 See our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.

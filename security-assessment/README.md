@@ -1,104 +1,17 @@
-# Security Assessment Platform — World Monitor Application
+# Synthetic security scoring demo
 
-A lightweight, deterministic Security Assessment & Risk Scoring Platform built for **SIH Problem Statement 26163**.
+This optional local Python demo is separate from the WorldMonitor application and deployment stack. It does not scan WorldMonitor, validate vulnerabilities, or establish its security posture. All five input records are synthetic. Supplied CVSS values remain unverified.
 
----
+Run `python3 security-assessment/run_assessment.py` and open `http://127.0.0.1:8050`. The server binds only to loopback, serves an explicit file allowlist, and requires a per-process action token and a matching browser origin for POST actions. It is not a public service. Do not expose it through a proxy or tunnel.
 
-## 🏛️ Architecture Overview
+Use `--no-server` for CLI output or `--force-fail` to exercise fallback scoring. Generated results are kept in the ignored `security-assessment/output/` directory. History and failure logs retain the latest 100 entries. Writes replace individual files atomically; a run is not a transaction across files. Run one process at a time. Corrupt input or history causes an explicit error and is retained for inspection. Failure-log errors do not prevent fallback scoring.
 
-```
-security-assessment/
-├── engine/
-│   ├── scoring.py              # Deterministic risk-scoring engine (0-100) & CVSS metrics validator
-│   ├── correlation.py          # Evidence-based correlation & Potential Attack Path graph builder
-│   ├── failsafe.py             # Backup fallback engine & failure logger
-│   └── comparison.py           # Comparative delta analysis engine (14 scenarios)
-├── frontend/
-│   └── index.html              # Modern dark SOC security dashboard UI & Contributor view
-├── tests/
-│   └── test_failsafe.py        # Comprehensive unit test suite
-├── data/
-│   ├── findings.json           # Input evidence findings dataset
-│   ├── assessment_results.json # Generated assessment output artifact
-│   ├── history.json            # Assessment run execution log
-│   └── comparisons.json        # Comparative assessment delta results
-├── run_assessment.py           # Main launcher & HTTP web server script
-├── MATH_MODEL.md               # Risk scoring mathematics and posture formulas
-├── SECURITY_RECONNAISSANCE.md # Static reconnaissance and attack surface analysis
-├── TARGET-001-SSRF-REVIEW.md   # Security review: RSS Proxy / SSRF Controls
-├── TARGET-002-WEBHOOK-REVIEW.md# Security review: Webhook Signature Verification
-├── TARGET-003-MCP-HMAC-REVIEW.md# Security review: Internal MCP HMAC Replay Cache
-├── TARGET-004-TAURI-SIDECAR-REVIEW.md# Security review: Tauri Desktop Local Sidecar Binding
-└── README.md
+Correlations are heuristic relationships based on category and subsystem. They are not proven attack paths. The engine produces no attack paths without validated path evidence. Correlation runs before scoring; fallback risk uses the same posture bands as primary scoring, with engine availability reported separately.
+
+Run the isolated regression suite with:
+
+```sh
+python3 -m unittest discover -s security-assessment/tests -v
 ```
 
----
-
-## ⚠️ Important Security Evidence Rule & Status
-
-> [!IMPORTANT]
-> **SYNTHETIC / DEMONSTRATION DATA NOTICE**
-> The five findings (`SEC-001` through `SEC-005`) in `data/findings.json` are **SYNTHETIC / DEMONSTRATION DATA** used for benchmarking risk scoring algorithms, fail-safe fallbacks, and dashboard visualization. They are **NOT VERIFIED WORLD MONITOR VULNERABILITIES**.
-
-### Current Assessment Target Status
-The actual reviewed World Monitor security targets evaluated during reconnaissance have the following results:
-
-| Target ID | Component / Surface | Status |
-| :--- | :--- | :--- |
-| **TARGET-001** | RSS Proxy / SSRF Controls | `SOURCE-PROTECTED` |
-| **TARGET-002** | Webhook Signature Verification | `SOURCE-PROTECTED` |
-| **TARGET-003** | Internal MCP HMAC Replay Cache | `SOURCE-PROTECTED` |
-| **TARGET-004** | Tauri Desktop Local Sidecar Binding | `SOURCE-PROTECTED` |
-
----
-
-## 🔬 Evidence-Gated Assessment Methodology
-
-The framework strictly enforces an evidence-gated security evaluation workflow:
-
-```
-Reconnaissance ➔ Source Review ➔ Candidate Target ➔ Controlled Validation ➔ Evidence ➔ Risk/CVSS ➔ Remediation ➔ Re-test
-```
-
-1. **Reconnaissance**: Static code analysis and attack surface mapping (`SECURITY_RECONNAISSANCE.md`).
-2. **Source Review**: Inspecting handler implementations and security boundary code.
-3. **Candidate Target Identification**: Documenting potential targets requiring verification.
-4. **Controlled Validation**: Non-destructive, evidence-focused verification.
-5. **Evidence Collection**: Extracting exact file paths, line numbers, and proof snippet code.
-6. **Risk/CVSS Scoring**: CVSS v4.0 scores are assigned **only** when verified evidence exists; otherwise marked `REQUIRES VALIDATION`.
-7. **Remediation**: Recommending actionable fix paths.
-8. **Re-test**: Validating posture improvements via comparative analysis.
-
----
-
-## ⚡ Quick Start & Execution
-
-### 1. Run Assessment Server (Interactive UI)
-```bash
-python security-assessment/run_assessment.py
-```
-Access the dashboard at `http://localhost:8050`.
-
-### 2. Run CLI Mode Only
-```bash
-python security-assessment/run_assessment.py --no-server
-```
-
-### 3. Run Unit Tests
-```bash
-python -m unittest discover -s security-assessment/tests -v
-```
-
----
-
-## 👥 Contributors & Credits
-
-<p align="left">
-  <a href="https://github.com/varunsai20-a11y" target="_blank">
-    <img src="https://github.com/varunsai20-a11y.png" alt="Varun" width="80" height="80" style="border-radius: 50%;" />
-  </a>
-</p>
-
-- **Contributor**: **[Varun](https://github.com/varunsai20-a11y)** (`varunsai20-a11y`)
-- **Role**: Security Assessment Contributor
-- **Contribution**: Security assessment framework and security research for World Monitor, including source reconnaissance, security target reviews, evidence-gated finding analysis, risk scoring, fail-safe assessment, comparison analysis, and controlled remediation workflow.
+The target review documents record source inspection, not live exploit testing or a security certification.

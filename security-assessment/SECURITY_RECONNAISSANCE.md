@@ -79,7 +79,7 @@ All subsystem requests are dispatched through `server/gateway.ts`:
 - **Fail-Safe Contract**: Authentication failures return `null` and log warnings; the gateway cleanly falls back to keyless or API-key authentication policies without unhandled crashes.
 
 ### Internal Service HMAC Signing (`server/_shared/mcp-internal-hmac.ts`)
-- **Header Verification**: Internal sub-requests (e.g. between Vercel edge workers and internal MCP services) use SHA-256 HMAC signatures passed in `X-Internal-Mcp-Signature`, `X-Internal-Mcp-Nonce`, `X-Internal-Mcp-User-Id`.
+- **Header Verification**: Internal sub-requests (e.g. between Vercel edge workers and internal MCP services) use SHA-256 HMAC signatures passed in `X-WM-MCP-Internal`, `X-WM-MCP-Nonce`, `X-WM-MCP-User-Id`.
 - **Replay Protection**: Nonces are checked against a Redis replay cache with a 300-second TTL.
 
 ### API Keys (`server/_shared/usage-identity.ts`, `api/_api-key.js`)

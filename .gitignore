@@ -160,3 +160,4 @@ src-tauri/notices/*
 __pycache__/
 *.pyc
 .venv/
+security-assessment/output/

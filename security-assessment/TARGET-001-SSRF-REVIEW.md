@@ -96,10 +96,10 @@ No design flaws or security bypasses were identified in `api/rss-proxy.js`.
 
 ## Evidence
 
-- **Protocol Guard**: [api/rss-proxy.js](file:///c:/Users/varun/OneDrive/Documents/personals/SIH%2026163/worldmonitor/worldmonitor-main/api/rss-proxy.js#L54-L58)
-- **Domain Guard**: [api/rss-proxy.js](file:///c:/Users/varun/OneDrive/Documents/personals/SIH%2026163/worldmonitor/worldmonitor-main/api/rss-proxy.js#L112-L115)
-- **Redirect Re-Validation Guard**: [api/rss-proxy.js](file:///c:/Users/varun/OneDrive/Documents/personals/SIH%2026163/worldmonitor/worldmonitor-main/api/rss-proxy.js#L60-L67)
-- **Domain Match Predicate**: [api/_rss-allowed-domain-match.js](file:///c:/Users/varun/OneDrive/Documents/personals/SIH%2026163/worldmonitor/worldmonitor-main/api/_rss-allowed-domain-match.js#L26-L32)
+- **Protocol Guard**: [api/rss-proxy.js](https://github.com/koala73/worldmonitor/blob/d7e949f121f2f775541247df28b27c45b216d445/api/rss-proxy.js)
+- **Domain Guard**: [api/rss-proxy.js](https://github.com/koala73/worldmonitor/blob/d7e949f121f2f775541247df28b27c45b216d445/api/rss-proxy.js)
+- **Redirect Re-Validation Guard**: [api/rss-proxy.js](https://github.com/koala73/worldmonitor/blob/d7e949f121f2f775541247df28b27c45b216d445/api/rss-proxy.js)
+- **Domain Match Predicate**: [api/_rss-allowed-domain-match.js](https://github.com/koala73/worldmonitor/blob/d7e949f121f2f775541247df28b27c45b216d445/api/_rss-allowed-domain-match.js)
 
 ---
 

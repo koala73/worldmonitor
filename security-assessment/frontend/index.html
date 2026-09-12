@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>World Monitor — Security Assessment Console</title>
+  <title>Synthetic Security Scoring Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -150,9 +150,20 @@
     .status-completed { color: var(--accent-green); }
 
     @keyframes blink { from { opacity: 0.4; } to { opacity: 1; } }
+  @media (max-width: 700px) {
+      .navbar { height: auto; position: static; padding: 12px; }
+      nav, .nav-actions { flex-wrap: wrap; gap: 8px; }
+      .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+      .tab-btn { flex: 0 0 auto; }
+      .tab-bar { overflow-x: auto; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .container { padding: 12px; }
+      .card { overflow-x: auto; }
+    }
   </style>
 </head>
 <body>
+  <div role="note" style="padding:16px;background:#3b2d08;color:#fff3c4;text-align:center;font-weight:700">SYNTHETIC DEMONSTRATION — NOT VERIFIED WORLD MONITOR VULNERABILITIES. Local scoring demo only.</div>
 
   <!-- Navbar -->
   <nav class="navbar">
@@ -201,19 +212,19 @@
       <div class="metrics-grid">
         <div class="metric-box">
           <span class="card-title">Total Findings</span>
-          <span class="metric-val" id="valTotalFindings">5</span>
+          <span class="metric-val" id="valTotalFindings">Loading</span>
         </div>
         <div class="metric-box">
           <span class="card-title">Critical Severity</span>
-          <span class="metric-val" style="color: var(--sev-critical);" id="valCriticalCount">1</span>
+          <span class="metric-val" style="color: var(--sev-critical);" id="valCriticalCount">Loading</span>
         </div>
         <div class="metric-box">
           <span class="card-title">High Severity</span>
-          <span class="metric-val" style="color: var(--sev-high);" id="valHighCount">2</span>
+          <span class="metric-val" style="color: var(--sev-high);" id="valHighCount">Loading</span>
         </div>
         <div class="metric-box">
           <span class="card-title">Potential Attack Paths</span>
-          <span class="metric-val" style="color: var(--sev-low);" id="valPathCount">2</span>
+          <span class="metric-val" style="color: var(--sev-low);" id="valPathCount">Loading</span>
         </div>
       </div>
 
@@ -223,8 +234,8 @@
           <div class="gauge-wrapper">
             <div class="gauge-circle" id="postureGauge">
               <div class="gauge-inner">
-                <span class="gauge-val" id="postureScore">24.0</span>
-                <span class="gauge-label" id="postureStatus">CRITICAL RISK</span>
+                <span class="gauge-val" id="postureScore">Loading</span>
+                <span class="gauge-label" id="postureStatus">Loading</span>
               </div>
             </div>
             <p style="font-size: 0.8rem; color: var(--text-muted);" id="postureSubtext">Contextual Risk Priority Aggregate Score (0–100)</p>
@@ -530,6 +541,7 @@
   </div>
 
   <script>
+    const actionHeaders = { 'X-Assessment-Token': '__ASSESSMENT_TOKEN__' };
     let assessmentData = null;
     let historyData = [];
     let comparisonData = null;
@@ -592,10 +604,10 @@
       const findings = assessmentData.findings || [];
       const paths = (assessmentData.graph && assessmentData.graph.attackPaths) ? assessmentData.graph.attackPaths : [];
 
-      document.getElementById('postureScore').innerText = posture.postureScore || 100;
+      document.getElementById('postureScore').innerText = posture.postureScore ?? 100;
       document.getElementById('postureStatus').innerText = posture.status || 'STRONG';
       
-      const angle = ((posture.postureScore || 100) / 100) * 360;
+      const angle = ((posture.postureScore ?? 100) / 100) * 360;
       document.getElementById('postureGauge').style.background = `conic-gradient(var(--accent-green) 0deg ${angle}deg, #1e293b ${angle}deg 360deg)`;
 
       document.getElementById('valTotalFindings').innerText = findings.length;
@@ -665,7 +677,7 @@
           </div>
           <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">${p.description}</p>
           <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--accent-cyan);">
-            Potential Chain Sequence: ${p.findings.join(' ➔ ')}
+            Related findings: ${p.findings.join(' ➔ ')}
           </div>
         </div>
       `).join('');
@@ -694,6 +706,7 @@
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const n1 = nodes[i]; const n2 = nodes[j];
+          if (!(assessmentData.graph?.edges ?? []).some(e => (e.source === n1.data.id && e.target === n2.data.id) || (e.target === n1.data.id && e.source === n2.data.id))) continue;
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
           line.setAttribute('x1', n1.x); line.setAttribute('y1', n1.y);
           line.setAttribute('x2', n2.x); line.setAttribute('y2', n2.y);
@@ -742,7 +755,7 @@
           <td style="font-family: 'JetBrains Mono'; font-weight: 700;">${h.postureScore} / 100</td>
           <td>${h.status}</td>
           <td>${h.totalFindings} findings</td>
-          <td>${h.attackPathCount || 2} paths</td>
+          <td>${h.attackPathCount ?? 0} paths</td>
           <td style="font-family: 'JetBrains Mono'; color: var(--accent-cyan);">${h.durationSeconds || '0.01'}s</td>
           <td>${i === 0 ? '<span style="background: rgba(0, 240, 255, 0.1); border: 1px solid var(--accent-cyan); color: var(--accent-cyan); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">Latest Assessment</span>' : '<span style="color: var(--text-muted); font-size: 0.75rem;">Historical</span>'}</td>
         </tr>
@@ -897,7 +910,8 @@
 
       let endpoint = isFailureSim ? '/api/simulate-failure' : '/api/run-assessment';
       try {
-        const resp = await fetch(endpoint, { method: 'POST' });
+        const resp = await fetch(endpoint, { method: 'POST', headers: actionHeaders });
+        if (!resp.ok) throw new Error('Demo request failed');
         const resData = await resp.json();
         
         status7.className = 'step-status-badge status-completed';
@@ -909,8 +923,8 @@
         const findings = (assessmentData && assessmentData.findings) ? assessmentData.findings : [];
         const meta = (assessmentData && assessmentData.meta) ? assessmentData.meta : {};
         
-        document.getElementById('summaryPosture').innerText = posture.postureScore || '24.0';
-        document.getElementById('summaryTotal').innerText = findings.length || '5';
+        document.getElementById('summaryPosture').innerText = posture.postureScore ?? 'Unavailable';
+        document.getElementById('summaryTotal').innerText = findings.length;
         document.getElementById('summaryPaths').innerText = (assessmentData.graph && assessmentData.graph.attackPaths) ? assessmentData.graph.attackPaths.length : '2';
         document.getElementById('summaryEngine').innerText = meta.engineStatus || 'PRIMARY';
 
@@ -919,7 +933,7 @@
       } catch (e) {
         console.error("Assessment API execution error:", e);
         status7.className = 'step-status-badge status-completed';
-        status7.innerText = '✓ Completed (Fallback)';
+        status7.innerText = 'Failed — check demo input and output files';
       }
 
       btn.disabled = false;
@@ -932,7 +946,8 @@
 
     async function triggerResetPrimary() {
       try {
-        await fetch('/api/reset-primary', { method: 'POST' });
+        const response = await fetch('/api/reset-primary', { method: 'POST', headers: actionHeaders });
+        if (!response.ok) throw new Error('Reset failed');
         await loadData();
       } catch(e) { console.error("Reset failed", e); }
     }

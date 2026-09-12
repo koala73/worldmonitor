@@ -3,13 +3,13 @@ Security Assessment Fail-Safe & Backup System
 Provides automatic fallback execution and failure logging for World Monitor Security Assessment.
 """
 
-import os
-import json
 import time
 import traceback
+from engine.storage import OUTPUT_DIR, read_json, write_json
+from engine.scoring import calculate_overall_posture
 from typing import Dict, List, Any
 
-FAILURE_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "failure_log.json")
+FAILURE_LOG_PATH = OUTPUT_DIR / "failure_log.json"
 
 def log_failure(component: str, error_msg: str, details: str = "") -> Dict[str, Any]:
     """Records assessment failures to failure_log.json."""
@@ -20,20 +20,15 @@ def log_failure(component: str, error_msg: str, details: str = "") -> Dict[str, 
         "details": details
     }
     
-    existing_logs = []
-    if os.path.exists(FAILURE_LOG_PATH):
-        try:
-            with open(FAILURE_LOG_PATH, "r") as f:
-                existing_logs = json.load(f)
-        except Exception:
-            existing_logs = []
-            
-    existing_logs.append(failure_record)
-    
-    os.makedirs(os.path.dirname(FAILURE_LOG_PATH), exist_ok=True)
-    with open(FAILURE_LOG_PATH, "w") as f:
-        json.dump(existing_logs, f, indent=2)
-        
+    try:
+        existing_logs = read_json(FAILURE_LOG_PATH, [])
+        existing_logs.append(failure_record)
+        write_json(FAILURE_LOG_PATH, existing_logs[-100:])
+    except (OSError, ValueError, TypeError, AttributeError):
+        # Logging must not suppress the fallback; retain corrupt files for inspection.
+        import sys
+        print("Demo failure log unavailable", file=sys.stderr)
+
     return failure_record
 
 def run_fallback_assessment(raw_findings: List[Dict[str, Any]], failure_reason: str) -> Dict[str, Any]:
@@ -78,40 +73,13 @@ def run_fallback_assessment(raw_findings: List[Dict[str, Any]], failure_reason: 
         fallback_finding["relatedFindings"] = []
         fallback_findings.append(fallback_finding)
         
-    avg_score = sum(f["riskScore"] for f in fallback_findings) / len(fallback_findings) if fallback_findings else 0
-    max_score = max((f["riskScore"] for f in fallback_findings), default=0)
-    posture_score = round(max(0.0, 100.0 - ((max_score * 0.6) + (avg_score * 0.4))), 1)
-    
     return {
-        "posture": {
-            "postureScore": posture_score,
-            "status": "DEGRADED (FALLBACK)",
-            "riskLevel": "MEDIUM",
-            "totalFindings": len(fallback_findings),
-            "severityCounts": {
-                "CRITICAL": sum(1 for f in fallback_findings if f["severity"] == "CRITICAL"),
-                "HIGH": sum(1 for f in fallback_findings if f["severity"] == "HIGH"),
-                "MEDIUM": sum(1 for f in fallback_findings if f["severity"] == "MEDIUM"),
-                "LOW": sum(1 for f in fallback_findings if f["severity"] == "LOW")
-            },
-            "averageRiskScore": round(avg_score, 1),
-            "maxRiskScore": max_score
-        },
+        "posture": calculate_overall_posture(fallback_findings),
         "findings": fallback_findings,
         "graph": {
             "nodes": [{"id": f["id"], "title": f["title"], "category": f["category"], "severity": f["severity"], "riskScore": f["riskScore"], "file": f["file"]} for f in fallback_findings],
             "edges": [],
-            "attackPaths": [
-                {
-                    "id": "PATH-FALLBACK-01",
-                    "name": "Fallback Grouped Vulnerability Path",
-                    "findings": [f["id"] for f in fallback_findings[:3]],
-                    "aggregateRiskScore": max_score,
-                    "severity": "HIGH",
-                    "description": "Fallback path evaluation based on severity group.",
-                    "impact": "Conservative security boundary warning."
-                }
-            ]
+            "attackPaths": []
         },
         "meta": {
             "engineStatus": "FALLBACK",

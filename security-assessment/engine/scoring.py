@@ -58,7 +58,7 @@ def parse_cvss_v4(finding: Dict[str, Any]) -> Dict[str, Any]:
             "vector": vector,
             "score": round(float(score), 1),
             "severity": severity or "MEDIUM",
-            "status": "VALIDATED"
+            "status": "REQUIRES VALIDATION"
         }
     else:
         return {

@@ -1,6 +1,6 @@
 # Risk Mathematics & Scoring Architecture
 
-This document describes the dual-layer risk scoring architecture used in the **World Monitor Security Assessment Platform (SIH PS 26163)**.
+This document describes a synthetic scoring demonstration. Its weights and confidence values are examples, not a WorldMonitor security assessment.
 
 ---
 
@@ -42,7 +42,7 @@ Where:
 - $E$: **Exploitability Factor** ($0.0 – 1.0$)
 - $X$: **Exposure Factor** ($0.0 – 1.0$)
 - $K$: **Component Criticality** ($0.0 – 1.0$)
-- $A$: **Attack Path Impact** ($0.85$ if linked to a correlated path, else $0.20$)
+- $A$: **Attack Path Impact** ($0.85$ if a heuristic related finding exists, else $0.20$)
 - $C$: **Evidence Confidence Factor** ($0.0 – 1.0$)
 
 ---
@@ -68,5 +68,5 @@ $$\text{PostureScore} = \text{round}\Big(\max\big(0.0, \, 100.0 - (0.6 \cdot \te
 
 ## 6. Limitations & Disclaimer
 
-- Findings are based on static code observations and configuration patterns.
+- Input findings are synthetic fixtures. Correlations do not prove attack paths. Supplied CVSS values always require independent validation.
 - Observations requiring deeper runtime validation must be marked `REQUIRES VALIDATION` and must not be treated as confirmed exploits.
