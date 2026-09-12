@@ -3565,7 +3565,13 @@
       "sortableTable": "Sortbar kryptopristabll med sökfilter",
       "animatedCounters": "Animerade räknare för viktiga ekonomiska indikatorer",
       "tabbedComparison": "Tabbad jämförelse av konflikthändelser efter region"
-    }
+    },
+    "quotaExhausted": "Widgetkvoten är förbrukad.",
+    "quotaUnavailable": "Widgetkvoten är tillfälligt otillgänglig.",
+    "quotaRetryLater": "Försök igen senare.",
+    "quotaRetryAfter": "Försök igen om {{count}} minuter.",
+    "quotaRetryAfter_one": "Försök igen om {{count}} minut.",
+    "quotaRetryAfter_other": "Försök igen om {{count}} minuter."
   },
   "connectivity": {
     "offlineCached": "Offline — visar cachad data från {{freshness}}.",

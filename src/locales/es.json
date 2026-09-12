@@ -3584,7 +3584,14 @@
       "sortableTable": "Tabla de precios de criptomonedas ordenable con filtro de búsqueda",
       "animatedCounters": "Contadores animados para indicadores económicos clave",
       "tabbedComparison": "Comparación con pestañas de eventos de conflicto por región"
-    }
+    },
+    "quotaExhausted": "La cuota del widget se ha agotado.",
+    "quotaUnavailable": "La cuota del widget no está disponible temporalmente.",
+    "quotaRetryLater": "Inténtalo de nuevo más tarde.",
+    "quotaRetryAfter": "Inténtalo de nuevo en {{count}} minutos.",
+    "quotaRetryAfter_one": "Inténtalo de nuevo en {{count}} minuto.",
+    "quotaRetryAfter_many": "Inténtalo de nuevo en {{count}} minutos.",
+    "quotaRetryAfter_other": "Inténtalo de nuevo en {{count}} minutos."
   },
   "connectivity": {
     "offlineCached": "Sin conexión — mostrando datos en caché de {{freshness}}.",

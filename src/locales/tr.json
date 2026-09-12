@@ -3565,7 +3565,13 @@
       "sortableTable": "Arama filtresine sahip sıralanabilir kripto fiyat tablosu",
       "animatedCounters": "Kilit ekonomik göstergeler için animasyonlu sayaçlar",
       "tabbedComparison": "Çatışma olaylarının bölgeye göre sekmeli karşılaştırması"
-    }
+    },
+    "quotaExhausted": "Widget kotası tükendi.",
+    "quotaUnavailable": "Widget kotası geçici olarak kullanılamıyor.",
+    "quotaRetryLater": "Daha sonra tekrar deneyin.",
+    "quotaRetryAfter": "{{count}} dakika sonra tekrar deneyin.",
+    "quotaRetryAfter_one": "{{count}} dakika sonra tekrar deneyin.",
+    "quotaRetryAfter_other": "{{count}} dakika sonra tekrar deneyin."
   },
   "connectivity": {
     "offlineCached": "Çevrimdışı — {{freshness}} tarihli önbelleğe alınan veriler gösteriliyor.",

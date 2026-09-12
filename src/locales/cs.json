@@ -3603,7 +3603,15 @@
       "sortableTable": "Seřaditelná tabulka cen kryptoměn s filtrem vyhledávání",
       "animatedCounters": "Animované čítače pro klíčové ekonomické ukazatele",
       "tabbedComparison": "Tabelované porovnání konfliktních událostí podle regionu"
-    }
+    },
+    "quotaExhausted": "Kvóta widgetu je vyčerpána.",
+    "quotaUnavailable": "Kvóta widgetu je dočasně nedostupná.",
+    "quotaRetryLater": "Zkuste to znovu později.",
+    "quotaRetryAfter": "Zkuste to znovu za {{count}} minut.",
+    "quotaRetryAfter_one": "Zkuste to znovu za {{count}} minutu.",
+    "quotaRetryAfter_few": "Zkuste to znovu za {{count}} minuty.",
+    "quotaRetryAfter_many": "Zkuste to znovu za {{count}} minuty.",
+    "quotaRetryAfter_other": "Zkuste to znovu za {{count}} minut."
   },
   "connectivity": {
     "offlineCached": "Offline — zobrazuji data z mezipaměti z {{freshness}}.",

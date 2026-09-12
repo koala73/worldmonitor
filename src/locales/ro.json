@@ -3584,7 +3584,14 @@
       "sortableTable": "Tabel de prețuri criptomonede sortabil cu filtru de căutare",
       "animatedCounters": "Contor animat pentru indicatorii economici cheie",
       "tabbedComparison": "Comparație cu file a evenimentelor de conflict după regiune"
-    }
+    },
+    "quotaExhausted": "Cota widgetului a fost epuizată.",
+    "quotaUnavailable": "Cota widgetului este temporar indisponibilă.",
+    "quotaRetryLater": "Încercați din nou mai târziu.",
+    "quotaRetryAfter": "Încercați din nou peste {{count}} de minute.",
+    "quotaRetryAfter_one": "Încercați din nou peste {{count}} minut.",
+    "quotaRetryAfter_few": "Încercați din nou peste {{count}} minute.",
+    "quotaRetryAfter_other": "Încercați din nou peste {{count}} de minute."
   },
   "connectivity": {
     "offlineCached": "Offline — afișare date cache din {{freshness}}.",

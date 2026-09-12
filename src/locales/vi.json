@@ -3546,7 +3546,12 @@
       "sortableTable": "Bảng giá tiền điện tử có thể sắp xếp với bộ lọc tìm kiếm",
       "animatedCounters": "Bộ đếm động cho các chỉ số kinh tế chính",
       "tabbedComparison": "So sánh theo tab các sự kiện xung đột theo khu vực"
-    }
+    },
+    "quotaExhausted": "Đã dùng hết hạn mức widget.",
+    "quotaUnavailable": "Hạn mức widget tạm thời không khả dụng.",
+    "quotaRetryLater": "Vui lòng thử lại sau.",
+    "quotaRetryAfter": "Thử lại sau {{count}} phút.",
+    "quotaRetryAfter_other": "Thử lại sau {{count}} phút."
   },
   "connectivity": {
     "offlineCached": "Ngoại tuyến — hiển thị dữ liệu đã lưu từ {{freshness}}.",

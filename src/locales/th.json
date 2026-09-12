@@ -3546,7 +3546,12 @@
       "sortableTable": "ตารางราคา crypto ที่จัดเรียงได้พร้อมตัวกรองค้นหา",
       "animatedCounters": "ตัวนับแบบเคลื่อนไหวสำหรับตัวชี้วัดเศรษฐกิจหลัก",
       "tabbedComparison": "การเปรียบเทียบแบบแท็บของเหตุการณ์ความขัดแย้งตามภูมิภาค"
-    }
+    },
+    "quotaExhausted": "โควตา widget หมดแล้ว",
+    "quotaUnavailable": "โควตา widget ไม่พร้อมใช้งานชั่วคราว",
+    "quotaRetryLater": "โปรดลองอีกครั้งภายหลัง",
+    "quotaRetryAfter": "โปรดลองอีกครั้งใน {{count}} นาที",
+    "quotaRetryAfter_other": "โปรดลองอีกครั้งใน {{count}} นาที"
   },
   "connectivity": {
     "offlineCached": "ออฟไลน์ — แสดงข้อมูลที่บันทึกไว้จาก {{freshness}}",

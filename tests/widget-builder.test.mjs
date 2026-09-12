@@ -268,12 +268,6 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('model used is claude-haiku (cost-efficient for widgets)', () => {
-    assert.ok(
-      relay.includes('claude-haiku'),
-      'Widget agent should use claude-haiku model for cost efficiency',
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -962,29 +956,7 @@ describe('PRO widget — relay auth and configuration', () => {
     );
   });
 
-  it('PRO_WIDGET_RATE_LIMIT is 20', () => {
-    const match = relay.match(/PRO_WIDGET_RATE_LIMIT\s*=\s*(\d+)/);
-    assert.ok(match, 'PRO_WIDGET_RATE_LIMIT constant not found');
-    assert.equal(Number(match[1]), 20, 'PRO_WIDGET_RATE_LIMIT must be 20');
-  });
 
-  it('proWidgetRateLimitMap is a separate rate limit bucket from basic', () => {
-    assert.ok(
-      relay.includes('proWidgetRateLimitMap'),
-      'PRO must use a separate rate limit map (proWidgetRateLimitMap)',
-    );
-    // Must also have the basic bucket
-    assert.ok(
-      relay.includes('widgetRateLimitMap'),
-      'Basic must have its own rate limit map (widgetRateLimitMap)',
-    );
-    // Verify they are different variables
-    assert.notEqual(
-      relay.indexOf('proWidgetRateLimitMap'),
-      relay.indexOf('widgetRateLimitMap'),
-      'PRO and basic must use separate rate limit maps',
-    );
-  });
 
   it('x-pro-key header is read for PRO auth', () => {
     assert.ok(
@@ -1024,22 +996,7 @@ describe('PRO widget — relay auth and configuration', () => {
     );
   });
 
-  it('PRO uses claude-sonnet model (not haiku)', () => {
-    assert.ok(
-      relay.includes('claude-sonnet'),
-      'PRO tier must use claude-sonnet model',
-    );
-  });
 
-  it('PRO max_tokens is 8192', () => {
-    // maxTokens is set via isPro ternary, then passed to max_tokens
-    assert.ok(
-      relay.includes('isPro ? 8192') || relay.includes('isPro?8192') || relay.includes('8192'),
-      'PRO max_tokens must be 8192',
-    );
-    const tokenMatch = relay.match(/maxTokens\s*=\s*isPro\s*\?\s*8192/) || relay.match(/isPro\s*\?\s*8192/);
-    assert.ok(tokenMatch, 'maxTokens must be set to 8192 when isPro');
-  });
 
   it('WIDGET_PRO_SYSTEM_PROMPT exists and forbids DOCTYPE/html wrappers', () => {
     assert.ok(

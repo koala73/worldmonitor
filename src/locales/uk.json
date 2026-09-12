@@ -66,7 +66,15 @@
       "sortableTable": "Sortable crypto price table with search filter",
       "animatedCounters": "Animated counters for key economic indicators",
       "tabbedComparison": "Tabbed comparison of conflict events by region"
-    }
+    },
+    "quotaExhausted": "Квоту widget вичерпано.",
+    "quotaUnavailable": "Квота widget тимчасово недоступна.",
+    "quotaRetryLater": "Спробуйте ще раз пізніше.",
+    "quotaRetryAfter": "Спробуйте ще раз через {{count}} хвилини.",
+    "quotaRetryAfter_one": "Спробуйте ще раз через {{count}} хвилину.",
+    "quotaRetryAfter_few": "Спробуйте ще раз через {{count}} хвилини.",
+    "quotaRetryAfter_many": "Спробуйте ще раз через {{count}} хвилин.",
+    "quotaRetryAfter_other": "Спробуйте ще раз через {{count}} хвилини."
   },
   "countryBrief": {
     "identifying": "Identifying country...",

@@ -27,6 +27,8 @@ import { isSessionTokenShape } from './_session.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+// @ts-expect-error — JS module, no declaration file
+import { reserveWidgetQuota, signWidgetPrincipal, widgetPrincipal, WidgetQuotaError } from './_widget-quota.js';
 
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
@@ -152,6 +154,10 @@ export default async function handler(
   try {
     return await proxyWidgetAgent(req, corsHeaders);
   } catch (err) {
+    if (err instanceof WidgetQuotaError) {
+      const denial = err as unknown as { status: number; retryAfter: number; message: string };
+      return json({ error: denial.message }, denial.status, { ...corsHeaders, 'Retry-After': String(denial.retryAfter) });
+    }
     // `name` + `message` are the phase discriminator on-call needs: an
     // unreachable relay reads `TypeError: … ENOTFOUND proxy.worldmonitor.app`,
     // a health check that outran its budget reads `TimeoutError` (the
@@ -177,6 +183,7 @@ async function proxyWidgetAgent(
 ): Promise<Response> {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let isPro = false;
+  let principal: string;
 
   const headerWorldMonitorKey =
     req.headers.get('X-WorldMonitor-Key') ??
@@ -192,6 +199,7 @@ async function proxyWidgetAgent(
     headerWorldMonitorKey;
   if (await hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
+    principal = await widgetPrincipal('key', worldMonitorKey);
   } else {
     const authHeader = req.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
@@ -268,6 +276,7 @@ async function proxyWidgetAgent(
         return json({ error: 'Pro subscription required' }, 403, corsHeaders);
       }
       isPro = true;
+      principal = await widgetPrincipal('user', session.userId);
     } else {
       // Legacy tester key path (wm-widget-key / wm-pro-key)
       const widgetKey = req.headers.get('X-Widget-Key') || getCookie(req, 'wm-widget-key');
@@ -278,6 +287,7 @@ async function proxyWidgetAgent(
         return json({ error: 'Forbidden' }, 403, corsHeaders);
       }
       isPro = hasProKey;
+      principal = await widgetPrincipal('key', hasProKey ? proKey : widgetKey);
     }
   }
 
@@ -334,6 +344,11 @@ async function proxyWidgetAgent(
     }
   } catch { /* malformed body — relay will return 400 */ }
 
+  const tier = isPro ? 'pro' : 'basic';
+  const proof = await signWidgetPrincipal(principal, tier, rawBody);
+  await reserveWidgetQuota(principal, tier, 'edge');
+  Object.assign(relayHeaders, proof);
+
   // No timeout here on purpose — see WIDGET_AGENT_HEALTH_TIMEOUT_MS above for
   // why a correct one is not expressible from this side yet.
   const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
@@ -348,6 +363,7 @@ async function proxyWidgetAgent(
       'Content-Type': relayRes.headers.get('Content-Type') ?? 'text/event-stream',
       'Cache-Control': 'no-cache, no-store',
       'X-Accel-Buffering': 'no',
+      ...(relayRes.headers.has('Retry-After') ? { 'Retry-After': relayRes.headers.get('Retry-After')! } : {}),
       ...corsHeaders,
     },
   });

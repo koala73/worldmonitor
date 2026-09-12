@@ -3603,7 +3603,15 @@
       "sortableTable": "Сортируемая таблица цен крипто с фильтром поиска",
       "animatedCounters": "Анимированные счетчики ключевых экономических показателей",
       "tabbedComparison": "Табличное сравнение событий конфликтов по регионам"
-    }
+    },
+    "quotaExhausted": "Квота widget исчерпана.",
+    "quotaUnavailable": "Квота widget временно недоступна.",
+    "quotaRetryLater": "Повторите попытку позже.",
+    "quotaRetryAfter": "Повторите попытку через {{count}} минуты.",
+    "quotaRetryAfter_one": "Повторите попытку через {{count}} минуту.",
+    "quotaRetryAfter_few": "Повторите попытку через {{count}} минуты.",
+    "quotaRetryAfter_many": "Повторите попытку через {{count}} минут.",
+    "quotaRetryAfter_other": "Повторите попытку через {{count}} минуты."
   },
   "connectivity": {
     "offlineCached": "Офлайн — отображаются кэшированные данные от {{freshness}}.",
