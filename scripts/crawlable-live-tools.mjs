@@ -275,7 +275,10 @@ export function formatTrend(dynamicScore, trend) {
   return 'Stable or unavailable';
 }
 
-export function parseCiiMovement(trend) {
+export const DEFAULT_CII_MOVEMENT_INTERVAL = 'over approximately 24 hours';
+
+export function parseCiiMovement(trend, { intervalPhrase = DEFAULT_CII_MOVEMENT_INTERVAL } = {}) {
+  const interval = String(intervalPhrase || '').trim() || DEFAULT_CII_MOVEMENT_INTERVAL;
   const normalized = String(trend || '').trim();
   if (
     normalized === 'Stable'
@@ -284,7 +287,7 @@ export function parseCiiMovement(trend) {
   ) {
     return {
       change24h: null,
-      movementText: 'stable or unavailable over approximately 24 hours',
+      movementText: `stable or unavailable ${interval}`,
     };
   }
   const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
@@ -295,7 +298,7 @@ export function parseCiiMovement(trend) {
   const direction = match[1] === 'Rising' ? 'up' : 'down';
   return {
     change24h,
-    movementText: `${direction} ${magnitude} ${unit} over approximately 24 hours`,
+    movementText: `${direction} ${magnitude} ${unit} ${interval}`,
   };
 }
 
