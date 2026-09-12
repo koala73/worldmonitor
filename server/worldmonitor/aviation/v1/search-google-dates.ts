@@ -85,7 +85,7 @@ export async function searchGoogleDates(
   const cacheKey = `aviation:gf-dates:${await sha256Hex(params.toString())}:v3`;
 
   try {
-    const { data } = await cachedFetchJsonWithMeta<{ dates: unknown[]; degraded: boolean }>(
+    const { data } = await cachedFetchJsonWithMeta<{ dates: unknown[]; degraded: boolean; cooldown: boolean }>(
       cacheKey,
       CACHE_TTL,
       async () => {
@@ -96,7 +96,11 @@ export async function searchGoogleDates(
         if (!resp.ok) throw new Error(`relay returned ${resp.status}`);
         const json = (await resp.json()) as { dates?: unknown[]; partial?: boolean; cooldown?: boolean; error?: string };
         if (!Array.isArray(json.dates)) throw new Error(json.error ?? 'no results');
-        return { dates: json.dates, degraded: json.partial === true || json.cooldown === true };
+        return {
+          dates: json.dates,
+          degraded: json.partial === true || json.cooldown === true,
+          cooldown: json.cooldown === true,
+        };
       },
       120,
       { cacheFailures: false },
@@ -109,7 +113,9 @@ export async function searchGoogleDates(
     return {
       dates: data.dates as SearchGoogleDatesResponse['dates'],
       degraded: data.degraded,
-      error: data.degraded ? 'partial results: one or more date chunks failed' : '',
+      error: data.cooldown
+        ? 'provider cooldown'
+        : data.degraded ? 'partial results: one or more date chunks failed' : '',
     };
   } catch (err) {
     return { dates: [], degraded: true, error: err instanceof Error ? err.message : 'search failed' };

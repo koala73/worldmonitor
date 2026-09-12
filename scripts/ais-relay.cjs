@@ -12912,23 +12912,33 @@ function parseGfDates(text, isRoundTrip) {
     const stripped = text.replace(/^\)\]\}'/, '');
     const outer = JSON.parse(stripped);
     const inner = outer?.[0]?.[2];
-    if (!inner) return [];
+    if (!inner) return null;
 
     const data = JSON.parse(inner);
     const items = data[data.length - 1];
-    if (!Array.isArray(items)) return [];
+    if (!Array.isArray(items)) return null;
 
+    const isCalendarDate = value => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const time = Date.parse(`${value}T00:00:00Z`);
+      return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+    };
     const roundTrip = isRoundTrip === 'true' || isRoundTrip === true;
-    return items.map(item => {
+    const dates = [];
+    for (const item of items) {
       try {
         if (!Array.isArray(item) || item.length < 3) return null;
         if (!Array.isArray(item[2]) || !Array.isArray(item[2][0]) || item[2][0].length < 2) return null;
-        const price = parseFloat(item[2][0][1]);
-        if (!price || Number.isNaN(price)) return null;
-        return { date: item[0] ?? '', returnDate: roundTrip ? (item[1] ?? '') : '', price };
+        const date = item[0];
+        const returnDate = item[1];
+        if (!isCalendarDate(date) || (roundTrip && !isCalendarDate(returnDate))) return null;
+        const price = Number(item[2][0][1]);
+        if (!Number.isFinite(price) || price <= 0) return null;
+        dates.push({ date, returnDate: roundTrip ? returnDate : '', price });
       } catch { return null; }
-    }).filter(Boolean);
-  } catch { return []; }
+    }
+    return dates;
+  } catch { return null; }
 }
 
 async function handleGoogleFlightsSearch(req, res) {
@@ -13085,7 +13095,9 @@ async function handleGoogleFlightsDates(req, res) {
         throw new Error(`Google Flights returned ${gfResp.status}`);
       }
       const text = await gfResp.text();
-      allDates.push(...parseGfDates(text, isRoundTrip));
+      const dates = parseGfDates(text, isRoundTrip);
+      if (dates === null) throw new Error('Google Flights returned an invalid calendar response');
+      allDates.push(...dates);
       recordRelayOutcome('googleFlights', 'success');
       incrementRelayMetric('googleFlightsServed');
     } else {
@@ -13120,9 +13132,15 @@ async function handleGoogleFlightsDates(req, res) {
             recordRelayOutcome('googleFlights', 'authRejection');
           } else if (gfResp.ok) {
             const text = await gfResp.text();
-            recordRelayOutcome('googleFlights', 'success');
-            incrementRelayMetric('googleFlightsServed');
-            return parseGfDates(text, isRoundTrip);
+            const dates = parseGfDates(text, isRoundTrip);
+            if (dates === null) {
+              recordRelayOutcome('googleFlights', 'terminalFailure');
+              console.warn(`[Google Flights] dates chunk ${chunk.startDate} returned an invalid calendar response`);
+            } else {
+              recordRelayOutcome('googleFlights', 'success');
+              incrementRelayMetric('googleFlightsServed');
+              return dates;
+            }
           } else {
             recordRelayOutcome('googleFlights', 'terminalFailure');
             console.warn(`[Google Flights] dates chunk ${chunk.startDate} failed: ${gfResp.status}`);

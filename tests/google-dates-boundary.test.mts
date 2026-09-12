@@ -365,6 +365,7 @@ test('calendar cooldown responses are degraded, do not cache, and suppress provi
   assert.equal((await read()).degraded, true);
   const cooldown = await read();
   assert.equal(cooldown.degraded, true);
+  assert.equal(cooldown.error, 'provider cooldown');
   assert.equal((await read(yearGrid)).degraded, true);
   assert.equal(count, 1);
   assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
@@ -387,6 +388,22 @@ test('all chunk failures and response-body failures cannot poison recovery', asy
   assert.equal(count, 6);
   assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
   fail = false;
+  assert.equal((await read(yearGrid)).dates.length, 366);
+  assert.equal(count, 12);
+});
+
+test('malformed successful calendar bodies are degraded, not cached, and recover', async () => {
+  let count = 0;
+  let malformed = true;
+  installCalendarRelay((async (_input, init) => {
+    count++;
+    return malformed ? new Response(JSON.stringify([[null, null, JSON.stringify([[[null, '', [[null, 100]]]]])]])) : calendarResponse(init);
+  }) as typeof fetch);
+  const failed = await read(yearGrid);
+  assert.equal(failed.degraded, true);
+  assert.deepEqual(failed.dates, []);
+  assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
+  malformed = false;
   assert.equal((await read(yearGrid)).dates.length, 366);
   assert.equal(count, 12);
 });
