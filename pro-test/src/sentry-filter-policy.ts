@@ -80,11 +80,22 @@ export function sanitizeMarketingRequestUrl(value: string): string | undefined {
   }
 }
 
+/**
+ * The three network wordings that used to live in `MARKETING_IGNORE_ERRORS`:
+ * Safari's `Load failed`, Chromium's `Failed to fetch`, Firefox's
+ * `NetworkError`. They moved into `marketingBeforeSend` unchanged in reach —
+ * see the use site there for why, and for the ownership tag that is now the
+ * only thing they let through.
+ */
+const MARKETING_NETWORK_NOISE = /^(?:Load failed|Failed to fetch|NetworkError)/;
+
 export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   /ResizeObserver loop/,
-  /^TypeError: Load failed/,
-  /^TypeError: Failed to fetch/,
-  /^TypeError: NetworkError/,
+  // `Load failed` / `Failed to fetch` / `NetworkError` are NOT here any more.
+  // `ignoreErrors` runs as an SDK event processor inside `prepareEvent`, so it
+  // fires before `marketingBeforeSend` and cannot see tags — an owned checkout
+  // failure could never be rescued from it (WORLDMONITOR-Q4). Same drop, moved
+  // late enough to read the ownership tag.
   /Non-Error promise rejection captured with value:/,
   // WKWebView host-app JS bridge timeout — Apple WebKit emits this exact phrase
   // when a JS-to-native `postMessage` gets no reply within the host's window.
@@ -489,6 +500,27 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // the dashboard's `beforeSend`, where it is the first statement
   // (WORLDMONITOR-ZZ, -ZW).
   if (msg.length <= 3 && BARE_SYMBOL_MESSAGE.test(msg)) return null;
+
+  // Network failures, relocated verbatim from `MARKETING_IGNORE_ERRORS`.
+  //
+  // Reach is deliberately unchanged: still every `TypeError` whose message
+  // opens with one of the three engine wordings, still no frame gate, so an
+  // ordinary marketing network failure is exactly as suppressed as it was.
+  // The single difference is the escape hatch — an event a first-party call
+  // site has claimed with a `kind` tag now survives.
+  //
+  // It had to move because `ignoreErrors` is an SDK event processor running
+  // inside `prepareEvent`: it fires before this function and reads only the
+  // message, so no tag could ever reach it. The checkout catch on this surface
+  // reports precisely these wordings, and the Cloudflare 52x retry widening
+  // made them more reachable here, so leaving them there would have kept the
+  // paid funnel's own failures invisible (WORLDMONITOR-Q4).
+  const exceptionType = exceptionValues[0]?.type ?? '';
+  if (
+    event.tags?.kind === undefined
+    && (exceptionType === 'TypeError' || msg.startsWith('TypeError: '))
+    && MARKETING_NETWORK_NOISE.test(msg.replace(/^TypeError: /, ''))
+  ) return null;
 
   const frames = exceptionValues[0]?.stacktrace?.frames ?? [];
   const nonInfraFrames = frames.filter(

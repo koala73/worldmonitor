@@ -90,6 +90,18 @@ Payload tags, by contrast, *do* reach `beforeSend`: `{level, tags, extra}` is re
 
 **Before trusting a `beforeSend` exemption, grep `ignoreErrors` for the same message.** If it is there, the exemption is dead on arrival.
 
+**Grep it on every surface, and grep it again after adding a capture.** This same mistake was made twice in one change. The first pass fixed the dashboard timeout and left Safari's wording in `ignoreErrors`. The second pass added an ownership-tagged capture to the marketing checkout without checking that bundle's own ignore list, where all three network wordings sat — so the new capture was inert for every network failure, which is the most common way that path fails. A probe against the pre-fix lists shows the split:
+
+| wording | dashboard | marketing |
+|---|---|---|
+| `Load failed` (Safari, both forms) | dropped | dropped |
+| `Failed to fetch` | reached beforeSend | dropped |
+| `NetworkError …` | reached beforeSend | dropped |
+
+Adding a capture call is not the end of the work. The question is always whether the message that capture will produce is already suppressed somewhere above the gate you are relying on.
+
+**When relocating a suppression, keep its reach and add only the escape hatch.** These entries moved into `beforeSend` with no frame gate, exactly as unconditional as they were, so ordinary noise volume is unchanged and the sole behavioural difference is that a tagged event survives. A relocation that also widens is two changes wearing one commit.
+
 **Mirror both spellings in the test harness.** Production builds two candidate strings per event — the bare message value, and the value prefixed with the exception type and a colon — and drops the event if either matches:
 
 ```js

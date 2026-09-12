@@ -78,7 +78,8 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /NotAllowedError/,
       /InvalidAccessError/,
       /importScripts/,
-      /^TypeError: Load failed( \(.*\))?$/,
+      // `^TypeError: Load failed$` moved to the ownership-aware check at the
+      // top of beforeSend (WORLDMONITOR-Q4) — this layer cannot read the tag.
       /^TypeError: (?:cancelled|avbruten)$/,
       /runtime\.sendMessage\(\)/,
       // Chromium's Android WebView Java bridge. `android_webview` wraps every
@@ -438,6 +439,29 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
     beforeSend(event) {
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+      // WebKit's wording for a failed fetch, relocated verbatim from
+      // `ignoreErrors`. Reach is unchanged — still only a `TypeError` whose
+      // message is exactly `Load failed`, optionally with a parenthesised
+      // suffix, and still no frame gate — so ordinary Safari network noise is
+      // as suppressed as it was. The one difference is that an event a
+      // first-party call site claimed with a `kind` tag now survives.
+      //
+      // It had to move because `ignoreErrors` runs as an SDK event processor
+      // inside `prepareEvent`, ahead of this function and blind to tags: a
+      // checkout network failure on Safari could never be rescued from it, so
+      // the zero-frame exemption below was fixing WebKit in name only
+      // (WORLDMONITOR-Q4).
+      // The type check keeps the reach identical rather than merely similar:
+      // `ignoreErrors` tested both `value` and `"<type>: <value>"`, so the old
+      // entry caught a TypeError whose value is bare `Load failed` AND the
+      // combined spelling, but never a non-TypeError carrying that wording.
+      // Matching on `msg` alone would have quietly started suppressing the
+      // latter.
+      if (
+        event.tags?.kind === undefined
+        && (event.exception?.values?.[0]?.type === 'TypeError' || msg.startsWith('TypeError: '))
+        && /^(?:TypeError: )?Load failed( \(.*\))?$/.test(msg)
+      ) return null;
       const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
       const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
       const firstPartyFile = (filename: string) => {

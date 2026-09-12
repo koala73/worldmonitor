@@ -8,6 +8,7 @@ import {
   BrowserClient,
   captureException,
   defaultStackParser,
+  eventFiltersIntegration,
   setCurrentClient,
   withScope,
 } from '@sentry/browser';
@@ -535,6 +536,11 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     ['a WebKit abort-worded timeout', 'Fetch is aborted', 'AbortError'],
     ['a double network failure', 'Failed to fetch', 'TypeError'],
     ['a Firefox-worded network failure', 'NetworkError when attempting to fetch resource.', 'TypeError'],
+    // Safari's wording for the same failed fetch. It sat in `ignoreErrors`,
+    // which runs before this gate and cannot read the ownership tag, so a
+    // checkout network failure on Safari stayed invisible even after the
+    // zero-frame exemption shipped.
+    ['a WebKit-worded network failure', 'Load failed', 'TypeError'],
   ]) {
     it(`preserves ${label} once checkout has reported it`, () => {
       assert.equal(
@@ -600,17 +606,27 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
   // If an SDK upgrade reorders either, the checkout exemption goes dead in
   // production while every hand-tagged fixture above stays green. Drive the
   // real public API end to end so the assumption is proven, not inherited.
-  for (const [label, tags, expectDelivered] of [
-    ['with the checkout kind tag', CHECKOUT_REPORT_TAGS, true],
-    ['without any kind tag', { component: 'dodo-checkout', action: 'exception' }, false],
+  for (const [label, tags, expectDelivered, thrown] of [
+    ['with the checkout kind tag', CHECKOUT_REPORT_TAGS, true, 'timeout'],
+    ['without any kind tag', { component: 'dodo-checkout', action: 'exception' }, false, 'timeout'],
+    // The layer this fixture exists to cover. `ignoreErrors` runs as an SDK
+    // event processor BEFORE beforeSend, so a client built without
+    // eventFilters proves delivery through half the stack and reports green
+    // while production drops the event. Safari's `Load failed` is the wording
+    // that actually hid here.
+    ['with the kind tag on a WebKit network failure', CHECKOUT_REPORT_TAGS, true, 'webkit-network'],
+    ['without a kind tag on a WebKit network failure', { component: 'dodo-checkout' }, false, 'webkit-network'],
   ]) {
-    it(`routes a real captureException payload through beforeSend ${label}`, async () => {
+    it(`routes a real captureException payload through the full filter stack ${label}`, async () => {
       const seenByBeforeSend = [];
       const delivered = [];
       const client = new BrowserClient({
         dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
         stackParser: defaultStackParser,
-        integrations: [],
+        // The REAL ignoreErrors array, extracted from the shipped source at the
+        // top of this file — not an empty list. Without this the test cannot
+        // see the layer that runs first.
+        integrations: [eventFiltersIntegration({ ignoreErrors })],
         transport: () => ({
           send: async (envelope) => { delivered.push(envelope); return {}; },
           flush: async () => true,
@@ -626,14 +642,28 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       await withScope(async () => {
         setCurrentClient(client);
         client.init();
-        const reason = new DOMException('signal timed out', 'TimeoutError');
-        Object.defineProperty(reason, 'stack', { value: 'TimeoutError: signal timed out' });
+        let reason;
+        if (thrown === 'webkit-network') {
+          // What Safari hands the checkout catch when the fetch fails outright.
+          reason = new TypeError('Load failed');
+          Object.defineProperty(reason, 'stack', { value: 'TypeError: Load failed' });
+        } else {
+          reason = new DOMException('signal timed out', 'TimeoutError');
+          Object.defineProperty(reason, 'stack', { value: 'TimeoutError: signal timed out' });
+        }
         // The exact shape src/services/checkout.ts hands to captureException.
         captureException(reason, { level: 'error', tags, extra: { productId: 'pdt_test' } });
         await client.flush(2000);
       });
 
-      assert.equal(seenByBeforeSend.length, 1, 'beforeSend must see the captured event');
+      // Reaching beforeSend at all is the assertion about the FIRST layer: an
+      // ignoreErrors entry would have dropped the event in prepareEvent and
+      // left this at zero. That is the failure this fixture exists to catch.
+      assert.equal(
+        seenByBeforeSend.length,
+        1,
+        'beforeSend must see the event — a value of 0 means ignoreErrors ate it first, where no tag can reach',
+      );
       assert.equal(
         seenByBeforeSend[0].tags?.kind,
         tags.kind,
@@ -643,8 +673,8 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
         delivered.length,
         expectDelivered ? 1 : 0,
         expectDelivered
-          ? 'a kind-tagged checkout timeout must reach the transport'
-          : 'an untagged zero-frame timeout must still be suppressed',
+          ? 'a kind-tagged checkout failure must reach the transport'
+          : 'an untagged zero-frame failure must still be suppressed',
       );
     });
   }
@@ -1754,16 +1784,31 @@ describe('bare "Failed to fetch" is decided by host, not stack shape (WORLDMONIT
     assert.ok(beforeSend(event) !== null, 'unattributable fetch failures must not be silently dropped');
   });
 
-  it('pins the Safari blind spot: Load failed is dropped by ignoreErrors, annotated or not (KTD5)', () => {
-    // /^TypeError: Load failed( \(.*\))?$/ allows the host parenthetical, so
-    // BOTH forms are dropped before beforeSend runs — including for our own
-    // origin. Annotating Safari therefore changes no verdict today. Pinned here
-    // so that whoever narrows that entry sees exactly what changes.
-    assert.ok(isIgnored('TypeError: Load failed'), 'bare Safari form is ignored');
-    assert.ok(
-      isIgnored('TypeError: Load failed (api.worldmonitor.app)'),
-      'annotated Safari form is ALSO ignored — this is the blind spot',
-    );
+  it('closes the Safari blind spot for owned reports only, annotated or not (KTD5)', () => {
+    // This pin previously recorded the blind spot itself: `Load failed` sat in
+    // `ignoreErrors`, so BOTH the bare and host-annotated forms died before
+    // beforeSend ran — including for our own origin — and it existed so that
+    // whoever narrowed the entry would see exactly what changed. That happened
+    // in WORLDMONITOR-Q4: a checkout network failure on Safari is reported by
+    // first-party code, and no tag can survive a layer that runs earlier and
+    // reads only the message.
+    //
+    // The entry moved into beforeSend with its reach intact. What this now pins
+    // is that the move changed exactly one verdict and no others.
+    assert.equal(isIgnored('Load failed', 'TypeError'), false,
+      'the suppression must live late enough to read the ownership tag');
+    assert.equal(isIgnored('Load failed (api.worldmonitor.app)', 'TypeError'), false);
+
+    // Unowned: dropped exactly as before, both forms, with or without frames.
+    assert.equal(beforeSend(makeEvent('Load failed', 'TypeError', [])), null);
+    assert.equal(beforeSend(makeEvent('Load failed (api.worldmonitor.app)', 'TypeError', [])), null);
+    assert.equal(beforeSend(makeEvent('Load failed', 'TypeError', [firstPartyFrame()])), null,
+      'a first-party frame must NOT rescue it — only an explicit report does');
+
+    // Owned: the one verdict that changed.
+    const owned = makeEvent('Load failed (api.worldmonitor.app)', 'TypeError', []);
+    owned.tags = { ...CHECKOUT_REPORT_TAGS };
+    assert.equal(beforeSend(owned), owned);
   });
 
   // ── The shape that hid a P0 ────────────────────────────────────────────────
