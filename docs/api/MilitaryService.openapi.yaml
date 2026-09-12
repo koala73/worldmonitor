@@ -239,7 +239,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetTheaterPosture
-            description: Retrieve military posture assessments for a selected geographic theater, including posture levels, active flights, operations and assessment update times.
+            description: Retrieve military posture assessments for all cached theaters, including posture levels, active flights, operations and assessment times in regional monitoring.
             operationId: GetTheaterPosture
             parameters:
                 - name: theater

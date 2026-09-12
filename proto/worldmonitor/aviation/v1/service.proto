@@ -76,7 +76,7 @@ service AviationService {
     };
   }
 
-  // Search available flight offers by dates, cabin and passengers, with provider and indicative-price status. PRO-gated. Requires an active Pro subscription.
+  // Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
   rpc SearchFlightPrices(SearchFlightPricesRequest) returns (SearchFlightPricesResponse) {
     option (sebuf.http.config) = {
       path: "/search-flight-prices"

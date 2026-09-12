@@ -1021,7 +1021,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: Search available flight offers by dates, cabin and passengers, with provider and indicative-price status. PRO-gated. Requires an active Pro subscription.
+            description: Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
             security:
                 - WorldMonitorKey: []

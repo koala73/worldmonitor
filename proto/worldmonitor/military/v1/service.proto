@@ -24,7 +24,7 @@ service MilitaryService {
     option (sebuf.http.config) = {path: "/list-military-flights", method: HTTP_METHOD_GET};
   }
 
-  // Retrieve military posture assessments for a selected geographic theater, including posture levels, active flights, operations and assessment update times.
+  // Retrieve military posture assessments for all cached theaters, including posture levels, active flights, operations and assessment times in regional monitoring.
   rpc GetTheaterPosture(GetTheaterPostureRequest) returns (GetTheaterPostureResponse) {
     option (sebuf.http.config) = {path: "/get-theater-posture", method: HTTP_METHOD_GET};
   }

@@ -1025,7 +1025,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: Search available flight offers by dates, cabin and passengers, with provider and indicative-price status. PRO-gated. Requires an active Pro subscription.
+            description: Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
             security:
                 - WorldMonitorKey: []
@@ -4440,7 +4440,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListUcdpEvents
-            description: Browse georeferenced UCDP violence events by country and date range, with event dates, fatality estimates and cursor pagination for conflict data exploration.
+            description: Browse cached, georeferenced UCDP violence events with optional country filtering, event dates and fatality estimates for country-level conflict data analysis.
             operationId: ListUcdpEvents
             parameters:
                 - name: start
@@ -4603,7 +4603,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummary
-            description: Retrieve a country humanitarian overview from HAPI and HDX, including available conflict, displacement and food-security indicators for situational analysis.
+            description: Retrieve a cached HAPI conflict summary for a country, with event counts, fatalities, demonstrations, reference period and update time for humanitarian context.
             operationId: GetHumanitarianSummary
             parameters:
                 - name: country_code
@@ -6069,7 +6069,7 @@ paths:
             tags:
                 - CyberService
             summary: ListCyberThreats
-            description: Browse cyber threat indicators by date, type, source and minimum severity, with cursor pagination and indicator details for threat intelligence investigation.
+            description: Browse cached cyber threat indicators by type, source and minimum severity, with cursor pagination and indicator details for threat intelligence investigation.
             operationId: ListCyberThreats
             parameters:
                 - name: start
@@ -6700,7 +6700,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListWorldBankIndicators
-            description: Retrieve World Bank development indicators with country names, indicator codes, annual values and pagination for country economic and development analysis.
+            description: Retrieve World Bank development indicators with country filters, country names, indicator codes and annual values for economic and development data analysis.
             operationId: ListWorldBankIndicators
             parameters:
                 - name: indicator_code
@@ -6984,7 +6984,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetMacroSignals
-            description: Review seven macro signals combined from six upstream sources, with bullish counts, signal details and a BUY or CASH verdict for macroeconomic market context.
+            description: Review seven macro signals with bullish counts and BUY, CASH or UNKNOWN verdicts; unavailable cached data returns UNKNOWN to keep missing evidence explicit.
             operationId: GetMacroSignals
             parameters:
                 - name: jmespath
@@ -7353,7 +7353,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCapacity
-            description: Retrieve EIA installed energy capacity series by energy source and year, with annual megawatt values for comparing solar, wind and coal generation capacity.
+            description: Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
             operationId: GetEnergyCapacity
             parameters:
                 - name: energy_sources
@@ -22246,7 +22246,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetTheaterPosture
-            description: Retrieve military posture assessments for a selected geographic theater, including posture levels, active flights, operations and assessment update times.
+            description: Retrieve military posture assessments for all cached theaters, including posture levels, active flights, operations and assessment times in regional monitoring.
             operationId: GetTheaterPosture
             parameters:
                 - name: theater

@@ -43,7 +43,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-fred-series", method: HTTP_METHOD_GET};
   }
 
-  // Retrieve World Bank development indicators with country names, indicator codes, annual values and pagination for country economic and development analysis.
+  // Retrieve World Bank development indicators with country filters, country names, indicator codes and annual values for economic and development data analysis.
   rpc ListWorldBankIndicators(ListWorldBankIndicatorsRequest) returns (ListWorldBankIndicatorsResponse) {
     option (sebuf.http.config) = {path: "/list-world-bank-indicators", method: HTTP_METHOD_GET};
   }
@@ -53,7 +53,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-energy-prices", method: HTTP_METHOD_GET};
   }
 
-  // Review seven macro signals combined from six upstream sources, with bullish counts, signal details and a BUY or CASH verdict for macroeconomic market context.
+  // Review seven macro signals with bullish counts and BUY, CASH or UNKNOWN verdicts; unavailable cached data returns UNKNOWN to keep missing evidence explicit.
   rpc GetMacroSignals(GetMacroSignalsRequest) returns (GetMacroSignalsResponse) {
     option (sebuf.http.config) = {path: "/get-macro-signals", method: HTTP_METHOD_GET};
   }
@@ -70,7 +70,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-china-activity-nowcast", method: HTTP_METHOD_GET};
   }
 
-  // Retrieve EIA installed energy capacity series by energy source and year, with annual megawatt values for comparing solar, wind and coal generation capacity.
+  // Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
   rpc GetEnergyCapacity(GetEnergyCapacityRequest) returns (GetEnergyCapacityResponse) {
     option (sebuf.http.config) = {path: "/get-energy-capacity", method: HTTP_METHOD_GET};
   }
