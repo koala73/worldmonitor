@@ -459,6 +459,13 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 400);
     });
 
+    it('rejects local-use translation and discard-only IPv6 literals', async () => {
+      for (const address of ['64:ff9b:1::808:808', '100::1']) {
+        const res = await handler(makeGetRequest({ serverUrl: `https://[${address}]/mcp` }));
+        assert.equal(res.status, 400);
+      }
+    });
+
     it('returns 400 when DNS resolves a hostname to blocked private/reserved addresses', async () => {
       const cases = [
         ['private IPv4', '10.0.0.5'],
@@ -473,6 +480,8 @@ describe('api/mcp-proxy', () => {
         ['hex v4-mapped loopback', '::ffff:7f00:1'],
         ['hex v4-mapped metadata IP', '::ffff:a9fe:a9fe'],
         ['uppercase hex v4-mapped RFC1918', '::FFFF:0A00:0001'],
+        ['local-use NAT64', '64:ff9b:1::808:808'],
+        ['discard-only IPv6', '100::1'],
         ['NAT64 RFC1918', '64:ff9b::a00:1'],
         ['NAT64 metadata IP', '64:ff9b::a9fe:a9fe'],
         ['IPv4-compatible loopback', '::7f00:1'],

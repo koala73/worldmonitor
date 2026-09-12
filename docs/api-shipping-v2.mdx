@@ -101,7 +101,8 @@ Registers a webhook for chokepoint disruption alerts. Returns `200 OK`.
 
 - `subscriberId` — `wh_` prefix + 24 hex chars (12 random bytes).
 - `secret` — raw 64-char lowercase hex (32 random bytes). There is no `whsec_` prefix. Persist it — the server never returns it again except on rotation.
-- **TTL**: 30 days on both the subscriber record and the per-owner index set. Only **re-registration** refreshes both, via an atomic pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index). `rotate-secret` and `reactivate` refresh the record's TTL only — they do not touch the owner-index set's expiry, so the owner index can expire independently if a caller only ever rotates or reactivates within a 30-day window. Re-register to keep both alive.
+- **TTL**: 30 days on both the subscriber record and the per-owner index set. Only **re-registration** refreshes both, via a non-transactional pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index). `rotate-secret` and `reactivate` refresh the record's TTL only — they do not touch the owner-index set's expiry, so the owner index can expire independently if a caller only ever rotates or reactivates within a 30-day window. Re-register to keep both alive.
+- Registration returns `503` if any of the three writes cannot be confirmed. Partial records or index entries can remain; a retry can create another registration. No rollback is guaranteed.
 - Ownership is tracked via SHA-256 of the caller's API key (never secret — stored as `ownerTag`).
 
 Auth: `X-WorldMonitor-Key` (forceKey: true) + PRO. Returns `401` / `403` otherwise.

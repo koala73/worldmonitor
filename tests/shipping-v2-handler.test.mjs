@@ -8,7 +8,7 @@
  *   - registerWebhook: PRO gate, SSRF guards (https-only, private IP, cloud
  *     metadata), chokepointIds whitelist, alertThreshold 0-100 range,
  *     subscriberId / secret format (wh_ + 24 hex / 64 hex), 30-day TTL
- *     atomic pipeline (SET + SADD + EXPIRE).
+ *     pipeline (SET + SADD + EXPIRE).
  *   - listWebhooks: PRO gate, owner-filter isolation, `secret` never in response.
  *   - deliverWebhook: delivery-time DNS re-resolution blocks private/reserved
  *     addresses before fetch to prevent DNS rebinding SSRF.
@@ -193,7 +193,7 @@ describe('ShippingV2Service handlers', () => {
         calls.push(body);
         // Upstash pipeline returns one result per command.
         return new Response(
-          JSON.stringify(body.map(() => ({ result: 'OK' }))),
+          JSON.stringify(body.map(command => ({ result: command[0] === 'SET' ? 'OK' : 1 }))),
           { status: 200 },
         );
       };
