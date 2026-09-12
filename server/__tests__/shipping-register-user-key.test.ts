@@ -34,7 +34,7 @@ const getCachedJson = vi.fn(async (key: string) => records.get(key) ?? null);
 const setCachedJson = vi.fn(async (key: string, value: Record<string, unknown>, _ttl: number) => { records.set(key, value); });
 const runRedisPipeline = vi.fn(async (commands: string[][]) => commands.map(command => {
   if (command[0] === 'SET') records.set(command[1], JSON.parse(command[2]));
-  return { result: 'OK' };
+  return { result: command[0] === 'SET' ? 'OK' : 1 };
 }));
 vi.mock('../_shared/redis', async (importOriginal) => ({
   ...await importOriginal<typeof import('../_shared/redis')>(),
