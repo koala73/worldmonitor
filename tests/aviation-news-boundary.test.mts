@@ -182,6 +182,30 @@ test('prewarmer snapshot serves filtered requests with no reader feed calls', as
   assert.equal(feeds().length, 0);
 });
 
+test('Unicode URLs survive shared snapshot reads and nested link nodes are dropped', async () => {
+  const { seedAviationNews, NEWS_KEY } = await import('../scripts/seed-aviation.mjs');
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
+    return new Response('<rss><channel><item><title>Emirates Unicode</title><link>https://news.example/航空</link></item><item><title>Qantas valid</title><link>https://news.example/valid</link></item><item><title>Invalid link</title><link><href>https://news.example/nested</href></link></item></channel></rss>');
+  }) as typeof fetch;
+  const produced = await seedAviationNews();
+  const cold = await read([]);
+  assert.equal(cold.source, 'rss');
+  assert.equal(cold.items.length, 18);
+  assert.equal(produced.items.length, 18);
+  assert.ok(produced.items.every((item: { link: string }) => !item.link.includes('[object Object]')));
+  redis.redis.set(NEWS_KEY, JSON.stringify(produced));
+  calls = [];
+  for (const entity of ['Emirates', 'Qantas']) {
+    const result = await read([entity]);
+    assert.equal(result.source, 'rss');
+    assert.equal(result.items.length, 9);
+    assert.equal(result.items[0]!.id, Buffer.from(result.items[0]!.url, 'utf8').toString('base64').slice(0, 32));
+  }
+  assert.equal(feeds().length, 0);
+});
+
 test('producer and reader bound full article fields and serialized snapshot size', async () => {
   const { seedAviationNews } = await import('../scripts/seed-aviation.mjs');
   const transport = globalThis.fetch;

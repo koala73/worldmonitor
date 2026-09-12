@@ -44,11 +44,11 @@ function parseRssItems(xml: string, sourceName: string): RssItem[] {
         // Bound matching text and serialized records: 270 x 3KiB stays below the local cache limit.
         return rawItems.slice(0, 30).map((item: any) => ({
             title: String(item?.title ?? '').trim().slice(0, 512),
-            link: String(item?.link ?? item?.guid ?? '').trim(),
+            link: typeof (item?.link ?? item?.guid) === 'string' ? (item.link ?? item.guid).trim() : '',
             pubDate: String(item?.pubDate ?? item?.published ?? item?.updated ?? '').trim().slice(0, 128),
             description: String(item?.description ?? item?.summary ?? item?.content ?? '').trim().slice(0, 2048),
             _source: sourceName,
-        })).filter(item => item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
+        })).filter(item => item.link.length > 0 && item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
     } catch {
         return [];
     }
@@ -124,7 +124,7 @@ export async function listAviationNews(
         for (const item of allItems) {
             const title = item.title ?? '';
             const link = item.link ?? '';
-            if (!title || !link) continue;
+            if (!title || typeof link !== 'string' || !link) continue;
 
             let publishedAt = 0;
             if (item.pubDate) {
@@ -148,7 +148,7 @@ export async function listAviationNews(
             }
 
             filtered.push({
-                id: btoa(link).slice(0, 32),
+                id: btoa(String.fromCharCode(...new TextEncoder().encode(link))).slice(0, 32),
                 title,
                 url: link,
                 sourceName: (item._source as string) ?? 'Aviation News',

@@ -827,11 +827,11 @@ function parseRssItems(xml, sourceName) {
       // Bound matching text and serialized records: 270 x 3KiB stays below the local cache limit.
       return rawItems.slice(0, 30).map((item) => ({
           title: String(item?.title ?? '').trim().slice(0, 512),
-          link: String(item?.link ?? item?.guid ?? '').trim(),
+          link: typeof (item?.link ?? item?.guid) === 'string' ? (item.link ?? item.guid).trim() : '',
           pubDate: String(item?.pubDate ?? item?.published ?? item?.updated ?? '').trim().slice(0, 128),
           description: String(item?.description ?? item?.summary ?? item?.content ?? '').trim().slice(0, 2048),
           _source: sourceName,
-      })).filter(item => item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
+      })).filter(item => item.link.length > 0 && item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
   } catch {
       return [];
   }
