@@ -2002,6 +2002,7 @@ export function createDomainGateway(
     if (internalMcpVerified && pathname === '/api/aviation/v1/search-google-flights') {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
         principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
+        principalScope: 'session',
       });
       if (endpointRlResponse) {
         const reason = getRateLimitTelemetryReason(endpointRlResponse, 'rate_limit_429_endpoint');
@@ -2015,9 +2016,14 @@ export function createDomainGateway(
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
     if (!internalMcpVerified) {
-      const endpointRlResponse = rateLimitPrincipalUserId
+      // The local live-flight popup uses the sidecar cache without Upstash.
+      // Keep this exception exact-path; cloud requests retain the provider cap.
+      const isSidecarWingbitsLiveFlight = process.env.LOCAL_API_MODE === 'tauri-sidecar'
+        && pathname === '/api/military/v1/get-wingbits-live-flight';
+      const endpointRlResponse = isSidecarWingbitsLiveFlight ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
+            principalScope: isUserApiKey ? 'api_key' : 'session',
           })
         : await checkEndpointRateLimit(request, pathname, corsHeaders);
       if (endpointRlResponse) {
@@ -2165,9 +2171,15 @@ export function createDomainGateway(
       }
 
       if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
+        // WORLDMONITOR-12A: scope the bucket to the credential, not just the
+        // user. An API key and a browser session resolve to the same Clerk id,
+        // so without this a customer's own scraper drains the 600/min budget
+        // and their dashboard 429s. In production on 2026-09-11 that was 598
+        // scraper successes against 2 for the same person's browser.
         const rateLimitResponse = rateLimitPrincipalUserId
           ? await checkRateLimit(request, corsHeaders, {
               principalUserId: rateLimitPrincipalUserId,
+              principalScope: isUserApiKey ? 'api_key' : 'session',
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {

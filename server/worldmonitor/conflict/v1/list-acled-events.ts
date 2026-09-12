@@ -13,7 +13,7 @@ import type {
   AcledConflictEvent,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
 
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { fetchAcledCached } from '../../../_shared/acled';
 
 const REDIS_CACHE_KEY = 'conflict:acled:v1';
@@ -84,6 +84,17 @@ export async function listAcledEvents(
   const window = resolveAcledEventWindow(req);
   const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${window.startMs}:${window.endMs}`;
   try {
+    if (!req.country && req.start === 0 && req.end === 0) {
+      // Railway owns this unprefixed snapshot; misses keep the existing query fallback.
+      const seeded = await getCachedJson(`${REDIS_CACHE_KEY}:all:0:0`, true) as ListAcledEventsResponse | null;
+      if (seeded) {
+        // GDELT fallback rows in this seed have no coordinates and cannot be mapped by this RPC.
+        const events = seeded.events.filter(event => event.location
+          && Number.isFinite(event.location.latitude) && Math.abs(event.location.latitude) <= 90
+          && Number.isFinite(event.location.longitude) && Math.abs(event.location.longitude) <= 180);
+        return { events, pagination: seeded.pagination };
+      }
+    }
     const result = await cachedFetchJson<ListAcledEventsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,

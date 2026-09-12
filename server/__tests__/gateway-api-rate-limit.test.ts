@@ -174,7 +174,7 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
       expect.any(Object),
-      { principalUserId: "acct_starter" },
+      { principalUserId: "acct_starter", principalScope: "api_key" },
     ); // protection retained in shadow, isolated by the validated key owner
   });
 
