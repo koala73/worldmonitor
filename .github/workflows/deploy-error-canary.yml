@@ -1,0 +1,36 @@
+name: Deploy Error Canary
+
+# Compares each top-traffic route's 4xx/5xx rate over the last 2 hours
+# against the same route's own 7-day baseline in wm_api_usage, and fails
+# when a route is a step change over itself (#7107). The 2026-08-01
+# validation deploy moved get-aircraft-details-batch from ~0% to ~100%
+# errors for three days (132k client-facing 400s) with no signal — this is
+# the alarm that catches that class within hours instead of weeks.
+#
+# Deliberately NOT gated on a green main (same reasoning as
+# analytics-collector-monitor.yml): production error rates are independent
+# of repo state, and a gate is one more way for this to go quiet.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Compare post-deploy error rates against per-route baselines
+        env:
+          AXIOM_API_TOKEN: ${{ secrets.AXIOM_API_TOKEN }}
+        run: node scripts/deploy-error-canary.mjs
