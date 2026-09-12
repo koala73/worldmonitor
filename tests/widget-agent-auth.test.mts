@@ -188,8 +188,9 @@ describe('widget-agent unified tester key auth', () => {
     assert.equal(res.status, 403);
     assert.equal(fetchMock.mock.calls.length, 0);
 
-    const body = await res.json() as { error: string };
+    const body = await res.json() as { error: string; errorCode?: string };
     assert.equal(body.error, 'Forbidden');
+    assert.equal(body.errorCode, 'invalid_widget_key');
   });
 
   it('rejects prefix and length mismatches for browser and legacy tester keys', async () => {
