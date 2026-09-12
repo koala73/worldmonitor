@@ -16,6 +16,8 @@ const ACLED_CACHE_TTL = 900; // 15 min — matches ACLED rate-limit window
 const ACLED_TIMEOUT_MS = 15_000;
 const EVENT_TYPES = ['Battles', 'Explosions/Remote violence', 'Violence against civilians', 'Protests', 'Riots'];
 const ISO2_TO_NUMERIC = new Map(Object.entries(UN_TO_ISO2).map(([numeric, iso2]) => [iso2, String(Number(numeric))]));
+// ACLED assigns Kosovo 0; the shared UN mapping uses 412.
+ISO2_TO_NUMERIC.set('XK', '0');
 
 export interface AcledRawEvent {
   event_id_cnty?: string;

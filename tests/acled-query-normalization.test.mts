@@ -129,3 +129,15 @@ test('preserves documented historical ranges and explicit future end dates', asy
     '2020-01-01|2024-02-29', '2020-01-01|2030-01-01',
   ]);
 });
+test('Kosovo aliases use ACLED iso zero and remain separate from global queries', async t => {
+  const { provider, redis } = setup(t);
+  for (const country of ['XK', 'Kosovo', 'xk']) {
+    await fetchAcledCached({ ...query, country });
+  }
+  await fetchAcledCached(query);
+  assert.deepEqual(provider.map(url => url.searchParams.get('iso')), ['0', null]);
+  const keys = [...redis.redis.keys()].filter(key => key.startsWith('acled:shared:'));
+  assert.equal(keys.length, 2);
+  assert.ok(keys.some(key => key.endsWith(':0:500')));
+  assert.ok(keys.some(key => key.endsWith(':all:500')));
+});
