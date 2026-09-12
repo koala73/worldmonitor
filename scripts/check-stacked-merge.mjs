@@ -374,7 +374,7 @@ export function checkClosedPull({ event, gh, git, issues, sleep } = {}) {
       mode: 'post-merge', event: { ...event, pull_request: pull }, gh, git, issues, sleep,
     });
     results.push({ pullNumber: pull.number, ...result });
-    if (!pull.head?.ref || pull.head.repo?.full_name && pull.head.repo.full_name !== repository) continue;
+    if (!pull.head?.ref || pull.head.repo?.full_name !== repository) continue;
     const children = flattenGhPages(gh([
       'api', '--paginate', '--slurp',
       `repos/${repository}/pulls?state=closed&base=${encodeURIComponent(pull.head.ref)}`,

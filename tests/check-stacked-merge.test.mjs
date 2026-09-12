@@ -259,6 +259,18 @@ describe('orphan alarm copy', () => {
 });
 
 describe('checkStackedMerge orchestrator', () => {
+  it('does not discover descendants when the head repository is unknown', () => {
+    for (const repo of [undefined, null, {}]) {
+      const result = checkClosedPull({
+        event: pullEvent({ number: 50, merged: false, head: { ref: 'main', repo } }, { action: 'closed' }),
+        gh: () => assert.fail('unknown head repository must not query upstream descendants'),
+        git: () => assert.fail('an unmerged closure needs no ancestry check'),
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.results.length, 1);
+    }
+  });
+
   it('does not discover upstream children from a same-named fork branch', () => {
     const result = checkClosedPull({
       event: pullEvent({ number: 50, merged: false, head: { ref: 'parent', repo: { full_name: 'contributor/worldmonitor' } } }, { action: 'closed' }),
@@ -299,8 +311,8 @@ describe('checkStackedMerge orchestrator', () => {
 
   it('rechecks nested descendants and keeps them pending through an open grandparent', () => {
     const grandparent = { number: 10, state: 'open', head: { ref: 'grandparent', sha: 'g'.repeat(40) }, base: { ref: 'main' } };
-    const parent = { number: 20, state: 'closed', merged_at: '2026-09-11T15:00:00Z', merge_commit_sha: 'b'.repeat(40), head: { ref: 'parent' }, base: { ref: 'grandparent' } };
-    const child = { number: 30, state: 'closed', merged_at: '2026-09-11T14:00:00Z', merge_commit_sha: 'c'.repeat(40), head: { ref: 'child' }, base: { ref: 'parent' } };
+    const parent = { number: 20, state: 'closed', merged_at: '2026-09-11T15:00:00Z', merge_commit_sha: 'b'.repeat(40), head: { ref: 'parent', repo: { full_name: 'koala73/worldmonitor' } }, base: { ref: 'grandparent' } };
+    const child = { number: 30, state: 'closed', merged_at: '2026-09-11T14:00:00Z', merge_commit_sha: 'c'.repeat(40), head: { ref: 'child', repo: { full_name: 'koala73/worldmonitor' } }, base: { ref: 'parent' } };
     const pulls = [grandparent, parent, child];
     const result = checkClosedPull({
       event: pullEvent(parent, { action: 'closed' }),
@@ -572,8 +584,8 @@ describe('closed stack CLI with real git ancestry', () => {
       git('commit', '--allow-empty', '-m', 'child merged into parent');
       const childSha = git('rev-parse', 'HEAD');
       git('branch', 'child');
-      const parent = { number: 8003, state: 'open', merged_at: null, head: { ref: 'parent', sha: childSha }, base: { ref: 'main' } };
-      const child = { number: 8035, state: 'closed', merged: true, merged_at: '2026-09-11T14:05:06Z', merge_commit_sha: childSha, head: { ref: 'child', sha: childSha }, base: { ref: 'parent' } };
+      const parent = { number: 8003, state: 'open', merged_at: null, head: { ref: 'parent', sha: childSha, repo: { full_name: 'koala73/worldmonitor' } }, base: { ref: 'main' } };
+      const child = { number: 8035, state: 'closed', merged: true, merged_at: '2026-09-11T14:05:06Z', merge_commit_sha: childSha, head: { ref: 'child', sha: childSha, repo: { full_name: 'koala73/worldmonitor' } }, base: { ref: 'parent' } };
       const statePath = join(dir, 'api.json');
       const eventPath = join(dir, 'event.json');
       const state = { pulls: [parent, child], issues: [], comments: [] };
