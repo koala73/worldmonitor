@@ -70,6 +70,24 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
             : mode === 'cache-read-type' ? { result: 42 } : { error: 'ERR read failed' };
           return Response.json(replies);
         }
+        if (mode === 'canonical-expired' && u.pathname === '/pipeline'
+          && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
+          state.redis.delete('${CANONICAL}');
+        }
+        if (mode === 'canonical-unconfirmed' && u.pathname === '/pipeline'
+          && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
+          const response = await state.fetchImpl(url, init);
+          const results = await response.json();
+          results[0] = {};
+          return Response.json(results);
+        }
+        if (u.pathname === '/multi-exec') {
+          if (mode === 'transaction-rejected') return Response.json({ error: 'write rejected' }, { status: 503 });
+          const response = await state.fetchImpl(url, init);
+          if (mode === 'transaction-ambiguous') return Response.json({});
+          console.log('TEST transaction confirmed');
+          return response;
+        }
         return state.fetchImpl(url, init);
       }
       if (!u.hostname.endsWith('arcgis.com')) throw new Error('Unexpected URL: ' + url);
@@ -138,6 +156,11 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   assert.match(result.error, /Incomplete PortWatch coverage/);
   assert.match(result.logs, /60\/174 usable countries/);
   assert.doesNotMatch(result.logs, /Seeded 60 countries/);
+  assert.match(result.logs, /60 usable country payloads assembled.*persistence pending/);
+  assert.match(result.logs, /Recovery state saved; canonical list retained at 168 countries; usable coverage 60\/174; full publication blocked; 0 unresolved refresh failures/);
+  assert.match(result.logs, /TEST transaction confirmed/);
+  assert.ok(result.logs.indexOf('TEST transaction confirmed') < result.logs.indexOf('Recovery state saved'));
+  assert.doesNotMatch(result.logs, /countries published|unpublished countries|asof behind/);
   assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
   assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
   assert.equal(result.redis[META].recordCount, 168);
@@ -366,6 +389,7 @@ test('a deferred refresh failure cannot be hidden by otherwise complete retained
   const failed = runProducer(input, 'activity-page');
   assert.match(failed.error, /Incomplete PortWatch coverage/);
   assert.equal(failed.redis[META].coverage.published, 174);
+  assert.match(failed.logs, /usable coverage 174\/174; full publication blocked; 1 unresolved refresh failures/);
   const deferred = runProducer(failed.redis, 'moving', NOW + DAY / 2);
   assert.match(deferred.error, /Incomplete PortWatch coverage/);
   assert.equal(deferred.redis[META].fetchedAt, input[META].fetchedAt);
@@ -386,6 +410,9 @@ test('unchanged upstream data uses the cache without any activity downloads', ()
   assert.equal(activityRequests.length, 0);
   assert.equal(result.redis[META].coverage.currentCountryCount, 174);
   assert.equal(result.redis[META].coverage.retainedCountryCount, 0);
+  assert.match(result.logs, /State saved; canonical list advanced to 174 countries; usable coverage 174\/174; 0 unresolved refresh failures/);
+  assert.match(result.logs, /TEST transaction confirmed/);
+  assert.ok(result.logs.indexOf('TEST transaction confirmed') < result.logs.indexOf('State saved'));
   for (const [, code] of countries) {
     assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
   }
@@ -432,3 +459,41 @@ test('complete verified zero activity is a successful observation, not a source 
   assert.equal(response.available, true);
   assert.deepEqual(response.ports, []);
 });
+
+for (const canonical of [null, []]) {
+  test(`partial cold start reports ${canonical === null ? 'absent' : 'empty'} canonical list`, () => {
+    const result = runProducer(canonical === null ? {} : { [CANONICAL]: canonical, [META]: { recordCount: 60 } });
+    assert.match(result.error, /Incomplete PortWatch coverage/);
+    assert.match(result.logs, canonical === null
+      ? /Recovery state saved; no prior canonical list; usable coverage 30\/174; full publication blocked/
+      : /Recovery state saved; canonical list retained at 0 countries; usable coverage 30\/174; full publication blocked/);
+  });
+}
+
+for (const mode of ['transaction-rejected', 'transaction-ambiguous']) {
+  test(`${mode} never reports confirmed persistence or publication`, () => {
+    const input = fixtures();
+    for (const [, code] of countries) {
+      input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+      input[`${PREFIX}${code}`].asof = '2026-09-09';
+    }
+    const result = runProducer(input, mode);
+    assert.match(result.error, /Redis transaction/);
+    assert.doesNotMatch(result.logs, /State saved|Recovery state saved|canonical list advanced|canonical list retained/);
+    assert.match(result.logs, /Persistence pending/);
+    if (mode === 'transaction-rejected') assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
+    else assert.equal(result.redis[CANONICAL].length, 174, 'write can commit despite an unconfirmed response');
+  });
+}
+
+for (const mode of ['canonical-expired', 'canonical-unconfirmed']) {
+  test(`${mode} during a partial run is not reported as retained publication`, () => {
+    const input = fixtures();
+    const result = runProducer(input, mode);
+    assert.match(result.error, /Incomplete PortWatch coverage/);
+    if (mode === 'canonical-expired') assert.equal(result.redis[CANONICAL], undefined);
+    else assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
+    assert.match(result.logs, /Recovery state saved; canonical retention unconfirmed \(168 countries at run start\); usable coverage 60\/174; full publication blocked/);
+    assert.doesNotMatch(result.logs, /canonical list retained at/);
+  });
+}
