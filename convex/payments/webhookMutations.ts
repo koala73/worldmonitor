@@ -16,6 +16,9 @@ import {
   handleSubscriptionUpdated,
   handlePaymentOrRefundEvent,
   handleDisputeEvent,
+  resolvePlanKey,
+  isCoveringAt,
+  compareSubscriptionsByCoverage,
 } from "./subscriptionHelpers";
 
 const MAX_FAILURE_MESSAGE_LENGTH = 1000;
@@ -561,7 +564,8 @@ export const processWebhookEvent = internalMutation({
 
 /**
  * Manually attributes a captured-but-unowned Dodo event to a user, then replays
- * it so entitlement is granted exactly as a live delivery would have.
+ * it through the live handlers. Resolves purchases only after subscription
+ * access is confirmed; other payment/refund events report audit-only attribution.
  *
  * This is the repair tool for the payment-link case: a buyer purchases through a
  * Dodo payment link (or a dashboard-created subscription), which carries no
@@ -594,6 +598,9 @@ export const attributeUnattributedPayment = internalMutation({
         `[webhook] Unattributed event ${args.rowId} is already attributed to ` +
           `${record.resolvedUserId ?? "<unknown>"} — refusing to replay.`,
       );
+    }
+    if (!record.dodoCustomerId) {
+      throw new Error("[webhook] Missing customer identity; preserve this incident for verified identity repair.");
     }
 
     // 1. Supply the missing identity so the normal resolution path works.
@@ -645,6 +652,50 @@ export const attributeUnattributedPayment = internalMutation({
       timestamp: record.eventTimestamp,
     });
 
+    const replayed = await ctx.db.get(args.rowId);
+    if (!replayed || replayed.occurrences !== record.occurrences) {
+      throw new Error("[webhook] Replay still lacks verified customer identity; attribution remains unresolved.");
+    }
+
+    const data = asRecord(asRecord(record.rawPayload)?.data);
+    const subscriptionId = typeof data?.subscription_id === "string" ? data.subscription_id : "";
+    const subscription = subscriptionId
+      ? await ctx.db.query("subscriptions")
+          .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", subscriptionId)).unique()
+      : null;
+    if (subscription && subscription.userId !== args.userId) {
+      throw new Error("[webhook] Replayed subscription belongs to a different user; attribution remains unresolved.");
+    }
+
+    const requiresAccess = record.eventType.startsWith("subscription.") || record.eventType === "payment.succeeded";
+    if (requiresAccess) {
+      const productId = typeof data?.product_id === "string" ? data.product_id : record.dodoProductId;
+      if (subscription && productId && (subscription.dodoProductId !== productId
+        || subscription.planKey !== await resolvePlanKey(ctx, productId))) {
+        throw new Error("[webhook] Subscription does not match the purchased product; repair fulfillment before resolving this incident.");
+      }
+      const entitlement = await ctx.db.query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
+      const now = Date.now();
+      if (!subscription || !isCoveringAt(subscription, now) || !entitlement || entitlement.validUntil <= now
+        || compareSubscriptionsByCoverage(
+          { planKey: entitlement.planKey, currentPeriodEnd: entitlement.validUntil },
+          { planKey: subscription.planKey, currentPeriodEnd: subscription.currentPeriodEnd },
+        ) < 0) {
+        throw new Error("[webhook] Matching subscription access is not confirmed; repair fulfillment before resolving this incident.");
+      }
+    }
+
+    if (!record.eventType.startsWith("subscription.")) {
+      const paymentId = typeof data?.payment_id === "string" ? data.payment_id : "";
+      const payments = await ctx.db.query("paymentEvents")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", paymentId)).collect();
+      if (!paymentId || !payments.some((payment) =>
+        payment.userId === args.userId && payment.occurredAt === record.eventTimestamp)) {
+        throw new Error("[webhook] Payment audit attribution is not confirmed; incident remains unresolved.");
+      }
+    }
+
     await ctx.db.insert("webhookEvents", {
       webhookId: record.webhookId,
       eventType: record.eventType,
@@ -660,6 +711,10 @@ export const attributeUnattributedPayment = internalMutation({
       resolutionNote: args.note,
     });
 
-    return { attributedTo: args.userId, eventType: record.eventType };
+    return {
+      attributedTo: args.userId,
+      eventType: record.eventType,
+      outcome: requiresAccess ? "subscription_access_confirmed" as const : "audit_only" as const,
+    };
   },
 });

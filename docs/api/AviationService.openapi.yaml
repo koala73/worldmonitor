@@ -734,7 +734,7 @@ paths:
             tags:
                 - AviationService
             summary: TrackAircraft
-            description: TrackAircraft retrieves live position stream for a specific aircraft hex.
+            description: Track an aircraft by ICAO24 hex or callsign within map bounds, returning position observations, altitude, speed, source and update time for flight monitoring.
             operationId: TrackAircraft
             parameters:
                 - name: icao24
@@ -1021,7 +1021,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: SearchFlightPrices searches for flight price offers on a route. PRO-gated. Requires an active Pro subscription.
+            description: Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
             security:
                 - WorldMonitorKey: []
@@ -1360,7 +1360,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchGoogleFlights
-            description: SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+            description: Search Google Flights itineraries by route and dates, with cabin, stops, airline and passenger filters, returning flight legs, duration and availability status.
             operationId: SearchGoogleFlights
             parameters:
                 - name: origin

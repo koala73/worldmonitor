@@ -14,6 +14,7 @@ import {
   accuracyDatasetDownload,
   classifyAccuracyState,
   renderAccuracyPage,
+  renderAccuracyLlmsSection,
   selectDeclaredScorecardFields,
   writeAccuracySection,
 } from '../scripts/build-accuracy-page.mjs';
@@ -522,6 +523,79 @@ describe('accuracy page honesty rules', () => {
     assert.ok(headline > 0, 'the headline-cohort Brier must be rendered');
     assert.ok(rule > 0, 'the page must state the direction of the scale');
     assert.ok(Math.abs(rule - headline) < 700, `the scale direction must sit beside the number (gap ${Math.abs(rule - headline)})`);
+  });
+
+  it('states the headline Brier in a sentence, not only in a metric tile', () => {
+    const { html } = renderState(LIVE_SECTION);
+    const result = html.match(/<p data-accuracy-result>([\s\S]*?)<\/p>/);
+    assert.ok(result, 'the headline result must be a sentence an extractor can lift, not a tile');
+    const sentence = stripTags(result[1]);
+    assert.match(sentence, /180-day window/);
+    assert.match(sentence, /Brier of 0\.118/);
+    assert.match(sentence, /180 scored forecasts/);
+    assert.match(sentence, /0\.25/);
+    assert.match(sentence, /0\.5 to everything/);
+    assert.doesNotMatch(result[0], /class="metric"/);
+    const insufficient = renderState(sectionWith({
+      skill: { count: 0, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+    }));
+    assert.doesNotMatch(insufficient.html, /data-accuracy-result/, 'a collapsed cohort has no result sentence');
+  });
+
+  it('separates metric values from their qualifiers so naive tag-stripping cannot glue them', () => {
+    const { html } = renderState(LIVE_SECTION);
+    assert.match(html, /<\/strong> <small>/);
+    assert.doesNotMatch(html, /<\/strong><small>/);
+    // Drop tags by splitting, not by replace-as-sanitizer: CodeQL treats
+    // .replace(/<[^>]+>/g, '') as incomplete HTML sanitization.
+    const naive = html.split(/<[^>]*>/).join('');
+    assert.doesNotMatch(naive, /0\.118180/);
+    assert.doesNotMatch(naive, /0\.375180/);
+    assert.doesNotMatch(naive, /0\.192490/);
+    assert.doesNotMatch(naive, /490of 772/);
+    assert.match(naive, /0\.118\s+180 scored forecasts/);
+    assert.match(naive, /490\s+of 772/);
+  });
+
+  it('renders the llms-full accuracy section from the same classifier the page uses', () => {
+    const measurable = renderAccuracyLlmsSection(LIVE_SECTION);
+    assert.match(measurable, /^## Forecast accuracy$/m);
+    assert.match(measurable, /Brier of 0\.118/);
+    assert.match(measurable, /180 scored forecasts/);
+    assert.match(measurable, /180-day window/);
+    assert.match(measurable, /Captured 2026-09-10/);
+    assert.match(measurable, /does not publish/);
+    assert.doesNotMatch(measurable, /issue #\d+/);
+
+    const insufficient = renderAccuracyLlmsSection(sectionWith({
+      skill: { count: 0, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+    }));
+    assert.match(insufficient, /headline cohort currently has no scored forecast/);
+    assert.doesNotMatch(insufficient, /Brier of 0\.118/);
+
+    const failed = renderAccuracyLlmsSection({
+      attemptedAt: '2026-09-10',
+      capturedAt: null,
+      generatedAt: null,
+      scorecard: null,
+      failureCode: 'http-error',
+    });
+    assert.match(failed, /latest capture failed, so no figures are published/);
+    assert.doesNotMatch(failed, /no scored forecast in this window/);
+
+    const missing = renderAccuracyLlmsSection(null);
+    assert.match(missing, /No scorecard has been captured for this page yet/);
+
+    const retained = renderAccuracyLlmsSection({
+      attemptedAt: '2026-09-17',
+      attemptedAtMs: Date.parse('2026-09-17T21:05:00Z'),
+      capturedAt: '2026-09-10',
+      generatedAt: LIVE_SCORECARD.generatedAt,
+      scorecard: LIVE_SCORECARD,
+      failureCode: 'http-error',
+    });
+    assert.match(retained, /Brier of 0\.118/);
+    assert.match(retained, /The latest capture failed; these are the last successful figures/);
   });
 
   it('omits empty calibration buckets and states the omission with their labels', () => {

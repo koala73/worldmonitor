@@ -13,7 +13,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRiskScores
-            description: GetRiskScores retrieves composite risk scores and strategic assessments.
+            description: Retrieve composite country risk scores and strategic assessments by region, with component contributions and advisory context for geopolitical risk monitoring.
             operationId: GetRiskScores
             parameters:
                 - name: region

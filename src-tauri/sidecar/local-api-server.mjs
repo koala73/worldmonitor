@@ -764,6 +764,7 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // relay availability does not provide Upstash credentials to local handlers.
 const cloudPreferredExact = new Set([
   '/api/intelligence/v1/list-wsb-tickers',
+  '/api/displacement/v1/get-displacement-summary',
   '/api/bootstrap',
   '/api/military/v1/get-defense-industrial-base',
   '/api/supply-chain/v1/get-country-vulnerabilities',

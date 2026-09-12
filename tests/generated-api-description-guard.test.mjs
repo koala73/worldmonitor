@@ -231,6 +231,46 @@ function collectQueryParameters() {
 
 const OPERATION_DESCRIPTION_CONTRACTS = [
   {
+    path: '/api/conflict/v1/get-humanitarian-summary',
+    includes: [/conflict summary/i, /fatalities/i, /reference period/i],
+    rejects: [/displacement|food.security/i],
+  },
+  {
+    path: '/api/economic/v1/get-macro-signals',
+    includes: [/\bBUY\b/, /\bCASH\b/, /\bUNKNOWN\b/, /unavailable/i],
+    rejects: [],
+  },
+  {
+    path: '/api/aviation/v1/search-flight-prices',
+    includes: [/per-person/i, /cabin/i],
+    rejects: [/passengers|passenger count/i],
+  },
+  {
+    path: '/api/conflict/v1/list-ucdp-events',
+    includes: [/country filter/i, /event dates/i],
+    rejects: [/date range|pagination|cursor/i],
+  },
+  {
+    path: '/api/cyber/v1/list-cyber-threats',
+    includes: [/type, source and minimum severity/i, /pagination/i],
+    rejects: [/by date|date filter|date range/i],
+  },
+  {
+    path: '/api/economic/v1/list-world-bank-indicators',
+    includes: [/country filter/i, /annual values/i],
+    rejects: [/pagination|cursor|page size/i],
+  },
+  {
+    path: '/api/military/v1/get-theater-posture',
+    includes: [/all cached theaters/i, /assessment times/i],
+    rejects: [/selected|theater filter/i],
+  },
+  {
+    path: '/api/economic/v1/get-energy-capacity',
+    includes: [/by energy source/i, /annual megawatt values/i],
+    rejects: [/by energy source and year|year filter|requested years/i],
+  },
+  {
     path: '/api/forecast/v1/get-simulation-outcome',
     includes: [/response note/i, /supplied runId/i, /does not match/i],
     rejects: [/found[^.]*false[^.]*requested runId/i],

@@ -4126,7 +4126,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(openskyCalls, 1, 'a snapshot miss must cache and reuse request-specific recovery');
       assert.deepEqual(
         providerCacheWrites,
-        ['military:flights:v1:10:10:11:11::'],
+        ['military:flights:v1:10:10:11:11'],
         'provider recovery must remain under the exact quantized bbox key',
       );
       assert.deepEqual(first.flights.map((flight) => flight.id), ['OUTSIDE-REGION']);
@@ -4189,7 +4189,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(openskyCalls, 2, 'each bbox must recover independently after a seed miss');
       assert.deepEqual(
         providerCacheWrites,
-        ['military:flights:v1:10:10:11:11::', 'military:flights:v1:40:-100:41:-99::'],
+        ['military:flights:v1:10:10:11:11', 'military:flights:v1:40:-100:41:-99'],
         'a bbox-independent key would poison the second viewport with the first recovery payload',
       );
     } finally {
@@ -4386,7 +4386,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
-  it('filters before pagination and reuses one cached result across page sizes and cursors', async () => {
+  it('ignores public filter values while coalescing recovery cache entries across page sizes and cursors', async () => {
     const { module, cleanup } = await importListMilitaryFlights();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -4433,23 +4433,52 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         ...request,
         pageSize: 2,
         cursor: '',
-        operator: '',
-        aircraftType: '',
+        operator: 'MILITARY_OPERATOR_USAF',
+        aircraftType: 'MILITARY_AIRCRAFT_TYPE_FIGHTER',
       });
       const second = await module.listMilitaryFlights(ctx, {
         ...request,
         pageSize: 1,
         cursor: first.pagination?.nextCursor ?? '',
-        operator: '',
-        aircraftType: '',
+        operator: 'MILITARY_OPERATOR_RAF',
+        aircraftType: 'MILITARY_AIRCRAFT_TYPE_TANKER',
+      });
+      const ignoredFilterReplay = await module.listMilitaryFlights(ctx, {
+        ...request,
+        pageSize: 2,
+        cursor: '',
+        operator: 'MILITARY_OPERATOR_NATO',
+        aircraftType: 'MILITARY_AIRCRAFT_TYPE_DRONE',
       });
 
       assert.deepEqual(first.flights.map((flight) => flight.id), ['FIRST', 'SECOND']);
       assert.deepEqual(first.pagination, { nextCursor: '2', totalCount: 3 });
       assert.deepEqual(second.flights.map((flight) => flight.id), ['THIRD']);
       assert.deepEqual(second.pagination, { nextCursor: '', totalCount: 3 });
-      assert.equal(openskyCalls, 1, 'page size and cursor must not create new upstream/cache results');
-      assert.equal(new Set(liveCacheKeys).size, 1, 'all pages must read the same unpaginated bbox cache key');
+      assert.deepEqual(
+        ignoredFilterReplay.flights.map((flight) => flight.id),
+        first.flights.map((flight) => flight.id),
+        'operator and aircraft type remain accepted public no-ops',
+      );
+      assert.deepEqual(ignoredFilterReplay.pagination, first.pagination);
+      assert.equal(openskyCalls, 1, 'ignored filter values, page size, and cursor must not create new upstream results');
+      assert.deepEqual(
+        [...new Set(liveCacheKeys)],
+        ['military:flights:v1:10:10:11:11'],
+        'all callers in one quantized bbox must share an unpaginated recovery cache key',
+      );
+
+      const apiResult = await module.listMilitaryFlights({
+        request: new Request('https://wm.test/api/military/v1/list-military-flights', {
+          headers: { 'X-Api-Key': 'wm_customer-key' },
+        }),
+      }, { ...request, operator: 'MILITARY_OPERATOR_RAF', aircraftType: 'MILITARY_AIRCRAFT_TYPE_TANKER' });
+      assert.deepEqual(apiResult, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
+      assert.equal(openskyCalls, 1, 'API callers must neither reuse nor refresh the browser OpenSky snapshot');
+      assert.deepEqual([...new Set(liveCacheKeys)], [
+        'military:flights:v1:10:10:11:11',
+        'military:flights:v1:10:10:11:11:redistributable',
+      ]);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

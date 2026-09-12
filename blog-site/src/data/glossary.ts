@@ -34,11 +34,13 @@ export interface GlossaryTerm {
   category: GlossaryCategory;
   /**
    * Standalone definition (≤25 words). Used verbatim as the DefinedTerm
-   * `description`, the list-page blurb, the meta description, and the
-   * FAQPage answer — so it must read as a complete answer ("X is …")
+   * `description`, the list-page blurb, and the FAQPage answer — so it
+   * must read as a complete answer ("X is …")
    * before the body elaborates.
    */
   short: string;
+  /** Optional search summary when the short definition needs more context. */
+  metaDescription?: string;
   /** Body paragraphs. First paragraph should restate the crisp definition. */
   body: string[];
   /** Slugs of related terms (must resolve to another entry). */
@@ -218,6 +220,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     slug: 'strait-of-hormuz',
+    metaDescription: 'Learn what the Strait of Hormuz is, how it connects the Persian Gulf to world shipping, and why oil, gas flows and maritime disruption matter to energy markets.',
     term: 'Strait of Hormuz',
     category: 'Maritime & Chokepoints',
     short:

@@ -18,9 +18,10 @@ const termLabel = `${term.term}${term.abbr ? ` (${term.abbr})` : ''}`;
 const metaTitle = term.abbr
   ? `${term.abbr} Definition | World Monitor`
   : `${term.term} Definition | World Monitor`;
-const metaDescription = term.short.length <= 160
-  ? term.short
-  : `${term.short.slice(0, 157).replace(/\s+\S*$/, '')}...`;
+const description = term.metaDescription ?? term.short;
+const metaDescription = description.length <= 160
+  ? description
+  : `${description.slice(0, 157).replace(/\s+\S*$/, '')}...`;
 
 const jsonLd = {
   '@context': 'https://schema.org',
