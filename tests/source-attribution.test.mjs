@@ -79,7 +79,7 @@ test('source inventory has complete metadata and matches the generated catalog',
   const manifest = loadManifest(rootDir);
   assert.deepEqual(validateManifest(inventory, manifest), []);
 
-  const docs = readFileSync(join(rootDir, 'docs/source-attribution.mdx'), 'utf8');
+  const docs = readFileSync(join(rootDir, 'docs/source-attribution.mdx'), 'utf8').replace(/\r\n/g, '\n');
   const generated = renderAttributionSection(inventory, manifest);
   const actual = matchGeneratedAttributionSection(docs);
   assert.equal(actual, generated, 'docs/source-attribution.mdx must contain exactly the generated attribution section');
