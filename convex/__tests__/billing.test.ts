@@ -2707,7 +2707,7 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
   test.each([
     ["shared provider customer", "cus_shared", "cus_shared"],
     ["distinct provider customers", "cus_A", "cus_B"],
-  ])("characterizes signed owners and portal requests with %s (#7897)", async (_label, customerA, customerB) => {
+  ])("isolates signed owners and portal requests with %s (#7897)", async (_label, customerA, customerB) => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     process.env.DODO_API_KEY = "synthetic-portal-api-key";
     dodoPortalMock.mockImplementation(async (customerId: string) => ({
@@ -2756,21 +2756,140 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
       .toBe("user_B");
 
     for (const [index, owner] of owners.entries()) {
+      if (customerA === customerB) {
+        await expect(t.withIdentity(owner).action(api.payments.billing.getCustomerPortalUrl, {}))
+          .rejects.toThrow("SHARED_CUSTOMER");
+        await expect(t.action(internal.payments.billing.internalGetCustomerPortalUrl, { userId: owner.subject }))
+          .rejects.toThrow("SHARED_CUSTOMER");
+        continue;
+      }
       const result = await t.withIdentity(owner).action(api.payments.billing.getCustomerPortalUrl, {});
       expect(result).toEqual({ portal_url: `https://portal.example.test/${customerIds[index]}` });
       expect(dodoPortalMock).toHaveBeenNthCalledWith(index + 1, customerIds[index], { send_email: false });
     }
-    expect(dodoPortalMock).toHaveBeenCalledTimes(2);
+    const expectedCalls = customerA === customerB ? 0 : 2;
+    expect(dodoPortalMock).toHaveBeenCalledTimes(expectedCalls);
 
     // Knowing the same email alone provides no local customer mapping.
     await expect(t.withIdentity({ subject: "user_unmapped", email: "billing-alias@example.test" })
       .action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("NO_CUSTOMER");
     await expect(t.action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("AUTH_REQUIRED");
-    expect(dodoPortalMock).toHaveBeenCalledTimes(2);
+    expect(dodoPortalMock).toHaveBeenCalledTimes(expectedCalls);
     expect(await t.run(async (ctx) => ({
       subscriptions: await ctx.db.query("subscriptions").collect(),
       customers: await ctx.db.query("customers").collect(),
     }))).toEqual(beforePortal);
+
+    if (customerA === customerB) {
+      await t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+        dodoSubscriptionId: "sub_portal_0", reason: "synthetic admin cleanup",
+      });
+      await expect(t.withIdentity(owners[1]).action(api.payments.billing.getCustomerPortalUrl, {}))
+        .rejects.toThrow("SHARED_CUSTOMER");
+      expect(dodoPortalMock).not.toHaveBeenCalled();
+    }
+  });
+
+  test.each(["stable", "legacy", "legacy-empty", "customer"])("rejects another owner's %s mapping for every resolver tier", async (otherTier) => {
+    process.env.DODO_API_KEY = "synthetic-portal-api-key";
+    for (const callerTier of ["stable", "legacy", "customer"]) {
+      const t = convexTest(schema, modules);
+      for (const [userId, tier] of [[TEST_USER_ID, callerTier], ["user_other", otherTier]]) {
+        if (tier === "customer") {
+          await t.run((ctx) => ctx.db.insert("customers", {
+            userId, dodoCustomerId: "cus_collision", email: "fixture@example.test",
+            createdAt: NOW, updatedAt: NOW,
+          }));
+        } else {
+          const id = await seedSubscription(t, {
+            userId, planKey: "pro_annual", dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+            status: "expired", currentPeriodEnd: NOW - DAY_MS, suffix: userId,
+            rawPayload: tier.startsWith("legacy") ? { customer: { customer_id: "cus_collision" } } : {},
+          });
+          if (tier === "stable") {
+            await t.run((ctx) => ctx.db.patch(id, { dodoCustomerId: "cus_collision" }));
+          } else if (tier === "legacy-empty") {
+            await t.run((ctx) => ctx.db.patch(id, { dodoCustomerId: "" }));
+          }
+        }
+      }
+      await expect(t.withIdentity({ subject: TEST_USER_ID })
+        .action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("SHARED_CUSTOMER");
+      expect(dodoPortalMock).not.toHaveBeenCalled();
+      if (otherTier !== "customer") {
+        await t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+          dodoSubscriptionId: "sub_billing_user_other", reason: "synthetic legacy cleanup",
+        });
+        await expect(t.withIdentity({ subject: TEST_USER_ID })
+          .action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("SHARED_CUSTOMER");
+        expect(dodoPortalMock).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  test.each([false, true])("admin cleanup refuses missing subscription customer provenance (unrelated mapping: %s)", async (unrelatedMapping) => {
+    const t = convexTest(schema, modules);
+    const id = await seedSubscription(t, {
+      userId: "user_former_owner", planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "expired", currentPeriodEnd: NOW - DAY_MS, suffix: "missing_customer",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(id, { dodoCustomerId: "" });
+      // The shared customer's latest webhook reassigned its row to the survivor.
+      await ctx.db.insert("customers", {
+        userId: TEST_USER_ID, dodoCustomerId: "cus_shared", email: "shared@example.test",
+        createdAt: NOW, updatedAt: NOW,
+      });
+      if (unrelatedMapping) await ctx.db.insert("customers", {
+        userId: "user_former_owner", dodoCustomerId: "cus_unrelated", email: "other@example.test",
+        createdAt: NOW, updatedAt: NOW,
+      });
+    });
+    await expect(t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+      dodoSubscriptionId: "sub_billing_missing_customer", reason: "synthetic cleanup",
+    })).rejects.toThrow("CUSTOMER_PROVENANCE_REQUIRED");
+    expect(await t.run((ctx) => ctx.db.get(id))).not.toBeNull();
+    expect(await t.run((ctx) => ctx.db.query("deletedSubscriptionCustomers").collect())).toEqual([]);
+
+    // An operator can restore the verified subscription-specific customer and retry.
+    await t.run((ctx) => ctx.db.patch(id, { dodoCustomerId: "cus_shared" }));
+    await t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+      dodoSubscriptionId: "sub_billing_missing_customer", reason: "verified customer restored",
+    });
+    expect(await t.run((ctx) => ctx.db.get(id))).toBeNull();
+    process.env.DODO_API_KEY = "synthetic-portal-api-key";
+    await expect(t.withIdentity({ subject: TEST_USER_ID })
+      .action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("SHARED_CUSTOMER");
+    expect(dodoPortalMock).not.toHaveBeenCalled();
+  });
+
+  test("verified anonymous claim transfers deleted customer ownership without blocking the owner", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    process.env.DODO_API_KEY = "synthetic-portal-api-key";
+    dodoPortalMock.mockResolvedValue({ link: "https://portal.example.test/cus_claim" });
+    const t = convexTest(schema, modules);
+    for (const userId of [ANON_USER_ID, TEST_USER_ID]) {
+      await seedSubscription(t, {
+        userId, planKey: "pro_monthly", dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        status: "active", currentPeriodEnd: NOW + DAY_MS, suffix: userId,
+        rawPayload: { customer: { customer_id: "cus_claim" } },
+      });
+    }
+    await t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+      dodoSubscriptionId: `sub_billing_${ANON_USER_ID}`, reason: "synthetic cleanup",
+    });
+    const authed = t.withIdentity({ subject: TEST_USER_ID });
+    await expect(authed.action(api.payments.billing.getCustomerPortalUrl, {})).rejects.toThrow("SHARED_CUSTOMER");
+    await expect(authed.mutation(api.payments.billing.claimSubscription, { anonId: ANON_USER_ID }))
+      .rejects.toThrow("ANON_CLAIM_PROOF_REQUIRED");
+    await authed.mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID, claimToken: await signAnonClaimToken(ANON_USER_ID),
+    });
+    expect(await authed.action(api.payments.billing.getCustomerPortalUrl, {}))
+      .toEqual({ portal_url: "https://portal.example.test/cus_claim" });
+    expect(await t.run((ctx) => ctx.db.query("deletedSubscriptionCustomers").collect()))
+      .toMatchObject([{ userId: TEST_USER_ID, dodoCustomerId: "cus_claim" }]);
   });
 
   test("resolves via the stable dodoCustomerId column even when a later lifecycle payload wiped the rawPayload customer field (P1 regression)", async () => {
@@ -5508,6 +5627,7 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
       status: "active",
       currentPeriodEnd: NOW + 30 * DAY_MS,
       suffix: "activation_cleanup",
+      rawPayload: { customer: { customer_id: "cus_activation_cleanup" } },
     });
     await t.withIdentity(IDENTITY).mutation(
       api.payments.billing.claimProActivationPresentation,

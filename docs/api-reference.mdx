@@ -87,6 +87,23 @@ Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.a
 
 Bootstrap, health, version, and cache-purge live outside the per-service catalog — see [Platform Endpoints](/api-platform).
 
+## Displacement snapshot years
+
+`GET /api/displacement/v1/get-displacement-summary` reads the current Railway
+snapshot only. Omit `year` or use `0` for the latest available data; `summary.year`
+reports its actual data year, which can precede the calendar year. Explicit years
+must be integers from 1951 through the current year. Invalid years return `400`
+before a cache read. A valid year is available only when it matches the seed's
+actual data year; this endpoint does not provide a historical archive.
+
+Missing, unreadable, or nonmatching snapshots return `dataAvailable: false`,
+`fetchedAt: 0`, and an empty summary. The gateway disables caching for these
+responses. Existing seeds remain readable with their original fetched timestamp;
+requests never fetch UNHCR or create query cache entries, even when the former
+`SEED_FALLBACK_DISPLACEMENT` flag is set. Country and flow limits still apply to
+the response without changing the shared seed. Desktop requests use the existing
+cloud proxy because the local sidecar does not hold Railway seeds.
+
 ## ACLED conflict snapshot
 
 `GET /api/conflict/v1/list-acled-events` reads the Railway snapshot only; requests

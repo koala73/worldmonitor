@@ -6266,12 +6266,19 @@ paths:
             parameters:
                 - name: year
                   in: query
-                  description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                  description: |-
+                    Data year: 1951 through the current year. Zero returns the latest seeded data.
+                     An explicit year is available only if it matches the published snapshot.
                   required: false
-                  example: 1
-                  schema:
-                    type: integer
-                    format: int32
+                  "schema":
+                      "oneOf":
+                          - "const": 0
+                            "type": "integer"
+                          - "type": "integer"
+                            "format": "int32"
+                            "minimum": 1951
+                            "maximum": 2026
+                  example: 0
                 - name: country_limit
                   in: query
                   description: Maximum number of country entries to return.
@@ -6330,7 +6337,7 @@ paths:
                                               "longitude": -74.006
                                           "originName": "WorldMonitor Analyst"
                                           "refugees": 1
-                                    "year": 1
+                                    "year": 2025
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_displacement_v1_GetDisplacementSummaryResponse'
                 "400":
@@ -39615,11 +39622,15 @@ components:
         worldmonitor_displacement_v1_GetDisplacementSummaryRequest:
             type: object
             properties:
-                year:
-                    type: integer
-                    minimum: 0
-                    format: int32
-                    description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                "year":
+                    "description": "Data year: 1951 through the current year. Zero returns the latest seeded data.\n An explicit year is available only if it matches the published snapshot."
+                    "oneOf":
+                        - "const": 0
+                          "type": "integer"
+                        - "type": "integer"
+                          "format": "int32"
+                          "minimum": 1951
+                          "maximum": 2026
                 countryLimit:
                     type: integer
                     minimum: 0
@@ -39640,13 +39651,13 @@ components:
                     type: integer
                     format: int64
                     description: |-
-                        Time the seed or live fallback snapshot was fetched, as Unix epoch
+                        Time the seed snapshot was fetched, as Unix epoch
                          milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
                          that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
                     description: |-
-                        True when summary came from a seed snapshot or live fallback. False means
+                        True when summary came from the requested seed snapshot. False means
                          an absent/empty summary is graceful degradation because the snapshot is
                          unavailable.
             description: GetDisplacementSummaryResponse contains the global displacement summary.
