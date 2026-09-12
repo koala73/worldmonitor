@@ -57,10 +57,12 @@ test('rejects malformed or oversized date-grid input before cache or relay work'
 test('canonical equivalents share a bounded hashed key and relay query', async () => {
   await read({ origin: ' dxb ', cabinClass: '', maxStops: '', airlines: ['ba', 'AA', 'BA'], departureWindow: '06-20', passengers: 99 });
   await read({ cabinClass: 'ECONOMY', maxStops: 'ANY', airlines: ['AA', 'BA'], departureWindow: '6-20', passengers: 9 });
-  assert.equal(feeds().length, 1);
+  await read({ passengers: 1.1 });
+  await read({ passengers: 1.9 });
+  assert.equal(feeds().length, 2);
   assert.deepEqual(feeds()[0]!.searchParams.getAll('airlines'), ['AA', 'BA']);
   const keys = [...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:'));
-  assert.equal(keys.length, 1);
+  assert.equal(keys.length, 2);
   assert.match(keys[0]!, /^aviation:gf-dates:[a-f0-9]{64}:v3$/);
 });
 test('gateway invalid input is400 and missing limiter store is503 without relay calls', async () => {

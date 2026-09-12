@@ -64,7 +64,7 @@ export async function searchGoogleDates(
     return { dates: [], degraded: true, error: 'relay unavailable' };
   }
 
-  const passengers = normalizePassengerCount(req.passengers);
+  const passengers = Math.trunc(normalizePassengerCount(req.passengers));
   const params = new URLSearchParams({
     origin,
     destination,
