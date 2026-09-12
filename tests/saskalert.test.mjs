@@ -153,6 +153,7 @@ test('skips a missing cap_link instead of aborting the SK tick', async () => {
   const data = await fetchSaskAlerts({ fetchFn, nowMs: NOW });
   assert.equal(data.alerts.length, 0);
   assert.equal(data._capVerification.failed, 1);
+  assert.deepEqual(data._capVerification.reasons, { missing_link: 1 });
 });
 
 test('rejects an off-host feed URL before fetchFn runs', async () => {
@@ -260,9 +261,30 @@ test('stops starting CAP fetches once the section budget is spent', async () => 
   });
   assert.equal(data.alerts.length, 0);
   assert.ok(data._capVerification.skippedDeadline >= 2);
+  assert.deepEqual(data._capVerification.reasons, { deadline: 2 });
   assert.equal(requested.length, 1);
   assert.ok(requested[0].endsWith('feed.json'));
 });
+
+for (const [reason, fail] of [
+  ['timeout', () => { throw new DOMException('sensitive URL', 'TimeoutError'); }],
+  ['transport', () => { throw new TypeError('sensitive transport details'); }],
+  ['http', () => new Response('sensitive body', { status: 502 })],
+  ['parsing', () => new Response('sensitive invalid JSON')],
+  ['validation', () => {
+    const document = structuredClone(capActive);
+    document.alert.info[0].severity = '';
+    return new Response(JSON.stringify(document));
+  }],
+]) {
+  test(`records a bounded ${reason} diagnostic without upstream details`, async () => {
+    const data = await fetchSaskAlerts({ nowMs: NOW, fetchFn: async url => (
+      url === SASKALERT_FEED_URL ? new Response(JSON.stringify(feed)) : fail()
+    ) });
+    assert.deepEqual(data._capVerification.reasons, { [reason]: 1 });
+    assert.doesNotMatch(JSON.stringify(saskAlertAfterPublish(data)), /sensitive/);
+  });
+}
 
 test('drops expired, Exercise, Restricted, and Cancel CAP records without AllClear tokens', () => {
   const baseEntry = { ...feed.entries[1], summary_en: 'Active advisory', event_en: 'Drinking Water' };
@@ -316,6 +338,7 @@ test('registers the province seeder in the Canada bundle without touching roads 
   assert.match(union, /province: 'SK'/);
   assert.match(union, /alerts:canada:saskalert:v1/);
   assert.match(seeder, /publishTransform: saskAlertPublishTransform/);
+  assert.match(seeder, /beforePublish: saskAlertBeforePublish/);
   assert.match(seeder, /CANADA_ALERT_UNION_REBUILD_FAILED/);
   // Both sibling acks were pruned on 2026-08-20 once the probes published, so
   // assert the pairing directionally: #6659 was allowed to own four rows only

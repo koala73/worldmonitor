@@ -34,6 +34,10 @@ The Railway seeder runs hourly and stores a canonical snapshot at `economic:glob
 
 Per-source state, record counts, retrieval-attempt time, last-success time, and stale flag are included in the feed response. Every per-source seed key is independently registered in `/api/health`. Unsupported country filters are never treated as a confirmed zero-result source.
 
+World Bank requests cover a sample of up to 100 notices, not the full upstream catalogue. Each request can make three attempts, including response-body reading, with a 20-second attempt timeout and 5- and 10-second retry delays. All attempts and `Retry-After` waits share a 75-second budget. A failed body read can retry; missing or malformed notices and incomplete declared result windows cannot become an empty success.
+
+World Bank and Contracts Finder retain usable open notices only within three hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
+
 ## Deployment configuration
 
 Only the U.S. SAM.gov adapter needs a new credential:

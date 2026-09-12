@@ -102,8 +102,8 @@ const REGISTRATIONS_PAGE_SIZE = 1000;
  *
  *  Below this threshold, pickWaveAction treats the run as terminal —
  *  marks `failed/pool-too-small`, deactivates the ramp, and clears the
- *  lease. The waitlist is effectively drained; operator must extend the
- *  curve OR restart the ramp manually if more contacts are wanted. */
+ *  lease. Resume only when at least 100 eligible contacts are available
+ *  and the requested count is at least 100. Direct calls use this guard too. */
 const MIN_USABLE_POOL_SIZE = 100;
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -650,7 +650,7 @@ export const _markPickFailed = internalMutation({
 
     // Terminal-completion substatuses: clear the lease AND deactivate the
     // ramp. Both 'empty-pool' (zero picked) and 'pool-too-small' (picked
-    // below MIN_USABLE_POOL_SIZE) mean the waitlist is drained — without
+    // below MIN_USABLE_POOL_SIZE) cannot produce a usable wave — without
     // deactivating, the next cron tick would re-fire pickWaveAction and
     // hit the same condition repeatedly. For 'pool-too-small' specifically,
     // the alternative — let the wave proceed with say 50 contacts — would
@@ -697,7 +697,7 @@ export const pickWaveAction = internalAction({
     if (!apiKey) {
       throw new Error("[pickWaveAction] RESEND_API_KEY not set");
     }
-    if (!Number.isFinite(args.requestedCount) || args.requestedCount <= 0) {
+    if (!Number.isInteger(args.requestedCount) || args.requestedCount <= 0) {
       throw new Error(
         `[pickWaveAction] requestedCount must be a positive integer; got ${args.requestedCount}`,
       );
@@ -832,11 +832,9 @@ export const pickWaveAction = internalAction({
       // Pool-too-small guard. picked.length < MIN_USABLE_POOL_SIZE means
       // the wave's delivered count will never reach the kill-gate threshold,
       // so the next cron tick would get stuck on `awaiting-prior-stats`
-      // forever. Treat as terminal completion: deactivate the ramp + clear
-      // the lease, surface for operator triage. Operator can re-activate
-      // and extend `rampCurve` if more sends are wanted, OR run a final
-      // wave manually via direct `pickWaveAction` call (which bypasses this
-      // guard since the operator is taking deliberate action).
+      // forever. Deactivate the ramp and clear the lease. Resume only when
+      // both the eligible pool and requested count meet the minimum;
+      // direct operator calls enforce the same guard.
       if (picked.length < MIN_USABLE_POOL_SIZE) {
         await ctx.runMutation(internal.broadcast.waveRuns._markPickFailed, {
           runId: args.runId,
@@ -844,7 +842,8 @@ export const pickWaveAction = internalAction({
           error:
             `picked ${picked.length} contacts (< MIN_USABLE_POOL_SIZE=${MIN_USABLE_POOL_SIZE}); ` +
             `ramp deactivated to avoid stranding the next cron tick on awaiting-prior-stats. ` +
-            `Operator: extend rampCurve + resumeRamp if more sends desired, or run a final wave manually.`,
+            `Operator: resume only with at least ${MIN_USABLE_POOL_SIZE} eligible contacts and ` +
+            `requestedCount >= ${MIN_USABLE_POOL_SIZE} (set the ramp tier accordingly). Direct calls use the same minimum.`,
         });
         return { ok: false, reason: "pool-too-small" };
       }
@@ -1709,12 +1708,9 @@ export const markFinalizeRecovered = internalMutation({
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Soft-discard. Marks the run failed and rotates `waveLabelOffset` so the
- * NEXT wave doesn't reuse the discarded label. Does NOT physically delete
- * `wavePickedContacts` rows — the daily cleanup cron does that in chunks.
- *
- * Operator must inspect Resend dashboard separately for the segment +
- * any partially-created broadcast.
+ * Abort picking or discard a terminal pre-broadcast failure, then clean up.
+ * Push and finalize-phase runs must use their recovery path: a send may
+ * already be in flight even when its completion has not been recorded.
  */
 export const discardWaveRun = internalMutation({
   args: {
@@ -1727,6 +1723,16 @@ export const discardWaveRun = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) throw new Error(`[discardWaveRun] no run ${runId}`);
+    // Picking can be aborted safely: _markPickComplete requires picking, so
+    // a late picker cannot advance after this transaction marks it failed.
+    const canAbortPicking = run.status === "picking" && run.broadcastId === undefined;
+    if (!canAbortPicking && !canUnstampAbandonedWave(run)) {
+      throw new Error(
+        `[discardWaveRun] cannot discard run ${runId} in status=${run.status} ` +
+        `substatus=${run.failureSubstatus ?? "<none>"}; only picking runs or terminal pre-broadcast failures can be discarded. ` +
+        `Use resumeStalledWaveRun or resumeFinalizeWaveRun; use markFinalizeRecovered when the provider confirms the broadcast was sent.`,
+      );
+    }
     const config = await ctx.db
       .query("broadcastRampConfig")
       .withIndex("by_key", (q) => q.eq("key", "current"))
@@ -1912,7 +1918,12 @@ export const _cleanupDiscardedWavePickedContacts = internalMutation({
       .query("waveRuns")
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
-    const waveLabel = run?.waveLabel;
+    // Recheck in the write transaction; callers and queued cleanup jobs may
+    // hold stale state. A recorded broadcast makes prior delivery uncertain.
+    if (!run || !canUnstampAbandonedWave(run)) {
+      return { deleted: 0, unstamped: 0, hasMore: false };
+    }
+    const waveLabel = run.waveLabel;
 
     const rows = await ctx.db
       .query("wavePickedContacts")
@@ -2050,6 +2061,17 @@ const TERMINAL_FAILURE_SUBSTATUSES = [
   "batch-failure-rate-exceeded",
 ] as const;
 
+function canUnstampAbandonedWave(run: {
+  status: string;
+  broadcastId?: string;
+  failureSubstatus?: string;
+}): boolean {
+  return run.status === "failed"
+    && run.broadcastId === undefined
+    && run.failureSubstatus !== undefined
+    && (TERMINAL_FAILURE_SUBSTATUSES as readonly string[]).includes(run.failureSubstatus);
+}
+
 /** Max failed runs to consider per cleanup cron tick. Bounded so a
  *  long-lived deployment with many discarded waves doesn't load the
  *  whole table into memory at once. The cron runs daily — at 100/day,
@@ -2065,14 +2087,7 @@ export const _listFailedWaveRunsForCleanup = internalQuery({
       .withIndex("by_status", (q) => q.eq("status", "failed"))
       .take(CLEANUP_CANDIDATES_PER_TICK);
     return failed
-      .filter(
-        (r) =>
-          r.updatedAt < cutoff &&
-          r.failureSubstatus !== undefined &&
-          (TERMINAL_FAILURE_SUBSTATUSES as readonly string[]).includes(
-            r.failureSubstatus,
-          ),
-      )
+      .filter((r) => r.updatedAt < cutoff && canUnstampAbandonedWave(r))
       .map((r) => r.runId);
   },
 });
