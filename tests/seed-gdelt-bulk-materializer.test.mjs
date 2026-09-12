@@ -133,7 +133,7 @@ function bulkFixture({
   return { manifest: `${gkgLine}\n${exportLine}\n`, files };
 }
 
-function fakeBulkFetch(manifest, files, manifestStatus = 206) {
+function fakeBulkFetch(manifest, files, manifestStatus = 206, rangeStart = 0) {
   let requestNumber = 0;
   return async (url) => {
     requestNumber += 1;
@@ -141,7 +141,12 @@ function fakeBulkFetch(manifest, files, manifestStatus = 206) {
     assert.ok(body, `unexpected bulk request: ${url}`);
     return new Response(body, {
       status: requestNumber === 1 ? manifestStatus : 200,
-      headers: { 'content-length': String(body.length) },
+      headers: {
+        'content-length': String(body.length),
+        ...(requestNumber === 1 ? {
+          'content-range': `bytes ${rangeStart}-${rangeStart + body.length - 1}/${rangeStart + body.length}`,
+        } : {}),
+      },
     });
   };
 }
@@ -160,6 +165,52 @@ describe('seed-gdelt-bulk-materializer download boundaries', () => {
     );
     assert.equal(downloaded.find(({ descriptor }) => descriptor.kind === 'gkg').records[0].id, 'gkg-1');
     assert.equal(downloaded.find(({ descriptor }) => descriptor.kind === 'export').events[0].id, 'gdelt-event-event-1');
+  });
+
+  it('discards an ambiguous suffix prefix before parsing size or applying cursors', async () => {
+    const fixture = bulkFixture();
+    for (const size of ['0', '9']) {
+      const prefix = `${size} aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa https://data.gdeltproject.org/gdeltv2/20260730114500.export.CSV.zip\n`;
+      const downloaded = await fetchGdeltBulkFiles({
+        fetchImpl: fakeBulkFetch(prefix + fixture.manifest, fixture.files, 206, 123),
+        nowMs: Date.parse('2026-07-30T12:05:00Z'),
+      });
+      assert.equal(downloaded.length, 2);
+    }
+  });
+
+  it('still rejects a complete zero-size descriptor after the range prefix or at byte zero', async () => {
+    const fixture = bulkFixture({ gkgDescriptor: { size: 0 } });
+    for (const rangeStart of [0, 123]) {
+      await assert.rejects(fetchGdeltBulkFiles({
+        fetchImpl: fakeBulkFetch(
+          (rangeStart ? 'partial line\n' : '') + fixture.manifest,
+          fixture.files, 206, rangeStart,
+        ),
+        nowMs: Date.parse('2026-07-30T12:05:00Z'),
+      }), /invalid GDELT gkg ZIP size: 0/);
+    }
+  });
+
+  it('rejects missing or inconsistent range metadata before downloading files', async () => {
+    const fixture = bulkFixture();
+    for (const contentRange of [null, 'bytes */100', 'bytes 5-4/100', 'bytes 0-9/9', 'bytes 0-9/100']) {
+      await assert.rejects(fetchGdeltBulkFiles({
+        fetchImpl: async () => new Response(fixture.manifest, {
+          status: 206,
+          headers: contentRange ? { 'content-range': contentRange } : {},
+        }),
+        nowMs: Date.parse('2026-07-30T12:05:00Z'),
+      }), /invalid Content-Range/);
+    }
+  });
+
+  it('cannot download a descriptor from a prefix without a line boundary', async () => {
+    const fixture = bulkFixture();
+    await assert.rejects(fetchGdeltBulkFiles({
+      fetchImpl: fakeBulkFetch(fixture.manifest.split('\n')[0], fixture.files, 206, 123),
+      nowMs: Date.parse('2026-07-30T12:05:00Z'),
+    }), /no newer GKG or export snapshot/);
   });
 
   it('requires a partial-content manifest response', async () => {
@@ -233,7 +284,10 @@ describe('seed-gdelt-bulk-materializer download boundaries', () => {
           assert.equal(requestCount, 1, 'cohort validation must run before file downloads');
           return new Response(Buffer.from(manifest), {
             status: 206,
-            headers: { 'content-length': String(Buffer.byteLength(manifest)) },
+            headers: {
+              'content-length': String(Buffer.byteLength(manifest)),
+              'content-range': `bytes 0-${Buffer.byteLength(manifest) - 1}/${Buffer.byteLength(manifest)}`,
+            },
           });
         },
         nowMs: Date.parse('2026-07-30T12:05:00Z'),
