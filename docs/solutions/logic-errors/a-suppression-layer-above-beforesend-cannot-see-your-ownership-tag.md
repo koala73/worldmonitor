@@ -90,7 +90,14 @@ Payload tags, by contrast, *do* reach `beforeSend`: `{level, tags, extra}` is re
 
 **Before trusting a `beforeSend` exemption, grep `ignoreErrors` for the same message.** If it is there, the exemption is dead on arrival.
 
-**Mirror both spellings in the test harness.** Production tests `value` *and* `` `${type}: ${value}` `` and drops on either. The `isIgnored` mirror in `tests/sentry-beforesend.test.mjs` checked only the bare value, so an entry anchored as `/^TimeoutError:/` would drop a first-party failure with the suite green. It now takes `(msg, type)`.
+**Mirror both spellings in the test harness.** Production builds two candidate strings per event — the bare message value, and the value prefixed with the exception type and a colon — and drops the event if either matches:
+
+```js
+// @sentry/core getPossibleEventMessages, paraphrased
+const candidates = [value, `${type}: ${value}`];
+```
+
+The `isIgnored` mirror in `tests/sentry-beforesend.test.mjs` checked only the bare value, so an entry anchored on the type prefix would drop a first-party failure with the suite green. It now takes both the message and the type.
 
 **Prove a suppression fixture against the previous gate.** Compile the old `beforeSend` body out of git and run each new fixture through it — a fixture that the old code also preserved is testing nothing:
 
