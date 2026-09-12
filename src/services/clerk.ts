@@ -165,11 +165,18 @@ function getAfterSignOutUrl(): string {
 // is absent (mirrors stale-bundle-check.ts's __BUILD_HASH__ handling).
 const CLERK_JS_VERSION = typeof __CLERK_JS_VERSION__ !== 'undefined' ? __CLERK_JS_VERSION__ : '';
 
-// @clerk/ui major paired with @clerk/clerk-js v6. The UI controller ships in a
-// SEPARATE package from the (headless) SDK and is loaded from the same Frontend
-// API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which we pass to
-// `clerk.load()`. Bump this alongside any @clerk/clerk-js MAJOR upgrade.
-const CLERK_UI_VERSION = '1';
+// @clerk/ui version paired with @clerk/clerk-js v6. The UI controller ships in
+// a SEPARATE package from the (headless) SDK and is loaded from the same
+// Frontend API; its UMD bundle exposes `window.__internal_ClerkUICtor`, which
+// we pass to `clerk.load()`.
+//
+// Pinned EXACTLY (#7352): a bare major resolved at request time, so Clerk
+// could change or remove parts of the prebuilt SignIn/UserProfile surfaces —
+// including passkey management — with no repo change, no PR, and no CI
+// signal. Upgrades are now deliberate: bump this constant (and the
+// @clerk/clerk-js pin in package.json) together, then re-verify the auth
+// smoke against the SERVED bundles, not node_modules.
+const CLERK_UI_VERSION = '1.32.2';
 
 // The SDK UMD bundle, loaded with a `data-clerk-publishable-key` attribute,
 // auto-creates a (not-yet-loaded) Clerk instance on `window.Clerk` — it exposes
