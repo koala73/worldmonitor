@@ -43,8 +43,11 @@ describe("contact push preserves wave stamp ownership", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-  test("a discarded run cannot mint a stamp when its pending provider call finishes", async () => {
+  test("a discarded terminal run rejects late push completion without minting a stamp", async () => {
     const { t, args } = await setup();
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId, substatus: "persist-failed", error: "synthetic terminal failure before broadcast",
+    });
     await t.mutation(internal.broadcast.waveRuns.discardWaveRun, { runId, reason: "test discard" });
     const before = await read(t);
     expect(await t.mutation(internal.broadcast.waveRuns._markContactPushed, args))
