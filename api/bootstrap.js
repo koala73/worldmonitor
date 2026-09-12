@@ -1,3 +1,4 @@
+import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
@@ -63,19 +64,7 @@ const FAST_KEYS = new Set(bootstrapTierKeyNames('fast', { iranEventsEnabled: IRA
 // /api/x-feed), but alerts, MCP, and embed/OEM partners get derived facts plus
 // a permalink only. `pollState` is seed-internal cursor state.
 // Kept in sync with stripXFeedRestrictedFields in scripts/publish-bootstrap-tiers.mjs.
-export function stripXFeedRestrictedFields(value) {
-  if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
-  const { pollState: _pollState, ...rest } = value;
-  if (!Array.isArray(rest.items)) return rest;
-  return {
-    ...rest,
-    items: rest.items.map((item) => {
-      if (item == null || typeof item !== 'object' || Array.isArray(item)) return item;
-      const { text: _text, ...itemRest } = item;
-      return itemRest;
-    }),
-  };
-}
+export { stripXFeedRestrictedFields } from './_bootstrap-public-payload.js';
 
 function bootstrapRedisReadKeys(keys) {
   const extra = extraCanadaAlertsCutoverReadKeys(keys, BOOTSTRAP_CACHE_KEYS.canadaAlerts);
@@ -579,31 +568,7 @@ export default async function handler(req, ctx) {
       ? canadaAlertsCutoverFallbackValue(cached)
       : cached.get(keys[i]);
     if (val !== undefined) {
-      let responseValue = val;
-      // Strip seed-internal metadata not intended for API clients
-      if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
-        const { enrichmentMeta: _stripped, ...rest } = val;
-        responseValue = rest;
-      }
-      // R4 (#6654): X post bodies must never leave the first-party path.
-      // `?tier=slow&public=1` is unauthenticated, ACAO:*, and CDN-cacheable for
-      // 2h, so anything here reaches embed/OEM and server-to-server callers —
-      // exactly the audience R4 excludes. `xFeed` is deliberately NOT registered
-      // in BOOTSTRAP_CACHE_KEYS (same as `telegramFeed`); this strip is the
-      // regression guard if it is ever re-added. Post text is served only by
-      // /api/x-feed. Mirrored in scripts/publish-bootstrap-tiers.mjs.
-      if (names[i] === 'xFeed' && val != null && typeof val === 'object' && !Array.isArray(val)) {
-        responseValue = stripXFeedRestrictedFields(val);
-      }
-      if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
-      if (names[i] === 'naturalEvents') responseValue = compactNaturalEventsDashboardPayload(responseValue);
-      if (names[i] === 'chokepoints' && Array.isArray(val?.chokepoints)) {
-        responseValue = { ...val, chokepoints: val.chokepoints.map(cp => cp?.transitSummary ? {
-          ...cp,
-          transitSummary: { ...cp.transitSummary, riskSummary: '', riskReportAction: '' },
-        } : cp) };
-      }
-      data[names[i]] = responseValue;
+      data[names[i]] = sanitizeBootstrapValue(names[i], val);
     } else {
       missing.push(names[i]);
     }

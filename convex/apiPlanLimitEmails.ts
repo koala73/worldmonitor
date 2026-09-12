@@ -162,7 +162,10 @@ export const getNoticeRecipient = internalQuery({
       .query("emailSuppressions")
       .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
       .first();
-    return { email, suppressed: !!suppression };
+    // A Resend global unsubscribe only withdraws broadcast consent. This is
+    // an account plan-limit notice, so only delivery failures/manual blocks
+    // prevent it from sending.
+    return { email, suppressed: !!suppression && suppression.reason !== "unsubscribe" };
   },
 });
 

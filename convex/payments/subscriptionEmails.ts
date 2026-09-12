@@ -947,6 +947,7 @@ export const sendDunningEmail = internalAction({
       }
       const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
         email: sub.email,
+        purpose: args.step === "winback_day30" ? "marketing" : "transactional",
       });
       if (suppressed) return { ok: false, reason: "suppressed" };
       const alreadySent = await ctx.runQuery(
