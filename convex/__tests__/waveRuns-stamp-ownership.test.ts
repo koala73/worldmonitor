@@ -43,6 +43,16 @@ describe("contact push preserves wave stamp ownership", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+  test("a discarded run cannot mint a stamp when its pending provider call finishes", async () => {
+    const { t, args } = await setup();
+    await t.mutation(internal.broadcast.waveRuns.discardWaveRun, { runId, reason: "test discard" });
+    const before = await read(t);
+    expect(await t.mutation(internal.broadcast.waveRuns._markContactPushed, args))
+      .toEqual({ ok: false, reason: "run-not-pushing" });
+    expect(await read(t)).toEqual(before);
+    expect((await read(t)).registration!.proLaunchWave).toBeUndefined();
+  });
+
   test.each(["test-wave-1", waveLabel, "test-wave-3"])("retains existing %s label and assignment time", async (owner) => {
     const { t, args } = await setup();
     await t.mutation(internal.broadcast.audienceWaveExport._stampWaveByNormalizedEmail, {

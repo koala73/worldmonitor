@@ -1025,6 +1025,13 @@ export const _markContactPushed = internalMutation({
       // CAS: no-op if already-pushed/failed, runId mismatch, or row deleted.
       return { ok: false as const, reason: "not-pending" as const };
     }
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    if (!run || (run.status !== "pushing" && run.status !== "segment-created")) {
+      return { ok: false as const, reason: "run-not-pushing" as const };
+    }
     const now = Date.now();
     await ctx.db.patch(contact._id, { status: "pushed", pushedAt: now });
 
@@ -1051,17 +1058,11 @@ export const _markContactPushed = internalMutation({
     }
 
     // Bump waveRuns.pushedCount + lastBatchAt atomically with the row patch.
-    const run = await ctx.db
-      .query("waveRuns")
-      .withIndex("by_runId", (q) => q.eq("runId", runId))
-      .unique();
-    if (run) {
-      await ctx.db.patch(run._id, {
-        pushedCount: run.pushedCount + 1,
-        lastBatchAt: now,
-        updatedAt: now,
-      });
-    }
+    await ctx.db.patch(run._id, {
+      pushedCount: run.pushedCount + 1,
+      lastBatchAt: now,
+      updatedAt: now,
+    });
     return { ok: true as const, stampResult };
   },
 });
