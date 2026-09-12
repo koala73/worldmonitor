@@ -419,7 +419,7 @@ export function deriveReqBytes(req: Request): number {
 }
 
 export function deriveSentryTraceId(req: Request): string | null {
-  return req.headers.get('sentry-trace') ?? null;
+  return capHeaderValue(req.headers.get('sentry-trace'));
 }
 
 // ua_hash: SHA-256(UA + monthly-rotated pepper). Pepper key: USAGE_UA_PEPPER.

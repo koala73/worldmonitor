@@ -12720,14 +12720,17 @@ paths:
             parameters:
                 - name: tier
                   in: query
-                  description: Predefined tiers or specific keys.
+                  description: 'Fixed public tier: fast or slow. Leave empty when selecting a key.'
                   required: false
-                  example: "example"
+                  example: "fast"
                   schema:
                     type: string
+                    pattern: '^(fast|slow)$'
                 - name: keys
                   in: query
-                  description: Specific bootstrap cache keys to fetch when tier is not sufficient.
+                  description: |-
+                    One registered bootstrap key, for example insights. Omit when using tier.
+                     The repeated wire field is retained for compatibility; multiple keys are rejected.
                   required: false
                   style: form
                   explode: true
@@ -12735,8 +12738,10 @@ paths:
                       - "example"
                   schema:
                     type: array
+                    maxItems: 1
                     items:
-                        type: string
+                      type: string
+                      minLength: 1
                 - name: jmespath
                   in: query
                   description: |-
@@ -43268,13 +43273,21 @@ components:
             properties:
                 tier:
                     type: string
-                    description: Predefined tiers or specific keys.
+                    pattern: ^(fast|slow)$
+                    description: 'Fixed public tier: fast or slow. Leave empty when selecting a key.'
                 keys:
                     type: array
                     items:
                         type: string
-                        description: Specific bootstrap cache keys to fetch when tier is not sufficient.
-            description: GetBootstrapDataRequest parameters for multi-key fetching.
+                        maxItems: 1
+                        description: |-
+                            One registered bootstrap key, for example insights. Omit when using tier.
+                             The repeated wire field is retained for compatibility; multiple keys are rejected.
+                    maxItems: 1
+            description: |-
+                GetBootstrapDataRequest selects a fixed tier or one registered bootstrap key.
+                 Exactly one selector is required: use tier OR keys, never both.
+                 Empty, unknown, mixed and multi-key selectors return HTTP 400.
         worldmonitor_infrastructure_v1_GetBootstrapDataResponse:
             type: object
             properties:

@@ -530,6 +530,9 @@ describe("operator recovery", () => {
     await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
       waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 100, batchSize: 50,
     });
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "persist-failed", error: "synthetic terminal failure",
+    });
     const r = await t.mutation(internal.broadcast.waveRuns.discardWaveRun, {
       runId: "run-1", reason: "operator decision",
     });
@@ -616,6 +619,9 @@ describe("_listInFlightWaveRuns + cleanup", () => {
     });
     await t.mutation(internal.broadcast.waveRuns._persistPickedBatch, {
       runId: "run-1", contacts: ["a@t", "b@t", "c@t"],
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "persist-failed", error: "synthetic terminal failure",
     });
     const r = await t.mutation(
       internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
@@ -792,6 +798,9 @@ describe("review-fix 2: unstamp on discard", () => {
     expect(stampedBefore.filter((r) => r.proLaunchWave === "pro-launch-wave-4")).toHaveLength(2);
 
     // Cleanup should unstamp the 2 pushed contacts and delete all 3 wavePickedContacts rows.
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "persist-failed", error: "synthetic terminal failure",
+    });
     const r = await t.mutation(
       internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
       { runId: "run-1" },
@@ -836,6 +845,9 @@ describe("review-fix 2: unstamp on discard", () => {
       await ctx.db.patch(reg!._id, { proLaunchWave: "pro-launch-wave-5" });
     });
     // Cleanup run-1 — must leave the wave-5 stamp alone.
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "persist-failed", error: "synthetic terminal failure",
+    });
     const r = await t.mutation(
       internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
       { runId: "run-1" },
@@ -867,6 +879,9 @@ describe("review-fix 2: unstamp on discard", () => {
     await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
       contactId: await findContactId(t, "run-1", "a@t"),
       runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "persist-failed", error: "synthetic terminal failure",
     });
     // Operator discard — flips the run to failed/discarded-by-operator and
     // schedules cleanup (we exercise the cleanup mutation directly here

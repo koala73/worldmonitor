@@ -162,14 +162,14 @@ describe('gateway required-bbox diagnostics', () => {
 
   it('does not add bbox diagnostics to unrelated API endpoints', async () => {
     const hits = new Map<string, number>();
-    const handler = createGatewayForPaths(hits, ['/api/market/v1/list-crypto-quotes']);
+    const handler = createGatewayForPaths(hits, ['/api/market/v1/list-gulf-quotes']);
 
-    const res = await handler(makeRequest('/api/market/v1/list-crypto-quotes?ids=bitcoin'));
+    const res = await handler(makeRequest('/api/market/v1/list-gulf-quotes'));
     const body = await res.json();
 
     assert.equal(res.status, 200);
     assert.deepEqual(body, { ok: true });
-    assert.equal(hits.get('/api/market/v1/list-crypto-quotes'), 1);
+    assert.equal(hits.get('/api/market/v1/list-gulf-quotes'), 1);
     assertNoBboxDiagnostic(res);
   });
 
