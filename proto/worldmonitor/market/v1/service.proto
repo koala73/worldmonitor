@@ -33,7 +33,7 @@ import "worldmonitor/market/v1/get_physical_divergence_index.proto";
 service MarketService {
   option (sebuf.http.service_config) = {base_path: "/api/market/v1"};
 
-  // ListMarketQuotes retrieves stock and index quotes.
+  // Retrieve stock and index quotes for requested symbols, with prices, price changes, display names, sparklines and snapshot metadata for market monitoring.
   rpc ListMarketQuotes(ListMarketQuotesRequest) returns (ListMarketQuotesResponse) {
     option (sebuf.http.config) = {path: "/list-market-quotes", method: HTTP_METHOD_GET};
   }
@@ -127,7 +127,7 @@ service MarketService {
     option (sebuf.http.config) = {path: "/list-other-tokens", method: HTTP_METHOD_GET};
   }
 
-  // GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+  // Review the composite Fear & Greed sentiment index with available survey, market breadth and component inputs, including degraded-data flags for market context.
   rpc GetFearGreedIndex(GetFearGreedIndexRequest) returns (GetFearGreedIndexResponse) {
     option (sebuf.http.config) = {path: "/get-fear-greed-index", method: HTTP_METHOD_GET};
   }
@@ -147,7 +147,7 @@ service MarketService {
     option (sebuf.http.config) = {path: "/get-insider-transactions", method: HTTP_METHOD_GET};
   }
 
-  // GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
+  // Review historical S&P 500 market breadth, including the percentage of stocks above 20, 50 and 200-day moving averages, with current readings and dated history.
   rpc GetMarketBreadthHistory(GetMarketBreadthHistoryRequest) returns (GetMarketBreadthHistoryResponse) {
     option (sebuf.http.config) = {path: "/get-market-breadth-history", method: HTTP_METHOD_GET};
   }

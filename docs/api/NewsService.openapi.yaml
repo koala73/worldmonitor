@@ -24,7 +24,7 @@ paths:
             tags:
                 - NewsService
             summary: SummarizeArticle
-            description: SummarizeArticle generates an LLM summary with provider selection and fallback support.
+            description: Generate an article summary with language-model provider selection and fallback support, returning the chosen provider, model and reported processing errors.
             operationId: SummarizeArticle
             requestBody:
                 content:
