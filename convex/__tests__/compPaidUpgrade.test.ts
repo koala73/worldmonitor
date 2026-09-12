@@ -115,7 +115,7 @@ test("legacy comp rows retain old behavior without inferring provenance from the
   expect((await read(t))?.compPlanKey).toBeUndefined();
 });
 
-test("claim refuses to combine known and unknown active comp sources", async () => {
+test.each(["anonymous", "authenticated"])("claim refuses an unknown active %s comp source combined with a known source", async (unknownSource) => {
   vi.stubEnv("DODO_IDENTITY_SIGNING_SECRET", "synthetic-comp-claim-secret");
   const t = await setup();
   const anonId = "11111111-1111-4111-8111-111111111111";
@@ -123,7 +123,7 @@ test("claim refuses to combine known and unknown active comp sources", async () 
     userId: anonId, planKey: "api_starter", days: 120,
   });
   await t.run(async (ctx) => {
-    const row = await ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", anonId)).unique();
+    const row = await ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", unknownSource === "anonymous" ? anonId : USER)).unique();
     await ctx.db.patch(row!._id, { compPlanKey: undefined });
   });
   await expect(t.withIdentity({ subject: USER }).mutation(api.payments.billing.claimSubscription, {
@@ -156,4 +156,64 @@ test("a new grant cannot relabel an unaudited legacy duration", async () => {
     userId: USER, planKey: "pro_monthly", days: 7,
   })).rejects.toThrow("LEGACY_COMP_SOURCE_REQUIRES_AUDIT");
   expect(await read(t)).toEqual(before);
+});
+
+test("a stale higher paid plan cannot hide a live paid plan behind the comp floor", async () => {
+  const t = convexTest(schema, modules);
+  for (const [suffix, planKey, end] of [
+    ["stale", "api_business", NOW - DAY],
+    ["live", "api_starter", NOW + 30 * DAY],
+  ] as const) {
+    await t.run((ctx) => ctx.db.insert("subscriptions", {
+      userId: USER, dodoSubscriptionId: `sub_${suffix}`,
+      dodoProductId: PRODUCT_CATALOG[planKey].dodoProductId!, planKey,
+      status: "active", currentPeriodStart: NOW - 31 * DAY, currentPeriodEnd: end,
+      rawPayload: {}, updatedAt: NOW - DAY,
+    }));
+  }
+  await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+    userId: USER, planKey: "pro_monthly", days: 90,
+  });
+  expect(await read(t)).toMatchObject({
+    planKey: "api_starter", validUntil: NOW + 30 * DAY,
+    compPlanKey: "pro_monthly", compUntil: NOW + 90 * DAY,
+  });
+});
+
+test.each(["paid", "comp"])("expiry of the winning %s source restores remaining coverage without another webhook", async (winner) => {
+  const t = convexTest(schema, modules);
+  const paidPlan = winner === "paid" ? "api_business" : "pro_monthly";
+  const compPlan = winner === "comp" ? "api_business" : "pro_monthly";
+  const paidEnd = NOW + (winner === "paid" ? 7 : 30) * DAY;
+  const compDays = winner === "comp" ? 7 : 30;
+  await t.run((ctx) => ctx.db.insert("subscriptions", {
+    userId: USER, dodoSubscriptionId: "sub_boundary",
+    dodoProductId: PRODUCT_CATALOG[paidPlan].dodoProductId!, planKey: paidPlan,
+    status: "active", currentPeriodStart: NOW - DAY, currentPeriodEnd: paidEnd,
+    rawPayload: {}, updatedAt: NOW,
+  }));
+  await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+    userId: USER, planKey: compPlan, days: compDays,
+  });
+  expect(await read(t)).toMatchObject({ planKey: "api_business", validUntil: NOW + 7 * DAY });
+  await vi.advanceTimersByTimeAsync(8 * DAY);
+  await t.finishInProgressScheduledFunctions();
+  expect(await t.withIdentity({ subject: USER }).query(api.entitlements.getEntitlementsForUser, {}))
+    .toMatchObject({ planKey: "pro_monthly", validUntil: NOW + 30 * DAY });
+  await vi.advanceTimersByTimeAsync(23 * DAY);
+  await t.finishInProgressScheduledFunctions();
+  expect(await t.withIdentity({ subject: USER }).query(api.entitlements.getEntitlementsForUser, {}))
+    .toMatchObject({ planKey: "free" });
+});
+
+test("a scheduled coverage transition re-reads a newer paid renewal", async () => {
+  const t = await setup();
+  await event(t, "subscription.plan_changed", "api_business", NOW + 1000, NOW + 7 * DAY);
+  await vi.advanceTimersByTimeAsync(DAY);
+  await event(t, "subscription.renewed", "api_business", NOW + DAY, NOW + 120 * DAY);
+  await vi.advanceTimersByTimeAsync(7 * DAY);
+  await t.finishInProgressScheduledFunctions();
+  expect(await t.withIdentity({ subject: USER }).query(api.entitlements.getEntitlementsForUser, {}))
+    .toMatchObject({ planKey: "api_business", validUntil: NOW + 120 * DAY });
+  expect(await read(t)).toMatchObject({ compPlanKey: "pro_monthly", compUntil: NOW + 90 * DAY });
 });
