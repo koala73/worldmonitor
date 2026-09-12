@@ -317,6 +317,7 @@ interface EndpointRatePolicy {
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
+  '/api/aviation/v1/search-google-dates': { limit: 10, window: '60 s' },
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
   // Public relay/HTML discovery has the same scrape fan-out as the legacy
   // YouTube live endpoint and needs its own fail-closed gateway budget.
@@ -580,6 +581,7 @@ interface RateLimitPolicyDecision {
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
   '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
+  '/api/aviation/v1/search-google-dates': { reason: 'Public date searches can trigger up to six Google calendar requests per cache miss.' },
   '/api/aviation/v1/list-aviation-news': {
     reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
   },
@@ -784,6 +786,7 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
+let nativeGoogleDatesAdmissions: number[] = [];
 let nativeGoogleFlightsAdmissions: number[] = [];
 let nativeAviationNewsAdmissions: number[] = [];
 
@@ -791,16 +794,22 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   if (!hasEndpointRatePolicy(pathname)) return null;
   // Native transport authentication happens before this gateway. Use one
   // bounded local budget with the in-process cache; cloud and Docker use Redis.
-  if (pathname === '/api/aviation/v1/search-google-flights'
+  if ((pathname === '/api/aviation/v1/search-google-dates'
+    || pathname === '/api/aviation/v1/search-google-flights')
     && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const policy = ENDPOINT_RATE_POLICIES[pathname]!;
     const windowSeconds = durationToSeconds(policy.window);
     const now = Date.now();
-    nativeGoogleFlightsAdmissions = nativeGoogleFlightsAdmissions.filter(time => time > now - windowSeconds * 1000);
-    if (nativeGoogleFlightsAdmissions.length >= policy.limit) {
-      return tooManyRequestsResponse(policy.limit, nativeGoogleFlightsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    const admissions = pathname === '/api/aviation/v1/search-google-dates'
+      ? nativeGoogleDatesAdmissions
+      : nativeGoogleFlightsAdmissions;
+    const activeAdmissions = admissions.filter(time => time > now - windowSeconds * 1000);
+    if (activeAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, activeAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
     }
-    nativeGoogleFlightsAdmissions.push(now);
+    activeAdmissions.push(now);
+    if (pathname === '/api/aviation/v1/search-google-dates') nativeGoogleDatesAdmissions = activeAdmissions;
+    else nativeGoogleFlightsAdmissions = activeAdmissions;
     return null;
   }
   if (pathname === '/api/aviation/v1/list-aviation-news'
@@ -983,6 +992,7 @@ export async function checkFailClosedScopedIpRateLimit(
 }
 
 export function __resetRateLimitForTest(): void {
+  nativeGoogleDatesAdmissions = [];
   nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
   ratelimit = null;

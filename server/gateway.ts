@@ -1999,8 +1999,9 @@ export function createDomainGateway(
     // Gateway rate limiting — two-phase: endpoint-specific first, then global fallback.
     // Confirmed paid principals use per-user buckets; other traffic uses IP.
     //
-    // Flight searches need their tighter upstream budget even after MCP admission.
-    if (internalMcpVerified && pathname === '/api/aviation/v1/search-google-flights') {
+    // Google searches need their tighter upstream budget even after MCP admission.
+    if (internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
+      || pathname === '/api/aviation/v1/search-google-dates')) {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
         principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
         principalScope: 'session',

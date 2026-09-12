@@ -12912,23 +12912,33 @@ function parseGfDates(text, isRoundTrip) {
     const stripped = text.replace(/^\)\]\}'/, '');
     const outer = JSON.parse(stripped);
     const inner = outer?.[0]?.[2];
-    if (!inner) return [];
+    if (!inner) return null;
 
     const data = JSON.parse(inner);
     const items = data[data.length - 1];
-    if (!Array.isArray(items)) return [];
+    if (!Array.isArray(items)) return null;
 
+    const isCalendarDate = value => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const time = Date.parse(`${value}T00:00:00Z`);
+      return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+    };
     const roundTrip = isRoundTrip === 'true' || isRoundTrip === true;
-    return items.map(item => {
+    const dates = [];
+    for (const item of items) {
       try {
         if (!Array.isArray(item) || item.length < 3) return null;
         if (!Array.isArray(item[2]) || !Array.isArray(item[2][0]) || item[2][0].length < 2) return null;
-        const price = parseFloat(item[2][0][1]);
-        if (!price || Number.isNaN(price)) return null;
-        return { date: item[0] ?? '', returnDate: roundTrip ? (item[1] ?? '') : '', price };
+        const date = item[0];
+        const returnDate = item[1];
+        if (!isCalendarDate(date) || (roundTrip && !isCalendarDate(returnDate))) return null;
+        const price = Number(item[2][0][1]);
+        if (!Number.isFinite(price) || price <= 0) return null;
+        dates.push({ date, returnDate: roundTrip ? returnDate : '', price });
       } catch { return null; }
-    }).filter(Boolean);
-  } catch { return []; }
+    }
+    return dates;
+  } catch { return null; }
 }
 
 async function handleGoogleFlightsSearch(req, res) {
@@ -13055,6 +13065,7 @@ async function handleGoogleFlightsDates(req, res) {
     const MAX_DATE_CHUNKS = 6;
     const allDates = [];
     let hasPartialFailure = false;
+    let hasCooldown = false;
 
     if (totalDays <= MAX_CHUNK) {
       incrementRelayMetric('googleFlightsRequests');
@@ -13085,63 +13096,65 @@ async function handleGoogleFlightsDates(req, res) {
         throw new Error(`Google Flights returned ${gfResp.status}`);
       }
       const text = await gfResp.text();
-      allDates.push(...parseGfDates(text, isRoundTrip));
+      const dates = parseGfDates(text, isRoundTrip);
+      if (dates === null) throw new Error('Google Flights returned an invalid calendar response');
+      allDates.push(...dates);
       recordRelayOutcome('googleFlights', 'success');
       incrementRelayMetric('googleFlightsServed');
     } else {
-      const current = new Date(start);
-      let chunksAttempted = 0;
-      while (current <= end && chunksAttempted < MAX_DATE_CHUNKS) {
-        chunksAttempted++;
+      const chunks = [];
+      for (let day = start.getTime(); day <= end.getTime() && chunks.length < MAX_DATE_CHUNKS; day += MAX_CHUNK * 86_400_000) {
+        chunks.push({
+          ...params,
+          startDate: new Date(day).toISOString().slice(0, 10),
+          endDate: new Date(Math.min(day + (MAX_CHUNK - 1) * 86_400_000, end.getTime())).toISOString().slice(0, 10),
+        });
+      }
+      if (totalDays > MAX_CHUNK * MAX_DATE_CHUNKS) hasPartialFailure = true;
+
+      // At most six concurrent 20s fetches fit within the RPC's 30s wait.
+      const results = await Promise.all(chunks.map(async (chunk) => {
         incrementRelayMetric('googleFlightsRequests');
         if (Date.now() < gfGlobal429Until) {
           incrementRelayMetric('googleFlights429');
           recordRelayOutcome('googleFlights', 'throttle');
+          hasCooldown = true;
           hasPartialFailure = true;
-          current.setDate(current.getDate() + MAX_CHUNK);
-          continue;
+          return [];
         }
-        const chunkEnd = new Date(current);
-        chunkEnd.setDate(chunkEnd.getDate() + MAX_CHUNK - 1);
-        if (chunkEnd > end) chunkEnd.setTime(end.getTime());
-
-        const chunkFilters = buildDateFilters({
-          ...params,
-          startDate: current.toISOString().slice(0, 10),
-          endDate: chunkEnd.toISOString().slice(0, 10),
-        });
-        const body = `f.req=${encodeGfFilters(chunkFilters)}`;
-        let gfResp;
         try {
-          gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
+          const body = `f.req=${encodeGfFilters(buildDateFilters(chunk))}`;
+          const gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
+          if (gfResp.status === 429) {
+            gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
+            console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
+            incrementRelayMetric('googleFlights429');
+            recordRelayOutcome('googleFlights', 'throttle');
+            hasCooldown = true;
+          } else if (gfResp.status === 401 || gfResp.status === 403) {
+            recordRelayOutcome('googleFlights', 'authRejection');
+          } else if (gfResp.ok) {
+            const text = await gfResp.text();
+            const dates = parseGfDates(text, isRoundTrip);
+            if (dates === null) {
+              recordRelayOutcome('googleFlights', 'terminalFailure');
+              console.warn(`[Google Flights] dates chunk ${chunk.startDate} returned an invalid calendar response`);
+            } else {
+              recordRelayOutcome('googleFlights', 'success');
+              incrementRelayMetric('googleFlightsServed');
+              return dates;
+            }
+          } else {
+            recordRelayOutcome('googleFlights', 'terminalFailure');
+            console.warn(`[Google Flights] dates chunk ${chunk.startDate} failed: ${gfResp.status}`);
+          }
         } catch (err) {
           recordRelayOutcome('googleFlights', classifyUpstreamOutcome({ error: err }));
-          hasPartialFailure = true;
-          current.setDate(current.getDate() + MAX_CHUNK);
-          continue;
         }
-        if (gfResp.status === 429) {
-          gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
-          console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
-          incrementRelayMetric('googleFlights429');
-          recordRelayOutcome('googleFlights', 'throttle');
-          hasPartialFailure = true;
-        } else if (gfResp.status === 401 || gfResp.status === 403) {
-          recordRelayOutcome('googleFlights', 'authRejection');
-          hasPartialFailure = true;
-        } else if (gfResp.ok) {
-          const text = await gfResp.text();
-          allDates.push(...parseGfDates(text, isRoundTrip));
-          recordRelayOutcome('googleFlights', 'success');
-          incrementRelayMetric('googleFlightsServed');
-        } else {
-          recordRelayOutcome('googleFlights', 'terminalFailure');
-          hasPartialFailure = true;
-          console.warn(`[Google Flights] dates chunk ${current.toISOString().slice(0, 10)} failed: ${gfResp.status}`);
-        }
-        current.setDate(current.getDate() + MAX_CHUNK);
-      }
-      if (current <= end) hasPartialFailure = true;
+        hasPartialFailure = true;
+        return [];
+      }));
+      for (const dates of results) allDates.push(...dates);
     }
 
     const sortByPrice = url.searchParams.get('sort_by_price') === 'true';
@@ -13150,7 +13163,7 @@ async function handleGoogleFlightsDates(req, res) {
     if (hasPartialFailure && allDates.length > 0) recordRelayOutcome('googleFlights', 'fallback');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure }));
+    res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure, cooldown: hasCooldown }));
   } catch (err) {
     const isTimeout = err?.name === 'TimeoutError' || err?.message?.includes('timed out');
     if (isTimeout) {
