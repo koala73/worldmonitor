@@ -14,6 +14,7 @@ import {
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
+import { buildCheckoutReportTags } from '../src/services/checkout-sentry-policy.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -60,13 +61,16 @@ const rawBeforeSend = new Function(
 // — NOT `event.contexts.os`, which the browser SDK never populates (see
 // src/bootstrap/platform-ua.ts). `navigator` is passed as a Function parameter so it
 // shadows Node's global and each test can state the platform explicitly.
-/** The tag block src/services/checkout.ts puts on every checkout report. */
-const CHECKOUT_REPORT_TAGS = {
-  component: 'dodo-checkout',
+/**
+ * The REAL tag block src/services/checkout.ts puts on every checkout report,
+ * built by the shipped helper rather than copied. A hand-written fixture here
+ * would keep passing after the production tags changed shape, which is the
+ * whole failure mode this suite exists to catch.
+ */
+const CHECKOUT_REPORT_TAGS = buildCheckoutReportTags({
   action: 'exception',
   code: 'service_unavailable',
-  kind: 'checkout_request_failed',
-};
+});
 
 const MAC_DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36';
 const IOS_GOOGLE_APP_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/432.9.954074404 Mobile/15E148 Safari/604.1';
@@ -499,6 +503,78 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(beforeSend(event), event);
     });
   }
+
+  // WebKit does not say "signal timed out". src/services/timeout-signal.ts
+  // documents (WORLDMONITOR-10F) that Mobile Safari surfaces an
+  // AbortSignal.timeout rejection as `AbortError: Fetch is aborted`. That
+  // phrase used to sit in `ignoreErrors`, which the SDK applies as an event
+  // processor INSIDE prepareEvent — before beforeSend, and blind to both
+  // frames and tags — so no `kind` tag could rescue it and the Q4 fix would
+  // have restored visibility on Chromium alone.
+  //
+  // The same transport's other terminal failure is a double network failure,
+  // which arrives as a zero-frame `Failed to fetch`. Both belong to the buyer,
+  // not to an extension, once a first-party report has claimed them.
+  for (const [label, message, name] of [
+    ['a WebKit abort-worded timeout', 'Fetch is aborted', 'AbortError'],
+    ['a double network failure', 'Failed to fetch', 'TypeError'],
+    ['a Firefox-worded network failure', 'NetworkError when attempting to fetch resource.', 'TypeError'],
+  ]) {
+    it(`preserves ${label} once checkout has reported it`, () => {
+      assert.equal(
+        isIgnored(message),
+        false,
+        `"${message}" must not be dropped by ignoreErrors, which runs before beforeSend and cannot see the kind tag`,
+      );
+      const event = makeEvent(message, name, []);
+      event.tags = { ...CHECKOUT_REPORT_TAGS };
+      assert.equal(beforeSend(event), event);
+    });
+
+    it(`still suppresses ${label} with no first-party report`, () => {
+      const event = makeEvent(message, name, []);
+      assert.equal(beforeSend(event), null);
+    });
+  }
+
+  // The source-level invariant the whole exemption rests on. Keying on tag
+  // PRESENCE is only safe while `kind` cannot arrive on an event we do not
+  // own. `event.tags` is the merge of per-call tags and SCOPE tags, so a
+  // single `Sentry.setTag('kind', ...)` or an `initialScope` carrying one
+  // would put the tag on every event — including third-party noise — and
+  // silently disarm this entire block with nothing going red.
+  it('keeps the licence true: `kind` is never set on a global Sentry scope', () => {
+    const offenders = [];
+    for (const rel of ['../src', '../pro-test/src']) {
+      for (const file of walkTsFiles(resolve(__dirname, rel))) {
+        const text = readFileSync(file, 'utf-8');
+        // A scope-level setter, or an init-time scope, anywhere near `kind`.
+        if (/\bset(?:Tag|Tags)\s*\(/.test(text) && /\bkind\b/.test(text)) offenders.push(`${file} (setTag)`);
+        if (/\binitialScope\b/.test(text)) offenders.push(`${file} (initialScope)`);
+      }
+    }
+    assert.deepEqual(offenders, [], [
+      'A global Sentry tag would apply `kind` to events we do not own, disarming',
+      'the zero-frame suppression above for every message it covers:',
+      ...offenders,
+    ].join('\n'));
+  });
+
+  it('the kind-census scan actually reaches our source', () => {
+    // A source scan that matches nothing is indistinguishable from one that is
+    // silently broken (wrong path, wrong extension filter).
+    const files = walkTsFiles(resolve(__dirname, '../src'));
+    assert.ok(files.length > 100, `sanity: expected to scan src/, got ${files.length} files`);
+    const kindSetters = files.filter((f) => /tags:\s*\{[^}]*\bkind:/.test(readFileSync(f, 'utf-8')));
+    assert.ok(
+      kindSetters.length >= 4,
+      `sanity: expected to find the per-call-site kind tags, found ${kindSetters.length}`,
+    );
+    assert.ok(
+      kindSetters.some((f) => f.endsWith('pending-panel-data.ts')),
+      'scan must reach the panel-dispatch kind setter',
+    );
+  });
 
   // Everything above assigns `event.tags` by hand, which assumes the thing most
   // likely to break silently: that a tag passed in the CAPTURE PAYLOAD is on

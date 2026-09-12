@@ -19,7 +19,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { shouldSkipSentryForAction, SENTRY_SKIP_ACTIONS } from '../src/services/checkout-sentry-policy.ts';
+import {
+  buildCheckoutReportTags,
+  CHECKOUT_REPORT_KIND,
+  shouldSkipSentryForAction,
+  SENTRY_SKIP_ACTIONS,
+} from '../src/services/checkout-sentry-policy.ts';
 import { checkoutErrorTelemetryLevel } from '../src/services/checkout.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -119,11 +124,37 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
   // fixture tags — while production goes silent, so the emit side needs its
   // own lock. Asserted as source text because `reportCheckoutError` is
   // module-private.
-  it('tags every checkout report with a first-party `kind`', () => {
+  it('puts the first-party `kind` on TAGS, where beforeSend reads it', () => {
+    // Asserted on the real object, not by grepping the file. beforeSend reads
+    // only `event.tags.kind`, and a source regex for the literal matches it
+    // just as happily inside `extra` or a comment — so moving the key one
+    // field over would leave every test green while production went dark.
+    const tags = buildCheckoutReportTags({ action: 'exception', code: 'service_unavailable' });
+    assert.equal(tags.kind, CHECKOUT_REPORT_KIND);
+    assert.equal(tags.component, 'dodo-checkout');
+    assert.equal(tags.action, 'exception');
+    assert.equal(tags.code, 'service_unavailable');
+    // The upstream identity tags stay optional — absent, not empty strings, so
+    // the Sentry tag list does not fill with blanks (WORLDMONITOR-RN).
+    assert.ok(!('cfRay' in tags));
+    assert.ok(!('upstreamServer' in tags));
+    const withUpstream = buildCheckoutReportTags({
+      action: 'http-error',
+      code: 'service_unavailable',
+      cfRay: 'a1b2c3-SIN',
+      upstreamServer: 'cloudflare',
+    });
+    assert.equal(withUpstream.cfRay, 'a1b2c3-SIN');
+    assert.equal(withUpstream.upstreamServer, 'cloudflare');
+    assert.equal(withUpstream.kind, CHECKOUT_REPORT_KIND);
+  });
+
+  it('builds the report tags through that helper rather than a local literal', () => {
+    // The helper is only load-bearing if reportCheckoutError actually uses it.
     assert.match(
       src,
-      /kind:\s*'checkout_request_failed'/,
-      "reportCheckoutError must tag events with kind: 'checkout_request_failed' — without it the zero-frame `signal timed out` gate in src/bootstrap/sentry-init.ts silently drops every checkout timeout",
+      /tags:\s*buildCheckoutReportTags\(/,
+      'reportCheckoutError must build its tag block via buildCheckoutReportTags, so the assertion above tests the shipped object',
     );
   });
 

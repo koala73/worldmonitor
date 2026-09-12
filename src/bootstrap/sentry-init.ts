@@ -220,7 +220,10 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /__firefox__/,
       /ifameElement\.contentDocument/,
       /Invalid video id/,
-      /Fetch is aborted/,
+      // `/Fetch is aborted/` moved to the zero-frame block in beforeSend
+      // (WORLDMONITOR-Q4). It is WebKit's wording for an AbortSignal.timeout
+      // rejection, so leaving it here dropped every Safari checkout timeout
+      // before beforeSend could read the first-party `kind` tag.
       /Stylesheet append timeout/,
       /Worker is not a constructor/,
       /_pcmBridgeCallbackHandler/,
@@ -883,23 +886,39 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       //     endpoint we don't serve). Our own `Request timeout` strings
       //     don't include a colon-and-path suffix; the format is unique to
       //     wrapper-injected code.
+      // A first-party `kind` tag identifies an app failure even when the
+      // browser-created rejection has no first-party stack frames, so it
+      // exempts the WHOLE chain below rather than one branch of it. The tag is
+      // the invariant, not a list of names: `kind` is set ONLY by our own
+      // capture call sites — six today, in main.ts, variant-theme.ts,
+      // pending-panel-data.ts, wm-session.ts (x2) and checkout.ts — and never
+      // by the SDK, an extension, or an injected script, so presence alone
+      // proves first-party ownership without anyone maintaining a census.
+      // `tests/sentry-beforesend.test.mjs` pins that no global scope tag is
+      // named `kind`, which is the precondition this rests on.
+      //
+      // Naming individual kinds here was a treadmill, and WORLDMONITOR-Q4 sat
+      // behind it: the checkout transport's 15s timeout reports through
+      // `reportCheckoutError` and was dropped as noise for lack of
+      // `panel_call_rejected`, hiding a terminal revenue failure. The
+      // csp_violation, variant_theme_load_failed and wm_session_dead reports
+      // were being dropped the same way. Gating one branch was equally
+      // half-done: the same transport's double-network-failure path arrives as
+      // a zero-frame `Failed to fetch`, and WebKit words its timeout `Fetch is
+      // aborted` (WORLDMONITOR-10F, see services/timeout-signal.ts) — both the
+      // buyer's failure, both previously invisible.
       if (
         !hasFirstParty
+        && !event.tags?.kind
         && (
-          // A first-party `kind` tag identifies an app failure even when the
-          // browser-created timeout has no first-party stack frames. The tag
-          // is the invariant, not a list of names: `kind` is set ONLY by our
-          // own capture call sites — six today, in main.ts, variant-theme.ts,
-          // pending-panel-data.ts, wm-session.ts (x2) and checkout.ts — and
-          // never by the SDK, an extension, or an injected script, so presence
-          // alone proves first-party ownership without anyone maintaining a
-          // census. Naming individual kinds here was a treadmill, and
-          // WORLDMONITOR-Q4 sat behind it: the checkout transport's 15s timeout
-          // reports through `reportCheckoutError` and was dropped as noise for
-          // lack of `panel_call_rejected`, hiding a terminal revenue failure.
-          // The csp_violation, variant_theme_load_failed and wm_session_dead
-          // reports were being dropped the same way.
-          (/signal timed out/.test(msg) && !event.tags?.kind)
+          /signal timed out/.test(msg)
+          // WebKit's wording for the same AbortSignal.timeout rejection. It
+          // lived in `ignoreErrors` until WORLDMONITOR-Q4: that filter is an
+          // SDK event processor running inside prepareEvent, so it fires
+          // BEFORE beforeSend and cannot see tags or frames. Nothing owned
+          // could ever be rescued from it. Here it keeps the identical
+          // zero-frame suppression while a first-party report can claim it.
+          || /Fetch is aborted/.test(msg)
           || /NotSupportedError/.test(msg)
           || /out of memory/i.test(msg)
           || /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)

@@ -42,7 +42,7 @@ import {
   postCreateCheckout,
 } from './checkout-transport';
 import { runNoUserPath } from './checkout-no-user-policy';
-import { shouldSkipSentryForAction } from './checkout-sentry-policy';
+import { buildCheckoutReportTags, shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
   CLASSIC_AUTO_DISMISS_MS,
@@ -1290,24 +1290,12 @@ function reportCheckoutError(
   const level = checkoutErrorTelemetryLevel(error);
   const payload = {
     level,
-    tags: {
-      component: 'dodo-checkout',
+    tags: buildCheckoutReportTags({
       action: context.action,
       code: error.code,
-      // Marks this as a failure first-party code caught and chose to report.
-      // Load-bearing, not decorative: the transport's 15s budget rejects with
-      // a browser-minted `TimeoutError: signal timed out` DOMException whose
-      // stack is the header line alone, so the zero-frame gate in
-      // src/bootstrap/sentry-init.ts drops it as extension noise unless a
-      // `kind` tag is present. Without this every checkout timeout — a
-      // terminal, revenue-losing failure — is invisible (WORLDMONITOR-Q4).
-      kind: 'checkout_request_failed',
-      // Promote cf-ray and server to tags so they're filterable in the
-      // Sentry UI without opening the event. cf-ray presence alone is
-      // definitive for Cloudflare emission. WORLDMONITOR-RN.
-      ...(upstream?.cfRay ? { cfRay: upstream.cfRay } : {}),
-      ...(upstream?.server ? { upstreamServer: upstream.server } : {}),
-    },
+      cfRay: upstream?.cfRay,
+      upstreamServer: upstream?.server,
+    }),
     extra: {
       productId: context.productId,
       httpStatus: error.httpStatus,
