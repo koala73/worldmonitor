@@ -10,7 +10,8 @@
  *
  *   pushBatchAction → _resumeBatchInfo (lease guard) → _getPendingBatch
  *                   → upsertContactToSegment (Resend, with 429/5xx backoff)
- *                   → _markContactPushed | _markContactFailed (per-row CAS)
+ *                   → _markContactPushed | _markContactFailed |
+ *                     _markContactSuppressed (per-row CAS)
  *                   → schedule next pushBatchAction OR finalizeWaveAction
  *
  *   finalizeWaveAction → createProLaunchBroadcast → _markBroadcastCreated
@@ -80,8 +81,9 @@ const PERSIST_CHUNK_SIZE = 500;
 const CLEANUP_CHUNK_SIZE = 500;
 
 /** Rolling failure-rate ceiling. If a `pushBatchAction` brings
- *  `failedCount/totalCount` above this fraction, the whole run flips to
- *  `failed/batch-failure-rate-exceeded` — operator must `discardWaveRun`. */
+ *  `failedCount/(totalCount-suppressedCount)` above this fraction, the whole
+ *  run flips to `failed/batch-failure-rate-exceeded` — operator must
+ *  `discardWaveRun`. */
 const FAILURE_RATE_THRESHOLD = 0.05;
 
 /** Resend backoff schedule (ms) for 429/5xx. The loop runs for
@@ -117,6 +119,19 @@ function maskEmail(email: string): string {
   const domain = email.slice(at);
   const visible = local.slice(0, Math.min(2, local.length));
   return `${visible}${"*".repeat(Math.max(1, local.length - visible.length))}${domain}`;
+}
+
+function getFailureRate(
+  totalCount: number,
+  failedCount: number,
+  suppressedCount: number,
+): number {
+  const eligibleCount = Math.max(0, totalCount - suppressedCount);
+  return eligibleCount > 0 ? failedCount / eligibleCount : 0;
+}
+
+function failureRateThresholdError(failureRate: number): string {
+  return `failure rate ${(failureRate * 100).toFixed(2)}% exceeds ${(FAILURE_RATE_THRESHOLD * 100).toFixed(0)}% threshold`;
 }
 
 class Reservoir<T> {
@@ -542,6 +557,7 @@ export const _claimWaveRunLease = internalMutation({
       underfilled: false,
       pushedCount: 0,
       failedCount: 0,
+      suppressedCount: 0,
       batchSize: args.batchSize,
       createdAt: now,
       updatedAt: now,
@@ -944,6 +960,7 @@ export const _resumeBatchInfo = internalQuery({
         totalCount: run.totalCount,
         pushedCount: run.pushedCount,
         failedCount: run.failedCount,
+        suppressedCount: run.suppressedCount ?? 0,
         batchSize: run.batchSize,
         broadcastId: run.broadcastId,
       },
@@ -1021,7 +1038,7 @@ export const _markContactPushed = internalMutation({
       contact.status !== "pending" ||
       contact.normalizedEmail !== normalizedEmail
     ) {
-      // CAS: no-op if already-pushed/failed, runId mismatch, or row deleted.
+      // CAS: no-op if already-pushed/failed/suppressed, runId mismatch, or row deleted.
       return { ok: false as const, reason: "not-pending" as const };
     }
     const now = Date.now();
@@ -1104,7 +1121,11 @@ export const _markContactFailed = internalMutation({
     if (!run) return { ok: true as const, runFailed: false as const };
 
     const newFailedCount = run.failedCount + 1;
-    const failureRate = run.totalCount > 0 ? newFailedCount / run.totalCount : 0;
+    const failureRate = getFailureRate(
+      run.totalCount,
+      newFailedCount,
+      run.suppressedCount ?? 0,
+    );
     const exceeded = failureRate > FAILURE_RATE_THRESHOLD;
     await ctx.db.patch(run._id, {
       failedCount: newFailedCount,
@@ -1114,7 +1135,65 @@ export const _markContactFailed = internalMutation({
         ? {
             status: "failed" as const,
             failureSubstatus: "batch-failure-rate-exceeded",
-            error: `failure rate ${(failureRate * 100).toFixed(2)}% exceeds ${(FAILURE_RATE_THRESHOLD * 100).toFixed(0)}% threshold`,
+            error: failureRateThresholdError(failureRate),
+          }
+        : {}),
+    });
+    return { ok: true as const, runFailed: exceeded };
+  },
+});
+
+/**
+ * Mark a contact that Resend reports as globally unsubscribed. This is a
+ * terminal row state, but it is not an exporter failure and must not count
+ * toward the wave failure-rate threshold. Because it changes that threshold's
+ * denominator, the mutation re-evaluates the rolling rate atomically.
+ */
+export const _markContactSuppressed = internalMutation({
+  args: {
+    contactId: v.id("wavePickedContacts"),
+    runId: v.string(),
+    normalizedEmail: v.string(),
+  },
+  handler: async (ctx, { contactId, runId, normalizedEmail }) => {
+    const contact = await ctx.db.get(contactId);
+    if (
+      !contact ||
+      contact.runId !== runId ||
+      contact.status !== "pending" ||
+      contact.normalizedEmail !== normalizedEmail
+    ) {
+      return { ok: false as const, reason: "not-pending" as const };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(contact._id, {
+      status: "suppressed",
+      suppressedAt: now,
+    });
+
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    if (!run) return { ok: true as const, runFailed: false as const };
+
+    const newSuppressedCount = (run.suppressedCount ?? 0) + 1;
+    const failureRate = getFailureRate(
+      run.totalCount,
+      run.failedCount,
+      newSuppressedCount,
+    );
+    const exceeded = failureRate > FAILURE_RATE_THRESHOLD;
+    await ctx.db.patch(run._id, {
+      suppressedCount: newSuppressedCount,
+      lastBatchAt: now,
+      updatedAt: now,
+      ...(exceeded
+        ? {
+            status: "failed" as const,
+            failureSubstatus: "batch-failure-rate-exceeded",
+            error: failureRateThresholdError(failureRate),
           }
         : {}),
     });
@@ -1186,6 +1265,29 @@ export const pushBatchAction = internalAction({
     let runFailed = false;
     for (const contact of batch) {
       const result = await pushWithBackoff(apiKey, contact.normalizedEmail, info.run.segmentId);
+      if (result.kind === "unsubscribed") {
+        await ctx.runMutation(internal.emailSuppressions.suppress, {
+          email: contact.normalizedEmail,
+          reason: "unsubscribe",
+          source: "resend-contact-read",
+        });
+        const suppressResult = await ctx.runMutation(
+          internal.broadcast.waveRuns._markContactSuppressed,
+          {
+            contactId: contact._id,
+            runId,
+            normalizedEmail: contact.normalizedEmail,
+          },
+        );
+        if (suppressResult.ok && suppressResult.runFailed) {
+          runFailed = true;
+          console.error(
+            `[pushBatchAction] runId=${runId} batch=${batchN} failure-rate threshold tripped`,
+          );
+          break;
+        }
+        continue;
+      }
       if (result.kind === "failed") {
         const failResult = await ctx.runMutation(
           internal.broadcast.waveRuns._markContactFailed,
@@ -1468,6 +1570,32 @@ export const _finalizeWaveRun = internalMutation({
   },
 });
 
+/** Stop an unsent, drained wave that cannot satisfy the next delivery gate. */
+export const _stopUndersizedWave = internalMutation({
+  args: { runId: v.string() },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.query("waveRuns").withIndex("by_runId", q => q.eq("runId", runId)).unique();
+    const config = await ctx.db.query("broadcastRampConfig").withIndex("by_key", q => q.eq("key", "current")).unique();
+    if (!run || config?.pendingRunId !== runId || run.broadcastId ||
+        (run.status !== "pushing" && run.status !== "segment-created") ||
+        run.pushedCount >= MIN_USABLE_POOL_SIZE) return false;
+    const pending = await ctx.db.query("wavePickedContacts")
+      .withIndex("by_runId_status", q => q.eq("runId", runId).eq("status", "pending")).take(1);
+    if (pending.length > 0) return false;
+    const now = Date.now();
+    await ctx.db.patch(run._id, {
+      status: "failed", failureSubstatus: "pool-too-small",
+      error: `Only ${run.pushedCount} usable recipients remain; need ${MIN_USABLE_POOL_SIZE}`,
+      updatedAt: now,
+    });
+    await ctx.db.patch(config._id, {
+      active: false, pendingRunId: undefined, pendingRunStartedAt: undefined, pendingWaveLabel: undefined,
+      lastRunStatus: "ramp-complete-pool-too-small", lastRunAt: now,
+    });
+    return true;
+  },
+});
+
 export const finalizeWaveAction = internalAction({
   args: { runId: v.string() },
   handler: async (
@@ -1482,6 +1610,12 @@ export const finalizeWaveAction = internalAction({
     if (!info.configHoldsLease) return { ok: false, reason: "lost-lease" };
     if (!info.run.segmentId) {
       throw new Error(`[finalizeWaveAction] runId=${runId} missing segmentId`);
+    }
+
+    if (info.hasPending) return { ok: false, reason: "contacts-pending" };
+    if (await ctx.runMutation(internal.broadcast.waveRuns._stopUndersizedWave, { runId })) {
+      await ctx.runAction(internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction, { runId });
+      return { ok: false, reason: "pool-too-small" };
     }
 
     // Path 1: run is in 'pushing' (or 'segment-created' as a defensive case)
@@ -2154,6 +2288,7 @@ export const getWaveRunStatus = internalQuery({
       totalCount: run.totalCount,
       pushedCount: run.pushedCount,
       failedCount: run.failedCount,
+      suppressedCount: run.suppressedCount ?? 0,
       underfilled: run.underfilled,
       hasPendingContacts: pending.length > 0,
       lastActivityAt: run.lastBatchAt ?? run.updatedAt,

@@ -373,6 +373,98 @@ describe("push-phase CAS mutations", () => {
     const run = await readWaveRun(t, "run-1");
     expect(run!.failedCount).toBe(1);
   });
+
+  test("_markContactSuppressed finishes a remote unsubscribe without counting a failure", async () => {
+    const t = convexTest(schema, modules);
+    const [first] = await setupPushing(t);
+    const contactId = await findContactId(t, "run-1", first!);
+
+    const r = await t.mutation(internal.broadcast.waveRuns._markContactSuppressed, {
+      contactId,
+      runId: "run-1",
+      normalizedEmail: first!,
+    });
+
+    expect(r).toMatchObject({ ok: true });
+    const run = await readWaveRun(t, "run-1");
+    expect(run!.status).toBe("pushing");
+    expect(run!.pushedCount).toBe(0);
+    expect(run!.failedCount).toBe(0);
+    expect(run!.suppressedCount).toBe(1);
+    const contacts = await readContacts(t, "run-1");
+    const suppressed = contacts.find((c) => c.normalizedEmail === first);
+    expect(suppressed?.status).toBe("suppressed");
+    expect(suppressed?.suppressedAt).toEqual(expect.any(Number));
+
+    const second = await t.mutation(internal.broadcast.waveRuns._markContactSuppressed, {
+      contactId,
+      runId: "run-1",
+      normalizedEmail: first!,
+    });
+    expect(second).toMatchObject({ ok: false, reason: "not-pending" });
+  });
+
+  test("_markContactFailed excludes remote unsubscribes from the failure-rate denominator", async () => {
+    const t = convexTest(schema, modules);
+    const emails = await setupPushing(t, 20);
+
+    for (const email of emails.slice(0, 19)) {
+      await t.mutation(internal.broadcast.waveRuns._markContactSuppressed, {
+        contactId: await findContactId(t, "run-1", email),
+        runId: "run-1",
+        normalizedEmail: email,
+      });
+    }
+
+    const last = emails[19]!;
+    const failed = await t.mutation(internal.broadcast.waveRuns._markContactFailed, {
+      contactId: await findContactId(t, "run-1", last),
+      runId: "run-1",
+      normalizedEmail: last,
+      failedReason: "Resend 500",
+    });
+
+    expect(failed).toMatchObject({ ok: true, runFailed: true });
+    const run = await readWaveRun(t, "run-1");
+    expect(run).toMatchObject({
+      status: "failed",
+      failedCount: 1,
+      suppressedCount: 19,
+    });
+  });
+
+  test("_markContactSuppressed trips the threshold when it shrinks the eligible denominator", async () => {
+    const t = convexTest(schema, modules);
+    const emails = await setupPushing(t, 20);
+    const first = emails[0]!;
+    const second = emails[1]!;
+
+    const failed = await t.mutation(internal.broadcast.waveRuns._markContactFailed, {
+      contactId: await findContactId(t, "run-1", first),
+      runId: "run-1",
+      normalizedEmail: first,
+      failedReason: "Resend 500",
+    });
+    expect(failed).toMatchObject({ ok: true, runFailed: false });
+
+    const suppressed = await t.mutation(
+      internal.broadcast.waveRuns._markContactSuppressed,
+      {
+        contactId: await findContactId(t, "run-1", second),
+        runId: "run-1",
+        normalizedEmail: second,
+      },
+    );
+
+    expect(suppressed).toMatchObject({ ok: true, runFailed: true });
+    const run = await readWaveRun(t, "run-1");
+    expect(run).toMatchObject({
+      status: "failed",
+      failureSubstatus: "batch-failure-rate-exceeded",
+      failedCount: 1,
+      suppressedCount: 1,
+    });
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1232,5 +1324,27 @@ describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
     ).rejects.toThrow(/failureSubstatus.*<none>|only applies to send-broadcast-failed/);
     const config = await readConfig(t);
     expect(config!.currentTier).toBe(0); // NOT advanced
+  });
+});
+
+describe("usable recipients before finalize", () => {
+  test.each([0, 99])("stops a drained wave with %i pushed recipients before provider access", async (pushedCount) => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "small-wave", runId: "small", requestedCount: 100, batchSize: 100,
+    });
+    await t.run(async ctx => {
+      const run = await ctx.db.query("waveRuns").first();
+      await ctx.db.patch(run!._id, { status: "pushing", segmentId: "segment", totalCount: 100,
+        pushedCount, suppressedCount: 100 - pushedCount });
+    });
+    const result = await t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: "small" });
+    expect(result).toEqual({ ok: false, reason: "pool-too-small" });
+    expect(await readWaveRun(t, "small")).toMatchObject({ status: "failed", failureSubstatus: "pool-too-small" });
+    expect(await readConfig(t)).toMatchObject({ active: false, currentTier: 0 });
+    expect((await readConfig(t))!.pendingRunId).toBeUndefined();
+    const status = await t.query(internal.broadcast.waveRuns.getWaveRunStatus, { runId: "small" });
+    expect(status!.suppressedCount).toBe(100 - pushedCount);
   });
 });

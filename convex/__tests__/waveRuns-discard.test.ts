@@ -9,32 +9,37 @@ const runId = "test-run";
 
 async function setup(picking = false) {
   const t = convexTest(schema, modules);
+  const contacts = Array.from({ length: picking ? 1 : 100 }, (_, i) => `recipient-${i}@example.com`);
   await t.run(async (ctx) => {
     await ctx.db.insert("broadcastRampConfig", {
       key: "current", active: true, rampCurve: [100, 200], currentTier: 0,
       waveLabelPrefix: "test-wave", waveLabelOffset: 0,
       bounceKillThreshold: 0.04, complaintKillThreshold: 0.001, killGateTripped: false,
     });
-    await ctx.db.insert("registrations", {
-      email: "recipient@example.com", normalizedEmail: "recipient@example.com",
-      registeredAt: Date.now(), appVersion: "test",
-    });
+    for (const email of contacts) {
+      await ctx.db.insert("registrations", {
+        email, normalizedEmail: email,
+        registeredAt: Date.now(), appVersion: "test",
+      });
+    }
   });
   await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
-    runId, waveLabel, requestedCount: 1, batchSize: 1,
+    runId, waveLabel, requestedCount: contacts.length, batchSize: 100,
   });
   await t.mutation(internal.broadcast.waveRuns._persistPickedBatch, {
-    runId, contacts: ["recipient@example.com"],
+    runId, contacts,
   });
   if (picking) return t;
   await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
-    runId, segmentId: "test-segment", totalCount: 1, underfilled: false,
+    runId, segmentId: "test-segment", totalCount: contacts.length, underfilled: false,
   });
   await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId });
-  const contact = await t.run((ctx) => ctx.db.query("wavePickedContacts").first());
-  await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
-    contactId: contact!._id, runId, normalizedEmail: "recipient@example.com", waveLabel,
-  });
+  const picked = await t.run((ctx) => ctx.db.query("wavePickedContacts").collect());
+  for (const contact of picked) {
+    await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId: contact._id, runId, normalizedEmail: contact.normalizedEmail, waveLabel,
+    });
+  }
   return t;
 }
 

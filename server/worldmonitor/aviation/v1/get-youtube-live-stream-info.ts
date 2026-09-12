@@ -4,12 +4,18 @@ import type {
   GetYoutubeLiveStreamInfoRequest,
   GetYoutubeLiveStreamInfoResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const POSITIVE_TTL = 60;
 const NEGATIVE_TTL = 30;
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
+// Short international handles and combining marks are valid. Bound the safe
+// identifier shape without reimplementing YouTube's per-script naming policy.
+const HANDLE_RE = /^[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}._·-]{0,28}[\p{L}\p{N}\p{M}])?$/u;
 
 interface YoutubeRelayPayload {
   videoId?: string;
@@ -67,7 +73,7 @@ async function tryRelay(query: string): Promise<GetYoutubeLiveStreamInfoResponse
 }
 
 async function tryOEmbed(videoId: string): Promise<GetYoutubeLiveStreamInfoResponse | null> {
-  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
+  if (!VIDEO_ID_RE.test(videoId)) return null;
   try {
     const oembedResponse = await fetch(
       `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
@@ -132,8 +138,10 @@ function parseChannelHtml(html: string): GetYoutubeLiveStreamInfoResponse {
 
 async function tryChannelScrape(channel: string): Promise<GetYoutubeLiveStreamInfoResponse | null> {
   try {
-    const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-    const response = await fetch(`https://www.youtube.com/${channelHandle}/live`, {
+    const channelPath = CHANNEL_ID_RE.test(channel)
+      ? `channel/${channel}`
+      : `@${encodeURIComponent(channel.replace(/^@/, ''))}`;
+    const response = await fetch(`https://www.youtube.com/${channelPath}/live`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       redirect: 'follow',
       signal: AbortSignal.timeout(10_000),
@@ -173,7 +181,17 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
   _ctx: ServerContext,
   req: GetYoutubeLiveStreamInfoRequest,
 ): Promise<GetYoutubeLiveStreamInfoResponse> => {
-  const { channel, videoId } = req;
+  const { videoId } = req;
+  const rawHandle = req.channel.replace(/^@/, '').normalize('NFC');
+  if ((videoId && !VIDEO_ID_RE.test(videoId))
+      || (req.channel && !CHANNEL_ID_RE.test(req.channel) && !HANDLE_RE.test(rawHandle))) {
+    throw new ApiError(400, 'Invalid YouTube handle, channel ID or video ID', '');
+  }
+  // Handles are case-insensitive, but channel/video IDs are not. Retaining @
+  // also separates a handle named UC... from a canonical channel ID.
+  const channel = !req.channel ? '' : CHANNEL_ID_RE.test(req.channel)
+    ? req.channel
+    : `@${rawHandle.toLowerCase()}`;
   const params = new URLSearchParams();
   if (channel) params.set('channel', channel);
   if (videoId) params.set('videoId', videoId);
@@ -184,10 +202,7 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
 
   // Distinct request shapes (videoId-only, channel-only, both) MUST get distinct
   // cache keys — a negative sentinel for one shape must not suppress the others.
-  // Channel handles normalized by stripping leading '@' so `foo` and `@foo` (which
-  // hit the same upstream via tryChannelScrape) share a cache entry.
-  const normalizedChannel = channel.replace(/^@/, '');
-  const cacheKey = `aviation:yt-live:vid:${videoId}:ch:${normalizedChannel}:v1`;
+  const cacheKey = `aviation:yt-live:vid:${videoId}:ch:${channel}:v2`;
 
   const cached = await cachedFetchJson<GetYoutubeLiveStreamInfoResponse>(
     cacheKey,

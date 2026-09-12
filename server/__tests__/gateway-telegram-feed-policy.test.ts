@@ -109,7 +109,7 @@ for(const [name,headers,session] of [
     expect(response.headers.get('Cache-Control')).toMatch(/private/);
     expect(response.headers.get('CDN-Cache-Control')).toBeNull();
     expect(response.headers.get('Vercel-CDN-Cache-Control')).toBeNull();
-    expect(endpointKeys()[0]).toContain(name==='paid user key'?':user:paid-account:':`:ip:${IP}:`);
+    expect(endpointKeys()[0]).toContain(name==='paid user key'?':apikey-user:paid-account:':`:ip:${IP}:`);
   });
 }
 for(const headers of [{},{'X-Api-Key':'invalid-key'}]) {
@@ -145,7 +145,7 @@ test('verified keys share a paid account identity across keys and IPs',async()=>
   await request(PATH,{'X-Api-Key':'wm_'+'b'.repeat(40),'x-real-ip':'192.0.2.29'},false);
   expect(endpointKeys()).toHaveLength(2);
   expect(new Set(endpointKeys()).size).toBe(1);
-  expect(endpointKeys()[0]).toContain(':user:paid-account:');
+  expect(endpointKeys()[0]).toContain(':apikey-user:paid-account:');
 });
 test('a session key header preserves the same IP identity as session cookies',async()=>{
   const token=(await issueSessionToken()).token;
