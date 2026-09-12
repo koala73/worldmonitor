@@ -80,11 +80,22 @@ export function sanitizeMarketingRequestUrl(value: string): string | undefined {
   }
 }
 
+/**
+ * The three network wordings that used to live in `MARKETING_IGNORE_ERRORS`:
+ * Safari's `Load failed`, Chromium's `Failed to fetch`, Firefox's
+ * `NetworkError`. They moved into `marketingBeforeSend` unchanged in reach —
+ * see the use site there for why, and for the ownership tag that is now the
+ * only thing they let through.
+ */
+const MARKETING_NETWORK_NOISE = /^(?:Load failed|Failed to fetch|NetworkError)/;
+
 export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   /ResizeObserver loop/,
-  /^TypeError: Load failed/,
-  /^TypeError: Failed to fetch/,
-  /^TypeError: NetworkError/,
+  // `Load failed` / `Failed to fetch` / `NetworkError` are NOT here any more.
+  // `ignoreErrors` runs as an SDK event processor inside `prepareEvent`, so it
+  // fires before `marketingBeforeSend` and cannot see tags — an owned checkout
+  // failure could never be rescued from it (WORLDMONITOR-Q4). Same drop, moved
+  // late enough to read the ownership tag.
   /Non-Error promise rejection captured with value:/,
   // WKWebView host-app JS bridge timeout — Apple WebKit emits this exact phrase
   // when a JS-to-native `postMessage` gets no reply within the host's window.
@@ -490,6 +501,27 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // (WORLDMONITOR-ZZ, -ZW).
   if (msg.length <= 3 && BARE_SYMBOL_MESSAGE.test(msg)) return null;
 
+  // Network failures, relocated verbatim from `MARKETING_IGNORE_ERRORS`.
+  //
+  // Reach is deliberately unchanged: still every `TypeError` whose message
+  // opens with one of the three engine wordings, still no frame gate, so an
+  // ordinary marketing network failure is exactly as suppressed as it was.
+  // The single difference is the escape hatch — an event a first-party call
+  // site has claimed with a `kind` tag now survives.
+  //
+  // It had to move because `ignoreErrors` is an SDK event processor running
+  // inside `prepareEvent`: it fires before this function and reads only the
+  // message, so no tag could ever reach it. The checkout catch on this surface
+  // reports precisely these wordings, and the Cloudflare 52x retry widening
+  // made them more reachable here, so leaving them there would have kept the
+  // paid funnel's own failures invisible (WORLDMONITOR-Q4).
+  const exceptionType = exceptionValues[0]?.type ?? '';
+  if (
+    event.tags?.kind === undefined
+    && (exceptionType === 'TypeError' || msg.startsWith('TypeError: '))
+    && MARKETING_NETWORK_NOISE.test(msg.replace(/^TypeError: /, ''))
+  ) return null;
+
   const frames = exceptionValues[0]?.stacktrace?.frames ?? [];
   const nonInfraFrames = frames.filter(
     (f) =>
@@ -552,15 +584,32 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // A marketing fetch that loses its own catch therefore reaches
   // `unhandledrejection` with the SAME zero-frame shape as third-party noise;
   // ownership adds no `/pro/assets/*.js` frame to distinguish them. Six call
-  // sites here carry a timeout signal, including `checkout.ts` and
-  // `checkout-transport.ts`, so suppressing the shape would blind a revenue
-  // path to silence one event. Same keep-visible reasoning as the zero-frame
-  // stack overflow in WORLDMONITOR-WK.
+  // sites here carry a timeout signal, so suppressing the shape would blind a
+  // revenue path to silence one event. Same keep-visible reasoning as the
+  // zero-frame stack overflow in WORLDMONITOR-WK.
+  //
+  // Two of those six, `checkout.ts` and `checkout-transport.ts`, were once
+  // cited as the reason this rule stays absent. They are the wrong witnesses:
+  // the checkout catch at `services/checkout.ts` logs to the console and
+  // returns false without capturing, and the non-ok branch captures only for
+  // 429 and the two 409 envelopes. So a checkout timeout on THIS surface is
+  // invisible whatever this policy does — a real gap, tracked separately, not
+  // an argument about the filter. The rule stays absent on the strength of the
+  // other four call sites.
   //
   // The dashboard's gate in `src/bootstrap/sentry-init.ts` (WORLDMONITOR-66/-62)
-  // is not a precedent to copy: that bundle mints its own `signal timed out`
-  // DOMException in first-party code, which does carry caller frames.
-  // `tests/pro-sentry-filter-policy.test.mts` locks this absence in.
+  // is still not a precedent to copy, though the old reason given here — that
+  // the dashboard bundle mints its own DOMException carrying caller frames —
+  // was wrong, and cost WORLDMONITOR-Q4. `createTimeoutSignal` only mints one
+  // on the pre-Baseline-2024 fallback path; every current engine takes the
+  // native `AbortSignal.timeout` branch and produces the same frameless
+  // rejection seen here (Chromium 141: `stack` is the header line alone).
+  // What separates the two surfaces is that the dashboard gate exempts any
+  // event carrying a first-party `kind` tag, which its checkout and panel
+  // reports set. No call site on THIS surface sets one, so the gate would go
+  // back to suppressing owned failures. Adding it here means tagging the six
+  // timeout call sites first. `tests/pro-sentry-filter-policy.test.mts` locks
+  // this absence in.
 
   // Safari-masked injected script. The observed event (WORLDMONITOR-110,
   // `TypeError: Attempting to change value of a readonly property.` on iOS
