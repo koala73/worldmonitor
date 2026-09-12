@@ -141,6 +141,20 @@ test("annual expiration immediately revokes accepted seats", async () => {
   expect(await entitlement(t)).toMatchObject({ planKey: "free" });
 });
 
+test.each(["api_business", "api_business_annual"])("%s renewal extends accepted invitee access", async (planKey) => {
+  const t = await setup(planKey);
+  const grantId = await seedGrant(t);
+  await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, { userId: invitee.subject });
+  expect(await entitlement(t)).toMatchObject({ validUntil: END });
+  const renewedEnd = END + 365 * 86_400_000;
+  vi.setSystemTime(END + 1000);
+  await webhook(t, "subscription.renewed", planKey, END + 1000, { start: END, end: renewedEnd });
+  expect(await entitlement(t)).toMatchObject({ planKey: "pro_monthly", validUntil: renewedEnd });
+  expect(await t.run((ctx) => ctx.db.get(grantId))).toMatchObject({ status: "accepted" });
+  await webhook(t, "subscription.renewed", planKey, NOW + 1000, { start: NOW, end: END });
+  expect(await entitlement(t)).toMatchObject({ validUntil: renewedEnd });
+});
+
 test.each([
   ["api_business", "api_business_annual", NOW + 30 * 86_400_000, END],
   ["api_business_annual", "api_business", END, NOW + 30 * 86_400_000],

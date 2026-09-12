@@ -1367,6 +1367,21 @@ export async function handleSubscriptionActive(
   }
 }
 
+async function recomputeAcceptedBusinessInvitees(
+  ctx: MutationCtx,
+  subscriptionId: string,
+  observedAt: number,
+): Promise<void> {
+  const grants = await ctx.db.query("businessProGrants")
+    .withIndex("by_businessSubscriptionId", (q) => q.eq("businessSubscriptionId", subscriptionId))
+    .collect();
+  for (const grant of grants) {
+    if (grant.status === "accepted" && grant.inviteeUserId) {
+      await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, observedAt);
+    }
+  }
+}
+
 /**
  * Handles `subscription.renewed` -- a recurring payment succeeded and the
  * subscription period has been extended.
@@ -1415,6 +1430,9 @@ export async function handleSubscriptionRenewed(
   // Recompute from ALL subs — a renewal on a lower-tier sub must NOT
   // clobber a higher-tier active sub on the same userId.
   await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+  if (isBusinessPlan(existing.planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
+  }
 }
 
 /**
@@ -1717,17 +1735,7 @@ export async function handleSubscriptionPlanChanged(
   if (leftBusinessPlan) {
     await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
   } else if (isBusinessPlan(newPlanKey)) {
-    const grants = await ctx.db
-      .query("businessProGrants")
-      .withIndex("by_businessSubscriptionId", (q) =>
-        q.eq("businessSubscriptionId", existing.dodoSubscriptionId),
-      )
-      .collect();
-    for (const grant of grants) {
-      if (grant.status === "accepted" && grant.inviteeUserId) {
-        await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, Date.now());
-      }
-    }
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
   }
 
   // Recompute from ALL subs — the new plan may be lower-tier than another
