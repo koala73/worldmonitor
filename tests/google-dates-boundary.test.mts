@@ -366,7 +366,9 @@ test('calendar cooldown responses are degraded, do not cache, and suppress provi
   const cooldown = await read();
   assert.equal(cooldown.degraded, true);
   assert.equal(cooldown.error, 'provider cooldown');
-  assert.equal((await read(yearGrid)).degraded, true);
+  const longCooldown = await read(yearGrid);
+  assert.equal(longCooldown.degraded, true);
+  assert.equal(longCooldown.error, 'provider cooldown');
   assert.equal(count, 1);
   assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
 });
@@ -406,4 +408,22 @@ test('malformed successful calendar bodies are degraded, not cached, and recover
   malformed = false;
   assert.equal((await read(yearGrid)).dates.length, 366);
   assert.equal(count, 12);
+});
+
+test('a malformed successful single-chunk calendar body is degraded, not cached, and recovers', async () => {
+  let count = 0;
+  let malformed = true;
+  installCalendarRelay((async (_input, init) => {
+    count++;
+    return malformed
+      ? new Response(JSON.stringify([[null, null, JSON.stringify([[[null, '', [[null, 100]]]]])]]))
+      : calendarResponse(init);
+  }) as typeof fetch);
+  const failed = await read();
+  assert.equal(failed.degraded, true);
+  assert.deepEqual(failed.dates, []);
+  assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
+  malformed = false;
+  assert.equal((await read()).dates.length, 31);
+  assert.equal(count, 2);
 });

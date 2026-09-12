@@ -13065,6 +13065,7 @@ async function handleGoogleFlightsDates(req, res) {
     const MAX_DATE_CHUNKS = 6;
     const allDates = [];
     let hasPartialFailure = false;
+    let hasCooldown = false;
 
     if (totalDays <= MAX_CHUNK) {
       incrementRelayMetric('googleFlightsRequests');
@@ -13117,6 +13118,7 @@ async function handleGoogleFlightsDates(req, res) {
         if (Date.now() < gfGlobal429Until) {
           incrementRelayMetric('googleFlights429');
           recordRelayOutcome('googleFlights', 'throttle');
+          hasCooldown = true;
           hasPartialFailure = true;
           return [];
         }
@@ -13128,6 +13130,7 @@ async function handleGoogleFlightsDates(req, res) {
             console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
             incrementRelayMetric('googleFlights429');
             recordRelayOutcome('googleFlights', 'throttle');
+            hasCooldown = true;
           } else if (gfResp.status === 401 || gfResp.status === 403) {
             recordRelayOutcome('googleFlights', 'authRejection');
           } else if (gfResp.ok) {
@@ -13160,7 +13163,7 @@ async function handleGoogleFlightsDates(req, res) {
     if (hasPartialFailure && allDates.length > 0) recordRelayOutcome('googleFlights', 'fallback');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure }));
+    res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure, cooldown: hasCooldown }));
   } catch (err) {
     const isTimeout = err?.name === 'TimeoutError' || err?.message?.includes('timed out');
     if (isTimeout) {
