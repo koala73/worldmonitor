@@ -581,6 +581,22 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'style-src-elem', 'https://p.typekit.net/kit.js', '', false));
     });
 
+    it('suppresses Font Awesome Kit stylesheet injection (WORLDMONITOR-J0 round 5)', () => {
+      // Verbatim production value, 2026-09-11 on build 7169ec18: the Kit
+      // service's per-account CSS. We never used Font Awesome, and a Kit ID is
+      // an account key someone else's extension or userscript carries.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://kit.fontawesome.com/046138b2c6.css', '', false));
+      assert.ok(suppress('enforce', 'style-src', 'https://kit.fontawesome.com/046138b2c6.css', '', false));
+    });
+
+    it('does NOT suppress a Font Awesome Kit lookalike host, its JS loader, or a non-kit path', () => {
+      // One negative per conjunct of the guard: drop any one and this goes red.
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://kit.fontawesome.com.evil.com/046138b2c6.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://kit.fontawesome.com/046138b2c6.css', '', false));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://kit.fontawesome.com/046138b2c6.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://kit.fontawesome.com/releases/v6/css/all.css', '', false));
+    });
+
     it('does NOT suppress arbitrary third-party style-src hosts', () => {
       assert.ok(!suppress('enforce', 'style-src-elem', 'https://styles.evil.example/inject.css', '', false));
     });
@@ -664,6 +680,27 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('does NOT suppress a heytapimage lookalike host', () => {
       assert.ok(!suppress('enforce', 'script-src-elem', 'https://dhfs.heytapimage.com.evil.com/a.js', '', false, FIRST_PARTY_CONVEX));
       assert.ok(!suppress('enforce', 'script-src-elem', 'https://cdn.heytapimage.com/a.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses UC Browser ad-plugin and tracker connect-src injection (WORLDMONITOR-HN)', () => {
+      // Verbatim production values, 2026-09-09: UC Browser 12.3.0 / Android 14
+      // fetching its own bottom-banner ad plugin from the browser-internal
+      // `uc.gre` pseudo-host and reporting the failure to its tracker. Both are
+      // http:, so no https: policy state can reach them; `uc.cn` and `uc.gre`
+      // appear nowhere in our sources.
+      for (const allowsHttps of [true, false]) {
+        assert.ok(suppress('enforce', 'connect-src', 'http://uc.gre/pass/uc_gre_ad_buss/plugin.php?uc_param_str=cpfrvelakt&namespace=bottom-ad-i18n&domain=www.worldmonitor.app&isMaxcms=false', '', allowsHttps, FIRST_PARTY_CONVEX));
+        assert.ok(suppress('enforce', 'connect-src', 'http://gj.track.uc.cn/collect?uc_param_str=cpfrveladnkt&appid=4e54ac8a118f&lt=event&e_c=bottom_ad&e_a=index&e_n=req_pp_fail&domain=www.worldmonitor.app', '', allowsHttps, FIRST_PARTY_CONVEX));
+      }
+    });
+
+    it('does NOT suppress UC lookalike hosts, other directives, or a first-party http: block', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'http://uc.gre.evil.com/pass/plugin.php', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'connect-src', 'http://gj.track.uc.cn.evil.com/collect', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'connect-src', 'http://notuc.cn/collect', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'http://gj.track.uc.cn/sdk.js', '', false, FIRST_PARTY_CONVEX));
+      // A real mixed-content regression on our own API must still report.
+      assert.ok(!suppress('enforce', 'connect-src', 'http://api.worldmonitor.app/api/oref-alerts', '', true, FIRST_PARTY_CONVEX));
     });
 
     it('does NOT suppress first-party script-src blocks that share the cross-origin shape (WORLDMONITOR-HP history)', () => {

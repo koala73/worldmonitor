@@ -157,7 +157,7 @@ function validateCurrentFeedCohort(values, nowMs) {
   }
 }
 
-async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, ...options } = {}) {
+async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, discardRangePrefix = false, ...options } = {}) {
   const response = await fetchImpl(url, {
     ...options,
     headers: {
@@ -183,7 +183,19 @@ async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, ..
     if (total > maxBytes) throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
     chunks.push(Buffer.from(chunk));
   }
-  return Buffer.concat(chunks, total);
+  const buffer = Buffer.concat(chunks, total);
+  if (!discardRangePrefix) return buffer;
+  const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') ?? '');
+  const [start, end, size] = range ? range.slice(1).map(Number) : [];
+  if (!range || ![start, end, size].every(Number.isSafeInteger)
+    || start < 0 || end < start || end >= size || end - start + 1 !== total) {
+    throw new Error('GDELT bulk manifest has invalid Content-Range');
+  }
+  // A nonzero offset can split the size field, leaving a valid-looking "0".
+  // Only byte zero establishes that the first descriptor is complete.
+  if (start === 0) return buffer;
+  const newline = buffer.indexOf(10);
+  return newline < 0 ? Buffer.alloc(0) : buffer.subarray(newline + 1);
 }
 
 async function mapWithConcurrency(values, limit, fn) {
@@ -214,6 +226,7 @@ export async function fetchGdeltBulkFiles({
     {
       headers: { Range: `bytes=-${MASTER_TAIL_BYTES}` },
       expectedStatus: 206,
+      discardRangePrefix: true,
     },
   );
   const descriptors = parseGdeltBulkDescriptors(manifest.toString('utf8'), {
