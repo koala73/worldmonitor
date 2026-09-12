@@ -6332,7 +6332,7 @@ paths:
                                               "longitude": -74.006
                                           "originName": "WorldMonitor Analyst"
                                           "refugees": 1
-                                    "year": 1
+                                    "year": 2025
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_displacement_v1_GetDisplacementSummaryResponse'
                 "400":
@@ -39617,14 +39617,14 @@ components:
         worldmonitor_displacement_v1_GetDisplacementSummaryRequest:
             type: object
             properties:
-                year:
-                    type: integer
-                    maximum: 9999
-                    minimum: 1951
-                    format: int32
-                    description: |-
-                        Data year: 1951 through the current year. Zero returns the latest seeded data.
-                         An explicit year is available only if it matches the published snapshot.
+                "year":
+                    "description": "Data year: 1951 through the current year. Zero returns the latest seeded data.\n An explicit year is available only if it matches the published snapshot."
+                    "oneOf":
+                        - "const": 0
+                        - "format": "int32"
+                          "maximum": 9999
+                          "minimum": 1951
+                          "type": "integer"
                 countryLimit:
                     type: integer
                     minimum: 0

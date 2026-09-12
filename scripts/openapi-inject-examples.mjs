@@ -38,6 +38,7 @@ const MAX_OPTIONAL_PROPERTIES = 5;
 const FLAG_CONTAINER_KEYS = new Set(['featureflags', 'rolloutflags']);
 const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
 const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
+const DISPLACEMENT_EXAMPLE_YEAR = 2025;
 
 // ── Curated per-parameter example overrides ───────────────────────────────
 // The field-name heuristic in stringExample() picks structurally-valid but
@@ -880,6 +881,23 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         unavailableReason: '',
       };
     }
+    if (resolvedName === 'GetDisplacementSummaryResponse') {
+      const summary = exampleForSchema(
+        schema.properties.summary,
+        spec,
+        { ...context, name: 'summary' },
+        depth + 1,
+        seen,
+      );
+      // A generic integer example is 1, but a served displacement snapshot
+      // always carries a real UNHCR data year.
+      summary.year = DISPLACEMENT_EXAMPLE_YEAR;
+      return {
+        dataAvailable: true,
+        fetchedAt: 1717200000000,
+        summary,
+      };
+    }
   }
 
   if (context.operationId === 'GetDisplacementSummary' && context.name === 'year'
@@ -976,8 +994,27 @@ function successResponses(op) {
   );
 }
 
+function injectDisplacementYearContract(spec) {
+  const year = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
+  if (!year) return false;
+
+  // Buf validates the non-zero range but its OpenAPI generator cannot express
+  // IGNORE_IF_ZERO_VALUE. Publish the actual union accepted by the route so
+  // schema-driven clients can use the documented latest-snapshot sentinel.
+  const desired = {
+    description: year.description,
+    oneOf: [
+      { const: 0 },
+      { type: 'integer', format: 'int32', minimum: 1951, maximum: 9999 },
+    ],
+  };
+  if (eq(year, desired)) return false;
+  spec.components.schemas.GetDisplacementSummaryRequest.properties.year = desired;
+  return true;
+}
+
 function injectSpecExamples(spec) {
-  let changed = false;
+  let changed = injectDisplacementYearContract(spec);
   let operations = 0;
   let requestBearingOperations = 0;
   let responseOperations = 0;
@@ -1247,8 +1284,27 @@ function replaceResponseExample(lines, opStart, opEnd, code, example) {
   replaceMediaExample(lines, mediaStart, example);
 }
 
+function patchYamlDisplacementYearSchema(lines, schema) {
+  const requestStart = lines.findIndex((line) => line.trim().endsWith('GetDisplacementSummaryRequest:'));
+  if (requestStart === -1) return;
+  const requestIndent = countIndent(lines[requestStart]);
+  const requestEnd = blockEnd(lines, requestStart, requestIndent);
+  const yearStart = lines.findIndex((line, index) =>
+    index > requestStart
+    && index < requestEnd
+    && countIndent(line) === requestIndent + 8
+    && (line.trim() === 'year:' || line.trim() === '"year":'),
+  );
+  if (yearStart === -1) throw new Error('could not locate GetDisplacementSummaryRequest.year in YAML artifact');
+  const yearIndent = countIndent(lines[yearStart]);
+  const yearEnd = blockEnd(lines, yearStart, yearIndent);
+  lines.splice(yearStart, yearEnd - yearStart, ...renderYamlNode({ year: schema }, yearIndent));
+}
+
 function patchYamlExamples(raw, spec, label) {
   const lines = raw.split('\n');
+  const displacementYear = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
+  if (displacementYear) patchYamlDisplacementYearSchema(lines, displacementYear);
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
