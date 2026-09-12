@@ -137,8 +137,13 @@ The rest of the contract:
 
 ## Bilateral HS4 import baskets
 
-The bilateral store covers the 20 reviewed `bilateralHs4Code` entries in
-`scripts/shared/comtrade-strategic-products.json`. Each country shard contains
+The bilateral store covers one shared HS4 catalogue: the reviewed
+`bilateralHs4Code` entries in `scripts/shared/comtrade-strategic-products.json`
+plus the HS4 headings of every commodity in
+`scripts/shared/supply-vulnerability-commodities.json`. The scheduled seeder
+and the on-demand public fallback request the same catalogue, in two requests
+of at most 20 headings each; the fallback can also request one heading on its
+own, described below. Each country shard contains
 annual imports by HS4 product and the leading exporter partners. It supports
 country exposure, route impact, multi-sector shock, and the PRO
 `get-country-products` route. Detailed bilateral rows are not part of the
@@ -168,6 +173,84 @@ two consecutive runs; after that, the shard may expire so the on-demand public
 fallback can probe it again. Rate limits, quota exhaustion, and request-budget
 exhaustion publish partial coverage and stop the run instead of overwriting
 last-good country data with empty payloads.
+
+### Aggregate-only rows
+
+Every bilateral request, scheduled or on demand, pins the second partner, the
+mode of transport and the customs procedure to their aggregate values
+(`partner2Code=0`, `motCode=0`, `customsCode=C00`). Without them Comtrade
+returns one row per partner, second partner, transport mode and customs
+procedure — roughly nine rows per partner. That multiplicity, not the heading
+count, is what filled the public preview route's 500-row cap: a single German
+heading reached the cap on its own, so a whole-catalogue fallback ended
+`incomplete` for exactly the large importers users ask about. With the filters
+the same request returns one row per partner plus the reported World total.
+Grouping already kept only the aggregate row per partner, so stored values are
+unchanged; what falls is the row count, and the World total is now always
+present.
+
+### Stored keys
+
+The canonical country shard `comtrade:bilateral-hs4:{ISO2}:v1` keeps the shape
+it has always had: per heading, the leading five origins with value and share,
+plus the denominator basis. Every derived scorer — import concentration, route
+exposure, chokepoint indices — reads that list and sums over all of it, so a
+longer list would move published scores with no method change to explain the
+movement. Two bulk seeders also read every country shard through a pipeline
+batched by key count rather than by bytes, so anything added to the canonical
+payload arrives in one response body that nothing bounds. Deeper evidence
+therefore cannot ride along on it, and lives in a sibling key instead.
+
+`comtrade:bilateral-hs4-partners:{ISO2}:v1` holds, per heading, every origin
+whose unrounded share of the denominator reaches 1%, padded up to a minimum of
+five origins so a heading with one dominant supplier still carries context, and
+capped at 25 whatever their share. The origins the rule leaves out are
+published with the list as a count and a combined share, so a reader can state
+how much of the trade it is not showing rather than implying the list is
+complete. Each origin carries net weight in kilograms and, when the provider
+reports one, a quantity with its unit from the pinned registry
+`scripts/shared/comtrade-quantity-units.json`. Comtrade reports an unknown
+weight as 0, so a 0 is stored as absent rather than as a confirmed zero. The
+sibling key shares the country shard's 40-day TTL and the same preservation and
+TTL-extension rules. Only `get-country-products` reads it.
+
+`comtrade:world-exports-hs4:v1` is one run-level snapshot of every reporter's
+exports of every reviewed heading: per heading, the observation year, the
+reporters that filed that year ranked by exported value, each with value in USD
+and net weight when reported, and `unrankedReporterCount`, the reporters whose
+newest filing for the heading is older. Those late filers or lapsed exporters
+are left out of the ranking, so a rank is a rank among that year's filers and
+can change when they file: the brief prints it as "rank N of M reporters filing
+YEAR" and states the unranked count. The run reserves two requests for it against the request budget
+before it attempts the first reporter — one per catalogue batch, with the
+reporter omitted and the partner pinned to World, so a single request answers
+for every reporter at once. Reserving first keeps the per-reporter budget
+pre-check honest and stops a budget abort from dropping the snapshot
+altogether. It shares the 40-day TTL. Its outcome is recorded in seed metadata
+and published through `/api/seed-health`; any state other than `observed` is a
+coverage gap, because a supplier's absolute scale and its world rank come from
+this key alone. Only `get-country-products` reads it, and only for a requested
+heading. A scale is attached to an origin only when the snapshot's observation
+year for that heading equals the served row's year, so a late filer's older row
+carries no scale rather than a rank from a year it does not describe.
+
+### Single-heading recovery
+
+When a PRO reader asks for a heading a stored shard does not carry, the
+on-demand public fallback requests that one heading rather than the whole
+catalogue. That is what makes recovery work for a large importer, whose
+whole-catalogue fetch fills the preview cap. The outcome is recorded in a
+per-heading sentinel, `comtrade:bilateral-hs4-lazy-heading:{ISO2}:{HS4}:v1`, so
+one heading's failure cannot suppress recovery of a different heading for the
+same country. Single-heading recovery never writes the canonical shard: one
+heading is not a country basket, and a recovered heading is returned with its
+own fetch time rather than the shard's. A recovered heading whose observation
+year is older than the stored one is rejected.
+
+Shards written before this evidence existed have no sibling key and no world
+exports. They keep serving their leading-five origins, and the surfaces that
+read them label the missing volume and scale as not available. No reseed is
+forced to obtain the deeper evidence; the next scheduled run writes it.
 
 ## Access boundaries
 
