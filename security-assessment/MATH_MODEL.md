@@ -18,6 +18,7 @@ The platform distinguishes between two metrics:
 ## 2. CVSS v4.0 Representation
 
 CVSS v4.0 provides a standardized metric for technical severity:
+
 - **0.0**: None
 - **0.1 – 3.9**: Low
 - **4.0 – 6.9**: Medium
@@ -25,6 +26,7 @@ CVSS v4.0 provides a standardized metric for technical severity:
 - **9.0 – 10.0**: Critical
 
 ### Verification Constraint
+
 If a finding lacks full source verification metrics required to calculate a valid CVSS v4.0 vector, the platform marks the CVSS status as `REQUIRES VALIDATION` to avoid fabricating unverified CVSS vector strings.
 
 ---
@@ -38,6 +40,7 @@ $$\text{BaseImpact} = 0.30 \cdot S + 0.25 \cdot E + 0.20 \cdot X + 0.15 \cdot K 
 $$\text{ContextualRiskPriority} = \text{round}\Big(\min\big(100.0, \, 100 \cdot \text{BaseImpact} \cdot C\big), \, 1\Big)$$
 
 Where:
+
 - $S$: **Severity Weight** ($1.0$ Critical, $0.75$ High, $0.50$ Medium, $0.25$ Low)
 - $E$: **Exploitability Factor** ($0.0 – 1.0$)
 - $X$: **Exposure Factor** ($0.0 – 1.0$)
@@ -50,6 +53,7 @@ Where:
 ## 4. Evidence Confidence
 
 **Confidence represents evidence quality**, NOT vulnerability severity:
+
 - Higher confidence ($95\%$) indicates strong evidence backing the observation.
 - Confidence acts as a scaling multiplier $C$ on the contextual impact, ensuring low-confidence observations receive appropriate investigation priority.
 

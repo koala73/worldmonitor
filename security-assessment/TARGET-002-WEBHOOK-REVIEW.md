@@ -1,7 +1,9 @@
 # TARGET-002 — Webhook Signature Verification Review
 
 ## Scope
+
 Audited all webhook endpoints in `worldmonitor-main` across two distinct functional categories:
+
 1. **Inbound Third-Party Webhook Receivers** (`convex/resendWebhookHandler.ts`, `convex/payments/webhookHandlers.ts`, `convex/http.ts`)
 2. **Authenticated Webhook Management APIs** (`api/v2/shipping/webhooks/[subscriberId].ts`, `api/v2/shipping/webhooks/[subscriberId]/[action].ts`)
 
@@ -21,6 +23,7 @@ Audited all webhook endpoints in `worldmonitor-main` across two distinct functio
 ## Authentication / Signature Flow (Inbound Webhooks)
 
 ### 1. Resend Inbound Receiver (`convex/resendWebhookHandler.ts`)
+
 - **Headers Required**: `svix-id`, `svix-timestamp`, `svix-signature`
 - **Secret**: `RESEND_WEBHOOK_SECRET` environment variable (retrieved via `requireEnv()`)
 - **Verification Logic**:
@@ -31,6 +34,7 @@ Audited all webhook endpoints in `worldmonitor-main` across two distinct functio
   - Splits `svix-signature` header on spaces, iterates through `v1,` versions, and compares signatures via `timingSafeEqualStrings()`.
 
 ### 2. Dodo Payments Inbound Receiver (`convex/payments/webhookHandlers.ts`)
+
 - **Headers Required**: `webhook-id`, `webhook-timestamp`, `webhook-signature`
 - **Secret**: `DODO_PAYMENTS_WEBHOOK_SECRET` environment variable
 - **Verification Logic**:
@@ -60,6 +64,7 @@ Audited all webhook endpoints in `worldmonitor-main` across two distinct functio
 ## Fail-Closed Behavior
 
 Both inbound receivers enforce strict **Fail-Closed** execution:
+
 - Missing `RESEND_WEBHOOK_SECRET` or `DODO_PAYMENTS_WEBHOOK_SECRET` causes `requireEnv()` to abort server startup.
 - Missing headers, malformed signatures, or expired timestamps immediately return `HTTP 401 Invalid signature` / `HTTP 401 Invalid webhook signature`.
 - Unauthenticated payloads never reach JSON schema parsing or business logic mutations.

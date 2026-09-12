@@ -1,7 +1,9 @@
 # TARGET-003 — MCP Internal HMAC Security Review
 
 ## Scope
+
 Audited the internal Model Context Protocol (MCP) HMAC service authentication and replay defense implementation in:
+
 - `server/_shared/mcp-internal-hmac.ts`
 - `server/gateway.ts` (`claimInternalMcpReplayNonce` and `verifyInternalMcpRequest` verification path)
 

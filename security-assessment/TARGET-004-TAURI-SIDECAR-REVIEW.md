@@ -1,7 +1,9 @@
 # TARGET-004 — Tauri Local Sidecar Security Review
 
 ## Scope
+
 Audited the desktop sidecar local API server implementation in:
+
 - `src-tauri/sidecar/local-api-server.mjs`
 - `src-tauri/src/main.rs`
 - `src-tauri/tauri.conf.json`

@@ -5,6 +5,7 @@
 A comprehensive static reconnaissance was conducted against the target codebase `worldmonitor-main/` located at `..\SIH 26163\worldmonitor\worldmonitor-main`.
 
 ### Discovered Core Technologies
+
 - **Frontend Framework**: Preact (`preact` v10.25) with Vite 6 build system, MapLibre GL, Deck.gl, Globe.gl, D3.js, i18next, DOMPurify, and Tailwind CSS.
 - **Desktop Runtime**: Tauri v2 desktop shell (`@tauri-apps/cli` v2.10) for cross-platform desktop execution.
 - **Serverless / Edge Backend**: Vercel Edge Functions (`@vercel/functions` v3.7).
@@ -21,6 +22,7 @@ A comprehensive static reconnaissance was conducted against the target codebase 
 ## 2. Attack Surface Summary
 
 The attack surface of `worldmonitor-main` consists of three primary entry tiers:
+
 1. **Public Web & Edge API Surface**: Exposed via Vercel Edge routing (`api/`, `middleware.ts`, `vercel.json`). Accepts HTTP GET, POST, and OPTIONS requests.
 2. **Sebuf RPC Subsystem Gateway**: Routed via `server/gateway.ts` to ~17 domain RPC modules handling geopolitical, military, financial, and environmental data telemetry.
 3. **Desktop Tauri Sidecar Surface**: Local RPC/API server (`src-tauri/sidecar/`) binding to localhost for desktop application integration.
@@ -32,6 +34,7 @@ The attack surface of `worldmonitor-main` consists of three primary entry tiers:
 `worldmonitor-main` implements ~100+ serverless and RPC route handlers. Below is an inventory of key functional categories:
 
 ### A. Core Edge Public & Meta Endpoints
+
 - `GET /api/version` — Public version info (Unauthenticated).
 - `GET /api/health` — Service health probe (Unauthenticated).
 - `GET /api/product-catalog` — Product pricing metadata (Unauthenticated, Redis-cached).
@@ -39,13 +42,16 @@ The attack surface of `worldmonitor-main` consists of three primary entry tiers:
 - `GET /api/download.md` — Curated static markdown export (Unauthenticated).
 
 ### B. Session, Auth & OAuth Endpoints
+
 - `GET/POST /api/wm-session` — Session management (`wms_` HttpOnly session cookie creation/validation).
 - `POST /api/oauth/token` — OAuth token exchange (Rate limited via Upstash).
 - `GET /api/oauth/authorize-pro` — Pro tier OAuth authorization flow.
 - `POST /api/user/passkey-offer` — WebAuthn / Passkey registration offer.
 
 ### C. Sebuf RPC Gateway Subsystems (`/api/<subsystem>/v1/[rpc].ts`)
+
 All subsystem requests are dispatched through `server/gateway.ts`:
+
 - `military` — Military asset and activity telemetry.
 - `news` — News intelligence feeds and AI summarization.
 - `sanctions` — Global sanctions and watchlist tracking.
@@ -60,11 +66,13 @@ All subsystem requests are dispatched through `server/gateway.ts`:
 - `scenario` — Scenario simulation runner (`/api/scenario/v1/run.ts`, `/api/scenario/v1/status.ts`).
 
 ### D. AI & Model Context Protocol (MCP) Endpoints
+
 - `POST /api/mcp/*` — Model Context Protocol tool execution for AI assistants.
 - `GET/POST /api/user/mcp-quota` — User MCP daily usage quota check.
 - `POST /api/user/mcp-revoke` — Revoke active MCP integration keys.
 
 ### E. Webhook Integration Endpoints
+
 - `POST /api/v2/shipping/webhooks/[subscriberId]` — Shipping event webhooks.
 - `POST /convex/payments/webhookMutations` — Dodo payment status updates.
 - `POST /convex/resendWebhookHandler` — Resend email event webhooks.
@@ -74,15 +82,18 @@ All subsystem requests are dispatched through `server/gateway.ts`:
 ## 4. Authentication Architecture
 
 ### JWT / Clerk Session Flow (`server/auth-session.ts`)
+
 - **Bearer Token Verification**: Requests carrying `Authorization: Bearer <token>` are verified at the Vercel edge runtime using `jose`'s `jwtVerify()` and remote JWKS key fetching from `process.env.CLERK_JWT_ISSUER_DOMAIN`.
 - **Key Rotation & Caching**: JWKS public keys are memoized in `_jwks` (`createRemoteJWKSet`) across warm edge invocations.
 - **Fail-Safe Contract**: Authentication failures return `null` and log warnings; the gateway cleanly falls back to keyless or API-key authentication policies without unhandled crashes.
 
 ### Internal Service HMAC Signing (`server/_shared/mcp-internal-hmac.ts`)
+
 - **Header Verification**: Internal sub-requests (e.g. between Vercel edge workers and internal MCP services) use SHA-256 HMAC signatures passed in `X-WM-MCP-Internal`, `X-WM-MCP-Nonce`, `X-WM-MCP-User-Id`.
 - **Replay Protection**: Nonces are checked against a Redis replay cache with a 300-second TTL.
 
 ### API Keys (`server/_shared/usage-identity.ts`, `api/_api-key.js`)
+
 - API keys are hashed synchronously using SHA-256 (`hashKeySync`) and looked up against Upstash Redis / Convex entitlement tables.
 
 ---
@@ -111,6 +122,7 @@ All subsystem requests are dispatched through `server/gateway.ts`:
 ## 7. Security Configuration
 
 ### CORS Configuration (`server/cors.ts` & `api/_cors.js`)
+
 - Enforces an explicit regex origin allowlist (`ALLOWED_ORIGIN_PATTERNS`):
   - Production: `^https:\/\/(.*\.)?worldmonitor\.app$`, scoped Vercel preview domains (`^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$`), and Tauri desktop origins (`tauri://localhost`).
   - Development: `localhost` / `127.0.0.1` are appended only when `process.env.NODE_ENV !== 'production'`.
@@ -118,12 +130,14 @@ All subsystem requests are dispatched through `server/gateway.ts`:
 - Public Asset CORS: `getPublicCorsHeaders()` emits `Access-Control-Allow-Origin: *` **without** credentials for static cacheable data.
 
 ### HTTP Security Headers (`vercel.json`)
+
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: SAMEORIGIN` / `DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Content-Security-Policy` directives configured.
 
 ### Error Handling & Sanitization (`server/error-mapper.ts`)
+
 - Errors of status >= 500 return generic `{"message": "Internal server error"}` to HTTP callers. Stack traces (`err.stack`) and internal context are logged to server-side stderr only.
 
 ---
@@ -133,7 +147,9 @@ All subsystem requests are dispatched through `server/gateway.ts`:
 Inspection of `package.json` confirms modern, actively maintained dependencies with explicit security overrides:
 
 ### Security Overrides in `package.json`
+
 `package.json` declares strict dependency overrides to patch upstream vulnerabilities:
+
 - `fast-xml-parser`: `^5.8.0`
 - `serialize-javascript`: `^7.0.4`
 - `node-forge`: `^1.4.0`
@@ -164,6 +180,7 @@ Inspection of `package.json` confirms modern, actively maintained dependencies w
 Below is a list of candidate areas identified during reconnaissance for future controlled security review:
 
 ### TARGET-001: External Feed & RSS Fetching (`api/rss-proxy.ts`)
+
 - **Classification**: `POTENTIAL RISK` / `REQUIRES VALIDATION`
 - **File**: `api/rss-proxy.ts`
 - **Evidence**: Route proxies external RSS feeds requested by clients.
@@ -171,6 +188,7 @@ Below is a list of candidate areas identified during reconnaissance for future c
 - **Recommended Validation**: Verify that SSRF protection prevents fetching private IP ranges (`127.0.0.1`, `169.254.169.254`, internal RFC1918 subnets).
 
 ### TARGET-002: Webhook Signature Verification (`api/v2/shipping/webhooks/`, `convex/resendWebhookHandler.ts`)
+
 - **Classification**: `OBSERVATION` / `REQUIRES VALIDATION`
 - **File**: `convex/resendWebhookHandler.ts`, `api/v2/shipping/webhooks/[subscriberId].ts`
 - **Evidence**: Endpoint processes external webhook callbacks.
@@ -178,6 +196,7 @@ Below is a list of candidate areas identified during reconnaissance for future c
 - **Recommended Validation**: Verify timing-safe comparison (`timingSafeEqualSecret`) is used on all webhook signature verification branches.
 
 ### TARGET-003: Internal MCP HMAC Replay Cache (`server/_shared/mcp-internal-hmac.ts`)
+
 - **Classification**: `OBSERVATION` / `REQUIRES VALIDATION`
 - **File**: `server/_shared/mcp-internal-hmac.ts`
 - **Evidence**: `verifyInternalMcpRequest()` validates nonces with a 300s Redis TTL cache.
@@ -185,6 +204,7 @@ Below is a list of candidate areas identified during reconnaissance for future c
 - **Recommended Validation**: Verify fallback behavior when Redis is temporarily unreachable.
 
 ### TARGET-004: Tauri Desktop Local Sidecar Binding (`src-tauri/sidecar/local-api-server.ts`)
+
 - **Classification**: `OBSERVATION` / `REQUIRES VALIDATION`
 - **File**: `src-tauri/sidecar/local-api-server.ts`
 - **Evidence**: Binds a local HTTP API server for desktop application IPC.

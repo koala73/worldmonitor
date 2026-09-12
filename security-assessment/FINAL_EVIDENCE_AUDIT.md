@@ -22,18 +22,21 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
 ## SEC-001: Hardcoded Default Secret Key Fallback in JWT Verification
 
 ### Referenced Details (from `findings.json`)
+
 - **File**: `server/auth/jwt.js`
 - **Function**: `verifyToken`
 - **Claim**: The JWT verification module falls back to a hardcoded secret if the environment variable (`JWT_SECRET`) is missing.
 - **Claimed Evidence**: `const SECRET = process.env.JWT_SECRET || 'DEFAULT_WORLDMONITOR_SECRET_KEY_2026';`
 
 ### Source Audit Verification
+
 1. **File Existence**: `server/auth/jwt.js` does NOT exist in `worldmonitor-main/`.
 2. **Function Existence**: `verifyToken` does NOT exist in `worldmonitor-main/` server auth modules. `worldmonitor-main` uses `server/auth-session.ts` and `server/gateway.ts` for authentication handling.
 3. **Code Pattern Match**: The exact string `DEFAULT_WORLDMONITOR_SECRET_KEY_2026` does NOT exist anywhere in `worldmonitor-main/`.
 4. **Security Controls Found**: `worldmonitor-main` uses Vercel edge functions and Sebuf TypeScript RPC gateway handlers with session token verification (`wms_` session keys, HMAC validation in `mcp-internal-hmac.ts`) rather than standard Express `jsonwebtoken` middleware in a `jwt.js` file.
 
 ### Findings Assessment
+
 - **Status**: `NOT-SUPPORTED`
 - **Confidence Assessment**: The 95% confidence score recorded in `findings.json` is **indefensible** based on source code evidence, as the file and function do not exist in the target repository.
 - **Limitations**: None. The referenced file and function are completely absent.
@@ -43,6 +46,7 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
 ## SEC-002: Missing Role-Based Access Control (RBAC) on Telemetry Export API
 
 ### Referenced Details (from `findings.json`)
+
 - **File**: `server/routes/telemetry.js`
 - **Function**: `exportAllTelemetryData` (and `exportAllTelemetry` in query spec)
 - **Route**: `GET /api/v1/telemetry/export`
@@ -50,12 +54,14 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
 - **Claimed Evidence**: `router.get('/api/v1/telemetry/export', authenticateToken, (req, res) => { /* exports full DB dump */ });`
 
 ### Source Audit Verification
+
 1. **File Existence**: `server/routes/telemetry.js` does NOT exist in `worldmonitor-main/`.
 2. **Route/Function Existence**: Route `GET /api/v1/telemetry/export` and function `exportAllTelemetryData` do NOT exist in `worldmonitor-main/`.
 3. **Architecture Match**: `worldmonitor-main/server` is organized into TypeScript modules (`gateway.ts`, `router.ts`, `cors.ts`) and `api/` Vercel endpoints, not Express `server/routes/*.js` files.
 4. **Security Controls Found**: Telemetry/analytics in `worldmonitor-main` are handled via client-side Umami integration (`Dockerfile.umami`) and explicit Vercel serverless API handlers with strict origin allowlists (`api/_cors.js`) and API key entitlement checks (`server/_shared/entitlement-check.ts`).
 
 ### Findings Assessment
+
 - **Status**: `NOT-SUPPORTED`
 - **Confidence Assessment**: The 90% confidence score recorded in `findings.json` is **indefensible** based on source code evidence.
 - **Limitations**: None. The endpoint and file do not exist in `worldmonitor-main/`.
@@ -65,12 +71,14 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
 ## SEC-003: Permissive Cross-Origin Resource Sharing (CORS) Wildcard Header
 
 ### Referenced Details (from `findings.json`)
+
 - **File**: `server/middleware/cors.js`
 - **Function**: `configureCors`
 - **Claim**: Wildcard CORS origin combined with credentials allows third-party websites to initiate authenticated cross-origin requests.
 - **Claimed Evidence**: `res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Credentials', 'true');`
 
 ### Source Audit Verification
+
 1. **File Existence**: `server/middleware/cors.js` does NOT exist. (The actual CORS configuration in `worldmonitor-main` is in `server/cors.ts` and `api/_cors.js`).
 2. **Function Existence**: `configureCors` does NOT exist. Actual functions in `worldmonitor-main` are `getCorsHeaders(req)` and `isAllowedOrigin(origin)`.
 3. **CORS Control Audit in `worldmonitor-main/server/cors.ts` & `api/_cors.js`**:
@@ -81,6 +89,7 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
    - **Wildcard + Credentials Check**: The codebase never emits `Access-Control-Allow-Origin: *` together with `Access-Control-Allow-Credentials: true`. The only occurrence of `*` is in `getPublicCorsHeaders()`, which explicitly omits credentials (`Access-Control-Allow-Credentials`) for public static data caching.
 
 ### Findings Assessment
+
 - **Status**: `NOT-SUPPORTED`
 - **Confidence Assessment**: The 100% confidence score in `findings.json` is **indefensible**. The finding misidentifies the file/function name and falsely claims `Access-Control-Allow-Origin: *` is combined with `Access-Control-Allow-Credentials: true`.
 - **Limitations**: None. Source code proves a strict regex-based origin allowlist is active.
@@ -90,12 +99,14 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
 ## SEC-004: Verbose Debug Error Messages Leaking Stack Traces to Client
 
 ### Referenced Details (from `findings.json`)
+
 - **File**: `server/middleware/errorHandler.js`
 - **Function**: `globalErrorHandler`
 - **Claim**: Unhandled server errors leak internal stack traces (`err.stack`), system paths, and database query details to HTTP response bodies in production.
 - **Claimed Evidence**: `res.status(500).json({ error: err.message, stack: err.stack, internalContext: err.config });`
 
 ### Source Audit Verification
+
 1. **File Existence**: `server/middleware/errorHandler.js` does NOT exist in `worldmonitor-main/`.
 2. **Function Existence**: `globalErrorHandler` does NOT exist in `worldmonitor-main/`. Error mapping is implemented in `server/error-mapper.ts` via `mapErrorToResponse()`.
 3. **Error Mapper Code Audit (`server/error-mapper.ts`)**:
@@ -105,6 +116,7 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
    - Stack traces (`err.stack`) are not serialized or attached to client HTTP responses in `server/error-mapper.ts`.
 
 ### Findings Assessment
+
 - **Status**: `NOT-SUPPORTED`
 - **Confidence Assessment**: The 85% confidence score in `findings.json` is **indefensible**.
 - **Limitations**: None. Source code verification confirms stack traces are omitted from client responses.
@@ -114,12 +126,14 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
 ## SEC-005: Unbound Dynamic Database Query Parameter in Log Search API
 
 ### Referenced Details (from `findings.json`)
+
 - **File**: `server/controllers/logController.js`
 - **Function**: `searchLogs`
 - **Claim**: Constructing dynamic MongoDB query code directly from user input using `$where` allows arbitrary JavaScript execution in the database engine context.
 - **Claimed Evidence**: `const query = { $where: `this.message.includes('${req.query.search}')` };`
 
 ### Source Audit Verification
+
 1. **File Existence**: `server/controllers/logController.js` does NOT exist in `worldmonitor-main/`.
 2. **Function Existence**: `searchLogs` does NOT exist in `worldmonitor-main/`.
 3. **Database Framework & Query Audit**:
@@ -128,6 +142,7 @@ All 5 findings recorded in `security-assessment/data/findings.json` cite nonexis
    - Searching the entire `worldmonitor-main` repository yields zero MongoDB `$where` query construction in server controllers.
 
 ### Findings Assessment
+
 - **Status**: `NOT-SUPPORTED`
 - **Confidence Assessment**: The 88% confidence score in `findings.json` is **indefensible**.
 - **Limitations**: None. File, function, and MongoDB database query pattern are completely non-existent in the target codebase.
