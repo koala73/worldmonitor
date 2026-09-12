@@ -1,0 +1,108 @@
+{
+  "status": "COMPARISON AVAILABLE",
+  "previous_assessment": {
+    "timestamp": "2026-09-12 06:37:07",
+    "posture_score": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "engine_status": "FALLBACK"
+  },
+  "current_assessment": {
+    "timestamp": "2026-09-12 06:37:25",
+    "posture_score": 24.0,
+    "status": "CRITICAL RISK",
+    "engine_status": "PRIMARY"
+  },
+  "posture_change": {
+    "previous": 25.8,
+    "current": 24.0,
+    "absolute": -1.8,
+    "direction": "REGRESSED"
+  },
+  "finding_counts": {
+    "previous_total": 5,
+    "current_total": 5,
+    "total_change": 0,
+    "severity_changes": {
+      "CRITICAL": {
+        "previous": 1,
+        "current": 1,
+        "change": 0
+      },
+      "HIGH": {
+        "previous": 2,
+        "current": 2,
+        "change": 0
+      },
+      "MEDIUM": {
+        "previous": 1,
+        "current": 1,
+        "change": 0
+      },
+      "LOW": {
+        "previous": 1,
+        "current": 1,
+        "change": 0
+      }
+    }
+  },
+  "findings": {
+    "new": [],
+    "resolved": [],
+    "persistent": [
+      "SEC-001",
+      "SEC-002",
+      "SEC-003",
+      "SEC-004",
+      "SEC-005"
+    ],
+    "changed_risk": [
+      {
+        "id": "SEC-001",
+        "title": "Hardcoded Default Secret Key Fallback in JWT Verification",
+        "previous_risk": 85.0,
+        "current_risk": 83.4,
+        "change": -1.6,
+        "direction": "IMPROVED"
+      },
+      {
+        "id": "SEC-002",
+        "title": "Missing Role-Based Access Control (RBAC) on Telemetry Export API",
+        "previous_risk": 70.0,
+        "current_risk": 67.7,
+        "change": -2.3,
+        "direction": "IMPROVED"
+      },
+      {
+        "id": "SEC-003",
+        "title": "Permissive Cross-Origin Resource Sharing (CORS) Wildcard Header",
+        "previous_risk": 45.0,
+        "current_risk": 64.5,
+        "change": 19.5,
+        "direction": "REGRESSED"
+      },
+      {
+        "id": "SEC-004",
+        "title": "Verbose Debug Error Messages Leaking Stack Traces to Client",
+        "previous_risk": 20.0,
+        "current_risk": 38.7,
+        "change": 18.7,
+        "direction": "REGRESSED"
+      },
+      {
+        "id": "SEC-005",
+        "title": "Unbound Dynamic Database Query Parameter in Log Search API",
+        "previous_risk": 70.0,
+        "current_risk": 70.0,
+        "change": 0.0,
+        "direction": "UNCHANGED"
+      }
+    ]
+  },
+  "attack_paths": {
+    "previous": 1,
+    "current": 4,
+    "change": 3,
+    "direction": "REGRESSED"
+  },
+  "overall_status": "REGRESSED"
+}

@@ -1,0 +1,1012 @@
+[
+  {
+    "timestamp": "2026-09-11 22:58:16",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "engineStatus": "PRIMARY"
+  },
+  {
+    "timestamp": "2026-09-11 22:58:16",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "engineStatus": "FALLBACK"
+  },
+  {
+    "timestamp": "2026-09-11 22:58:31",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "engineStatus": "PRIMARY"
+  },
+  {
+    "timestamp": "2026-09-11 22:58:51",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "engineStatus": "FALLBACK"
+  },
+  {
+    "timestamp": "2026-09-11 22:59:06",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "engineStatus": "PRIMARY"
+  },
+  {
+    "timestamp": "2026-09-11 23:26:33",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:38:55",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:38:55",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-11 23:39:10",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:39:49",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:41:07",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:41:18",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:41:25",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-11 23:41:37",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:41:38",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:41:42",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:41:49",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.003
+  },
+  {
+    "timestamp": "2026-09-11 23:41:55",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-11 23:42:02",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-11 23:42:07",
+    "postureScore": 22.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:46:47",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:46:47",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:47:50",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-11 23:49:07",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-11 23:49:24",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:58:04",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:58:04",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.013
+  },
+  {
+    "timestamp": "2026-09-11 23:58:31",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:58:52",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-11 23:59:21",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-11 23:59:39",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 00:02:34",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-12 00:02:50",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 00:02:58",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-12 00:06:54",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-12 00:06:54",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.013
+  },
+  {
+    "timestamp": "2026-09-12 00:07:28",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.01
+  },
+  {
+    "timestamp": "2026-09-12 00:07:58",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.009
+  },
+  {
+    "timestamp": "2026-09-12 00:09:12",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.009
+  },
+  {
+    "timestamp": "2026-09-12 04:52:59",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 04:53:11",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 04:53:22",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.003
+  },
+  {
+    "timestamp": "2026-09-12 04:53:28",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-12 05:09:14",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:09:14",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.022
+  },
+  {
+    "timestamp": "2026-09-12 05:12:40",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:12:40",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.012
+  },
+  {
+    "timestamp": "2026-09-12 05:17:53",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:17:53",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.012
+  },
+  {
+    "timestamp": "2026-09-12 05:19:10",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.01
+  },
+  {
+    "timestamp": "2026-09-12 05:21:38",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-12 05:21:46",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.003
+  },
+  {
+    "timestamp": "2026-09-12 05:23:10",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-12 05:28:35",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:29:10",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.009
+  },
+  {
+    "timestamp": "2026-09-12 05:29:10",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.009
+  },
+  {
+    "timestamp": "2026-09-12 05:30:26",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:30:35",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:32:35",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.003
+  },
+  {
+    "timestamp": "2026-09-12 05:33:57",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.002
+  },
+  {
+    "timestamp": "2026-09-12 05:34:07",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 2,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 05:36:21",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.0
+  },
+  {
+    "timestamp": "2026-09-12 06:36:25",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.001
+  },
+  {
+    "timestamp": "2026-09-12 06:36:25",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.033
+  },
+  {
+    "timestamp": "2026-09-12 06:36:30",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.018
+  },
+  {
+    "timestamp": "2026-09-12 06:37:07",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.019
+  },
+  {
+    "timestamp": "2026-09-12 06:37:07",
+    "postureScore": 25.8,
+    "status": "DEGRADED (FALLBACK)",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 1,
+    "engineStatus": "FALLBACK",
+    "durationSeconds": 0.02
+  },
+  {
+    "timestamp": "2026-09-12 06:37:25",
+    "postureScore": 24.0,
+    "status": "CRITICAL RISK",
+    "totalFindings": 5,
+    "severityCounts": {
+      "CRITICAL": 1,
+      "HIGH": 2,
+      "MEDIUM": 1,
+      "LOW": 1
+    },
+    "attackPathCount": 4,
+    "engineStatus": "PRIMARY",
+    "durationSeconds": 0.017
+  }
+]

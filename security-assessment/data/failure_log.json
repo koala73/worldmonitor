@@ -1,0 +1,170 @@
+[
+  {
+    "timestamp": "2026-09-11 22:31:09",
+    "component": "PrimaryScoringEngine",
+    "error": "Database connection timed out during primary risk computation",
+    "details": "Traceback (most recent call last):\n  File \"C:\\Users\\varun\\OneDrive\\Documents\\personals\\worldmonitor\\security-assessment\\engine\\failsafe.py\", line 117, in execute_with_failsafe\n    results = primary_func(raw_findings)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\varun\\OneDrive\\Documents\\personals\\worldmonitor\\security-assessment\\tests\\test_failsafe.py\", line 57, in broken_primary_engine\n    raise RuntimeError(\"Database connection timed out during primary risk computation\")\nRuntimeError: Database connection timed out during primary risk computation\n"
+  },
+  {
+    "timestamp": "2026-09-11 22:31:47",
+    "component": "PrimaryScoringEngine",
+    "error": "Database connection timed out during primary risk computation",
+    "details": "Traceback (most recent call last):\n  File \"C:\\Users\\varun\\OneDrive\\Documents\\personals\\worldmonitor\\security-assessment\\engine\\failsafe.py\", line 117, in execute_with_failsafe\n    results = primary_func(raw_findings)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\varun\\OneDrive\\Documents\\personals\\worldmonitor\\security-assessment\\tests\\test_failsafe.py\", line 56, in broken_primary_engine\n    raise RuntimeError(\"Database connection timed out during primary risk computation\")\nRuntimeError: Database connection timed out during primary risk computation\n"
+  },
+  {
+    "timestamp": "2026-09-11 22:34:11",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 22:43:10",
+    "component": "PrimaryScoringEngine",
+    "error": "Database connection timed out during primary risk computation",
+    "details": "Traceback (most recent call last):\n  File \"C:\\Users\\varun\\OneDrive\\Documents\\personals\\worldmonitor\\security-assessment\\engine\\failsafe.py\", line 117, in execute_with_failsafe\n    results = primary_func(raw_findings)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\varun\\OneDrive\\Documents\\personals\\worldmonitor\\security-assessment\\tests\\test_failsafe.py\", line 56, in broken_primary_engine\n    raise RuntimeError(\"Database connection timed out during primary risk computation\")\nRuntimeError: Database connection timed out during primary risk computation\n"
+  },
+  {
+    "timestamp": "2026-09-11 22:58:16",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 22:58:51",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:38:55",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:39:10",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:41:25",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:41:49",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:41:55",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:42:02",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:46:47",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:49:07",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:58:04",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-11 23:59:21",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 00:02:58",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 00:06:54",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 00:07:28",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 04:53:22",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 05:09:14",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 05:12:40",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 05:17:53",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 05:21:46",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 05:29:10",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 05:32:35",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 06:36:25",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  },
+  {
+    "timestamp": "2026-09-12 06:37:07",
+    "component": "PrimaryScoringEngine",
+    "error": "Simulated primary assessment engine failure (Force Fail Flag active).",
+    "details": "Simulated exception for validation testing."
+  }
+]
