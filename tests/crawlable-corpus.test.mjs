@@ -58,6 +58,7 @@ import {
   MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
   assertLivePulseMovementClaim,
   livePulseMovementClaim,
+  livePulseMovementClaimLastmod,
   livePulseSnapshotAgeDays,
   newestDevelopmentsInstant,
   renderCountryAnalysis,
@@ -1841,6 +1842,38 @@ describe('crawlable corpus generator', () => {
       pagePath: `/countries/${staleCountry.slug}/`,
       ageDays: staleMoving.ageDays,
     }));
+
+    const freshLastmod = livePulseMovementClaimLastmod(
+      data.livePulse.capturedAt,
+      capturedAtMs + 86_400_000,
+    );
+    const staleLastmod = livePulseMovementClaimLastmod(
+      data.livePulse.capturedAt,
+      capturedAtMs + 3.5 * 86_400_000,
+    );
+    assert.equal(freshLastmod, null);
+    assert.equal(
+      staleLastmod,
+      new Date(capturedAtMs + MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+    );
+    const freshClock = await loadCorpusData({
+      rootDir: repoRoot,
+      now: capturedAtMs + 86_400_000,
+    });
+    const staleClock = await loadCorpusData({
+      rootDir: repoRoot,
+      now: capturedAtMs + 3.5 * 86_400_000,
+    });
+    assert.ok(
+      laterDate(staleClock.lastmod.ciiCountries, staleLastmod) === staleClock.lastmod.ciiCountries,
+      'expired recency copy must fold the transition date into the CII lastmod clock',
+    );
+    assert.ok(
+      staleClock.lastmod.ciiCountries >= freshClock.lastmod.ciiCountries,
+      'a rebuild after the two-day boundary must not advertise an earlier CII lastmod',
+    );
   });
 
   it('requires the API key before freezing the crawlable pulse', () => {

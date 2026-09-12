@@ -432,6 +432,16 @@ export function livePulseMovementClaim(ageDays) {
   };
 }
 
+export function livePulseMovementClaimLastmod(capturedAt, now = Date.now()) {
+  const ageDays = livePulseSnapshotAgeDays(capturedAt, now);
+  if (!(ageDays > MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS)) return null;
+  const capturedAtMs = Date.parse(`${String(capturedAt || '').slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(capturedAtMs)) return null;
+  return new Date(
+    capturedAtMs + MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS * 86_400_000,
+  ).toISOString().slice(0, 10);
+}
+
 export function assertLivePulseMovementClaim(html, { pagePath, ageDays }) {
   if (!(ageDays > MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS)) return;
   const haystack = String(html || '');
@@ -1742,7 +1752,11 @@ export function gitFileLastmod(rootDir, relativePath) {
 // keep the resolver's shape contract (required sections, filename↔capturedAt
 // coherence) but skip its 10-day staleness fuse — that fuse is what tests
 // legitimately need to bypass.
-export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshotPath } = {}) {
+export async function loadCorpusData({
+  rootDir = DEFAULT_ROOT,
+  livePulseSnapshotPath,
+  now = Date.now(),
+} = {}) {
   const resilienceSnapshotPath = resolveLatestResilienceSnapshotPath(rootDir);
   const pulsePath = livePulseSnapshotPath ?? resolveLatestLivePulseSnapshotPath(rootDir);
   const resilience = readJson(rootDir, resilienceSnapshotPath);
@@ -1820,7 +1834,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshot
       });
     }
   }
-  const ciiRanking = buildCiiRankingEntries(countries, livePulse);
+  const ciiRanking = buildCiiRankingEntries(countries, livePulse, { now });
   const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
   const tradeRoutesById = new Map(
@@ -1839,6 +1853,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT, livePulseSnapshot
   const countriesLastmod = laterDate(
     resilience.capturedAt,
     livePulse.capturedAt,
+    livePulseMovementClaimLastmod(livePulse.capturedAt, now),
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
@@ -5274,8 +5289,9 @@ export async function buildCorpus({
   baseUrl = DEFAULT_BASE_URL,
   clean = true,
   livePulseSnapshotPath,
+  now = Date.now(),
 } = {}) {
-  const data = await loadCorpusData({ rootDir, livePulseSnapshotPath });
+  const data = await loadCorpusData({ rootDir, livePulseSnapshotPath, now });
   const countrySlugByCode = new Map(data.countries.map((country) => [country.code, country.slug]));
   const chokepointPageLinks = buildChokepointPageLinks({
     ...data,
@@ -5408,6 +5424,7 @@ export async function buildCorpus({
         bbox: data.countryBboxByCode.get(country.code) || null,
         livePulse: data.livePulse,
         ciiEntry,
+        now,
       }),
     );
     if (ciiEntry) {
