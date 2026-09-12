@@ -11,6 +11,12 @@ const HOSTED_LLM_PROVIDERS = [
     url: 'https://openrouter.ai',
     allowPrivateNetwork: false,
   },
+  {
+    name: 'atlascloud',
+    envKey: 'ATLASCLOUD_API_KEY',
+    url: 'https://api.atlascloud.ai',
+    allowPrivateNetwork: false,
+  },
 ];
 
 /**
