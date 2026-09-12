@@ -1,24 +1,17 @@
-import type {
-  ServerContext,
-  SearchImageryRequest,
-  SearchImageryResponse,
-  ImageryScene,
+import {
+  ValidationError,
+  type ServerContext,
+  type SearchImageryRequest,
+  type SearchImageryResponse,
+  type ImageryScene,
 } from '../../../../src/generated/server/worldmonitor/imagery/v1/service_server';
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
+import { sha256Hex } from '../../../_shared/hash';
 
 const STAC_SEARCH = 'https://earth-search.aws.element84.com/v1/search';
 const COLLECTIONS = ['sentinel-2-l2a', 'sentinel-1-grd'];
 const CACHE_TTL = 3600;
-
-function fnv1a(str: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
 
 function validateBbox(bbox: string): [number, number, number, number] | null {
   const parts = bbox.split(',').map(Number);
@@ -33,9 +26,32 @@ function validateBbox(bbox: string): [number, number, number, number] | null {
   return [w, s, e, n];
 }
 
-function cacheKey(bbox: string, datetime: string, source: string, limit: number): string {
-  const hash = fnv1a(`${bbox}|${datetime}|${source}|${limit}`).toString(36);
-  return `imagery:search:${hash}`;
+function normalizeDatetime(value: string): string | null {
+  if (value.length > 80) return null;
+  const parts = value.trim().split('/');
+  if (parts.length > 2) return null;
+  const normalized = parts.map(part => {
+    if (parts.length === 2 && (part === '' || part === '..')) return { value: '..', order: '' };
+    const match = /^(\d{4}-\d{2}-\d{2})(?:[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{1,9}))?([Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d))?$/.exec(part);
+    if (!match) return null;
+    const date = match[1]!;
+    const day = new Date(`${date}T00:00:00Z`);
+    if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date) return null;
+    if (!match[2]) return { value: date, order: `${date}T00:00:00.000000000Z` };
+    const instant = new Date(`${date}T${match[2]}:${match[3]}:${match[4]}${match[6]!.toUpperCase()}`).toISOString();
+    if (!/^\d{4}-/.test(instant)) return null;
+    const seconds = instant.slice(0, 19);
+    const fraction = (match[5] ?? '').replace(/0+$/, '');
+    return {
+      value: `${seconds}${fraction ? `.${fraction}` : ''}Z`,
+      order: `${seconds}.${fraction.padEnd(9, '0')}Z`,
+    };
+  });
+  if (normalized.some(part => part === null)) return null;
+  const start = normalized[0]!;
+  const end = normalized[1];
+  if (end && ((!start.order && !end.order) || (start.order && end.order && start.order > end.order))) return null;
+  return normalized.map(part => part!.value).join('/');
 }
 
 interface StacFeature {
@@ -114,49 +130,29 @@ export async function searchImagery(
   }
 
   const limit = Math.max(1, Math.min(50, req.limit || 10));
-  const snappedBbox = parsedBbox.map(v => Math.round(v)).join(',');
   const nowHour = new Date();
   nowHour.setMinutes(0, 0, 0);
   const weekAgo = new Date(nowHour.getTime() - 7 * 24 * 60 * 60 * 1000);
   const defaultDatetime = `${weekAgo.toISOString().split('.')[0]}Z/${nowHour.toISOString().split('.')[0]}Z`;
-  const datetime = req.datetime || defaultDatetime;
-  // Normalise once, before BOTH uses: collections are matched lowercased
-  // below, so a raw req.source in the key split the cache by casing —
-  // sentinel-2 / Sentinel-2 / SENTINEL-2 were three entries holding the same
-  // payload and three STAC round-trips (#7209). Every other key input is
-  // already normalised (bbox snapped, limit clamped, datetime defaulted).
+  const datetime = normalizeDatetime(req.datetime || defaultDatetime);
+  if (datetime === null) throw new ValidationError([{ field: 'datetime', description: 'Invalid imagery datetime' }]);
   const source = (req.source ?? '').trim().toLowerCase();
-  const key = cacheKey(snappedBbox, datetime, source, limit);
+  const matchedCollections = COLLECTIONS.filter(collection => collection.includes(source));
+  const collections = matchedCollections.length > 0 ? matchedCollections : COLLECTIONS;
+  const body = JSON.stringify({
+    bbox: parsedBbox,
+    datetime,
+    collections,
+    limit,
+    sortby: [{ field: 'properties.datetime', direction: 'desc' }],
+  });
 
   try {
+    const key = `imagery:search:v2:${await sha256Hex(body)}`;
     const result = await cachedFetchJsonWithMeta<{ scenes: ImageryScene[]; totalResults: number }>(
       key,
       CACHE_TTL,
       async () => {
-
-        const LEGACY_SOURCE_MAP: Record<string, string[]> = {
-          capella: COLLECTIONS,
-          'sentinel-1': ['sentinel-1-grd'],
-          'sentinel-2': ['sentinel-2-l2a'],
-        };
-        let collections = COLLECTIONS;
-        if (source) {
-          const legacy = LEGACY_SOURCE_MAP[source];
-          if (legacy) {
-            collections = legacy;
-          } else {
-            const matched = COLLECTIONS.filter(c => c.toLowerCase().includes(source));
-            if (matched.length > 0) collections = matched;
-          }
-        }
-
-        const body = {
-          bbox: parsedBbox,
-          datetime,
-          collections,
-          limit,
-          sortby: [{ field: 'properties.datetime', direction: 'desc' }],
-        };
 
         const resp = await fetch(STAC_SEARCH, {
           method: 'POST',
@@ -165,7 +161,7 @@ export async function searchImagery(
             'Content-Type': 'application/json',
             Accept: 'application/geo+json',
           },
-          body: JSON.stringify(body),
+          body,
           signal: AbortSignal.timeout(10_000),
         });
 

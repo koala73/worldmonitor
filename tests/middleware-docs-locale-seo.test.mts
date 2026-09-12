@@ -41,7 +41,12 @@ describe('middleware docs locale SEO proxy', () => {
         const graph = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)![1])['@graph'];
         assert.deepEqual(graph[0], { '@id': id });
         assert.deepEqual(graph[1].publisher, { '@id': id });
-        assert.deepEqual(graph[1].author, { '@id': id });
+        assert.deepEqual(graph[1].author, {
+          '@id': id,
+          '@type': 'Organization',
+          name: 'World Monitor',
+          url: 'https://www.worldmonitor.app/',
+        });
         assert.deepEqual(graph[1].provider, otherOrganization);
       }
     } finally {

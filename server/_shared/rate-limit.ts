@@ -316,6 +316,7 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
   // Public relay/HTML discovery has the same scrape fan-out as the legacy
   // YouTube live endpoint and needs its own fail-closed gateway budget.
@@ -380,8 +381,12 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // paid-provider probe under anonymous or rotating callers.
   '/api/military/v1/get-aircraft-details': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
+  // Webcam image resolution proxies Windy on a caller-controlled cache miss.
+  // Keep it at the standard provider-proxy budget instead of the global fallback.
+  '/api/webcam/v1/get-webcam-image': { limit: 30, window: '60 s' },
   // Live lookups can fan out to position, schedule and photo providers.
   '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
+  '/api/imagery/v1/search-imagery': { limit: 30, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
@@ -574,6 +579,7 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
   '/api/aviation/v1/list-aviation-news': {
     reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
   },
@@ -658,8 +664,14 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/military/v1/get-aircraft-details': {
     reason: 'Single aircraft enrichment proxies the external Wingbits provider on cache miss.',
   },
+  '/api/webcam/v1/get-webcam-image': {
+    reason: 'Webcam image resolution proxies the Windy provider on cache miss.',
+  },
   '/api/military/v1/get-wingbits-live-flight': {
     reason: 'Live aircraft lookups fan out to external providers on short-lived cache misses.',
+  },
+  '/api/imagery/v1/search-imagery': {
+    reason: 'Imagery searches proxy the external STAC catalog on cache misses.',
   },
   '/api/batch/v1/execute': {
     reason: 'Generic batch fan-out multiplies one request into up to 20 gateway sub-requests.',
@@ -772,12 +784,25 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
+let nativeGoogleFlightsAdmissions: number[] = [];
 let nativeAviationNewsAdmissions: number[] = [];
 
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
   // Native transport authentication happens before this gateway. Use one
   // bounded local budget with the in-process cache; cloud and Docker use Redis.
+  if (pathname === '/api/aviation/v1/search-google-flights'
+    && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const policy = ENDPOINT_RATE_POLICIES[pathname]!;
+    const windowSeconds = durationToSeconds(policy.window);
+    const now = Date.now();
+    nativeGoogleFlightsAdmissions = nativeGoogleFlightsAdmissions.filter(time => time > now - windowSeconds * 1000);
+    if (nativeGoogleFlightsAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, nativeGoogleFlightsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    }
+    nativeGoogleFlightsAdmissions.push(now);
+    return null;
+  }
   if (pathname === '/api/aviation/v1/list-aviation-news'
     && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const policy = ENDPOINT_RATE_POLICIES[pathname]!;
@@ -958,6 +983,7 @@ export async function checkFailClosedScopedIpRateLimit(
 }
 
 export function __resetRateLimitForTest(): void {
+  nativeGoogleFlightsAdmissions = [];
   nativeAviationNewsAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();

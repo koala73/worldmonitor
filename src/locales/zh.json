@@ -3481,7 +3481,7 @@
   },
   "shell": {
     "documentTitle": "World Monitor — 实时全球情报仪表板",
-    "metaDescription": "实时全球情报平台。刊登于 WIRED。全球 190 个国家 200 万+ 用户使用。冲突、市场、军事、OSINT 信息一览无遗。",
+    "metaDescription": "使用 World Monitor 实时仪表盘浏览全球态势，结合交互式地图与数据面板查看新闻、地缘政治、军事、金融、能源和基础设施信息。按所选产品视图探索相关图层、地区与事件，比较数据来源、观测时间和可用信号，跟踪变化并打开详情核查背景，为日常监测与研究提供可追溯的信息入口，同时关注来源覆盖及更新状态。",
     "offlineTitle": "您已离线",
     "offlineMessage": "World Monitor 需要互联网连接来获取实时情报数据。",
     "offlineRetry": "重试"

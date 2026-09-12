@@ -850,6 +850,9 @@ export default defineSchema({
     // subscription.expired events skip the normal downgrade-to-free so
     // goodwill credits outlive Dodo subscription cancellations.
     compUntil: v.optional(v.number()),
+    // Independent goodwill source; never derive this from a paid effective plan.
+    // Legacy rows without it require an audited source before migration.
+    compPlanKey: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -908,6 +911,15 @@ export default defineSchema({
     // list) query this instead of scanning all per-(user,state) history and
     // filtering `current` in memory -- bounds the hot path to live rows.
     .index("by_user_dimension_current", ["userId", "dimension", "current"]),
+
+  // Subscription cleanup must not erase customer-wide invoice ownership.
+  // Rows are retained after deletion and move with a verified anonymous claim.
+  deletedSubscriptionCustomers: defineTable({
+    userId: v.string(),
+    dodoCustomerId: v.string(),
+  })
+    .index("by_customer_user", ["dodoCustomerId", "userId"])
+    .index("by_userId", ["userId"]),
 
   customers: defineTable({
     userId: v.string(),

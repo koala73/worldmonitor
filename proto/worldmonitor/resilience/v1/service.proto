@@ -32,6 +32,7 @@ service ResilienceService {
     option (sebuf.http.config) = {path: "/get-demographics-capability", method: HTTP_METHOD_GET};
   }
 
+  // Retrieve country structural resilience rankings with coverage, confidence and snapshot metadata for comparison. PRO-gated. Requires an active Pro subscription.
   rpc GetResilienceRanking(GetResilienceRankingRequest) returns (GetResilienceRankingResponse) {
     option (sebuf.http.config) = {path: "/get-resilience-ranking", method: HTTP_METHOD_GET};
   }

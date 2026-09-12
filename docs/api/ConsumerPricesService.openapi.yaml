@@ -139,7 +139,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: GetConsumerPriceBasketSeries
-            description: GetConsumerPriceBasketSeries retrieves the basket index time series.
+            description: Retrieve consumer price basket index history by market, basket and date range, with dated observations, currency and snapshot time for price trend analysis.
             operationId: GetConsumerPriceBasketSeries
             parameters:
                 - name: market_code

@@ -55,6 +55,11 @@ import {
   laterDate,
   loadCorpusData,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
+  MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
+  assertLivePulseMovementClaim,
+  livePulseMovementClaim,
+  livePulseMovementClaimLastmod,
+  livePulseSnapshotAgeDays,
   newestDevelopmentsInstant,
   renderCountryAnalysis,
   renderCountryDevelopments,
@@ -1746,6 +1751,131 @@ describe('crawlable corpus generator', () => {
     }
   });
 
+  // The 10-day freeze ceiling is a pipeline fuse. Pages that still say
+  // "approximately 24 hours" need a tighter claim fuse: a three-day-old
+  // reading is inside the freeze bound and still a false recency claim (#8072).
+  it('does not let a 24-hour recency claim outlive a two-day-old pulse', () => {
+    assert.equal(MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS, 2);
+    assert.ok(
+      MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS < MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
+      'the recency-claim fuse must be stricter than the freeze-job ceiling',
+    );
+    assert.equal(livePulseMovementClaim(1).recencyOk, true);
+    assert.equal(livePulseMovementClaim(2).recencyOk, true);
+    assert.equal(livePulseMovementClaim(2.01).recencyOk, false);
+    assert.equal(livePulseMovementClaim(1).intervalPhrase, 'over approximately 24 hours');
+    assert.equal(livePulseMovementClaim(3).intervalPhrase, 'over a 24-hour comparison window');
+    assert.equal(livePulseMovementClaim(1).metricLabel, 'Approx. 24-hour movement');
+    assert.equal(livePulseMovementClaim(3).metricLabel, '24-hour comparison-window movement');
+    assert.equal(livePulseMovementClaim(1).propertyName, 'Approximate 24-hour movement');
+    assert.equal(livePulseMovementClaim(3).propertyName, '24-hour comparison-window movement');
+
+    assert.doesNotThrow(() => assertLivePulseMovementClaim(
+      'up 4 points over approximately 24 hours, as of Sep 11, 2026',
+      { pagePath: '/countries/iran/', ageDays: 1 },
+    ));
+    assert.throws(
+      () => assertLivePulseMovementClaim(
+        "Iran's Country Instability Index is 73/100 · High, up 4 points over approximately 24 hours, as of Sep 9, 2026, 6:37 AM UTC.",
+        { pagePath: '/countries/iran/', ageDays: 3 },
+      ),
+      /\/countries\/iran\/ claims "over approximately 24 hours"/,
+    );
+    assert.doesNotThrow(() => assertLivePulseMovementClaim(
+      "Iran's Country Instability Index is 73/100 · High, up 4 points over a 24-hour comparison window, as of Sep 9, 2026, 6:37 AM UTC.",
+      { pagePath: '/countries/iran/', ageDays: 3 },
+    ));
+    assert.doesNotThrow(() => assertLivePulseMovementClaim(
+      'See current scores, available 24-hour comparison-window movement, severity levels.',
+      { pagePath: '/country-instability-index/', ageDays: 3 },
+    ));
+    assert.throws(
+      () => assertLivePulseMovementClaim(
+        'See current scores, available 24-hour movement, severity levels.',
+        { pagePath: '/country-instability-index/', ageDays: 3 },
+      ),
+      /available 24-hour movement/,
+    );
+  });
+
+  it('derives CII movement copy from live-pulse snapshot age', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
+    assert.ok(Number.isFinite(capturedAtMs), 'loaded pulse must have a capturedAt date');
+
+    const staleRanking = buildCiiRankingEntries(data.countries, data.livePulse, {
+      now: capturedAtMs + 3.5 * 86_400_000,
+    });
+    assert.equal(staleRanking.movementClaim.recencyOk, false);
+    const staleMoving = staleRanking.entries.find((entry) => typeof entry.change24h === 'number');
+    assert.ok(staleMoving, 'expected a CII country with numeric movement');
+    assert.match(staleMoving.movementText, /over a 24-hour comparison window/);
+    assert.doesNotMatch(staleMoving.movementText, /approximately 24 hours/);
+
+    const freshRanking = buildCiiRankingEntries(data.countries, data.livePulse, {
+      now: capturedAtMs + 86_400_000,
+    });
+    assert.equal(freshRanking.movementClaim.recencyOk, true);
+    const freshMoving = freshRanking.entries.find((entry) => typeof entry.change24h === 'number');
+    assert.ok(freshMoving, 'expected a CII country with numeric movement');
+    assert.match(freshMoving.movementText, /over approximately 24 hours/);
+
+    const staleCountry = data.countries.find((country) => country.code === staleMoving.code);
+    const stalePage = renderCountryPage({
+      country: staleCountry,
+      baseUrl: 'https://www.worldmonitor.app',
+      capturedAt: data.resilience.capturedAt,
+      lastmod: data.lastmod.countries,
+      methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+      rankedCount: data.countries.filter((country) => country.rank != null).length,
+      snapshotNote: data.resilience.snapshotNote,
+      snapshotPath: data.sources.resilienceSnapshot,
+      bbox: data.countryBboxByCode.get(staleCountry.code) || null,
+      livePulse: data.livePulse,
+      ciiEntry: staleMoving,
+    });
+    assert.doesNotMatch(stalePage, /approximately 24 hours/);
+    assert.doesNotMatch(stalePage, /Approx\. 24-hour movement/);
+    assert.match(stalePage, /over a 24-hour comparison window/);
+    assert.match(stalePage, /24-hour comparison-window movement/);
+    assert.doesNotThrow(() => assertLivePulseMovementClaim(stalePage, {
+      pagePath: `/countries/${staleCountry.slug}/`,
+      ageDays: staleMoving.ageDays,
+    }));
+
+    const freshLastmod = livePulseMovementClaimLastmod(
+      data.livePulse.capturedAt,
+      capturedAtMs + 86_400_000,
+    );
+    const staleLastmod = livePulseMovementClaimLastmod(
+      data.livePulse.capturedAt,
+      capturedAtMs + 3.5 * 86_400_000,
+    );
+    assert.equal(freshLastmod, null);
+    assert.equal(
+      staleLastmod,
+      new Date(capturedAtMs + MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+    );
+    const freshClock = await loadCorpusData({
+      rootDir: repoRoot,
+      now: capturedAtMs + 86_400_000,
+    });
+    const staleClock = await loadCorpusData({
+      rootDir: repoRoot,
+      now: capturedAtMs + 3.5 * 86_400_000,
+    });
+    assert.ok(
+      laterDate(staleClock.lastmod.ciiCountries, staleLastmod) === staleClock.lastmod.ciiCountries,
+      'expired recency copy must fold the transition date into the CII lastmod clock',
+    );
+    assert.ok(
+      staleClock.lastmod.ciiCountries >= freshClock.lastmod.ciiCountries,
+      'a rebuild after the two-day boundary must not advertise an earlier CII lastmod',
+    );
+  });
+
   it('requires the API key before freezing the crawlable pulse', () => {
     const workflow = readFileSync(
       resolve(repoRoot, '.github/workflows/crawlable-pulse-refresh.yml'),
@@ -2569,9 +2699,11 @@ describe('crawlable corpus generator', () => {
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
       assert.match(ciiIndex, new RegExp(`<meta name="lastmod" content="${ciiIndexLastmod}">`));
       assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
+      const movementClaim = clock.ciiRanking.movementClaim
+        ?? livePulseMovementClaim(livePulseSnapshotAgeDays(clock.livePulse.capturedAt));
       assert.match(
         ciiIndex,
-        /CII v8 currently monitors 31 countries and reports approximate 24-hour movement when available\./,
+        new RegExp(`CII v8 currently monitors 31 countries and ${movementClaim.rankingReports.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`),
       );
       const ciiQuestion = 'Which countries are most unstable right now?';
       const ciiQuestionHeading = [...ciiDocument.querySelectorAll('h2')]
@@ -2634,7 +2766,7 @@ describe('crawlable corpus generator', () => {
       // not "the UAE is ambiguous".
       const movementOf = (name) => ciiItemList.itemListElement
         .find((entry) => entry.item?.name === name)?.item?.additionalProperty
-        ?.find((property) => property.name === 'Approximate 24-hour movement');
+        ?.find((property) => property.name === movementClaim.propertyName);
       const ciiByName = new Map(
         clock.ciiRanking.entries.map((entry) => [entry.country.name, entry]),
       );
@@ -2651,17 +2783,24 @@ describe('crawlable corpus generator', () => {
         );
         const stableSlug = clock.countries.find((entry) => entry.name === stableName)?.slug;
         const stablePage = read(outDir, `countries/${stableSlug}/index.html`);
-        assert.match(stablePage, /stable or unavailable over approximately 24 hours/);
+        assert.match(
+          stablePage,
+          new RegExp(`stable or unavailable ${movementClaim.intervalPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+        );
         assert.match(stablePage, /data-live-trend>Stable or unavailable<\/strong>/);
         const stableCiiDataset = jsonLdObjects(stablePage)
           .flatMap((entry) => collectDatasets(entry))
           .find((entry) => entry['@id']?.endsWith('#cii-dataset'));
         assert.equal(
           stableCiiDataset.variableMeasured.find(
-            (property) => property.name === 'Approximate 24-hour movement',
+            (property) => property.name === movementClaim.propertyName,
           ),
           undefined,
         );
+        if (!movementClaim.recencyOk) {
+          assert.doesNotMatch(stablePage, /approximately 24 hours/);
+          assert.doesNotMatch(stablePage, /Approx\. 24-hour movement/);
+        }
       }
 
       assert.ok(movingName, 'expected at least one CII country with a numeric 24-hour movement');

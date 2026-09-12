@@ -162,6 +162,56 @@ function declarationsOf(html: string, id: string): Record<string, any>[] {
   return found;
 }
 
+function assertSelfDescribingAuthor(path: string, author: Record<string, unknown> | undefined): void {
+  assert.ok(author, `${path}: must carry an author`);
+  assert.ok(
+    author['@id'] === ORGANIZATION_ID || author['@id'] === PERSON_ID,
+    `${path}: author must reference the canonical Organization or Person, got ${JSON.stringify(author['@id'])}`,
+  );
+  // A bare `@id` is an unresolvable stub for the naive extractors this
+  // signal is for: no generated page declares the canonical node, and
+  // parsers resolve `@id` within one document (#7459b, #8073).
+  assert.ok(
+    typeof author['@type'] === 'string' && typeof author.name === 'string',
+    `${path}: author reference must carry @type and name so it resolves in-document`,
+  );
+  if (author['@id'] === ORGANIZATION_ID) {
+    assert.deepEqual(
+      author,
+      WORLD_MONITOR_ORG,
+      `${path}: Organization author must be the typed WORLD_MONITOR_ORG stub`,
+    );
+  }
+}
+
+/**
+ * Docs middleware output for every dated slug, both upstream shapes.
+ * Shared by the body-consistency test and the author guard so a new docs
+ * page cannot join one population and skip the other (#8073).
+ */
+let docsMiddlewareDocumentsMemo: Map<string, string> | null = null;
+function docsMiddlewareDocuments(): Map<string, string> {
+  docsMiddlewareDocumentsMemo ??= (() => {
+    const documents = new Map<string, string>();
+    for (const slug of Object.keys(DOCS_PAGE_DATES)) {
+      for (const type of ['WebPage', ['Article', 'TechArticle']]) {
+        const html = `<html><head><script type="application/ld+json">${JSON.stringify({
+          '@context': 'https://schema.org', '@type': type, name: slug, headline: slug,
+          url: `https://www.worldmonitor.app/docs/${slug}`,
+        })}</script></head><body></body></html>`;
+        const rewritten = rewriteDocsLocaleHtml(
+          rewriteDocsLocaleHtml(html, `/docs/${slug}`),
+          `/docs/${slug}`,
+        );
+        assert.equal(collectNodesOfType(rewritten, 'Article').length, 1, `${slug} must emit an Article`);
+        documents.set(`docs/${slug} (${JSON.stringify(type)} middleware output)`, rewritten);
+      }
+    }
+    return documents;
+  })();
+  return docsMiddlewareDocumentsMemo;
+}
+
 /**
  * Every HTML document that could carry JSON-LD: the committed entry points
  * plus anything generated under public/ (both the crawlable corpus and the
@@ -345,18 +395,7 @@ describe('canonical schema graph', () => {
       '@graph': [{ '@type': 'Organization', '@id': id, ...properties, logo: { '@type': 'ImageObject', url: logo } }],
     })}</script></head><body></body></html>`;
     documents.set('docs/about (middleware output)', rewriteDocsLocaleHtml(docsHtml, '/docs/about'));
-    // Exercise both upstream shapes for every docs slug, including localized pages.
-    for (const slug of Object.keys(DOCS_PAGE_DATES)) {
-      for (const type of ['WebPage', ['Article', 'TechArticle']]) {
-        const html = `<html><head><script type="application/ld+json">${JSON.stringify({
-          '@context': 'https://schema.org', '@type': type, name: slug, headline: slug,
-          url: `https://www.worldmonitor.app/docs/${slug}`,
-        })}</script></head><body></body></html>`;
-        const rewritten = rewriteDocsLocaleHtml(html, `/docs/${slug}`);
-        assert.equal(collectNodesOfType(rewritten, 'Article').length, 1, `${slug} must emit an Article`);
-        documents.set(`docs/${slug} (${JSON.stringify(type)} middleware output)`, rewritten);
-      }
-    }
+    for (const [path, html] of docsMiddlewareDocuments()) documents.set(path, html);
     for (const [path, html] of documents) {
       const articles = ['Article', 'TechArticle', 'BlogPosting', 'NewsArticle']
         .flatMap((type) => collectNodesOfType(html, type));
@@ -473,22 +512,28 @@ describe('canonical schema graph', () => {
       }
       for (const body of bodies) {
         checked += 1;
-        const author = body.author as Record<string, unknown> | undefined;
-        assert.ok(author, `${path}: ${JSON.stringify(body['@type'])} must carry an author`);
-        assert.ok(
-          author['@id'] === ORGANIZATION_ID || author['@id'] === PERSON_ID,
-          `${path}: author must reference the canonical Organization or Person, got ${JSON.stringify(author['@id'])}`,
-        );
-        // A bare `@id` is an unresolvable stub for the naive extractors this
-        // signal is for: no generated page declares the canonical node, and
-        // parsers resolve `@id` within one document (#7459b).
-        assert.ok(
-          typeof author['@type'] === 'string' && typeof author.name === 'string',
-          `${path}: author reference must carry @type and name so it resolves in-document`,
-        );
+        assertSelfDescribingAuthor(`${path}: ${JSON.stringify(body['@type'])}`, body.author);
       }
     }
     assert.ok(checked > 200, `expected the whole generated corpus to be checked, saw ${checked} bodies`);
+  });
+
+  // #8073: the #7980 author guard discovered its population from the corpus
+  // generator, so 465 docs Articles shipped a bare `#organization` reference
+  // the guard could not see. The docs family is synthesized through the real
+  // rewrite, the same way the date and body-consistency tests already do.
+  it('attributes every docs Article to a self-describing canonical author (#8073)', () => {
+    const documents = docsMiddlewareDocuments();
+    assert.equal(documents.size, Object.keys(DOCS_PAGE_DATES).length * 2);
+
+    let checked = 0;
+    for (const [path, html] of documents) {
+      const articles = collectNodesOfType(html, 'Article');
+      assert.equal(articles.length, 1, `${path}: expected one Article`);
+      checked += 1;
+      assertSelfDescribingAuthor(path, articles[0].author);
+    }
+    assert.equal(checked, documents.size, 'every synthesized docs document must contribute an Article author');
   });
 
   it('serves every variant dashboard identically to browsers and AI crawlers', () => {

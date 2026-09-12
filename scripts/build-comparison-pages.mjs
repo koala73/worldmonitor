@@ -78,6 +78,7 @@ export const COMPARISON_HUB_MATRIX_ROWS = [
 const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'liveuamap-alternatives',
+    metaDescription: 'Compare Liveuamap alternatives for conflict mapping and global intelligence, with a feature matrix covering pricing, data coverage, API access and licensing.',
     path: '/compare/liveuamap-alternatives/',
     title: 'Liveuamap Alternatives | World Monitor',
     h1: 'Liveuamap Alternatives',
@@ -593,9 +594,9 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
 function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const pageUrl = new URL(page.path, baseUrl).href;
-  const description = page.h1
+  const description = page.metaDescription ?? (page.h1
     + ' - ' + page.claim
-    + '. Full comparison matrix, honest concessions, and FAQs.';
+    + '. Full comparison matrix, honest concessions, and FAQs.');
   assertMetaDescription(description, page.slug);
 
   const jsonLd = [];
