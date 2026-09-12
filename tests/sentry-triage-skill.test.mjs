@@ -72,7 +72,11 @@ describe('cursor skill: sentry-triage', () => {
     assert.match(markdown, /plain resolve/i);
     assert.match(markdown, /UNKNOWN_FUNCTION/);
     assert.match(markdown, /sentry-beforesend\.test\.mjs/);
-    assert.match(markdown, /Fixes WORLDMONITOR-/);
+    const productBug = sectionBetween(markdown, '**Product bug**', '**Archive / mute (any class)**');
+    const completion = markdown.slice(markdown.indexOf('## What "done" looks like'));
+    assert.match(productBug, /short ID with no resolving keyword beside it/);
+    assert.match(completion, /short ID with no resolving keyword beside it/);
+    assert.doesNotMatch(completion, /(?:fix(?:es|ed)?|clos(?:e|es|ed)|resolv(?:e|es|ed))\s+WORLDMONITOR-/i);
   });
 
   it('audits archive mode via substatus, not empty statusDetails', () => {

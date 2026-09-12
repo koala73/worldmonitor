@@ -120,7 +120,7 @@ State one class before touching code or Sentry status:
 - Fix the cause. Add a test that reproduces the failure with synthetic data when the surface has a test suite.
 - During the release migration, do not put a resolving keyword next to a short ID in a commit message or PR body. The Sentry GitHub integration can create a commit/release pin from that marker; hosted compatibility remains unverified as described above. It fires even when the text only quotes the marker while discussing the bug, and backticks do not escape it. File content is never scanned; only commit messages and PR bodies are.
 - Link the work by naming the short ID with no resolving keyword beside it, such as `Sentry WORLDMONITOR-12A`, then, when resolution is authorized and the fix is verified, resolve the issue **plainly** and read `status` and `statusDetails` back to confirm `resolved` with no `inRelease`, `inNextRelease`, or `inCommit` key.
-- Scan the branch before pushing. Any hit means rewrite the message.
+- Scan commit messages before pushing and the proposed PR body before opening or updating the PR. Apply the same marker pattern below to both. Any hit means rewrite that text before publishing.
 
   ```bash
   git log <base>..HEAD --format=%B \
