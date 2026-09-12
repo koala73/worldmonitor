@@ -2006,6 +2006,7 @@ export function createDomainGateway(
       const endpointRlResponse = rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
+            principalScope: isUserApiKey ? 'api_key' : 'session',
           })
         : await checkEndpointRateLimit(request, pathname, corsHeaders);
       if (endpointRlResponse) {
@@ -2153,9 +2154,15 @@ export function createDomainGateway(
       }
 
       if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
+        // WORLDMONITOR-12A: scope the bucket to the credential, not just the
+        // user. An API key and a browser session resolve to the same Clerk id,
+        // so without this a customer's own scraper drains the 600/min budget
+        // and their dashboard 429s. In production on 2026-09-11 that was 598
+        // scraper successes against 2 for the same person's browser.
         const rateLimitResponse = rateLimitPrincipalUserId
           ? await checkRateLimit(request, corsHeaders, {
               principalUserId: rateLimitPrincipalUserId,
+              principalScope: isUserApiKey ? 'api_key' : 'session',
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
