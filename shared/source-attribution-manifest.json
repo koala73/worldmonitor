@@ -1379,6 +1379,9 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
+          "path": "scripts/_widget-data-policy.cjs"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {

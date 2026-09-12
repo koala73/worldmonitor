@@ -125,7 +125,8 @@ const API_ORIGIN = 'https://api.worldmonitor.app';
 const WIDGET_DATA_CATALOG = `## Option 1 — Bootstrap (pre-seeded dashboard data)
 Use: /api/bootstrap?keys=<key> — response shape: { data: { <key>: <array or object> } }
 PREFER this over RPCs whenever a key matches the user's topic.
-Supply one or more comma-separated approved keys. Only the keys parameter is allowed.
+Supply one or more comma-separated approved keys. For an anonymous single-key read, append &public=1.
+Only keys and the optional public=1 marker are allowed; the API may deny keys that are not public.
 
 ${Object.entries(BOOTSTRAP_GROUPS).map(([group, keys]) => `${group}:\n  ${keys.join(', ')}`).join('\n\n')}
 
@@ -135,10 +136,14 @@ Downstream access checks still apply; widget tier does not grant API entitlement
 `;
 
 function approvedBootstrapQuery(searchParams, requireKeys) {
-  if ([...searchParams.keys()].some(key => key !== 'keys')) return false;
+  if ([...searchParams.keys()].some(key => key !== 'keys' && key !== 'public')) return false;
+  const markers = searchParams.getAll('public');
+  if (markers.length > 1 || (markers.length === 1 && markers[0] !== '1')) return false;
   const values = searchParams.getAll('keys');
   if (!values.length) return !requireKeys;
-  return values.length === 1 && values[0].split(',').every(key => BOOTSTRAP_KEYS.has(key));
+  return values.length === 1
+    && (!markers.length || !values[0].includes(','))
+    && values[0].split(',').every(key => BOOTSTRAP_KEYS.has(key));
 }
 
 // Validate both supplied queries and the final URL. Never let URL normalization

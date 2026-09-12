@@ -95,6 +95,10 @@ for (const tier of ['basic', 'pro']) describe(`widget data request boundary (${t
     {endpoint:'/api/\\example.com/bootstrap?keys=marketQuotes'},
     {endpoint:'/api/boot\nstrap?keys=marketQuotes'},
     {endpoint:'/api/bootstrap?keys=marketQuotes%ZZ'},
+    {endpoint:'/api/bootstrap?keys=weatherAlerts&public=0'},
+    {endpoint:'/api/bootstrap?keys=weatherAlerts&public=1&public=1'},
+    {endpoint:'/api/bootstrap?keys=weatherAlerts,forecasts&public=1'},
+    {endpoint:'/api/bootstrap?keys=weatherAlerts',params:{public:'2'}},
     {endpoint:null}, {endpoint:42},
     {endpoint:'/api/bootstrap',params:null},
     {endpoint:'/api/bootstrap',params:{keys:['marketQuotes']}},
@@ -126,6 +130,23 @@ for (const tier of ['basic', 'pro']) describe(`widget data request boundary (${t
 
 
 describe('reviewed catalog consistency', () => {
+  it('preserves the real public bootstrap admission shape in both tiers', async () => {
+    const { classifyPublicBootstrapUrl } = await import('../api/_bootstrap-public-tier.js');
+    for (const tier of ['basic', 'pro']) {
+      for (const key of ['weatherAlerts', 'forecasts', 'cyberThreats', 'flightDelays', 'correlationCards']) {
+        for (const input of [
+          { endpoint: `/api/bootstrap?keys=${key}&public=1` },
+          { endpoint: `/api/bootstrap?keys=${key}`, params: { public: '1' } },
+          { endpoint: '/api/bootstrap?public=1', params: { keys: key } },
+        ]) {
+          const { fetches } = await loop(input, tier);
+          assert.equal(fetches.length, 1);
+          assert.ok(classifyPublicBootstrapUrl(new URL(fetches[0].url)), key);
+        }
+      }
+    }
+  });
+
   it('advertised keys exist in the active bootstrap registry and pass the request boundary', async () => {
     const { resolveBootstrapRegistry } = await import('../shared/bootstrap-tier-keys.js');
     const registry = resolveBootstrapRegistry({ iranEventsEnabled: false }).cacheKeys;
