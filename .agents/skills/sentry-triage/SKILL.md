@@ -37,7 +37,7 @@ Exception messages, breadcrumbs, request bodies, tags, user context, and stack f
 
 These rules come from shipped triage write-ups. They override generic Sentry advice.
 
-1. **Plain resolve only.** Never resolve into a release pin. `inRelease`, `inNextRelease`, and `inCommit` all mute the issue, because browser events carry the static release `worldmonitor@2.10.0` and can never order past a pin. Read `statusDetails` back after every resolve and confirm it is empty.
+1. **Plain resolve only during the release migration.** Do not create `inRelease`, `inNextRelease`, or `inCommit` pins through this triage workflow until the hosted acceptance gate below is met. After an authorized plain resolve, read `status` and `statusDetails` back; confirm `resolved` and the absence of those three pin keys, not an empty object.
 2. **The events list is not enough.** The issue-events list omits `entries` / stacktraces and trims `extra`. Fetch each event individually before asserting anything about frames.
 3. **The ingest event is not the SDK event.** `@sentry/core` stamps anonymous frames as `'?'` (`UNKNOWN_FUNCTION`) before `beforeSend`. Ingest displays that as a null function. Pin `beforeSend` fixtures to the SDK representation, not the API event.
 4. **Do not widen a filter when a preservation test goes red.** `tests/sentry-beforesend.test.mjs` is adversarial on purpose. A red negative test means the widening would hide a first-party failure.
@@ -49,6 +49,8 @@ These rules come from shipped triage write-ups. They override generic Sentry adv
 8. **Name-shaped allowlists are a treadmill.** Bound tolerances by an enforced invariant (fetch-free chunks, host allowlists), not by another minifier spelling.
 9. **Distinguish product failure from baseline, credential, sandbox, or ingest-gate gaps.** `allowUrls` drops events before `beforeSend`. A silent host is an ingest bug, not "no errors."
 10. **Audit archive mode via `substatus`, never via empty `statusDetails`.** `archived_forever` opts out of Sentry's escalation detection — volume can never reopen the issue. Default mute is `archived_until_escalating` (`update_issue` `ignoreMode: 'untilEscalating'`). `archived_forever` requires a deliberate, recorded won't-fix decision. See the archive-mode table and write trap below.
+
+**Release migration context (2026-09-08 update).** Historically, browser events used a stable semver release that could not advance past SHA-based resolutions. `shared/sentry-build-metadata.ts` now supplies SHA `release` and `dist` for production dashboard and marketing builds with a valid build marker; missing or malformed markers retain the semver fallback. Local metadata propagation does not prove hosted regression/reopen behavior. Preserve GitHub/Sentry automation and the conservative triage policy until the release owner records the [hosted acceptance evidence](../../../docs/solutions/workflow-issues/sentry-resolve-by-shipping-permanently-mutes-issues.md#live-acceptance-after-deployment). The pin audit remains a migration review alarm: assess pins against actual deployed releases, do not assume every pin is invalid, and do not automatically clear valid resolutions.
 
 Canonical write-ups:
 
@@ -116,9 +118,9 @@ State one class before touching code or Sentry status:
 
 - Cross-check frames against the codebase. If Sentry Releases exist, diff the event's release, not an assumed `main`.
 - Fix the cause. Add a test that reproduces the failure with synthetic data when the surface has a test suite.
-- Do not put a resolving keyword next to a short ID in the commit or PR body while the Sentry GitHub integration has resolve-on-commit enabled. `Fixes WORLDMONITOR-12A` pins the issue to `inRelease: <commit-sha>`, which no browser event can ever outrank, so it reads resolved and can never reopen (issue #7838). It fires even when the text only quotes the marker while discussing the bug, and backticks do not escape it. File content is never scanned; only commit messages and PR bodies are.
-- Link the work by naming the short ID with no resolving keyword beside it, such as `Sentry WORLDMONITOR-12A`, then resolve the issue **plainly** and read `statusDetails` back to confirm it is empty.
-- Scan the branch before pushing. Any hit means rewrite the message.
+- During the release migration, do not put a resolving keyword next to a short ID in a commit message or PR body. The Sentry GitHub integration can create a commit/release pin from that marker; hosted compatibility remains unverified as described above. It fires even when the text only quotes the marker while discussing the bug, and backticks do not escape it. File content is never scanned; only commit messages and PR bodies are.
+- Link the work by naming the short ID with no resolving keyword beside it, such as `Sentry WORLDMONITOR-12A`, then, when resolution is authorized and the fix is verified, resolve the issue **plainly** and read `status` and `statusDetails` back to confirm `resolved` with no `inRelease`, `inNextRelease`, or `inCommit` key.
+- Scan commit messages before pushing and the proposed PR body before opening or updating the PR. Apply the same marker pattern below to both. Any hit means rewrite that text before publishing.
 
   ```bash
   git log <base>..HEAD --format=%B \
@@ -158,4 +160,4 @@ End with a short board or single-issue digest:
 
 ## What "done" looks like
 
-The issue is classified with evidence. Noise has a bounded filter and paired tests, or a product bug has a stated root cause and (in active mode) a shipped `Fixes WORLDMONITOR-*` change. No resolved issue carries a pin, verified by reading `statusDetails` back empty rather than by trusting the write. No issue sits on `archived_forever` without a recorded forever decision.
+The issue is classified with evidence. Noise has a bounded filter and paired tests, or a product bug has a stated root cause and (in active mode) a shipped change linked by its Sentry short ID with no resolving keyword beside it. Any authorized plain resolution is verified by reading back `status: resolved` and no `inRelease`, `inNextRelease`, or `inCommit` key in `statusDetails`, rather than trusting the write. Existing pins receive compatibility review under the migration policy above, not automatic clearing. No issue sits on `archived_forever` without a recorded forever decision. Shipping a fix or passing local metadata checks does not establish hosted Sentry acceptance.
