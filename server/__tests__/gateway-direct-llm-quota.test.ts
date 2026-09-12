@@ -79,9 +79,8 @@ const BACKTEST_PATH = "/api/market/v1/backtest-stock";
 // GLOBAL limiter these tests exercise. The gateway skips the global limiter for
 // any route carrying an endpoint policy (gateway.ts, `!hasEndpointRatePolicy`),
 // so a policied route here would silently stop testing what it claims to.
-// list-market-quotes used to sit here and gained a policy in #6305 when its
-// seed misses started reaching a paid provider.
-const GLOBAL_LIMITED_PATH = "/api/market/v1/list-crypto-quotes";
+// Crypto quotes now has an endpoint policy for its paid-provider gap fetch.
+const GLOBAL_LIMITED_PATH = "/api/market/v1/list-gulf-quotes";
 const CACHE_PATH = "/api/news/v1/summarize-article-cache";
 
 function json(body: unknown, status = 200) {

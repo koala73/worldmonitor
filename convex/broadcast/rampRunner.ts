@@ -539,6 +539,7 @@ export const getRampStatus = internalQuery({
           totalCount: number;
           pushedCount: number;
           failedCount: number;
+          suppressedCount: number;
           batchSize: number;
           underfilled: boolean;
           segmentId?: string;
@@ -564,6 +565,7 @@ export const getRampStatus = internalQuery({
               totalCount: r.totalCount,
               pushedCount: r.pushedCount,
               failedCount: r.failedCount,
+              suppressedCount: r.suppressedCount ?? 0,
               batchSize: r.batchSize,
               underfilled: r.underfilled,
               segmentId: r.segmentId,

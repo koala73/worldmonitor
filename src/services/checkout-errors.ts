@@ -62,6 +62,13 @@ const RETRYABLE: Record<CheckoutErrorCode, boolean> = {
 
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 const PAYMENT_IN_PROGRESS = 'PAYMENT_IN_PROGRESS';
+/**
+ * The edge idempotency guard answers 409 with this envelope when a replay
+ * arrives while the first attempt still holds the processing marker
+ * (api/_idempotency.js). It is the transport's own retry racing a slow first
+ * attempt, so it is transient — see the branch in `statusToCode`.
+ */
+const IDEMPOTENCY_CONFLICT = 'idempotency_conflict';
 export const DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS = 10;
 
 /** Body shape we've observed from `/api/create-checkout` failures. */
@@ -104,6 +111,13 @@ function statusToCode(status: number, body: CheckoutErrorBody | undefined): Chec
   if (status === 401) return 'unauthorized';
   if (status === 409 && body?.error === ACTIVE_SUBSCRIPTION_EXISTS) return 'duplicate_subscription';
   if (status === 409 && body?.error === PAYMENT_IN_PROGRESS) return 'payment_in_progress';
+  // Our own retry caught the first attempt mid-flight. Transient by
+  // construction: the edge is still producing the checkout session this very
+  // key will replay. Falling through to the generic 4xx arm below would render
+  // "That product isn't available" and switch the retry affordance off, which
+  // is both false and terminal — the failure mode WORLDMONITOR-Q4's retry
+  // widening would otherwise have made more common.
+  if (status === 409 && body?.error === IDEMPOTENCY_CONFLICT) return 'service_unavailable';
   // Dodo can rate-limit checkout-session creation. The relay preserves 429 so
   // the transport does not auto-retry it as a generic 502 and amplify the
   // provider cooldown. This remains a temporary, user-retryable failure.
@@ -131,14 +145,27 @@ export function classifyHttpCheckoutError(
   retryAfter?: string | null,
 ): CheckoutError {
   const code = statusToCode(status, body);
+  // The idempotency conflict carries `Retry-After: 2` because the edge knows
+  // how long the first attempt may still hold the processing marker. It is the
+  // only number that makes the wait actionable, and the caller needs it to set
+  // a cooldown — without it a re-click goes straight back into the same lock.
+  // No default here, unlike the 429: absent header means no wait was promised.
+  const conflictRetryAfter = status === 409 && body?.error === IDEMPOTENCY_CONFLICT
+    ? parseCheckoutRetryAfterSeconds(retryAfter)
+    : undefined;
   const retryAfterSeconds = code === 'rate_limited'
     ? parseCheckoutRetryAfterSeconds(retryAfter) ?? DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS
-    : undefined;
-  const userMessage = retryAfterSeconds === undefined
-    ? pickUserMessage(code)
-    : `Checkout is temporarily rate limited. Please wait ${retryAfterSeconds} ${
+    : conflictRetryAfter;
+  // Copy keys on the CODE, never on the presence of a wait. Those were the same
+  // condition while only 429 carried one; now that the conflict does too, the
+  // old form would have told a buyer they were rate limited when they were not
+  // — the same false-message defect as the `invalid_product` branch this
+  // classifier already had to fix.
+  const userMessage = code === 'rate_limited' && retryAfterSeconds !== undefined
+    ? `Checkout is temporarily rate limited. Please wait ${retryAfterSeconds} ${
         retryAfterSeconds === 1 ? 'second' : 'seconds'
-      } and try again.`;
+      } and try again.`
+    : pickUserMessage(code);
   return {
     code,
     userMessage,

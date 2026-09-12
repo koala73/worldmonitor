@@ -1,4 +1,5 @@
 import type { ListWebcamsRequest, ListWebcamsResponse, WebcamEntry, WebcamCluster, ServerContext } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
 import { geoSearchByBox, getHashFieldsBatch, getCachedJson, setCachedJson } from '../../../_shared/redis';
 
 const MAX_RESULTS = 2000;
@@ -71,14 +72,30 @@ function clusterWebcams(
 }
 
 export async function listWebcams(_ctx: ServerContext, req: ListWebcamsRequest): Promise<ListWebcamsResponse> {
-  const { zoom = 3 } = req;
+  const values = {
+    zoom: req.zoom ?? 3,
+    boundW: req.boundW ?? -180,
+    boundS: req.boundS ?? -90,
+    boundE: req.boundE ?? 180,
+    boundN: req.boundN ?? 90,
+  };
+  const violations = Object.entries(values)
+    .filter(([, value]) => !Number.isFinite(value))
+    .map(([field]) => ({ field, description: 'Must be a finite number' }));
+  if (violations.length) throw new ValidationError(violations);
 
-  // Quantize bounds so the GEOSEARCH matches the cache key semantics.
-  // Every viewport that maps to the same quantized key gets the same superset query.
-  const qW = Math.floor(req.boundW ?? -180);
-  const qS = Math.floor(req.boundS ?? -90);
-  const qE = Math.ceil(req.boundE ?? 180);
-  const qN = Math.ceil(req.boundN ?? 90);
+  // MapLibre supports zoom through 22. Preserve the existing <3 / <=4 / <=6
+  // / <=8 clustering boundaries while collapsing fractional cache identities.
+  const zoom = Math.max(0, Math.min(22,
+    values.zoom < 3 ? Math.floor(values.zoom) : Math.ceil(values.zoom)));
+
+  // Clamp before quantization: the global map still needs the full 360 x 180
+  // degree box, but no query can exceed that globe-sized maximum. Every
+  // viewport sharing a quantized key must use the same superset query.
+  const qW = Math.floor(Math.max(-180, Math.min(180, values.boundW)));
+  const qS = Math.floor(Math.max(-90, Math.min(90, values.boundS)));
+  const qE = Math.ceil(Math.max(-180, Math.min(180, values.boundE)));
+  const qN = Math.ceil(Math.max(-90, Math.min(90, values.boundN)));
 
   // Read active version
   const versionResult = await getCachedJson('webcam:cameras:active');
