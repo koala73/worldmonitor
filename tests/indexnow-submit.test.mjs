@@ -347,8 +347,8 @@ describe('IndexNow submission', () => {
     inert.forEach((changed, index) => {
       assert.equal(
         inertGates[index].submit_www,
-        'false',
-        `${changed} is not a direct input to the deployed canonical www output`,
+        'true',
+        `${changed} cannot prove earlier deployed www changes were submitted`,
       );
     });
   });
@@ -494,11 +494,9 @@ describe('IndexNow submission', () => {
     assert.match(workflow, /public\/mcp-server\\\.md/);
     assert.match(workflow, /public\/sitemap\\\.xml/);
     assert.match(workflow, /scripts\/build-sitemap\\.mjs/);
-    assert.match(workflow, /blog-site\/src\/\.\*/);
     assert.match(workflow, /api\/mcp\/\.\*/);
     assert.match(workflow, /INDEXNOW_BATCHES\.find/);
     assert.match(workflow, /grep -Fxq "public\/\$\{APEX_KEY_PATH\}"/);
-    assert.match(workflow, /grep -Fxq "public\/\$\{WWW_KEY_PATH\}"/);
     assert.match(workflow, /submit_apex/);
     assert.match(workflow, /submit_www/);
     assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host worldmonitor\.app/);
@@ -529,5 +527,105 @@ describe('IndexNow root-index indirection', () => {
       () => readLocalIndexMember('<?xml version="1.0"?><sitemapindex><sitemap><loc>https://www.worldmonitor.app/blog/sitemap-index.xml</loc></sitemap></sitemapindex>'),
       /no local sitemap-main\.xml member/,
     );
+  });
+});
+
+describe('IndexNow published inventory (#8071)', () => {
+  const origin = 'https://www.worldmonitor.app';
+  const flagged = `${origin}/docs/methodology/resilience-indicators`;
+  const xml = (kind, urls) => `<${kind}>${urls.map(url => `<${kind === 'urlset' ? 'url' : 'sitemap'}><loc>${url}</loc></${kind === 'urlset' ? 'url' : 'sitemap'}>`).join('')}</${kind}>`;
+  function publishedDocuments() {
+    return new Map([
+      [`${origin}/sitemap.xml`, xml('sitemapindex', [`${origin}/sitemap-main.xml`, `${origin}/blog/sitemap-index.xml`, `${origin}/docs/sitemap.xml`])],
+      [`${origin}/sitemap-main.xml`, xml('urlset', [
+        ...indexNow.INDEXNOW_BATCHES.flatMap(batch => batch.urls.filter(url => !url.includes('/blog/'))),
+        `${origin}/compare/new-comparison/`,
+      ])],
+      [`${origin}/blog/sitemap-index.xml`, xml('sitemapindex', [`${origin}/blog/sitemap-0.xml`])],
+      [`${origin}/blog/sitemap-0.xml`, xml('urlset', [`${origin}/blog/new-published-post/`])],
+      [`${origin}/docs/sitemap.xml`, xml('urlset', [flagged, `${origin}/docs/zh/methodology/resilience-indicators`])],
+    ]);
+  }
+
+  it('posts published main, nested blog and docs pages, including URLs absent from the checkout', async () => {
+    const documents = publishedDocuments();
+    const posts = [];
+    const fetchImpl = async (url, init) => {
+      assert.ok(init.signal);
+      assert.ok(init.headers['User-Agent']);
+      if (init.method === 'POST') {
+        posts.push(JSON.parse(init.body));
+        return new Response(null, { status: 200 });
+      }
+      const config = indexNow.INDEXNOW_BATCHES.find(batch => batch.keyLocation === url);
+      return new Response(config?.key ?? documents.get(url), { status: 200 });
+    };
+    await indexNow.runIndexNowSubmission({ fetchImpl, endpoints: ['https://www.bing.com/IndexNow'], logger: { log() {}, error() {} } });
+    const www = posts.find(post => post.host === 'www.worldmonitor.app');
+    for (const url of [flagged, `${origin}/compare/new-comparison/`, `${origin}/accuracy/`, `${origin}/blog/new-published-post/`]) {
+      assert.ok(www.urlList.includes(url), `${url} must reach the search engine`);
+    }
+    assert.ok(!www.urlList.includes(`${origin}/blog/authors/elie-habib/`), 'unpublished checkout URLs must not replace the published inventory');
+    assert.ok(posts.every(post => post.urlList.every(url => new URL(url).hostname === post.host && !url.endsWith('.xml'))));
+  });
+
+  it('fails before any POST when a child sitemap is unavailable, empty, or untrusted', async () => {
+    for (const [broken, expectedError] of [
+      [new Response(null, { status: 503 }), /returned 503/],
+      [new Response(null, { status: 301 }), /returned 301/],
+      [new Response('<urlset></urlset>'), /empty sitemap/],
+      [new Response('<html>unavailable</html>'), /invalid sitemap document/],
+      [new Response(xml('sitemapindex', ['https://example.com/sitemap.xml'])), /invalid sitemap location/],
+      [new Response(xml('sitemapindex', [`${origin}/sitemap.xml`])), /no docs pages/],
+      [new Response(xml('urlset', ['https://example.com/page'])), /invalid published page URL/],
+      [new Response('<urlset><url><loc>https://www.worldmonitor.app/docs/valid</loc></url><url></url></urlset>'), /one location per sitemap entry/],
+    ]) {
+      const documents = publishedDocuments();
+      let posts = 0;
+      await assert.rejects(indexNow.runIndexNowSubmission({
+        fetchImpl: async (url, init) => {
+          if (init.method === 'POST') posts++;
+          if (url === `${origin}/docs/sitemap.xml`) return broken;
+          assert.ok(documents.has(url), `unexpected request ${url}`);
+          return new Response(documents.get(url));
+        },
+        logger: { log() {}, error() {} },
+      }), expectedError);
+      assert.equal(posts, 0);
+    }
+  });
+
+  it('prints the published host batch from the real CLI without posting in dry-run mode', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'indexnow-cli-'));
+    try {
+      const preload = join(dir, 'fetch.mjs');
+      writeFileSync(preload, `const documents = new Map(${JSON.stringify([...publishedDocuments()])});
+globalThis.fetch = async (url, init) => {
+  if (init.method !== 'GET' || !documents.has(url)) throw new Error('unexpected request ' + url);
+  return new Response(documents.get(url));
+};`);
+      const { stdout, stderr, status } = await runStep(
+        'node --import "$INDEXNOW_TEST_PRELOAD" scripts/seo-indexnow-submit.mjs --host www.worldmonitor.app --dry-run',
+        { ...process.env, INDEXNOW_TEST_PRELOAD: preload },
+      );
+      assert.equal(status, 0, stderr);
+      const batches = JSON.parse(stdout);
+      assert.equal(batches.length, 1);
+      assert.equal(batches[0].host, 'www.worldmonitor.app');
+      assert.ok(batches[0].urls.includes(flagged));
+      assert.ok(batches[0].urls.includes(`${origin}/compare/new-comparison/`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('catches independently published docs on a scheduled run', async () => {
+    assert.ok(workflowDoc.on.schedule?.length, 'docs-only publication needs a catch-up trigger because Vercel can skip docs changes');
+    assert.match(workflowDoc.jobs['submit-indexnow'].if, /github.event_name == 'schedule'/);
+    assert.equal((await runRelevanceGate([], 'schedule')).submit_www, 'true');
+  });
+
+  it('submits www after production deployment even when the last commit is unrelated', async () => {
+    assert.equal((await runRelevanceGate(['src/components/SomePanel.tsx'])).submit_www, 'true');
   });
 });
