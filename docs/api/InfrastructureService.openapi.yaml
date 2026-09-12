@@ -1804,7 +1804,9 @@ components:
                 region:
                     type: string
                     description: Only the global baseline is defined. Omitted or empty defaults to global.
-                    const: global
+                    enum:
+                        - 'global'
+                        - ''
                 count:
                     type: number
                     format: double
