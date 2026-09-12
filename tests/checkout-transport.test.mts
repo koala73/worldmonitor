@@ -153,15 +153,18 @@ describe('postCreateCheckout transport', () => {
     // reshape the loop. Pin the literal contents here.
     assert.deepEqual(
       [...RETRYABLE_CHECKOUT_STATUSES].sort((a, b) => a - b),
-      [502, 503, 504, 520, 521, 522, 523, 524, 525],
+      [502, 503, 504, 520, 521, 522, 523, 525],
     );
   });
 
-  it('does NOT retry the Cloudflare statuses that no retry can clear (526/530)', async () => {
+  it('does NOT retry the Cloudflare statuses a retry cannot help (524/526/530)', async () => {
     // 526 is an invalid origin certificate and 530 wraps an origin DNS/Worker
     // error: both are standing misconfigurations, so a retry only adds
-    // CHECKOUT_RETRY_DELAY_MS of dead wait before the same failure copy.
-    for (const status of [526, 530]) {
+    // CHECKOUT_RETRY_DELAY_MS of dead wait before the same failure copy. 524
+    // is excluded for the opposite reason — Cloudflare emits it at its 100s
+    // origin deadline, so CHECKOUT_ATTEMPT_TIMEOUT_MS has aborted this client
+    // ~85s before it could arrive. Pinned so nobody "completes the family".
+    for (const status of [524, 526, 530]) {
       const cfConfig = new Response('<!DOCTYPE html>', { status });
       const { deps, calls, delays } = makeDeps([{ response: cfConfig }]);
       const resp = await postCreateCheckout(deps, ARGS);

@@ -62,6 +62,13 @@ const RETRYABLE: Record<CheckoutErrorCode, boolean> = {
 
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 const PAYMENT_IN_PROGRESS = 'PAYMENT_IN_PROGRESS';
+/**
+ * The edge idempotency guard answers 409 with this envelope when a replay
+ * arrives while the first attempt still holds the processing marker
+ * (api/_idempotency.js). It is the transport's own retry racing a slow first
+ * attempt, so it is transient — see the branch in `statusToCode`.
+ */
+const IDEMPOTENCY_CONFLICT = 'idempotency_conflict';
 export const DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS = 10;
 
 /** Body shape we've observed from `/api/create-checkout` failures. */
@@ -104,6 +111,13 @@ function statusToCode(status: number, body: CheckoutErrorBody | undefined): Chec
   if (status === 401) return 'unauthorized';
   if (status === 409 && body?.error === ACTIVE_SUBSCRIPTION_EXISTS) return 'duplicate_subscription';
   if (status === 409 && body?.error === PAYMENT_IN_PROGRESS) return 'payment_in_progress';
+  // Our own retry caught the first attempt mid-flight. Transient by
+  // construction: the edge is still producing the checkout session this very
+  // key will replay. Falling through to the generic 4xx arm below would render
+  // "That product isn't available" and switch the retry affordance off, which
+  // is both false and terminal — the failure mode WORLDMONITOR-Q4's retry
+  // widening would otherwise have made more common.
+  if (status === 409 && body?.error === IDEMPOTENCY_CONFLICT) return 'service_unavailable';
   // Dodo can rate-limit checkout-session creation. The relay preserves 429 so
   // the transport does not auto-retry it as a generic 502 and amplify the
   // provider cooldown. This remains a temporary, user-retryable failure.

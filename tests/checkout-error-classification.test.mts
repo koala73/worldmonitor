@@ -49,6 +49,27 @@ describe('classifyHttpCheckoutError', () => {
     assert.equal(err.code, 'invalid_product');
   });
 
+  it('maps 409 idempotency_conflict to service_unavailable, not invalid_product', () => {
+    // The transport retries a transient origin failure 1.5s later with the SAME
+    // Idempotency-Key. When the first attempt is still running, the edge holds
+    // the processing marker and answers 409 `idempotency_conflict` with
+    // Retry-After: 2 (api/_idempotency.js). That is the retry working as
+    // designed, not a bad product — but without this branch it falls through
+    // the generic 4xx arm to `invalid_product`, which tells the buyer "That
+    // product isn't available" AND switches the retry affordance off, turning a
+    // recoverable race into a terminal dead end. Widening the retry set to the
+    // Cloudflare 52x family made this race materially more likely, because 520
+    // and 524 are emitted precisely when the origin DID receive the request.
+    const err = classifyHttpCheckoutError(409, {
+      error: 'idempotency_conflict',
+      message: 'A request with this Idempotency-Key is still being processed. Retry shortly.',
+    });
+    assert.equal(err.code, 'service_unavailable');
+    assert.equal(err.retryable, true);
+    // Raw server string stays off-screen.
+    assert.notEqual(err.userMessage, err.serverMessage);
+  });
+
   it('maps 400 to invalid_product', () => {
     const err = classifyHttpCheckoutError(400);
     assert.equal(err.code, 'invalid_product');

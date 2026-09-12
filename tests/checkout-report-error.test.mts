@@ -127,20 +127,31 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
     );
   });
 
-  it('keeps the zero-frame timeout gate keyed on `kind` presence, not a name list', () => {
-    // The other half of the same contract. A future edit that narrows the gate
-    // back to a specific kind (`!== 'panel_call_rejected'`) would re-open
-    // WORLDMONITOR-Q4 without reddening anything in this file's sibling suite.
-    const initSrc = readFileSync(
-      resolve(__dirname, '../src/bootstrap/sentry-init.ts'),
-      'utf-8',
+  it('actually hands the tagged payload to the Sentry capture calls', () => {
+    // Building `payload` is not the same as delivering it. Dropping the second
+    // argument — `s.captureException(caught)` — leaves the tag block above
+    // untouched, so the assertion above still passes while production timeout
+    // reports lose their exemption and go silent again. The gate's own suite
+    // cannot catch this either: it supplies fixture tags of its own.
+    assert.match(
+      src,
+      /captureException\(caught,\s*payload\)/,
+      'the caught exception must be captured WITH the payload that carries the kind tag',
     );
     assert.match(
-      initSrc,
-      /\/signal timed out\/\.test\(msg\)\s*&&\s*!event\.tags\?\.kind/,
-      'the zero-frame `signal timed out` suppression must exempt EVERY event carrying a first-party `kind` tag',
+      src,
+      /captureMessage\(`Checkout error: \$\{error\.code\}`,\s*payload\)/,
+      'the message path must be captured WITH the payload that carries the kind tag',
     );
   });
+
+  // The gate's own half of this contract is asserted behaviourally in
+  // tests/sentry-beforesend.test.mjs, which compiles the real beforeSend and
+  // drives a captureException through it. A source-text regex was tried here
+  // and removed: six behaviour-preserving spellings of the same condition
+  // (`== null`, `'kind' in ...`, an extracted helper, destructuring) all failed
+  // it, and a false red on a correct refactor is what teaches the next author
+  // to delete the assertion.
 
   it('keeps duplicate-subscription checkout attempts at info level', () => {
     assert.equal(checkoutErrorTelemetryLevel({ code: 'duplicate_subscription' }), 'info');

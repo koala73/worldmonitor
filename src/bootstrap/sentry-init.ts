@@ -889,13 +889,16 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // A first-party `kind` tag identifies an app failure even when the
           // browser-created timeout has no first-party stack frames. The tag
           // is the invariant, not a list of names: `kind` is set ONLY by our
-          // own capture call sites (pending-panel-data.ts, wm-session.ts,
-          // checkout.ts), never by the SDK, an extension, or an injected
-          // script, so presence alone proves first-party ownership. Naming
-          // individual kinds here was a treadmill — WORLDMONITOR-Q4 sat behind
-          // it, because the checkout transport's 15s timeout reports through
-          // `reportCheckoutError` and was dropped as noise for lack of
-          // `panel_call_rejected`, silently hiding a terminal revenue failure.
+          // own capture call sites — six today, in main.ts, variant-theme.ts,
+          // pending-panel-data.ts, wm-session.ts (x2) and checkout.ts — and
+          // never by the SDK, an extension, or an injected script, so presence
+          // alone proves first-party ownership without anyone maintaining a
+          // census. Naming individual kinds here was a treadmill, and
+          // WORLDMONITOR-Q4 sat behind it: the checkout transport's 15s timeout
+          // reports through `reportCheckoutError` and was dropped as noise for
+          // lack of `panel_call_rejected`, hiding a terminal revenue failure.
+          // The csp_violation, variant_theme_load_failed and wm_session_dead
+          // reports were being dropped the same way.
           (/signal timed out/.test(msg) && !event.tags?.kind)
           || /NotSupportedError/.test(msg)
           || /out of memory/i.test(msg)

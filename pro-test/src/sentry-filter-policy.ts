@@ -552,10 +552,18 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // A marketing fetch that loses its own catch therefore reaches
   // `unhandledrejection` with the SAME zero-frame shape as third-party noise;
   // ownership adds no `/pro/assets/*.js` frame to distinguish them. Six call
-  // sites here carry a timeout signal, including `checkout.ts` and
-  // `checkout-transport.ts`, so suppressing the shape would blind a revenue
-  // path to silence one event. Same keep-visible reasoning as the zero-frame
-  // stack overflow in WORLDMONITOR-WK.
+  // sites here carry a timeout signal, so suppressing the shape would blind a
+  // revenue path to silence one event. Same keep-visible reasoning as the
+  // zero-frame stack overflow in WORLDMONITOR-WK.
+  //
+  // Two of those six, `checkout.ts` and `checkout-transport.ts`, were once
+  // cited as the reason this rule stays absent. They are the wrong witnesses:
+  // the checkout catch at `services/checkout.ts` logs to the console and
+  // returns false without capturing, and the non-ok branch captures only for
+  // 429 and the two 409 envelopes. So a checkout timeout on THIS surface is
+  // invisible whatever this policy does — a real gap, tracked separately, not
+  // an argument about the filter. The rule stays absent on the strength of the
+  // other four call sites.
   //
   // The dashboard's gate in `src/bootstrap/sentry-init.ts` (WORLDMONITOR-66/-62)
   // is still not a precedent to copy, though the old reason given here — that

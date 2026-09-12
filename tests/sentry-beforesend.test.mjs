@@ -4,7 +4,13 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BrowserClient, defaultStackParser } from '@sentry/browser';
+import {
+  BrowserClient,
+  captureException,
+  defaultStackParser,
+  setCurrentClient,
+  withScope,
+} from '@sentry/browser';
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
@@ -54,6 +60,14 @@ const rawBeforeSend = new Function(
 // — NOT `event.contexts.os`, which the browser SDK never populates (see
 // src/bootstrap/platform-ua.ts). `navigator` is passed as a Function parameter so it
 // shadows Node's global and each test can state the platform explicitly.
+/** The tag block src/services/checkout.ts puts on every checkout report. */
+const CHECKOUT_REPORT_TAGS = {
+  component: 'dodo-checkout',
+  action: 'exception',
+  code: 'service_unavailable',
+  kind: 'checkout_request_failed',
+};
+
 const MAC_DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36';
 const IOS_GOOGLE_APP_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/432.9.954074404 Mobile/15E148 Safari/604.1';
 const DESKTOP_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 0 };
@@ -448,30 +462,100 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
   // frames. That made a terminal, revenue-losing failure indistinguishable
   // from extension noise, exactly as it had for panel dispatch before #7552.
   //
-  // The escape hatch is the `kind` tag rather than another message name: only
-  // first-party capture call sites set `kind` (grep-verified across src/ —
-  // pending-panel-data.ts, wm-session.ts, checkout.ts), and a browser- or
-  // extension-originated rejection cannot carry one. The counter-fixture is
+  // The escape hatch is the PRESENCE of a `kind` tag, not another message name.
+  // Only first-party capture call sites set `kind` (six across src/ at the time
+  // of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
+  // `variant_theme_load_failed`, app/pending-panel-data.ts
+  // `panel_call_rejected`, services/wm-session.ts `wm_session_dead` and
+  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`),
+  // and a browser- or extension-originated rejection cannot carry one.
+  //
+  // The cases below are parameterised over a value that appears NOWHERE in
+  // production on purpose. Asserting only the real kinds would leave a
+  // regression that narrows the gate back to a name list fully green — which
+  // is this exact bug repeating one generation later. The counter-fixture is
   // the untagged `signal timed out` entry in `zeroFrameErrors` below, which
   // must stay suppressed.
-  it('preserves a zero-frame checkout timeout reported by the checkout transport', async () => {
-    const client = new BrowserClient({ stackParser: defaultStackParser, integrations: [] });
-    const reason = new DOMException('signal timed out', 'TimeoutError');
-    // The production shape, not an empty string: a header-only stack still has
-    // to parse to zero frames, or the suppression would never have fired.
-    Object.defineProperty(reason, 'stack', { value: 'TimeoutError: signal timed out' });
-    assert.ok(reason instanceof Error);
-    const event = await client.eventFromException(reason);
-    assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
-    event.tags = {
-      component: 'dodo-checkout',
-      action: 'exception',
-      code: 'service_unavailable',
-      kind: 'checkout_request_failed',
-    };
-    assert.equal(isIgnored('signal timed out'), false);
-    assert.equal(beforeSend(event), event);
-  });
+  for (const kind of [
+    'checkout_request_failed',
+    'panel_call_rejected',
+    'csp_violation',
+    'variant_theme_load_failed',
+    'wm_session_dead',
+    // Belongs to no call site. A name-list gate fails here and only here.
+    'kind_presence_probe',
+  ]) {
+    it(`preserves a zero-frame timeout carrying kind="${kind}"`, async () => {
+      const client = new BrowserClient({ stackParser: defaultStackParser, integrations: [] });
+      const reason = new DOMException('signal timed out', 'TimeoutError');
+      // The production shape, not an empty string: a header-only stack still
+      // has to parse to zero frames, or the suppression would never have fired.
+      Object.defineProperty(reason, 'stack', { value: 'TimeoutError: signal timed out' });
+      assert.ok(reason instanceof Error);
+      const event = await client.eventFromException(reason);
+      assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
+      event.tags = { kind };
+      assert.equal(isIgnored('signal timed out'), false);
+      assert.equal(beforeSend(event), event);
+    });
+  }
+
+  // Everything above assigns `event.tags` by hand, which assumes the thing most
+  // likely to break silently: that a tag passed in the CAPTURE PAYLOAD is on
+  // the event by the time beforeSend runs. Two SDK behaviours have to hold and
+  // neither is ours — `{ level, tags, extra }` must be read as a CaptureContext
+  // rather than an EventHint, and scope data must be applied BEFORE beforeSend.
+  // If an SDK upgrade reorders either, the checkout exemption goes dead in
+  // production while every hand-tagged fixture above stays green. Drive the
+  // real public API end to end so the assumption is proven, not inherited.
+  for (const [label, tags, expectDelivered] of [
+    ['with the checkout kind tag', CHECKOUT_REPORT_TAGS, true],
+    ['without any kind tag', { component: 'dodo-checkout', action: 'exception' }, false],
+  ]) {
+    it(`routes a real captureException payload through beforeSend ${label}`, async () => {
+      const seenByBeforeSend = [];
+      const delivered = [];
+      const client = new BrowserClient({
+        dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+        stackParser: defaultStackParser,
+        integrations: [],
+        transport: () => ({
+          send: async (envelope) => { delivered.push(envelope); return {}; },
+          flush: async () => true,
+        }),
+        beforeSend: (event) => {
+          seenByBeforeSend.push(event);
+          return beforeSend(event);
+        },
+      });
+
+      // withScope forks the current scope, so the client installed here is
+      // discarded on exit and cannot leak into the other tests in this file.
+      await withScope(async () => {
+        setCurrentClient(client);
+        client.init();
+        const reason = new DOMException('signal timed out', 'TimeoutError');
+        Object.defineProperty(reason, 'stack', { value: 'TimeoutError: signal timed out' });
+        // The exact shape src/services/checkout.ts hands to captureException.
+        captureException(reason, { level: 'error', tags, extra: { productId: 'pdt_test' } });
+        await client.flush(2000);
+      });
+
+      assert.equal(seenByBeforeSend.length, 1, 'beforeSend must see the captured event');
+      assert.equal(
+        seenByBeforeSend[0].tags?.kind,
+        tags.kind,
+        'payload tags must be applied to the event BEFORE beforeSend runs',
+      );
+      assert.equal(
+        delivered.length,
+        expectDelivered ? 1 : 0,
+        expectDelivered
+          ? 'a kind-tagged checkout timeout must reach the transport'
+          : 'an untagged zero-frame timeout must still be suppressed',
+      );
+    });
+  }
 
   const zeroFrameErrors = [
     ['signal timed out', 'TimeoutError'],

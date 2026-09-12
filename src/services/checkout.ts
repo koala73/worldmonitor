@@ -992,8 +992,9 @@ export async function startCheckout(
       return false;
     }
 
-    // Transient CF/origin 502s on this POST are retried once with an
-    // Idempotency-Key (server dedupes replays — api/_idempotency.ts).
+    // Transient origin failures on this POST — the 502/503/504 gateway trio
+    // and Cloudflare 520-525 — are retried once with an Idempotency-Key
+    // (server dedupes replays — api/_idempotency.ts).
     // WORLDMONITOR-Q4: without this, every transient was a lost checkout.
     const resp = await postCreateCheckout(createDefaultCheckoutTransportDeps(), {
       url: '/api/create-checkout',
