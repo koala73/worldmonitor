@@ -1004,7 +1004,10 @@ function injectDisplacementYearContract(spec) {
   const desired = {
     description: year.description,
     oneOf: [
-      { const: 0 },
+      // `const` alone is valid JSON Schema but does not establish the value
+      // type for generic OpenAPI consumers. Keep the integer declaration so
+      // the sentinel is self-describing as well as exact.
+      { const: 0, type: 'integer' },
       { type: 'integer', format: 'int32', minimum: 1951, maximum: 9999 },
     ],
   };

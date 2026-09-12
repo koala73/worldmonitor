@@ -6273,6 +6273,7 @@ paths:
                   "schema":
                       "oneOf":
                           - "const": 0
+                            "type": "integer"
                           - "type": "integer"
                             "format": "int32"
                             "minimum": 1951
@@ -39625,6 +39626,7 @@ components:
                     "description": "Data year: 1951 through the current year. Zero returns the latest seeded data.\n An explicit year is available only if it matches the published snapshot."
                     "oneOf":
                         - "const": 0
+                          "type": "integer"
                         - "type": "integer"
                           "format": "int32"
                           "minimum": 1951
