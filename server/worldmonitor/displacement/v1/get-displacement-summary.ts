@@ -32,7 +32,8 @@ export async function getDisplacementSummary(
       getCachedJson(`displacement:summary:v1:${currentYear}`, true) as Promise<GetDisplacementSummaryResponse | null>,
       getCachedJson('seed-meta:displacement:summary', true) as Promise<{ fetchedAt?: number } | null>,
     ]);
-    if (!seedData?.summary || (req.year !== 0 && seedData.summary.year !== req.year)) return emptyResponse;
+    if (!seedData?.summary || !Number.isFinite(seedMeta?.fetchedAt)
+      || (req.year !== 0 && seedData.summary.year !== req.year)) return emptyResponse;
 
     const summary = { ...seedData.summary };
     if (req.countryLimit > 0) summary.countries = summary.countries.slice(0, req.countryLimit);

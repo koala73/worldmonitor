@@ -33,7 +33,7 @@ afterEach(() => {
   Object.assign(process.env, originalEnv);
   __resetKeyPrefixCacheForTests();
 });
-function install(fixtures: Record<string, unknown>, fail = false) {
+function install(fixtures: Record<string, unknown>, fail = false, failedKeys: string[] = []) {
   const redis = installRedis(fixtures);
   globalThis.fetch = (async (input, init) => {
     const url = new URL(String(input));
@@ -41,8 +41,11 @@ function install(fixtures: Record<string, unknown>, fail = false) {
       upstream.push(url.hostname);
       return Response.json({ items: [] });
     }
-    if (url.pathname.startsWith('/get/')) keys.push(decodeURIComponent(url.pathname.slice(5)));
-    if (fail) return Response.json({ error: 'synthetic unavailable' }, { status: 503 });
+    const key = url.pathname.startsWith('/get/') ? decodeURIComponent(url.pathname.slice(5)) : null;
+    if (key) keys.push(key);
+    if (fail || (key !== null && failedKeys.includes(key))) {
+      return Response.json({ error: 'synthetic unavailable' }, { status: 503 });
+    }
     return redis.fetchImpl(input, init);
   }) as typeof fetch;
   return redis;
@@ -108,6 +111,15 @@ test('missing and unreadable seeds never fetch UNHCR or write negative query key
   assert.ok(keys.every(k => k === seedKey || k === metaKey));
   install({ [seedKey]: snapshot, [metaKey]: { fetchedAt } });
   assert.equal((await (await request()).json()).dataAvailable, true);
+});
+
+test('a seed metadata outage returns an unavailable response without upstream I/O', async () => {
+  install({ [seedKey]: snapshot, [metaKey]: { fetchedAt } }, false, [metaKey]);
+  const result = await (await request()).json();
+  assert.equal(result.dataAvailable, false);
+  assert.equal(result.fetchedAt, 0);
+  assert.ok(keys.every(k => k === seedKey || k === metaKey));
+  assert.deepEqual(upstream, []);
 });
 
 test('stale seed stays readable without a live fallback even when the former flag is enabled', async () => {

@@ -11,7 +11,8 @@ message GetDisplacementSummaryRequest {
   // Data year: 1951 through the current year. Zero returns the latest seeded data.
   // An explicit year is available only if it matches the published snapshot.
   int32 year = 1 [
-    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int32.gte = 1951,
     (buf.validate.field).int32.lte = 9999,
     (sebuf.http.query) = { name: "year" }
   ];

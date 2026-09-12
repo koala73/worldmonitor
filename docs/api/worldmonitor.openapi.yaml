@@ -39620,7 +39620,7 @@ components:
                 year:
                     type: integer
                     maximum: 9999
-                    minimum: 0
+                    minimum: 1951
                     format: int32
                     description: |-
                         Data year: 1951 through the current year. Zero returns the latest seeded data.
