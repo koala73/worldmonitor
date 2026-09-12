@@ -38,6 +38,20 @@ async function read(t: ReturnType<typeof convexTest>) {
     .withIndex("by_userId", (q) => q.eq("userId", USER)).unique());
 }
 
+test.each([NOW - DAY, NOW])("a live Pro grant replaces stale-active Business coverage ending at %s", async (end) => {
+  const t = convexTest(schema, modules);
+  await t.run((ctx) => ctx.db.insert("subscriptions", {
+    userId: USER, dodoSubscriptionId: "sub_stale_business",
+    dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!, planKey: "api_business",
+    status: "active", currentPeriodStart: NOW - 31 * DAY, currentPeriodEnd: end,
+    rawPayload: {}, updatedAt: NOW - DAY,
+  }));
+  await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+    userId: USER, planKey: "pro_monthly", days: 90,
+  });
+  expect(await read(t)).toMatchObject({ planKey: "pro_monthly", validUntil: NOW + 90 * DAY });
+});
+
 async function event(t: ReturnType<typeof convexTest>, type: string, planKey: string, at: number, end: number) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
     webhookId: `comp_${type}_${at}`, eventType: type, timestamp: at,

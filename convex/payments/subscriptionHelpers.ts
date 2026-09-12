@@ -499,7 +499,7 @@ export async function recomputeEntitlementFromAllSubs(
 
   if (entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > observedAt) {
     const comp = { planKey: entitlement.compPlanKey, currentPeriodEnd: entitlement.compUntil };
-    if (!best || compareSubscriptionsByCoverage(comp, {
+    if (!best || best.validUntil <= observedAt || compareSubscriptionsByCoverage(comp, {
       planKey: best.planKey, currentPeriodEnd: best.validUntil,
     }) > 0) {
       best = { planKey: comp.planKey, validUntil: comp.currentPeriodEnd };
