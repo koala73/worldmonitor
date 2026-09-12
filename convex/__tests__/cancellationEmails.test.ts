@@ -456,6 +456,34 @@ describe("cancellation confirmation email (#7314)", () => {
     expect(resendSends(fetchMock)).toHaveLength(0);
   });
 
+  test("broadcast unsubscribe does not suppress a cancellation confirmation", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 60_000;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() + 20 * DAY_MS,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("emailSuppressions", {
+        normalizedEmail: EMAIL,
+        reason: "unsubscribe",
+        suppressedAt: Date.now(),
+      });
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "cancellation_confirm",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: true });
+    expect(resendSends(fetchMock)).toHaveLength(1);
+  });
+
   test("send action re-reads after the uncapped pacing wait (PR #7328 review)", async () => {
     // Eligibility is checked, then reserveResendSlot can sleep for an
     // uncapped backlog. A resume during that wait must not send the

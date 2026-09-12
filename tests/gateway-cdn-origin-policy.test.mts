@@ -29,7 +29,7 @@ function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBod
   return createDomainGateway([
     {
       method: 'GET',
-      path: '/api/market/v1/list-crypto-quotes',
+      path: '/api/market/v1/list-gulf-quotes',
       handler: async () => new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: options.handlerCdnCacheHeader ? { 'CDN-Cache-Control': options.handlerCdnCacheHeader } : undefined,
@@ -65,7 +65,7 @@ function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBod
 
 async function requestPublicRoute(origin: string) {
   const handler = createHandler();
-  return handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+  return handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
     headers: { Origin: origin, 'X-WorldMonitor-Key': sessionToken },
   }));
 }
@@ -114,7 +114,7 @@ describe('gateway CDN origin policy', () => {
     const origin = 'tauri://localhost';
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: {
         Origin: origin,
         'X-WorldMonitor-Key': 'real-key-123',
@@ -236,7 +236,7 @@ describe('gateway CDN origin policy', () => {
     const handler = createHandler({
       handlerCdnCacheHeader: 'public, s-maxage=9999, stale-while-revalidate=9999',
     });
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': sessionToken },
     }));
 
@@ -246,7 +246,7 @@ describe('gateway CDN origin policy', () => {
 
   it('still blocks disallowed origins before route handling', async () => {
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: { Origin: 'https://evil.example.com' },
     }));
     assert.equal(res.status, 403);
@@ -279,7 +279,7 @@ describe('gateway CDN origin policy', () => {
 
   it('fails closed before unknown wm_ validation when the pre-auth limiter is unavailable', async () => {
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: {
         Origin: 'https://worldmonitor.app',
         'X-WorldMonitor-Key': 'wm_revoked_or_unknown_key',
