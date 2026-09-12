@@ -42,7 +42,7 @@ import {
   postCreateCheckout,
 } from './checkout-transport';
 import { runNoUserPath } from './checkout-no-user-policy';
-import { shouldSkipSentryForAction } from './checkout-sentry-policy';
+import { buildCheckoutReportTags, shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
   CLASSIC_AUTO_DISMISS_MS,
@@ -817,6 +817,14 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
 
 let _checkoutInFlight = false;
 let _checkoutRateLimitedUntilMs = 0;
+/**
+ * Why the cooldown above is running. The pre-flight gate replays a synthesized
+ * error to explain the wait, so it has to know which one: a 429 and the edge's
+ * idempotency conflict both name a wait, and telling a buyer mid-conflict that
+ * they are "rate limited" is the same false message the conflict branch in
+ * `checkout-errors.ts` exists to avoid.
+ */
+let _checkoutCooldownCause: 'rate_limited' | 'idempotency_conflict' = 'rate_limited';
 
 function checkoutRateLimitRemainingSeconds(): number {
   return Math.max(0, Math.ceil((_checkoutRateLimitedUntilMs - Date.now()) / 1000));
@@ -933,14 +941,25 @@ export async function startCheckout(
 
   const cooldownSeconds = checkoutRateLimitRemainingSeconds();
   if (cooldownSeconds > 0) {
-    // A prior 429 already told this browser when it may try again. Keep
+    // A prior response already told this browser when it may try again. Keep
     // repeated CTA clicks local during that window instead of recreating the
     // provider request amplification this rate-limit path is meant to stop.
-    const error = classifyHttpCheckoutError(
-      429,
-      { error: 'CHECKOUT_RATE_LIMITED' },
-      String(cooldownSeconds),
-    );
+    //
+    // Replay the error the cooldown actually came from. Synthesizing a 429
+    // unconditionally was correct while only a 429 could set the cooldown; now
+    // that the idempotency conflict does too, it would tell a buyer whose own
+    // checkout is still being created that they are rate limited.
+    const error = _checkoutCooldownCause === 'rate_limited'
+      ? classifyHttpCheckoutError(
+          429,
+          { error: 'CHECKOUT_RATE_LIMITED' },
+          String(cooldownSeconds),
+        )
+      : classifyHttpCheckoutError(
+          409,
+          { error: 'idempotency_conflict' },
+          String(cooldownSeconds),
+        );
     showCheckoutErrorToast(error.userMessage);
     return false;
   }
@@ -992,8 +1011,9 @@ export async function startCheckout(
       return false;
     }
 
-    // Transient CF/origin 502s on this POST are retried once with an
-    // Idempotency-Key (server dedupes replays — api/_idempotency.ts).
+    // Transient origin failures on this POST — the 502/503/504 gateway trio
+    // and Cloudflare 520-525 — are retried once with an Idempotency-Key
+    // (server dedupes replays — api/_idempotency.ts).
     // WORLDMONITOR-Q4: without this, every transient was a lost checkout.
     const resp = await postCreateCheckout(createDefaultCheckoutTransportDeps(), {
       url: '/api/create-checkout',
@@ -1036,8 +1056,16 @@ export async function startCheckout(
         body,
         resp.headers.get('Retry-After'),
       );
-      if (error.code === 'rate_limited' && error.retryAfterSeconds !== undefined) {
+      // Keyed on the server-specified wait, not on one code. A 429 is no longer
+      // the only response that names how long to hold off: the edge's
+      // idempotency conflict says 2 seconds because that is how long the first
+      // attempt may still own the lock, and honouring it is what stops a
+      // re-click landing back in the same conflict.
+      if (error.retryAfterSeconds !== undefined) {
         _checkoutRateLimitedUntilMs = Date.now() + error.retryAfterSeconds * 1000;
+        _checkoutCooldownCause = error.code === 'rate_limited'
+          ? 'rate_limited'
+          : 'idempotency_conflict';
       }
       reportCheckoutError(error, { productId, action: 'http-error' }, undefined, upstream);
       // 409 duplicate-subscription — confirm with the user BEFORE
@@ -1289,16 +1317,12 @@ function reportCheckoutError(
   const level = checkoutErrorTelemetryLevel(error);
   const payload = {
     level,
-    tags: {
-      component: 'dodo-checkout',
+    tags: buildCheckoutReportTags({
       action: context.action,
       code: error.code,
-      // Promote cf-ray and server to tags so they're filterable in the
-      // Sentry UI without opening the event. cf-ray presence alone is
-      // definitive for Cloudflare emission. WORLDMONITOR-RN.
-      ...(upstream?.cfRay ? { cfRay: upstream.cfRay } : {}),
-      ...(upstream?.server ? { upstreamServer: upstream.server } : {}),
-    },
+      cfRay: upstream?.cfRay,
+      upstreamServer: upstream?.server,
+    }),
     extra: {
       productId: context.productId,
       httpStatus: error.httpStatus,
@@ -1339,10 +1363,14 @@ function renderCheckoutErrorSurface(
   fallbackToPricingPage: boolean,
   checkoutContext?: CheckoutContext,
 ): void {
-  // A 429 already carries a safe local recovery path. Keep the user on the
-  // current surface so the message and in-memory cooldown remain active
-  // instead of redirecting them to /pro and discarding the wait contract.
-  if (error.code === 'rate_limited') {
+  // A response that names its own wait already carries a safe local recovery
+  // path. Keep the user on the current surface so the message and in-memory
+  // cooldown remain active instead of redirecting them to /pro and discarding
+  // the wait contract. Originally written for the 429; the idempotency
+  // conflict has exactly the same shape, and redirecting to the pricing page
+  // while the buyer's own checkout session is still being created is the
+  // worst available answer.
+  if (error.retryAfterSeconds !== undefined) {
     showCheckoutErrorToast(error.userMessage);
     return;
   }
