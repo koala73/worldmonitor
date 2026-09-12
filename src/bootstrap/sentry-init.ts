@@ -909,7 +909,11 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // buyer's failure, both previously invisible.
       if (
         !hasFirstParty
-        && !event.tags?.kind
+        // Presence, not truthiness. `!event.tags?.kind` would read `kind: ''`
+        // as absent, so the natural future shape `kind: someVar` could reopen
+        // WORLDMONITOR-Q4 with nothing going red. An empty tag is a bug in the
+        // caller; suppressing its report is the wrong way to find out.
+        && event.tags?.kind === undefined
         && (
           /signal timed out/.test(msg)
           // WebKit's wording for the same AbortSignal.timeout rejection. It

@@ -97,10 +97,22 @@ const ieBody = mainSrc.slice(ieStart + 'ignoreErrors: ['.length, ieEnd);
 // eslint-disable-next-line no-new-func
 const ignoreErrors = new Function(`return [${ieBody}\n]`)();
 
-/** Mirror Sentry's ignoreErrors semantics: RegExp → test, string → substring. */
-function isIgnored(msg) {
-  return ignoreErrors.some(p =>
-    p instanceof RegExp ? p.test(msg) : typeof p === 'string' ? msg.includes(p) : false);
+/**
+ * Mirror Sentry's ignoreErrors semantics: RegExp → test, string → substring.
+ *
+ * Production tests BOTH candidate spellings of an event — the bare `value` and
+ * `${type}: ${value}` — and drops the event if either matches
+ * (@sentry/core getPossibleEventMessages). Checking only the bare value made
+ * this mirror under-report: an entry anchored on the type prefix
+ * (`/^TimeoutError:/`) would drop a first-party failure in production with the
+ * whole suite green. That layer is not hypothetical — it is exactly where the
+ * Safari checkout timeout hid, since ignoreErrors runs as an event processor
+ * inside prepareEvent, before beforeSend and blind to tags (WORLDMONITOR-Q4).
+ */
+function isIgnored(msg, type) {
+  const candidates = type ? [msg, `${type}: ${msg}`] : [msg];
+  return candidates.some((candidate) => ignoreErrors.some(p =>
+    p instanceof RegExp ? p.test(candidate) : typeof p === 'string' ? candidate.includes(p) : false));
 }
 
 /** Helper to build a minimal Sentry event. */
@@ -488,6 +500,10 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     'wm_session_dead',
     // Belongs to no call site. A name-list gate fails here and only here.
     'kind_presence_probe',
+    // A truthiness gate reads this as absent and suppresses the report. No
+    // call site can emit it today — all six are string literals — but
+    // `kind: someVar` is one refactor away, and the failure would be silent.
+    '',
   ]) {
     it(`preserves a zero-frame timeout carrying kind="${kind}"`, async () => {
       const client = new BrowserClient({ stackParser: defaultStackParser, integrations: [] });
@@ -522,7 +538,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
   ]) {
     it(`preserves ${label} once checkout has reported it`, () => {
       assert.equal(
-        isIgnored(message),
+        isIgnored(message, name),
         false,
         `"${message}" must not be dropped by ignoreErrors, which runs before beforeSend and cannot see the kind tag`,
       );
