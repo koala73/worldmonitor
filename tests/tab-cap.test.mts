@@ -236,72 +236,13 @@ describe('FREE_TAB_CAP — catalog drift guard', () => {
  * Do NOT re-point these at a new path if the code moves — build the harness
  * and delete them, the way #5813 replaced the allowance-forwarding greps with
  * tests/dom/gate-reader-forwarding.test.mts.
- */
-describe('tab-cap wiring', () => {
-  const panelLayout = readFileSync(resolve(process.cwd(), 'src/app/panel-layout.ts'), 'utf8');
-
-  const addTabBody = panelLayout.slice(
-    panelLayout.indexOf('private addTab(): void {'),
-    panelLayout.indexOf('private renameTab('),
-  );
-  const gatingBody = panelLayout.slice(
-    panelLayout.indexOf('private updatePanelGating(state: AuthSession): void {'),
-    panelLayout.indexOf('private static isMobileMapCollapsedPreferred()'),
-  );
-
-  it('extracts non-empty function bodies', () => {
-    assert.ok(addTabBody.length > 200, 'guard needs the real addTab body');
-    assert.ok(gatingBody.length > 500, 'guard needs the real updatePanelGating body');
-  });
-
-  it('addTab resolves the cap and returns before creating anything', () => {
-    assert.match(addTabBody, /updateTabCapLock\(\)/);
-    assert.match(addTabBody, /if \(!verdict\.allowed\)/);
-    assert.match(addTabBody, /showAddLockNotice\(\)/);
-    assert.match(addTabBody, /trackGateHit\('dashboard-tab'\)/);
-  });
-
-  it('addTab never prunes or trims existing tabs', () => {
-    for (const forbidden of ['splice(', '.slice(0,', '.pop()', '.shift()']) {
-      assert.ok(
-        !addTabBody.includes(forbidden),
-        `addTab must not ${forbidden} — the cap is creation-only (AE4)`,
-      );
-    }
-  });
-
-  it('the cap re-evaluates on BOTH auth and entitlement emissions', () => {
-    // updatePanelGating is the single gating pass; it is driven by
-    // subscribeAuthState AND onEntitlementChange (the auth-only-subscription
-    // bug is documented in this file at the proBlock wiring). Entitlement
-    // emissions now flow through the reload controller so a null auth-handoff
-    // snapshot is not collapsed to a false entitlement transition.
-    assert.match(gatingBody, /this\.updateTabCapLock\(\)/);
-    assert.match(panelLayout, /subscribeAuthState\(\(state\) => \{\s*this\.updatePanelGating\(state\);/);
-    assert.match(
-      panelLayout,
-      /onSnapshot:\s*\(\) => this\.updatePanelGating\(getAuthState\(\)\)/,
-    );
-    assert.match(
-      panelLayout,
-      /onEntitlementChange\(\(state\) => \{[\s\S]*?entitlementReloadController\.handleSnapshot\(/,
-    );
-  });
-
-  // The allowance-forwarding guard that used to live here was two greps over
-  // panel-gating.ts's source text. #5813 moved the reader into
-  // `src/services/gates/export.ts` and made it module-private; the guarantee is
-  // now proven behaviourally, by calling the real `evaluateTabCap` against a
-  // stubbed entitlement snapshot — see tests/dom/gate-reader-forwarding.test.mts.
-
-  // The two PanelTabBar greps that used to close this block are gone (#5813).
-  // They asserted that `components.tabCap.lockedAriaLabel`,
-  // `components.tabCap.unlockedAnnouncement`, `aria-live'/'polite'`,
-  // `setAddLock(` and `showAddLockNotice(` appear somewhere in the component's
-  // source. tests/dom/panel-tab-bar-lock-notice.test.mts already proves all
-  // five behaviourally and strictly more strongly — it asserts the rendered
-  // aria-label VALUE, the live region's actual announcement text and
-  // role="status", selects the region by [aria-live="polite"], and calls both
-  // methods for real. A grep that a name exists adds nothing on top of a test
-  // that drives it.
-});
+ */// The `tab-cap wiring` source-grep block that lived here (#5892) is replaced
+// by tests/dom/panel-layout-tab-cap.test.mts, which constructs a live
+// PanelLayoutManager (boot side effects stubbed at the module boundary) and
+// proves the same three guarantees behaviourally: a blocked addTab() leaves
+// tabsState byte-identical and fires trackGateHit('dashboard-tab') exactly
+// once; an allowed addTab() appends exactly one tab without reordering or
+// dropping any; and auth, entitlement, AND subscription emissions each
+// re-run the cap. A grep proves a name exists in a file — it never drives
+// the decision (docs/solutions/logic-errors/
+// playback-control-gated-on-a-clerk-role-field-with-no-writer.md).
