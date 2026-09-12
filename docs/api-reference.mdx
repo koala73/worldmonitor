@@ -86,3 +86,23 @@ Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.a
 ## Platform endpoints
 
 Bootstrap, health, version, and cache-purge live outside the per-service catalog — see [Platform Endpoints](/api-platform).
+
+## ACLED conflict snapshot
+
+`GET /api/conflict/v1/list-acled-events` reads the Railway snapshot only; requests
+never fetch ACLED on demand. The producer targets the latest 30 days. Country and
+date filters cannot retrieve history outside the available snapshot.
+
+Omit `country`, `start`, and `end` (or use empty country and zero timestamps) for
+the full geographic snapshot. Filter by ISO alpha-2 country code or country name.
+Non-default queries use inclusive Unix-millisecond bounds; an unset start defaults
+to midnight UTC 30 days ago and an unset end defaults to now. `page_size` and `cursor` remain
+accepted no-ops. Rows without valid coordinates are omitted, including GDELT
+fallback rows that carry no location.
+
+A missing or unreadable seed returns `events: []` with caching disabled. Composed
+map embeds mark that conflict layer unavailable and disable frame caching until
+a seed read succeeds. An empty
+result does not establish that no conflict occurred. Browser sessions and API
+credentials retain their existing access; credentialless direct RPC calls are
+rejected.
