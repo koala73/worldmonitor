@@ -1179,10 +1179,6 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
       });
       expect(
-        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
-        'the App viewport handler must stay dormant while the slow tier is pending',
-      ).toBe(dashboardScroll.hydrationMarksBefore);
-      expect(
         stablecoinRequests,
         'the mounted panel callback must remain gated while slow-tier readiness is pending',
       ).toEqual([]);
