@@ -20,6 +20,12 @@ function quotedList(values) {
 
 export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
   {
+    path: '/api/infrastructure/v1/get-bootstrap-data',
+    method: 'get',
+    name: 'keys',
+    schema: { type: 'array', maxItems: 1, items: { type: 'string', minLength: 1 } },
+  },
+  {
     path: '/api/conflict/v1/get-humanitarian-summary',
     method: 'get',
     name: 'country_code',
@@ -199,14 +205,18 @@ function quoteYaml(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
-function schemaLines(schema) {
-  const lines = ['                  schema:'];
-  if (schema.type) lines.push(`                    type: ${schema.type}`);
+function schemaLines(schema, indent = 18, name = 'schema') {
+  const lines = [`${' '.repeat(indent)}${name}:`];
+  const pad = ' '.repeat(indent + 2);
+  if (schema.type) lines.push(`${pad}type: ${schema.type}`);
   if (Array.isArray(schema.enum)) {
-    lines.push('                    enum:');
-    for (const value of schema.enum) lines.push(`                        - ${quoteYaml(value)}`);
+    lines.push(`${pad}enum:`);
+    for (const value of schema.enum) lines.push(`${pad}    - ${quoteYaml(value)}`);
   }
-  if (schema.pattern) lines.push(`                    pattern: ${quoteYaml(schema.pattern)}`);
+  if (schema.pattern) lines.push(`${pad}pattern: ${quoteYaml(schema.pattern)}`);
+  if (Number.isInteger(schema.maxItems)) lines.push(`${pad}maxItems: ${schema.maxItems}`);
+  if (Number.isInteger(schema.minLength)) lines.push(`${pad}minLength: ${schema.minLength}`);
+  if (schema.items) lines.push(...schemaLines(schema.items, indent + 2, 'items'));
   return lines;
 }
 

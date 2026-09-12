@@ -461,7 +461,7 @@ export default defineSchema({
   // budget at any wave size.
   //
   // `waveRuns` is the per-run state row. `wavePickedContacts` is the
-  // per-contact tri-state row that the push pipeline drains in batches.
+  // per-contact state row that the push pipeline drains in batches.
   // Together they are the durable source of truth for an in-flight wave;
   // `broadcastRampConfig.lastWave*` is updated atomically by
   // `_finalizeWaveRun` only when the whole pipeline succeeds.
@@ -500,11 +500,15 @@ export default defineSchema({
     requestedCount: v.number(),
     // = picked.length after reservoir sampling. Finalization gates on
     // "zero `pending` rows for this runId", NOT on pushedCount === totalCount —
-    // failed contacts are tolerated up to the 5% threshold.
+    // failed contacts are tolerated up to the 5% threshold after remote
+    // unsubscribe rows are excluded.
     totalCount: v.number(),
     underfilled: v.boolean(),
     pushedCount: v.number(),
     failedCount: v.number(),
+    // Optional so runs created before remote-unsubscribe handling retain a
+    // zero count when they are read or resumed.
+    suppressedCount: v.optional(v.number()),
     batchSize: v.number(),
     // Updated by every successful batch + by lease-revalidating recovery
     // mutations. Used (with createdAt/updatedAt fallback) by `runDailyRamp`'s
@@ -537,8 +541,9 @@ export default defineSchema({
     .index("by_runId", ["runId"])
     .index("by_status", ["status"]),
 
-  // Per-contact tri-state row written by `_persistPickedBatch` during pick
-  // and patched atomically by `_markContactPushed` / `_markContactFailed`
+  // Per-contact state row written by `_persistPickedBatch` during pick
+  // and patched atomically by `_markContactPushed`, `_markContactFailed`,
+  // or `_markContactSuppressed`
   // during push. The CAS guard on those mutations (no-op unless
   // status==='pending') makes them idempotent under overlapping
   // pushBatchAction invocations or operator-resume-while-original-still-running.
@@ -554,10 +559,12 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("pushed"),
       v.literal("failed"),
+      v.literal("suppressed"),
     ),
     pushedAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
     failedReason: v.optional(v.string()),
+    suppressedAt: v.optional(v.number()),
   })
     .index("by_runId", ["runId"])
     .index("by_runId_status", ["runId", "status"]),
@@ -1713,7 +1720,14 @@ export default defineSchema({
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
-    reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
+    // unsubscribe withdraws broadcast and marketing consent. The other
+    // reasons suppress broadcast, marketing, and transactional delivery.
+    reason: v.union(
+      v.literal("bounce"),
+      v.literal("complaint"),
+      v.literal("manual"),
+      v.literal("unsubscribe"),
+    ),
     suppressedAt: v.number(),
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),

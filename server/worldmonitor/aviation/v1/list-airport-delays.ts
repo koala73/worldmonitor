@@ -18,7 +18,7 @@ import {
   loadNotamClosures,
   mergeNotamWithExistingAlert,
 } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { getCachedJson } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 
@@ -69,16 +69,14 @@ export async function listAirportDelays(
   // A cache hit alone does not prove every configured hub was covered. The
   // seeder records each hub as normal/disruption/omitted/failed so an omitted
   // hub remains UNKNOWN instead of being synthesized as normal.
-  const intlRead = (async (): Promise<{ intlAlerts: AirportDelayAlert[]; intlCoverage: IntlCoverage[]; intlCoveredIatas: Set<string> }> => {
+  const intlRead = (async (): Promise<{ intlAlerts: AirportDelayAlert[]; intlCoveredIatas: Set<string> }> => {
     let intlAlerts: AirportDelayAlert[] = [];
-    let intlCoverage: IntlCoverage[] = [];
     let intlCoveredIatas = new Set<string>();
     try {
-      const cached = await getCachedJson(INTL_CACHE_KEY) as { alerts: AirportDelayAlert[]; coverage?: IntlCoverage[] } | null;
+      const cached = await getCachedJson(INTL_CACHE_KEY, true) as { alerts: AirportDelayAlert[]; coverage?: IntlCoverage[] } | null;
       if (cached && Array.isArray(cached.alerts)) {
         intlAlerts = cached.alerts;
         if (Array.isArray(cached.coverage)) {
-          intlCoverage = cached.coverage;
           intlCoveredIatas = new Set(cached.coverage
             .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
             .map((hub) => hub.iata));
@@ -88,7 +86,7 @@ export async function listAirportDelays(
       console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
       void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'intl-cache-read' } });
     }
-    return { intlAlerts, intlCoverage, intlCoveredIatas };
+    return { intlAlerts, intlCoveredIatas };
   })();
 
   // 3. NOTAM alerts — shared loader (seed-first with live fallback).
@@ -98,7 +96,7 @@ export async function listAirportDelays(
   // bubbling and tripping every airport to UNKNOWN at the handler boundary.
   const notamRead = loadNotamClosures();
 
-  const [{ faaAlerts, faaSourceCovered }, { intlAlerts, intlCoverage, intlCoveredIatas }, notamResult] =
+  const [{ faaAlerts, faaSourceCovered }, { intlAlerts, intlCoveredIatas }, notamResult] =
     await Promise.all([faaRead, intlRead, notamRead]);
 
   const allAlerts = [...faaAlerts, ...intlAlerts];
@@ -187,15 +185,6 @@ export async function listAirportDelays(
       });
     }
   }
-
-  // Write bootstrap key for initial page load hydration. Canonical writer is
-  // scripts/seed-aviation.mjs (BOOTSTRAP_TTL=7200). This RPC-side write is a
-  // courtesy mid-tick refresh — TTL kept in lockstep so a user-triggered RPC
-  // doesn't shorten the seeder's expiry and re-create the EMPTY-on-quiet-traffic
-  // failure mode that motivated the canonical seeder write.
-  try {
-    await setCachedJson('aviation:delays-bootstrap:v2', { alerts: allAlerts, coverage: intlCoverage }, 7200);
-  } catch { /* non-critical */ }
 
   return { alerts: allAlerts };
 }

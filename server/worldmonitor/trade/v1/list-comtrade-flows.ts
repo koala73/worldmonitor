@@ -35,7 +35,7 @@ export async function listComtradeFlows(
     const cmdCodes = req.cmdCode && CMD_CODE_RE.test(req.cmdCode) ? [req.cmdCode] : CMD_CODES;
 
     const keys = reporters.flatMap((r) => cmdCodes.map((c) => `${KEY_PREFIX}:${r}:${c}`));
-    const batch = await getCachedJsonBatch(keys);
+    const batch = await getCachedJsonBatch(keys, true);
 
     const flows: ComtradeFlowRecord[] = [];
     let fetchedAt = '';

@@ -316,12 +316,23 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
+  // Public relay/HTML discovery has the same scrape fan-out as the legacy
+  // YouTube live endpoint and needs its own fail-closed gateway budget.
+  '/api/aviation/v1/get-youtube-live-stream-info': { limit: 30, window: '60 s' },
+  // Interactive fare searches use one provider request on a cache miss.
+  // 30/min leaves headroom under the provider's 300-600/min shared quota.
+  '/api/aviation/v1/search-flight-prices': { limit: 30, window: '60 s' },
   // LLM article summarization is Pro-gated, but still needs a scoped,
   // fail-closed budget so Redis degradation cannot silently lift the
   // per-endpoint spend control.
   '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
+  // Full Telegram bodies match the first-party feed's 60/min ceiling. Anonymous
+  // sessions remain IP-scoped; verified paid principals retain user identity.
+  // The endpoint registry fails closed so outages cannot lift this cap.
+  '/api/intelligence/v1/list-telegram-feed': { limit: 60, window: '60 s' },
   // LLM-backed situational deduction (imports callLlmReasoning) can drive
   // provider spend on cache misses, so it must fail closed on Redis outage
   // rather than inherit the global fail-open fallback. Mirror the sibling
@@ -369,6 +380,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // paid-provider probe under anonymous or rotating callers.
   '/api/military/v1/get-aircraft-details': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
+  // Live lookups can fan out to position, schedule and photo providers.
+  '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
   // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
   // cap the multiplier at the same 30/min budget as the other batch routes.
   '/api/batch/v1/execute': { limit: 30, window: '60 s' },
@@ -422,6 +435,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // when that read fails, so the fail-closed 503 is a second line, not the
   // only thing standing between a Redis outage and a CoinGecko fan-out. (#6308)
   '/api/market/v1/list-stablecoin-markets': { limit: 60, window: '60 s' },
+  '/api/market/v1/list-crypto-quotes': { limit: 60, window: '60 s' },
   '/api/economic/v1/list-world-bank-indicators': { limit: 30, window: '60 s' },
   // #6305: list-market-quotes stopped being a pure seed read. The fixed seed
   // still answers the default universe with no upstream call, but a symbol the
@@ -560,11 +574,23 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/aviation/v1/list-aviation-news': {
+    reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
+  },
+  '/api/aviation/v1/get-youtube-live-stream-info': {
+    reason: 'Public live-stream discovery can fan out to relay and YouTube HTML scrapes on cache misses.',
+  },
+  '/api/aviation/v1/search-flight-prices': {
+    reason: 'Caller-selected fare searches consume Travelpayouts request quota on cache misses.',
+  },
   '/api/news/v1/summarize-article': {
     reason: 'LLM-backed summarization can drive provider spend on cache misses.',
   },
   '/api/intelligence/v1/classify-event': {
     reason: 'AI classification performs expensive provider-backed analysis.',
+  },
+  '/api/intelligence/v1/list-telegram-feed': {
+    reason: 'Full Telegram message extraction must retain the endpoint cap during Redis outages.',
   },
   '/api/intelligence/v1/deduct-situation': {
     reason: 'LLM-backed situational deduction can drive provider spend on cache misses.',
@@ -602,6 +628,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/market/v1/get-country-stock-index': {
     reason: 'Per-country stock-index lookups proxy Yahoo Finance on cache miss.',
   },
+  '/api/market/v1/list-crypto-quotes': {
+    reason: 'Caller-named coin IDs absent from the seed snapshot fan out to CoinGecko on cache miss.',
+  },
   '/api/market/v1/list-stablecoin-markets': {
     reason: 'Caller-named coin IDs absent from the seed snapshot fan out to CoinGecko on cache miss with unbounded ID cardinality.',
   },
@@ -628,6 +657,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/military/v1/get-aircraft-details': {
     reason: 'Single aircraft enrichment proxies the external Wingbits provider on cache miss.',
+  },
+  '/api/military/v1/get-wingbits-live-flight': {
+    reason: 'Live aircraft lookups fan out to external providers on short-lived cache misses.',
   },
   '/api/batch/v1/execute': {
     reason: 'Generic batch fan-out multiplies one request into up to 20 gateway sub-requests.',
@@ -740,8 +772,24 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
+let nativeAviationNewsAdmissions: number[] = [];
+
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
+  // Native transport authentication happens before this gateway. Use one
+  // bounded local budget with the in-process cache; cloud and Docker use Redis.
+  if (pathname === '/api/aviation/v1/list-aviation-news'
+    && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const policy = ENDPOINT_RATE_POLICIES[pathname]!;
+    const windowSeconds = durationToSeconds(policy.window);
+    const now = Date.now();
+    nativeAviationNewsAdmissions = nativeAviationNewsAdmissions.filter(time => time > now - windowSeconds * 1000);
+    if (nativeAviationNewsAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, nativeAviationNewsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    }
+    nativeAviationNewsAdmissions.push(now);
+    return null;
+  }
 
   const rl = getEndpointRatelimit(pathname);
   if (!rl) {
@@ -910,6 +958,7 @@ export async function checkFailClosedScopedIpRateLimit(
 }
 
 export function __resetRateLimitForTest(): void {
+  nativeAviationNewsAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();
   scopedLimiters.clear();

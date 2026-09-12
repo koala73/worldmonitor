@@ -31,6 +31,7 @@ import {
   type EndpointRateLimitOptions,
 } from '../../server/_shared/rate-limit';
 import { getCachedJson } from '../../server/_shared/redis';
+import { drainResponseHeaders, markNoCacheResponse } from '../../server/_shared/response-headers';
 import { BOOTSTRAP_CACHE_KEYS } from '../../shared/bootstrap-tier-keys.js';
 import {
   verifyEmbedGrant,
@@ -56,10 +57,7 @@ import { listUnrestEvents } from '../../server/worldmonitor/unrest/v1/list-unres
 
 const WEATHER_CACHE_KEY = BOOTSTRAP_CACHE_KEYS.weatherAlerts;
 
-/**
- * Handlers ignore their context — every one of them takes `_ctx` — but the
- * generated signatures require it, so build the minimum that satisfies them.
- */
+/** Build the generated handler context for an in-process source read. */
 function handlerContext(req: Request) {
   return { request: req, pathParams: {}, headers: Object.fromEntries(req.headers) };
 }
@@ -71,8 +69,16 @@ function buildSources(req: Request): EmbedMapFrameSources {
   // window or page size here would hand a stolen credential the knobs this
   // endpoint exists to remove.
   return {
-    listConflicts: async () =>
-      (await listAcledEvents(ctx, { start: 0, end: 0, pageSize: 0, cursor: '', country: '' })).events,
+    listConflicts: async () => {
+      // Isolate this source's fallback signal from the other parallel readers.
+      const conflictReq = new Request(req);
+      const response = await listAcledEvents(handlerContext(conflictReq), { start: 0, end: 0, pageSize: 0, cursor: '', country: '' });
+      if (drainResponseHeaders(conflictReq)?.['X-No-Cache']) {
+        markNoCacheResponse(req);
+        throw new Error('Conflict seed unavailable');
+      }
+      return response.events;
+    },
     listEarthquakes: async () =>
       (await listEarthquakes(ctx, { minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' })).earthquakes,
     listNaturalEvents: async () => (await listNaturalEvents(ctx, { days: 30 })).events,
@@ -178,6 +184,9 @@ export async function handleEmbedMapFrame(
     'Content-Type': 'application/json',
     'Cache-Control': cacheControlForEmbedFrame(sharedLayers !== null),
   };
+  if (drainResponseHeaders(req)?.['X-No-Cache']) {
+    headers['Cache-Control'] = cacheControlForEmbedFrame(false);
+  }
   // Only the uncacheable branch reads the grant header, and only there can the
   // body depend on it. Declaring Vary on the shared entry would fragment it on
   // a header that cannot change the answer — the tier is already in the cache
