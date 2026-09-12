@@ -763,6 +763,7 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // hold. They must stay cloud-preferred even when a desktop configures WS relay;
 // relay availability does not provide Upstash credentials to local handlers.
 const cloudPreferredExact = new Set([
+  '/api/intelligence/v1/list-wsb-tickers',
   '/api/displacement/v1/get-displacement-summary',
   '/api/bootstrap',
   '/api/military/v1/get-defense-industrial-base',

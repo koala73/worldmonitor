@@ -38,22 +38,22 @@ import "worldmonitor/economic/v1/list_global_tenders.proto";
 service EconomicService {
   option (sebuf.http.service_config) = {base_path: "/api/economic/v1"};
 
-  // GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
+  // Retrieve a Federal Reserve Economic Data series by ID, with an observation limit, dated values, title, units and frequency for economic time-series analysis.
   rpc GetFredSeries(GetFredSeriesRequest) returns (GetFredSeriesResponse) {
     option (sebuf.http.config) = {path: "/get-fred-series", method: HTTP_METHOD_GET};
   }
 
-  // ListWorldBankIndicators retrieves development indicator data from the World Bank.
+  // Retrieve World Bank development indicators with country filters, country names, indicator codes and annual values for economic and development data analysis.
   rpc ListWorldBankIndicators(ListWorldBankIndicatorsRequest) returns (ListWorldBankIndicatorsResponse) {
     option (sebuf.http.config) = {path: "/list-world-bank-indicators", method: HTTP_METHOD_GET};
   }
 
-  // GetEnergyPrices retrieves current energy commodity prices from EIA.
+  // Retrieve current EIA energy commodity prices for selected commodities, with names, units, price changes and observation times for energy market monitoring.
   rpc GetEnergyPrices(GetEnergyPricesRequest) returns (GetEnergyPricesResponse) {
     option (sebuf.http.config) = {path: "/get-energy-prices", method: HTTP_METHOD_GET};
   }
 
-  // GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
+  // Review seven macro signals with bullish counts and BUY, CASH or UNKNOWN verdicts; unavailable cached data returns UNKNOWN to keep missing evidence explicit.
   rpc GetMacroSignals(GetMacroSignalsRequest) returns (GetMacroSignalsResponse) {
     option (sebuf.http.config) = {path: "/get-macro-signals", method: HTTP_METHOD_GET};
   }
@@ -70,12 +70,12 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-china-activity-nowcast", method: HTTP_METHOD_GET};
   }
 
-  // GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.
+  // Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
   rpc GetEnergyCapacity(GetEnergyCapacityRequest) returns (GetEnergyCapacityResponse) {
     option (sebuf.http.config) = {path: "/get-energy-capacity", method: HTTP_METHOD_GET};
   }
 
-  // GetBisPolicyRates retrieves central bank policy rates from BIS.
+  // Retrieve BIS central bank policy rates with country, central bank, observation date and previous rate for comparing monetary policy across available countries.
   rpc GetBisPolicyRates(GetBisPolicyRatesRequest) returns (GetBisPolicyRatesResponse) {
     option (sebuf.http.config) = {path: "/get-bis-policy-rates", method: HTTP_METHOD_GET};
   }
@@ -90,7 +90,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-bis-credit", method: HTTP_METHOD_GET};
   }
 
-  // GetFredSeriesBatch retrieves multiple FRED series in a single call.
+  // Retrieve multiple Federal Reserve Economic Data series in one request, with dated observations and series metadata, plus requested and fetched result counts.
   rpc GetFredSeriesBatch(GetFredSeriesBatchRequest) returns (GetFredSeriesBatchResponse) {
     option (sebuf.http.config) = {path: "/get-fred-series-batch", method: HTTP_METHOD_POST};
   }
@@ -135,7 +135,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-nat-gas-storage", method: HTTP_METHOD_GET};
   }
 
-  // GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
+  // Retrieve daily ECB reference exchange rates for the euro against major currencies, with one-day changes, dates and availability status for currency analysis.
   rpc GetEcbFxRates(GetEcbFxRatesRequest) returns (GetEcbFxRatesResponse) {
     option (sebuf.http.config) = {path: "/get-ecb-fx-rates", method: HTTP_METHOD_GET};
   }
@@ -160,7 +160,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-eu-fsi", method: HTTP_METHOD_GET};
   }
 
-  // GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+  // Review the Economic Stress Index from six FRED series, with its 0-100 composite score, component readings, missing-data flags and snapshot time for context.
   rpc GetEconomicStress(GetEconomicStressRequest) returns (GetEconomicStressResponse) {
     option (sebuf.http.config) = {path: "/get-economic-stress", method: HTTP_METHOD_GET};
   }

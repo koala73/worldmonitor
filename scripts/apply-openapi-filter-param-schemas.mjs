@@ -51,6 +51,12 @@ export const OPENAPI_FILTER_PARAM_SCHEMA_OVERRIDES = [
     schema: { type: 'string', enum: FILTER_PARAM_CONTRACTS.infrastructureTemporalBaselineTypes },
   },
   {
+    path: '/api/infrastructure/v1/get-temporal-baseline',
+    method: 'get',
+    name: 'region',
+    schema: { type: 'string', enum: ['global', ''] },
+  },
+  {
     path: '/api/intelligence/v1/compute-energy-shock',
     method: 'get',
     name: 'chokepoint_id',

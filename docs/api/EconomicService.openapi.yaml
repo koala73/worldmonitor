@@ -13,7 +13,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFredSeries
-            description: GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
+            description: Retrieve a Federal Reserve Economic Data series by ID, with an observation limit, dated values, title, units and frequency for economic time-series analysis.
             operationId: GetFredSeries
             parameters:
                 - name: series_id
@@ -143,7 +143,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListWorldBankIndicators
-            description: ListWorldBankIndicators retrieves development indicator data from the World Bank.
+            description: Retrieve World Bank development indicators with country filters, country names, indicator codes and annual values for economic and development data analysis.
             operationId: ListWorldBankIndicators
             parameters:
                 - name: indicator_code
@@ -301,7 +301,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyPrices
-            description: GetEnergyPrices retrieves current energy commodity prices from EIA.
+            description: Retrieve current EIA energy commodity prices for selected commodities, with names, units, price changes and observation times for energy market monitoring.
             operationId: GetEnergyPrices
             parameters:
                 - name: commodities
@@ -427,7 +427,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetMacroSignals
-            description: GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
+            description: Review seven macro signals with bullish counts and BUY, CASH or UNKNOWN verdicts; unavailable cached data returns UNKNOWN to keep missing evidence explicit.
             operationId: GetMacroSignals
             parameters:
                 - name: jmespath
@@ -796,7 +796,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCapacity
-            description: GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.
+            description: Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
             operationId: GetEnergyCapacity
             parameters:
                 - name: energy_sources
@@ -933,7 +933,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisPolicyRates
-            description: GetBisPolicyRates retrieves central bank policy rates from BIS.
+            description: Retrieve BIS central bank policy rates with country, central bank, observation date and previous rate for comparing monetary policy across available countries.
             operationId: GetBisPolicyRates
             parameters:
                 - name: jmespath
@@ -1283,7 +1283,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFredSeriesBatch
-            description: GetFredSeriesBatch retrieves multiple FRED series in a single call.
+            description: Retrieve multiple Federal Reserve Economic Data series in one request, with dated observations and series metadata, plus requested and fetched result counts.
             operationId: GetFredSeriesBatch
             requestBody:
                 content:
@@ -2431,7 +2431,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEcbFxRates
-            description: GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
+            description: Retrieve daily ECB reference exchange rates for the euro against major currencies, with one-day changes, dates and availability status for currency analysis.
             operationId: GetEcbFxRates
             parameters:
                 - name: jmespath
@@ -3018,7 +3018,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEconomicStress
-            description: GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+            description: Review the Economic Stress Index from six FRED series, with its 0-100 composite score, component readings, missing-data flags and snapshot time for context.
             operationId: GetEconomicStress
             parameters:
                 - name: jmespath

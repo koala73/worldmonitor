@@ -62,6 +62,7 @@ const SCORECARD_REASON_PATTERN = '^(?:source-unavailable|country-unavailable|inv
 const ISO2_PATTERN = '^[A-Z]{2}$';
 const PHYSICAL_METAL_PATTERN = '^(?:gold|silver)$';
 const PHYSICAL_METALS_DESCRIPTION = 'Accepted values are "gold" and "silver". Empty returns both metals.';
+const BASELINE_REGION_DESCRIPTION = 'Only the global baseline is defined. Omitted or empty defaults to global.';
 
 function scorecardResponseOneOf(unavailableReasons) {
   return [
@@ -335,6 +336,13 @@ function injectJson(spec) {
   let changed = injectScorecardJsonContracts(spec);
   if (injectPhysicalDivergenceJsonContracts(spec)) changed = true;
   const schemas = spec.components?.schemas ?? {};
+  // The generator emits const but does not account for IGNORE_IF_ZERO_VALUE.
+  const baselineRegion = schemas.GetTemporalBaselineRequest?.properties?.region;
+  if (baselineRegion && (baselineRegion.const !== undefined || !eq(baselineRegion.enum, ['global', '']))) {
+    delete baselineRegion.const;
+    baselineRegion.enum = ['global', ''];
+    changed = true;
+  }
 
   for (const [schemaName, schema] of Object.entries(schemas)) {
     if ((!schemaName.endsWith('Request') && !OPENAPI_REQUIRED_SCHEMA_FIELDS.has(schemaName)) || !schema || typeof schema !== 'object') continue;
@@ -799,6 +807,14 @@ function injectYaml(text, contracts) {
   const lines = text.split('\n');
   let changed = injectYamlScorecardContracts(lines);
   if (injectYamlPhysicalDivergenceContracts(lines)) changed = true;
+  if (replaceYamlSchemaProperty(lines, 'GetTemporalBaselineRequest', 'region', (pad) => [
+    `${pad}region:`,
+    `${pad}    type: string`,
+    `${pad}    description: ${BASELINE_REGION_DESCRIPTION}`,
+    `${pad}    enum:`,
+    `${pad}        - 'global'`,
+    `${pad}        - ''`,
+  ])) changed = true;
   for (const { operationId, paramName } of contracts.params) {
     if (operationId && setYamlOperationParamRequired(lines, operationId, paramName)) changed = true;
   }

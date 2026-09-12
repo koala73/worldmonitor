@@ -3822,7 +3822,26 @@ export const claimSubscription = mutation({
       if (existingEntitlement) {
         const anonCompUntil = anonEntitlement.compUntil ?? 0;
         const existingCompUntil = existingEntitlement.compUntil ?? 0;
-        if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
+        const anonCompActive = anonCompUntil > recomputeTimestamp;
+        const existingCompActive = existingCompUntil > recomputeTimestamp;
+        if (anonCompActive && existingCompActive
+          && Boolean(anonEntitlement.compPlanKey) !== Boolean(existingEntitlement.compPlanKey)) {
+          throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
+        }
+        if (anonEntitlement.compPlanKey && anonCompUntil > recomputeTimestamp) {
+          const existingCompIsStronger = existingEntitlement.compPlanKey
+            && existingCompUntil > recomputeTimestamp
+            && compareEntitlementPlans(
+              { planKey: existingEntitlement.compPlanKey, validUntil: existingCompUntil },
+              { planKey: anonEntitlement.compPlanKey, validUntil: anonCompUntil },
+            ) >= 0;
+          await ctx.db.patch(existingEntitlement._id, {
+            compPlanKey: existingCompIsStronger
+              ? existingEntitlement.compPlanKey
+              : anonEntitlement.compPlanKey,
+            compUntil: Math.max(existingCompUntil, anonCompUntil),
+          });
+        } else if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
           const realSubscriptions = await ctx.db
             .query("subscriptions")
             .withIndex("by_userId", (q) => q.eq("userId", realUserId))
@@ -3857,15 +3876,17 @@ export const claimSubscription = mutation({
               { planKey: anonEntitlement.planKey, validUntil: anonEntitlement.validUntil },
               strongestCurrentCoverage,
             ) >= 0;
-          if (anonCompOutranksCurrentCoverage) {
-            await ctx.db.patch(existingEntitlement._id, {
-              planKey: anonEntitlement.planKey,
-              features: anonEntitlement.features,
-              validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
-              compUntil: anonCompUntil,
-              updatedAt: recomputeTimestamp,
-            });
+          if (!anonCompOutranksCurrentCoverage) {
+            throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
           }
+          await ctx.db.patch(existingEntitlement._id, {
+            planKey: anonEntitlement.planKey,
+            features: anonEntitlement.features,
+            validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
+            compUntil: anonCompUntil,
+            compPlanKey: undefined,
+            updatedAt: recomputeTimestamp,
+          });
         }
         await ctx.db.delete(anonEntitlement._id);
       } else {
@@ -3936,11 +3957,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Grants a complimentary entitlement to a user.
  *
- * Extends both validUntil and compUntil to max(existing, now + days). Never
- * shrinks — calling twice with small durations won't accidentally shorten an
- * existing longer comp. compUntil is an independent floor that
- * handleSubscriptionExpired honours, so Dodo cancellations/expirations don't
- * wipe the comp before it runs out.
+ * Records the goodwill source independently of the effective paid plan.
+ * Repeated grants retain the stronger comp plan and longest comp duration.
+ * Paid coverage is recomputed so a lower goodwill grant cannot downgrade it.
  *
  * Typical usage (CLI):
  *   npx convex run 'payments/billing:grantComplimentaryEntitlement' \
@@ -3969,15 +3988,23 @@ export const grantComplimentaryEntitlement = internalMutation({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
     const features = getFeaturesForPlan(args.planKey);
-    const validUntil = Math.max(existing?.validUntil ?? 0, until);
-    const compUntil = Math.max(existing?.compUntil ?? 0, until);
+    const existingCompUntil = existing?.compUntil ?? 0;
+    if (existingCompUntil > now && !existing?.compPlanKey) {
+      throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
+    }
+    const compUntil = Math.max(existingCompUntil, until);
+    const compPlanKey = existing?.compPlanKey && existingCompUntil > now
+      && compareEntitlementPlans(
+        { planKey: existing.compPlanKey, validUntil: existingCompUntil },
+        { planKey: args.planKey, validUntil: until },
+      ) > 0
+      ? existing.compPlanKey
+      : args.planKey;
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        planKey: args.planKey,
-        features,
-        validUntil,
         compUntil,
+        compPlanKey,
         updatedAt: now,
       });
     } else {
@@ -3985,32 +4012,25 @@ export const grantComplimentaryEntitlement = internalMutation({
         userId: args.userId,
         planKey: args.planKey,
         features,
-        validUntil,
+        validUntil: until,
         compUntil,
+        compPlanKey,
         updatedAt: now,
       });
     }
 
-    // Company Monitoring is provisioned on first use, not from entitlement
-    // writes (#6256).
+    await recomputeEntitlementFromAllSubs(ctx, args.userId, now);
+    const effective = await ctx.db.query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
 
     console.log(
-      `[billing] grantComplimentaryEntitlement userId=${args.userId} planKey=${args.planKey} days=${args.days} validUntil=${new Date(validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
+      `[billing] grantComplimentaryEntitlement userId=${args.userId} compPlanKey=${compPlanKey} effectivePlanKey=${effective!.planKey} days=${args.days} validUntil=${new Date(effective!.validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
     );
-
-    // Sync Redis cache so edge gateway sees the comp without waiting for TTL.
-    if (process.env.UPSTASH_REDIS_REST_URL) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.cacheActions.syncEntitlementCache,
-        { userId: args.userId, planKey: args.planKey, features, validUntil },
-      );
-    }
 
     return {
       userId: args.userId,
-      planKey: args.planKey,
-      validUntil,
+      planKey: effective!.planKey,
+      validUntil: effective!.validUntil,
       compUntil,
     };
   },

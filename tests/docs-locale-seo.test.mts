@@ -18,6 +18,12 @@ import {
 } from '../src/config/docs-locale-seo.ts';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const ORGANIZATION_AUTHOR = {
+  '@id': 'https://www.worldmonitor.app/#organization',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+};
 
 describe('docs locale SEO path gating', () => {
   it('accepts document paths and rejects Mintlify assets', () => {
@@ -239,7 +245,7 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
     const article = graph.find((node) => Array.isArray(node['@type']));
     assert.ok(article, 'the Article node must survive the rewrite');
-    assert.deepEqual(article.author, { '@id': 'https://www.worldmonitor.app/#organization' });
+    assert.deepEqual(article.author, ORGANIZATION_AUTHOR);
     assert.deepEqual(article.publisher, { '@id': 'https://www.worldmonitor.app/#organization' });
     assert.equal(article.dateModified, '2026-08-30T00:00:00Z');
     assert.equal(article.datePublished, DOCS_PAGE_DATES.about.datePublished);
@@ -251,7 +257,7 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
     assert.deepEqual(
       graph.find((node) => node['@type'] === 'TechArticle')?.author,
-      { '@id': 'https://www.worldmonitor.app/#organization' },
+      ORGANIZATION_AUTHOR,
     );
 
     const byline = articleSeed.replace(
@@ -264,6 +270,18 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       bylineGraph.find((node) => Array.isArray(node['@type']))?.author,
       { '@type': 'Person', name: 'A Named Author' },
       'an upstream byline must win over the Organization fallback',
+    );
+
+    const stub = articleSeed.replace(
+      '"publisher"',
+      '"author":{"@id":"https://www.worldmonitor.app/#organization"},"publisher"',
+    );
+    const stubGraph = jsonLdBlocks(rewriteDocsLocaleHtml(stub, '/docs/about'))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    assert.deepEqual(
+      stubGraph.find((node) => Array.isArray(node['@type']))?.author,
+      ORGANIZATION_AUTHOR,
+      'a bare Organization author stub must be expanded on the first rewrite',
     );
   });
 
@@ -309,8 +327,14 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       '/docs/methodology-overview',
       '/docs/api-reference/methodology/foo',
     ]) {
-      assert.deepEqual(authorFor(pathname), ORGANIZATION, pathname);
+      assert.deepEqual(authorFor(pathname), ORGANIZATION_AUTHOR, pathname);
     }
+  });
+
+  it('keeps a self-describing Organization author across a second rewrite (#8073)', () => {
+    const html = rewriteDocsLocaleHtml(articleSeed, '/docs/about');
+    assert.deepEqual(authorFor('/docs/about', html), ORGANIZATION_AUTHOR);
+    assert.equal(rewriteDocsLocaleHtml(html, '/docs/about'), html, 'rewriting is idempotent');
   });
 
   // Live Mintlify ships a bare WebPage with no Article at all, so INJECTION —
@@ -335,7 +359,7 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       .flatMap((block) => (Array.isArray(block['@graph']) ? block['@graph'] : [block])) as Record<string, unknown>[];
     assert.deepEqual(
       aboutGraph.find((node) => Array.isArray(node['@type']))?.author,
-      ORGANIZATION,
+      ORGANIZATION_AUTHOR,
     );
   });
 
@@ -502,7 +526,7 @@ describe('docs article injection for bare WebPage output', () => {
     assert.ok(article, 'a bare WebPage must gain an Article node');
     assert.equal(article?.dateModified, DOCS_PAGE_DATES['architecture'].dateModified);
     assert.deepEqual(article?.publisher, { '@id': ORG_ID });
-    assert.deepEqual(article?.author, { '@id': ORG_ID });
+    assert.deepEqual(article?.author, ORGANIZATION_AUTHOR);
     assert.equal(article?.datePublished, DOCS_PAGE_DATES['architecture'].datePublished);
   });
 
@@ -532,7 +556,7 @@ describe('docs article injection for bare WebPage output', () => {
     assert.ok(article, 'the upstream Article must survive');
     assert.equal(article?.dateModified, DOCS_PAGE_DATES['about'].dateModified);
     assert.equal(article?.datePublished, DOCS_PAGE_DATES['about'].datePublished);
-    assert.deepEqual(article?.author, { '@id': ORG_ID });
+    assert.deepEqual(article?.author, ORGANIZATION_AUTHOR);
   });
 
   it('preserves upstream dates and leaves unknown slugs untouched', () => {
@@ -574,7 +598,7 @@ describe('docs article injection for bare WebPage output', () => {
     assert.equal(articles.length, 1, 'the complete document must contain at most one Article');
     assert.equal(articles[0]?.dateModified, DOCS_PAGE_DATES.about.dateModified);
     assert.equal(articles[0]?.datePublished, DOCS_PAGE_DATES.about.datePublished);
-    assert.deepEqual(articles[0]?.author, { '@id': ORG_ID });
+    assert.deepEqual(articles[0]?.author, ORGANIZATION_AUTHOR);
     assert.deepEqual(
       nodes.find((node) => node['@type'] === 'WebPage')?.speakable,
       { '@type': 'SpeakableSpecification', cssSelector: ['h1'] },

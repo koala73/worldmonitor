@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -26,14 +26,6 @@ const workflowSource = readFileSync(WORKFLOW_PATH, 'utf8');
 const workflowDoc = YAML.parse(workflowSource);
 const workflowSteps = workflowDoc.jobs['submit-indexnow'].steps;
 
-function workflowStep({ id, name }) {
-  const step = workflowSteps.find((candidate) => (id ? candidate.id === id : candidate.name === name));
-  assert.ok(step, `indexnow workflow must define the ${id ?? name} step`);
-  return step;
-}
-
-// Each gate run spawns several short-lived node processes, so the cases are run
-// concurrently — serially they dominate this file's runtime.
 function runStep(script, env) {
   return new Promise((resolvePromise) => {
     const child = spawn('bash', ['-e', '-c', script], { cwd: repoRoot, env });
@@ -43,88 +35,6 @@ function runStep(script, env) {
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('close', (status) => resolvePromise({ stdout, stderr, status }));
   });
-}
-
-/**
- * Execute the workflow's real relevance-gate script with `git` stubbed to report
- * `changedFiles`, and return the `$GITHUB_OUTPUT` it produced. Running the
- * committed shell — rather than regex-matching it — is what makes the gate's
- * behaviour testable in both directions.
- */
-async function runRelevanceGate(changedFiles, eventName = 'deployment_status') {
-  const dir = mkdtempSync(join(tmpdir(), 'indexnow-gate-'));
-  try {
-    const gitStub = join(dir, 'git');
-    writeFileSync(
-      gitStub,
-      [
-        '#!/bin/bash',
-        '[[ "$1" == "rev-parse" ]] && exit 0',
-        `[[ "$1" == "diff-tree" ]] && { printf '%s\\n' ${changedFiles.map((file) => JSON.stringify(file)).join(' ')}; exit 0; }`,
-        'exit 0',
-        '',
-      ].join('\n'),
-    );
-    chmodSync(gitStub, 0o755);
-    const outputFile = join(dir, 'github-output');
-    writeFileSync(outputFile, '');
-
-    const { stderr, status } = await runStep(workflowStep({ id: 'relevant' }).run, {
-      ...process.env,
-      DEPLOYED_SHA: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
-      EVENT_NAME: eventName,
-      GITHUB_OUTPUT: outputFile,
-      PATH: `${dir}:${process.env.PATH}`,
-    });
-    assert.equal(status, 0, stderr);
-
-    return Object.fromEntries(
-      readFileSync(outputFile, 'utf8')
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Execute the workflow's real variant submit step with `node` stubbed, and
- * report which hosts it actually invoked plus the step's exit status.
- */
-async function runVariantSubmitStep(variantHosts, { failingHost = null } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'indexnow-submit-'));
-  try {
-    const nodeStub = join(dir, 'node');
-    writeFileSync(
-      nodeStub,
-      [
-        '#!/bin/bash',
-        // Invocation is `node scripts/seo-indexnow-submit.mjs --host <host>`.
-        '[[ "$2" == "--host" ]] || exit 90',
-        // Tagged so the step's own ::error:: annotations are not mistaken for
-        // submissions — a bare echo would make a failing step look busy.
-        'echo "submitted:$3"',
-        failingHost ? `[[ "$3" == "${failingHost}" ]] && exit 1` : '',
-        'exit 0',
-        '',
-      ].filter(Boolean).join('\n'),
-    );
-    chmodSync(nodeStub, 0o755);
-
-    const { stdout, status } = await runStep(
-      workflowStep({ name: 'Submit canonical variant dashboard URLs' }).run,
-      { ...process.env, PATH: `${dir}:${process.env.PATH}`, VARIANT_HOSTS: variantHosts },
-    );
-    const hosts = stdout
-      .split('\n')
-      .filter((line) => line.startsWith('submitted:'))
-      .map((line) => line.slice('submitted:'.length));
-    return { hosts, status };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 }
 
 const originalFetch = globalThis.fetch;
@@ -215,142 +125,6 @@ describe('IndexNow submission', () => {
         `${url} is published in the sitemap but is not in the ${host} batch, so it is never submitted`,
       );
     }
-  });
-
-  it('submits every configured batch host from the deploy workflow', async () => {
-    // Three links, each pinned by execution or exact equality rather than a
-    // regex over the YAML: the gate emits the derived hosts, the submit step
-    // consumes that exact output, and the loop invokes --host for each one.
-    const emitted = (await runRelevanceGate(['public/sitemap-main.xml'])).variant_hosts;
-    assert.equal(
-      emitted,
-      indexNow.INDEXNOW_VARIANT_HOSTS.join(' '),
-      'the gate must publish the hosts derived from the sitemap',
-    );
-    assert.equal(
-      workflowStep({ name: 'Submit canonical variant dashboard URLs' }).env.VARIANT_HOSTS,
-      '${{ steps.relevant.outputs.variant_hosts }}',
-      'the submit step must consume the gate output, not a restated list',
-    );
-    const { hosts } = await runVariantSubmitStep(emitted);
-
-    // Hosts the workflow names outright (`--host worldmonitor.app`); the variant
-    // loop's hosts come from actually running it, so pointing the loop at a
-    // different variable drops them here.
-    const literalHosts = [...workflowSource.matchAll(/--host ((?:[a-z0-9-]+\.)*worldmonitor\.app)\b/g)]
-      .map((match) => match[1]);
-    assert.deepEqual(
-      new Set([...literalHosts, ...hosts]),
-      new Set(indexNow.INDEXNOW_BATCHES.map(({ host }) => host)),
-      'every INDEXNOW_BATCHES host must be reachable from a workflow submission step',
-    );
-  });
-
-  it('attempts every variant host even after one of them fails', async () => {
-    const hostList = indexNow.INDEXNOW_VARIANT_HOSTS.join(' ');
-    const [failed, healthy] = await Promise.all([
-      runVariantSubmitStep(hostList, { failingHost: indexNow.INDEXNOW_VARIANT_HOSTS[0] }),
-      runVariantSubmitStep(hostList),
-    ]);
-
-    assert.deepEqual(failed.hosts, [...indexNow.INDEXNOW_VARIANT_HOSTS], 'no host may be skipped by an earlier failure');
-    assert.notEqual(failed.status, 0, 'a failed host must still fail the step');
-    assert.equal(healthy.status, 0, 'an all-healthy run must succeed');
-  });
-
-  it('fails the variant step rather than reporting green on zero submissions', async () => {
-    // A renamed step output or an emptied host list resolves this env var to ''.
-    // Iterating nothing must not be indistinguishable from submitting everything.
-    for (const empty of ['', '   ']) {
-      const { hosts, status } = await runVariantSubmitStep(empty);
-      assert.deepEqual(hosts, [], 'an empty host list must submit nothing');
-      assert.notEqual(status, 0, `VARIANT_HOSTS=${JSON.stringify(empty)} must fail the step, not pass it`);
-    }
-  });
-
-  it('gates variant resubmission on the surfaces that change variant URLs', async () => {
-    const variantKeyPath = new URL(
-      indexNow.INDEXNOW_BATCHES.find(({ host }) => host === indexNow.INDEXNOW_VARIANT_HOSTS[0]).keyLocation,
-    ).pathname.slice(1);
-    const resubmits = [
-      'public/sitemap-main.xml',
-      'scripts/build-sitemap.mjs',
-      'middleware.ts',
-      'src/config/variant-meta.ts',
-      // Every variant root is rewritten to the welcome page, so its sources
-      // change what the submitted root URLs serve. public/pro/ is gitignored
-      // since #6898, so the built page can never appear in a commit diff — the
-      // pro-test/ subtree stands in for it. prerender.mjs and vite.config.ts are
-      // pinned explicitly: they author the served HTML but sit outside
-      // pro-test/src/, so a named-file trigger list silently drops them.
-      'pro-test/welcome.html',
-      'pro-test/prerender.mjs',
-      'pro-test/vite.config.ts',
-      'pro-test/src/welcome.ts',
-      `public/${variantKeyPath}`,
-    ];
-    const inert = ['blog-site/src/content/blog/a-post.md', 'src/components/SomePanel.tsx'];
-
-    const [resubmitGates, inertGates, dispatchGate] = await Promise.all([
-      Promise.all(resubmits.map((changed) => runRelevanceGate([changed]))),
-      Promise.all(inert.map((changed) => runRelevanceGate([changed]))),
-      runRelevanceGate([], 'workflow_dispatch'),
-    ]);
-
-    resubmits.forEach((changed, index) => {
-      assert.equal(
-        resubmitGates[index].submit_variants,
-        'true',
-        `${changed} changes variant URLs or their ownership proof, so it must resubmit`,
-      );
-    });
-    inert.forEach((changed, index) => {
-      assert.equal(
-        inertGates[index].submit_variants,
-        'false',
-        `${changed} cannot change a variant URL, so it must not resubmit`,
-      );
-    });
-    assert.equal(
-      dispatchGate.submit_variants,
-      'true',
-      'operator-requested recovery must cover the variants too',
-    );
-  });
-
-  it('resubmits canonical www URLs when the frozen GitHub-star proof changes', async () => {
-    const changes = [
-      'docs/snapshots/github-stars-2026-09-04.json',
-      'scripts/github-stars-snapshot.mjs',
-    ];
-    const inert = [
-      'docs/snapshots/github-stars-not-a-date.json',
-      'scripts/freeze-github-stars.mjs',
-    ];
-    const [gates, inertGates] = await Promise.all([
-      Promise.all(changes.map((changed) => runRelevanceGate([changed]))),
-      Promise.all(inert.map((changed) => runRelevanceGate([changed]))),
-    ]);
-
-    changes.forEach((changed, index) => {
-      assert.equal(
-        gates[index].submit_www,
-        'true',
-        `${changed} changes prerendered structured data on canonical www URLs, so it must resubmit`,
-      );
-      assert.equal(
-        gates[index].submit_variants,
-        'false',
-        `${changed} does not change variant dashboard URLs, so it must not resubmit them`,
-      );
-    });
-    inert.forEach((changed, index) => {
-      assert.equal(
-        inertGates[index].submit_www,
-        'false',
-        `${changed} is not a direct input to the deployed canonical www output`,
-      );
-    });
   });
 
   it('keeps every submitted URL and key location on the declared host', () => {
@@ -490,19 +264,7 @@ describe('IndexNow submission', () => {
     assert.match(workflow, /github\.event\.deployment_status\.state == 'success'/);
     assert.match(workflow, /github\.event\.deployment\.environment == 'Production'/);
     assert.match(workflow, /github\.event\.deployment\.creator\.login == 'vercel\[bot\]'/);
-    assert.match(workflow, /api\/mcp/);
-    assert.match(workflow, /public\/mcp-server\\\.md/);
-    assert.match(workflow, /public\/sitemap\\\.xml/);
-    assert.match(workflow, /scripts\/build-sitemap\\.mjs/);
-    assert.match(workflow, /blog-site\/src\/\.\*/);
-    assert.match(workflow, /api\/mcp\/\.\*/);
-    assert.match(workflow, /INDEXNOW_BATCHES\.find/);
-    assert.match(workflow, /grep -Fxq "public\/\$\{APEX_KEY_PATH\}"/);
-    assert.match(workflow, /grep -Fxq "public\/\$\{WWW_KEY_PATH\}"/);
-    assert.match(workflow, /submit_apex/);
-    assert.match(workflow, /submit_www/);
-    assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host worldmonitor\.app/);
-    assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host www\.worldmonitor\.app/);
+
   });
 
   it('isolates concurrency by deployment environment before eligibility filtering', () => {
@@ -530,4 +292,149 @@ describe('IndexNow root-index indirection', () => {
       /no local sitemap-main\.xml member/,
     );
   });
+});
+
+describe('IndexNow published inventory (#8071)', () => {
+  const origin = 'https://www.worldmonitor.app';
+  const flagged = `${origin}/docs/methodology/resilience-indicators`;
+  const xml = (kind, urls) => `<${kind}>${urls.map(url => `<${kind === 'urlset' ? 'url' : 'sitemap'}><loc>${url}</loc></${kind === 'urlset' ? 'url' : 'sitemap'}>`).join('')}</${kind}>`;
+  function publishedDocuments() {
+    return new Map([
+      [`${origin}/sitemap.xml`, xml('sitemapindex', [`${origin}/sitemap-main.xml`, `${origin}/blog/sitemap-index.xml`, `${origin}/docs/sitemap.xml`])],
+      [`${origin}/sitemap-main.xml`, xml('urlset', [
+        ...indexNow.INDEXNOW_BATCHES.flatMap(batch => batch.urls.filter(url => !url.includes('/blog/'))),
+        `${origin}/compare/new-comparison/`,
+      ])],
+      [`${origin}/blog/sitemap-index.xml`, xml('sitemapindex', [`${origin}/blog/sitemap-0.xml`])],
+      [`${origin}/blog/sitemap-0.xml`, xml('urlset', [`${origin}/blog/new-published-post/`])],
+      [`${origin}/docs/sitemap.xml`, xml('urlset', [flagged, `${origin}/docs/zh/methodology/resilience-indicators`])
+        .replace('<urlset>', `<urlset><!-- <url><loc>${origin}/docs/commented-out</loc></url> -->`)],
+    ]);
+  }
+
+  it('posts published main, nested blog and docs pages, including URLs absent from the checkout', async () => {
+    const documents = publishedDocuments();
+    const posts = [];
+    const fetchImpl = async (url, init) => {
+      assert.ok(init.signal);
+      assert.ok(init.headers['User-Agent']);
+      if (init.method === 'POST') {
+        posts.push(JSON.parse(init.body));
+        return new Response(null, { status: 200 });
+      }
+      const config = indexNow.INDEXNOW_BATCHES.find(batch => batch.keyLocation === url);
+      return new Response(config?.key ?? documents.get(url), { status: 200 });
+    };
+    await indexNow.runIndexNowSubmission({ fetchImpl, endpoints: ['https://www.bing.com/IndexNow'], logger: { log() {}, error() {} } });
+    assert.deepEqual(posts.map(post => post.host), indexNow.INDEXNOW_BATCHES.map(batch => batch.host));
+    const expectedPages = [
+      ...indexNow.INDEXNOW_BATCHES.flatMap(batch => batch.urls.filter(url => !url.includes('/blog/'))),
+      `${origin}/compare/new-comparison/`, `${origin}/blog/new-published-post/`,
+      flagged, `${origin}/docs/zh/methodology/resilience-indicators`,
+    ];
+    assert.deepEqual(new Set(posts.flatMap(post => post.urlList)), new Set(expectedPages));
+    const www = posts.find(post => post.host === 'www.worldmonitor.app');
+    for (const url of [flagged, `${origin}/compare/new-comparison/`, `${origin}/accuracy/`, `${origin}/blog/new-published-post/`]) {
+      assert.ok(www.urlList.includes(url), `${url} must reach the search engine`);
+    }
+    assert.ok(!www.urlList.includes(`${origin}/blog/authors/elie-habib/`), 'unpublished checkout URLs must not replace the published inventory');
+    assert.ok(!www.urlList.includes(`${origin}/docs/commented-out`), 'comments must not contribute page URLs');
+    assert.ok(posts.every(post => post.urlList.every(url => new URL(url).hostname === post.host && !url.endsWith('.xml'))));
+  });
+
+  it('attempts every host after an endpoint rejects an earlier host and still fails the run', async () => {
+    const hosts = [];
+    await assert.rejects(indexNow.runIndexNowSubmission({
+      batches: indexNow.INDEXNOW_BATCHES,
+      endpoints: ['https://www.bing.com/IndexNow'],
+      logger: { log() {}, error() {} },
+      fetchImpl: async (url, init) => {
+        if (init.method === 'POST') {
+          hosts.push(JSON.parse(init.body).host);
+          return new Response(null, { status: hosts.length === 1 ? 503 : 200 });
+        }
+        return new Response(indexNow.INDEXNOW_BATCHES.find(batch => batch.keyLocation === url).key);
+      },
+    }), /one or more IndexNow submissions failed/);
+    assert.deepEqual(hosts, indexNow.INDEXNOW_BATCHES.map(batch => batch.host));
+  });
+
+  it('fails before any POST when a child sitemap is unavailable, empty, or untrusted', async () => {
+    for (const [broken, expectedError] of [
+      [new Response(null, { status: 503 }), /returned 503/],
+      [new Response(null, { status: 301 }), /returned 301/],
+      [new Response('<urlset></urlset>'), /empty sitemap/],
+      [new Response('<html>unavailable</html>'), /invalid sitemap document/],
+      [new Response(xml('sitemapindex', ['https://example.com/sitemap.xml'])), /invalid sitemap location/],
+      [new Response(xml('sitemapindex', [`${origin}/sitemap.xml`])), /no docs pages/],
+      [new Response(xml('urlset', ['https://example.com/page'])), /invalid published page URL/],
+      [new Response('<urlset><url><loc>https://www.worldmonitor.app/docs/valid</loc></url><url></url></urlset>'), /one location per sitemap entry/],
+    ]) {
+      const documents = publishedDocuments();
+      let posts = 0;
+      await assert.rejects(indexNow.runIndexNowSubmission({
+        fetchImpl: async (url, init) => {
+          if (init.method === 'POST') posts++;
+          if (url === `${origin}/docs/sitemap.xml`) return broken;
+          assert.ok(documents.has(url), `unexpected request ${url}`);
+          return new Response(documents.get(url));
+        },
+        logger: { log() {}, error() {} },
+      }), expectedError);
+      assert.equal(posts, 0);
+    }
+  });
+
+  it('prints every published host batch from the real CLI without posting in dry-run mode', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'indexnow-cli-'));
+    try {
+      const preload = join(dir, 'fetch.mjs');
+      writeFileSync(preload, `const documents = new Map(${JSON.stringify([...publishedDocuments()])});
+globalThis.fetch = async (url, init) => {
+  if (init.method !== 'GET' || !documents.has(url)) throw new Error('unexpected request ' + url);
+  return new Response(documents.get(url));
+};`);
+      const { stdout, stderr, status } = await runStep(
+        'node --import "$INDEXNOW_TEST_PRELOAD" scripts/seo-indexnow-submit.mjs --dry-run',
+        { ...process.env, INDEXNOW_TEST_PRELOAD: preload },
+      );
+      assert.equal(status, 0, stderr);
+      const batches = JSON.parse(stdout);
+      assert.deepEqual(batches.map(batch => batch.host), indexNow.INDEXNOW_BATCHES.map(batch => batch.host));
+      const www = batches.find(batch => batch.host === 'www.worldmonitor.app');
+      assert.ok(www.urls.includes(flagged));
+      assert.ok(www.urls.includes(`${origin}/compare/new-comparison/`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('catches independently published docs on a scheduled run', async () => {
+    assert.ok(workflowDoc.on.schedule?.length, 'docs-only publication needs a catch-up trigger because Vercel can skip docs changes');
+    assert.match(workflowDoc.jobs['submit-indexnow'].if, /github.event_name == 'schedule'/);
+  });
+
+  it('rejects missing or extra direct root sitemap members before reading children', async () => {
+    for (const members of [
+      [`${origin}/sitemap-main.xml`, `${origin}/blog/sitemap-index.xml`],
+      [`${origin}/sitemap-main.xml`, `${origin}/blog/sitemap-index.xml`, `${origin}/docs/sitemap.xml`, `${origin}/extra.xml`],
+    ]) {
+      const requests = [];
+      await assert.rejects(indexNow.getPublishedBatches({ fetchImpl: async (url) => {
+        requests.push(url);
+        return new Response(xml('sitemapindex', members));
+      } }), /root sitemap members/);
+      assert.deepEqual(requests, [`${origin}/sitemap.xml`]);
+    }
+  });
+
+  it('runs the full published inventory on every eligible trigger without host or file filters', () => {
+    const submissions = workflowSteps.filter(step => String(step.run ?? '').includes('node scripts/seo-indexnow-submit.mjs'));
+    assert.equal(submissions.length, 1);
+    assert.equal(submissions[0].run.trim(), 'node scripts/seo-indexnow-submit.mjs');
+    assert.equal(submissions[0].if, undefined);
+    assert.ok(!workflowSteps.some(step => String(step.run ?? '').includes('diff-tree')));
+  });
+
+
 });

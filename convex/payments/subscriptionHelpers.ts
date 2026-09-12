@@ -363,7 +363,7 @@ function isLapsedAt<
  *   3. later `currentPeriodEnd` wins (duration tie-break — keep the longest-
  *      lived covering sub)
  *
- * Exported for testing; use `pickBestCoveringSub` for the picker.
+ * Shared by coverage selection and focused comparator tests.
  */
 export function compareSubscriptionsByCoverage<
   T extends Pick<SubscriptionRow, "planKey" | "currentPeriodEnd">,
@@ -373,32 +373,6 @@ export function compareSubscriptionsByCoverage<
   const rankDelta = (PLAN_PRECEDENCE[a.planKey] ?? 0) - (PLAN_PRECEDENCE[b.planKey] ?? 0);
   if (rankDelta !== 0) return rankDelta;
   return a.currentPeriodEnd - b.currentPeriodEnd;
-}
-
-/**
- * Picks the strongest covering subscription for a user, or null if none
- * cover. Reads ALL of the user's subscriptions via `by_userId`; pass the
- * post-write timestamp so a sub that was just patched (e.g. expired) is
- * correctly excluded.
- */
-async function pickBestCoveringSub(
-  ctx: MutationCtx,
-  userId: string,
-  at: number,
-): Promise<SubscriptionRow | null> {
-  const candidates = await ctx.db
-    .query("subscriptions")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .collect();
-
-  let best: SubscriptionRow | null = null;
-  for (const s of candidates) {
-    if (!isCoveringAt(s, at)) continue;
-    if (best === null || compareSubscriptionsByCoverage(s, best) > 0) {
-      best = s as SubscriptionRow;
-    }
-  }
-  return best;
 }
 
 /**
@@ -456,15 +430,14 @@ async function pickBestAcceptedBusinessGrant(
  * another paid sub still covers the user — see review feedback on PR #3470.
  *
  * Algorithm:
- *   1. Honor a standing comp floor: if compUntil is in the future, leave
- *      the entitlement untouched (goodwill credit outlives Dodo state).
- *   2. Pick the strongest covering sub via the deterministic comparator
- *      (tier > PLAN_PRECEDENCE > currentPeriodEnd).
+ *   1. Preserve legacy comp rows without source provenance pending audit.
+ *   2. Gather covering subscriptions, preserving active renewal candidates.
  *   3. Also consider any accepted Business Pro grant tied to a covering
  *      `api_business` subscription; it confers Pro-tier features without
  *      creating a fake subscription row.
- *   4. Write the best source's (planKey, currentPeriodEnd) if any cover,
- *      otherwise downgrade to free.
+ *   4. Include the recorded comp source. Prefer live coverage, then compare
+ *      tier > PLAN_PRECEDENCE > currentPeriodEnd. Recheck at its expiry while
+ *      comp is active; otherwise downgrade to free when no sources remain.
  *
  * Note: callers MUST persist their own subscription row patch BEFORE calling
  * this helper so the recompute sees the post-event state.
@@ -478,32 +451,46 @@ export async function recomputeEntitlementFromAllSubs(
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
-  if (entitlement?.compUntil && entitlement.compUntil > observedAt) {
+  if (entitlement?.compUntil && entitlement.compUntil > observedAt && !entitlement.compPlanKey) {
     console.log(
-      `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
+      `[subscriptionHelpers] recompute for ${userId} — legacy comp source unknown; preserving entitlement pending audit`,
     );
     return;
   }
 
-  const bestSub = await pickBestCoveringSub(ctx, userId, observedAt);
+  const subscriptions = await ctx.db.query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId)).collect();
+  const candidates = subscriptions.filter((sub) => isCoveringAt(sub, observedAt))
+    .map(({ planKey, currentPeriodEnd }) => ({ planKey, currentPeriodEnd }));
   const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, observedAt);
+  if (bestGrant) candidates.push(bestGrant);
 
-  // Normalize both sources to the same comparison shape. A Business Pro grant
-  // confers Pro-tier features (`pro_monthly`) without creating a fake
-  // subscription row; pick whichever source outranks the other.
-  const best =
-    bestSub && bestGrant
-      ? compareSubscriptionsByCoverage(bestSub, bestGrant) >= 0
-        ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
-        : { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
-      : bestSub
-        ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
-        : bestGrant
-          ? { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
-          : null;
+  const comp = entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > observedAt
+    ? { planKey: entitlement.compPlanKey, currentPeriodEnd: entitlement.compUntil }
+    : null;
+  if (comp) candidates.push(comp);
+
+  // A stale active row remains a renewal-reconciliation candidate, but must
+  // not hide another source that still supplies access right now.
+  const liveCandidates = candidates.filter((candidate) => candidate.currentPeriodEnd > observedAt);
+  const eligible = liveCandidates.length > 0 ? liveCandidates : candidates;
+  let best: { planKey: string; currentPeriodEnd: number } | null = null;
+  for (const candidate of eligible) {
+    if (!best || compareSubscriptionsByCoverage(candidate, best) > 0) best = candidate;
+  }
 
   if (best) {
-    await upsertEntitlements(ctx, userId, best.planKey, best.validUntil, observedAt);
+    await upsertEntitlements(ctx, userId, best.planKey, best.currentPeriodEnd, observedAt);
+    const nextExpiry = best.currentPeriodEnd;
+    if (comp && candidates.some((candidate) => candidate.currentPeriodEnd > nextExpiry)) {
+      // The winning tier may end before another paid or comp source. Re-read
+      // current records at that boundary; never replay this entitlement snapshot.
+      await ctx.scheduler.runAt(
+        nextExpiry,
+        internal.payments.subscriptionHelpers.recomputeEntitlementForUser,
+        { userId },
+      );
+    }
     return;
   }
 

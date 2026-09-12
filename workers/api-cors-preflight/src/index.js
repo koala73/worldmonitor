@@ -373,6 +373,15 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Reject the retired premium URL before fetch can replay an older CDN response.
+    if (request.method !== 'OPTIONS' && url.pathname.replace(/\/+$/, '') === '/api/bootstrap'
+      && url.searchParams.getAll('keys').some(value => value.split(',').some(key => key.trim() === 'wsbTickers'))) {
+      return new Response(JSON.stringify({ error: 'Use the premium WSB RPC' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...buildResponseCorsHeaders(request.headers.get('Origin') || '', 401) },
+      });
+    }
+
     // KV shadow measurement (U-K2, #5338). Self-gating: no-op unless BOOTSTRAP_KV_SHADOW==='1'
     // and this is a public-tier bootstrap GET. Runs in ctx.waitUntil — never touches the
     // response or the CORS logic below. Kept entirely in kv-shadow.js so CORS stays untouched.

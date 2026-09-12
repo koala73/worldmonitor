@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { load as loadYaml } from 'js-yaml';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 const ISO2_CODES = Object.keys(JSON.parse(readFileSync('shared/iso2-to-iso3.json', 'utf8'))).sort();
@@ -41,6 +42,7 @@ const EXPECTED_ENUMS = [
     'SERVICE_OPERATIONAL_STATUS_MAINTENANCE',
   ]],
   ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'type', FILTER_PARAM_CONTRACTS.infrastructureTemporalBaselineTypes],
+  ['InfrastructureService', '/api/infrastructure/v1/get-temporal-baseline', 'get', 'region', ['global', '']],
   ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'chokepoint_id', FILTER_PARAM_CONTRACTS.intelligenceChokepointIds],
   ['IntelligenceService', '/api/intelligence/v1/compute-energy-shock', 'get', 'fuel_mode', FILTER_PARAM_CONTRACTS.intelligenceFuelModes],
   ['MarketService', '/api/market/v1/get-country-stock-index', 'get', 'country_code', Object.keys(FILTER_PARAM_CONTRACTS.marketCountryStockIndexes)],
@@ -70,6 +72,25 @@ function getParam(spec, path, method, name) {
 }
 
 describe('OpenAPI filter parameter schemas', () => {
+  it('accepts the documented empty region in every temporal baseline request component', () => {
+    const specs = [
+      readJsonSpec('InfrastructureService'),
+      loadYaml(readFileSync('docs/api/InfrastructureService.openapi.yaml', 'utf8')),
+      readUnifiedSpec(),
+    ];
+    for (const spec of specs) {
+      const matches = Object.entries(spec.components.schemas).filter(([name]) =>
+        name === 'GetTemporalBaselineRequest' || name.endsWith('_GetTemporalBaselineRequest'));
+      assert.equal(matches.length, 1);
+      const request = matches[0][1];
+      const region = request.properties.region;
+      assert.equal(region.type, 'string');
+      assert.equal(region.const, undefined, 'const must not reject the empty region');
+      assert.deepEqual(region.enum, ['global', '']);
+      assert.ok(!request.required?.includes('region'), 'omission remains valid');
+    }
+  });
+
   it('documents issue-listed allow-list filters as query parameter enums in service JSON specs', () => {
     for (const [service, path, method, name, expected] of EXPECTED_ENUMS) {
       const param = getParam(readJsonSpec(service), path, method, name);

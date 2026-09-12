@@ -1,7 +1,10 @@
 // @ts-check
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse } from './_relay.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
-import { validateApiKey } from './_api-key.js';
+import { getHeaderApiKey, USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from './_api-key.js';
+import { isCanonicalUserApiKey, validateBootstrapUserApiKey, validateBootstrapUserApiAccess } from './_user-api-key.js';
+import { checkBurst, reserveDailyMeter, rateLimitHeaders } from './_api-key-rate-limit.js';
+import { redisPipeline } from './_upstash-json.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
@@ -241,9 +244,30 @@ export default async function handler(req) {
   // anonymous, so the HMAC-signed wms_ session the browser mints at boot is
   // the intended credential; forceKey would demand user-bound Pro auth and
   // lock the dashboard out of its own panel.
+  let userAccount;
   const keyCheck = await validateApiKey(req);
   if (keyCheck.required && !keyCheck.valid) {
-    return jsonResponse({ error: keyCheck.error }, 401, { 'Cache-Control': 'no-store', ...corsHeaders });
+    const key = getHeaderApiKey(req);
+    if (keyCheck.error !== USER_API_KEY_GATEWAY_VALIDATION_ERROR || !isCanonicalUserApiKey(key)) {
+      return jsonResponse({ error: keyCheck.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR ? 'Invalid API key' : keyCheck.error }, 401, { 'Cache-Control': 'no-store', ...corsHeaders });
+    }
+    // Bound unauthenticated validation work before looking up the key owner.
+    const validationLimit = await checkRateLimit(req, corsHeaders, {
+      scope: 'telegram-user-key-validation', limit: 600, window: '1 m', failClosed: true,
+    });
+    if (validationLimit) {
+      validationLimit.headers.set('Cache-Control', 'no-store');
+      return validationLimit;
+    }
+    const userKey = await validateBootstrapUserApiKey(key);
+    const access = userKey.ok ? await validateBootstrapUserApiAccess(userKey.userId) : userKey;
+    if (!access.ok) {
+      return jsonResponse({
+        error: access.error,
+        ...(access.headers?.['X-Billing-Verification'] ? { code: access.reason } : {}),
+      }, access.status, { ...corsHeaders, ...access.headers, 'Cache-Control': 'no-store' });
+    }
+    userAccount = { userId: userKey.userId, entitlement: access.entitlement };
   }
 
   const url = new URL(req.url);
@@ -299,6 +323,43 @@ export default async function handler(req) {
       params.set('limit', String(limit));
       if (topic) params.set('topic', topic);
       if (channel) params.set('channel', channel);
+    }
+
+    if (userAccount && userAccount.entitlement.features.apiRateLimit > 0) {
+      const { userId, entitlement } = userAccount;
+      const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
+      const burst = await checkBurst(entitlement.features.apiRateLimit, userId);
+      const allowance = typeof entitlement.features.apiDailyAllowance === 'number'
+        ? entitlement.features.apiDailyAllowance : -1;
+      const plan = entitlement.planKey;
+      const upgrade_url = plan && plan !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
+      if (!burst.ok) {
+        if (enforce) {
+          const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
+          return jsonResponse({
+            error: 'Too many requests', plan, limit: burst.limit,
+            limit_type: 'per_minute', reset: new Date(burst.reset).toISOString(), upgrade_url,
+          }, 429, {
+            ...corsHeaders, 'Cache-Control': 'no-store',
+            ...rateLimitHeaders({ limit: burst.limit, remaining: 0, resetMs: burst.reset, retryAfterSec }),
+          });
+        }
+        // Match the gateway: a shadow burst denial skips the daily reservation.
+      } else if (allowance >= 0) {
+        const meter = await reserveDailyMeter({ userId, allowance, pipeline: redisPipeline });
+        if (meter.overLimit && enforce) {
+          await meter.rollback();
+          const resetMs = Date.now() + meter.retryAfterSec * 1000;
+          return jsonResponse({
+            error: 'Daily request limit reached', plan, limit: allowance,
+            limit_type: 'daily', reset: new Date(resetMs).toISOString(), upgrade_url,
+          }, 429, {
+            ...corsHeaders, 'Cache-Control': 'no-store',
+            ...rateLimitHeaders({ limit: allowance, remaining: 0, resetMs,
+              retryAfterSec: meter.retryAfterSec, windowSec: 86_400 }),
+          });
+        }
+      }
     }
 
     const relayUrl = `${relayBaseUrl}${relayPath}?${params}`;

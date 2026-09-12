@@ -579,7 +579,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceRanking
-            description: PRO-gated. Requires an active Pro subscription.
+            description: Retrieve country structural resilience rankings with coverage, confidence and snapshot metadata for comparison. PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceRanking
             security:
                 - WorldMonitorKey: []

@@ -12,7 +12,7 @@
  * - x-default points at the English URL
  */
 
-import { ORGANIZATION_ID, PERSON_ID, WEBSITE_ID } from './schema-graph-ids';
+import { CANONICAL_ORIGIN, ORGANIZATION_ID, PERSON_ID, WEBSITE_ID } from './schema-graph-ids';
 import { DOCS_PAGE_DATES } from './docs-page-dates.generated';
 
 export const DOCS_PUBLIC_ORIGIN = 'https://www.worldmonitor.app';
@@ -347,6 +347,26 @@ const DOCS_PERSON_AUTHOR = Object.freeze({
   name: 'Elie Habib',
 });
 
+/**
+ * Same typed-stub-plus-@id shape as WORLD_MONITOR_ORG in the corpus
+ * generator. No docs page declares the Organization node — pruneDocsEntities
+ * collapses it to a reference — so a bare author `@id` cannot resolve inside
+ * the document (#8073). `sameAs` stays on the canonical welcome node.
+ */
+const DOCS_ORGANIZATION_AUTHOR = Object.freeze({
+  '@id': ORGANIZATION_ID,
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: CANONICAL_ORIGIN,
+});
+
+function isBareOrganizationAuthor(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const node = value as Record<string, unknown>;
+  if (node['@id'] !== ORGANIZATION_ID) return false;
+  return Object.keys(node).every((key) => key === '@id' || key === '@context');
+}
+
 function docsAuthorForPathname(pathname: string | undefined): Record<string, unknown> {
   // The Chinese mirror keeps its locale segment in the slug ("zh/methodology/…"),
   // and it is the same editorial work under translation, so drop the segment
@@ -354,7 +374,7 @@ function docsAuthorForPathname(pathname: string | undefined): Record<string, unk
   const slug = docsSlugForPathname(pathname)?.replace(/^zh\//, '');
   return slug?.startsWith(DOCS_PERSON_AUTHORED_SLUG_PREFIX)
     ? { ...DOCS_PERSON_AUTHOR }
-    : { '@id': ORGANIZATION_ID };
+    : { ...DOCS_ORGANIZATION_AUTHOR };
 }
 
 /**
@@ -472,7 +492,11 @@ function withDocsArticleAuthor(value: unknown, pathname?: string): unknown {
     next[key] = withDocsArticleAuthor(nested, pathname);
   }
   const isArticle = hasJsonLdType(next, 'Article') || hasJsonLdType(next, 'TechArticle');
-  if (isArticle && next.author == null) {
+  // Prune collapses every `#organization` body to `{ @id }` before this
+  // runs, including an author we injected on a previous rewrite. A bare
+  // reference is the defect (#8073); replace it the same way as a missing
+  // author. Named upstream bylines and Person authors are not bare refs.
+  if (isArticle && (next.author == null || isBareOrganizationAuthor(next.author))) {
     next.author = docsAuthorForPathname(pathname);
   }
   return next;

@@ -173,7 +173,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListUcdpEvents
-            description: ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
+            description: Browse cached, georeferenced UCDP violence events with optional country filtering, event dates and fatality estimates for country-level conflict data analysis.
             operationId: ListUcdpEvents
             parameters:
                 - name: start
@@ -336,7 +336,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummary
-            description: GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
+            description: Retrieve a cached HAPI conflict summary for a country, with event counts, fatalities, demonstrations, reference period and update time for humanitarian context.
             operationId: GetHumanitarianSummary
             parameters:
                 - name: country_code
@@ -821,7 +821,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummaryBatch
-            description: GetHumanitarianSummaryBatch retrieves humanitarian summaries for multiple countries in one call.
+            description: Retrieve humanitarian summaries for multiple countries in one request, with country indicators and requested versus fetched counts for coverage comparison.
             operationId: GetHumanitarianSummaryBatch
             requestBody:
                 content:

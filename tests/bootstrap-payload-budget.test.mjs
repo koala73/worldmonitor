@@ -135,6 +135,10 @@ test('budget manifest records pre-change ceilings, final targets, and reviewed e
   }
 });
 
+test('retired WSB key is absent from every bootstrap tier', () => {
+  for (const tier of ['fast', 'slow', 'on-demand']) assert.ok(!bootstrapTierKeyNames(tier).includes('wsbTickers'));
+});
+
 test('all demotions are represented in their actual destination tier', () => {
   const fast = new Set(bootstrapTierKeyNames('fast'));
   const slow = new Set(bootstrapTierKeyNames('slow'));

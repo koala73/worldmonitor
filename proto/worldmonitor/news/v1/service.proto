@@ -11,7 +11,7 @@ import "worldmonitor/news/v1/list_feed_digest.proto";
 service NewsService {
   option (sebuf.http.service_config) = {base_path: "/api/news/v1"};
 
-  // SummarizeArticle generates an LLM summary with provider selection and fallback support.
+  // Generate an article summary with language-model provider selection and fallback support, returning the chosen provider, model and reported processing errors.
   rpc SummarizeArticle(SummarizeArticleRequest) returns (SummarizeArticleResponse) {
     option (sebuf.http.config) = {path: "/summarize-article"};
   }

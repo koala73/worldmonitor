@@ -318,11 +318,14 @@ paths:
                         - 'satellite_fires'
                 - name: region
                   in: query
-                  description: Geographic region key, defaults to "global".
+                  description: Only the global baseline is defined. Omitted or empty defaults to global.
                   required: false
-                  example: "example"
+                  example: "global"
                   schema:
                     type: string
+                    enum:
+                        - 'global'
+                        - ''
                 - name: count
                   in: query
                   description: Current observed count to compare against baseline.
@@ -1800,7 +1803,10 @@ components:
                     description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
                 region:
                     type: string
-                    description: Geographic region key, defaults to "global".
+                    description: Only the global baseline is defined. Omitted or empty defaults to global.
+                    enum:
+                        - 'global'
+                        - ''
                 count:
                     type: number
                     format: double

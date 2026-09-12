@@ -850,6 +850,9 @@ export default defineSchema({
     // subscription.expired events skip the normal downgrade-to-free so
     // goodwill credits outlive Dodo subscription cancellations.
     compUntil: v.optional(v.number()),
+    // Independent goodwill source; never derive this from a paid effective plan.
+    // Legacy rows without it require an audited source before migration.
+    compPlanKey: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])

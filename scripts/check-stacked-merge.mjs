@@ -1,23 +1,12 @@
 #!/usr/bin/env node
 
-// Detects a stacked PR whose base already merged (and usually auto-deleted),
-// so a GitHub merge would land on a tombstone and never reach the default
-// branch. #6993 and #6997 both showed MERGED while main never received the
-// commits (#7006).
-//
-// Two modes:
-//   pre-merge  — required PR check. Fails when base is not the default branch
-//                and that base branch's own PR is already merged.
-//   post-merge — safety net after a merge. Fails when the merge commit is not
-//                an ancestor of the default branch, and files an issue plus a
-//                PR comment because nobody re-reads checks on a purple PR.
-
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 import { isMainModule } from './lib/main-module.mjs';
 
-export const ISSUE_TITLE_PREFIX = 'Orphaned stacked merge:';
+export const ISSUE_TITLE_PREFIX = 'Stacked merge integration:';
+const LEGACY_ISSUE_TITLE_PREFIX = 'Orphaned stacked merge:';
 
 const GH_CALL_TIMEOUT_MS = 30_000;
 const ANCESTRY_RETRY_ATTEMPTS = 3;
@@ -59,7 +48,7 @@ export function evaluatePreMergeGuard({ defaultBranch, baseRef, baseHeadPulls })
   return { ok: true, reason: 'base-pr-absent' };
 }
 
-export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor }) {
+export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, pendingParent }) {
   if (!merged) {
     return { ok: true, reason: 'not-merged' };
   }
@@ -69,7 +58,10 @@ export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor }) {
   if (isAncestor) {
     return { ok: true, reason: 'merge-on-default' };
   }
-  return { ok: false, reason: 'orphaned-merge' };
+  if (pendingParent) {
+    return { ok: true, reason: 'pending-parent-integration', pendingParent };
+  }
+  return { ok: false, reason: 'integration-unproven' };
 }
 
 export function listPullsByHead({ gh, repository, owner, headRef }) {
@@ -96,47 +88,51 @@ export function isCommitAncestor({ git, commit, ref }) {
 function pullLabel(pull) {
   const number = pull?.number != null ? `#${pull.number}` : 'an unknown PR';
   const url = typeof pull?.html_url === 'string' ? ` (${pull.html_url})` : '';
-  const title = typeof pull?.title === 'string' && pull.title.length > 0 ? ` — ${pull.title}` : '';
+  const title = typeof pull?.title === 'string' && pull.title.length > 0 ? ` (${pull.title})` : '';
   return `${number}${title}${url}`;
 }
 
-function parentList(mergedParents) {
-  if (!Array.isArray(mergedParents) || mergedParents.length === 0) {
+function parentList(parents) {
+  if (!Array.isArray(parents) || parents.length === 0) {
     return 'none found for the stacked base branch';
   }
-  return mergedParents.map((pull) => `- ${pullLabel(pull)}`).join('\n');
+  return parents.map((pull) => `- ${pullLabel(pull)}. State: ${isMergedPull(pull) ? 'merged' : pull.state || 'unknown'}.`).join('\n');
 }
 
-export function formatOrphanIssue({ pull, mergeSha, defaultBranch, mergedParents, reason }) {
+export function formatOrphanIssue({ pull, mergeSha, defaultBranch, parents = [], reason }) {
   const number = pull?.number ?? '?';
-  const title = `${ISSUE_TITLE_PREFIX} #${number} never reached ${defaultBranch}`;
+  const title = `${ISSUE_TITLE_PREFIX} #${number} on ${defaultBranch}`;
+  if (reason === 'merge-on-default') {
+    return {
+      title,
+      body: `Integration of PR ${pullLabel(pull)} is confirmed. Merge commit \`${mergeSha}\` is an ancestor of \`${defaultBranch}\`.`,
+    };
+  }
   const body = [
-    `Merged PR ${pullLabel(pull)} is not on \`${defaultBranch}\`.`,
+    reason === 'pending-parent-integration'
+      ? `Merged PR ${pullLabel(pull)} is pending integration through an open parent that contains its merge commit.`
+      : `Integration of merged PR ${pullLabel(pull)} into \`${defaultBranch}\` is unproven.`,
     '',
     `- Merge SHA: \`${mergeSha || 'missing'}\``,
     `- PR base: \`${pull?.base?.ref || 'unknown'}\``,
     `- Reason: \`${reason}\``,
     '',
     'Parent PR(s) for that base branch:',
-    parentList(mergedParents),
+    parentList(parents),
     '',
-    `GitHub still reports this PR as MERGED when the base branch was deleted after its own PR merged, so the child lands on a tombstone. Re-land the commits onto \`${defaultBranch}\` (see #7006).`,
-    '',
-    'This issue is an alarm, not a close of #7006.',
+    `The merge commit has not been confirmed as an ancestor of \`${defaultBranch}\`. This does not establish branch deletion or lost changes. Squash and rebase merges can also change commit identity. Inspect the parent history and content before choosing a recovery action. See #7006.`,
   ].join('\n');
   return { title, body };
 }
 
-export function formatOrphanComment({ pull, mergeSha, defaultBranch, mergedParents, reason }) {
-  const parents = Array.isArray(mergedParents) && mergedParents.length > 0
-    ? mergedParents.map((parent) => `#${parent.number}`).join(', ')
-    : 'none found';
+export function formatOrphanComment({ pull, mergeSha, defaultBranch, parents = [], reason }) {
   return [
-    `This merge never reached \`${defaultBranch}\`. GitHub still shows MERGED, but \`${mergeSha || 'the merge commit'}\` is not an ancestor of \`${defaultBranch}\` (${reason}).`,
+    `Integration into \`${defaultBranch}\` is unproven for merge commit \`${mergeSha || 'missing'}\` (${reason}).`,
     '',
-    `Stacked base: \`${pull?.base?.ref || 'unknown'}\`. Parent PR(s): ${parents}.`,
+    `Stacked base: \`${pull?.base?.ref || 'unknown'}\`. Parent PR(s):`,
+    parentList(parents),
     '',
-    'Re-land onto the default branch. Tracking: #7006.',
+    'Inspect parent history and content before choosing a recovery action. See #7006.',
   ].join('\n');
 }
 
@@ -149,7 +145,7 @@ function postMergeAnnotation(verdict, mergeSha, defaultBranch) {
   if (verdict.reason === 'missing-merge-sha') {
     return `::error::Merged PR has no merge commit SHA, so it cannot be proven on \`${defaultBranch}\`. See #7006.`;
   }
-  return `::error::Merge commit \`${mergeSha}\` is not an ancestor of \`${defaultBranch}\`. The PR is MERGED but the commits never landed. See #7006.`;
+  return `::error::Merge commit \`${mergeSha}\` is not an ancestor of \`${defaultBranch}\` and no containing open parent was confirmed. Integration remains unproven. See #7006.`;
 }
 
 function repositoryFromEvent(event) {
@@ -164,6 +160,12 @@ function defaultBranchFromEvent(event) {
 }
 
 function confirmAncestry({ git, commit, ref, defaultBranch, shouldRetry, sleep }) {
+  try {
+    git(['cat-file', '-e', `${commit}^{commit}`]);
+  } catch (error) {
+    if (error?.status !== 1 && error?.status !== 128) throw error;
+    git(['fetch', '--quiet', 'origin', commit]);
+  }
   const attempts = shouldRetry ? ANCESTRY_RETRY_ATTEMPTS : 1;
   let last = false;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -173,6 +175,32 @@ function confirmAncestry({ git, commit, ref, defaultBranch, shouldRetry, sleep }
     if (attempt < attempts - 1) sleep(ANCESTRY_RETRY_MS);
   }
   return last;
+}
+
+function findPendingParent({ gh, git, repository, defaultBranch, pull, mergeSha }) {
+  const parents = [];
+  const queue = [pull];
+  const visited = new Set([pull.number]);
+  for (const current of queue) {
+    const baseRef = current.base?.ref;
+    if (!baseRef || baseRef === defaultBranch) continue;
+    const owner = current.base?.repo?.owner?.login || repository.split('/')[0];
+    for (const parent of listPullsByHead({ gh, repository, owner, headRef: baseRef })) {
+      if (parent.head?.repo?.full_name && parent.head.repo.full_name !== repository) continue;
+      if (visited.has(parent.number)) continue;
+      visited.add(parent.number);
+      parents.push(parent);
+      if (parent.state === 'open' && parent.head?.sha) {
+        git(['fetch', '--quiet', 'origin', parent.head.sha]);
+        if (isCommitAncestor({ git, commit: mergeSha, ref: parent.head.sha })) {
+          return { parents, pendingParent: parent };
+        }
+      } else if (isMergedPull(parent)) {
+        queue.push(parent);
+      }
+    }
+  }
+  return { parents };
 }
 
 function defaultIssues(gh, repository) {
@@ -188,7 +216,7 @@ function defaultIssues(gh, repository) {
         '--search',
         `${title} in:title`,
         '--json',
-        'number,title,url',
+        'number,title,url,state,body',
       ]);
       const parsed = JSON.parse(raw || '[]');
       return Array.isArray(parsed) ? parsed.filter((issue) => issue?.title === title) : [];
@@ -199,6 +227,15 @@ function defaultIssues(gh, repository) {
         { input: JSON.stringify({ title: issue.title, body: issue.body }) },
       );
       return JSON.parse(raw);
+    },
+    update(number, fields) {
+      gh(
+        ['api', `repos/${repository}/issues/${number}`, '--method', 'PATCH', '--input', '-'],
+        { input: JSON.stringify(fields) },
+      );
+    },
+    close(number, body) {
+      this.update(number, { state: 'closed', body });
     },
     comment(prNumber, body) {
       gh(
@@ -257,7 +294,8 @@ export function checkStackedMerge({
   }
 
   const mergeSha = pull.merge_commit_sha;
-  const merged = pull.merged === true;
+  const merged = isMergedPull(pull);
+  if (!merged) return { ok: true, reason: 'not-merged', exitCode: 0 };
   if (typeof git !== 'function') {
     throw new Error('git is required to prove the merge commit reached the default branch');
   }
@@ -272,52 +310,85 @@ export function checkStackedMerge({
       sleep,
     })
     : false;
-  const verdict = evaluatePostMergeAncestry({ merged, mergeSha, isAncestor });
-  if (verdict.ok) {
-    return { ...verdict, exitCode: 0 };
-  }
-
-  let mergedParents = [];
-  if (typeof gh === 'function' && baseRef && baseRef !== defaultBranch) {
-    mergedParents = listPullsByHead({ gh, repository, owner, headRef: baseRef }).filter(isMergedPull);
-  }
+  const { parents = [], pendingParent } = !isAncestor && mergeSha && typeof gh === 'function'
+    ? findPendingParent({ gh, git, repository, defaultBranch, pull, mergeSha })
+    : {};
+  const verdict = evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, pendingParent });
 
   const alarm = formatOrphanIssue({
     pull,
     mergeSha,
     defaultBranch,
-    mergedParents,
+    parents,
     reason: verdict.reason,
   });
-  const comment = formatOrphanComment({
-    pull,
-    mergeSha,
-    defaultBranch,
-    mergedParents,
-    reason: verdict.reason,
-  });
-
   const issueClient = issues || (typeof gh === 'function' ? defaultIssues(gh, repository) : null);
   let existingIssue;
   if (issueClient) {
-    const found = issueClient.search(alarm.title);
-    if (Array.isArray(found) && found.length > 0) {
+    const legacyTitle = `${LEGACY_ISSUE_TITLE_PREFIX} #${pull.number} never reached ${defaultBranch}`;
+    const found = [...issueClient.search(alarm.title), ...issueClient.search(legacyTitle)];
+    if (found.length > 0) {
       existingIssue = found[0].number;
-    } else {
+      for (const issue of new Map(found.map((item) => [item.number, item])).values()) {
+        if (isAncestor) {
+          if (issue.state?.toLowerCase() !== 'closed') issueClient.close(issue.number, alarm.body);
+        } else {
+          const fields = { title: alarm.title, body: alarm.body };
+          if (!verdict.ok) fields.state = 'open';
+          if (issue.title !== fields.title || issue.body !== fields.body
+            || fields.state && issue.state?.toLowerCase() !== fields.state) {
+            issueClient.update(issue.number, fields);
+          }
+        }
+      }
+    } else if (!verdict.ok) {
       const created = issueClient.create(alarm);
       existingIssue = created?.number;
-    }
-    if (pull.number != null) {
-      issueClient.comment(pull.number, comment);
+      if (pull.number != null) {
+        issueClient.comment(pull.number, formatOrphanComment({
+          pull, mergeSha, defaultBranch, parents, reason: verdict.reason,
+        }));
+      }
     }
   }
 
   return {
     ...verdict,
-    mergedPrs: mergedParents,
+    parents,
     existingIssue,
-    exitCode: 1,
-    annotation: postMergeAnnotation(verdict, mergeSha, defaultBranch),
+    exitCode: verdict.ok ? 0 : 1,
+    ...(!verdict.ok && { annotation: postMergeAnnotation(verdict, mergeSha, defaultBranch) }),
+  };
+}
+
+export function checkClosedPull({ event, gh, git, issues, sleep } = {}) {
+  if (!event?.pull_request) throw new Error('a pull_request payload is required');
+  const repository = repositoryFromEvent(event);
+  const queue = [event.pull_request];
+  const visited = new Set();
+  const results = [];
+  for (const pull of queue) {
+    if (visited.has(pull.number)) continue;
+    visited.add(pull.number);
+    const result = checkStackedMerge({
+      mode: 'post-merge', event: { ...event, pull_request: pull }, gh, git, issues, sleep,
+    });
+    results.push({ pullNumber: pull.number, ...result });
+    if (!pull.head?.ref || pull.head.repo?.full_name !== repository) continue;
+    const children = flattenGhPages(gh([
+      'api', '--paginate', '--slurp',
+      `repos/${repository}/pulls?state=closed&base=${encodeURIComponent(pull.head.ref)}`,
+    ]));
+    queue.push(...children.filter((child) => isMergedPull(child)
+      && (!child.base?.repo?.full_name || child.base.repo.full_name === repository)));
+  }
+  const failures = results.filter((result) => !result.ok);
+  return {
+    ok: failures.length === 0,
+    reason: 'closed-pull-reconciled',
+    exitCode: failures.length > 0 ? 1 : 0,
+    results,
+    ...(failures.length > 0 && { annotation: failures.map((result) => result.annotation).join('\n') }),
   };
 }
 
@@ -375,7 +446,8 @@ function main(argv = process.argv, env = process.env) {
   const mode = readArg(argv, '--mode');
   const eventPath = readArg(argv, '--event-path');
   const event = loadEvent(env, eventPath);
-  const result = checkStackedMerge({
+  const check = mode === 'post-merge' ? checkClosedPull : checkStackedMerge;
+  const result = check({
     mode,
     event,
     gh: runGh,

@@ -113,7 +113,6 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   euFsi: 'economic:fsi-eu:v1',
   shippingStress: 'supply_chain:shipping_stress:v1',
   socialVelocity: 'intelligence:social:reddit:v1',
-  wsbTickers: 'intelligence:wsb-tickers:v1',
   pizzint: 'intelligence:pizzint:seed:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress: 'economic:stress-index:v1',
@@ -205,8 +204,6 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // Flights layer ships disabled on every variant, so this never rendered
   // from the fast payload for a default visitor.
   'flightDelays',
-  // Premium WSB scanner — not a default-startup surface.
-  'wsbTickers',
   // The minimum further FAST demotion needed by #7046. Both consumers are
   // demand-gated and read the credential-less per-key URL. Putting them in
   // SLOW would erase the energy-registry reduction; moving additional FAST

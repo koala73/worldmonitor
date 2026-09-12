@@ -394,6 +394,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-china-macro-snapshot': 'slow',
   '/api/economic/v1/get-china-activity-nowcast': 'medium',
   '/api/intelligence/v1/list-market-implications': 'slow',
+  '/api/intelligence/v1/list-wsb-tickers': 'no-store',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
   '/api/economic/v1/get-eurostat-country-data': 'slow',
   '/api/economic/v1/get-eu-gas-storage': 'slow',
@@ -1998,8 +1999,9 @@ export function createDomainGateway(
     // Gateway rate limiting — two-phase: endpoint-specific first, then global fallback.
     // Confirmed paid principals use per-user buckets; other traffic uses IP.
     //
-    // Date searches need their tighter upstream budget even after MCP admission.
-    if (internalMcpVerified && pathname === '/api/aviation/v1/search-google-dates') {
+    // Google searches need their tighter upstream budget even after MCP admission.
+    if (internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
+      || pathname === '/api/aviation/v1/search-google-dates')) {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
         principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
         principalScope: 'session',
@@ -2016,11 +2018,13 @@ export function createDomainGateway(
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
     if (!internalMcpVerified) {
-      // The local live-flight popup uses the sidecar cache without Upstash.
-      // Keep this exception exact-path; cloud requests retain the provider cap.
-      const isSidecarWingbitsLiveFlight = process.env.LOCAL_API_MODE === 'tauri-sidecar'
-        && pathname === '/api/military/v1/get-wingbits-live-flight';
-      const endpointRlResponse = isSidecarWingbitsLiveFlight ? null : rateLimitPrincipalUserId
+      // These local provider lookups use the sidecar cache without Upstash.
+      // Keep these exceptions exact-path; cloud requests retain the provider cap.
+      const isSidecarProviderLookup = process.env.LOCAL_API_MODE === 'tauri-sidecar'
+        && (pathname === '/api/military/v1/get-wingbits-live-flight'
+          || pathname === '/api/imagery/v1/search-imagery'
+          || pathname === '/api/webcam/v1/get-webcam-image');
+      const endpointRlResponse = isSidecarProviderLookup ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
             principalScope: isUserApiKey ? 'api_key' : 'session',

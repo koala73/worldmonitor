@@ -9,7 +9,7 @@ import "worldmonitor/safety/v1/toronto_safety.proto";
 service SafetyService {
   option (sebuf.http.service_config) = {base_path: "/api/safety/v1"};
 
-  // Returns one bounded Toronto Police Service dataset with source, semantics, and freshness metadata.
+  // Explore one Toronto Police Service dataset with area, offence and year filters, plus source attribution, data semantics and freshness for local safety analysis.
   rpc GetTorontoSafety(GetTorontoSafetyRequest) returns (GetTorontoSafetyResponse) {
     option (sebuf.http.config) = {path: "/get-toronto-safety", method: HTTP_METHOD_GET};
   }
