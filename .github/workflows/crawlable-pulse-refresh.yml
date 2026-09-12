@@ -76,7 +76,7 @@ jobs:
               --base main \
               --head "$branch" \
               --title "chore(corpus): refresh crawlable live pulse ${period}" \
-              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, and the homepage welcome-teaser strip (#7608)."
+              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -134,8 +134,13 @@ jobs:
           # publishing headlines and scores this freeze has already superseded —
           # the drift that produced #7608 — and red the unit gate on this PR.
           npm run teasers:welcome
+          # The Forecast accuracy section in llms-full is derived from this
+          # snapshot (#8070). Skipping the rebuild would leave the corpus quoting
+          # last week's Brier after /accuracy/ had already moved.
+          npm run build:llms-full
           node --import tsx --test --test-concurrency=1 \
             tests/accuracy-corpus.test.mjs \
+            tests/seo-geo-residue.test.mjs \
             tests/crawlable-corpus.test.mjs \
             tests/crawlable-developments.test.mjs \
             tests/crawlable-live-tools.test.mjs \
@@ -163,7 +168,7 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml pro-test/src/generated/teasers.json pro-test/welcome.html pro-test/index.html
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt pro-test/src/generated/teasers.json pro-test/welcome.html pro-test/index.html
           git commit -m "chore(corpus): refresh crawlable live pulse ${snapshot_date}"
           # Route lastmod dates come from committed material sources.
           npm run build:sitemap
@@ -177,4 +182,4 @@ jobs:
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
-            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, and the homepage welcome-teaser strip (#7608)."
+            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
