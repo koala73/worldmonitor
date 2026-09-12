@@ -14,7 +14,8 @@ afterEach(() => vi.useRealTimers());
 
 function payload(type: string, customer = true) {
   return { type, data: {
-    subscription_id: "sub_attribution", product_id: PRODUCT_CATALOG.api_business.dodoProductId!,
+    subscription_id: "sub_attribution",
+    ...(!type.startsWith("payment.") ? { product_id: PRODUCT_CATALOG.api_business.dodoProductId! } : {}),
     payment_id: "pay_attribution", status: type === "payment.failed" ? "failed" : "active",
     previous_billing_date: new Date(NOW).toISOString(), next_billing_date: new Date(END).toISOString(),
     ...(customer ? { customer: { customer_id: "cus_attribution", email: "buyer@example.test" } } : {}),
@@ -126,6 +127,7 @@ test("uncharged failure explicitly resolves only payment audit attribution", asy
 test.each([false, true])("a lower-tier fulfillment cannot close a Business payment (matching product ID: %s)", async (matchingProductId) => {
   const t = convexTest(schema, modules);
   const rowId = await capture(t, "payment.succeeded");
+  await t.run((ctx) => ctx.db.patch(rowId, { dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId! }));
   await t.run((ctx) => ctx.db.insert("subscriptions", {
     userId: USER, dodoSubscriptionId: "sub_attribution",
     dodoProductId: PRODUCT_CATALOG[matchingProductId ? "api_business" : "pro_monthly"].dodoProductId!,
