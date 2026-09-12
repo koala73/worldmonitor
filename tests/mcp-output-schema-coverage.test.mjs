@@ -627,6 +627,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     'get_country_coverage',
     'get_country_risk',
     'get_defense_industrial_base',
+    'get_fred_series',
     'get_demographics_capability',
     'get_food_stocks',
     'get_intel_timeline',
