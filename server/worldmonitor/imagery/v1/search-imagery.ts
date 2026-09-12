@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type ServerContext,
   type SearchImageryRequest,
   type SearchImageryResponse,
@@ -135,7 +135,7 @@ export async function searchImagery(
   const weekAgo = new Date(nowHour.getTime() - 7 * 24 * 60 * 60 * 1000);
   const defaultDatetime = `${weekAgo.toISOString().split('.')[0]}Z/${nowHour.toISOString().split('.')[0]}Z`;
   const datetime = normalizeDatetime(req.datetime || defaultDatetime);
-  if (datetime === null) throw new ApiError(400, 'Invalid imagery datetime', '');
+  if (datetime === null) throw new ValidationError([{ field: 'datetime', description: 'Invalid imagery datetime' }]);
   const source = (req.source ?? '').trim().toLowerCase();
   const matchedCollections = COLLECTIONS.filter(collection => collection.includes(source));
   const collections = matchedCollections.length > 0 ? matchedCollections : COLLECTIONS;

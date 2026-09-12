@@ -77,7 +77,7 @@ test('malformed, oversized, impossible and reversed datetimes fail before Redis 
   for (const datetime of ['junk', 'x'.repeat(1024), '2026-02-31', '2026-02-31T00:00:00Z', '2026-08-01T25:00:00Z',
     '2026-08-01T00:00:00+25:00', '2026-08-01T00:00:00', '../..', '2026-08-02/2026-08-01',
     '2026-08-01T00:00:00.0002Z/2026-08-01T00:00:00.0001Z', 'a/b/c']) {
-    await assert.rejects(searchImagery({} as never, { ...request, datetime }), error => (error as { statusCode: number }).statusCode === 400);
+    await assert.rejects(searchImagery({} as never, { ...request, datetime }), error => (error as { violations: Array<{ field: string }> }).violations[0]?.field === 'datetime');
     assert.equal(urls.length, 0);
   }
 });

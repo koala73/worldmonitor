@@ -114,3 +114,11 @@ test('sidecar imagery works without Redis while unrelated paths remain fail clos
   expect((await request(2, true, '/api/economic/v1/list-world-bank-indicators')).status).toBe(503);
   expect(providerCalls).toBe(1);
 });
+
+test('invalid datetime returns a field violation before STAC', async () => {
+  const routes = createImageryServiceRoutes({ searchImagery });
+  const response = await routes[0]!.handler(new Request(`https://worldmonitor.app${PATH}?bbox=0,0,1,1&datetime=invalid`), {});
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ violations: [{ field: 'datetime', description: 'Invalid imagery datetime' }] });
+  expect(providerCalls).toBe(0);
+});
