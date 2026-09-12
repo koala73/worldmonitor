@@ -740,8 +740,8 @@ describe('CI workflow coverage', () => {
     const openPrStep = workflowStepBlock(pulseWorkflow, 'Open the weekly pulse PR');
     assert.match(
       openPrStep,
-      /git\s+add\s+"\$snapshot_path"\s+public\/sitemap\.xml\s+public\/sitemap-main\.xml\s+pro-test\/src\/generated\/teasers\.json\s+pro-test\/welcome\.html\s+pro-test\/index\.html/,
-      'weekly pulse PRs must include the sitemap and both shared software dates',
+      /git\s+add\s+"\$snapshot_path"\s+public\/sitemap\.xml\s+public\/sitemap-main\.xml\s+public\/llms-full\.txt\s+pro-test\/src\/generated\/teasers\.json\s+pro-test\/welcome\.html\s+pro-test\/index\.html/,
+      'weekly pulse PRs must include the sitemap, llms-full corpus, and both shared software dates',
     );
     assert.match(
       openPrStep,

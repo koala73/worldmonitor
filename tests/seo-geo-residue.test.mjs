@@ -81,6 +81,31 @@ describe('GEO residue #7463', () => {
     assert.match(committed, /product-facts\.json.*capabilities\.localeCodes/);
   });
 
+  it('llms-full inlines the generated forecast-accuracy record, not only an index link', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
+    const skill = snapshot.forecastScorecard?.scorecard?.skill;
+    const section = generated.split(/^## Forecast accuracy$/m)[1]?.split(/^## /m)[0] ?? '';
+    assert.match(generated, /^## Forecast accuracy$/m);
+    assert.match(section, /does not publish/i);
+    assert.match(section, /https:\/\/www\.worldmonitor\.app\/accuracy\//);
+    assert.ok(
+      Number.isFinite(skill?.brier) && skill.count > 0,
+      'the committed pulse snapshot must carry a measurable headline cohort so this section cannot be a hardcoded stub',
+    );
+    assert.match(section, new RegExp(`Brier of ${Number(skill.brier).toFixed(3)}`));
+    assert.match(section, new RegExp(`${Number(skill.count).toLocaleString('en-US')} scored forecasts`));
+    assert.match(
+      section,
+      new RegExp(`${Number(snapshot.forecastScorecard.scorecard.rollingWindowDays).toLocaleString('en-US')}-day window`),
+    );
+    assert.doesNotMatch(
+      section,
+      /issue #\d+/,
+      'the corpus section must state the negative scope without a tracker-only sentence',
+    );
+  });
+
   // "Usable" was previously read as "not redacted", and the URL this pinned —
   // https://api.worldmonitor.app/resilience/v1/get-runtime-manifest — 404s: the
   // route is /api/resilience/v1/..., and the link had been published without the
@@ -250,6 +275,13 @@ describe('GEO residue #7463', () => {
     const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
     assert.match(workflow, /npm run build:llms-full/);
     assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
+  });
+
+  it('regenerates llms-full when the weekly pulse snapshot refreshes', () => {
+    const workflow = read('.github/workflows/crawlable-pulse-refresh.yml');
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
+    assert.match(workflow, /tests\/seo-geo-residue\.test\.mjs/);
   });
 });
 

@@ -909,6 +909,15 @@ export default defineSchema({
     // filtering `current` in memory -- bounds the hot path to live rows.
     .index("by_user_dimension_current", ["userId", "dimension", "current"]),
 
+  // Subscription cleanup must not erase customer-wide invoice ownership.
+  // Rows are retained after deletion and move with a verified anonymous claim.
+  deletedSubscriptionCustomers: defineTable({
+    userId: v.string(),
+    dodoCustomerId: v.string(),
+  })
+    .index("by_customer_user", ["dodoCustomerId", "userId"])
+    .index("by_userId", ["userId"]),
+
   customers: defineTable({
     userId: v.string(),
     dodoCustomerId: v.optional(v.string()),

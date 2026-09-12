@@ -241,7 +241,7 @@ export class UnifiedSettings {
           }
           if (result.outcome === 'no-customer') {
             showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+              'Billing portal unavailable. Email support@worldmonitor.app for help.',
             );
           }
         });
@@ -268,7 +268,7 @@ export class UnifiedSettings {
           }
           if (result.outcome === 'no-customer') {
             showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+              'Billing portal unavailable. Email support@worldmonitor.app for help.',
             );
           }
         });
@@ -1195,7 +1195,7 @@ export class UnifiedSettings {
         }
         if (result.outcome === 'no-customer') {
           showToast(
-            'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            'Billing portal unavailable. Email support@worldmonitor.app for help.',
           );
         }
       });
@@ -1676,7 +1676,7 @@ export class UnifiedSettings {
           return;
         }
         if (result.outcome === 'no-customer') {
-          showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+          showToast('Billing portal unavailable. Email support@worldmonitor.app for help.');
         }
       });
       return;
@@ -1700,7 +1700,7 @@ export class UnifiedSettings {
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+            showToast('Billing portal unavailable. Email support@worldmonitor.app for help.');
           }
         });
         return;
