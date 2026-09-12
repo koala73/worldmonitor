@@ -317,6 +317,9 @@ interface EndpointRatePolicy {
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
+  // Public relay/HTML discovery has the same scrape fan-out as the legacy
+  // YouTube live endpoint and needs its own fail-closed gateway budget.
+  '/api/aviation/v1/get-youtube-live-stream-info': { limit: 30, window: '60 s' },
   // Interactive fare searches use one provider request on a cache miss.
   // 30/min leaves headroom under the provider's 300-600/min shared quota.
   '/api/aviation/v1/search-flight-prices': { limit: 30, window: '60 s' },
@@ -573,6 +576,9 @@ interface RateLimitPolicyDecision {
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
   '/api/aviation/v1/list-aviation-news': {
     reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
+  },
+  '/api/aviation/v1/get-youtube-live-stream-info': {
+    reason: 'Public live-stream discovery can fan out to relay and YouTube HTML scrapes on cache misses.',
   },
   '/api/aviation/v1/search-flight-prices': {
     reason: 'Caller-selected fare searches consume Travelpayouts request quota on cache misses.',
