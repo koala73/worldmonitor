@@ -6266,12 +6266,19 @@ paths:
             parameters:
                 - name: year
                   in: query
-                  description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                  description: |-
+                    Data year: 1951 through the current year. Zero returns the latest seeded data.
+                     An explicit year is available only if it matches the published snapshot.
                   required: false
-                  example: 1
-                  schema:
-                    type: integer
-                    format: int32
+                  "schema":
+                      "oneOf":
+                          - "const": 0
+                            "type": "integer"
+                          - "type": "integer"
+                            "format": "int32"
+                            "minimum": 1951
+                            "maximum": 2026
+                  example: 0
                 - name: country_limit
                   in: query
                   description: Maximum number of country entries to return.
@@ -6330,7 +6337,7 @@ paths:
                                               "longitude": -74.006
                                           "originName": "WorldMonitor Analyst"
                                           "refugees": 1
-                                    "year": 1
+                                    "year": 2025
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_displacement_v1_GetDisplacementSummaryResponse'
                 "400":
@@ -12720,14 +12727,17 @@ paths:
             parameters:
                 - name: tier
                   in: query
-                  description: Predefined tiers or specific keys.
+                  description: 'Fixed public tier: fast or slow. Leave empty when selecting a key.'
                   required: false
-                  example: "example"
+                  example: "fast"
                   schema:
                     type: string
+                    pattern: '^(fast|slow)$'
                 - name: keys
                   in: query
-                  description: Specific bootstrap cache keys to fetch when tier is not sufficient.
+                  description: |-
+                    One registered bootstrap key, for example insights. Omit when using tier.
+                     The repeated wire field is retained for compatibility; multiple keys are rejected.
                   required: false
                   style: form
                   explode: true
@@ -12735,8 +12745,10 @@ paths:
                       - "example"
                   schema:
                     type: array
+                    maxItems: 1
                     items:
-                        type: string
+                      type: string
+                      minLength: 1
                 - name: jmespath
                   in: query
                   description: |-
@@ -39610,11 +39622,15 @@ components:
         worldmonitor_displacement_v1_GetDisplacementSummaryRequest:
             type: object
             properties:
-                year:
-                    type: integer
-                    minimum: 0
-                    format: int32
-                    description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
+                "year":
+                    "description": "Data year: 1951 through the current year. Zero returns the latest seeded data.\n An explicit year is available only if it matches the published snapshot."
+                    "oneOf":
+                        - "const": 0
+                          "type": "integer"
+                        - "type": "integer"
+                          "format": "int32"
+                          "minimum": 1951
+                          "maximum": 2026
                 countryLimit:
                     type: integer
                     minimum: 0
@@ -39635,13 +39651,13 @@ components:
                     type: integer
                     format: int64
                     description: |-
-                        Time the seed or live fallback snapshot was fetched, as Unix epoch
+                        Time the seed snapshot was fetched, as Unix epoch
                          milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
                          that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
                     description: |-
-                        True when summary came from a seed snapshot or live fallback. False means
+                        True when summary came from the requested seed snapshot. False means
                          an absent/empty summary is graceful degradation because the snapshot is
                          unavailable.
             description: GetDisplacementSummaryResponse contains the global displacement summary.
@@ -43268,13 +43284,21 @@ components:
             properties:
                 tier:
                     type: string
-                    description: Predefined tiers or specific keys.
+                    pattern: ^(fast|slow)$
+                    description: 'Fixed public tier: fast or slow. Leave empty when selecting a key.'
                 keys:
                     type: array
                     items:
                         type: string
-                        description: Specific bootstrap cache keys to fetch when tier is not sufficient.
-            description: GetBootstrapDataRequest parameters for multi-key fetching.
+                        maxItems: 1
+                        description: |-
+                            One registered bootstrap key, for example insights. Omit when using tier.
+                             The repeated wire field is retained for compatibility; multiple keys are rejected.
+                    maxItems: 1
+            description: |-
+                GetBootstrapDataRequest selects a fixed tier or one registered bootstrap key.
+                 Exactly one selector is required: use tier OR keys, never both.
+                 Empty, unknown, mixed and multi-key selectors return HTTP 400.
         worldmonitor_infrastructure_v1_GetBootstrapDataResponse:
             type: object
             properties:

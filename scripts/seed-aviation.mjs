@@ -6,7 +6,7 @@
  *   aviation:delays:intl:v3      — AviationStack per-airport delay aggregates (56 intl)
  *   aviation:delays:faa:v1       — FAA ASWS XML delays (30 US)
  *   aviation:notam:closures:v2   — ICAO NOTAM closures (60 global)
- *   aviation:news::24:v1         — RSS news prewarmer (list-aviation-news.ts cache)
+ *   aviation:news:feeds:v2         — RSS news prewarmer (list-aviation-news.ts cache)
  *
  * Also publishes notifications for new severe/major airport disruptions and new
  * NOTAM closures via the standard wm:events:queue LPUSH + wm:notif:scan-dedup SETNX.
@@ -24,7 +24,7 @@
  * hosts the /aviationstack live proxy for user-triggered flight lookups.
  */
 
-import { decodeHtmlEntities } from './_html-entities.mjs';
+import { XMLParser } from 'fast-xml-parser';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -59,7 +59,7 @@ loadEnvFile(import.meta.url);
 const INTL_KEY         = 'aviation:delays:intl:v3';
 const FAA_KEY          = 'aviation:delays:faa:v1';
 const NOTAM_KEY        = 'aviation:notam:closures:v2';
-const NEWS_KEY         = 'aviation:news::24:v1';
+export const NEWS_KEY  = 'aviation:news:feeds:v2';
 // Page-load hydration aggregate. Health (api/health.js BOOTSTRAP_KEYS.flightDelays)
 // reads STRLEN here, and its record count from BOOTSTRAP_META_KEY below — which
 // must be written from THIS payload, not from a contributing source's own count
@@ -80,7 +80,7 @@ export const BOOTSTRAP_META_KEY = 'seed-meta:aviation:delays-bootstrap';
 const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
 const FAA_TTL       = 7_200;  // 2h
 const NOTAM_TTL     = 7_200;  // 2h
-const NEWS_TTL      = 2_400;  // 40min
+export const NEWS_TTL = 2_400;  // 40min
 const BOOTSTRAP_TTL = 7_200;  // 2h — matches FAA/NOTAM; survives ~4 missed cron ticks
 
 function nonNegativeEnv(name, fallback, max = Number.POSITIVE_INFINITY) {
@@ -813,29 +813,32 @@ const AVIATION_RSS_FEEDS = [
   { url: 'https://www.aviationweek.com/rss',      name: 'Aviation Week' },
 ];
 
+const xmlParser = new XMLParser({ ignoreAttributes: true });
+
 function parseRssItems(xml, sourceName) {
   try {
-    const items = [];
-    const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
-    let match;
-    while ((match = itemRegex.exec(xml)) !== null) {
-      const block = match[1];
-      const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() || '';
-      const link = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1]?.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() || '';
-      const pubDate = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() || '';
-      const desc = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1]?.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() || '';
-      if (title && link) items.push({ title, link, pubDate, description: desc, _source: sourceName });
-    }
-    return items.slice(0, 30);
+      const parsed = xmlParser.parse(xml);
+      const channel = parsed?.rss?.channel ?? parsed?.feed ?? {};
+      const rawItems = Array.isArray(channel.item) ? channel.item
+          : channel.item ? [channel.item]
+              : Array.isArray(channel.entry) ? channel.entry
+                  : channel.entry ? [channel.entry] : [];
+
+      // Bound matching text and serialized records: 270 x 3KiB stays below the local cache limit.
+      return rawItems.slice(0, 30).map((item) => ({
+          title: String(item?.title ?? '').trim().slice(0, 512),
+          link: typeof (item?.link ?? item?.guid) === 'string' ? (item.link ?? item.guid).trim() : '',
+          pubDate: String(item?.pubDate ?? item?.published ?? item?.updated ?? '').trim().slice(0, 128),
+          description: String(item?.description ?? item?.summary ?? item?.content ?? '').trim().slice(0, 2048),
+          _source: sourceName,
+      })).filter(item => item.link.length > 0 && item.link.length <= 2048 && new TextEncoder().encode(JSON.stringify(item)).byteLength <= 3072);
   } catch {
-    return [];
+      return [];
   }
 }
 
 export async function seedAviationNews() {
   const t0 = Date.now();
-  const now = Date.now();
-  const cutoff = now - 24 * 60 * 60 * 1000;
   const allItems = [];
   await Promise.allSettled(
     AVIATION_RSS_FEEDS.map(async (feed) => {
@@ -851,19 +854,8 @@ export async function seedAviationNews() {
     }),
   );
 
-  const items = allItems.map((item) => {
-    let publishedAt = 0;
-    if (item.pubDate) try { publishedAt = new Date(item.pubDate).getTime(); } catch { /* skip */ }
-    if (publishedAt && publishedAt < cutoff) return null;
-    const snippet = decodeHtmlEntities((item.description || '').replace(/<[^>]+>/g, '')).slice(0, 200);
-    return {
-      id: Buffer.from(item.link).toString('base64').slice(0, 32),
-      title: item.title, url: item.link, sourceName: item._source,
-      publishedAt: publishedAt || now, snippet, matchedEntities: [], imageUrl: '',
-    };
-  }).filter(Boolean).sort((a, b) => b.publishedAt - a.publishedAt);
-  console.log(`[News] ${items.length} articles from ${AVIATION_RSS_FEEDS.length} feeds in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { items };
+  console.log(`[News] ${allItems.length} articles from ${AVIATION_RSS_FEEDS.length} feeds in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return { items: allItems };
 }
 
 // ─── Section 5: Notification dispatch ────────────────────────────────────────

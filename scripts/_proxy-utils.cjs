@@ -183,6 +183,15 @@ function resolveProxyStringConnect() {
   return cfg.tls ? `https://${base}` : base;
 }
 
+function recordProxyFailure(error, stage, httpStatus = null, proxyConnectStatus = null) {
+  try {
+    Object.defineProperty(error, 'proxyFailure', {
+      value: { stage, httpStatus, proxyConnectStatus }, configurable: true,
+    });
+  } catch { /* Frozen errors and primitive abort reasons keep their original identity. */ }
+  return error;
+}
+
 function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443, signal } = {}) {
   return new Promise((resolve, reject) => {
     if (signal && signal.aborted) {
@@ -192,12 +201,14 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
     let proxySock;
     let settled = false;
     let onAbort = null;
+    let stage = 'proxy_connection';
+    let proxyConnectStatus = null;
     const cleanup = () => {
       clearTimeout(timer);
       if (signal && onAbort) signal.removeEventListener('abort', onAbort);
     };
     const resolveOnce = (val) => { if (settled) return; settled = true; cleanup(); resolve(val); };
-    const rejectOnce = (err) => { if (settled) return; settled = true; cleanup(); reject(err); };
+    const rejectOnce = (err) => { if (settled) return; settled = true; cleanup(); reject(recordProxyFailure(err, stage, null, proxyConnectStatus)); };
 
     const timer = setTimeout(() => {
       if (proxySock) proxySock.destroy();
@@ -215,6 +226,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
     const onError = (e) => rejectOnce(e);
 
     const connectCb = () => {
+      stage = 'proxy_connect';
       const authHeader = proxyConfig.auth
         ? `\r\nProxy-Authorization: Basic ${Buffer.from(proxyConfig.auth).toString('base64')}`
         : '';
@@ -228,6 +240,8 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         if (!buf.includes('\r\n\r\n')) return;
         proxySock.removeListener('data', onData);
         const statusLine = buf.split('\r\n')[0];
+        const status = Number(/^HTTP\/1\.[01] (\d{3})(?:\s|$)/.exec(statusLine)?.[1]);
+        proxyConnectStatus = status >= 100 && status <= 599 ? status : null;
         if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
           proxySock.destroy();
           return rejectOnce(
@@ -242,6 +256,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
           );
         }
         proxySock.pause();
+        stage = 'target_tls';
 
         const tlsSocket = tls.connect(
           { socket: proxySock, servername: targetHostname, ALPNProtocols: ['http/1.1'] },
@@ -311,6 +326,8 @@ function proxyFetch(url, proxyConfig, {
     return new Promise((resolve, reject) => {
       let settled = false;
       let onAbort = null;
+      let stage = 'response_headers';
+      let httpStatus = null;
       const cleanup = () => {
         clearTimeout(timer);
         if (signal && onAbort) signal.removeEventListener('abort', onAbort);
@@ -318,7 +335,7 @@ function proxyFetch(url, proxyConfig, {
       // Both terminal paths destroy the TLS tunnel (mirrors the original
       // behavior where success + failure both released the socket).
       const resolveOnce = (v) => { if (settled) return; settled = true; cleanup(); destroy(); resolve(v); };
-      const rejectOnce = (e) => { if (settled) return; settled = true; cleanup(); destroy(); reject(e); };
+      const rejectOnce = (e) => { if (settled) return; settled = true; cleanup(); destroy(); reject(recordProxyFailure(e, stage, httpStatus)); };
 
       const timer = setTimeout(() => rejectOnce(new Error('proxy fetch timeout')), timeoutMs);
 
@@ -344,6 +361,9 @@ function proxyFetch(url, proxyConfig, {
         headers: reqHeaders,
         createConnection: () => tlsSocket,
       }, (resp) => {
+        stage = 'response_body';
+        httpStatus = Number.isInteger(resp.statusCode) && resp.statusCode >= 100 && resp.statusCode <= 599
+          ? resp.statusCode : null;
         let stream = resp;
         const enc = (resp.headers['content-encoding'] || '').trim().toLowerCase();
         if (enc === 'gzip') stream = resp.pipe(zlib.createGunzip());

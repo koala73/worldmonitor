@@ -32,7 +32,7 @@ Two event types in dataset `wm_api_usage`:
 | `method`, `status` | `"GET"`, `200`                            |                                              |
 | `duration_ms`      | `412`                                     | wall-clock at the gateway                    |
 | `req_bytes`, `res_bytes` |                                     | response counted only on 200/304 GET         |
-| `customer_id`      | Clerk user ID, org ID, enterprise slug, or widget key | `null` only for anon                |
+| `customer_id`      | Clerk user ID, org ID, enterprise slug, or static `widget` label | `null` only for anon                |
 | `principal_id`     | user ID or **hash** of API/widget key     | never the raw secret                         |
 | `auth_kind`        | `clerk_jwt` \| `user_api_key` \| `enterprise_api_key` \| `widget_key` \| `anon` | |
 | `tier`             | `0` free / `1` pro / `2` api / `3` enterprise | `0` if unknown                          |

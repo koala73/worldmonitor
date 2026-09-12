@@ -33,7 +33,7 @@ import {
 } from '../server/worldmonitor/market/v1/list-market-quotes';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
-const CTX = {} as ServerContext;
+const CTX = { request: new Request('https://worldmonitor.app/api/market/v1/list-market-quotes') } as ServerContext;
 
 const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,

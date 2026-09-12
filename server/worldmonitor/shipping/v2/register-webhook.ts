@@ -9,7 +9,8 @@ import {
 } from '../../../../src/generated/server/worldmonitor/shipping/v2/service_server';
 
 // @ts-expect-error — JS module, no declaration file
-import { validateApiKey } from '../../../../api/_api-key.js';
+import { getHeaderApiKey, USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../../../../api/_api-key.js';
+import { validateUserApiKey } from '../../../_shared/user-api-key';
 import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
@@ -41,6 +42,19 @@ export async function registerWebhook(
   const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
     valid: boolean; required: boolean; error?: string; credential?: string;
   };
+  if (apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR) {
+    const credential = getHeaderApiKey(ctx.request) as string;
+    let userKey;
+    try {
+      userKey = credential ? await validateUserApiKey(credential) : null;
+    } catch {
+      throw new ApiError(503, 'Service temporarily unavailable', '');
+    }
+    if (!userKey) throw new ApiError(401, 'Invalid API key', '');
+    // Revalidate the credential rather than trusting a caller-supplied user ID.
+    apiKeyResult.valid = true;
+    apiKeyResult.credential = credential;
+  }
   if (apiKeyResult.required && !apiKeyResult.valid) {
     throw new ApiError(401, apiKeyResult.error ?? 'API key required', '');
   }

@@ -38,6 +38,7 @@ const MAX_OPTIONAL_PROPERTIES = 5;
 const FLAG_CONTAINER_KEYS = new Set(['featureflags', 'rolloutflags']);
 const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
 const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
+const DISPLACEMENT_EXAMPLE_YEAR = 2025;
 
 // ── Curated per-parameter example overrides ───────────────────────────────
 // The field-name heuristic in stringExample() picks structurally-valid but
@@ -880,8 +881,27 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
         unavailableReason: '',
       };
     }
+    if (resolvedName === 'GetDisplacementSummaryResponse') {
+      const summary = exampleForSchema(
+        schema.properties.summary,
+        spec,
+        { ...context, name: 'summary' },
+        depth + 1,
+        seen,
+      );
+      // A generic integer example is 1, but a served displacement snapshot
+      // always carries a real UNHCR data year.
+      summary.year = DISPLACEMENT_EXAMPLE_YEAR;
+      return {
+        dataAvailable: true,
+        fetchedAt: 1717200000000,
+        summary,
+      };
+    }
   }
 
+  if (context.operationId === 'GetDisplacementSummary' && context.name === 'year'
+    && (context.exampleSurface === 'parameter' || context.exampleSurface === 'request')) return 0;
   if (schema.example !== undefined) return clone(schema.example);
   if (schema.default !== undefined) return clone(schema.default);
   if (schema.const !== undefined) return clone(schema.const);
@@ -974,8 +994,47 @@ function successResponses(op) {
   );
 }
 
-function injectSpecExamples(spec) {
+function injectDisplacementYearContract(spec) {
+  const year = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
+  if (!year) return false;
+  const currentYear = new Date().getFullYear();
+
+  // Buf validates the non-zero range but its OpenAPI generator cannot express
+  // IGNORE_IF_ZERO_VALUE. Publish the actual union accepted by the route so
+  // schema-driven clients can use the documented latest-snapshot sentinel.
+  const desired = {
+    description: year.description,
+    oneOf: [
+      // `const` alone is valid JSON Schema but does not establish the value
+      // type for generic OpenAPI consumers. Keep the integer declaration so
+      // the sentinel is self-describing as well as exact.
+      { const: 0, type: 'integer' },
+      { type: 'integer', format: 'int32', minimum: 1951, maximum: currentYear },
+    ],
+  };
   let changed = false;
+  if (!eq(year, desired)) {
+    changed = true;
+  }
+  // Assign the canonical insertion order even when the JSON serializer has
+  // alphabetized an equivalent prior artifact. The YAML artifact preserves
+  // object insertion order, and make generate must be idempotent.
+  spec.components.schemas.GetDisplacementSummaryRequest.properties.year = desired;
+
+  // REST clients consume the Parameter Object schema rather than the request
+  // component, so keep the public query contract equally precise.
+  const parameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'year');
+  const parameterSchema = { oneOf: clone(desired.oneOf) };
+  if (parameter && !eq(parameter.schema, parameterSchema)) {
+    changed = true;
+  }
+  if (parameter) parameter.schema = parameterSchema;
+  return changed;
+}
+
+function injectSpecExamples(spec) {
+  let changed = injectDisplacementYearContract(spec);
   let operations = 0;
   let requestBearingOperations = 0;
   let responseOperations = 0;
@@ -1188,6 +1247,27 @@ function replaceParamExample(lines, opStart, opEnd, name, example) {
   throw new Error(`could not locate YAML parameter ${name}`);
 }
 
+function replaceParamSchema(lines, opStart, opEnd, name, schema) {
+  for (let i = opStart + 1; i < opEnd; i++) {
+    const match = lines[i].match(/^(\s*)-\s+name:\s+(.+)$/);
+    if (!match || countIndent(lines[i]) !== 16) continue;
+    if (unquoteYamlScalar(match[2]) !== name) continue;
+    const propIndent = 18;
+    const end = blockEnd(lines, i, 16);
+    const schemaStart = lines.findIndex((line, index) =>
+      index > i
+      && index < end
+      && countIndent(line) === propIndent
+      && (line.trim() === 'schema:' || line.trim() === '"schema":'),
+    );
+    if (schemaStart === -1) throw new Error(`could not locate YAML parameter schema ${name}`);
+    const schemaEnd = blockEnd(lines, schemaStart, propIndent);
+    lines.splice(schemaStart, schemaEnd - schemaStart, ...renderYamlNode({ schema }, propIndent));
+    return;
+  }
+  throw new Error(`could not locate YAML parameter ${name}`);
+}
+
 function findChildLine(lines, start, end, indent, text) {
   for (let i = start + 1; i < end; i++) {
     if (countIndent(lines[i]) === indent && lines[i].trim() === text) return i;
@@ -1245,8 +1325,33 @@ function replaceResponseExample(lines, opStart, opEnd, code, example) {
   replaceMediaExample(lines, mediaStart, example);
 }
 
+function patchYamlDisplacementYearSchema(lines, schema) {
+  const requestStart = lines.findIndex((line) => line.trim().endsWith('GetDisplacementSummaryRequest:'));
+  if (requestStart === -1) return;
+  const requestIndent = countIndent(lines[requestStart]);
+  const requestEnd = blockEnd(lines, requestStart, requestIndent);
+  const yearStart = lines.findIndex((line, index) =>
+    index > requestStart
+    && index < requestEnd
+    && countIndent(line) === requestIndent + 8
+    && (line.trim() === 'year:' || line.trim() === '"year":'),
+  );
+  if (yearStart === -1) throw new Error('could not locate GetDisplacementSummaryRequest.year in YAML artifact');
+  const yearIndent = countIndent(lines[yearStart]);
+  const yearEnd = blockEnd(lines, yearStart, yearIndent);
+  lines.splice(yearStart, yearEnd - yearStart, ...renderYamlNode({ year: schema }, yearIndent));
+}
+
 function patchYamlExamples(raw, spec, label) {
   const lines = raw.split('\n');
+  const displacementYear = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
+  if (displacementYear) patchYamlDisplacementYearSchema(lines, displacementYear);
+  const displacementParameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'year');
+  if (displacementParameter?.schema) {
+    const loc = findOperation(lines, '/api/displacement/v1/get-displacement-summary', 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, 'year', displacementParameter.schema);
+  }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
