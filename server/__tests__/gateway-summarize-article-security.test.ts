@@ -196,7 +196,7 @@ describe("summarize-article gateway spend controls", () => {
       expect.any(Request),
       SUMMARIZE_PATH,
       expect.any(Object),
-      { principalUserId: "pro_user" },
+      { principalUserId: "pro_user", principalScope: "session" },
     );
     expect(checkFailClosedScopedIpRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
@@ -270,7 +270,7 @@ describe("summarize-article gateway spend controls", () => {
       expect.any(Request),
       SUMMARIZE_PATH,
       expect.any(Object),
-      { principalUserId: "api_user" },
+      { principalUserId: "api_user", principalScope: "api_key" },
     );
     expect(calls.summarize).toBe(1);
   });

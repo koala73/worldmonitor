@@ -187,9 +187,24 @@ function isCuratedOmission(key, context = {}) {
   // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
   // skips the zero value and so paired rows with INVALID_REQUEST — a response
   // the handler cannot produce. See #6309 / #6316.
-  return key === 'unavailableReason'
+  if (key === 'unavailableReason'
     && (where.includes('gettradeflows') || where.includes('get-trade-flows')
-      || where.includes('gettarifftrends') || where.includes('get-tariff-trends'));
+      || where.includes('gettarifftrends') || where.includes('get-tariff-trends'))) {
+    return true;
+  }
+  // GetCountryProducts: none of its objects has a `required` list, so the
+  // optional-slot cap keeps the alphabetically first fields, and bookkeeping
+  // that sorts early pushes out the fields each object exists for. Each list
+  // below is dropped so those slots go to the trade evidence.
+  if (!where.includes('getcountryproducts') && !where.includes('get-country-products')) return false;
+  // The array's item object carries the array's own key as its `name`.
+  // CountryProduct: the recovery/threshold fields pushed out topExporters and totalValue.
+  if (context.name === 'products') return ['fetchedAt', 'omittedPartnerCount', 'omittedPartnerShare', 'partnerBasis'].includes(key);
+  // ProductExporter: the volume and scale fields pushed out share and value.
+  if (context.name === 'topExporters') return ['netWeightEstimated', 'quantity', 'quantityUnitCode', 'scale'].includes(key);
+  // CountryProductEvidence: the recovery and world-export fields pushed out source.
+  if (context.name === 'evidence') return ['recoveredHs4s', 'worldExportsFetchedAt'].includes(key);
+  return false;
 }
 
 function overrideStringExample(key, context = {}) {

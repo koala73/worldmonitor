@@ -29106,6 +29106,13 @@ paths:
                   schema:
                     type: string
                     pattern: '^[A-Z]{2}$'
+                - name: hs4
+                  in: query
+                  description: Optional requested heading; permits bounded recovery of a missing product.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
                 - name: jmespath
                   in: query
                   description: |-
@@ -29120,18 +29127,27 @@ paths:
                     content:
                         application/json:
                             example:
+                                "evidence":
+                                    "lastAttemptAt": "2026-01-15T12:00:00Z"
+                                    "lastAttemptState": "example"
+                                    "missingHs4s":
+                                        - "example"
+                                    "requestedHs4s":
+                                        - "example"
+                                    "source": "example"
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "iso2": "US"
                                 "products":
-                                    - "description": "Example WorldMonitor observation."
+                                    - "denominatorBasis": "example"
+                                      "description": "Example WorldMonitor observation."
                                       "hs4": "example"
                                       "topExporters":
-                                          - "partnerCode": 1
+                                          - "netWeightKg": 1.5
+                                            "partnerCode": 1
                                             "partnerIso2": "US"
                                             "share": 1.5
                                             "value": 1.5
                                       "totalValue": 1
-                                      "year": 1
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_supply_chain_v1_GetCountryProductsResponse'
                 "400":
@@ -54178,6 +54194,9 @@ components:
                     type: string
                     pattern: ^[A-Z]{2}$
                     description: ISO 3166-1 alpha-2 country code whose strategic products should be returned.
+                hs4:
+                    type: string
+                    description: Optional requested heading; permits bounded recovery of a missing product.
             required:
                 - iso2
         worldmonitor_supply_chain_v1_GetCountryProductsResponse:
@@ -54192,6 +54211,8 @@ components:
                 fetchedAt:
                     type: string
                     description: ISO timestamp from the seeded payload (empty when no data is cached).
+                evidence:
+                    $ref: '#/components/schemas/worldmonitor_supply_chain_v1_CountryProductEvidence'
         worldmonitor_supply_chain_v1_CountryProduct:
             type: object
             properties:
@@ -54209,6 +54230,34 @@ components:
                 year:
                     type: integer
                     format: int32
+                denominatorBasis:
+                    type: string
+                    description: |-
+                        Share denominator: "reported_world" (the provider's World import total for
+                         this heading and year) or "observed_partners" (the sum of observed partner
+                         values). Absent on legacy rows, whose denominator is unverified.
+                fetchedAt:
+                    type: string
+                    description: |-
+                        ISO timestamp this heading alone was fetched at. Present only on a heading
+                         recovered on demand, whose fetch time differs from the payload's.
+                partnerBasis:
+                    type: string
+                    description: |-
+                        How top_exporters was selected: "share_threshold" (every origin at or above
+                         1% of the denominator, padded to 5 and capped at 25; served only for the
+                         requested hs4) or "leading_5" (the canonical leading five). Always present
+                         on a served row.
+                omittedPartnerCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Origins ranked below the ones shown. Absent under "leading_5", where the
+                         omitted set is not measured.
+                omittedPartnerShare:
+                    type: number
+                    format: double
+                    description: Combined share of the omitted origins, 0-1. Absent under "leading_5".
         worldmonitor_supply_chain_v1_ProductExporter:
             type: object
             properties:
@@ -54223,6 +54272,120 @@ components:
                 share:
                     type: number
                     format: double
+                netWeightKg:
+                    type: number
+                    format: double
+                    description: |-
+                        Net weight of the shown flow in kilograms. Absent when the provider
+                         reported no weight; "not reported" is never rendered as 0 trade.
+                netWeightEstimated:
+                    type: boolean
+                    description: True when the provider flagged the net weight as its own estimate.
+                quantity:
+                    type: number
+                    format: double
+                    description: |-
+                        Reported quantity in the unit named by quantity_unit_code. Absent when no
+                         quantity was reported or its unit is outside the pinned unit registry.
+                quantityUnitCode:
+                    type: integer
+                    format: int32
+                    description: |-
+                        UN Comtrade quantity unit code (8 = kg, 12 = m3, 5 = items, 7 = litres).
+                         Absent whenever quantity is absent.
+                scale:
+                    $ref: '#/components/schemas/worldmonitor_supply_chain_v1_ExporterScale'
+        worldmonitor_supply_chain_v1_ExporterScale:
+            type: object
+            properties:
+                worldExportsUsd:
+                    type: number
+                    format: double
+                    description: Reported world exports of this heading by this origin, in USD.
+                worldExportsKg:
+                    type: number
+                    format: double
+                    description: |-
+                        Reported world-export weight in kilograms. Absent when the origin reported
+                         no weight (the provider writes 0 for "not reported"), never 0 for absent.
+                rank:
+                    type: integer
+                    format: int32
+                    description: |-
+                        1-based position by value among the reporters that filed this heading for
+                         `year` (see reporter_count), not among every world exporter.
+                year:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Trade observation year of the world-export figures, not the fetch year.
+                         Always equal to the row's year: a scale from another year is not attached.
+                reporterCount:
+                    type: integer
+                    format: int32
+                    description: 'Reporters ranked for this heading and year: rank is out of this many.'
+                unrankedReporterCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Reporters whose newest filing for this heading predates `year` (late filers
+                         or lapsed exporters). They are left out of the ranking, so one that files
+                         later can move every rank below it. Absent on a snapshot written before the
+                         count was recorded.
+            description: |-
+                An origin's reported world exports of the same heading, so a shown share can
+                 be read against the supplier's total capacity rather than this importer alone.
+        worldmonitor_supply_chain_v1_CountryProductEvidence:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: |-
+                        Reader state: "observed", "partial" (some catalogue headings absent, which
+                         includes a response holding only a heading recovered on demand),
+                         "stale_preserved" (older than 35 days; last-good data kept),
+                         "cache_unavailable", or, when no payload exists and nothing was recovered,
+                         the last attempt state (see last_attempt_state) or "missing".
+                source:
+                    type: string
+                    description: |-
+                        Retrieval route of the cached payload; with no payload, the single-heading
+                         recovery route when a heading was recovered, else a legacy-cache label.
+                requestedHs4s:
+                    type: array
+                    items:
+                        type: string
+                        description: HS4 headings the producing request asked for; empty when unknown (legacy cache).
+                missingHs4s:
+                    type: array
+                    items:
+                        type: string
+                        description: Catalogue headings with no usable product row.
+                lastAttemptAt:
+                    type: string
+                    description: ISO timestamp of the last refresh attempt; empty when unknown.
+                lastAttemptState:
+                    type: string
+                    description: |-
+                        Result of the last refresh attempt: "observed", "no_records",
+                         "legacy_no_records", "unsupported_reporter", "rate_limited", "unavailable",
+                         "malformed", "incomplete", "regression_rejected", "cache_unavailable",
+                         "cache_write_failed", "busy", "not_attempted", "preserved_reason_unknown"
+                         or "unknown".
+                recoveredHs4s:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Headings served from an on-demand single-heading fetch rather than the
+                             stored payload. Empty when every row came from the stored payload.
+                worldExportsFetchedAt:
+                    type: string
+                    description: |-
+                        ISO timestamp of the world-export snapshot the scale figures came from.
+                         Absent when no snapshot is cached or no hs4 was requested, in which case no
+                         row carries a scale.
+            description: Cache evidence for the returned products. Missing data is not zero trade.
         worldmonitor_supply_chain_v1_GetMultiSectorCostShockRequest:
             type: object
             properties:

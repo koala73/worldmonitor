@@ -19,6 +19,7 @@ import {
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import type { BillingVerificationCode } from './billing-denial';
+import { mcpErrorFingerprint } from './error-fingerprint';
 import {
   buildInternalMcpHeaders,
   signInternalMcpRequest,
@@ -550,7 +551,16 @@ export async function validateProMcpAuthorization(
   try {
     validation = await deps.validateProMcpToken(context.mcpTokenId);
   } catch (err) {
-    captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-token-validate' }, ctx });
+    // Explicit fingerprint: this capture shares the minified edge bundle's
+    // anonymous frames with every other `api/mcp` capture, so Sentry's default
+    // stack grouping merges it into the WORLDMONITOR-T8 catch-all. `threw`
+    // keeps the defect arm in its own group, separable from the fail-soft
+    // `transient` arm below — see api/mcp/error-fingerprint.ts.
+    captureSilentError(err, {
+      tags: { route: 'api/mcp', step: 'pro-token-validate' },
+      fingerprint: mcpErrorFingerprint('pro-token-validate', 'threw', err),
+      ctx,
+    });
     return { ok: false, response: new Response(
       JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
       { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
@@ -575,8 +585,17 @@ export async function validateProMcpAuthorization(
     //
     // The `catch` above stays at `error`: a THROWN validator is an unexpected
     // defect, not this fail-soft path.
-    captureSilentError(new Error('Pro MCP token validation temporarily unavailable'), {
+    //
+    // The explicit fingerprint is what makes "escalates by volume" true. These
+    // frames are the minified edge bundle's anonymous `(vc/edge/function`, so
+    // default stack grouping merged this capture into the T8 catch-all
+    // alongside unrelated tool-execution 4xx — WORLDMONITOR-ZR and T8 held the
+    // SAME message concurrently, and ZR read as drained while the condition was
+    // still firing into T8.
+    const transientError = new Error('Pro MCP token validation temporarily unavailable');
+    captureSilentError(transientError, {
       tags: { route: 'api/mcp', step: 'pro-token-validate' },
+      fingerprint: mcpErrorFingerprint('pro-token-validate', 'transient', transientError),
       level: 'warning',
       ctx,
     });
