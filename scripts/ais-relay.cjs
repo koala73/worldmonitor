@@ -26,6 +26,7 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const { parseWidgetAgentResponse } = require('./_widget-response-parser.cjs');
+const { WIDGET_DATA_CATALOG, buildWidgetDataUrl } = require('./_widget-data-policy.cjs');
 const {
   cooldownKeyForAccount,
   OPENSKY_LEGACY_COOLDOWN_KEY,
@@ -13215,25 +13216,13 @@ function sanitizeToolContent(content) {
     .slice(0, 20_000);
 }
 
-function isWidgetEndpointAllowed(endpoint) {
-  // Allow any /api/ path — the allowlist is enforced by the system prompt.
-  // Exclude write/inference/streaming paths that are not data endpoints.
-  if (!endpoint.startsWith('/api/')) return false;
-  const blocked = [
-    'analyze-stock', 'backtest-stock', 'summarize-article', 'classify-event',
-    'deduct-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
-    'get-vessel-snapshot', 'lookup-sanction', 'get-ip-geo', 'get-simulation',
-  ];
-  return !blocked.some(b => endpoint.includes(b));
-}
-
 const WIDGET_FETCH_TOOL = {
   name: 'fetch_worldmonitor_data',
   description: 'Fetch live data from WorldMonitor APIs. Only pre-approved endpoint paths are allowed.',
   input_schema: {
     type: 'object',
     properties: {
-      endpoint: { type: 'string', description: 'Approved API endpoint path (e.g. /api/market/v1/list-crypto-quotes)' },
+      endpoint: { type: 'string', description: 'Approved API endpoint path (e.g. /api/economic/v1/get-fred-series)' },
       params: { type: 'object', description: 'Query parameters as key-value string pairs', additionalProperties: { type: 'string' } },
     },
     required: ['endpoint'],
@@ -13259,63 +13248,7 @@ When refusing, output ONLY this — no explanation, no apology:
 ## Tool budget — CRITICAL
 Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have — even if sparse. NEVER keep probing.
 
-## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
-Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
-PREFER this over live RPCs whenever a key matches the user's topic.
-
-Market & Crypto:
-  marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
-  cryptoSectors, defiTokens, aiTokens, otherTokens, stablecoinMarkets, fearGreedIndex
-
-Economic & Energy:
-  macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
-  euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
-  faoFoodPriceIndex
-
-Tech & Intelligence:
-  techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
-  gdeltIntel, marketImplications
-
-Conflict & Unrest:
-  ucdpEvents, iranEvents, unrestEvents, theaterPosture
-
-Infrastructure & Environment:
-  earthquakes, wildfires, naturalEvents, thermalEscalation, climateAnomalies,
-  radiationWatch, weatherAlerts, outages, serviceStatuses, ddosAttacks, trafficAnomalies
-
-Supply Chain & Trade:
-  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure,
-  shippingStress
-
-Consumer Prices:
-  consumerPricesOverview, consumerPricesCategories, consumerPricesMovers, consumerPricesSpread
-
-Health & Social:
-  diseaseOutbreaks, socialVelocity
-
-Other:
-  flightDelays, cyberThreats, positiveGeoEvents, predictions, forecasts, giving, insights
-
-## Option 2 — Live RPCs (use only when no bootstrap key matches; supports custom params)
-URL pattern: /api/<service>/v1/<method> (kebab-case)
-economic: list-world-bank-indicators (params: indicator, country_code),
-  get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
-trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
-aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
-intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
-  get-social-velocity
-health: list-disease-outbreaks
-supply-chain: get-shipping-stress,
-  get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId),
-  get-bypass-options (params: chokepointId required, cargoType default 'container', closurePct default 100; PRO-gated — returns options[] sorted by liveScore asc, each with addedTransitDays/addedCostMultiplier/bypassWarRiskTier; also primaryChokepointWarRiskTier),
-  get-country-cost-shock (params: iso2 required, chokepointId required, hs2 default '27'; PRO-gated — returns supplyDeficitPct 0-100%, coverageDays, warRiskPremiumBps, warRiskTier; hasEnergyModel=true only for HS 27 + Hormuz/Suez/Malacca/BEM)
-conflict: list-acled-events, get-humanitarian-summary (params: country_code)
-market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
-consumer-prices: list-retailer-price-spreads
-maritime: list-navigational-warnings
-news: list-feed-digest
-
+${WIDGET_DATA_CATALOG}
 ### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
 
@@ -13764,20 +13697,18 @@ async function handleWidgetAgentRequest(req, res) {
           }
 
           if (block.name !== 'fetch_worldmonitor_data') continue;
-          const { endpoint, params = {} } = block.input;
+          const { endpoint, params = {} } = block.input || {};
           sendWidgetSSE(res, 'tool_call', { endpoint });
 
-          if (!isWidgetEndpointAllowed(endpoint)) {
+          const url = buildWidgetDataUrl(endpoint, params);
+          if (!url) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Endpoint not allowed.' });
             continue;
           }
 
           try {
-            const url = new URL(endpoint, 'https://api.worldmonitor.app');
-            for (const [k, v] of Object.entries(params)) {
-              url.searchParams.set(k, String(v));
-            }
             const dataRes = await fetch(url.toString(), {
+              redirect: 'error',
               headers: { 'User-Agent': 'WorldMonitor-WidgetAgent/1.0' },
               signal: AbortSignal.timeout(15_000),
             });
@@ -13928,63 +13859,7 @@ When refusing, output ONLY this — no explanation, no apology:
 ## Tool budget — CRITICAL
 Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have. NEVER keep probing.
 
-## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
-Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
-PREFER this over live RPCs whenever a key matches the user's topic.
-
-Market & Crypto:
-  marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
-  cryptoSectors, defiTokens, aiTokens, otherTokens, stablecoinMarkets, fearGreedIndex
-
-Economic & Energy:
-  macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
-  euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
-  faoFoodPriceIndex
-
-Tech & Intelligence:
-  techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
-  gdeltIntel, marketImplications
-
-Conflict & Unrest:
-  ucdpEvents, iranEvents, unrestEvents, theaterPosture
-
-Infrastructure & Environment:
-  earthquakes, wildfires, naturalEvents, thermalEscalation, climateAnomalies,
-  radiationWatch, weatherAlerts, outages, serviceStatuses, ddosAttacks, trafficAnomalies
-
-Supply Chain & Trade:
-  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure,
-  shippingStress
-
-Consumer Prices:
-  consumerPricesOverview, consumerPricesCategories, consumerPricesMovers, consumerPricesSpread
-
-Health & Social:
-  diseaseOutbreaks, socialVelocity
-
-Other:
-  flightDelays, cyberThreats, positiveGeoEvents, predictions, forecasts, giving, insights
-
-## Option 2 — Live RPCs (use only when no bootstrap key matches; supports custom params)
-URL pattern: /api/<service>/v1/<method> (kebab-case)
-economic: list-world-bank-indicators (params: indicator, country_code),
-  get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
-trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
-aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
-intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
-  get-social-velocity
-health: list-disease-outbreaks
-supply-chain: get-shipping-stress,
-  get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId),
-  get-bypass-options (params: chokepointId required, cargoType default 'container', closurePct default 100; PRO-gated — returns options[] sorted by liveScore asc, each with addedTransitDays/addedCostMultiplier/bypassWarRiskTier; also primaryChokepointWarRiskTier),
-  get-country-cost-shock (params: iso2 required, chokepointId required, hs2 default '27'; PRO-gated — returns supplyDeficitPct 0-100%, coverageDays, warRiskPremiumBps, warRiskTier; hasEnergyModel=true only for HS 27 + Hormuz/Suez/Malacca/BEM)
-conflict: list-acled-events, get-humanitarian-summary (params: country_code)
-market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
-consumer-prices: list-retailer-price-spreads
-maritime: list-navigational-warnings
-news: list-feed-digest
-
+${WIDGET_DATA_CATALOG}
 ### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed as const DATA = [...] in your inline script.
 
