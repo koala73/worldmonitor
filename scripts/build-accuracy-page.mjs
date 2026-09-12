@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const ACCURACY_CONTENT_VERSION = '2026-09-10';
+export const ACCURACY_CONTENT_VERSION = '2026-09-12';
 
 export const ACCURACY_PAGE_PATH = '/accuracy/';
 
@@ -311,6 +311,46 @@ function excludedCohortPhrase(skill) {
   return origins.length > 0 ? origins.join(', ') : 'none';
 }
 
+function headlineResultSentence(scorecard) {
+  const skill = isPlainObject(scorecard?.skill) ? scorecard.skill : {};
+  if (!isFiniteNumber(skill.brier) || !isFiniteNumber(skill.count) || skill.count <= 0) return '';
+  const windowDays = isFiniteNumber(scorecard.rollingWindowDays) ? scorecard.rollingWindowDays : null;
+  const windowPhrase = windowDays
+    ? `Over the current ${formatCount(windowDays)}-day window`
+    : 'Over the current rolling window';
+  return `${windowPhrase}, World Monitor's headline cohort scores a Brier of ${formatScore(skill.brier)} across ${formatCount(skill.count)} scored forecasts, against 0.25 for answering 0.5 to everything.`;
+}
+
+const ACCURACY_NEGATIVE_SCOPE = 'This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.';
+
+export function renderAccuracyLlmsSection(section) {
+  const state = classifyAccuracyState(section);
+  const page = new URL(ACCURACY_PAGE_PATH, WORLD_MONITOR_ORG.url).href;
+  const paragraphs = [`The standing forecast-resolution record is published at ${page}.`];
+  const result = state.scorecard ? headlineResultSentence(state.scorecard) : '';
+  if (result) {
+    paragraphs.push(result);
+    if (state.capturedAt) {
+      const vintage = `Captured ${state.capturedAt}.`;
+      if (state.availability === 'capture-failed') {
+        paragraphs.push(`${vintage} The latest capture failed; these are the last successful figures.`);
+      } else if (state.freshness === 'stale') {
+        paragraphs.push(`${vintage} The record is past the ${SCORECARD_STALE_AFTER_HOURS}-hour freshness threshold.`);
+      } else {
+        paragraphs.push(vintage);
+      }
+    }
+  } else if (state.availability === 'capture-failed' && !state.scorecard) {
+    paragraphs.push('The latest capture failed, so no figures are published.');
+  } else if (state.availability === 'missing') {
+    paragraphs.push('No scorecard has been captured for this page yet.');
+  } else if (state.coverage === 'insufficient') {
+    paragraphs.push('The headline cohort currently has no scored forecast in this window, so it carries no Brier score.');
+  }
+  paragraphs.push(ACCURACY_NEGATIVE_SCOPE);
+  return `## Forecast accuracy\n\n${paragraphs.join('\n\n')}\n`;
+}
+
 function headlineTiles(scorecard, escapeHtml) {
   const skill = isPlainObject(scorecard.skill) ? scorecard.skill : {};
   const skillCount = isFiniteNumber(skill.count) ? skill.count : 0;
@@ -337,9 +377,16 @@ function headlineTiles(scorecard, escapeHtml) {
       `of ${formatCount(totals?.resolved ?? 0)} resolved`,
     ],
   ];
+  // A space between </strong> and <small> is load-bearing: naive tag-strippers
+  // that do not insert whitespace otherwise glue "0.118" to "180 scored forecasts".
   return `      <section class="grid" aria-label="Headline forecast accuracy metrics">
-${tiles.map(([label, value, note]) => `        <div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join('\n')}
+${tiles.map(([label, value, note]) => `        <div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong> <small>${escapeHtml(note)}</small></div>`).join('\n')}
       </section>`;
+}
+
+function headlineResultParagraph(scorecard, escapeHtml) {
+  const sentence = headlineResultSentence(scorecard);
+  return sentence ? `      <p data-accuracy-result>${escapeHtml(sentence)}</p>\n` : '';
 }
 
 const RECORD_FACT_LABELS = Object.freeze({
@@ -536,7 +583,7 @@ ${provenanceLine(state, dataset, snapshotPath, escapeHtml)}`;
   return `${heading}
       <p class="lede">World Monitor scores every forecast it publishes once the outcome is knowable, over a rolling ${escapeHtml(formatCount(scorecard.rollingWindowDays))}-day window. This is the standing record: the scores, the calibration, the sample sizes, and the parts that are not measurable yet.</p>
 ${recordStatus(state, escapeHtml)}
-${state.coverage === 'insufficient' ? '' : `${headlineTiles(scorecard, escapeHtml)}\n`}      <p><strong>Lower Brier is better.</strong> A Brier score is the mean squared error of a probability forecast, so 0 is perfect and answering 0.5 to everything scores 0.25. Log score is harsher on confident mistakes, and lower is better there too.</p>
+${state.coverage === 'insufficient' ? '' : `${headlineTiles(scorecard, escapeHtml)}\n${headlineResultParagraph(scorecard, escapeHtml)}`}      <p><strong>Lower Brier is better.</strong> A Brier score is the mean squared error of a probability forecast, so 0 is perfect and answering 0.5 to everything scores 0.25. Log score is harsher on confident mistakes, and lower is better there too.</p>
 ${cohortSection(scorecard.skill, escapeHtml)}
       <h2>Resolution ledger</h2>
 ${totalsTable(scorecard.totals, escapeHtml)}
