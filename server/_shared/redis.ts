@@ -979,7 +979,7 @@ export interface UsageHook {
  * path (issue #3381). Pass-through for callers that don't care about
  * telemetry — backwards-compatible.
  *
- * If `opts.shouldFetch` returns false after all cache and in-flight checks,
+ * If `opts.shouldFetch` resolves false after all cache and in-flight checks,
  * the fetcher is skipped without writing a negative sentinel. Use this for
  * caller-local availability gates whose result must not poison a shared key.
  * `opts.cacheFailures: false` similarly makes nulls, no-store payloads, and
@@ -994,7 +994,7 @@ export interface UsageHook {
  */
 type CachedFetchWithMetaOpts<T extends object = object> = CachedFetchOpts & {
   usage?: UsageHook;
-  shouldFetch?: () => boolean;
+  shouldFetch?: () => boolean | Promise<boolean>;
   cacheFailures?: boolean;
   cachePositiveResult?: boolean;
   onPositiveResult?: (result: T) => Promise<void>;
@@ -1045,24 +1045,35 @@ async function cachedFetchJsonCore<T extends object>(
   }
 
   const inflightKey = opts?.inflightKey ?? key;
+  const shouldFetch = opts?.shouldFetch;
+  let admissionChecked = shouldFetch == null;
   while (true) {
     const existing = inflight.get(inflightKey);
-    if (!existing) break;
-    try {
-      const data = (await existing) as T | null;
-      return { data, source: 'fresh', leader: false };
-    } catch (error) {
-      if (!opts?.isCallerLocalError?.(error)) throw error;
-      // The leader's promise removes itself from `inflight` before its
-      // rejection reaches followers. Loop so one follower becomes the next
-      // leader and the rest coalesce behind that request's own admission. If
-      // several caller-local leaders fail in sequence, each waiter keeps its
-      // own outcome instead of inheriting the last failed principal's error.
+    if (existing) {
+      try {
+        const data = (await existing) as T | null;
+        return { data, source: 'fresh', leader: false };
+      } catch (error) {
+        if (!opts?.isCallerLocalError?.(error)) throw error;
+        // The leader's promise removes itself from `inflight` before its
+        // rejection reaches followers. Loop so one follower becomes the next
+        // leader and the rest coalesce behind that request's own admission. If
+        // several caller-local leaders fail in sequence, each waiter keeps its
+        // own outcome instead of inheriting the last failed principal's error.
+        continue;
+      }
     }
-  }
 
-  if (opts?.shouldFetch && !opts.shouldFetch()) {
-    return { data: null, source: 'skipped', leader: false };
+    if (!admissionChecked) {
+      admissionChecked = true;
+      if (!(await shouldFetch!())) return { data: null, source: 'skipped', leader: false };
+      // Async admission yields before a leader is registered. Recheck the
+      // per-key promise so simultaneous admitted callers still share one
+      // upstream request.
+      continue;
+    }
+
+    break;
   }
 
   const fetchT0 = Date.now();

@@ -380,6 +380,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // paid-provider probe under anonymous or rotating callers.
   '/api/military/v1/get-aircraft-details': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
+  // Webcam image resolution proxies Windy on a caller-controlled cache miss.
+  // Keep it at the standard provider-proxy budget instead of the global fallback.
+  '/api/webcam/v1/get-webcam-image': { limit: 30, window: '60 s' },
   // Live lookups can fan out to position, schedule and photo providers.
   '/api/military/v1/get-wingbits-live-flight': { limit: 30, window: '60 s' },
   '/api/imagery/v1/search-imagery': { limit: 30, window: '60 s' },
@@ -658,6 +661,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/military/v1/get-aircraft-details': {
     reason: 'Single aircraft enrichment proxies the external Wingbits provider on cache miss.',
+  },
+  '/api/webcam/v1/get-webcam-image': {
+    reason: 'Webcam image resolution proxies the Windy provider on cache miss.',
   },
   '/api/military/v1/get-wingbits-live-flight': {
     reason: 'Live aircraft lookups fan out to external providers on short-lived cache misses.',

@@ -2008,7 +2008,8 @@ export function createDomainGateway(
       // Keep these exceptions exact-path; cloud requests retain the provider cap.
       const isSidecarProviderLookup = process.env.LOCAL_API_MODE === 'tauri-sidecar'
         && (pathname === '/api/military/v1/get-wingbits-live-flight'
-          || pathname === '/api/imagery/v1/search-imagery');
+          || pathname === '/api/imagery/v1/search-imagery'
+          || pathname === '/api/webcam/v1/get-webcam-image');
       const endpointRlResponse = isSidecarProviderLookup ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
