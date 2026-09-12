@@ -70,6 +70,38 @@ describe('classifyHttpCheckoutError', () => {
     assert.notEqual(err.userMessage, err.serverMessage);
   });
 
+  it('keeps the Retry-After the idempotency conflict carries', () => {
+    // The edge sends `Retry-After: 2` with the conflict because it knows how
+    // long the first attempt may still hold the lock. Dropping it threw away
+    // the one number that makes the wait actionable, and left the caller with
+    // nothing to set a cooldown from — so a re-click went straight back into
+    // the same lock.
+    const err = classifyHttpCheckoutError(
+      409,
+      { error: 'idempotency_conflict', message: 'still being processed' },
+      '2',
+    );
+    assert.equal(err.code, 'service_unavailable');
+    assert.equal(err.retryAfterSeconds, 2);
+  });
+
+  it('does NOT put rate-limit wording on a conflict that carries Retry-After', () => {
+    // The copy override used to key on the presence of retryAfterSeconds, so
+    // preserving the header would have started telling buyers they were rate
+    // limited when they were not — swapping one false message for another,
+    // which is the defect this branch exists to fix.
+    const conflict = classifyHttpCheckoutError(409, { error: 'idempotency_conflict' }, '2');
+    assert.match(conflict.userMessage, /temporarily unavailable/i);
+    assert.doesNotMatch(conflict.userMessage, /rate limited/i);
+
+    // The genuine 429 keeps its own wording, seconds and all.
+    const limited = classifyHttpCheckoutError(429, undefined, '10');
+    assert.equal(limited.code, 'rate_limited');
+    assert.equal(limited.retryAfterSeconds, 10);
+    assert.match(limited.userMessage, /rate limited/i);
+    assert.match(limited.userMessage, /10 seconds/);
+  });
+
   it('maps 400 to invalid_product', () => {
     const err = classifyHttpCheckoutError(400);
     assert.equal(err.code, 'invalid_product');

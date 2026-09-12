@@ -145,14 +145,27 @@ export function classifyHttpCheckoutError(
   retryAfter?: string | null,
 ): CheckoutError {
   const code = statusToCode(status, body);
+  // The idempotency conflict carries `Retry-After: 2` because the edge knows
+  // how long the first attempt may still hold the processing marker. It is the
+  // only number that makes the wait actionable, and the caller needs it to set
+  // a cooldown — without it a re-click goes straight back into the same lock.
+  // No default here, unlike the 429: absent header means no wait was promised.
+  const conflictRetryAfter = status === 409 && body?.error === IDEMPOTENCY_CONFLICT
+    ? parseCheckoutRetryAfterSeconds(retryAfter)
+    : undefined;
   const retryAfterSeconds = code === 'rate_limited'
     ? parseCheckoutRetryAfterSeconds(retryAfter) ?? DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS
-    : undefined;
-  const userMessage = retryAfterSeconds === undefined
-    ? pickUserMessage(code)
-    : `Checkout is temporarily rate limited. Please wait ${retryAfterSeconds} ${
+    : conflictRetryAfter;
+  // Copy keys on the CODE, never on the presence of a wait. Those were the same
+  // condition while only 429 carried one; now that the conflict does too, the
+  // old form would have told a buyer they were rate limited when they were not
+  // — the same false-message defect as the `invalid_product` branch this
+  // classifier already had to fix.
+  const userMessage = code === 'rate_limited' && retryAfterSeconds !== undefined
+    ? `Checkout is temporarily rate limited. Please wait ${retryAfterSeconds} ${
         retryAfterSeconds === 1 ? 'second' : 'seconds'
-      } and try again.`;
+      } and try again.`
+    : pickUserMessage(code);
   return {
     code,
     userMessage,
