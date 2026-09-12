@@ -4467,6 +4467,18 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         ['military:flights:v1:10:10:11:11'],
         'all callers in one quantized bbox must share an unpaginated recovery cache key',
       );
+
+      const apiResult = await module.listMilitaryFlights({
+        request: new Request('https://wm.test/api/military/v1/list-military-flights', {
+          headers: { 'X-Api-Key': 'wm_customer-key' },
+        }),
+      }, { ...request, operator: 'MILITARY_OPERATOR_RAF', aircraftType: 'MILITARY_AIRCRAFT_TYPE_TANKER' });
+      assert.deepEqual(apiResult, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
+      assert.equal(openskyCalls, 1, 'API callers must neither reuse nor refresh the browser OpenSky snapshot');
+      assert.deepEqual([...new Set(liveCacheKeys)], [
+        'military:flights:v1:10:10:11:11',
+        'military:flights:v1:10:10:11:11:redistributable',
+      ]);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
