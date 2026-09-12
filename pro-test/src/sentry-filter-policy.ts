@@ -558,9 +558,18 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // stack overflow in WORLDMONITOR-WK.
   //
   // The dashboard's gate in `src/bootstrap/sentry-init.ts` (WORLDMONITOR-66/-62)
-  // is not a precedent to copy: that bundle mints its own `signal timed out`
-  // DOMException in first-party code, which does carry caller frames.
-  // `tests/pro-sentry-filter-policy.test.mts` locks this absence in.
+  // is still not a precedent to copy, though the old reason given here — that
+  // the dashboard bundle mints its own DOMException carrying caller frames —
+  // was wrong, and cost WORLDMONITOR-Q4. `createTimeoutSignal` only mints one
+  // on the pre-Baseline-2024 fallback path; every current engine takes the
+  // native `AbortSignal.timeout` branch and produces the same frameless
+  // rejection seen here (Chromium 141: `stack` is the header line alone).
+  // What separates the two surfaces is that the dashboard gate exempts any
+  // event carrying a first-party `kind` tag, which its checkout and panel
+  // reports set. No call site on THIS surface sets one, so the gate would go
+  // back to suppressing owned failures. Adding it here means tagging the six
+  // timeout call sites first. `tests/pro-sentry-filter-policy.test.mts` locks
+  // this absence in.
 
   // Safari-masked injected script. The observed event (WORLDMONITOR-110,
   // `TypeError: Attempting to change value of a readonly property.` on iOS

@@ -110,6 +110,38 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
     );
   });
 
+  // WORLDMONITOR-Q4: the `kind` tag is the only thing keeping a checkout
+  // timeout visible. The transport's 15s budget rejects with a browser-minted
+  // `TimeoutError: signal timed out` DOMException whose stack is the header
+  // line alone, so the zero-frame gate in src/bootstrap/sentry-init.ts drops
+  // it as extension noise unless `kind` is present. Deleting the tag here
+  // leaves tests/sentry-beforesend.test.mjs green — it supplies its own
+  // fixture tags — while production goes silent, so the emit side needs its
+  // own lock. Asserted as source text because `reportCheckoutError` is
+  // module-private.
+  it('tags every checkout report with a first-party `kind`', () => {
+    assert.match(
+      src,
+      /kind:\s*'checkout_request_failed'/,
+      "reportCheckoutError must tag events with kind: 'checkout_request_failed' — without it the zero-frame `signal timed out` gate in src/bootstrap/sentry-init.ts silently drops every checkout timeout",
+    );
+  });
+
+  it('keeps the zero-frame timeout gate keyed on `kind` presence, not a name list', () => {
+    // The other half of the same contract. A future edit that narrows the gate
+    // back to a specific kind (`!== 'panel_call_rejected'`) would re-open
+    // WORLDMONITOR-Q4 without reddening anything in this file's sibling suite.
+    const initSrc = readFileSync(
+      resolve(__dirname, '../src/bootstrap/sentry-init.ts'),
+      'utf-8',
+    );
+    assert.match(
+      initSrc,
+      /\/signal timed out\/\.test\(msg\)\s*&&\s*!event\.tags\?\.kind/,
+      'the zero-frame `signal timed out` suppression must exempt EVERY event carrying a first-party `kind` tag',
+    );
+  });
+
   it('keeps duplicate-subscription checkout attempts at info level', () => {
     assert.equal(checkoutErrorTelemetryLevel({ code: 'duplicate_subscription' }), 'info');
     assert.equal(checkoutErrorTelemetryLevel({ code: 'rate_limited' }), 'info');

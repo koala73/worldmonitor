@@ -439,6 +439,40 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     });
   }
 
+  // WORLDMONITOR-Q4: the checkout transport times out at 15s and
+  // `reportCheckoutError` captures the rejection, but the event never reached
+  // Sentry. `AbortSignal.timeout` mints its DOMException at the timer
+  // boundary, so the stack is the header line ALONE — verified in Chromium
+  // 141: `{ name: 'TimeoutError', message: 'signal timed out',
+  // stack: 'TimeoutError: signal timed out' }` — and the parser extracts zero
+  // frames. That made a terminal, revenue-losing failure indistinguishable
+  // from extension noise, exactly as it had for panel dispatch before #7552.
+  //
+  // The escape hatch is the `kind` tag rather than another message name: only
+  // first-party capture call sites set `kind` (grep-verified across src/ —
+  // pending-panel-data.ts, wm-session.ts, checkout.ts), and a browser- or
+  // extension-originated rejection cannot carry one. The counter-fixture is
+  // the untagged `signal timed out` entry in `zeroFrameErrors` below, which
+  // must stay suppressed.
+  it('preserves a zero-frame checkout timeout reported by the checkout transport', async () => {
+    const client = new BrowserClient({ stackParser: defaultStackParser, integrations: [] });
+    const reason = new DOMException('signal timed out', 'TimeoutError');
+    // The production shape, not an empty string: a header-only stack still has
+    // to parse to zero frames, or the suppression would never have fired.
+    Object.defineProperty(reason, 'stack', { value: 'TimeoutError: signal timed out' });
+    assert.ok(reason instanceof Error);
+    const event = await client.eventFromException(reason);
+    assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
+    event.tags = {
+      component: 'dodo-checkout',
+      action: 'exception',
+      code: 'service_unavailable',
+      kind: 'checkout_request_failed',
+    };
+    assert.equal(isIgnored('signal timed out'), false);
+    assert.equal(beforeSend(event), event);
+  });
+
   const zeroFrameErrors = [
     ['signal timed out', 'TimeoutError'],
     ['NotSupportedError: The operation is not supported.', 'Error'],
