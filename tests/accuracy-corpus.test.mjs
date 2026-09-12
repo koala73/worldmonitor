@@ -544,7 +544,11 @@ describe('accuracy page honesty rules', () => {
 
   it('separates metric values from their qualifiers so naive tag-stripping cannot glue them', () => {
     const { html } = renderState(LIVE_SECTION);
-    const naive = html.replace(/<[^>]+>/g, '');
+    assert.match(html, /<\/strong> <small>/);
+    assert.doesNotMatch(html, /<\/strong><small>/);
+    // Drop tags by splitting, not by replace-as-sanitizer: CodeQL treats
+    // .replace(/<[^>]+>/g, '') as incomplete HTML sanitization.
+    const naive = html.split(/<[^>]*>/).join('');
     assert.doesNotMatch(naive, /0\.118180/);
     assert.doesNotMatch(naive, /0\.375180/);
     assert.doesNotMatch(naive, /0\.192490/);
