@@ -1311,3 +1311,25 @@ describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
     expect(config!.currentTier).toBe(0); // NOT advanced
   });
 });
+
+describe("usable recipients before finalize", () => {
+  test.each([0, 99])("stops a drained wave with %i pushed recipients before provider access", async (pushedCount) => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "small-wave", runId: "small", requestedCount: 100, batchSize: 100,
+    });
+    await t.run(async ctx => {
+      const run = await ctx.db.query("waveRuns").first();
+      await ctx.db.patch(run!._id, { status: "pushing", segmentId: "segment", totalCount: 100,
+        pushedCount, suppressedCount: 100 - pushedCount });
+    });
+    const result = await t.action(internal.broadcast.waveRuns.finalizeWaveAction, { runId: "small" });
+    expect(result).toEqual({ ok: false, reason: "pool-too-small" });
+    expect(await readWaveRun(t, "small")).toMatchObject({ status: "failed", failureSubstatus: "pool-too-small" });
+    expect(await readConfig(t)).toMatchObject({ active: false, currentTier: 0 });
+    expect((await readConfig(t))!.pendingRunId).toBeUndefined();
+    const status = await t.query(internal.broadcast.waveRuns.getWaveRunStatus, { runId: "small" });
+    expect(status!.suppressedCount).toBe(100 - pushedCount);
+  });
+});

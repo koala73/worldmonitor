@@ -7,7 +7,7 @@
  * naming rule, the underscore is documentation that this isn't a public
  * action/query/mutation).
  *
- * Two API quirks are encoded here so both callers behave identically:
+ * Three API quirks are encoded here so both callers behave identically:
  *
  *   1. Resend's `POST /contacts` accepts a `segments: [{ id }]` body but
  *      DOES NOT apply that field on the duplicate-shaped 422 path. So a

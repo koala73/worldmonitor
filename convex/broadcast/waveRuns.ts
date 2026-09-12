@@ -1571,6 +1571,32 @@ export const _finalizeWaveRun = internalMutation({
   },
 });
 
+/** Stop an unsent, drained wave that cannot satisfy the next delivery gate. */
+export const _stopUndersizedWave = internalMutation({
+  args: { runId: v.string() },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.query("waveRuns").withIndex("by_runId", q => q.eq("runId", runId)).unique();
+    const config = await ctx.db.query("broadcastRampConfig").withIndex("by_key", q => q.eq("key", "current")).unique();
+    if (!run || config?.pendingRunId !== runId || run.broadcastId ||
+        (run.status !== "pushing" && run.status !== "segment-created") ||
+        run.pushedCount >= MIN_USABLE_POOL_SIZE) return false;
+    const pending = await ctx.db.query("wavePickedContacts")
+      .withIndex("by_runId_status", q => q.eq("runId", runId).eq("status", "pending")).take(1);
+    if (pending.length > 0) return false;
+    const now = Date.now();
+    await ctx.db.patch(run._id, {
+      status: "failed", failureSubstatus: "pool-too-small",
+      error: `Only ${run.pushedCount} usable recipients remain; need ${MIN_USABLE_POOL_SIZE}`,
+      updatedAt: now,
+    });
+    await ctx.db.patch(config._id, {
+      active: false, pendingRunId: undefined, pendingRunStartedAt: undefined, pendingWaveLabel: undefined,
+      lastRunStatus: "ramp-complete-pool-too-small", lastRunAt: now,
+    });
+    return true;
+  },
+});
+
 export const finalizeWaveAction = internalAction({
   args: { runId: v.string() },
   handler: async (
@@ -1585,6 +1611,12 @@ export const finalizeWaveAction = internalAction({
     if (!info.configHoldsLease) return { ok: false, reason: "lost-lease" };
     if (!info.run.segmentId) {
       throw new Error(`[finalizeWaveAction] runId=${runId} missing segmentId`);
+    }
+
+    if (info.hasPending) return { ok: false, reason: "contacts-pending" };
+    if (await ctx.runMutation(internal.broadcast.waveRuns._stopUndersizedWave, { runId })) {
+      await ctx.runAction(internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction, { runId });
+      return { ok: false, reason: "pool-too-small" };
     }
 
     // Path 1: run is in 'pushing' (or 'segment-created' as a defensive case)
@@ -2241,6 +2273,7 @@ export const getWaveRunStatus = internalQuery({
       totalCount: run.totalCount,
       pushedCount: run.pushedCount,
       failedCount: run.failedCount,
+      suppressedCount: run.suppressedCount ?? 0,
       underfilled: run.underfilled,
       hasPendingContacts: pending.length > 0,
       lastActivityAt: run.lastBatchAt ?? run.updatedAt,

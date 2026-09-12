@@ -461,7 +461,7 @@ export default defineSchema({
   // budget at any wave size.
   //
   // `waveRuns` is the per-run state row. `wavePickedContacts` is the
-  // per-contact tri-state row that the push pipeline drains in batches.
+  // per-contact state row that the push pipeline drains in batches.
   // Together they are the durable source of truth for an in-flight wave;
   // `broadcastRampConfig.lastWave*` is updated atomically by
   // `_finalizeWaveRun` only when the whole pipeline succeeds.
