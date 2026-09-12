@@ -112,10 +112,63 @@ describe('Windy webcam image proxy input boundary', () => {
   it('rejects a malformed ID before it can create a Redis key or Windy request', async () => {
     const calls = installProviderAndRedisFixture();
 
-    const response = await getWebcamImage(ctx(), { webcamId: 'camera/123' });
+    for (const webcamId of [
+      'camera/123', 'http://127.0.0.1/private', '//attacker.example',
+      '../private', 'camera?include=secrets', 'camera%2fprivate', 'camera#fragment',
+    ]) {
+      const response = await getWebcamImage(ctx(), { webcamId });
+      assert.equal(response.error, 'missing webcam_id');
+      assert.deepEqual(calls, []);
+    }
+  });
 
-    assert.equal(response.error, 'missing webcam_id');
-    assert.deepEqual(calls, []);
+  it('does not forward a provider redirect or Windy credentials to another origin', async () => {
+    const { createServer } = await import('node:http');
+    let targetRequests = 0;
+    let receivedWindyKey = false;
+    const target = createServer((req, res) => {
+      targetRequests += 1;
+      receivedWindyKey ||= req.headers['x-windy-api-key'] === 'test-windy-key';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ title: 'Redirect target' }));
+    });
+    const provider = createServer((_req, res) => {
+      const targetPort = (target.address() as { port: number }).port;
+      res.writeHead(302, { Location: `http://127.0.0.1:${targetPort}/private` });
+      res.end();
+    });
+    try {
+      for (const server of [target, provider]) {
+        await new Promise<void>((resolve, reject) => {
+          server.once('error', reject);
+          server.listen(0, '127.0.0.1', resolve);
+        });
+      }
+      const providerPort = (provider.address() as { port: number }).port;
+      installProviderAndRedisFixture(['redirect-camera']);
+      const fixtureFetch = globalThis.fetch;
+      let providerRequests = 0;
+      globalThis.fetch = async (input, init) => {
+        if (String(input).startsWith(WINDY_URL)) {
+          providerRequests += 1;
+          // Keep real Fetch redirect behavior while mapping Windy to a local fixture.
+          return originalFetch(`http://127.0.0.1:${providerPort}/camera`, init);
+        }
+        return fixtureFetch(input, init);
+      };
+
+      const response = await getWebcamImage(ctx(), { webcamId: 'redirect-camera' });
+
+      assert.deepEqual({ targetRequests, receivedWindyKey }, { targetRequests: 0, receivedWindyKey: false });
+      assert.equal(providerRequests, 1);
+      assert.equal(response.error, 'unavailable');
+      assert.equal(response.thumbnailUrl, '');
+    } finally {
+      await Promise.all([provider, target].map(server => new Promise<void>(resolve => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      })));
+    }
   });
 
   it('accepts an ID at the maximum allowed length', async () => {
@@ -145,6 +198,7 @@ describe('Windy webcam image proxy input boundary', () => {
       `${REDIS_URL}/`,
     ]);
     assert.equal(calls[3]?.headers.get('x-windy-api-key'), 'test-windy-key');
+    assert.ok(calls[3]?.headers.get('User-Agent'));
   });
 
   it('rejects an unseeded well-formed ID before it can create an image cache key or Windy request', async () => {

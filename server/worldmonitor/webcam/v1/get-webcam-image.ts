@@ -1,5 +1,6 @@
 import type { GetWebcamImageRequest, GetWebcamImageResponse, ServerContext } from '../../../../src/generated/server/worldmonitor/webcam/v1/service_server';
 import { cachedFetchJsonWithMeta, getCachedJson, getHashFieldsBatch } from '../../../_shared/redis';
+import { CHROME_UA } from '../../../_shared/constants';
 
 const WINDY_BASE = 'https://api.windy.com/webcams/api/v3/webcams';
 const CACHE_TTL = 300;
@@ -55,7 +56,8 @@ export async function getWebcamImage(_ctx: ServerContext, req: GetWebcamImageReq
     CACHE_TTL,
     async () => {
       const resp = await fetch(`${WINDY_BASE}/${encodeURIComponent(webcamId)}?include=images,urls`, {
-        headers: { 'x-windy-api-key': apiKey },
+        headers: { 'x-windy-api-key': apiKey, 'User-Agent': CHROME_UA },
+        redirect: 'manual',
         signal: AbortSignal.timeout(5000),
       });
       if (!resp.ok) return null;
