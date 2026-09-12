@@ -2002,6 +2002,7 @@ export function createDomainGateway(
     if (internalMcpVerified && pathname === '/api/aviation/v1/search-google-dates') {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
         principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
+        principalScope: 'session',
       });
       if (endpointRlResponse) {
         const reason = getRateLimitTelemetryReason(endpointRlResponse, 'rate_limit_429_endpoint');

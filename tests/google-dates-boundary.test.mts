@@ -246,7 +246,7 @@ test('verified MCP date searches use the10/min verified user bucket', async () =
   const sent = readLimiterRequest(fixture.wire);
   assert.equal(sent?.tokens, 10);
   assert.equal(sent?.windowMs, 60000);
-  assert.ok(sent?.keys.some((key: string) => key.includes('user_dates_pro')));
+  assert.ok(sent?.keys.some((key: string) => key.includes(':user:user_dates_pro')));
   assert.ok(sent?.keys.every((key: string) => !key.includes('injected_bucket')));
   assert.equal(feeds().length, 1);
   await fixture.settled();
