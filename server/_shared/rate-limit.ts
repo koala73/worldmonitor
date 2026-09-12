@@ -236,12 +236,34 @@ export interface RateLimitOptions {
    * so user IDs cannot collide with anonymous IP buckets.
    */
   principalUserId?: string;
+  /**
+   * Which credential the caller presented. A user's API key and their browser
+   * session resolve to the SAME Clerk user id, so without this they share one
+   * per-minute bucket and programmatic traffic starves the interactive session
+   * behind the same account (WORLDMONITOR-12A: a scraper on an api_starter key
+   * spent 598 of 600, leaving that customer's own dashboard 2 successes and 22
+   * × 429). Defaults to `session`, which keeps the established `user:` key so
+   * in-flight buckets are not reset.
+   *
+   * This separates namespaces; it does not exempt anyone. Each scope is still
+   * capped at the same per-minute limit, so the aggregate a single account can
+   * spend across both credentials doubles by design — programmatic use is
+   * metered by the plan's own `apiRateLimit` + daily allowance, which is the
+   * meter that should bound it.
+   */
+  principalScope?: PrincipalRateLimitScope;
 }
+
+export type PrincipalRateLimitScope = 'session' | 'api_key';
 
 export type EndpointRateLimitOptions = RateLimitOptions;
 
-function getPrincipalRateLimitIdentifier(principalUserId?: string): string | null {
-  return principalUserId ? `user:${principalUserId}` : null;
+function getPrincipalRateLimitIdentifier(
+  principalUserId?: string,
+  scope: PrincipalRateLimitScope = 'session',
+): string | null {
+  if (!principalUserId) return null;
+  return scope === 'api_key' ? `apikey-user:${principalUserId}` : `user:${principalUserId}`;
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
@@ -258,7 +280,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   // in-flight 60-second bucket does not reset during rollout. Trusted
   // principals use a separate namespace.
   const identifier =
-    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
     getClientIp(request);
 
   try {
@@ -732,7 +754,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   }
 
   const identifier =
-    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
     `ip:${getClientIp(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
