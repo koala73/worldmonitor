@@ -214,6 +214,10 @@ describe('cloudflare corpus cache rule', () => {
 
     // Positive controls: the parsers must actually be seeing the new shapes.
     assert.ok(advertised.nested.has('blog') && advertised.nested.has('docs'), 'vercel.json must advertise /blog and /docs');
+    assert.ok(
+      advertised.nested.has('accuracy') && claimed.nested.has('accuracy'),
+      '/accuracy/ shipped with the origin CDN header; the Cloudflare rule must claim it too (#8070)',
+    );
     assert.ok(advertised.files.has('llms.txt'), 'vercel.json must advertise /llms.txt');
     assert.ok(claimed.nested.get('docs')?.exact.length, 'the rule must carve an exact path out of /docs');
 

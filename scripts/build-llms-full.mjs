@@ -6,9 +6,9 @@
  *     ahead of `## Live Instances` on every run.
  *   - public/llms-full.txt keeps its hand-authored brief above `## Generated
  *     corpus`; the comparisons index, glossary bodies, chokepoint
- *     methodology, published chokepoint explainers, CRI methodology, the
- *     corrections log, and the current ranking snapshot are inlined below
- *     that heading.
+ *     methodology, published chokepoint explainers, the forecast accuracy
+ *     record, CRI methodology, the corrections log, and the current ranking
+ *     snapshot are inlined below that heading.
  *
  * Usage:
  *   npm run build:llms-full          # rewrite whichever file is stale
@@ -21,7 +21,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
 import { COMPARISON_MATRIX_COLUMNS, comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
-import { resolveLatestResilienceSnapshotPath, slugify } from './build-crawlable-corpus.mjs';
+import { renderAccuracyLlmsSection } from './build-accuracy-page.mjs';
+import { resolveLatestLivePulseSnapshotPath, resolveLatestResilienceSnapshotPath, slugify } from './build-crawlable-corpus.mjs';
 import { CHOKEPOINT_CONTENT } from './chokepoint-page-content.mjs';
 import { SITE_ORIGIN } from './discover-content-corpus-pages.mjs';
 import { buildSourceCatalog, buildSourcePages } from './crawlable-sources-page.mjs';
@@ -193,6 +194,12 @@ function renderChokepointBlurbs() {
   return lines.join('\n');
 }
 
+function renderAccuracyFromSnapshot(rootDir) {
+  const snapshotPath = resolveLatestLivePulseSnapshotPath(rootDir);
+  const snapshot = JSON.parse(read(rootDir, snapshotPath));
+  return renderAccuracyLlmsSection(snapshot.forecastScorecard ?? null).trim();
+}
+
 function renderSnapshotTable(rootDir) {
   const snapshotPath = resolveLatestResilienceSnapshotPath(rootDir);
   const snapshot = JSON.parse(read(rootDir, snapshotPath));
@@ -289,7 +296,7 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   const introduction = [
     LLMS_FULL_GENERATED_HEADING,
     '',
-    'The sections below are produced by `npm run build:llms-full` from the source catalog, comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.',
+    'The sections below are produced by `npm run build:llms-full` from the source catalog, comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the forecast accuracy snapshot, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.',
     '',
     renderSourceDirectory(rootDir),
     '',
@@ -302,6 +309,7 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   return withCorpusNavigation([
     { title: 'World Monitor', text: prefix },
     { title: 'Generated corpus', text: introduction },
+    { title: 'Forecast accuracy', text: renderAccuracyFromSnapshot(rootDir) },
     { title: 'Chokepoint methodology', text: `## Chokepoint methodology\n\n${stripMdx(read(rootDir, 'docs/methodology/chokepoints.mdx'))}` },
     { title: 'Chokepoint explainers', text: '## Chokepoint explainers' },
     ...CHOKEPOINT_BLOGS.map((relativePath) => {
