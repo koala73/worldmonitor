@@ -1,0 +1,67 @@
+[
+  {
+    "id": "SEC-001",
+    "title": "Hardcoded Default Secret Key Fallback in JWT Verification",
+    "category": "Authentication",
+    "severity": "CRITICAL",
+    "confidence": 95,
+    "file": "server/auth/jwt.js",
+    "function": "verifyToken",
+    "evidence": "const SECRET = process.env.JWT_SECRET || 'DEFAULT_WORLDMONITOR_SECRET_KEY_2026';",
+    "data_type": "SYNTHETIC / DEMONSTRATION DATA - NOT VERIFIED WORLD MONITOR VULNERABILITIES",
+    "description": "The JWT verification module falls back to a hardcoded string if the environment variable JWT_SECRET is not defined. Attackers can forge administrative tokens using the hardcoded default key.",
+    "remediation": "Remove the hardcoded fallback secret. Ensure server initialization aborts if JWT_SECRET is missing or under 256 bits of entropy."
+  },
+  {
+    "id": "SEC-002",
+    "title": "Missing Role-Based Access Control (RBAC) on Telemetry Export API",
+    "category": "Access Control",
+    "severity": "HIGH",
+    "confidence": 90,
+    "file": "server/routes/telemetry.js",
+    "function": "exportAllTelemetryData",
+    "evidence": "router.get('/api/v1/telemetry/export', authenticateToken, (req, res) => { /* exports full DB dump */ });",
+    "description": "The endpoint checks for a valid authentication token but fails to verify if the authenticated user has administrative privileges, allowing standard users to dump system telemetry.",
+    "remediation": "Attach an authorization middleware (e.g., `requireRole('admin')`) to the route handler before returning data.",
+    "data_type": "SYNTHETIC / DEMONSTRATION DATA - NOT VERIFIED WORLD MONITOR VULNERABILITIES"
+  },
+  {
+    "id": "SEC-003",
+    "title": "Permissive Cross-Origin Resource Sharing (CORS) Wildcard Header",
+    "category": "API Security",
+    "severity": "MEDIUM",
+    "confidence": 100,
+    "file": "server/middleware/cors.js",
+    "function": "configureCors",
+    "evidence": "res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Credentials', 'true');",
+    "description": "Synthetic permissive CORS example. Browsers reject credentialed responses with a wildcard origin; this combination alone does not prove authenticated cross-origin access.",
+    "remediation": "Restrict Access-Control-Allow-Origin to an explicit whitelist of trusted domains and disallow wildcard origins when credentials are allowed.",
+    "data_type": "SYNTHETIC / DEMONSTRATION DATA - NOT VERIFIED WORLD MONITOR VULNERABILITIES"
+  },
+  {
+    "id": "SEC-004",
+    "title": "Verbose Debug Error Messages Leaking Stack Traces to Client",
+    "category": "Data Exposure",
+    "severity": "LOW",
+    "confidence": 85,
+    "file": "server/middleware/errorHandler.js",
+    "function": "globalErrorHandler",
+    "evidence": "res.status(500).json({ error: err.message, stack: err.stack, internalContext: err.config });",
+    "description": "Unhandled server errors leak internal stack traces, system paths, and database query details to HTTP response bodies in production.",
+    "remediation": "Sanitize HTTP 500 error responses in production environments. Log detailed stack traces internally to secure logger instances only.",
+    "data_type": "SYNTHETIC / DEMONSTRATION DATA - NOT VERIFIED WORLD MONITOR VULNERABILITIES"
+  },
+  {
+    "id": "SEC-005",
+    "title": "Unbound Dynamic Database Query Parameter in Log Search API",
+    "category": "Input Handling",
+    "severity": "HIGH",
+    "confidence": 88,
+    "file": "server/controllers/logController.js",
+    "function": "searchLogs",
+    "evidence": "const query = { $where: `this.message.includes('${req.query.search}')` };",
+    "description": "Constructing dynamic MongoDB query code directly from user input allows arbitrary JavaScript code execution in the database engine context.",
+    "remediation": "Replace dynamic `$where` evaluation with structured parameter queries or parameterized regular expressions.",
+    "data_type": "SYNTHETIC / DEMONSTRATION DATA - NOT VERIFIED WORLD MONITOR VULNERABILITIES"
+  }
+]
