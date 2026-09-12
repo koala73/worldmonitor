@@ -138,6 +138,8 @@ const MAP = [
   [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history)$/, { cap: 'markets.stock_analysis' }],
   [/:(\/api\/market\/v1\/backtest-stock|\/api\/market\/v1\/list-stored-stock-backtests)$/, { cap: 'markets.backtest' }],
   [/:\/api\/intelligence\/v1\/list-market-implications$/, { cap: 'markets.implications' }],
+  // WSB scanner RPC (#8043): same premium surface as panel wsb-ticker-scanner.
+  [/:\/api\/intelligence\/v1\/list-wsb-tickers$/, { cap: 'markets.wsb' }],
   [/:\/api\/intelligence\/v1\/classify-event$/,           { cap: 'news.classification' }],
   [/:\/api\/intelligence\/v1\/deduct-situation$/,         { cap: 'intel.deduction' }],
   [/:\/api\/intelligence\/v1\/(search-intel-history|get-intel-timeline|get-similar-events)$/, { cap: 'intel.memory' }],

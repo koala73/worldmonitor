@@ -224,6 +224,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/intelligence/v1/get-regional-snapshot",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
+  ["GET /api/intelligence/v1/list-wsb-tickers",
+    "deferred-to-future-tool: premium WSB panel transport; WSB seed has no MCP tool"],
   ["GET /api/intelligence/v1/list-market-implications",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/intelligence/v1/list-telegram-feed",

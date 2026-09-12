@@ -363,7 +363,10 @@ describe('repeatedStructures — no promising the same bytes twice', () => {
     // assertion above while reporting an empty reduction plan forever.
     const result = realReport.repeatedStructures;
     assert.ok(result.groups > 20, `expected repeated structure in a generated spec, got ${result.groups}`);
-    assert.ok(result.estimatedRecoverableBytes > 10_000, `only ${result.estimatedRecoverableBytes} bytes ranked`);
+    // Successful compaction can reduce this total; require actual savings,
+    // not a fixed amount of waste in the served document.
+    assert.ok(result.estimatedRecoverableBytes > 0);
+    assert.ok(result.estimatedRecoverableBytes >= result.top.reduce((sum, entry) => sum + entry.estimatedRecoverableBytes, 0));
     assert.ok(result.top.length > 0 && result.top[0].pointers.length > 0);
     for (let i = 1; i < result.top.length; i++) {
       assert.ok(result.top[i - 1].estimatedRecoverableBytes >= result.top[i].estimatedRecoverableBytes);

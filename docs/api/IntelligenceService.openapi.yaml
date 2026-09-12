@@ -3056,6 +3056,124 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/intelligence/v1/list-wsb-tickers:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListWsbTickers
+            description: Premium Reddit ticker feed. PRO-gated. Requires an active Pro subscription.
+            operationId: ListWsbTickers
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "tickers":
+                                    - "mentionCount": 1
+                                      "subreddits":
+                                          - "example"
+                                      "symbol": "AAPL"
+                                      "totalScore": 42
+                                      "velocityScore": 42.5
+                            schema:
+                                $ref: '#/components/schemas/ListWsbTickersResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-social-velocity:
         get:
             tags:
@@ -8551,6 +8669,41 @@ components:
                     type: string
                 logic:
                     type: string
+        ListWsbTickersRequest:
+            type: object
+            description: Current WSB snapshot.
+        ListWsbTickersResponse:
+            type: object
+            properties:
+                tickers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WsbTicker'
+            description: Up to 50 ranked tickers.
+        WsbTicker:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    description: Market symbol.
+                mentionCount:
+                    type: integer
+                    format: int32
+                    description: Total mentions.
+                totalScore:
+                    type: integer
+                    format: int32
+                    description: Sum of source post scores.
+                subreddits:
+                    type: array
+                    items:
+                        type: string
+                        description: Source subreddits.
+                velocityScore:
+                    type: number
+                    format: double
+                    description: Relative mention velocity score.
+            description: Mentions by ticker.
         GetSocialVelocityRequest:
             type: object
         GetSocialVelocityResponse:

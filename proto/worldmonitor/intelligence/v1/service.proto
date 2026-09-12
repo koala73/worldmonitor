@@ -24,6 +24,7 @@ import "worldmonitor/intelligence/v1/get_gdelt_topic_timeline.proto";
 import "worldmonitor/intelligence/v1/list_cross_source_signals.proto";
 import "worldmonitor/intelligence/v1/list_market_implications.proto";
 import "worldmonitor/intelligence/v1/get_social_velocity.proto";
+import "worldmonitor/intelligence/v1/list_wsb_tickers.proto";
 import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
 import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
 import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
@@ -202,6 +203,11 @@ service IntelligenceService {
   // ListMarketImplications returns AI-generated trade-implication cards from live world state.
   rpc ListMarketImplications(ListMarketImplicationsRequest) returns (ListMarketImplicationsResponse) {
     option (sebuf.http.config) = {path: "/list-market-implications", method: HTTP_METHOD_GET};
+  }
+
+  // Premium Reddit ticker feed.
+  rpc ListWsbTickers(ListWsbTickersRequest) returns (ListWsbTickersResponse) {
+    option (sebuf.http.config) = {path: "/list-wsb-tickers", method: HTTP_METHOD_GET};
   }
 
   // GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.

@@ -26,6 +26,10 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
   assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
 });
 
+test('keeps seed-owned WSB snapshots cloud-preferred', () => {
+  assert.equal(__testing__.isCloudPreferred('/api/intelligence/v1/list-wsb-tickers'), true);
+});
+
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
   assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
   assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
