@@ -295,12 +295,14 @@ export interface GetCountryCostShockResponse {
 
 export interface GetCountryProductsRequest {
   iso2: string;
+  hs4?: string;
 }
 
 export interface GetCountryProductsResponse {
   iso2: string;
   products: CountryProduct[];
   fetchedAt: string;
+  evidence?: CountryProductEvidence;
 }
 
 export interface CountryProduct {
@@ -309,6 +311,11 @@ export interface CountryProduct {
   totalValue: number;
   topExporters: ProductExporter[];
   year: number;
+  denominatorBasis?: string;
+  fetchedAt?: string;
+  partnerBasis?: string;
+  omittedPartnerCount?: number;
+  omittedPartnerShare?: number;
 }
 
 export interface ProductExporter {
@@ -316,6 +323,31 @@ export interface ProductExporter {
   partnerIso2: string;
   value: number;
   share: number;
+  netWeightKg?: number;
+  netWeightEstimated?: boolean;
+  quantity?: number;
+  quantityUnitCode?: number;
+  scale?: ExporterScale;
+}
+
+export interface ExporterScale {
+  worldExportsUsd: number;
+  worldExportsKg?: number;
+  rank: number;
+  year: number;
+  reporterCount: number;
+  unrankedReporterCount?: number;
+}
+
+export interface CountryProductEvidence {
+  state: string;
+  source: string;
+  requestedHs4s: string[];
+  missingHs4s: string[];
+  lastAttemptAt: string;
+  lastAttemptState: string;
+  recoveredHs4s: string[];
+  worldExportsFetchedAt?: string;
 }
 
 export interface GetMultiSectorCostShockRequest {
@@ -1110,6 +1142,7 @@ export class SupplyChainServiceClient {
     let path = "/api/supply-chain/v1/get-country-products";
     const params = new URLSearchParams();
     if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    if (req.hs4 != null && req.hs4 !== "") params.set("hs4", String(req.hs4));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

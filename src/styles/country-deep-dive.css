@@ -2320,6 +2320,8 @@
 .cdp-commodity-action .cdp-commodity-section-title { margin-top: 0; }
 .cdp-commodity-method { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
 .cdp-commodity-empty { padding: 20px; border: 1px dashed var(--border); border-radius: 6px; color: var(--text-muted); }
+.cdp-commodity-hub { display: block; margin-top: 4px; font-size: 10px; color: var(--semantic-elevated); }
+.cdp-commodity-paper .cdp-commodity-more { margin: 0; align-self: center; }
 @container country-brief (min-width: 800px) {
   .cdp-commodity-preview .cdp-commodity-candidates { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
 }

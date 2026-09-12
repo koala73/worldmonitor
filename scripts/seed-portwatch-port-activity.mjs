@@ -7,6 +7,7 @@ import {
   acquireLockSafely,
   releaseLock,
   extendExistingTtl,
+  extendExistingTtlDetailed,
   logSeedResult,
   readSeedSnapshot,
   resolveProxyForConnect,
@@ -1409,8 +1410,8 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     const originalMisses = MAX_COLD_FETCH_PER_RUN + servedStale + droppedTooOld + droppedNoCache;
     console.warn(
       `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
-      `refreshing ${MAX_COLD_FETCH_PER_RUN} now, serving ${servedStale} on stale cache (asof behind), ` +
-      `${droppedTooOld} dropped (cache > ${MAX_CACHE_AGE_MS / 86_400_000}d old), ${droppedNoCache} dropped (no prior payload). ` +
+      `refreshing ${MAX_COLD_FETCH_PER_RUN} now, retaining ${servedStale} usable cached payloads (refresh deferred), ` +
+      `${droppedTooOld} dropped (cache >= ${MAX_CACHE_AGE_MS / 86_400_000}d old), ${droppedNoCache} dropped (no prior payload). ` +
       `Rotation: ~${Math.ceil(originalMisses / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
     );
   }
@@ -1538,7 +1539,7 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     if (progress) progress.seeded = countryData.size;
     if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
       const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
-      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries published, ${errors.length} errors (${elapsed}s)`);
+      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} usable country payloads assembled; ${errors.length} refresh errors; persistence pending (${elapsed}s)`);
     }
 
     // Circuit-breaker: if batch 1 is ≥80% rejected with the SAME class of
@@ -1621,8 +1622,8 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
       ? ` Refresh failures: ${coverage.refreshFailures.map(({ iso2, code }) => `${iso2}:${code}`).join(', ')}.`
       : '';
     console.error(
-      `  [port-activity] COVERAGE GAPS: ${coverage.published}/${coverage.target}; ` +
-      `unpublished countries: ${coverage.missingCountries.join(', ') || 'none'}; ` +
+      `  [port-activity] COVERAGE GAPS: ${coverage.published}/${coverage.target} usable; ` +
+      `countries without usable payloads: ${coverage.missingCountries.join(', ') || 'none'}; ` +
       `unidentified shortfall: ${coverage.unidentifiedMissingCount}.${failureCodes}`,
     );
   }
@@ -1761,7 +1762,7 @@ export async function main() {
       expectedCountries: Array.isArray(prevIso2List) ? prevIso2List : [],
     });
 
-    console.log(`  Fetched ${countryData.size} countries`);
+    console.log(`  Assembled ${countryData.size} usable country payloads; persistence pending`);
 
     const canonicalAdvances = !shutdownController.signal.aborted && shouldAdvanceCanonicalForRun({
       countryCount: countryData.size,
@@ -1773,16 +1774,19 @@ export async function main() {
       ? { ...buildPortActivityMetaPayload({ countryData, coverage: { ...coverage, status: 'complete', completionRatio: 1 } }), sourceState: 'ok' }
       : buildPortActivityFailureMeta(previousMeta, { coverage });
 
+    let canonicalTtlExtended = false;
     if (!canonicalAdvances) {
-      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL);
+      const retention = await extendExistingTtlDetailed([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL);
+      canonicalTtlExtended = retention.extendedKeys.includes(CANONICAL_KEY);
       console.error(
         `  INCOMPLETE RUN: ${countryData.size}/${coverage.target} usable countries; ` +
         `${freshFetchedCount} fetched, ${cacheHitCount} cache-fresh, ${servedStaleCount} stale-served, ` +
         `${droppedTooOldCount} expired, ${droppedNoCacheCount} missing. ` +
-        'Preserving canonical and success clocks; persisting recovery state and failure metadata.',
+        'Full publication blocked; recovery-state and failure-metadata writes pending.',
       );
     }
 
+    console.log(`  Persistence pending: usable coverage ${countryData.size}/${coverage.target}; ${coverage.refreshFailures.length} unresolved refresh failures`);
     await publishPortActivitySnapshot({
       countryData,
       retryState,
@@ -1791,6 +1795,20 @@ export async function main() {
       canonicalAdvances,
     });
     failureRecorded = !canonicalAdvances;
+    let canonicalState = 'no prior canonical list';
+    if (canonicalAdvances) {
+      canonicalState = `canonical list advanced to ${countries.length} countries`;
+    } else if (prevIso2List !== null) {
+      canonicalState = canonicalTtlExtended
+        ? `canonical list retained at ${prevIso2List.length} countries`
+        : `canonical retention unconfirmed (${prevIso2List.length} countries at run start)`;
+    }
+    console.log(
+      `  ${canonicalAdvances ? 'State saved' : 'Recovery state saved'}; ${canonicalState}; ` +
+      `usable coverage ${countryData.size}/${coverage.target}; ` +
+      `${canonicalAdvances ? '' : 'full publication blocked; '}` +
+      `${coverage.refreshFailures.length} unresolved refresh failures`,
+    );
     if (!canonicalAdvances) throw new Error('Incomplete PortWatch coverage; canonical retained');
 
     logSeedResult('supply_chain', countryData.size, Date.now() - startedAt, { source: 'portwatch-ports' });
