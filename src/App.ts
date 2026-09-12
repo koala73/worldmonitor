@@ -366,6 +366,8 @@ export class App {
   private visiblePanelPrimeRaf: number | null = null;
   private viewportHydrationReady = false;
   private viewportHydrationReadyAt = 0;
+  /** Scroll/resize register at readiness; marks/primes arm only after fan-out. */
+  private viewportTriggersArmed = false;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
@@ -387,6 +389,9 @@ export class App {
   };
   private readonly handleViewportPrime = (event?: Event): void => {
     if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    // The catch-up scan after fan-out covers early viewport changes without
+    // replaying their scroll events as viewport-trigger marks. (#5876)
+    if (!this.viewportTriggersArmed) return;
     if (
       event &&
       this.viewportHydrationReadyAt > 0 &&
@@ -2929,15 +2934,11 @@ export class App {
     // (3.5 s browser / 8.5 s desktop). (#4512)
     await slowTierReady;
     if (this.state.isDestroyed) return;
-    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
-      typeof performance.now === 'function'
-      ? performance.now()
-      : Date.now();
+    // Open readiness so deferred panel mounts can call primeVisiblePanelData,
+    // but keep scroll/resize triggers disarmed until the fan-out finishes.
+    // Scrolls before readiness (and layout thrash during fan-out after an early
+    // scroll) are covered by the fan-out's current-viewport scan. (#5876)
     this.viewportHydrationReady = true;
-    // Register viewport triggers only after the slow bootstrap tier settles.
-    // Scrolls before this point are covered by the initial fan-out below, which
-    // scans the current viewport after readiness. Registering earlier lets a
-    // captured descendant scroll consume hydration keys before they arrive.
     window.addEventListener('scroll', this.handleViewportPrime, {
       passive: true,
       capture: true,
@@ -2959,6 +2960,17 @@ export class App {
       this.primeVisiblePanelData(),
     ]);
     markLcpDebug('wm:data:initial-fanout-complete');
+    if (this.state.isDestroyed) return;
+    // Stamp + arm only after fan-out so an early scroll cannot schedule or
+    // replay a viewport-trigger mark across readiness. (#5876)
+    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
+      typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    this.viewportTriggersArmed = true;
+    // The viewport can move after the initial synchronous geometry scan while
+    // other fan-out requests are pending. Hydrate its current position once.
+    void this.primeVisiblePanelData();
     if (import.meta.env.VITE_E2E === '1') {
       document.documentElement.dataset.wmInitialDataReady = 'true';
     }
@@ -3500,6 +3512,7 @@ export class App {
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
     this.viewportHydrationReadyAt = 0;
+    this.viewportTriggersArmed = false;
     cancelBootstrapSlowTier();
     window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
