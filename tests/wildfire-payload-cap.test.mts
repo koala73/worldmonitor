@@ -17,6 +17,7 @@ import {
   WILDFIRE_CWFIS_SOURCE,
   compactWildfireDashboardPayload,
 } from '../scripts/_wildfire-dashboard.mjs';
+import { assembleBootstrapTierPayload } from '../scripts/publish-bootstrap-tiers.mjs';
 import { MAX_PAYLOAD_BYTES, runSeed } from '../scripts/_seed-utils.mjs';
 import { buildEnvelope, unwrapEnvelope } from '../scripts/_seed-envelope-source.mjs';
 import type { FireDetection } from '../src/generated/server/worldmonitor/wildfire/v1/service_server';
@@ -191,6 +192,38 @@ describe('wildfire dashboard payload cap', () => {
     assert.equal(compacted.fireDetections.length, WILDFIRE_DASHBOARD_DETECTION_LIMIT);
     assert.deepEqual(compacted.pagination, { nextCursor: '', totalCount: WILDFIRE_DASHBOARD_DETECTION_LIMIT + 1 });
     assert.equal(payload.fireDetections.length, WILDFIRE_DASHBOARD_DETECTION_LIMIT + 1);
+  });
+
+  it('preserves valid totals and floors invalid totals at the input count on repeated compaction', () => {
+    const fireDetections = [fireDetection(1), fireDetection(2)];
+    for (const [totalCount, expected] of [
+      [undefined, 2], [null, 2], [-1, 2], [1, 2], [NaN, 2], [Infinity, 2],
+      ['invalid', 2], [2, 2], [20_442, 20_442], ['20442', 20_442],
+    ]) {
+      const payload = { fireDetections, pagination: { nextCursor: '', totalCount } };
+      for (const compact of [compactWildfireDashboardPayload, compactWildfireBootstrapPayload]) {
+        const first = compact(payload);
+        const second = compact(first);
+        assert.equal(first.pagination.totalCount, expected);
+        assert.deepEqual(second, first);
+        assert.equal(payload.pagination.totalCount, totalCount);
+      }
+    }
+  });
+
+  it('measures the preserved total when trimming an already compacted payload to a byte budget', () => {
+    const payload = {
+      fireDetections: [fireDetection(1), fireDetection(2)],
+      pagination: { nextCursor: '', totalCount: 20_442 },
+    };
+    const measureBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+    const maxBytes = measureBytes(payload) - 1;
+    for (const compact of [compactWildfireDashboardPayload, compactWildfireBootstrapPayload]) {
+      const compacted = compact(payload, WILDFIRE_DASHBOARD_DETECTION_LIMIT, { maxBytes, measureBytes });
+      assert.equal(compacted.fireDetections.length, 1);
+      assert.equal(compacted.pagination.totalCount, 20_442);
+      assert.ok(measureBytes(compacted) <= maxBytes);
+    }
   });
 
   it('keeps bootstrap and RPC caps in ranking parity', () => {
@@ -515,6 +548,20 @@ describe('canonical wildfire payload cap (#5866)', () => {
       assert.deepEqual(canonical.pagination, { nextCursor: '', totalCount: FIRMS_PEAK_DETECTIONS });
       assert.equal(bootstrap.fireDetections.length, WILDFIRE_DASHBOARD_DETECTION_LIMIT);
       assert.deepEqual(bootstrap.pagination, { nextCursor: '', totalCount: FIRMS_PEAK_DETECTIONS });
+      const published = await assembleBootstrapTierPayload({ wildfires: bootstrapKey }, {
+        env: { UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'test-token' },
+        fetchFn: async (_input, init) => {
+          assert.deepEqual(JSON.parse(String(init.body)), [['GET', bootstrapKey]]);
+          return Response.json([{ result: JSON.stringify(bootstrapEnvelope) }]);
+        },
+      });
+      const redisFallback = compactWildfireBootstrapPayload(bootstrap);
+      for (const response of [published.data.wildfires, redisFallback]) {
+        assert.deepEqual(response.fireDetections, bootstrap.fireDetections);
+        assert.equal(response.pagination.totalCount, FIRMS_PEAK_DETECTIONS);
+        assert.equal(resolveFireDetectionTotalCount(response), FIRMS_PEAK_DETECTIONS);
+      }
+      assert.deepEqual(published.missing, []);
       assert.equal(canonicalEnvelope._seed.recordCount, WILDFIRE_CANONICAL_DETECTION_LIMIT);
       assert.equal(bootstrapEnvelope._seed.recordCount, WILDFIRE_DASHBOARD_DETECTION_LIMIT);
       assert.ok(

@@ -33,13 +33,15 @@ import {
   parseStringArray,
   UPSTREAM_TIMEOUT_MS,
 } from './_shared';
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, logCacheReadError, readCachedJson } from '../../../_shared/redis';
+import { sha256Hex } from '../../../_shared/hash';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { markNoCacheResponse, setResponseHeader } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'market:crypto:v1';
 const GAP_CACHE_TTL = 600; // 10 min — matches the pre-#1684 REDIS_CACHE_TTL
 const MAX_IDS = 25;
+const COINGECKO_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 // CoinGecko ID per seed quote symbol. Seed snapshots are keyed by symbol, so
 // request ids are matched to seed members via this reverse map.
@@ -168,30 +170,31 @@ export async function listCryptoQuotes(
   ctx: ServerContext,
   req: ListCryptoQuotesRequest,
 ): Promise<ListCryptoQuotesResponse> {
-  // Normalize + de-duplicate requested ids (trimmed, first-seen order).
-  const requested = parseStringArray(req.ids);
+  // Repeated query parameters may themselves contain comma-separated IDs.
+  // Validate individual tokens before counting them toward the provider cap.
   const ids: string[] = [];
+  const invalid: string[] = [];
   const seen = new Set<string>();
-  for (const raw of requested) {
-    const id = raw.trim().toLowerCase();
-    if (id && !seen.has(id)) {
+  for (const raw of parseStringArray(req.ids)) {
+    for (const part of raw.split(',')) {
+      const id = part.trim().toLowerCase();
+      if (!id || seen.has(id)) continue;
       seen.add(id);
-      ids.push(id);
+      if (COINGECKO_ID_PATTERN.test(id)) ids.push(id);
+      else invalid.push(id.slice(0, 64));
     }
   }
 
-  // Never trust Redis reads to break the request.
-  let seedQuotes: SeedQuote[] = [];
-  try {
-    const seedData = await getCachedJson(SEED_CACHE_KEY, true) as { quotes: SeedQuote[] } | null;
-    seedQuotes = seedData?.quotes ?? [];
-  } catch {
-    // sentry-coverage-ok: a seed read failure degrades to seed-only/empty behavior by design; no error to surface.
-    seedQuotes = [];
-  }
+  // A cache outage must not turn every requested coin into provider work.
+  const seedRead = await readCachedJson(SEED_CACHE_KEY, true);
+  if (seedRead.status === 'error') logCacheReadError(SEED_CACHE_KEY, seedRead.error);
+  const seedData = seedRead.status === 'hit' ? seedRead.value as { quotes?: SeedQuote[] } | null : null;
+  const seedQuotes = Array.isArray(seedData?.quotes) ? seedData.quotes : [];
+  const seedUnavailable = seedRead.status === 'error'
+    || (seedRead.status === 'hit' && !Array.isArray(seedData?.quotes));
 
   // Default request: return the seeded default crypto set, never the provider.
-  if (ids.length === 0) {
+  if (ids.length === 0 && invalid.length === 0) {
     if (seedQuotes.length === 0) {
       return { quotes: [], unresolvedIds: [], provider: 'degraded' };
     }
@@ -230,17 +233,22 @@ export async function listCryptoQuotes(
   let provider: 'seed' | 'upstream' | 'mixed' | 'degraded' =
     gapIds.length === 0 ? 'seed' : (seedHits.length > 0 ? 'mixed' : 'upstream');
 
-  if (gapIds.length > 0) {
+  if (gapIds.length > 0 && !seedUnavailable) {
     // Bounded upstream fetch, Redis-cached per sorted gap set. cacheFetcherErrors
     // is false so provider failures rethrow and never write a negative cache.
     // An empty provider result is treated as a negative (120s NEG_SENTINEL) via
     // a `null` fetcher return, never as a positive 600s `{}` cache entry.
-    const cacheKey = `market:crypto:gap:v1:${[...gapIds].sort().join(',')}`;
+    const cacheKey = `market:crypto:gap:v2:${await sha256Hex([...gapIds].sort().join(','))}`;
     try {
       const cached = await cachedFetchJson<Record<string, CryptoQuote>>(
         cacheKey,
         GAP_CACHE_TTL,
         async () => {
+          // cachedFetchJson treats read errors as misses. Recheck inside its
+          // coalesced fetcher so an unreadable cache cannot trigger paid work.
+          if ((await readCachedJson(cacheKey)).status === 'error') {
+            throw new Error('Crypto gap cache unavailable');
+          }
           const got = await fetchGapQuotes(gapIds);
           return got.size > 0 ? Object.fromEntries(got) : null;
         },
@@ -258,13 +266,13 @@ export async function listCryptoQuotes(
     // Any gap id the provider could not resolve gets a relay attempt (separate
     // egress IP). Relay results are applied per-request and not Redis-cached.
     const stillMissing = gapIds.filter((id) => !resolved.has(id));
-    if (stillMissing.length > 0) {
+    if (stillMissing.length > 0 && (await readCachedJson(cacheKey)).status !== 'error') {
       const relayed = await fetchGapQuotesViaRelay(stillMissing);
       for (const [id, quote] of relayed) resolved.set(id, quote);
     }
   }
 
-  const unresolvedIds = [...overflow, ...gapIds.filter((id) => !resolved.has(id))];
+  const unresolvedIds = [...invalid, ...overflow, ...gapIds.filter((id) => !resolved.has(id))];
   if (unresolvedIds.length > 0) provider = 'degraded';
 
   const quotes = accepted

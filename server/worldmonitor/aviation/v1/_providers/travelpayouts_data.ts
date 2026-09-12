@@ -1,3 +1,4 @@
+/// <reference lib="es2022.intl" />
 /**
  * Travelpayouts Cached Data API provider
  * Auth: X-Access-Token header
@@ -10,8 +11,11 @@
  */
 
 import type { PriceQuote, CabinClass, Carrier } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ApiError } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../../_shared/redis';
 import { CHROME_UA } from '../../../../_shared/constants';
+import { normalizeCountryToIso2 } from '../../../../_shared/country-normalize';
+import { IATA_RE } from '../_shared';
 
 const BASE_V2 = 'https://api.travelpayouts.com/v2/prices';
 const BASE_V3 = 'https://api.travelpayouts.com/v3';
@@ -26,6 +30,16 @@ const CABIN_CLASS_MAP: Record<string, number> = {
     CABIN_CLASS_BUSINESS: 2,
     CABIN_CLASS_FIRST: 2,  // treat as business — most caches lack separate FIRST
 };
+
+const CURRENCIES = new Set(Intl.supportedValuesOf('currency').map(code => code.toLowerCase()));
+
+function validDate(value: string): boolean {
+    if (value === '') return true;
+    if (!/^\d{4}-\d{2}(?:-\d{2})?$/.test(value)) return false;
+    const date = value.length === 7 ? `${value}-01` : value;
+    const parsed = new Date(`${date}T00:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+}
 
 // ---- Internal response shapes ----
 
@@ -205,11 +219,23 @@ export async function searchPricesTravelpayouts(opts: {
     market: string;
     token: string;
 }): Promise<TravelpayoutsResult> {
-    const { origin, destination, departureDate, returnDate, cabin, nonstopOnly, maxResults, currency, market, token } = opts;
+    const { departureDate, returnDate, nonstopOnly, maxResults, token } = opts;
+    const origin = opts.origin.trim().toUpperCase();
+    const destination = opts.destination.trim().toUpperCase();
+    const cabin = !opts.cabin || opts.cabin === 'CABIN_CLASS_UNSPECIFIED' ? 'CABIN_CLASS_ECONOMY' : opts.cabin;
+    const currency_ = (opts.currency || 'usd').trim().toLowerCase();
+    const market_ = (opts.market || inferMarket(origin)).trim().toLowerCase();
+    // Validate before constructing cache keys or accessing the provider. Unknown
+    // cabin strings otherwise issue the same economy query under unique keys.
+    if (!IATA_RE.test(origin) || !IATA_RE.test(destination)
+        || !validDate(departureDate) || !validDate(returnDate)
+        || !Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin)
+        || !CURRENCIES.has(currency_)
+        || !/^[a-z]{2}$/.test(market_) || !normalizeCountryToIso2(market_)) {
+        throw new ApiError(400, 'Invalid flight search airport, date, cabin, currency or market', '');
+    }
     const now = Date.now();
-    const tripClass = CABIN_CLASS_MAP[cabin] ?? 0;
-    const currency_ = currency || 'usd';
-    const market_ = market || inferMarket(origin);
+    const tripClass = CABIN_CLASS_MAP[cabin]!;
 
     // Determine query style:
     // - Day-precision date given → v3 prices_for_dates (most precise)
