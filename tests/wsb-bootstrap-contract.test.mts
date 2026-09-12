@@ -76,6 +76,26 @@ test('Worker blocks retired WSB bootstrap before any cached origin read', async 
   assert.equal(reads, 0);
 });
 
+test('retired WSB bootstrap permits preflight but rejects GET without reading origin', async t => {
+  let reads = 0;
+  t.mock.method(globalThis, 'fetch', async () => { reads++; return Response.json({ data: { wsbTickers: fixture } }); });
+  const url = 'https://api.worldmonitor.app/api/bootstrap?keys=wsbTickers';
+  const origin = 'https://worldmonitor.app';
+  const preflight = await worker.fetch(new Request(url, {
+    method: 'OPTIONS',
+    headers: { Origin: origin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'X-WorldMonitor-Key' },
+  }), {}, {});
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), origin);
+  assert.match(preflight.headers.get('Access-Control-Allow-Headers') || '', /X-WorldMonitor-Key/i);
+  const response = await worker.fetch(new Request(url, { headers: { Origin: origin, 'X-WorldMonitor-Key': 'synthetic' } }), {}, {});
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.doesNotMatch(await response.text(), /SYNTH/);
+  assert.equal(reads, 0);
+});
+
 test('WSB RPC rejects public callers and serves enterprise callers without shared caching', async t => {
   const { values, reads, token } = await setup(t);
   values.set(SEED, fixture);

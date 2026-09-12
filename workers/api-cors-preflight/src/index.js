@@ -374,7 +374,7 @@ export default {
     const url = new URL(request.url);
 
     // Reject the retired premium URL before fetch can replay an older CDN response.
-    if (url.pathname.replace(/\/+$/, '') === '/api/bootstrap'
+    if (request.method !== 'OPTIONS' && url.pathname.replace(/\/+$/, '') === '/api/bootstrap'
       && url.searchParams.getAll('keys').some(value => value.split(',').some(key => key.trim() === 'wsbTickers'))) {
       return new Response(JSON.stringify({ error: 'Use the premium WSB RPC' }), {
         status: 401,
