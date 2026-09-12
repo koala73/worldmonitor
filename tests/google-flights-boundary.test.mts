@@ -5,7 +5,7 @@ import { searchGoogleFlights } from '../server/worldmonitor/aviation/v1/search-g
 import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
-import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
+import { __resetRateLimitForTest, checkEndpointRateLimit } from '../server/_shared/rate-limit.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 import { issueSessionToken } from '../api/_session.js';
@@ -129,6 +129,22 @@ test('actual native sidecar requires its token before the flight-search gateway'
     Date.now = realNow;
     await app.close();
   }
+});
+
+test('native flight and news budgets remain independent and both reset', async () => {
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  const paths = [PATH, '/api/aviation/v1/list-aviation-news'];
+  for (const path of paths) {
+    for (let i = 0; i < 30; i++) {
+      assert.equal(await checkEndpointRateLimit(request(), path, {}), null);
+    }
+    assert.equal((await checkEndpointRateLimit(request(), path, {}))?.status, 429);
+  }
+  __resetRateLimitForTest();
+  for (const path of paths) {
+    assert.equal(await checkEndpointRateLimit(request(), path, {}), null);
+  }
+  assert.equal(calls.length, 0);
 });
 
 test('cloud policy sends30/min to Redis and rejects the31st request', async () => {

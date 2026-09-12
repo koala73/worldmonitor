@@ -317,6 +317,7 @@ interface EndpointRatePolicy {
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
+  '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
   // Public relay/HTML discovery has the same scrape fan-out as the legacy
   // YouTube live endpoint and needs its own fail-closed gateway budget.
   '/api/aviation/v1/get-youtube-live-stream-info': { limit: 30, window: '60 s' },
@@ -575,6 +576,9 @@ interface RateLimitPolicyDecision {
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
   '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
+  '/api/aviation/v1/list-aviation-news': {
+    reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
+  },
   '/api/aviation/v1/get-youtube-live-stream-info': {
     reason: 'Public live-stream discovery can fan out to relay and YouTube HTML scrapes on cache misses.',
   },
@@ -771,6 +775,7 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
 }
 
 let nativeGoogleFlightsAdmissions: number[] = [];
+let nativeAviationNewsAdmissions: number[] = [];
 
 export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
@@ -786,6 +791,18 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
       return tooManyRequestsResponse(policy.limit, nativeGoogleFlightsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
     }
     nativeGoogleFlightsAdmissions.push(now);
+    return null;
+  }
+  if (pathname === '/api/aviation/v1/list-aviation-news'
+    && process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const policy = ENDPOINT_RATE_POLICIES[pathname]!;
+    const windowSeconds = durationToSeconds(policy.window);
+    const now = Date.now();
+    nativeAviationNewsAdmissions = nativeAviationNewsAdmissions.filter(time => time > now - windowSeconds * 1000);
+    if (nativeAviationNewsAdmissions.length >= policy.limit) {
+      return tooManyRequestsResponse(policy.limit, nativeAviationNewsAdmissions[0]! + windowSeconds * 1000, corsHeaders, windowSeconds);
+    }
+    nativeAviationNewsAdmissions.push(now);
     return null;
   }
 
@@ -957,6 +974,7 @@ export async function checkFailClosedScopedIpRateLimit(
 
 export function __resetRateLimitForTest(): void {
   nativeGoogleFlightsAdmissions = [];
+  nativeAviationNewsAdmissions = [];
   ratelimit = null;
   endpointLimiters.clear();
   scopedLimiters.clear();
