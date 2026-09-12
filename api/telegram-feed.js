@@ -253,7 +253,7 @@ export default async function handler(req) {
     }
     // Bound unauthenticated validation work before looking up the key owner.
     const validationLimit = await checkRateLimit(req, corsHeaders, {
-      scope: 'telegram-user-key-validation', limit: 60, window: '1 m', failClosed: true,
+      scope: 'telegram-user-key-validation', limit: 600, window: '1 m', failClosed: true,
     });
     if (validationLimit) {
       validationLimit.headers.set('Cache-Control', 'no-store');

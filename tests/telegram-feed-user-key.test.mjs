@@ -127,6 +127,15 @@ for (const mode of ['revoked', 'scoped', 'no-access', 'outage', 'malformed', 'li
 function dailyCommands(verb) {
   return commandsSeen.filter(command => command[0] === verb && String(command[1]).startsWith('rl:apikey:day:'));
 }
+it('allows the gateway-sized pre-auth budget while retaining mode and account limits', async () => {
+  assert.equal((await request()).status, 200);
+  const validation = commandsSeen.find(command => /^EVAL(SHA)?$/.test(String(command[0]).toUpperCase())
+    && String(command[3]).includes('telegram-user-key-validation'));
+  assert.ok(validation);
+  assert.equal(Number(validation[3 + Number(validation[2])]), 600);
+  assert.equal(burstCommands().length, 1);
+  assert.equal(dailyCommands('INCR').length, 1);
+});
 function burstCommands() {
   return commandsSeen.filter(command => /^EVAL(SHA)?$/.test(String(command[0]).toUpperCase()) && String(command[3]).startsWith('rl:apikey:min:'));
 }
