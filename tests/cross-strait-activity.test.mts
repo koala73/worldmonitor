@@ -3378,6 +3378,41 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.deepEqual(mnd.errorCodes, ['SOURCE_ERROR']);
     assert.equal(mnd.requestDiagnostics.filter(row => row.purpose === 'detail').length,
       MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    for (const diagnostic of mnd.requestDiagnostics.filter(row => row.purpose === 'detail')) {
+      assert.equal(diagnostic.stage, 'response_body');
+      assert.equal(diagnostic.httpStatus, 200);
+      assert.equal(diagnostic.proxyConnectStatus, null);
+    }
+  });
+
+  it('keeps unknown MND proxy failures unknown and excludes untrusted diagnostic fields', async () => {
+    const secret = 'proxy-user:proxy-secret@proxy.test';
+    for (const details of [undefined, {
+      stage: secret, httpStatus: 999, proxyConnectStatus: '407', message: secret,
+    }, {
+      stage: 'proxy_connect', httpStatus: 407, proxyConnectStatus: 407, message: secret,
+    }]) {
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: `https://${secret}`,
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw new TypeError('fetch failed');
+        },
+        proxyRequestFn: async () => {
+          throw Object.assign(new Error(secret), { proxyFailure: details });
+        },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      const diagnostic = mnd.requestDiagnostics.find(row => row.transport === 'proxy');
+      assert.equal(diagnostic.stage, details?.stage === 'proxy_connect' ? 'proxy_connect' : 'unknown');
+      assert.equal(diagnostic.httpStatus, null);
+      assert.equal(diagnostic.proxyConnectStatus, details?.stage === 'proxy_connect' ? 407 : null);
+      assert.equal(diagnostic.errorCode, 'SOURCE_ERROR');
+      assert.equal(mnd.requestCount, 2);
+      assert.equal(mnd.lastSuccessAt, null);
+      assert.equal(JSON.stringify(snapshot).includes('proxy-secret'), false);
+    }
   });
 
   it('recovers MND header failures and keeps repeated unusable coverage actionable', async () => {
@@ -3681,8 +3716,10 @@ describe('quantified cross-Strait activity (#5575)', () => {
       assert.deepEqual(mnd?.requestDiagnostics?.filter(row => row.path.endsWith('/90000'))
         .map(({ elapsedMs, ...failure }) => failure), failures.map((failure, index) => ({
         path: '/en/News/PLAAct/90000', purpose: 'detail', attempt: index + 1,
-        stage: failure === 'timeout' ? 'response_headers' : 'parse',
+        stage: failure === 'timeout'
+          ? (index === 1 && failures[0] === 'timeout' ? 'unknown' : 'response_headers') : 'parse',
         httpStatus: failure === 'timeout' ? null : 200,
+        ...(failure === 'timeout' && index === 1 && failures[0] === 'timeout' ? { proxyConnectStatus: null } : {}),
         errorCode: failure === 'timeout' ? 'TIMEOUT' : 'MND_PUBLICATION_METADATA_MISSING',
         ...(index === 1 && failures[0] === 'timeout' ? { transport: 'proxy' } : {}),
       })));

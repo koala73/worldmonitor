@@ -74,10 +74,8 @@ function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
   });
 }
 
-// Every tender source funnels through here, so this is the one place a transient
-// upstream blip can be absorbed. Without it a single failed fetch failed the whole
-// source and raised a health warn that self-healed on the next tick — noise the
-// operator cannot act on.
+// Most sources share this HTTP retry path. World Bank wraps the complete JSON
+// read separately so body failures share its bounded retry budget.
 //
 // The retry budget is BOUNDED by the bundle section, not chosen for its own sake:
 // Global-Tenders has timeoutMs 180_000 and CanadaBuys uses a 60s per-attempt
@@ -313,7 +311,42 @@ export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = 
   return { records, status: sourceStatus('gets', 'ok', records, '', now) };
 }
 
-export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchJson } = {}) {
+async function fetchWorldBankJson(url) {
+  // Include body consumption in each attempt. Retrying only fetch() leaves
+  // timeouts and truncated JSON after successful headers outside the retry loop.
+  const deadline = Date.now() + 75_000;
+  let attempt = 0;
+  return withRetry(async () => {
+    attempt += 1;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw Object.assign(new Error('World Bank request budget exhausted'), { nonRetryable: true });
+    }
+    let phase = 'headers';
+    try {
+      const response = await fetchResponseTransport(url, {
+        timeoutMs: Math.min(20_000, remaining),
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      });
+      if (!response.ok) {
+        const error = httpRetryError(response, { remainingBudgetMs: deadline - Date.now() });
+        await response.body?.cancel().catch(() => {});
+        throw error;
+      }
+      phase = 'body';
+      return await response.json();
+    } catch (error) {
+      const wait = Math.max(5000 * 2 ** (attempt - 1), error.retryAfterMs || 0);
+      if (wait >= deadline - Date.now()) error.nonRetryable = true;
+      const reason = error.status ? `HTTP_${error.status}`
+        : ['TimeoutError', 'AbortError', 'SyntaxError'].includes(error.name) ? error.name : 'transport';
+      console.warn(`[World-Bank] attempt=${attempt}/3 phase=${phase} failure=${reason}`);
+      throw error;
+    }
+  }, 2, 5000);
+}
+
+export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchWorldBankJson } = {}) {
   const url = new URL('https://search.worldbank.org/api/v2/procnotices');
   url.searchParams.set('format', 'json');
   url.searchParams.set('rows', String(MAX_PER_SOURCE));
@@ -325,13 +358,27 @@ export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchJson
   url.searchParams.set('srce', 'both');
   url.searchParams.set('notice_type_exact', 'Invitation for Bids^Invitation for Prequalification^Request for Expression of Interest');
   url.searchParams.set('deadline_strdate', new Date(now).toISOString().slice(0, 10));
-  const payload = await fetchJsonFn(url, { retryDelayMs: 5000 });
+  const payload = await fetchJsonFn(url);
   const rawNotices = payload?.procnotices;
-  if (!rawNotices || (typeof rawNotices !== 'object' && !Array.isArray(rawNotices))) {
+  if (!rawNotices || typeof rawNotices !== 'object') {
     throw new Error('World Bank response is missing procnotices');
   }
-  const notices = Array.isArray(rawNotices) ? rawNotices : Object.values(rawNotices || {});
-  const records = notices.map(normalizeWorldBankNotice).filter((tender) => isOpenOpportunity(tender, now));
+  const notices = Array.isArray(rawNotices) ? rawNotices : Object.values(rawNotices);
+  const normalized = notices.map(normalizeWorldBankNotice);
+  if (normalized.some((tender) => !tender?.sourceNoticeId || !tender.title || !Number.isFinite(Date.parse(tender.deadline)))) {
+    throw new Error('World Bank response contains malformed notices');
+  }
+  // This is a bounded sample, not a full-corpus crawl. When the provider
+  // declares its result window, a truncated window must not clear prior data.
+  if (payload.total != null) {
+    const total = Number(payload.total);
+    if (!/^\d+$/.test(String(payload.total)) || !Number.isSafeInteger(total)
+      || notices.length !== Math.min(MAX_PER_SOURCE, total)
+      || (payload.os != null && Number(payload.os) !== 0)) {
+      throw new Error('World Bank response contains an incomplete notice window');
+    }
+  }
+  const records = normalized.filter((tender) => isOpenOpportunity(tender, now));
   return { records, status: sourceStatus('world-bank', 'ok', records, '', now) };
 }
 
@@ -385,8 +432,8 @@ async function recordUnavailableSourceHealth(snapshot) {
 }
 
 export function sourceHealthMeta(status) {
-  const contractsFinder = status.source === 'contracts-finder';
-  const successTime = status.lastSuccessfulAt || ((!contractsFinder || status.state === 'ok') ? status.fetchedAt : '');
+  const trackedSource = ['contracts-finder', 'world-bank'].includes(status.source);
+  const successTime = status.lastSuccessfulAt || ((!trackedSource || status.state === 'ok') ? status.fetchedAt : '');
   const successfulAt = Date.parse(successTime || '');
   const failed = status.state !== 'ok';
   return {
@@ -394,7 +441,7 @@ export function sourceHealthMeta(status) {
     recordCount: status.recordCount || 0,
     sourceState: status.state,
     stale: Boolean(status.stale || failed),
-    ...(contractsFinder ? {
+    ...(trackedSource ? {
       lastAttemptAt: status.fetchedAt,
       lastSuccessfulAt: status.lastSuccessfulAt || '',
       consecutiveFailures: status.consecutiveFailures,
@@ -412,11 +459,12 @@ async function writeSourceStatus(status) {
   await writeExtraKey(metaKey, sourceHealthMeta(status), SOURCE_STATUS_TTL_SECONDS);
 }
 
-async function main() {
+export async function main({ adapters, now } = {}) {
   loadEnvFile(import.meta.url);
   await runSeed('economic', 'global-tenders', GLOBAL_TENDER_KEY, async () => {
     const snapshot = await fetchGlobalTenders({
-      previousSnapshot: await readCanonicalValue(GLOBAL_TENDER_KEY).catch(() => null),
+      adapters, now,
+      previousSnapshot: await readCanonicalValue(GLOBAL_TENDER_KEY, { strict: true }),
     });
     // A fully unavailable initial run fails canonical validation by design, but
     // operators still need the per-source failure states written to health.
