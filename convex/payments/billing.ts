@@ -3825,16 +3825,17 @@ export const claimSubscription = mutation({
               { planKey: anonEntitlement.planKey, validUntil: anonEntitlement.validUntil },
               strongestCurrentCoverage,
             ) >= 0;
-          if (anonCompOutranksCurrentCoverage) {
-            await ctx.db.patch(existingEntitlement._id, {
-              planKey: anonEntitlement.planKey,
-              features: anonEntitlement.features,
-              validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
-              compUntil: anonCompUntil,
-              compPlanKey: undefined,
-              updatedAt: recomputeTimestamp,
-            });
+          if (!anonCompOutranksCurrentCoverage) {
+            throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
           }
+          await ctx.db.patch(existingEntitlement._id, {
+            planKey: anonEntitlement.planKey,
+            features: anonEntitlement.features,
+            validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
+            compUntil: anonCompUntil,
+            compPlanKey: undefined,
+            updatedAt: recomputeTimestamp,
+          });
         }
         await ctx.db.delete(anonEntitlement._id);
       } else {

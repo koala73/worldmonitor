@@ -298,7 +298,7 @@ describe("claimSubscription anonymous ownership proof", () => {
     expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
   });
 
-  test("does not let a lower-tier anon comp floor suppress a higher real subscription on claim", async () => {
+  test("refuses to discard an anonymous legacy comp source beneath stronger paid coverage", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     const t = convexTest(schema, modules);
     const anonCompUntil = NOW + 90 * DAY_MS;
@@ -328,18 +328,18 @@ describe("claimSubscription anonymous ownership proof", () => {
     });
     const claimToken = await signAnonClaimToken(ANON_USER_ID);
 
-    await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+    const readClaimState = () => t.run(async (ctx) => ({
+      subscriptions: await ctx.db.query("subscriptions").collect(),
+      entitlements: await ctx.db.query("entitlements").collect(),
+      customers: await ctx.db.query("customers").collect(),
+      payments: await ctx.db.query("paymentEvents").collect(),
+    }));
+    const before = await readClaimState();
+    await expect(t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
       anonId: ANON_USER_ID,
       claimToken,
-    });
-
-    const entitlement = await t.run(async (ctx) =>
-      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
-    );
-    expect(entitlement?.planKey).toBe("api_business");
-    expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
-    expect(entitlement?.validUntil).toBe(realPaidUntil);
-    expect(entitlement?.compUntil).toBeUndefined();
+    })).rejects.toThrow("LEGACY_COMP_SOURCE_REQUIRES_AUDIT");
+    expect(await readClaimState()).toEqual(before);
   });
 
   test("schedules anon cache delete and real-user cache sync after a proven claim", async () => {
