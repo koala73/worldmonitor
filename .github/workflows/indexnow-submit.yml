@@ -2,12 +2,13 @@ name: IndexNow Submission
 
 # Submit the canonical apex MCP URL, the www product/blog surfaces, and every
 # variant dashboard host only after Vercel reports that the exact production
-# deployment succeeded. The changed-file gate avoids resubmitting unchanged URLs
-# on unrelated deploys; workflow_dispatch remains available for an
-# operator-requested recovery.
+# deployment succeeded. Docs can publish independently without a Vercel build,
+# so the daily run catches published URLs missed by deployment events.
 on:
   deployment_status:
   workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
 
 permissions:
   contents: read
@@ -20,6 +21,7 @@ jobs:
   submit-indexnow:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       (
         github.event.deployment_status.state == 'success' &&
         github.event.deployment.environment == 'Production' &&
@@ -52,13 +54,6 @@ jobs:
               process.stdout.write(new URL(batch.keyLocation).pathname.slice(1));
             "
           )"
-          WWW_KEY_PATH="$(
-            node --input-type=module -e "
-              import { INDEXNOW_BATCHES } from './scripts/seo-indexnow-submit.mjs';
-              const batch = INDEXNOW_BATCHES.find(({ host }) => host === 'www.worldmonitor.app');
-              process.stdout.write(new URL(batch.keyLocation).pathname.slice(1));
-            "
-          )"
           # Derived from the committed sitemap, so a newly published variant host
           # is submitted without editing this workflow (#6563).
           VARIANT_HOSTS="$(
@@ -86,6 +81,10 @@ jobs:
             echo "submit_apex=true" >> "$GITHUB_OUTPUT"
             echo "submit_www=true" >> "$GITHUB_OUTPUT"
             echo "submit_variants=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "schedule" ]]; then
+            echo "submit_apex=false" >> "$GITHUB_OUTPUT"
+            echo "submit_www=true" >> "$GITHUB_OUTPUT"
+            echo "submit_variants=false" >> "$GITHUB_OUTPUT"
           elif ! git rev-parse "${DEPLOYED_SHA}^" >/dev/null 2>&1; then
             echo "submit_apex=true" >> "$GITHUB_OUTPUT"
             echo "submit_www=true" >> "$GITHUB_OUTPUT"
@@ -93,15 +92,13 @@ jobs:
           else
             CHANGED_FILES="$(git diff-tree --no-commit-id --name-only -r "${DEPLOYED_SHA}^" "$DEPLOYED_SHA")"
             SUBMIT_APEX=false
-            SUBMIT_WWW=false
+            # The last commit is not the full deployed change set. Read the
+            # published www inventory even after an unrelated final commit.
+            SUBMIT_WWW=true
             SUBMIT_VARIANTS=false
             if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|api/mcp\.ts|api/mcp/.*|middleware\.ts|public/mcp-server\.md|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_APEX=true
-            fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|docs/snapshots/github-stars-[0-9]{4}-[0-9]{2}-[0-9]{2}\.json|pro-test/.*|public/blog/.*|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/github-stars-snapshot\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
-              || grep -Fxq "public/${WWW_KEY_PATH}" <<< "$CHANGED_FILES"; then
-              SUBMIT_WWW=true
             fi
             # Each variant batch submits the bare root as well as /dashboard, and
             # vercel.json rewrites every variant root to /pro/welcome.html — so
