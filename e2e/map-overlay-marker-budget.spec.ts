@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
+import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 import { waitForDomQuiescence, type DomQuiescenceResult } from './helpers/dom-quiescence';
 
 /**
@@ -551,6 +552,10 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
           timezoneId: 'UTC',
         });
         const page = await context.newPage();
+        const lossWatch = attachBrowserLossDiagnostics(
+          pageBrowserLossEvents(page),
+          `map-overlay-marker-budget cold-load-${attempt + 1}`,
+        );
         try {
           const load = await loadColdDashboard(page);
           const firstPaint = await readDashboardMetrics(page);
@@ -573,6 +578,7 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
             console.warn(`[map-budget] cold load ${sample.coldLoad} did not produce a settled sample: ${JSON.stringify(sample.quiescence)}`);
           }
         } finally {
+          lossWatch.dispose();
           await context.close();
         }
       }
