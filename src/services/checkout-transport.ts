@@ -12,7 +12,8 @@
  * Retry policy:
  *   - One key per logical call, reused across attempts — the server
  *     collapses a duplicate that raced a slow first attempt.
- *   - One retry, only for 502/503/504 or a fast network failure
+ *   - One retry, only for a status in RETRYABLE_CHECKOUT_STATUSES (the
+ *     gateway trio plus Cloudflare 520-525) or a fast network failure
  *     (fetch rejecting with e.g. TypeError before the timeout budget).
  *   - Timeout/abort rejections do NOT retry: the user already waited a
  *     full attempt budget; the caller classifies and shows retry copy.
@@ -25,7 +26,29 @@
 
 import { createTimeoutSignal as abortTimeoutSignal } from './timeout-signal';
 
-export const RETRYABLE_CHECKOUT_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+/**
+ * Statuses that mean the edge never got an application response out of our
+ * origin, so a second attempt can still produce a checkout session.
+ *
+ * The gateway trio is the standard spelling. Cloudflare answers the same
+ * condition with its own 52x family, and shipping only 502/503/504 left that
+ * half unretried: the WORLDMONITOR-Q4 event on 2026-09-12 was a bare 520 on
+ * POST /api/create-checkout, classified `service_unavailable` for the user and
+ * then handed straight back with no second attempt.
+ *
+ * 520-525 all describe an origin Cloudflare could not reach, could not
+ * complete a handshake with, or that timed out — transient by nature. 526
+ * (invalid origin certificate) and 530 (wrapped origin DNS / Worker error) are
+ * standing misconfigurations that no 1.5s retry clears, so they stay out and
+ * the user sees the failure copy immediately instead of after a dead wait.
+ *
+ * Application 5xx stays out too: our own relay emits a JSON envelope on 500,
+ * and replaying that only doubles the provider call.
+ */
+export const RETRYABLE_CHECKOUT_STATUSES: ReadonlySet<number> = new Set([
+  502, 503, 504,
+  520, 521, 522, 523, 524, 525,
+]);
 
 export const CHECKOUT_RETRY_DELAY_MS = 1_500;
 
