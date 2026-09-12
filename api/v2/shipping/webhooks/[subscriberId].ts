@@ -20,7 +20,11 @@ import {
 } from '../../../../server/worldmonitor/shipping/v2/webhook-shared';
 
 export default async function handler(req: Request): Promise<Response> {
-  const cors = getCorsHeaders(req);
+  const cors = {
+    ...getCorsHeaders(req),
+    'Cache-Control': 'private, no-store',
+    'CDN-Cache-Control': 'no-store',
+  };
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: cors });
