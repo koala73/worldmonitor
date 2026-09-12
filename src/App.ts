@@ -389,9 +389,8 @@ export class App {
   };
   private readonly handleViewportPrime = (event?: Event): void => {
     if (!this.viewportHydrationReady || this.state.isDestroyed) return;
-    // Early scrolls are covered by the initial fan-out scan. Arming earlier lets
-    // layout thrash from that scroll schedule wm:hydration:viewport-trigger and
-    // flake the #5876 early-scroll regression (Expected 0, Received 1).
+    // The catch-up scan after fan-out covers early viewport changes without
+    // replaying their scroll events as viewport-trigger marks. (#5876)
     if (!this.viewportTriggersArmed) return;
     if (
       event &&
@@ -2969,6 +2968,9 @@ export class App {
       ? performance.now()
       : Date.now();
     this.viewportTriggersArmed = true;
+    // The viewport can move after the initial synchronous geometry scan while
+    // other fan-out requests are pending. Hydrate its current position once.
+    void this.primeVisiblePanelData();
     if (import.meta.env.VITE_E2E === '1') {
       document.documentElement.dataset.wmInitialDataReady = 'true';
     }
