@@ -91,6 +91,46 @@ function event(value: string, filenames: string[] = []): PolicyEvent {
   };
 }
 
+/**
+ * The checkout catch on this surface reports with an ownership tag
+ * (`kind: 'checkout_request_failed'`). A tag can only be honoured by a filter
+ * that runs late enough to read it: `ignoreErrors` is applied as an SDK event
+ * processor inside `prepareEvent`, before `marketingBeforeSend` and blind to
+ * both tags and frames, so a network-worded entry there silently discards an
+ * owned checkout failure. The retry widening shipped to this bundle makes those
+ * exact wordings more reachable, so the suppression has to move late enough to
+ * see the tag (WORLDMONITOR-Q4).
+ */
+describe('marketingBeforeSend — owned network failures survive (WORLDMONITOR-Q4)', () => {
+  const CHECKOUT_TAGS = {
+    surface: 'pro-marketing',
+    code: 'service_unavailable',
+    kind: 'checkout_request_failed',
+  };
+
+  for (const [type, value] of [
+    ['TypeError', 'Failed to fetch'],
+    ['TypeError', 'Load failed'],
+    ['TypeError', 'NetworkError when attempting to fetch resource.'],
+  ]) {
+    it(`keeps "${type}: ${value}" once checkout has claimed it`, () => {
+      assert.equal(
+        isIgnored(type, value),
+        false,
+        `"${value}" must not be dropped by ignoreErrors — that layer cannot see the ownership tag`,
+      );
+      const owned = { ...event(`${type}: ${value}`), tags: { ...CHECKOUT_TAGS } };
+      assert.equal(marketingBeforeSend(owned), owned);
+    });
+
+    it(`still drops "${type}: ${value}" with no first-party report`, () => {
+      // The counter-fixture. Moving the pattern must not widen it: an untagged
+      // network failure stays as suppressed as it was in ignoreErrors.
+      assert.equal(marketingBeforeSend(event(`${type}: ${value}`)), null);
+    });
+  }
+});
+
 describe('marketing ignoreErrors', () => {
   it('drops the WKWebView host-bridge timeout (WORLDMONITOR-ZY)', () => {
     assert.equal(

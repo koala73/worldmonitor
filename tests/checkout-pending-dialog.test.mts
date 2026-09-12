@@ -186,6 +186,13 @@ const stubSources: Record<string, string> = {
   `,
   './checkout-sentry-policy': `
     export const shouldSkipSentryForAction = () => false;
+    export const CHECKOUT_REPORT_KIND = 'checkout_request_failed';
+    export const buildCheckoutReportTags = (input) => ({
+      component: 'dodo-checkout',
+      action: input.action,
+      code: input.code,
+      kind: CHECKOUT_REPORT_KIND,
+    });
   `,
   './entitlements': `
     export const isEntitled = () => false;

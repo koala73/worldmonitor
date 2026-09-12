@@ -2517,12 +2517,21 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
 describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
   async function importTrackAircraft() {
-    return importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
+    // Provider-priority tests isolate admission; aircraft-input-boundary tests
+    // exercise the real scoped limiter through the generated gateway.
+    const stubDir = createTempDir('wm-aircraft-rate-');
+    const rateStub = join(stubDir, 'rate.mjs');
+    writeFileSync(rateStub, `export const getClientIp = () => 'test';
+export const checkScopedRateLimit = async () => ({ allowed: true, degraded: false });
+export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Retry-After': '5' };`);
+    const imported = await importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
       './_shared': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
+      '../../../_shared/rate-limit': rateStub,
     });
+    return { module: imported.module, cleanup() { imported.cleanup(); removeTempDir(stubDir); } };
   }
 
   it('serves a bbox from Wingbits without spending an OpenSky request', async () => {
@@ -2555,7 +2564,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 10,
         swLon: 10,
         neLat: 11,
@@ -2603,13 +2612,13 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const quiet = await module.trackAircraft({}, {
+      const quiet = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 10,
         swLon: 10,
         neLat: 11,
         neLon: 11,
       });
-      const recovered = await module.trackAircraft({}, {
+      const recovered = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 20,
         swLon: 20,
         neLat: 21,
@@ -2663,7 +2672,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '4b1805',
         swLat: 0,
         swLon: 0,
@@ -2707,7 +2716,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '4b1805',
         swLat: 0,
         swLon: 0,
@@ -2753,7 +2762,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '4b1805',
         swLat: 0,
         swLon: 0,
@@ -2842,7 +2851,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '',
         callsign: '',
         swLat: 10,
@@ -2881,7 +2890,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 10,
         swLon: 10,
         neLat: 11,

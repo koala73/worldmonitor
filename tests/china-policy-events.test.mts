@@ -201,13 +201,9 @@ describe('China official policy adapters (#5576)', () => {
   // attempt would add GC noise on top of the measurement — the exact
   // allocation-driven noise this guard is designed to filter out.
   //
-  // The guard still judges ratio-of-mins so a single stalled sample cannot
-  // falsely trip it (#6985 / #7102). That same min/min aggregation can
-  // compress a genuine quadratic when the quadrupled series draws one lucky
-  // fast sample (observed 11.9x CPU against the 12x ceiling on CI). The
-  // positive control therefore asserts on the median per-attempt ratio
-  // against the same 12x ceiling: a linear scan stays ~4x (GC noise ~10x),
-  // while a real quadratic's median stays in the ~14–16x band.
+  // Keep the ratio-of-mins guard, but time fixed batches and report per-scan
+  // CPU cost. Batching amortizes clock overhead and GC noise, and warms both
+  // input sizes before sampling without retrying until a desired result.
   const buildFixtures = (repeat: number) => {
     const openers = '<div class="content">'.repeat(repeat);
     const closers = '</div>'.repeat(repeat);
@@ -222,19 +218,19 @@ describe('China official policy adapters (#5576)', () => {
   type ScalingFixtures = ReturnType<typeof buildFixtures>;
 
   const SCALING_ATTEMPTS = 5;
+  const SCALING_SAMPLE_RUNS = 4;
   const SCALING_CEILING_RATIO = 12;
-
-  // One definition of the ceiling, shared by the guard and by the control that
-  // proves the guard can still fail. A control carrying its own copy of the
-  // threshold stops tracking the guard the moment either one is retuned, which
-  // is exactly when a stale control is most reassuring and least true.
   const scalingCeilingMs = (base: number): number =>
     base * SCALING_CEILING_RATIO + 2;
+  const rejectsScaling = ({ base, quadrupled }: { base: number; quadrupled: number }): boolean =>
+    quadrupled > scalingCeilingMs(base);
 
-  const medianOf = (values: number[]): number => {
-    const sorted = [...values].sort((left, right) => left - right);
-    return sorted[Math.floor(sorted.length / 2)]!;
-  };
+  it('keeps the scaling predicate at 12x plus 2ms, including the control gap', () => {
+    assert.equal(rejectsScaling({ base: 10, quadrupled: 115 }), false);
+    assert.equal(rejectsScaling({ base: 1, quadrupled: 13 }), false);
+    assert.equal(rejectsScaling({ base: 10, quadrupled: 122 }), false);
+    assert.equal(rejectsScaling({ base: 10, quadrupled: 123 }), true);
+  });
 
   const measureScaling = (
     walk: (fixtures: ScalingFixtures) => void,
@@ -244,16 +240,15 @@ describe('China official policy adapters (#5576)', () => {
     quadrupled: number;
     ratio: number;
     marginMs: number;
-    medianRatio: number;
   } => {
     const baseFixtures = buildFixtures(baseRepeat);
     const quadrupledFixtures = buildFixtures(baseRepeat * 4);
 
     const timeOnce = (fixtures: ScalingFixtures): number => {
       const startedAt = process.cpuUsage();
-      walk(fixtures);
+      for (let run = 0; run < SCALING_SAMPLE_RUNS; run += 1) walk(fixtures);
       const used = process.cpuUsage(startedAt);
-      return (used.user + used.system) / 1000;
+      return (used.user + used.system) / (1000 * SCALING_SAMPLE_RUNS);
     };
 
     // Discarded warmup, one per size.
@@ -267,13 +262,11 @@ describe('China official policy adapters (#5576)', () => {
     // lands on both series' running minimum instead of just one (#6985).
     let base = Number.POSITIVE_INFINITY;
     let quadrupled = Number.POSITIVE_INFINITY;
-    const attemptRatios: number[] = [];
     for (let attempt = 0; attempt < SCALING_ATTEMPTS; attempt += 1) {
       const baseMs = timeOnce(baseFixtures);
       const quadrupledMs = timeOnce(quadrupledFixtures);
       base = Math.min(base, baseMs);
       quadrupled = Math.min(quadrupled, quadrupledMs);
-      attemptRatios.push(quadrupledMs / baseMs);
     }
 
     return {
@@ -281,19 +274,18 @@ describe('China official policy adapters (#5576)', () => {
       quadrupled,
       ratio: quadrupled / base,
       marginMs: quadrupled - scalingCeilingMs(base),
-      medianRatio: medianOf(attemptRatios),
     };
   };
 
   const scalingDetail = (
     scaling: ReturnType<typeof measureScaling>,
   ): string =>
-    `${scaling.ratio.toFixed(1)}x min/min, median attempt ${scaling.medianRatio.toFixed(1)}x ` +
+    `${scaling.ratio.toFixed(1)}x min/min ` +
     `— linear is ~4x, catastrophic backtracking ~16x ` +
     `(${scaling.base.toFixed(1)}ms → ${scaling.quadrupled.toFixed(1)}ms, ` +
     `${scaling.marginMs.toFixed(1)}ms against the ceiling)`;
 
-  it('parses hostile markup without superlinear rescans', () => {
+  it('parses hostile markup without superlinear rescans', (t) => {
     const scaling = measureScaling((fixtures) => {
       __testing__.stripHtml(fixtures.script);
       parseAgencyListing('CAC', fixtures.anchors);
@@ -301,13 +293,14 @@ describe('China official policy adapters (#5576)', () => {
       parsePolicyDocumentHtml(fixtures.unbalanced);
     }, 4_000);
 
+    t.diagnostic(scalingDetail(scaling));
     assert.ok(
-      scaling.marginMs <= 0,
+      !rejectsScaling(scaling),
       `quadrupling the input scaled cost ${scalingDetail(scaling)}`,
     );
   });
 
-  it('keeps its teeth: a genuinely quadratic scan still trips the gate', () => {
+  it('keeps its teeth: a genuinely quadratic scan still trips the gate', (t) => {
     // Positive control for the guard above. Every change that has made that
     // guard quieter — the 4x step, the discarded warmup, the 12x ceiling, the
     // interleaved best-of-5 (#6985), CPU-time (#7238) — traded sensitivity
@@ -322,10 +315,6 @@ describe('China official policy adapters (#5576)', () => {
     // uses a test-only probe around that real parser path and runs at a smaller
     // base size because a genuinely quadratic scan at 16k would dominate the
     // file's runtime.
-    //
-    // Assert on median per-attempt ratio (same 12x ceiling), not ratio-of-mins:
-    // min/min is what keeps the guard stable, but it is the wrong aggregator
-    // for proving the gate still fails.
     let stackComparisons = 0;
     const scaling = measureScaling((fixtures) => {
       stackComparisons += __testing__.runPolicyHtmlClosingTagRegressionProbe(
@@ -337,8 +326,9 @@ describe('China official policy adapters (#5576)', () => {
       stackComparisons > 0,
       'the control must actually scan the parser closing-tag stack',
     );
+    t.diagnostic(scalingDetail(scaling));
     assert.ok(
-      scaling.medianRatio > SCALING_CEILING_RATIO,
+      rejectsScaling(scaling),
       `the quadratic control must trip the gate, but scaled only ${scalingDetail(scaling)}`,
     );
   });

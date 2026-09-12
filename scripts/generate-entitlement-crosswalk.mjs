@@ -255,6 +255,7 @@ const SITE_MAP = [
   [/summarization\.ts|summarize-gate/,        { cap: 'news.summarization' }], // NOTE: matches no current gate
   [/panel-layout|settings-window|event-handlers/, { cap: 'limits.panels', note: 'cap + gate CTA plumbing' , preds: ['hasPremiumAccess','isProUser'] }],
   [/widget-store/,                            { cap: 'widgets.custom' }], // NOTE: matches no current gate
+  [/^api\/v2\/shipping\/webhooks\//, { exclude: 'consumer of shipping premium gate — preserves billing verification denial', preds: ['resolvePremiumCallerIdentity'] }],
   [/entitlements|entitlement-check|premium-check|pro-entitlement|billing|payments\//, { exclude: 'entitlement plumbing — resolves/propagates state, gates nothing itself' , preds: ['apiAccess','isCallerPremium','resolvePremiumCallerIdentity','tier'] }],
   [/UnifiedSettings|data-loader|http\.ts|apiPlanLimitUsage|mcpProTokens|gateway\.ts|shipping/, { exclude: 'consumer of a gate mapped elsewhere — renders or forwards, does not define' , preds: ['apiAccess','hasPremiumAccess','isCallerPremium','isProUser','mcpAccess','tier'] }],
 ];
@@ -307,8 +308,8 @@ const SITE_BASELINE = {
   "api/mcp/skill-extension/generated.ts::tier": 1,
   "api/me/entitlement.ts::isCallerPremium": 1,
   "api/notification-channels.ts::tier": 1,
-  "api/v2/shipping/webhooks/[subscriberId].ts::isCallerPremium": 1,
-  "api/v2/shipping/webhooks/[subscriberId]/[action].ts::isCallerPremium": 1,
+  "api/v2/shipping/webhooks/[subscriberId].ts::resolvePremiumCallerIdentity": 1,
+  "api/v2/shipping/webhooks/[subscriberId]/[action].ts::resolvePremiumCallerIdentity": 1,
   "api/widget-agent.ts::tier": 1,
   "convex/alertRules.ts::tier": 1,
   "convex/apiKeys.ts::apiAccess": 1,
