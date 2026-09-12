@@ -4226,12 +4226,13 @@ export const deleteSubscriptionByDodoId = internalMutation({
     const userId = sub.userId;
     const rawCustomerId = (sub.rawPayload as { customer?: { customer_id?: unknown } } | null)
       ?.customer?.customer_id;
-    let customerId = sub.dodoCustomerId ||
+    const customerId = sub.dodoCustomerId ||
       (typeof rawCustomerId === "string" ? rawCustomerId : "");
-    if (!customerId) {
-      const customer = await ctx.db.query("customers")
-        .withIndex("by_userId", (q) => q.eq("userId", userId)).first();
-      customerId = customer?.dodoCustomerId ?? "";
+    // A user's current customer mapping does not prove this subscription's
+    // customer: shared customer rows are reassigned by later webhooks. Preserve
+    // the subscription until its customer can be repaired from provider/audit evidence.
+    if (!customerId.trim()) {
+      throw new ConvexError({ kind: "CUSTOMER_PROVENANCE_REQUIRED" });
     }
     if (customerId) {
       const retainedOwner = await ctx.db.query("deletedSubscriptionCustomers")
