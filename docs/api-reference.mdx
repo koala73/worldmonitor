@@ -96,7 +96,7 @@ date filters cannot retrieve history outside the available snapshot.
 Omit `country`, `start`, and `end` (or use empty country and zero timestamps) for
 the full geographic snapshot. Filter by ISO alpha-2 country code or country name.
 Non-default queries use inclusive Unix-millisecond bounds; an unset start defaults
-to 30 days ago and an unset end defaults to now. `page_size` and `cursor` remain
+to midnight UTC 30 days ago and an unset end defaults to now. `page_size` and `cursor` remain
 accepted no-ops. Rows without valid coordinates are omitted, including GDELT
 fallback rows that carry no location.
 
