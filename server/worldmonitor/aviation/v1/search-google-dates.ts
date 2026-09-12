@@ -9,9 +9,9 @@ import { sha256Hex } from '../../../../api/_crypto.js';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { parseStringArray } from '../../../_shared/parse-string-array';
 import { normalizePassengerCount } from '../../../_shared/passenger-count';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 
-// Medium-cache tier (10 min) — use cachedFetchJson for stampede protection.
+// Medium-cache tier (10 min) — use cachedFetchJsonWithMeta for stampede protection.
 const CACHE_TTL = 600;
 
 export async function searchGoogleDates(
@@ -82,10 +82,10 @@ export async function searchGoogleDates(
     params.append('airlines', airline);
   }
 
-  const cacheKey = `aviation:gf-dates:${await sha256Hex(params.toString())}:v2`;
+  const cacheKey = `aviation:gf-dates:${await sha256Hex(params.toString())}:v3`;
 
   try {
-    const data = await cachedFetchJson<{ dates: unknown[]; partial?: boolean }>(
+    const { data } = await cachedFetchJsonWithMeta<{ dates: unknown[]; degraded: boolean }>(
       cacheKey,
       CACHE_TTL,
       async () => {
@@ -94,10 +94,12 @@ export async function searchGoogleDates(
           signal: AbortSignal.timeout(30_000),
         });
         if (!resp.ok) throw new Error(`relay returned ${resp.status}`);
-        const json = (await resp.json()) as { dates?: unknown[]; partial?: boolean; error?: string };
+        const json = (await resp.json()) as { dates?: unknown[]; partial?: boolean; cooldown?: boolean; error?: string };
         if (!Array.isArray(json.dates)) throw new Error(json.error ?? 'no results');
-        return { dates: json.dates, partial: json.partial };
+        return { dates: json.dates, degraded: json.partial === true || json.cooldown === true };
       },
+      120,
+      { cacheFailures: false },
     );
 
     if (!data) {
@@ -106,8 +108,8 @@ export async function searchGoogleDates(
 
     return {
       dates: data.dates as SearchGoogleDatesResponse['dates'],
-      degraded: data.partial === true,
-      error: data.partial === true ? 'partial results: one or more date chunks failed' : '',
+      degraded: data.degraded,
+      error: data.degraded ? 'partial results: one or more date chunks failed' : '',
     };
   } catch (err) {
     return { dates: [], degraded: true, error: err instanceof Error ? err.message : 'search failed' };

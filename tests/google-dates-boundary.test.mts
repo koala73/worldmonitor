@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { afterEach, beforeEach, test } from 'node:test';
 import type { SearchGoogleDatesRequest } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { searchGoogleDates } from '../server/worldmonitor/aviation/v1/search-google-dates.ts';
@@ -59,7 +61,7 @@ test('canonical equivalents share a bounded hashed key and relay query', async (
   assert.deepEqual(feeds()[0]!.searchParams.getAll('airlines'), ['AA', 'BA']);
   const keys = [...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:'));
   assert.equal(keys.length, 1);
-  assert.match(keys[0]!, /^aviation:gf-dates:[a-f0-9]{64}:v2$/);
+  assert.match(keys[0]!, /^aviation:gf-dates:[a-f0-9]{64}:v3$/);
 });
 test('gateway invalid input is400 and missing limiter store is503 without relay calls', async () => {
   assert.equal((await gateway(request({ origin: 'TOOLONG' }))).status, 400);
@@ -166,31 +168,8 @@ test('distinct effective options keep distinct keys; one-way duration is irrelev
 });
 
 test('actual relay calendar handler makes at most6 chunks for accepted366-day range', async () => {
-  const { readFileSync } = await import('node:fs');
-  const { runInNewContext } = await import('node:vm');
-  const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-  const start = source.indexOf('async function handleGoogleFlightsDates(req, res)');
-  // The function ends before the next top-level section; select its closing brace.
-  const functionEnd = source.indexOf('\n}\n', start) + 2;
-  assert.ok(start > 0 && functionEnd > start);
   let googleCalls = 0;
-  const calendar = runInNewContext(`(${source.slice(start, functionEnd)})`, {
-    URL, Date, Math, JSON, Number, parseInt, console,
-    gfParseAirlines: (values: string[]) => values,
-    gfGlobal429Until: 0, GF_CALENDAR_URL: 'https://google.example/calendar', GF_HEADERS: {},
-    incrementRelayMetric() {}, recordRelayOutcome() {},
-    buildDateFilters: (params: unknown) => params, encodeGfFilters: JSON.stringify,
-    AbortSignal, parseGfDates: () => [],
-    fetch: async () => { googleCalls++; return new Response('[]'); },
-  });
-  const transport = globalThis.fetch;
-  globalThis.fetch = (async (input, init) => {
-    if (new URL(String(input)).hostname === 'redis.example') return transport(input, init);
-    let status = 200;
-    let body = '';
-    await calendar({ url: String(input) }, { writeHead(code: number) { status = code; }, end(value: string) { body = value; } });
-    return new Response(body, { status });
-  }) as typeof fetch;
+  installCalendarRelay((async (_input, init) => { googleCalls++; return calendarResponse(init); }) as typeof fetch);
   assert.equal((await gateway(request({ start_date: '2026-01-01', end_date: '2027-01-01' }))).status, 200);
   assert.equal(googleCalls, 6);
   assert.equal((await gateway(request({ start_date: '2026-01-01', end_date: '2027-01-02' }))).status, 400);
@@ -293,4 +272,121 @@ test('unsigned trusted-marker spoof cannot create a verified MCP admission', asy
   assert.equal((await gateway(spoof)).status, 401);
   assert.equal(fixture.admissions(), 0);
   assert.equal(feeds().length, 0);
+});
+
+// Execute the relay's real Google functions without starting its daemon or live feeds.
+function installCalendarRelay(provider: typeof fetch) {
+  const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+  const start = source.indexOf('const GF_SHOPPING_URL =');
+  const end = source.indexOf('// ─── Widget Agent', start);
+  assert.ok(start >= 0 && end > start);
+  const handle = runInNewContext(source.slice(start, end) + '\nhandleGoogleFlightsDates;', {
+    URL, AbortSignal, process: { env: {} }, console: { warn() {}, error() {} },
+    fetch: provider, incrementRelayMetric() {}, recordRelayOutcome() {},
+    classifyUpstreamOutcome: () => 'timeout',
+  });
+  globalThis.fetch = (async (input, init) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    if (url.hostname === 'redis.example') return redis.fetchImpl(input, init);
+    let status = 200;
+    let headers: Record<string, string> = {};
+    let body = '';
+    await handle({ url: url.pathname + url.search }, {
+      writeHead(code: number, values: Record<string, string>) { status = code; headers = values; },
+      end(value: string) { body = value; },
+    });
+    return new Response(body, { status, headers });
+  }) as typeof fetch;
+}
+
+function calendarResponse(init?: RequestInit) {
+  const encoded = String(init?.body).slice('f.req='.length);
+  const filters = JSON.parse(JSON.parse(decodeURIComponent(encoded))[1]);
+  const [start, end] = filters[2] as [string, string];
+  const rows = [];
+  for (let day = Date.parse(start); day <= Date.parse(end); day += 86_400_000) {
+    rows.push([new Date(day).toISOString().slice(0, 10), '', [[null, 100]]]);
+  }
+  return Response.json([[null, null, JSON.stringify([rows])]]);
+}
+
+const yearGrid = { startDate: '2026-10-01', endDate: '2027-10-01' };
+
+test('366-day cold search completes six slow chunks concurrently in date order', async () => {
+  let active = 0;
+  let peak = 0;
+  let count = 0;
+  installCalendarRelay((async (_input, init) => {
+    const index = count++;
+    active++;
+    peak = Math.max(peak, active);
+    // Six sequential calls would exceed 30 seconds; reverse completion tests ordering.
+    await new Promise(resolve => setTimeout(resolve, 6000 + (5 - index) * 20));
+    active--;
+    return calendarResponse(init);
+  }) as typeof fetch);
+  const started = Date.now();
+  const pending = read(yearGrid);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(peak, 6, 'all six bounded chunks must start before the first completes');
+  const result = await pending;
+  assert.ok(Date.now() - started < 30_000);
+  assert.equal(count, 6);
+  assert.equal(result.degraded, false);
+  assert.equal(result.dates.length, 366);
+  assert.equal(new Set(result.dates.map(row => row.date)).size, 366);
+  assert.equal(result.dates[0]?.date, yearGrid.startDate);
+  assert.equal(result.dates.at(-1)?.date, yearGrid.endDate);
+  assert.deepEqual(result.dates.map(row => row.date), result.dates.map(row => row.date).sort());
+  assert.deepEqual(await read(yearGrid), result);
+  assert.equal(count, 6, 'complete result is cached');
+});
+
+test('failed calendar chunks retain successes without caching a partial grid and recover', async () => {
+  let count = 0;
+  installCalendarRelay((async (_input, init) => {
+    if (++count === 2) throw new DOMException('synthetic chunk timeout', 'TimeoutError');
+    return calendarResponse(init);
+  }) as typeof fetch);
+  const partial = await read(yearGrid);
+  assert.equal(partial.degraded, true);
+  assert.equal(partial.dates.length, 305);
+  assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
+  const recovered = await read(yearGrid);
+  assert.equal(recovered.degraded, false);
+  assert.equal(recovered.dates.length, 366);
+  assert.equal(count, 12);
+});
+
+test('calendar cooldown responses are degraded, do not cache, and suppress provider calls', async () => {
+  let count = 0;
+  installCalendarRelay((async () => { count++; return new Response('', { status: 429 }); }) as typeof fetch);
+  assert.equal((await read()).degraded, true);
+  const cooldown = await read();
+  assert.equal(cooldown.degraded, true);
+  assert.equal((await read(yearGrid)).degraded, true);
+  assert.equal(count, 1);
+  assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
+});
+
+test('all chunk failures and response-body failures cannot poison recovery', async () => {
+  let count = 0;
+  let fail = true;
+  installCalendarRelay((async (_input, init) => {
+    count++;
+    if (fail) {
+      if (count % 2 === 0) return new Response('', { status: 503 });
+      return new Response(new ReadableStream({ start(controller) { controller.error(new Error('synthetic body failure')); } }));
+    }
+    return calendarResponse(init);
+  }) as typeof fetch);
+  const failed = await read(yearGrid);
+  assert.equal(failed.degraded, true);
+  assert.deepEqual(failed.dates, []);
+  assert.equal(count, 6);
+  assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf-dates:')).length, 0);
+  fail = false;
+  assert.equal((await read(yearGrid)).dates.length, 366);
+  assert.equal(count, 12);
 });

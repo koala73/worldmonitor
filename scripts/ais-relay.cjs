@@ -13089,59 +13089,51 @@ async function handleGoogleFlightsDates(req, res) {
       recordRelayOutcome('googleFlights', 'success');
       incrementRelayMetric('googleFlightsServed');
     } else {
-      const current = new Date(start);
-      let chunksAttempted = 0;
-      while (current <= end && chunksAttempted < MAX_DATE_CHUNKS) {
-        chunksAttempted++;
+      const chunks = [];
+      for (let day = start.getTime(); day <= end.getTime() && chunks.length < MAX_DATE_CHUNKS; day += MAX_CHUNK * 86_400_000) {
+        chunks.push({
+          ...params,
+          startDate: new Date(day).toISOString().slice(0, 10),
+          endDate: new Date(Math.min(day + (MAX_CHUNK - 1) * 86_400_000, end.getTime())).toISOString().slice(0, 10),
+        });
+      }
+      if (totalDays > MAX_CHUNK * MAX_DATE_CHUNKS) hasPartialFailure = true;
+
+      // At most six concurrent 20s fetches fit within the RPC's 30s wait.
+      const results = await Promise.all(chunks.map(async (chunk) => {
         incrementRelayMetric('googleFlightsRequests');
         if (Date.now() < gfGlobal429Until) {
           incrementRelayMetric('googleFlights429');
           recordRelayOutcome('googleFlights', 'throttle');
           hasPartialFailure = true;
-          current.setDate(current.getDate() + MAX_CHUNK);
-          continue;
+          return [];
         }
-        const chunkEnd = new Date(current);
-        chunkEnd.setDate(chunkEnd.getDate() + MAX_CHUNK - 1);
-        if (chunkEnd > end) chunkEnd.setTime(end.getTime());
-
-        const chunkFilters = buildDateFilters({
-          ...params,
-          startDate: current.toISOString().slice(0, 10),
-          endDate: chunkEnd.toISOString().slice(0, 10),
-        });
-        const body = `f.req=${encodeGfFilters(chunkFilters)}`;
-        let gfResp;
         try {
-          gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
+          const body = `f.req=${encodeGfFilters(buildDateFilters(chunk))}`;
+          const gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
+          if (gfResp.status === 429) {
+            gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
+            console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
+            incrementRelayMetric('googleFlights429');
+            recordRelayOutcome('googleFlights', 'throttle');
+          } else if (gfResp.status === 401 || gfResp.status === 403) {
+            recordRelayOutcome('googleFlights', 'authRejection');
+          } else if (gfResp.ok) {
+            const text = await gfResp.text();
+            recordRelayOutcome('googleFlights', 'success');
+            incrementRelayMetric('googleFlightsServed');
+            return parseGfDates(text, isRoundTrip);
+          } else {
+            recordRelayOutcome('googleFlights', 'terminalFailure');
+            console.warn(`[Google Flights] dates chunk ${chunk.startDate} failed: ${gfResp.status}`);
+          }
         } catch (err) {
           recordRelayOutcome('googleFlights', classifyUpstreamOutcome({ error: err }));
-          hasPartialFailure = true;
-          current.setDate(current.getDate() + MAX_CHUNK);
-          continue;
         }
-        if (gfResp.status === 429) {
-          gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
-          console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
-          incrementRelayMetric('googleFlights429');
-          recordRelayOutcome('googleFlights', 'throttle');
-          hasPartialFailure = true;
-        } else if (gfResp.status === 401 || gfResp.status === 403) {
-          recordRelayOutcome('googleFlights', 'authRejection');
-          hasPartialFailure = true;
-        } else if (gfResp.ok) {
-          const text = await gfResp.text();
-          allDates.push(...parseGfDates(text, isRoundTrip));
-          recordRelayOutcome('googleFlights', 'success');
-          incrementRelayMetric('googleFlightsServed');
-        } else {
-          recordRelayOutcome('googleFlights', 'terminalFailure');
-          hasPartialFailure = true;
-          console.warn(`[Google Flights] dates chunk ${current.toISOString().slice(0, 10)} failed: ${gfResp.status}`);
-        }
-        current.setDate(current.getDate() + MAX_CHUNK);
-      }
-      if (current <= end) hasPartialFailure = true;
+        hasPartialFailure = true;
+        return [];
+      }));
+      for (const dates of results) allDates.push(...dates);
     }
 
     const sortByPrice = url.searchParams.get('sort_by_price') === 'true';
