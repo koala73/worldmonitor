@@ -3481,7 +3481,7 @@
   },
   "shell": {
     "documentTitle": "World Monitor — 即時全球情報儀表板",
-    "metaDescription": "即時全球情報平臺。刊登於 WIRED。全球 190 個國家 200 萬+ 使用者使用。衝突、市場、軍事、OSINT 資訊一覽無遺。",
+    "metaDescription": "使用 World Monitor 即時儀表盤瀏覽全球態勢，結合互動式地圖與資料面板檢視新聞、地緣政治、軍事、金融、能源和基礎設施資訊。按所選產品檢視探索相關圖層、地區與事件，比較資料來源、觀測時間和可用訊號，跟蹤變化並開啟詳情核查背景，為日常監測與研究提供可追溯的資訊入口，同時關注來源覆蓋及更新狀態。",
     "offlineTitle": "您已離線",
     "offlineMessage": "World Monitor 需要網際網路連線來獲取即時情報資料。",
     "offlineRetry": "重試"

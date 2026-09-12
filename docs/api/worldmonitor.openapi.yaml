@@ -738,7 +738,7 @@ paths:
             tags:
                 - AviationService
             summary: TrackAircraft
-            description: TrackAircraft retrieves live position stream for a specific aircraft hex.
+            description: Track an aircraft by ICAO24 hex or callsign within map bounds, returning position observations, altitude, speed, source and update time for flight monitoring.
             operationId: TrackAircraft
             parameters:
                 - name: icao24
@@ -1025,7 +1025,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: SearchFlightPrices searches for flight price offers on a route. PRO-gated. Requires an active Pro subscription.
+            description: Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
             security:
                 - WorldMonitorKey: []
@@ -1364,7 +1364,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchGoogleFlights
-            description: SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+            description: Search Google Flights itineraries by route and dates, with cabin, stops, airline and passenger filters, returning flight legs, duration and availability status.
             operationId: SearchGoogleFlights
             parameters:
                 - name: origin
@@ -4440,7 +4440,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListUcdpEvents
-            description: ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
+            description: Browse cached, georeferenced UCDP violence events with optional country filtering, event dates and fatality estimates for country-level conflict data analysis.
             operationId: ListUcdpEvents
             parameters:
                 - name: start
@@ -4603,7 +4603,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummary
-            description: GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
+            description: Retrieve a cached HAPI conflict summary for a country, with event counts, fatalities, demonstrations, reference period and update time for humanitarian context.
             operationId: GetHumanitarianSummary
             parameters:
                 - name: country_code
@@ -5088,7 +5088,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummaryBatch
-            description: GetHumanitarianSummaryBatch retrieves humanitarian summaries for multiple countries in one call.
+            description: Retrieve humanitarian summaries for multiple countries in one request, with country indicators and requested versus fetched counts for coverage comparison.
             operationId: GetHumanitarianSummaryBatch
             requestBody:
                 content:
@@ -5390,7 +5390,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: GetConsumerPriceBasketSeries
-            description: GetConsumerPriceBasketSeries retrieves the basket index time series.
+            description: Retrieve consumer price basket index history by market, basket and date range, with dated observations, currency and snapshot time for price trend analysis.
             operationId: GetConsumerPriceBasketSeries
             parameters:
                 - name: market_code
@@ -6069,7 +6069,7 @@ paths:
             tags:
                 - CyberService
             summary: ListCyberThreats
-            description: ListCyberThreats retrieves threat indicators from multiple intelligence sources.
+            description: Browse cached cyber threat indicators by type, source and minimum severity, with cursor pagination and indicator details for threat intelligence investigation.
             operationId: ListCyberThreats
             parameters:
                 - name: start
@@ -6577,7 +6577,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFredSeries
-            description: GetFredSeries retrieves time series data from the Federal Reserve Economic Data.
+            description: Retrieve a Federal Reserve Economic Data series by ID, with an observation limit, dated values, title, units and frequency for economic time-series analysis.
             operationId: GetFredSeries
             parameters:
                 - name: series_id
@@ -6707,7 +6707,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListWorldBankIndicators
-            description: ListWorldBankIndicators retrieves development indicator data from the World Bank.
+            description: Retrieve World Bank development indicators with country filters, country names, indicator codes and annual values for economic and development data analysis.
             operationId: ListWorldBankIndicators
             parameters:
                 - name: indicator_code
@@ -6865,7 +6865,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyPrices
-            description: GetEnergyPrices retrieves current energy commodity prices from EIA.
+            description: Retrieve current EIA energy commodity prices for selected commodities, with names, units, price changes and observation times for energy market monitoring.
             operationId: GetEnergyPrices
             parameters:
                 - name: commodities
@@ -6991,7 +6991,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetMacroSignals
-            description: GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
+            description: Review seven macro signals with bullish counts and BUY, CASH or UNKNOWN verdicts; unavailable cached data returns UNKNOWN to keep missing evidence explicit.
             operationId: GetMacroSignals
             parameters:
                 - name: jmespath
@@ -7360,7 +7360,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCapacity
-            description: GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.
+            description: Retrieve cached EIA installed capacity series by energy source, with annual megawatt values for comparing available solar, wind and coal generation capacity.
             operationId: GetEnergyCapacity
             parameters:
                 - name: energy_sources
@@ -7497,7 +7497,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisPolicyRates
-            description: GetBisPolicyRates retrieves central bank policy rates from BIS.
+            description: Retrieve BIS central bank policy rates with country, central bank, observation date and previous rate for comparing monetary policy across available countries.
             operationId: GetBisPolicyRates
             parameters:
                 - name: jmespath
@@ -7847,7 +7847,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFredSeriesBatch
-            description: GetFredSeriesBatch retrieves multiple FRED series in a single call.
+            description: Retrieve multiple Federal Reserve Economic Data series in one request, with dated observations and series metadata, plus requested and fetched result counts.
             operationId: GetFredSeriesBatch
             requestBody:
                 content:
@@ -8995,7 +8995,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEcbFxRates
-            description: GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
+            description: Retrieve daily ECB reference exchange rates for the euro against major currencies, with one-day changes, dates and availability status for currency analysis.
             operationId: GetEcbFxRates
             parameters:
                 - name: jmespath
@@ -9582,7 +9582,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEconomicStress
-            description: GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+            description: Review the Economic Stress Index from six FRED series, with its 0-100 composite score, component readings, missing-data flags and snapshot time for context.
             operationId: GetEconomicStress
             parameters:
                 - name: jmespath
@@ -13516,7 +13516,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRiskScores
-            description: GetRiskScores retrieves composite risk scores and strategic assessments.
+            description: Retrieve composite country risk scores and strategic assessments by region, with component contributions and advisory context for geopolitical risk monitoring.
             operationId: GetRiskScores
             parameters:
                 - name: region
@@ -18773,7 +18773,7 @@ paths:
             tags:
                 - MarketService
             summary: ListMarketQuotes
-            description: ListMarketQuotes retrieves stock and index quotes.
+            description: Retrieve stock and index quotes for requested symbols, with prices, price changes, display names, sparklines and snapshot metadata for market monitoring.
             operationId: ListMarketQuotes
             parameters:
                 - name: symbols
@@ -21156,7 +21156,7 @@ paths:
             tags:
                 - MarketService
             summary: GetFearGreedIndex
-            description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+            description: Review the composite Fear & Greed sentiment index with available survey, market breadth and component inputs, including degraded-data flags for market context.
             operationId: GetFearGreedIndex
             parameters:
                 - name: jmespath
@@ -21638,7 +21638,7 @@ paths:
             tags:
                 - MarketService
             summary: GetMarketBreadthHistory
-            description: GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
+            description: Review historical S&P 500 market breadth, including the percentage of stocks above 20, 50 and 200-day moving averages, with current readings and dated history.
             operationId: GetMarketBreadthHistory
             parameters:
                 - name: jmespath
@@ -22253,7 +22253,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetTheaterPosture
-            description: GetTheaterPosture retrieves military posture assessments for geographic theaters.
+            description: Retrieve military posture assessments for all cached theaters, including posture levels, active flights, operations and assessment times in regional monitoring.
             operationId: GetTheaterPosture
             parameters:
                 - name: theater
@@ -22376,7 +22376,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetails
-            description: GetAircraftDetails retrieves Wingbits aircraft enrichment data for a single ICAO24 hex. PRO-gated. Requires an active Pro subscription.
+            description: Retrieve Wingbits aircraft enrichment by ICAO24 hex, including available aircraft type and build details. PRO-gated. Requires an active Pro subscription.
             operationId: GetAircraftDetails
             security:
                 - WorldMonitorKey: []
@@ -22513,7 +22513,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetAircraftDetailsBatch
-            description: GetAircraftDetailsBatch retrieves Wingbits aircraft enrichment data for multiple ICAO24 hexes.
+            description: Retrieve Wingbits enrichment for multiple ICAO24 aircraft identifiers in one request, with aircraft details and requested versus fetched result counts.
             operationId: GetAircraftDetailsBatch
             requestBody:
                 content:
@@ -22690,7 +22690,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetWingbitsStatus
-            description: GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
+            description: Check whether Wingbits aircraft enrichment is configured for World Monitor, using the configuration flag before requesting aircraft details or batch enrichment.
             operationId: GetWingbitsStatus
             parameters:
                 - name: jmespath
@@ -22798,7 +22798,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetUSNIFleetReport
-            description: GetUSNIFleetReport retrieves the latest parsed USNI Fleet Tracker report.
+            description: Retrieve the latest parsed USNI Fleet Tracker report, with article date, source link, fleet summary and cache status for understanding published naval activity.
             operationId: GetUSNIFleetReport
             parameters:
                 - name: force_refresh
@@ -22925,7 +22925,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryBases
-            description: ListMilitaryBases retrieves military bases within a bounding box, with server-side clustering.
+            description: Explore military bases by country, type, map bounds and zoom level, with base details and server-side clusters for geographic military infrastructure analysis.
             operationId: ListMilitaryBases
             parameters:
                 - name: ne_lat
@@ -23674,7 +23674,7 @@ paths:
             tags:
                 - NewsService
             summary: SummarizeArticle
-            description: SummarizeArticle generates an LLM summary with provider selection and fallback support.
+            description: Generate an article summary with language-model provider selection and fallback support, returning the chosen provider, model and reported processing errors.
             operationId: SummarizeArticle
             requestBody:
                 content:
@@ -24962,7 +24962,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListTechEvents
-            description: ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
+            description: Find technology events from Techmeme, dev.events and curated sources, filtering by type, map availability, result limit and upcoming days for event discovery.
             operationId: ListTechEvents
             parameters:
                 - name: type
@@ -25690,7 +25690,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceRanking
-            description: PRO-gated. Requires an active Pro subscription.
+            description: Retrieve country structural resilience rankings with coverage, confidence and snapshot metadata for comparison. PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceRanking
             security:
                 - WorldMonitorKey: []
@@ -25897,7 +25897,7 @@ paths:
             tags:
                 - SafetyService
             summary: GetTorontoSafety
-            description: Returns one bounded Toronto Police Service dataset with source, semantics, and freshness metadata.
+            description: Explore one Toronto Police Service dataset with area, offence and year filters, plus source attribution, data semantics and freshness for local safety analysis.
             operationId: GetTorontoSafety
             parameters:
                 - name: dataset

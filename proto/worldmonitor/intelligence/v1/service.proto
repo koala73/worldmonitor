@@ -40,7 +40,7 @@ import "worldmonitor/intelligence/v1/get_similar_events.proto";
 service IntelligenceService {
   option (sebuf.http.service_config) = {base_path: "/api/intelligence/v1"};
 
-  // GetRiskScores retrieves composite risk scores and strategic assessments.
+  // Retrieve composite country risk scores and strategic assessments by region, with component contributions and advisory context for geopolitical risk monitoring.
   rpc GetRiskScores(GetRiskScoresRequest) returns (GetRiskScoresResponse) {
     option (sebuf.http.config) = {
       path: "/get-risk-scores"
