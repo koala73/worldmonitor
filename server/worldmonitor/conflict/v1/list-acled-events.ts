@@ -21,7 +21,7 @@ export function resolveAcledEventWindow(
   now = Date.now(),
 ): AcledEventWindow {
   return {
-    startMs: req.start > 0 ? req.start : now - ACLED_DEFAULT_WINDOW_MS,
+    startMs: req.start > 0 ? req.start : Math.floor((now - ACLED_DEFAULT_WINDOW_MS) / 86_400_000) * 86_400_000,
     endMs: req.end > 0 ? req.end : now,
   };
 }

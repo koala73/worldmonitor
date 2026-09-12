@@ -172,3 +172,13 @@ test('public composed conflict embeds do not cache failed seeds and recover on t
   assert.deepEqual(frame.data.conflicts, snapshot.events);
   assert.deepEqual(upstreamCalls, []);
 });
+
+test('country-only filters retain the first seed calendar day and preserve explicit timestamps', async () => {
+  const midnight = Math.floor((now - ACLED_DEFAULT_WINDOW_MS) / 86_400_000) * 86_400_000;
+  const first = { ...snapshot.events[0]!, occurredAt: midnight };
+  const prior = { ...first, id: 'prior-day', occurredAt: midnight - 86_400_000 };
+  install({ [seedKey]: { events: [first, prior] } });
+  assert.deepEqual(await request('?country=UA'), { events: [first] });
+  assert.deepEqual(await request(`?country=UA&start=${midnight + 1}`), { events: [] });
+  assert.deepEqual(upstreamCalls, []);
+});
