@@ -1685,7 +1685,23 @@ async function fetchBoundedTextWithStatus(fetchFn, url, sourceContract, diagnost
   if (!isAllowedSourceUrl(url, sourceContract)) {
     throw new Error('UNSAFE_SOURCE_URL');
   }
-  const response = await fetchFn(url, boundedHtmlRequestInit(sourceContract));
+  let response;
+  try {
+    response = await fetchFn(url, boundedHtmlRequestInit(sourceContract));
+  } catch (error) {
+    if (diagnostic?.transport === 'proxy') {
+      const details = error?.proxyFailure;
+      diagnostic.stage = ['proxy_connection', 'proxy_connect', 'target_tls', 'response_headers', 'response_body']
+        .includes(details?.stage) ? details.stage : 'unknown';
+      diagnostic.httpStatus = diagnostic.stage === 'response_body'
+        && Number.isInteger(details?.httpStatus) && details.httpStatus >= 100 && details.httpStatus <= 599
+        ? details.httpStatus : null;
+      diagnostic.proxyConnectStatus = ['proxy_connect', 'target_tls'].includes(diagnostic.stage)
+        && Number.isInteger(details?.proxyConnectStatus) && details.proxyConnectStatus >= 100 && details.proxyConnectStatus <= 599
+        ? details.proxyConnectStatus : null;
+    }
+    throw error;
+  }
   if (diagnostic) {
     diagnostic.httpStatus = response.status;
     diagnostic.stage = response.ok ? 'response_body' : 'response_headers';
