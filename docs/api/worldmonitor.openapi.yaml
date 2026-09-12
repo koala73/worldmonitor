@@ -6273,10 +6273,10 @@ paths:
                   "schema":
                       "oneOf":
                           - "const": 0
-                          - "format": "int32"
-                            "maximum": 9999
+                          - "type": "integer"
+                            "format": "int32"
                             "minimum": 1951
-                            "type": "integer"
+                            "maximum": 9999
                   example: 0
                 - name: country_limit
                   in: query
@@ -39625,10 +39625,10 @@ components:
                     "description": "Data year: 1951 through the current year. Zero returns the latest seeded data.\n An explicit year is available only if it matches the published snapshot."
                     "oneOf":
                         - "const": 0
-                        - "format": "int32"
-                          "maximum": 9999
+                        - "type": "integer"
+                          "format": "int32"
                           "minimum": 1951
-                          "type": "integer"
+                          "maximum": 9999
                 countryLimit:
                     type: integer
                     minimum: 0

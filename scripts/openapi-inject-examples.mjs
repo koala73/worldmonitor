@@ -1010,9 +1010,12 @@ function injectDisplacementYearContract(spec) {
   };
   let changed = false;
   if (!eq(year, desired)) {
-    spec.components.schemas.GetDisplacementSummaryRequest.properties.year = desired;
     changed = true;
   }
+  // Assign the canonical insertion order even when the JSON serializer has
+  // alphabetized an equivalent prior artifact. The YAML artifact preserves
+  // object insertion order, and make generate must be idempotent.
+  spec.components.schemas.GetDisplacementSummaryRequest.properties.year = desired;
 
   // REST clients consume the Parameter Object schema rather than the request
   // component, so keep the public query contract equally precise.
@@ -1020,9 +1023,9 @@ function injectDisplacementYearContract(spec) {
     ?.find((item) => item?.in === 'query' && item.name === 'year');
   const parameterSchema = { oneOf: clone(desired.oneOf) };
   if (parameter && !eq(parameter.schema, parameterSchema)) {
-    parameter.schema = parameterSchema;
     changed = true;
   }
+  if (parameter) parameter.schema = parameterSchema;
   return changed;
 }
 
