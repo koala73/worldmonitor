@@ -41,6 +41,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Comparisons](#corpus-comparisons)
 - [Glossary](#corpus-glossary)
 - [Monitored chokepoints](#corpus-monitored-chokepoints)
+- [Forecast accuracy](#corpus-forecast-accuracy)
 - [Chokepoint methodology](#corpus-chokepoint-methodology)
 - [Start here](#corpus-start-here)
 - [What we track](#corpus-what-we-track)
@@ -425,7 +426,7 @@ Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirror
 <a id="corpus-generated-corpus"></a>
 ## Generated corpus
 
-The sections below are produced by `npm run build:llms-full` from the source catalog, comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.
+The sections below are produced by `npm run build:llms-full` from the source catalog, comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the forecast accuracy snapshot, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.
 
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
@@ -721,6 +722,17 @@ The Kerch Strait connects the Black Sea to the Sea of Azov and is the only sea r
 ### Indian Ocean ↔ Java Sea
 
 The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the Malacca–Singapore route. It is favoured by the largest, deepest-draft bulk carriers and serves as a relief valve when Malacca is congested or disrupted.
+
+<a id="corpus-forecast-accuracy"></a>
+## Forecast accuracy
+
+The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
+
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.118 across 180 scored forecasts, against 0.25 for answering 0.5 to everything.
+
+Captured 2026-09-10.
+
+This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
 
 <a id="corpus-chokepoint-methodology"></a>
 ## Chokepoint methodology
