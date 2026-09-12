@@ -25,10 +25,14 @@ paths:
                     Data year: 1951 through the current year. Zero returns the latest seeded data.
                      An explicit year is available only if it matches the published snapshot.
                   required: false
+                  "schema":
+                      "oneOf":
+                          - "const": 0
+                          - "format": "int32"
+                            "maximum": 9999
+                            "minimum": 1951
+                            "type": "integer"
                   example: 0
-                  schema:
-                    type: integer
-                    format: int32
                 - name: country_limit
                   in: query
                   description: Maximum number of country entries to return.

@@ -1008,9 +1008,22 @@ function injectDisplacementYearContract(spec) {
       { type: 'integer', format: 'int32', minimum: 1951, maximum: 9999 },
     ],
   };
-  if (eq(year, desired)) return false;
-  spec.components.schemas.GetDisplacementSummaryRequest.properties.year = desired;
-  return true;
+  let changed = false;
+  if (!eq(year, desired)) {
+    spec.components.schemas.GetDisplacementSummaryRequest.properties.year = desired;
+    changed = true;
+  }
+
+  // REST clients consume the Parameter Object schema rather than the request
+  // component, so keep the public query contract equally precise.
+  const parameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'year');
+  const parameterSchema = { oneOf: clone(desired.oneOf) };
+  if (parameter && !eq(parameter.schema, parameterSchema)) {
+    parameter.schema = parameterSchema;
+    changed = true;
+  }
+  return changed;
 }
 
 function injectSpecExamples(spec) {
@@ -1227,6 +1240,27 @@ function replaceParamExample(lines, opStart, opEnd, name, example) {
   throw new Error(`could not locate YAML parameter ${name}`);
 }
 
+function replaceParamSchema(lines, opStart, opEnd, name, schema) {
+  for (let i = opStart + 1; i < opEnd; i++) {
+    const match = lines[i].match(/^(\s*)-\s+name:\s+(.+)$/);
+    if (!match || countIndent(lines[i]) !== 16) continue;
+    if (unquoteYamlScalar(match[2]) !== name) continue;
+    const propIndent = 18;
+    const end = blockEnd(lines, i, 16);
+    const schemaStart = lines.findIndex((line, index) =>
+      index > i
+      && index < end
+      && countIndent(line) === propIndent
+      && (line.trim() === 'schema:' || line.trim() === '"schema":'),
+    );
+    if (schemaStart === -1) throw new Error(`could not locate YAML parameter schema ${name}`);
+    const schemaEnd = blockEnd(lines, schemaStart, propIndent);
+    lines.splice(schemaStart, schemaEnd - schemaStart, ...renderYamlNode({ schema }, propIndent));
+    return;
+  }
+  throw new Error(`could not locate YAML parameter ${name}`);
+}
+
 function findChildLine(lines, start, end, indent, text) {
   for (let i = start + 1; i < end; i++) {
     if (countIndent(lines[i]) === indent && lines[i].trim() === text) return i;
@@ -1305,6 +1339,12 @@ function patchYamlExamples(raw, spec, label) {
   const lines = raw.split('\n');
   const displacementYear = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
   if (displacementYear) patchYamlDisplacementYearSchema(lines, displacementYear);
+  const displacementParameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'year');
+  if (displacementParameter?.schema) {
+    const loc = findOperation(lines, '/api/displacement/v1/get-displacement-summary', 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, 'year', displacementParameter.schema);
+  }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {
       if (!HTTP_METHODS.has(method) || !op || typeof op !== 'object') continue;
