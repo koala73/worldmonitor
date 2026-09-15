@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { buildAuthHeaders, resolveAuthContext } from '../api/mcp/auth.ts';
-import { buildMcpDownstreamHeaders, createMcpToolExecutionContext } from '../api/mcp/downstream.ts';
+import { buildMcpDownstreamHeaders, createMcpToolExecutionContext, fetchMcpDownstream } from '../api/mcp/downstream.ts';
 
 const SIDECAR_TOKEN = 'sidecar-transport-token-abc123';
 const VALID_KEY = 'wm_selfhost_valid_key';
@@ -125,19 +125,29 @@ describe('self-hosted sidecar token vs MCP auth', () => {
     assert.equal(headers.Authorization, undefined);
   });
 
-  it('adds no Authorization header when not self-hosted', async () => {
+  it('attaches no transport token or redirect override when LOCAL_API_TOKEN is unset', async () => {
+    // The "self-hosted or not" branch is `if (!token) return headers` in
+    // buildMcpDownstreamHeaders: even a loopback execution context must leave
+    // the request untouched when the process holds no sidecar token.
     delete process.env.LOCAL_API_TOKEN;
+    const originalFetch = globalThis.fetch;
+    let seen;
+    globalThis.fetch = async (_url, init) => {
+      seen = init;
+      return Response.json({});
+    };
     try {
-      const headers = await buildAuthHeaders(
-        { kind: 'env_key', apiKey: VALID_KEY },
-        'GET',
-        'https://api.worldmonitor.app/api/intelligence/v1/get-country-risk',
-        null,
-      );
+      const origin = 'http://127.0.0.1:46123';
+      const url = `${origin}/api/intelligence/v1/get-country-risk`;
+      const auth = await buildAuthHeaders({ kind: 'env_key', apiKey: VALID_KEY }, 'GET', url, null);
+      await fetchMcpDownstream(url, { headers: auth, redirect: 'manual' }, createMcpToolExecutionContext(`${origin}/api/mcp`));
 
-      assert.equal(headers['X-WorldMonitor-Key'], VALID_KEY);
-      assert.equal('Authorization' in headers, false, 'hosted requests must not carry a sidecar token');
+      const headers = new Headers(seen.headers);
+      assert.equal(headers.get('X-WorldMonitor-Key'), VALID_KEY);
+      assert.equal(headers.get('X-WorldMonitor-Local-Token'), null, 'no sidecar token to attach');
+      assert.equal(seen.redirect, 'manual', 'redirect policy is only overridden when a token is attached');
     } finally {
+      globalThis.fetch = originalFetch;
       process.env.LOCAL_API_TOKEN = SIDECAR_TOKEN;
     }
   });

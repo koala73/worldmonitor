@@ -70,22 +70,34 @@ describe('downstream transport boundaries', () => {
   it('covers every registry fetch with the shared transport policy', async () => {
     const { readFileSync, readdirSync } = await import('node:fs');
     const ts = await import('typescript');
-    let calls = 0;
-    for (const filename of readdirSync(new URL('../api/mcp/registry/', import.meta.url)).filter((name) => name.endsWith('.ts'))) {
-      const source = readFileSync(new URL(`../api/mcp/registry/${filename}`, import.meta.url), 'utf8');
+    // Any identifier named `fetch` is a bypass — a bare call, `globalThis.fetch(`,
+    // an alias (`const f = fetch`) or passing it as a value. Matching only a
+    // callee whose text is exactly `fetch` would let all but the first through.
+    const auditSource = (filename, source) => {
+      let calls = 0;
       const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
       const visit = (node) => {
-        if (ts.isCallExpression(node)) {
-          const callee = node.expression.getText(ast);
-          assert.notEqual(callee, 'fetch', `${filename}: direct fetch bypasses downstream transport policy`);
-          if (callee === 'fetchMcpDownstream') {
-            calls++;
-            assert.equal(node.arguments[2]?.getText(ast), 'execution', `${filename}: missing execution context`);
-          }
+        if (ts.isIdentifier(node) && node.text === 'fetch') {
+          assert.fail(`${filename}: direct fetch bypasses downstream transport policy`);
+        }
+        if (ts.isCallExpression(node) && node.expression.getText(ast) === 'fetchMcpDownstream') {
+          calls++;
+          assert.equal(node.arguments[2]?.getText(ast), 'execution', `${filename}: missing execution context`);
         }
         ts.forEachChild(node, visit);
       };
       visit(ast);
+      return calls;
+    };
+    // Negative controls: the guard must go red on every bypass shape it claims to catch.
+    for (const bypass of ['fetch(url)', 'globalThis.fetch(url)', 'const f = fetch; f(url)', 'run(fetch)', 'fetchMcpDownstream(url, init)']) {
+      assert.throws(() => auditSource('fixture.ts', `async function t() { ${bypass}; }`), `guard must reject: ${bypass}`);
+    }
+    assert.equal(auditSource('fixture.ts', 'async function t() { await fetchMcpDownstream(url, init, execution); }'), 1);
+    let calls = 0;
+    const registryDir = new URL('../api/mcp/registry/', import.meta.url);
+    for (const filename of readdirSync(registryDir, { recursive: true }).filter((name) => name.endsWith('.ts'))) {
+      calls += auditSource(filename, readFileSync(new URL(filename, registryDir), 'utf8'));
     }
     assert.ok(calls >= 30, 'all RPC, company, and NLP downstream calls were inspected');
   });
