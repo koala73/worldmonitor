@@ -355,13 +355,14 @@ function formatEmptySlot(slot) {
   return ['EMPTY'.padEnd(10), slot, `no entries: paste a live stream URL into ${CATALOG_FILE}`].join('  ');
 }
 
-export async function runCheck(argv, {
-  write = console.log,
-  probeYouTube = probeYouTubeWithBrowser,
-  fetchImpl = defaultFetch,
-  probeHls = (candidates) => probeHlsCandidates(candidates, fetchImpl),
-  catalog = DEFAULT_CATALOG,
-} = {}) {
+export async function runCheck(argv, options = {}) {
+  const {
+    write = console.log,
+    probeYouTube = probeYouTubeWithBrowser,
+    fetchImpl = defaultFetch,
+    catalog = DEFAULT_CATALOG,
+  } = options;
+  const probeHls = options.probeHls ?? ((candidates) => probeHlsCandidates(candidates, fetchImpl));
   let args;
   let targets;
   try {
