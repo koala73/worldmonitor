@@ -27,7 +27,7 @@ describe('geographic signal attribution', () => {
     const { signalAggregator } = await import('@/services/signal-aggregator');
     const ingest = (country: string) => signalAggregator.ingestOutages([{
       id: country, country, lat: 0, lon: 0, title: 'Outage', pubDate: new Date(),
-      severity: 'major', link: '', description: '',
+      severity: 'major', link: '', description: '', categories: [],
     }]);
     for (const country of ['Israel', 'Neverland']) {
       ingest(country);
