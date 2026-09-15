@@ -29,6 +29,22 @@ function telegramItem(overrides: Partial<Omit<TelegramItem, 'source'>> = {}): Te
 }
 
 describe('TelegramIntelPanel trust badges (#6600)', () => {
+  it.each([
+    ['SaudiDCD', 'Saudi Civil Defense', 'Official Government Source'],
+    ['BNONews', 'BNO News', 'Wire'],
+  ])('shows the reviewed Tier 1 identity for %s', (channel, channelTitle, badge) => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram', earlySignal: true, enabled: true, count: 1,
+      updatedAt: new Date().toISOString(),
+      items: [telegramItem({ id: `${channel}:1`, channel, channelTitle })],
+    });
+    const item = panel.getElement().querySelector('.telegram-intel-item');
+    expect(item?.textContent).toContain(badge);
+    expect(item?.querySelector('.tier-badge')?.className).toContain('tier-1');
+  });
+
   it('renders existing provenance badges beside the channel title', () => {
     const panel = new TelegramIntelPanel();
     document.body.appendChild(panel.getElement());

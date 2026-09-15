@@ -1,9 +1,18 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-09T00:00:00Z",
+  "updatedAt": "2026-09-15T00:00:00Z",
   "note": "Product-managed curated list. Not user-configurable.",
   "channels": {
     "full": [
+      {
+        "handle": "SaudiDCD",
+        "label": "Saudi Civil Defense",
+        "topic": "middleeast",
+        "tier": 1,
+        "enabled": true,
+        "region": "saudi-arabia",
+        "maxMessages": 25
+      },
       {
         "handle": "VahidOnline",
         "label": "Vahid Online",

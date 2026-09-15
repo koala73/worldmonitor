@@ -40,6 +40,15 @@ export interface TelegramChannelTrustEntry {
 
 export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
   {
+    handle: 'SaudiDCD',
+    name: 'Saudi Civil Defense',
+    tier: 1,
+    type: 'gov',
+    risk: 'low',
+    stateAffiliated: 'Saudi Arabia',
+    note: 'Official Saudi Civil Defense channel (https://t.me/SaudiDCD); primary source for civil-defense warnings and emergency notices. Attribute incident reports to the authority, not independent confirmation',
+  },
+  {
     handle: 'VahidOnline',
     name: 'Vahid Online',
     tier: 2,
@@ -66,10 +75,10 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
   {
     handle: 'BNONews',
     name: 'BNO News',
-    tier: 3,
-    type: 'mainstream',
-    risk: 'medium',
-    note: 'Breaking-news aggregator; useful speed, thinner editorial process than a wire',
+    tier: 1,
+    type: 'wire',
+    risk: 'low',
+    note: 'Independent newsroom and subscription newswire; publisher history: https://bnonews.es/index.php/about-us/',
   },
   {
     handle: 'ClashReport',

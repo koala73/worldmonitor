@@ -49,6 +49,23 @@ const {
 const { eventMatchesCountryScope } = require(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
 );
+const { publishSaudiCivilDefenseAlerts } = require('../scripts/lib/saudi-civil-defense-alerts.cjs');
+
+it('routes a Saudi Civil Defense producer event through the real country filter', async () => {
+  const now = Date.now();
+  const events = [];
+  await publishSaudiCivilDefenseAlerts([
+    { id: 'SaudiDCD:123', channel: 'SaudiDCD', ts: new Date(now).toISOString(), text: 'تحذير عاجل من السيول' },
+  ], {
+    now: () => now, readCache: async () => null, writeCache: async () => {},
+    classify: async () => [{ i: 0, l: 'high', c: 'disaster' }],
+    publish: async (event) => events.push(event),
+  });
+  assert.equal(events.length, 1);
+  assert.equal(eventMatchesCountryScope(events[0], { countries: ['SA'] }), true);
+  assert.equal(eventMatchesCountryScope(events[0], { countries: ['AE'] }), false);
+  assert.equal(eventMatchesCountryScope(events[0], { countries: [] }), true);
+});
 
 const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
