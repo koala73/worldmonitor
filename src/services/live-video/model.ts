@@ -77,7 +77,8 @@ export function parseSourceEntry(entry: string): ParsedEntry {
     return ok({ kind: 'hls', url: url.href as HttpsStreamUrl });
   }
 
-  if (host === 'youtu.be') return videoOr(url.pathname.split('/')[1]);
+  // Browsers sometimes copy www.youtu.be; treat any youtu.be host the same.
+  if (host === 'youtu.be' || host.endsWith('.youtu.be')) return videoOr(url.pathname.split('/')[1]);
   if (!YOUTUBE_PAGE_HOSTS.has(host)) return fail('unrecognized');
 
   const [first, second] = url.pathname.split('/').filter(Boolean);

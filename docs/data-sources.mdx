@@ -394,7 +394,7 @@ The YouTube live-stream catalog covers geopolitical hotspots across global regio
 
 The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Middle East, Ukraine, Washington DC) and a single-feed expanded view. Region tabs (ALL/MIDEAST/EUROPE/AMERICAS/ASIA/SPACE) filter the available feeds.
 
-Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), stopped with an explanatory notice after a configurable period without mouse, keyboard or touch input, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed is a curated YouTube live stream; broadcasters end and restart streams, so the IDs are re-checked for liveness.
+Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), stopped with an explanatory notice after a configurable period without mouse, keyboard or touch input, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds load through the local sidecar (`/api/youtube-embed`), which gives the player an http parent origin that YouTube accepts. Each feed is a curated YouTube live stream; broadcasters end and restart streams, so the IDs are re-checked for liveness.
 
 ### Source Credibility & Feed Tiering
 

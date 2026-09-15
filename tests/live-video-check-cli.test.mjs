@@ -257,7 +257,16 @@ describe('probeYouTubeCandidates', () => {
 
 describe('classifyHlsPlaylist', () => {
   it('reads live, VOD and non-playlist bodies', () => {
-    assert.equal(classifyHlsPlaylist('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n'), 'live');
+    // EXTINF alone is not live — ended playlists often omit ENDLIST.
+    assert.equal(classifyHlsPlaylist('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n'), 'unknown');
+    assert.equal(
+      classifyHlsPlaylist('#EXTM3U\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXTINF:6.0,\nseg1.ts\n'),
+      'live',
+    );
+    assert.equal(
+      classifyHlsPlaylist('#EXTM3U\n#EXT-X-PROGRAM-DATE-TIME:2026-01-01T00:00:00.000Z\n#EXTINF:6.0,\nseg1.ts\n'),
+      'live',
+    );
     assert.equal(classifyHlsPlaylist('#EXTM3U\n#EXTINF:6.0,\nseg1.ts\n#EXT-X-ENDLIST\n'), 'vod');
     assert.equal(classifyHlsPlaylist('#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:6.0,\nseg1.ts\n'), 'vod');
     assert.equal(classifyHlsPlaylist('<html>blocked</html>'), 'unknown');

@@ -18,6 +18,7 @@ describe('parseSourceEntry', () => {
     ['watch URL with extra params', 'https://m.youtube.com/watch?t=5&v=-xzg3wujOVM&ab_channel=X', { kind: 'video', videoId: '-xzg3wujOVM' }],
     ['watch URL without a scheme', 'youtube.com/watch?v=z_fY1pj1VBw', { kind: 'video', videoId: 'z_fY1pj1VBw' }],
     ['short link', 'https://youtu.be/z_fY1pj1VBw?si=abc', { kind: 'video', videoId: 'z_fY1pj1VBw' }],
+    ['www short link', 'https://www.youtu.be/z_fY1pj1VBw', { kind: 'video', videoId: 'z_fY1pj1VBw' }],
     ['live URL', 'https://www.youtube.com/live/z_fY1pj1VBw', { kind: 'video', videoId: 'z_fY1pj1VBw' }],
     ['embed URL', 'https://www.youtube.com/embed/z_fY1pj1VBw?autoplay=1', { kind: 'video', videoId: 'z_fY1pj1VBw' }],
     ['nocookie embed URL', 'https://www.youtube-nocookie.com/embed/z_fY1pj1VBw', { kind: 'video', videoId: 'z_fY1pj1VBw' }],
