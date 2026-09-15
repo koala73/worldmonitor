@@ -343,7 +343,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Can't find variable: caches/,
       /crypto\.randomUUID is not a function/,
       /ucapi is not defined/,
-      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt|SENDER)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE. SENDER: Kaspersky-style content-script double-injection — WORLDMONITOR-ZC (not in our bundle; build would fail on a duplicate top-level const)
+      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt|SENDER|nativeIframe)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE. SENDER: Kaspersky-style content-script double-injection — WORLDMONITOR-ZC (not in our bundle; build would fail on a duplicate top-level const). nativeIframe: injected script redeclaring its own binding, sole frame the /dashboard document on Chrome 152 / Electron 39 — WORLDMONITOR-ZS (absent from src/, api/, index.html and public/*.html; pinned by tests/sentry-beforesend.test.mjs)
       /getAttribute is not a function.*getAttribute\("role"\)/,
       /SCDynimacBridge/,
       /errTimes is not defined/,
@@ -845,28 +845,42 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // first-party frame and the `!hasFirstParty` gate misses it (WORLDMONITOR-TN: Map
       // chunk, WORLDMONITOR-S1: hls chunk). Match the owned, hashed asset URL in
       // the message instead of the stack.
+      const isOwnedAssetUrl = (assetUrl: string) => {
+        if (assetUrl.startsWith('/')) return true;
+        try {
+          const host = new URL(assetUrl).hostname;
+          const currentHost = typeof location !== 'undefined' ? location.hostname : '';
+          return host === 'worldmonitor.app'
+            || host.endsWith('.worldmonitor.app')
+            || (currentHost.endsWith('.vercel.app') && host === currentHost);
+        } catch {
+          return false;
+        }
+      };
       const dynamicImportAssetUrlMatch = msg.match(
         /(?:https?:\/\/[^\s'")]+)?\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.js/i,
       );
-      let isOwnedDynamicImportAssetUrl = false;
-      if (dynamicImportAssetUrlMatch) {
-        const assetUrl = dynamicImportAssetUrlMatch[0];
-        if (assetUrl.startsWith('/')) {
-          isOwnedDynamicImportAssetUrl = true;
-        } else {
-          try {
-            const host = new URL(assetUrl).hostname;
-            const currentHost = typeof location !== 'undefined' ? location.hostname : '';
-            isOwnedDynamicImportAssetUrl = host === 'worldmonitor.app'
-              || host.endsWith('.worldmonitor.app')
-              || (currentHost.endsWith('.vercel.app') && host === currentHost);
-          } catch {
-            isOwnedDynamicImportAssetUrl = false;
-          }
-        }
-      }
       if (/(?:Failed to fetch|error loading) dynamically imported module/i.test(msg)
-          && isOwnedDynamicImportAssetUrl) return null;
+          && dynamicImportAssetUrlMatch
+          && isOwnedAssetUrl(dynamicImportAssetUrlMatch[0])) return null;
+      // The stylesheet twin of the rule above. Vite's preload helper inserts a
+      // `<link rel="stylesheet">` for each CSS dependency of an `import()` and
+      // rejects that import with `Unable to preload CSS for <url>` when the link
+      // fires `error` — after dispatching `vite:preloadError`, which
+      // installChunkReloadGuard has already turned into a reload. The helper is
+      // bundled into our own chunks, so the event always carries a first-party
+      // frame; the sentence, anchored whole, and an owned hashed `/assets/*.css`
+      // URL are what license dropping it. Since #8115 the dashboard stylesheet is
+      // a dependency of the deferred `import('./App')`, whose catch rethrows on
+      // purpose, so a dropped stylesheet on a flaky mobile link reports as an
+      // unhandled error (WORLDMONITOR-XT: `debugbear-rum-9hl8Iil4.css`, which
+      // served 200, Chrome Mobile / Android 10). The fire-and-forget variant
+      // theme import is still consumed and re-reported at warning level by
+      // bootstrap/variant-theme.ts.
+      const preloadCssUrl = msg.match(
+        /^(?:Error: )?Unable to preload CSS for ((?:https?:\/\/[^\s'")]+)?\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.css)$/,
+      )?.[1];
+      if (preloadCssUrl && isOwnedAssetUrl(preloadCssUrl)) return null;
       // Stale-chunk-after-deploy: modulepreload / dynamic import failures arrive with no
       // stack trace because the browser fires them as synthetic TypeErrors at fetch time,
       // not at any first-party call site. The chunk-reload guard auto-reloads the page,
@@ -884,6 +898,19 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         !hasFirstParty
         && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found/i.test(msg)
       ) return null;
+      // Safari's URL-less wording gives the owned-URL rule above nothing to
+      // match, and WebKit's async stack trace appends the awaiting `import()`
+      // site, so the `!hasFirstParty` gate misses it whenever that site is ours
+      // (WORLDMONITOR-11A: `await import('./Map')` in MapContainer.initSvgMap,
+      // Safari 16.2/16.3 — once right after a `[stale-bundle] reload`, once
+      // after a chunk fetch that never completed). What licenses it instead is
+      // the module loader's own builtin on the stack: a `[native code]`
+      // `requestFetch` frame proves the rejection came from fetching the module
+      // graph. A module that fetched and then threw while evaluating rejects
+      // with its own error, not this sentence, so a first-party bug still
+      // surfaces.
+      if (/^(?:TypeError: )?Importing a module script failed\.?$/.test(msg)
+          && frames.some(f => f.filename === '[native code]' && f.function === 'requestFetch')) return null;
       // Zero-frame async-rejection patterns: AbortSignal.timeout() rejections
       // and DOMException(NotSupportedError) bubble up via
       // onunhandledrejection without any first-party frames captured (the
