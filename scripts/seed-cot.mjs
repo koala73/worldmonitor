@@ -23,16 +23,19 @@ const COMMODITY_INSTRUMENTS = [
 
 function parseDate(raw) {
   if (!raw) return '';
-  const s = String(raw).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  let s = String(raw).trim();
+  // Socrata's floating timestamp represents the report day at midnight.
+  if (/^\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?$/.test(s)) s = s.slice(0, 10);
   if (/^\d{6}$/.test(s)) {
     const yy = s.slice(0, 2);
     const mm = s.slice(2, 4);
     const dd = s.slice(4, 6);
     const year = parseInt(yy, 10) >= 50 ? `19${yy}` : `20${yy}`;
-    return `${year}-${mm}-${dd}`;
+    s = `${year}-${mm}-${dd}`;
   }
-  return s.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+  const date = new Date(`${s}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === s ? s : '';
 }
 
 // CFTC releases COT every Friday ~3:30pm ET for Tuesday data. Given a reportDate
