@@ -14434,9 +14434,6 @@
         },
         {
           "path": "src/services/live-video/session.ts"
-        },
-        {
-          "path": "src/services/live-video/youtube-iframe-api.ts"
         }
       ]
     },
