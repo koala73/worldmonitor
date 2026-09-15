@@ -4527,7 +4527,7 @@ export class DataLoaderManager implements AppModule {
   async loadDiseaseOutbreaks(): Promise<void> {
     try {
       const data = await fetchDiseaseOutbreaks();
-      if (data.outbreaks?.length) {
+      if (Array.isArray(data.outbreaks) && Number.isFinite(data.fetchedAt) && data.fetchedAt > 0) {
         const panel = this.ctx.panels['disease-outbreaks'] as DiseaseOutbreaksPanel | undefined;
         panel?.updateData(data.outbreaks);
         this.ctx.map?.setDiseaseOutbreaks(data.outbreaks);
