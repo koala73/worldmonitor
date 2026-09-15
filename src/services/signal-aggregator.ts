@@ -102,8 +102,11 @@ const fallbackCountryCodes = new Map<string, string>(Object.entries(countryNames
 
 function normalizeCountryCode(country: string): string {
   const trimmed = country.trim();
+  if (!trimmed) return '';
+  const fromCatalog = nameToCountryCode(trimmed) ?? fallbackCountryCodes.get(trimmed.toLowerCase());
+  if (fromCatalog) return fromCatalog;
   if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
-  return nameToCountryCode(trimmed) ?? fallbackCountryCodes.get(trimmed.toLowerCase()) ?? '';
+  return '';
 }
 
 function getCountryName(code: string): string {

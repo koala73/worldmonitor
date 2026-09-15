@@ -37,7 +37,11 @@ describe('geographic signal attribution', () => {
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
     ingest('Israel');
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
+    ingest('UK');
+    expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['GB']);
     await loadGeometry();
+    expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['GB']);
+    ingest('Israel');
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
     ingest('Neverland');
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['XX']);
