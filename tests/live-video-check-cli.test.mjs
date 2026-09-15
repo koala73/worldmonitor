@@ -293,7 +293,7 @@ describe('runCheck', () => {
   });
 
   it('calls a live HLS playlist live from Node and says playback was not checked', async () => {
-    const playlist = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n';
+    const playlist = '#EXTM3U\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n';
     const fetchImpl = async () => ({
       ok: true,
       status: 200,
