@@ -97,6 +97,8 @@ class FakeIntersectionObserver {
 interface PanelInternals {
   element: HTMLElement;
   content: HTMLElement;
+  channels: Array<{ id: string }>;
+  switchChannel(channel: { id: string }): void;
 }
 
 let panel: LiveNewsPanel | undefined;
@@ -313,6 +315,30 @@ describe('Live News live verification', () => {
     expect(getActiveLiveMedia('live-news')?.streamId).toBe('bloomberg');
     expect(content().querySelector('video.live-news-media')?.getAttribute('title')).toBe('Bloomberg live feed');
     expect(savedActiveChannel()).toBe('cnn');
+  });
+
+  it('keeps offline channel marks when switching without playback intent', async () => {
+    mount(['bloomberg', 'cnn']);
+    await playFromPlaceholder();
+    await playHlsLive();
+
+    channelButton('cnn').click();
+    await flush();
+    api().playerFor('CNN live feed').error(150);
+    await flush(POLL);
+    expect(channelButton('cnn').classList.contains('offline')).toBe(true);
+
+    // Stop ownership so the next switch is preview-only (no playback intent).
+    headerButton('Toggle playback').click();
+    await flush();
+
+    const bloomberg = internals().channels.find((channel) => channel.id === 'bloomberg');
+    if (!bloomberg) throw new Error('bloomberg channel missing');
+    internals().switchChannel(bloomberg);
+    await flush();
+
+    expect(channelButton('bloomberg').classList.contains('active')).toBe(true);
+    expect(channelButton('cnn').classList.contains('offline')).toBe(true);
   });
 
   it('asks for a channel URL for a saved handle-only custom channel, without resolving the handle', async () => {

@@ -196,7 +196,8 @@ function liveVideoSourceFor(channel: LiveChannel): LiveVideoSource {
     return { slot: `live-news/${channel.id}`, entries: builtinEntries(channel.id), origin: 'builtin' };
   }
   const entry = customChannelEntry(channel);
-  return { slot: 'live-news/custom', entries: entry ? [entry] : [], origin: 'custom' };
+  // Per-channel slot so failure memory does not bleed across custom streams.
+  return { slot: `live-news/${channel.id}`, entries: entry ? [entry] : [], origin: 'custom' };
 }
 
 /** A built-in channel with no configured stream has nothing to play, so channel management hides it. */
@@ -914,6 +915,14 @@ export class LiveNewsPanel extends Panel {
     });
   }
 
+  /** Keep switcher offline marks aligned with failure memory (do not wipe on a no-intent switch). */
+  private syncOfflineButtonMarks(): void {
+    this.channelSwitcher?.querySelectorAll<HTMLElement>('.live-channel-btn').forEach(btn => {
+      const id = btn.dataset.channelId;
+      if (id) btn.classList.toggle('offline', this.isKnownOffline(id));
+    });
+  }
+
   private switchChannel(channel: LiveChannel): void {
     if (channel.id === this.activeChannel.id) return;
 
@@ -924,9 +933,7 @@ export class LiveNewsPanel extends Panel {
 
     if (!shouldStartMedia) {
       this.clearChannelLoadingState();
-      this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
-        (btn as HTMLElement).classList.remove('offline');
-      });
+      this.syncOfflineButtonMarks();
       this.renderPlaceholder();
       return;
     }

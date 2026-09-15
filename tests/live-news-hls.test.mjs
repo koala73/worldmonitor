@@ -107,6 +107,19 @@ describe('Live News playback', () => {
     assert.ok(placeholderPos > previewOnlyPos, 'switchChannel preview-only branch must render the placeholder');
     assert.ok(beginPos > placeholderPos, 'switchChannel must not start playback before the preview-only return');
     assert.doesNotMatch(switchMethod, /openLiveVideo|renderPlayer/, 'switchChannel must start media only through the controller');
+    assert.match(switchMethod, /this\.syncOfflineButtonMarks\(\)/,
+      'preview-only switch must re-sync offline marks from failure memory');
+    assert.doesNotMatch(switchMethod, /classList\.remove\('offline'\)/,
+      'preview-only switch must not wipe offline marks on every channel button');
+  });
+
+  it('gives each custom channel its own live-video failure-memory slot', () => {
+    const sourceFn = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('function liveVideoSourceFor'),
+      liveNewsSrc.indexOf('function hasBuiltinStreams'),
+    );
+    assert.match(sourceFn, /slot: `live-news\/\$\{channel\.id\}`/);
+    assert.doesNotMatch(sourceFn, /slot: 'live-news\/custom'/);
   });
 
   it('session callbacks are ignored once a newer player replaced them', () => {
