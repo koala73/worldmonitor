@@ -297,7 +297,12 @@ async function probeYouTubeWithBrowser(candidates) {
 export function classifyHlsPlaylist(text) {
   if (!text.trimStart().startsWith('#EXTM3U')) return 'unknown';
   if (/#EXT-X-ENDLIST|#EXT-X-PLAYLIST-TYPE:VOD/.test(text)) return 'vod';
-  return /#EXTINF/.test(text) ? 'live' : 'unknown';
+  // Fail closed: EXTINF without ENDLIST is not enough — ended or truncated
+  // playlists often omit ENDLIST and would otherwise green-pass live-video:check.
+  // Require an explicit live marker (playlist type or program-date-time).
+  if (/#EXT-X-PLAYLIST-TYPE:(?:EVENT|LIVE)/.test(text)) return 'live';
+  if (/#EXTINF/.test(text) && /#EXT-X-PROGRAM-DATE-TIME/.test(text)) return 'live';
+  return 'unknown';
 }
 
 function firstVariantUri(text) {
