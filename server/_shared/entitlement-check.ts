@@ -13,10 +13,12 @@
  * A lookup that was attempted but produced no answer — Redis/Convex failure,
  * Convex 5xx, or a Convex 4xx that means our own credential is wrong — returns a
  * verificationUnavailable marker so callers answer with a retryable 503 instead
- * of a misleading hard denial. A null means either that no lookup was attempted
- * (backend unconfigured) or that Convex confirmed the user has no entitlement.
- * The user-key gateway fails closed on null when the backend is configured and
- * retains a logged fail-open exception only when lookup is wholly unconfigured.
+ * of a misleading hard denial. A null from getEntitlements means either that no
+ * lookup was attempted (backend unconfigured) or that Convex confirmed the user
+ * has no entitlement. wm_ user-key gateway traffic fails closed on null in both
+ * cases: callers get a retryable 503 with code
+ * entitlement_verification_unavailable, including when the entitlement backend
+ * is wholly unconfigured.
  *
  * classifyBillingVerification() is the single decision point for that denial;
  * getBillingVerificationDenial() renders it as JSON, and the HTML / OAuth-grant
