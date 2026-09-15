@@ -670,9 +670,12 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // Gated like the eval rule above, on the WHOLE stack being `<anonymous>` or
   // infra: a parse failure attributable to this bundle's own script loaders
   // would ride a `/pro/assets/*.js` frame, and one from an inline first-party
-  // script would put the document URL on the stack. The `SyntaxError` type
+  // script would put the document URL on the stack. A frame with no filename
+  // is dropped from `nonInfraFrames` yet could be that attributing frame, so
+  // it keeps the event reporting (PR #8174 review). The `SyntaxError` type
   // keeps a script that parsed and then threw reporting.
   if (nonInfraFrames.length === 0
+      && frames.every((f) => Boolean(f.filename?.trim()))
       && exceptionType === 'SyntaxError'
       && APPEND_CHILD_PARSE_FAILURE.test(msg)
       && frames.some((f) => f.filename === '<anonymous>')) return null;

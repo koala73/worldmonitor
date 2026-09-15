@@ -908,8 +908,10 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `requestFetch` frame proves the rejection came from fetching the module
       // graph. A module that fetched and then threw while evaluating rejects
       // with its own error, not this sentence, so a first-party bug still
-      // surfaces.
-      if (/^(?:TypeError: )?Importing a module script failed\.?$/.test(msg)
+      // surfaces. WebKit raises the sentence only as a TypeError, so the type
+      // is required too (PR #8174 review).
+      if ((excType === 'TypeError' || /^TypeError:/.test(msg))
+          && /^(?:TypeError: )?Importing a module script failed\.?$/.test(msg)
           && frames.some(f => f.filename === '[native code]' && f.function === 'requestFetch')) return null;
       // Zero-frame async-rejection patterns: AbortSignal.timeout() rejections
       // and DOMException(NotSupportedError) bubble up via

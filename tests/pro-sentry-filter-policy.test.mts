@@ -731,6 +731,24 @@ describe('marketingBeforeSend — injected script inserted with unparseable sour
     assert.equal(marketingBeforeSend(kept), kept);
   });
 
+  // A frame with no filename is dropped from `nonInfraFrames`, so it cannot
+  // count toward the evaluated-stack proof: it may be the one frame that would
+  // have named our bundle (PR #8174 review).
+  it('keeps the failure when any frame has no filename', () => {
+    for (const unattributed of [{}, { filename: '' }, { filename: '   ' }]) {
+      const kept: PolicyEvent = {
+        exception: {
+          values: [{
+            type: 'SyntaxError',
+            value: APPEND_PARSE_MESSAGE,
+            stacktrace: { frames: [{ filename: '<anonymous>' }, unattributed] },
+          }],
+        },
+      };
+      assert.equal(marketingBeforeSend(kept), kept, JSON.stringify(unattributed));
+    }
+  });
+
   // Positive control for the type gate: a script that parsed and then threw at
   // runtime is not a parse failure, whatever its message says.
   it('keeps the same message under a non-SyntaxError type', () => {

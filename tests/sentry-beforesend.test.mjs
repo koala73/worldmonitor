@@ -611,6 +611,16 @@ describe('Safari module fetch failure with a first-party await site (WORLDMONITO
     const event = makeEvent("undefined is not an object (evaluating 'e.map')", 'TypeError', PRODUCTION_FRAMES);
     assert.ok(beforeSend(event) !== null);
   });
+
+  // Positive control for the type gate: WebKit raises this sentence only as a
+  // TypeError, so the same words under another type are not the loader's
+  // rejection (PR #8174 review).
+  it('keeps the sentence under a type other than TypeError', () => {
+    for (const type of ['Error', 'SyntaxError']) {
+      const event = makeEvent('Importing a module script failed.', type, PRODUCTION_FRAMES);
+      assert.ok(beforeSend(event) !== null, type);
+    }
+  });
 });
 
 // ─── Zero-frame async-rejection patterns: AbortSignal timeouts + DOMException(NotSupportedError) ───
