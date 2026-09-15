@@ -4,6 +4,37 @@ import ts from 'typescript';
 const require = createRequire(import.meta.url);
 const { assertNotificationWebhookDeliveryUrlSafe } = require('./notification-webhook-ssrf.cjs');
 
+// Read a literal initializer out of the catalog AST. `defaultArgs` is the only
+// non-string field the monitor reads, and across the catalog its values are
+// strings, numbers, empty arrays and nested objects, so this has to cover the
+// whole literal grammar rather than just string literals. Anything it cannot
+// represent throws, per the "fail visibly" rule below: a preset whose args stop
+// being statically readable must break the monitor, not decay into `undefined`.
+function readLiteralValue(node, context) {
+  if (ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(node.operand)) {
+    return -Number(node.operand.text);
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    return node.elements.map(element => readLiteralValue(element, context));
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    const value = {};
+    for (const property of node.properties) {
+      if (!ts.isPropertyAssignment(property) || typeof property.name?.text !== 'string') {
+        throw new Error(`MCP_PRESETS ${context} must contain only literal properties`);
+      }
+      value[property.name.text] = readLiteralValue(property.initializer, context);
+    }
+    return value;
+  }
+  throw new Error(`MCP_PRESETS ${context} must be a literal value`);
+}
+
 // Read catalog data without loading mcp-store's browser/storage dependencies.
 // An unsupported entry must fail the monitor, never silently lose coverage.
 export function extractPresets(source) {
@@ -20,13 +51,20 @@ export function extractPresets(source) {
       throw new Error('MCP_PRESETS entries must be explicit objects');
     }
     const preset = {};
-    for (const key of ['name', 'serverUrl', 'defaultTool', 'authNote']) {
+    for (const key of ['name', 'serverUrl', 'defaultTool', 'authNote', 'apiKeyHeader']) {
       const property = element.properties.find(node => node.name?.text === key);
       if (!property && key !== 'name' && key !== 'serverUrl') continue;
       if (!property || !ts.isPropertyAssignment(property) || !ts.isStringLiteralLike(property.initializer)) {
         throw new Error(`MCP_PRESETS ${key} must be a string literal`);
       }
       preset[key] = property.initializer.text;
+    }
+    const defaultArgs = element.properties.find(node => node.name?.text === 'defaultArgs');
+    if (defaultArgs) {
+      if (!ts.isPropertyAssignment(defaultArgs) || !ts.isObjectLiteralExpression(defaultArgs.initializer)) {
+        throw new Error('MCP_PRESETS defaultArgs must be an object literal');
+      }
+      preset.defaultArgs = readLiteralValue(defaultArgs.initializer, 'defaultArgs');
     }
     return preset;
   });
