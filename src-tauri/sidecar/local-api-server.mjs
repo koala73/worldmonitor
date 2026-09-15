@@ -187,9 +187,12 @@ function makePinnedLookup(address, family = 4) {
 }
 
 function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
+  // Normalize through URL so a default port (80) compares equal to
+  // `url.origin`, which omits it: `http://127.0.0.1:80` never matches
+  // `new URL('http://127.0.0.1:80/x').origin === 'http://127.0.0.1'`.
   const selfOrigins = [
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
+    new URL(`http://127.0.0.1:${port}`).origin,
+    new URL(`http://localhost:${port}`).origin,
   ];
   const origins = [...selfOrigins, ...extraOrigins];
   for (const origin of origins) sidecarAllowedPrivateFetchOrigins.add(origin);
