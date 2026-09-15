@@ -870,13 +870,16 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // installChunkReloadGuard has already turned into a reload. The helper is
       // bundled into our own chunks, so the event always carries a first-party
       // frame; the sentence, anchored whole, and an owned hashed `/assets/*.css`
-      // URL are what license dropping it. Since #8115 the dashboard stylesheet is
-      // a dependency of the deferred `import('./App')`, whose catch rethrows on
-      // purpose, so a dropped stylesheet on a flaky mobile link reports as an
+      // URL are what license dropping it. After #8115 some builds shipped
+      // dashboard.html without its stylesheet link, which made the stylesheet a
+      // dependency of the deferred `import('./App')`, whose catch rethrows on
+      // purpose. A dropped stylesheet on a flaky mobile link then reported as an
       // unhandled error (WORLDMONITOR-XT: `debugbear-rum-9hl8Iil4.css`, which
-      // served 200, Chrome Mobile / Android 10). The fire-and-forget variant
-      // theme import is still consumed and re-reported at warning level by
-      // bootstrap/variant-theme.ts.
+      // served 200, Chrome Mobile / Android 10). The dashboard-styles chunk in
+      // vite.config.ts restores that link, so the helper skips it. Lazy chunks
+      // with their own CSS, such as the maplibre stylesheet, still take this
+      // path. The fire-and-forget variant theme import is consumed and
+      // re-reported at warning level by bootstrap/variant-theme.ts.
       const preloadCssUrl = msg.match(
         /^(?:Error: )?Unable to preload CSS for ((?:https?:\/\/[^\s'")]+)?\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.css)$/,
       )?.[1];

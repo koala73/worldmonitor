@@ -406,8 +406,15 @@ describe('dashboard critical CSS graph', () => {
       }
     }
     assert.ok(
-      deferredHrefs.length + deferredAppStylesheetHrefs().length > 0,
-      'Built dashboard must load app CSS through deferred HTML links or the dynamic App preload.',
+      deferredHrefs.length > 0,
+      'Built dashboard.html must load the app stylesheet through a deferred data-wm-deferred-style="dashboard" link.',
+    );
+    assert.deepEqual(
+      deferredHrefs.filter((href) => !/^\/assets\/dashboard-styles-[A-Za-z0-9_-]+\.css$/.test(href)),
+      [],
+      'The deferred app stylesheet must be the dashboard-styles chunk. A name borrowed from a shared JavaScript chunk '
+        + '(debugbear-rum-*.css, WORLDMONITOR-XT) means the CSS moved back into that chunk, where Vite can drop its '
+        + 'dashboard.html link.',
     );
 
     const noscriptLinkTags = [...dashboardHtml.matchAll(/<noscript>\s*(<link\b[^>]*>)\s*<\/noscript>/gi)].map((m) => m[1]);
@@ -422,6 +429,21 @@ describe('dashboard critical CSS graph', () => {
         `Deferred dashboard stylesheet ${href} must keep a no-JS stylesheet fallback (rel=stylesheet, any attribute order).`,
       );
     }
+  });
+
+  it('links every stylesheet the deferred App import preloads', () => {
+    // Vite's preload helper skips a stylesheet the document already links. Any
+    // other CSS dependency it inserts itself, and a failed download rejects
+    // import('./App'), so the dashboard never boots (WORLDMONITOR-XT:
+    // `Unable to preload CSS for /assets/debugbear-rum-*.css`).
+    const linkedHrefs = new Set(stylesheetHrefs(stripNoscript(builtSrc('dist/dashboard.html'))));
+    const unlinkedHrefs = deferredAppStylesheetHrefs().filter((href) => !linkedHrefs.has(href));
+
+    assert.deepEqual(
+      unlinkedHrefs,
+      [],
+      `Built dashboard.html must link every stylesheet import('./App') preloads, or the App boot waits on it: ${unlinkedHrefs.join(', ')}`,
+    );
   });
   });
 });
