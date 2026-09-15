@@ -130,7 +130,7 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 export function buildMcpDownstreamHeaders(
-  targetOrigin: string,
+  targetUrl: string,
   execution: McpToolExecutionContext | undefined,
   headers: Record<string, string>,
 ): Record<string, string> {
@@ -138,7 +138,7 @@ export function buildMcpDownstreamHeaders(
   let target: URL;
   let expected: URL;
   try {
-    target = new URL(targetOrigin);
+    target = new URL(targetUrl);
     expected = new URL(execution.downstreamOrigin);
   } catch {
     return headers;

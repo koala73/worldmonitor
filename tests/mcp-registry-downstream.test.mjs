@@ -84,6 +84,13 @@ describe('downstream transport boundaries', () => {
           calls++;
           assert.equal(node.arguments[2]?.getText(ast), 'execution', `${filename}: missing execution context`);
         }
+        // A helper that declares `execution` optional or defaulted lets a
+        // caller omit it: the call above still reads `execution` and passes
+        // this guard while the token is silently dropped. Require the
+        // required-but-nullable shape fetchMcpDownstream itself uses.
+        if (ts.isParameter(node) && ts.isIdentifier(node.name) && node.name.text === 'execution' && (node.questionToken || node.initializer)) {
+          assert.fail(`${filename}: optional execution parameter can drop the transport token`);
+        }
         ts.forEachChild(node, visit);
       };
       visit(ast);
@@ -93,7 +100,11 @@ describe('downstream transport boundaries', () => {
     for (const bypass of ['fetch(url)', 'globalThis.fetch(url)', 'const f = fetch; f(url)', 'run(fetch)', 'fetchMcpDownstream(url, init)']) {
       assert.throws(() => auditSource('fixture.ts', `async function t() { ${bypass}; }`), `guard must reject: ${bypass}`);
     }
+    for (const helper of ['execution?: X', 'execution = undefined', 'execution: X | undefined = undefined']) {
+      assert.throws(() => auditSource('fixture.ts', `async function h(base: string, ${helper}) { await fetchMcpDownstream(url, init, execution); }`), `guard must reject helper param: ${helper}`);
+    }
     assert.equal(auditSource('fixture.ts', 'async function t() { await fetchMcpDownstream(url, init, execution); }'), 1);
+    assert.equal(auditSource('fixture.ts', 'async function h(base: string, execution: X | undefined) { await fetchMcpDownstream(url, init, execution); }'), 1);
     let calls = 0;
     const registryDir = new URL('../api/mcp/registry/', import.meta.url);
     for (const filename of readdirSync(registryDir, { recursive: true }).filter((name) => name.endsWith('.ts'))) {
@@ -156,7 +167,10 @@ describe('downstream transport boundaries', () => {
     process.env.LOCAL_API_TOKEN = 'test-local-token';
     const app = await createLocalApiServer({ port: 0, apiDir, mode: 'docker', cloudFallback: 'false', logger: { log() {}, warn() {}, error() {} } });
     const { port } = await app.start();
-    globalThis.fetch = originalFetch;
+    // Keep the sidecar-installed fetch wrapper in place: the tool call below
+    // must go through the same SSRF allowlist and upstream-slot limiter the
+    // production self-hosted path uses. Only the raw unauthorized probe uses
+    // the pre-import fetch.
     const origin = `http://127.0.0.1:${port}`;
     try {
       const unauthorized = await originalFetch(`${origin}/api/intelligence/v1/get-company-enrichment`);

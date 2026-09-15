@@ -248,8 +248,11 @@ async function fetchNlpDigestItems(
   base: string,
   context: Parameters<typeof buildAuthHeaders>[0],
   variant: NlpDigestVariant,
-  category = '',
-  execution?: McpToolExecutionContext,
+  category: string,
+  // Required-but-nullable, matching fetchMcpDownstream: a caller that forgets
+  // the execution context fails typecheck instead of silently dropping the
+  // self-hosted transport token.
+  execution: McpToolExecutionContext | undefined,
 ): Promise<NlpDigestFetch> {
   const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
   const auth = await buildAuthHeaders(context, 'GET', digestUrl, null);

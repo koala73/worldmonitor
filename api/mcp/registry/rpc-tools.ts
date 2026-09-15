@@ -1400,9 +1400,9 @@ export const RPC_TOOLS: ToolDef[] = [
       const insightsAuth = await buildAuthHeaders(context, 'GET', insightsUrl, null);
       // On a self-hosted install `base` is the sidecar's own loopback origin,
       // whose global auth gate requires the per-session LOCAL_API_TOKEN (the
-      // MCP key authenticates the client, not this internal hop). Route the
-      // headers through the loopback helper so the process attaches the token
-      // it already holds — mirroring get_defense_industrial_base (#6538).
+      // MCP key authenticates the client, not this internal hop). Every
+      // registry fetch goes through fetchMcpDownstream, which attaches the
+      // token when the target is the execution context's own loopback origin.
       const insightsRes = await fetchMcpDownstream(insightsUrl, {
         headers: {
           ...insightsAuth,
