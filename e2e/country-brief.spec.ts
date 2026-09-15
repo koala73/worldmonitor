@@ -655,3 +655,47 @@ for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true
     expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
 });
+
+test('country report export keeps safe links and removes unsafe or malformed URLs', async ({ page, countryBrief }, testInfo) => {
+  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: 0 };
+  await page.goto('/dashboard?country=UA&expanded=1');
+  await expectCountry(page);
+  await marketsCard(page).evaluate(card => {
+    const fixture = document.createElement('div'); fixture.className = 'export-url-fixture';
+    const heading = document.createElement('h3'); heading.id = 'fixture-evidence'; heading.textContent = 'Controlled export link fixtures';
+    fixture.append(heading);
+    for (const [label, href] of [['Fragment', '#fixture-evidence'], ['Web source', 'https://example.com/evidence?a=1&b=2'],
+      ['Relative source', '/sources'], ['Unsafe scheme', 'javascript:void(0)'], ['Data scheme', 'data:text/html,fixture'],
+      ['Malformed URL', 'http://[']]) {
+      const row = document.createElement('p');
+      const anchor = document.createElement('a'); anchor.textContent = label!; anchor.setAttribute('href', href!);
+      row.append(anchor); fixture.append(row);
+    }
+    card.append(fixture);
+  });
+  const panel = page.locator('#country-deep-dive-panel');
+  await panel.getByRole('button', { name: 'Export report ↗', exact: true }).click();
+  const fixture = panel.locator('.cdp-output-paper .export-url-fixture');
+  await expect(fixture.locator('a[href]')).toHaveCount(3);
+  await expect(fixture.getByText('Fragment', { exact: true })).toHaveAttribute('href', '#export-fixture-evidence');
+  await expect(fixture.getByText('Web source', { exact: true })).toHaveAttribute('href', 'https://example.com/evidence?a=1&b=2');
+  await fixture.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('export-url-policy-preview.png') });
+  const event = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Download report HTML', exact: true }).click();
+  const download = await event;
+  const path = testInfo.outputPath(download.suggestedFilename());
+  await download.saveAs(path);
+  const html = await readFile(path, 'utf8');
+  const exported = await page.context().newPage();
+  await exported.route('http://brief-export.test/', route => route.fulfill({ body: html, contentType: 'text/html' }));
+  await exported.goto('http://brief-export.test/', { waitUntil: 'domcontentloaded' });
+  const saved = exported.locator('.export-url-fixture');
+  await expect(saved.locator('a[href]')).toHaveCount(3);
+  await expect(saved.locator('a:not([href])')).toHaveText(['Unsafe scheme', 'Data scheme', 'Malformed URL']);
+  await expect(saved.getByText('Relative source', { exact: true })).toHaveAttribute('href', 'https://worldmonitor.app/sources');
+  await expect(exported.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute('content', "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'");
+  await saved.scrollIntoViewIfNeeded();
+  await exported.screenshot({ path: testInfo.outputPath('export-url-policy-downloaded.png') });
+  await exported.close();
+});
