@@ -34,6 +34,7 @@ type CountryBriefFixture = {
   response: ListPredictionMarketsResponse;
   status: number;
   hydrate: boolean;
+  temporalCount?: number;
   requests: RpcObservation[];
   fault: string;
 };
@@ -57,11 +58,19 @@ export const test = base.extend<{ countryBrief: CountryBriefFixture }>({
     await page.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
+        const temporalAnomalies = fixture.temporalCount === undefined ? undefined : {
+          anomalies: Array.from({ length: fixture.temporalCount }, (_, i) => ({
+            type: 'news', region: 'global', currentCount: 20, expectedCount: 2, zScore: 4,
+            message: `Synthetic global observation ${i + 1}`,
+          })), trackedTypes: ['news'], computedAt: new Date().toISOString(),
+        };
       if (url.pathname === '/api/bootstrap') {
         const predictions = fixture.hydrate && fault !== 'skip-hydration'
           ? { geopolitical: [HYDRATED_MARKET], tech: [], finance: [], fetchedAt: Date.now() }
           : { geopolitical: [], tech: [], finance: [], fetchedAt: Date.now() };
-        await route.fulfill({ json: { data: { predictions }, missing: [] } });
+        await route.fulfill({ json: { data: { predictions, temporalAnomalies }, missing: [] } });
+      } else if (url.pathname === '/api/infrastructure/v1/list-temporal-anomalies') {
+        await route.fulfill({ json: temporalAnomalies ?? {} });
       } else if (url.pathname === RPC_PATH) {
         const category = url.searchParams.get('category');
         if (category?.startsWith('country:')) {

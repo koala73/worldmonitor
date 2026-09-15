@@ -119,7 +119,8 @@
       "activeSirens": "Sirene active",
       "sirens24h": "Sirene / 24h",
       "aviationDisruptions": "Întreruperi ale aviației",
-      "gpsJammingZones": "Zone de bruiaj GPS"
+      "gpsJammingZones": "Zone de bruiaj GPS",
+      "temporalUnavailable": "Observații temporale indisponibile"
     },
     "fallback": {
       "instabilityIndex": "**Index de instabilitate: {{score}}/100** ({{level}}, {{trend}})",

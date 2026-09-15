@@ -188,7 +188,8 @@
       "activeSirens": "सक्रिय सायरन",
       "sirens24h": "सायरन / 24 घंटे",
       "aviationDisruptions": "हवाई मार्ग विघ्न",
-      "gpsJammingZones": "जीपीएस जामिंग क्षेत्र"
+      "gpsJammingZones": "जीपीएस जामिंग क्षेत्र",
+      "temporalUnavailable": "अस्थायी प्रेक्षण उपलब्ध नहीं"
     },
     "fallback": {
       "instabilityIndex": "**अस्थिरता सूचकांक: {{score}}/100** ({{level}}, {{trend}})",

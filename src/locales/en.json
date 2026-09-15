@@ -331,6 +331,7 @@
       "aisDisruptions": "AIS Disruptions",
       "satelliteFires": "Satellite Fires",
       "temporalAnomalies": "Temporal Anomalies",
+      "temporalUnavailable": "Temporal observations unavailable",
       "cyberThreats": "Cyber Threats",
       "earthquakes": "Earthquakes",
       "displaced": "Displaced",

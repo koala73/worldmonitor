@@ -119,7 +119,8 @@
       "activeSirens": "Aktif Sirenler",
       "sirens24h": "Sirenler / 24s",
       "aviationDisruptions": "Havacılık Aksaklıkları",
-      "gpsJammingZones": "GPS Karıştırma Bölgeleri"
+      "gpsJammingZones": "GPS Karıştırma Bölgeleri",
+      "temporalUnavailable": "Zamansal gözlemler kullanılamıyor"
     },
     "fallback": {
       "instabilityIndex": "**Istikrarsizlik Endeksi: {{score}}/100** ({{level}}, {{trend}})",

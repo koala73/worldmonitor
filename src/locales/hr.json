@@ -189,7 +189,8 @@
       "activeSirens": "Aktivne sirene",
       "sirens24h": "Sirene / 24h",
       "aviationDisruptions": "Poremećaji u zrakoplovstvu",
-      "gpsJammingZones": "Zone ometanja GPS-a"
+      "gpsJammingZones": "Zone ometanja GPS-a",
+      "temporalUnavailable": "Vremenske opažanja nisu dostupna"
     },
     "fallback": {
       "instabilityIndex": "**Indeks nestabilnosti: {{score}}/100** ({{level}}, {{trend}})",

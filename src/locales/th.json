@@ -119,7 +119,8 @@
       "activeSirens": "ไซเรนทำงาน",
       "sirens24h": "ไซเรน / 24 ชม.",
       "aviationDisruptions": "การหยุดชะงักด้านการบิน",
-      "gpsJammingZones": "เขตรบกวน GPS"
+      "gpsJammingZones": "เขตรบกวน GPS",
+      "temporalUnavailable": "ข้อมูลการสังเกตการณ์ตามเวลาไม่พร้อมใช้งาน"
     },
     "fallback": {
       "instabilityIndex": "**ดัชนีความไม่มั่นคง: {{score}}/100** ({{level}}, {{trend}})",

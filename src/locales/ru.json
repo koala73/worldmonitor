@@ -119,7 +119,8 @@
       "activeSirens": "Активные сирены",
       "sirens24h": "Сирены / 24ч",
       "aviationDisruptions": "Авиационные сбои",
-      "gpsJammingZones": "Зоны глушения GPS"
+      "gpsJammingZones": "Зоны глушения GPS",
+      "temporalUnavailable": "Временные наблюдения недоступны"
     },
     "fallback": {
       "instabilityIndex": "**Индекс нестабильности: {{score}}/100** ({{level}}, {{trend}})",

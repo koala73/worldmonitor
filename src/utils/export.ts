@@ -354,7 +354,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   aisDisruptions: 'AIS disruptions',
   satelliteFires: 'Satellite fires',
   radiationAnomalies: 'Radiation anomalies',
-  temporalAnomalies: 'Temporal anomalies',
+  temporalAnomalies: 'Observed country temporal anomalies',
+  globalTemporalAnomalies: 'Observed global temporal anomalies (not country-attributed)',
   cyberThreats: 'Cyber threats',
   earthquakes: 'Earthquakes',
   displacementOutflow: 'Displacement outflow',
@@ -485,7 +486,13 @@ function signalLabel(key: string): string {
 
 function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
   if (!signals) return [];
-  return Object.entries(signals)
+  const normalized: Record<string, unknown> = { ...signals };
+  for (const key of ['temporalAnomalies', 'globalTemporalAnomalies']) {
+    if (key in normalized && normalized[key] === null) {
+      normalized[key] = 'unavailable';
+    }
+  }
+  return Object.entries(normalized)
     .filter(([, value]) => {
       if (typeof value === 'number') return value > 0;
       if (typeof value === 'string') return value.trim().length > 0;

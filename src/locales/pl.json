@@ -129,7 +129,8 @@
       "activeSirens": "Aktywne syreny",
       "sirens24h": "Syreny / 24h",
       "aviationDisruptions": "Zakłócenia lotnicze",
-      "gpsJammingZones": "Strefy zakłóceń GPS"
+      "gpsJammingZones": "Strefy zakłóceń GPS",
+      "temporalUnavailable": "Obserwacje czasowe niedostępne"
     },
     "countryFacts": "Fakty o kraju",
     "loadingFacts": "Ładowanie faktów o kraju...",

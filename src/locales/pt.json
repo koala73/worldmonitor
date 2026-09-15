@@ -3331,7 +3331,8 @@
       "activeSirens": "Sirenes ativas",
       "sirens24h": "Sirenes / 24h",
       "aviationDisruptions": "Perturbações aéreas",
-      "gpsJammingZones": "Zonas de interferência GPS"
+      "gpsJammingZones": "Zonas de interferência GPS",
+      "temporalUnavailable": "Observações temporais indisponíveis"
     },
     "countryFacts": "Dados do país",
     "loadingFacts": "Carregando dados do país...",

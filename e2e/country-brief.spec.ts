@@ -655,3 +655,38 @@ for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true
     expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
 });
+
+
+test('country brief excludes global temporal observations from country signals', async ({ page, countryBrief }, testInfo) => {
+  countryBrief.temporalCount = 3;
+  await page.goto('/dashboard');
+  await expect(page.locator('html')).toHaveAttribute('data-wm-initial-data-ready', 'true');
+  await page.locator('#searchBtn').click();
+  await page.locator('.search-modal .search-input').fill('Ukraine');
+  await page.locator('.search-result-item[data-index]').filter({ hasText: 'Brief: Ukraine' }).click();
+  const panel = page.locator('#country-deep-dive-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.cdp-country-name')).toHaveText('Ukraine');
+  await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+  const signals = panel.locator('#cdp-section-signals');
+  await signals.scrollIntoViewIfNeeded();
+  await expect(signals).toBeVisible();
+  await expect(signals).not.toContainText('Temporal Anomalies');
+  await expect(signals).not.toContainText('Temporal anomalies');
+  await expect(panel.locator('#cdp-section-assessment')).toContainText('3 observed temporal anomalies; not attributed to this country');
+  await page.screenshot({ path: testInfo.outputPath('country-global-temporal-scope.png') });
+});
+
+
+test('country brief shows unavailable temporal evidence after a failed feed read', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  await page.route('**/api/infrastructure/v1/list-temporal-anomalies*', route => route.fulfill({ status: 503, json: { error: 'Synthetic feed failure' } }));
+  await page.goto('/dashboard?country=UA');
+  const panel = page.locator('#country-deep-dive-panel');
+  await expect(panel.locator('.cdp-country-name')).toHaveText('Ukraine');
+  await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+  const signals = panel.locator('#cdp-section-signals');
+  await signals.scrollIntoViewIfNeeded();
+  await expect(signals).toContainText('Temporal observations unavailable');
+  await page.screenshot({ path: testInfo.outputPath('country-temporal-unavailable.png') });
+});

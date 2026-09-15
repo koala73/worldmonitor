@@ -119,7 +119,8 @@
       "activeSirens": "Ενεργές σειρήνες",
       "sirens24h": "Σειρήνες / 24ώρο",
       "aviationDisruptions": "Αεροπορικές αναταράξεις",
-      "gpsJammingZones": "Ζώνες παρεμβολής GPS"
+      "gpsJammingZones": "Ζώνες παρεμβολής GPS",
+      "temporalUnavailable": "Οι χρονικές παρατηρήσεις δεν είναι διαθέσιμες"
     },
     "fallback": {
       "instabilityIndex": "**Δείκτης Αστάθειας: {{score}}/100** ({{level}}, {{trend}})",

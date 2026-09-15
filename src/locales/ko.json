@@ -119,7 +119,8 @@
       "activeSirens": "사이렌 작동 중",
       "sirens24h": "사이렌 / 24시간",
       "aviationDisruptions": "항공 장애",
-      "gpsJammingZones": "GPS 교란 구역"
+      "gpsJammingZones": "GPS 교란 구역",
+      "temporalUnavailable": "시간 관측 데이터 없음"
     },
     "fallback": {
       "instabilityIndex": "**불안정 지수: {{score}}/100** ({{level}}, {{trend}})",

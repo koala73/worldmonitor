@@ -119,7 +119,8 @@
       "activeSirens": "警報啟動中",
       "sirens24h": "警報 / 24小時",
       "aviationDisruptions": "航空中斷",
-      "gpsJammingZones": "GPS干擾區域"
+      "gpsJammingZones": "GPS干擾區域",
+      "temporalUnavailable": "時間序列觀測資料不可用"
     },
     "fallback": {
       "instabilityIndex": "**不穩定指數：{{score}}/100**（{{level}}，{{trend}}）",

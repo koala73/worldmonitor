@@ -119,7 +119,8 @@
       "activeSirens": "Còi báo động hoạt động",
       "sirens24h": "Còi báo động / 24h",
       "aviationDisruptions": "Gián đoạn hàng không",
-      "gpsJammingZones": "Vùng nhiễu GPS"
+      "gpsJammingZones": "Vùng nhiễu GPS",
+      "temporalUnavailable": "Quan sát theo thời gian không khả dụng"
     },
     "fallback": {
       "instabilityIndex": "**Chỉ số Bất ổn: {{score}}/100** ({{level}}, {{trend}})",

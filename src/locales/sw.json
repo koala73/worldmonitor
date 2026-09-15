@@ -224,7 +224,8 @@
       "activeSirens": "Ving'ora vinavyotumika",
       "sirens24h": "Ving'ora / 24h",
       "aviationDisruptions": "Usumbufu wa Anga",
-      "gpsJammingZones": "Maeneo ya Kuvurugwa kwa GPS"
+      "gpsJammingZones": "Maeneo ya Kuvurugwa kwa GPS",
+      "temporalUnavailable": "Uchunguzi wa wakati haupatikani"
     },
     "fallback": {
       "instabilityIndex": "**Kielezo cha Kutoimarika: {{score}}/100** ({{level}}, {{trend}})",

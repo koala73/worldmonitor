@@ -119,7 +119,8 @@
       "activeSirens": "サイレン作動中",
       "sirens24h": "サイレン / 24時間",
       "aviationDisruptions": "航空障害",
-      "gpsJammingZones": "GPS妨害区域"
+      "gpsJammingZones": "GPS妨害区域",
+      "temporalUnavailable": "時間的観測が利用できません"
     },
     "fallback": {
       "instabilityIndex": "**不安定性指数：{{score}}/100**（{{level}}、{{trend}}）",
