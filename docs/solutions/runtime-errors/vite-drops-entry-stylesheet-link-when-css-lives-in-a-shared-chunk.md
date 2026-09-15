@@ -128,7 +128,8 @@ const context = await browser.newContext({ serviceWorkers: 'block' });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
-await page.route('**/assets/dashboard-styles-*.css', (route) => route.abort()); // debugbear-rum-*.css on an unfixed build
+// Unfixed builds name the stylesheet debugbear-rum-*.css; fixed builds name it dashboard-styles-*.css.
+await page.route(/\/assets\/(?:dashboard-styles|debugbear-rum)-[^/]+\.css$/, (route) => route.abort());
 await page.goto(`${dashboardUrl}?wm_lcp_debug=1`);
 await page.waitForTimeout(15_000);
 const constructed = await page.evaluate(
