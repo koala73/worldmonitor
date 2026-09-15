@@ -15,6 +15,7 @@ function bundle(overrides: Partial<ImfCountryBundle> = {}): ImfCountryBundle {
     labor: null,
     external: null,
     fetchedAt: 0,
+    datasetStatus: { macro: 'unavailable', growth: 'unavailable', labor: 'unavailable', external: 'unavailable' },
     ...overrides,
   };
 }
