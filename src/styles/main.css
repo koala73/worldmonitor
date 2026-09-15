@@ -4119,6 +4119,21 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   min-height: 200px;
 }
 
+.webcam-tile-status {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.webcam-offline-note {
+  padding: 4px 8px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  background: var(--darken-heavy);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .webcam-grid {
     grid-template-columns: 1fr;

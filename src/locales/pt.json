@@ -494,7 +494,11 @@
       },
       "paused": "Webcams em pausa",
       "play": "Reproduzir",
-      "previewStatus": "Prévia ao vivo"
+      "previewStatus": "Pronto para reproduzir",
+      "connecting": "Conectando…",
+      "unverified": "Não é possível confirmar se este stream está ao vivo",
+      "offline": "{{city}} está offline no momento",
+      "noFeeds": "Nenhuma webcam ao vivo nesta região no momento"
     },
     "playback": {
       "live": "Live",

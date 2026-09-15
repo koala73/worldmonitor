@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  catalogTargets,
   classifyHlsPlaylist,
   exitCodeFor,
   formatCheckLine,
   observationFromRecord,
   parseCheckArgs,
+  probeHlsCandidates,
   probeYouTubeCandidates,
   runCheck,
 } from '../scripts/check-live-video-sources.mjs';
@@ -39,7 +41,56 @@ describe('parseCheckArgs', () => {
 
   it('rejects an empty invocation and unknown flags', () => {
     assert.throws(() => parseCheckArgs([]), /Usage/);
-    assert.throws(() => parseCheckArgs(['--all']), /Unknown option --all/);
+    assert.throws(() => parseCheckArgs(['--everything']), /Unknown option --everything/);
+  });
+
+  it('reads the catalog modes', () => {
+    assert.deepEqual(parseCheckArgs(['--all']), { mode: 'all' });
+    assert.deepEqual(parseCheckArgs(['--slot', 'webcams/kyiv']), { mode: 'slot', slot: 'webcams/kyiv' });
+    assert.throws(() => parseCheckArgs(['--slot']), /--slot needs a slot/);
+  });
+});
+
+describe('catalog modes', () => {
+  const catalog = {
+    webcams: {
+      kyiv: ['https://www.youtube.com/watch?v=e2gC37ILQmk'],
+      'new-york': ['JQ_jwk_7OVE', 'VGnFLdQW39A'],
+      'tel-aviv': [],
+    },
+    canaries: ['https://www.youtube.com/channel/UCNye-wNBqNL5ZzHSJj3l8Bg'],
+  };
+
+  it('checks every entry of one slot, in try order', () => {
+    assert.deepEqual(catalogTargets({ mode: 'slot', slot: 'webcams/new-york' }, catalog), {
+      entries: [
+        { name: 'webcams/new-york', entry: 'JQ_jwk_7OVE' },
+        { name: 'webcams/new-york#2', entry: 'VGnFLdQW39A' },
+      ],
+      empty: [],
+    });
+    assert.deepEqual(catalogTargets({ mode: 'slot', slot: 'webcams/tel-aviv' }, catalog), { entries: [], empty: ['webcams/tel-aviv'] });
+    assert.throws(() => catalogTargets({ mode: 'slot', slot: 'webcams/atlantis' }, catalog), /Unknown slot webcams\/atlantis/);
+  });
+
+  it('checks every slot and the canaries with --all', () => {
+    const { entries, empty } = catalogTargets({ mode: 'all' }, catalog);
+    assert.deepEqual(entries.map((row) => row.name), ['webcams/kyiv', 'webcams/new-york', 'webcams/new-york#2', 'canary/1']);
+    assert.deepEqual(empty, ['webcams/tel-aviv']);
+  });
+
+  it('reports a slot with no entries and exits 1 even when every stream is live', async () => {
+    const lines = [];
+    const live = { verdict: { verdict: 'live', video: { videoId: 'e2gC37ILQmk', isLive: true, title: 'Ukraine', author: 'TVL' } } };
+    const code = await runCheck(['--all'], {
+      write: (line) => lines.push(line),
+      catalog,
+      probeYouTube: async (candidates) => candidates.map(() => live),
+      probeHls: async () => [],
+    });
+    assert.equal(code, 1);
+    assert.match(lines.join('\n'), /^EMPTY\s+webcams\/tel-aviv\s+no entries/m);
+    assert.match(lines.join('\n'), /^LIVE\s+webcams\/new-york#2/m);
   });
 });
 
@@ -115,7 +166,7 @@ describe('formatCheckLine', () => {
 
   it('explains HLS verdicts', () => {
     const entry = parsed('https://live-hls-apps-aje-fa.getaj.net/AJE/index.m3u8');
-    assert.match(formatCheckLine({ name: null, parsed: entry, verdict: { verdict: 'live', video: null } }), /why: HLS playlist is live/);
+    assert.match(formatCheckLine({ name: null, parsed: entry, verdict: { verdict: 'live', video: null } }), /why: HLS playlist is live \(playback not checked outside a browser\)$/m);
     assert.match(formatCheckLine({ name: null, parsed: entry, verdict: { verdict: 'failed', outcome: { kind: 'hls-http', status: 403 } } }), /why: manifest returned HTTP 403/);
   });
 });
@@ -239,6 +290,30 @@ describe('runCheck', () => {
     assert.match(text, /^INVALID\s+cnn/m);
     assert.match(text, /^LIVE\s+aje/m);
     assert.match(text, /^2 of 4 entries are not live\.$/m);
+  });
+
+  it('calls a live HLS playlist live from Node and says playback was not checked', async () => {
+    const playlist = '#EXTM3U\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n';
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      url: 'https://hls.test/live.m3u8',
+      text: async () => playlist,
+    });
+    assert.deepEqual(
+      await probeHlsCandidates([{ kind: 'hls', url: 'https://hls.test/live.m3u8' }], fetchImpl),
+      [{ verdict: { verdict: 'live', video: null } }],
+    );
+    const out = [];
+    const code = await runCheck(['aje=https://hls.test/live.m3u8'], {
+      write: (line) => out.push(line),
+      probeYouTube: async () => { throw new Error('no YouTube entries were given'); },
+      probeHls: (candidates) => probeHlsCandidates(candidates, fetchImpl),
+    });
+    const text = out.join('\n');
+    assert.equal(code, 0, text);
+    assert.match(text, /^LIVE\s+aje/m);
+    assert.match(text, /why: HLS playlist is live \(playback not checked outside a browser\)$/m);
   });
 
   it('exits 0 when every entry is live and never launches a probe for an empty group', async () => {

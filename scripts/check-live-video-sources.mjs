@@ -4,6 +4,7 @@
 // Run with: npm run live-video:check -- <entry> [name=<entry> ...]
 
 import { isMainModule } from './lib/main-module.mjs';
+import { AUDIT_CANARIES, WEBCAM_SOURCES } from '../src/config/live-video-sources.ts';
 import { classifyAttempt, LIVE_VIDEO_TIMING, parseSourceEntry } from '../src/services/live-video/model.ts';
 
 const PROBE_ORIGIN = 'https://www.worldmonitor.app';
@@ -12,16 +13,23 @@ const BATCH_SIZE = 8;
 const MAX_POLLS = Math.ceil((2 * LIVE_VIDEO_TIMING.verdictDeadlineMs) / LIVE_VIDEO_TIMING.pollMs);
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const INDENT = ' '.repeat(12);
+const CATALOG_FILE = 'src/config/live-video-sources.ts';
+const DEFAULT_CATALOG = { webcams: WEBCAM_SOURCES, canaries: AUDIT_CANARIES };
 
 const USAGE = `Usage: npm run live-video:check -- <entry> [<entry> ...]
+       npm run live-video:check -- --slot webcams/<id>
+       npm run live-video:check -- --all
 
 Checks whether each entry is live right now, with the classifier the dashboard uses.
 An entry is a YouTube video ID, any YouTube watch/live/embed/youtu.be URL, a
 youtube.com/channel/UC... URL (plays whatever that channel has live), or an https .m3u8 URL.
 Label an entry with name=, e.g. kyiv=https://www.youtube.com/watch?v=e2gC37ILQmk
 
+--slot checks every entry of one slot in ${CATALOG_FILE}.
+--all checks every slot and the audit canaries, and lists slots with no entries.
+
 YouTube entries play in headless Chromium as if embedded on ${PROBE_ORIGIN}.
-HLS entries are fetched from this machine. Exits 1 when any entry is not live.`;
+HLS entries are fetched from this machine; their playback is not checked. Exits 1 when any entry is not live or a slot is empty.`;
 
 const PROBLEM_WHY = {
   'not-https': 'the manifest must be an https URL',
@@ -42,6 +50,11 @@ const PLAYER_ERROR_WHY = {
 
 export function parseCheckArgs(argv) {
   if (argv.includes('--help') || argv.includes('-h')) return { mode: 'help' };
+  if (argv.length === 1 && argv[0] === '--all') return { mode: 'all' };
+  if (argv[0] === '--slot') {
+    if (argv.length !== 2 || argv[1].startsWith('--')) throw new Error(`--slot needs a slot, e.g. --slot webcams/kyiv\n\n${USAGE}`);
+    return { mode: 'slot', slot: argv[1] };
+  }
   const option = argv.find((arg) => arg.startsWith('--') && !/^[A-Za-z0-9_-]{11}$/.test(arg));
   if (option) throw new Error(`Unknown option ${option}\n\n${USAGE}`);
   if (!argv.length) throw new Error(USAGE);
@@ -75,7 +88,7 @@ function why(result) {
   const isHls = result.parsed.candidate.kind === 'hls';
   switch (verdict.verdict) {
     case 'live':
-      return isHls ? 'HLS playlist is live' : 'YouTube reports a live stream (isLive=true) and it is playing';
+      return isHls ? 'HLS playlist is live (playback not checked outside a browser)' : 'YouTube reports a live stream (isLive=true) and it is playing';
     case 'recording':
       if (isHls) return 'HLS playlist has ended (VOD or ENDLIST)';
       return `ended recording (isLive=false, duration ${formatSeconds(result.durationSeconds ?? 0)})`;
@@ -85,7 +98,10 @@ function why(result) {
         return `YouTube player error ${outcome.code}: ${PLAYER_ERROR_WHY[outcome.code] ?? 'unknown error'}`;
       }
       if (outcome.kind === 'channel-not-live') return 'the channel has no live stream right now';
-      if (outcome.kind === 'not-started') return `scheduled or not started: YouTube lists it as live but it did not play within ${LIVE_VIDEO_TIMING.verdictDeadlineMs / 1000} s`;
+      if (outcome.kind === 'not-started') {
+        const within = `${LIVE_VIDEO_TIMING.verdictDeadlineMs / 1000} s`;
+        return isHls ? `HLS playlist is live but did not play within ${within}` : `scheduled or not started: YouTube lists it as live but it did not play within ${within}`;
+      }
       if (outcome.kind === 'timeout') return `no verdict within ${LIVE_VIDEO_TIMING.verdictDeadlineMs / 1000} s`;
       if (outcome.kind === 'hls-http') return `manifest returned HTTP ${outcome.status}`;
       return `stream failed: ${outcome.detail}`;
@@ -296,14 +312,16 @@ function firstVariantUri(text) {
   return lines.slice(streamInf + 1).find((line) => line && !line.startsWith('#')) ?? null;
 }
 
-async function probeHlsCandidate(candidate) {
+const defaultFetch = (...args) => globalThis.fetch(...args);
+
+async function probeHlsCandidate(candidate, fetchImpl = defaultFetch) {
   const startedAt = Date.now();
-  const observe = (fields) => classifyAttempt({ transport: 'hls', elapsedMs: Date.now() - startedAt, manifest: 'unknown', failure: null, ...fields });
+  const observe = (fields) => classifyAttempt({ transport: 'hls', elapsedMs: Date.now() - startedAt, manifest: 'unknown', progress: 'unchecked', failure: null, ...fields });
   const signal = AbortSignal.timeout(LIVE_VIDEO_TIMING.verdictDeadlineMs);
   try {
     let url = candidate.url;
     for (let depth = 0; depth < 3; depth++) {
-      const response = await fetch(url, { signal, headers: { 'user-agent': BROWSER_UA } });
+      const response = await fetchImpl(url, { signal, headers: { 'user-agent': BROWSER_UA } });
       if (!response.ok) return { verdict: observe({ failure: { kind: 'http', status: response.status } }) };
       const text = await response.text();
       const variant = firstVariantUri(text);
@@ -321,14 +339,40 @@ async function probeHlsCandidate(candidate) {
   }
 }
 
-async function probeHlsCandidates(candidates) {
-  return Promise.all(candidates.map(probeHlsCandidate));
+export async function probeHlsCandidates(candidates, fetchImpl = defaultFetch) {
+  return Promise.all(candidates.map((candidate) => probeHlsCandidate(candidate, fetchImpl)));
 }
 
-export async function runCheck(argv, { write = console.log, probeYouTube = probeYouTubeWithBrowser, probeHls = probeHlsCandidates } = {}) {
+/** The entries a catalog mode checks, named by slot (a second entry is `slot#2`), plus the slots with no entries. */
+export function catalogTargets(target, catalog = DEFAULT_CATALOG) {
+  const slots = Object.entries(catalog.webcams).map(([id, entries]) => [`webcams/${id}`, entries]);
+  const selected = target.mode === 'all' ? slots : slots.filter(([slot]) => slot === target.slot);
+  if (target.mode === 'slot' && selected.length === 0) {
+    throw new Error(`Unknown slot ${target.slot}. Slots: ${slots.map(([slot]) => slot).join(', ')}`);
+  }
+  const entries = selected.flatMap(([slot, list]) => list.map((entry, index) => ({ name: index === 0 ? slot : `${slot}#${index + 1}`, entry })));
+  if (target.mode === 'all') entries.push(...catalog.canaries.map((entry, index) => ({ name: `canary/${index + 1}`, entry })));
+  const empty = selected.filter(([, list]) => list.length === 0).map(([slot]) => slot);
+  return { entries, empty };
+}
+
+function formatEmptySlot(slot) {
+  return ['EMPTY'.padEnd(10), slot, `no entries: paste a live stream URL into ${CATALOG_FILE}`].join('  ');
+}
+
+export async function runCheck(argv, options = {}) {
+  const {
+    write = console.log,
+    probeYouTube = probeYouTubeWithBrowser,
+    fetchImpl = defaultFetch,
+    catalog = DEFAULT_CATALOG,
+  } = options;
+  const probeHls = options.probeHls ?? ((candidates) => probeHlsCandidates(candidates, fetchImpl));
   let args;
+  let targets;
   try {
     args = parseCheckArgs(argv);
+    if (args.mode !== 'help') targets = args.mode === 'entries' ? { entries: args.entries, empty: [] } : catalogTargets(args, catalog);
   } catch (error) {
     write(error.message);
     return 2;
@@ -338,7 +382,7 @@ export async function runCheck(argv, { write = console.log, probeYouTube = probe
     return 0;
   }
 
-  const rows = args.entries.map(({ name, entry }) => ({ name, parsed: parseSourceEntry(entry) }));
+  const rows = targets.entries.map(({ name, entry }) => ({ name, parsed: parseSourceEntry(entry) }));
   const youtubeRows = rows.filter((row) => row.parsed.ok && row.parsed.candidate.kind !== 'hls');
   const hlsRows = rows.filter((row) => row.parsed.ok && row.parsed.candidate.kind === 'hls');
   if (youtubeRows.length) {
@@ -350,10 +394,12 @@ export async function runCheck(argv, { write = console.log, probeYouTube = probe
     hlsRows.forEach((row, index) => Object.assign(row, probed[index]));
   }
 
+  for (const slot of targets.empty) write(formatEmptySlot(slot));
   for (const row of rows) write(formatCheckLine(row));
   const notLive = rows.filter((row) => !(row.parsed.ok && row.verdict?.verdict === 'live')).length;
-  write(notLive ? `${notLive} of ${rows.length} entries are not live.` : `All ${rows.length} entries are live.`);
-  return exitCodeFor(rows);
+  if (rows.length > 0) write(notLive ? `${notLive} of ${rows.length} entries are not live.` : `All ${rows.length} entries are live.`);
+  if (targets.empty.length > 0) write(`${targets.empty.length} slot(s) have no entries.`);
+  return targets.empty.length > 0 ? 1 : exitCodeFor(rows);
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {

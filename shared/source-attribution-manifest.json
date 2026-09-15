@@ -14430,7 +14430,10 @@
           "path": "src/components/LiveNewsPanel.ts"
         },
         {
-          "path": "src/components/LiveWebcamsPanel.ts"
+          "path": "src/config/live-video-sources.ts"
+        },
+        {
+          "path": "src/services/live-video/session.ts"
         }
       ]
     },

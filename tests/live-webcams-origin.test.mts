@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { isAllowedWebcamEmbedMessageOrigin } from '../src/components/_live-webcams-origin.ts';
+import { isAllowedWebcamEmbedMessageOrigin } from '../src/services/live-video/embed-message-origin.ts';
 
 describe('LiveWebcamsPanel postMessage origin guard', () => {
   it('accepts YouTube iframe API messages from the iframe embed origin', () => {
@@ -43,5 +43,20 @@ describe('LiveWebcamsPanel postMessage origin guard', () => {
 
     assert.equal(isAllowedWebcamEmbedMessageOrigin('http://localhost:9999', sidecarSrc), false);
     assert.equal(isAllowedWebcamEmbedMessageOrigin('http://localhost:14567', otherLocalEndpoint), false);
+  });
+
+  it('accepts a channel live embed from the YouTube origin only', () => {
+    const src = 'https://www.youtube.com/embed/live_stream?channel=UCNye-wNBqNL5ZzHSJj3l8Bg&enablejsapi=1&origin=https%3A%2F%2Fworldmonitor.app';
+
+    assert.equal(isAllowedWebcamEmbedMessageOrigin('https://www.youtube.com', src), true);
+    assert.equal(isAllowedWebcamEmbedMessageOrigin('https://www.youtube-nocookie.com', src), false);
+    assert.equal(isAllowedWebcamEmbedMessageOrigin('https://evil.example', src), false);
+  });
+
+  it('accepts a sidecar channel embed from its own loopback origin only', () => {
+    const src = 'http://localhost:14567/api/youtube-embed?channel=UCNye-wNBqNL5ZzHSJj3l8Bg&autoplay=1&mute=1&parentOrigin=tauri%3A%2F%2Flocalhost';
+
+    assert.equal(isAllowedWebcamEmbedMessageOrigin('http://localhost:14567', src), true);
+    assert.equal(isAllowedWebcamEmbedMessageOrigin('http://127.0.0.1:14567', src), false);
   });
 });
