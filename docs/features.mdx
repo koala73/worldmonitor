@@ -208,7 +208,7 @@ Each channel tries its sources in order: the broadcaster's own HLS stream where 
 | **Automatic start** (play-all, auto-play, Resume) | Skips a channel that is offline and plays the next one, without changing the saved channel |
 | **Player signals blocked** (extensions, strict tracking protection) | The stream keeps playing with a "Can’t confirm this stream is live" note |
 
-Streams are listed in `src/config/live-video-sources.ts`; `npm run live-video:check -- --all` reports any that stopped being live.
+Streams are listed in `src/config/live-video-sources.ts`; `npm run live-video:check -- --all` reports any that stopped being live. A daily audit keeps one GitHub issue, "Live video sources: slots needing a replacement", that names each webcam or channel slot with nothing live, where it shows and why; maintainers check a replacement URL with `npm run live-video:check -- <url>` and paste it into that file.
 
 **Idle Detection:**
 
