@@ -284,20 +284,15 @@ describe('runCheck', () => {
 
   it('calls a live HLS playlist live from Node and says playback was not checked', async () => {
     const out = [];
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n');
-    try {
-      const code = await runCheck(['aje=https://live-hls-apps-aje-fa.getaj.net/AJE/index.m3u8'], {
-        write: (line) => out.push(line),
-        probeYouTube: async () => { throw new Error('no YouTube entries were given'); },
-      });
-      const text = out.join('\n');
-      assert.equal(code, 0);
-      assert.match(text, /^LIVE\s+aje/m);
-      assert.match(text, /why: HLS playlist is live \(playback not checked outside a browser\)$/m);
-    } finally {
-      globalThis.fetch = realFetch;
-    }
+    const code = await runCheck(['aje=https://live-hls-apps-aje-fa.getaj.net/AJE/index.m3u8'], {
+      write: (line) => out.push(line),
+      probeYouTube: async () => { throw new Error('no YouTube entries were given'); },
+      fetchImpl: async () => new Response('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg1.ts\n'),
+    });
+    const text = out.join('\n');
+    assert.equal(code, 0);
+    assert.match(text, /^LIVE\s+aje/m);
+    assert.match(text, /why: HLS playlist is live \(playback not checked outside a browser\)$/m);
   });
 
   it('exits 0 when every entry is live and never launches a probe for an empty group', async () => {

@@ -307,14 +307,16 @@ function firstVariantUri(text) {
   return lines.slice(streamInf + 1).find((line) => line && !line.startsWith('#')) ?? null;
 }
 
-async function probeHlsCandidate(candidate) {
+const defaultFetch = (...args) => globalThis.fetch(...args);
+
+async function probeHlsCandidate(candidate, fetchImpl = defaultFetch) {
   const startedAt = Date.now();
   const observe = (fields) => classifyAttempt({ transport: 'hls', elapsedMs: Date.now() - startedAt, manifest: 'unknown', progress: 'unchecked', failure: null, ...fields });
   const signal = AbortSignal.timeout(LIVE_VIDEO_TIMING.verdictDeadlineMs);
   try {
     let url = candidate.url;
     for (let depth = 0; depth < 3; depth++) {
-      const response = await fetch(url, { signal, headers: { 'user-agent': BROWSER_UA } });
+      const response = await fetchImpl(url, { signal, headers: { 'user-agent': BROWSER_UA } });
       if (!response.ok) return { verdict: observe({ failure: { kind: 'http', status: response.status } }) };
       const text = await response.text();
       const variant = firstVariantUri(text);
@@ -332,8 +334,8 @@ async function probeHlsCandidate(candidate) {
   }
 }
 
-async function probeHlsCandidates(candidates) {
-  return Promise.all(candidates.map(probeHlsCandidate));
+export async function probeHlsCandidates(candidates, fetchImpl = defaultFetch) {
+  return Promise.all(candidates.map((candidate) => probeHlsCandidate(candidate, fetchImpl)));
 }
 
 /** The entries a catalog mode checks, named by slot (a second entry is `slot#2`), plus the slots with no entries. */
@@ -353,7 +355,13 @@ function formatEmptySlot(slot) {
   return ['EMPTY'.padEnd(10), slot, `no entries: paste a live stream URL into ${CATALOG_FILE}`].join('  ');
 }
 
-export async function runCheck(argv, { write = console.log, probeYouTube = probeYouTubeWithBrowser, probeHls = probeHlsCandidates, catalog = DEFAULT_CATALOG } = {}) {
+export async function runCheck(argv, {
+  write = console.log,
+  probeYouTube = probeYouTubeWithBrowser,
+  fetchImpl = defaultFetch,
+  probeHls = (candidates) => probeHlsCandidates(candidates, fetchImpl),
+  catalog = DEFAULT_CATALOG,
+} = {}) {
   let args;
   let targets;
   try {
