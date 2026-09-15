@@ -102,7 +102,7 @@ describe('MCP Presets — static validation', () => {
 
   it('expected commercial presets are present', () => {
     const names = new Set(presets.map(p => p.name));
-    for (const expected of ['Exa Search', 'Tavily Search', 'Slack', 'GitHub', 'Stripe', 'Sentry', 'Datadog', 'Linear']) {
+    for (const expected of ['Exa Search', 'Tavily Search', 'Serply Search', 'Slack', 'GitHub', 'Stripe', 'Sentry', 'Datadog', 'Linear']) {
       assert.ok(names.has(expected), `Expected preset "${expected}" not found`);
     }
   });
@@ -124,6 +124,19 @@ describe('MCP Presets — static validation', () => {
     assert.ok(parallel, 'Parallel Search preset not found');
     assert.equal(parallel.serverUrl, 'https://search.parallel.ai/mcp');
     assert.equal(parallel.defaultTool, 'web_search');
+  });
+
+  it('Serply Search uses the Serply MCP endpoint and google_news_search tool', () => {
+    const serply = presets.find(p => p.name === 'Serply Search');
+    assert.ok(serply, 'Serply Search preset not found');
+    assert.equal(serply.serverUrl, 'https://api.serply.io/mcp');
+    assert.equal(serply.defaultTool, 'google_news_search');
+    // Serply authenticates with a bare X-Api-Key, not a Bearer token, so the
+    // placeholder has to survive verbatim: McpConnectModal substitutes {key}
+    // and a drift to "Authorization: Bearer {key}" would send the key in a
+    // header Serply ignores, failing every probe with a 401.
+    assert.equal(serply.apiKeyHeader, 'X-Api-Key: {key}');
+    assert.deepEqual(serply.defaultArgs, { query: 'geopolitical developments', proxy_location: 'US' });
   });
 
   it('Datadog serverUrl includes /api/unstable/mcp-server/mcp', () => {
