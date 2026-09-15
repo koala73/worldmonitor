@@ -80,6 +80,34 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+const tenantRelaySecrets = {
+  gateway: "CONVEX_TENANT_RELAY_SECRET",
+  delivery: "CONVEX_NOTIFICATION_RELAY_SECRET",
+  suppression: "CONVEX_EMAIL_SUPPRESSION_SECRET",
+} as const;
+
+async function authorizeTenantRelay(
+  request: Request,
+  roles: readonly (keyof typeof tenantRelaySecrets)[],
+): Promise<Response | null> {
+  const provided = /^Bearer\s+(\S+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const deny = () => Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  if (!provided) return deny();
+  // A copied ingestion key must never acquire tenant authority under a new name.
+  const ingestion = process.env.RELAY_SHARED_SECRET;
+  if (ingestion && await timingSafeEqualStrings(provided, ingestion)) return deny();
+  for (const role of roles) {
+    const secret = process.env[tenantRelaySecrets[role]];
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) continue;
+    for (const other of Object.keys(tenantRelaySecrets) as (keyof typeof tenantRelaySecrets)[]) {
+      const otherSecret = process.env[tenantRelaySecrets[other]];
+      if (other !== role && otherSecret && await timingSafeEqualStrings(secret, otherSecret)) return deny();
+    }
+    return null;
+  }
+  return deny();
+}
+
 /** Parse a request body only when JSON produced an object (never null or an array). */
 async function parseJsonObjectBody<T extends object>(request: Request): Promise<T | null> {
   try {
@@ -617,15 +645,8 @@ http.route({
   path: "/relay/deactivate",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
 
     const body = await parseJsonObjectBody<{ userId?: string; channelType?: string }>(request);
     if (!body) {
@@ -661,15 +682,8 @@ http.route({
   path: "/relay/channels",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
 
     const body = await parseJsonObjectBody<{ userId?: string }>(request);
     if (!body) {
@@ -698,19 +712,13 @@ http.route({
 });
 
 // Service-to-service notification channel management (no user JWT required).
-// Authenticated via RELAY_SHARED_SECRET; caller supplies the validated userId.
+// Authenticated via CONVEX_TENANT_RELAY_SECRET; caller supplies the validated userId.
 http.route({
   path: "/relay/notification-channels",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
 
     const body = await parseJsonObjectBody<{
       action?: string;
@@ -1045,14 +1053,8 @@ http.route({
   path: "/relay/digest-rules",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
     const rules = await ctx.runQuery((internal as any).alertRules.getDigestRules);
     return new Response(JSON.stringify(rules), {
       status: 200,
@@ -1070,14 +1072,8 @@ http.route({
   path: "/relay/enabled-rules",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
     const enabled = new URL(request.url).searchParams.get("enabled") !== "false";
     const rules = await ctx.runQuery(
       (internal as any).alertRules.getByEnabled,
@@ -1094,14 +1090,8 @@ http.route({
   path: "/relay/user-preferences",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
     const body = await parseJsonObjectBody<{ userId?: string; variant?: string }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1135,14 +1125,8 @@ http.route({
   path: "/relay/followed-countries",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["gateway", "delivery"]);
+    if (unauthorized) return unauthorized;
     const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1178,14 +1162,8 @@ http.route({
   path: "/relay/entitlement",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
     const body = await parseJsonObjectBody<{ userId?: string }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1219,20 +1197,14 @@ http.route({
 // 8-char share code to the signed-in user's Clerk userId so future
 // /pro?ref=<code> signups can credit the sharer via the
 // userReferralCredits path in registerInterest:register. Auth is
-// server-to-server via RELAY_SHARED_SECRET — the edge route already
+// server-to-server via CONVEX_TENANT_RELAY_SECRET — the edge route already
 // validated the caller's Clerk bearer before hitting this.
 http.route({
   path: "/relay/register-referral-code",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
     const body = await parseJsonObjectBody<{ userId?: string; code?: string }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1663,23 +1635,14 @@ http.route({
 });
 
 // Service-to-service: Vercel edge gateway creates Dodo checkout sessions.
-// Authenticated via RELAY_SHARED_SECRET; edge endpoint validates Clerk JWT
+// Authenticated via CONVEX_TENANT_RELAY_SECRET; edge endpoint validates Clerk JWT
 // and forwards the verified userId.
 http.route({
   path: "/relay/create-checkout",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(
-      /^Bearer\s+/,
-      "",
-    );
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
 
     const body = await parseJsonObjectBody<{
       userId?: string;
@@ -1775,23 +1738,14 @@ http.route({
 });
 
 // Service-to-service: Vercel edge gateway creates Dodo customer portal sessions.
-// Authenticated via RELAY_SHARED_SECRET; edge endpoint validates Clerk JWT
+// Authenticated via CONVEX_TENANT_RELAY_SECRET; edge endpoint validates Clerk JWT
 // and forwards the verified userId.
 http.route({
   path: "/relay/customer-portal",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(
-      /^Bearer\s+/,
-      "",
-    );
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
 
     const body = await parseJsonObjectBody<{ userId?: string }>(request);
     if (!body) {
@@ -1836,23 +1790,14 @@ http.route({
   handler: resendWebhookHandler,
 });
 
-// Bulk email suppression: service-to-service, authenticated via RELAY_SHARED_SECRET.
+// Bulk email suppression: service-to-service, authenticated via CONVEX_EMAIL_SUPPRESSION_SECRET.
 // Used by the one-time import script (scripts/import-bounced-emails.mjs).
 http.route({
   path: "/relay/bulk-suppress-emails",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SHARED_SECRET ?? "";
-    const provided = (request.headers.get("Authorization") ?? "").replace(
-      /^Bearer\s+/,
-      "",
-    );
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
-      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const unauthorized = await authorizeTenantRelay(request, ["suppression"]);
+    if (unauthorized) return unauthorized;
 
     const body = await parseJsonObjectBody<{
       emails: Array<{
@@ -1898,7 +1843,7 @@ http.route({
 // Historical intelligence memory (#5694).
 //
 // Ingest is server-to-server from the Railway seeders (RELAY_SHARED_SECRET,
-// same bearer convention as every other /relay/* route); the two read routes
+// separate from tenant relay credentials); the two read routes
 // are called by the Vercel edge (CONVEX_SERVER_SHARED_SECRET, same header
 // convention as the other /api/internal-* routes). Nothing here is reachable
 // by a browser: the underlying Convex functions are all `internal*`.

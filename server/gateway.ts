@@ -51,7 +51,6 @@ import {
   getBillingVerificationDenial,
   getRequiredTier,
   getEntitlements,
-  isEntitlementBackendConfigured,
   type CachedEntitlements,
 } from './_shared/entitlement-check';
 import { EMBED_KEY_RPC_PATHS } from '../shared/embed-panels';
@@ -1692,38 +1691,25 @@ export function createDomainGateway(
         apiAccessCovered,
       );
       if (billingDenial) return billingDenial;
-      // A validated wm_ key proves key ownership, not current paid access.
-      // Transient lookup failures now arrive as a verificationUnavailable
-      // marker and were already answered with the retryable 503 by
-      // denyForBillingVerification above; a null here means the backend is
-      // unconfigured or gave a confirmed/malformed answer, and allowing it
-      // would turn that state into paid API access. Fail closed with a 503
-      // — EXCEPT when the entitlement backend itself is unconfigured: that is
-      // a deploy defect, not customer billing state, and 503ing every wm_ key
-      // fleet-wide would convert a config regression into a total API outage.
-      // Misconfig serves fail-open (pre-#4770 behavior) and logs loudly.
+      // Key ownership does not prove paid access. Missing configuration and
+      // unresolved entitlements must remain retryable failures, not grants.
       if (!userKeyEntitlement) {
-        if (isEntitlementBackendConfigured()) {
-          emitRequest(503, 'billing_verification_503', null);
-          return new Response(
-            JSON.stringify({
-              error: 'Unable to verify API access',
-              code: 'entitlement_verification_unavailable',
-            }),
-            {
-              status: 503,
-              headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-store',
-                'Retry-After': '5',
-                'X-Billing-Verification': 'entitlement_verification_unavailable',
-              },
+        emitRequest(503, 'billing_verification_503', null);
+        return new Response(
+          JSON.stringify({
+            error: 'Unable to verify API access',
+            code: 'entitlement_verification_unavailable',
+          }),
+          {
+            status: 503,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'Retry-After': '5',
+              'X-Billing-Verification': 'entitlement_verification_unavailable',
             },
-          );
-        }
-        console.error(
-          '[gateway] entitlement backend unconfigured (CONVEX_SITE_URL / shared secret missing) — serving wm_-key request fail-open',
+          },
         );
       } else if (
         !userKeyEntitlement.features.apiAccess ||

@@ -11,7 +11,7 @@ import {
 const modules = import.meta.glob("../**/*.ts");
 
 test('notification relay hides unexpected exceptions and retains server diagnostics', async () => {
-  vi.stubEnv('RELAY_SHARED_SECRET', 'synthetic-relay-secret');
+  vi.stubEnv('CONVEX_TENANT_RELAY_SECRET', 'synthetic-relay-secret');
   const error = new Error('database synthetic-private-detail');
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   try {
@@ -34,7 +34,7 @@ test('notification relay hides unexpected exceptions and retains server diagnost
 
 test.each([['EMAIL_OWNERSHIP_REQUIRED', 400], ['PRO_REQUIRED', 402]] as const)(
   'notification relay preserves %s', async (code, status) => {
-    vi.stubEnv('RELAY_SHARED_SECRET', 'synthetic-relay-secret');
+    vi.stubEnv('CONVEX_TENANT_RELAY_SECRET', 'synthetic-relay-secret');
     try {
       const route = http.lookup('/relay/notification-channels', 'POST')![0];
       const response = await (route as unknown as { _handler: (ctx: unknown, request: Request) => Promise<Response> })._handler({

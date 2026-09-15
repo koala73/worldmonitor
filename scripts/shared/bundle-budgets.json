@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 440067
+    "raw": 440105
   },
   "chunks": {
     "clerk": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "main": {
-      "raw": 126103,
+      "raw": 126143,
       "files": 1
     },
     "panels": {
@@ -55,7 +55,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 132059,
+      "raw": 132057,
       "files": 1
     },
     "theme-manager": {
@@ -65,11 +65,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1362036
+      "raw": 1366498
     },
     "chunks": {
       "App": {
-        "raw": 871148,
+        "raw": 873455,
         "files": 1
       },
       "base": {
@@ -81,7 +81,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 30441,
+        "raw": 30104,
         "files": 1
       },
       "continuous": {
@@ -129,7 +129,7 @@
         "files": 1
       },
       "source-provenance": {
-        "raw": 76020,
+        "raw": 78088,
         "files": 1
       },
       "storage-facility-registry-store": {
@@ -141,7 +141,7 @@
         "files": 1
       },
       "sync-keys": {
-        "raw": 984,
+        "raw": 1036,
         "files": 1
       },
       "timeout-signal": {
@@ -149,7 +149,7 @@
         "files": 1
       },
       "user-location": {
-        "raw": 10386,
+        "raw": 10758,
         "files": 1
       },
       "widget-store": {

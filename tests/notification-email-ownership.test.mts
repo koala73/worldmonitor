@@ -20,7 +20,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     Object.assign(process.env, {
       UPSTASH_REDIS_REST_URL: 'https://upstash.test', UPSTASH_REDIS_REST_TOKEN: 'fake',
       CONVEX_URL: 'https://convex.test', CONVEX_SITE_URL: 'https://convex.test',
-      RELAY_SHARED_SECRET: 'fake', RESEND_API_KEY: 'fake', AI_IMPACT_ENABLED: 'false',
+      CONVEX_NOTIFICATION_RELAY_SECRET: 'fake', RESEND_API_KEY: 'fake', AI_IMPACT_ENABLED: 'false',
     });
     const sends: Array<{ to: string; subject: string; text: string }> = [];
     const loader = Module as unknown as { _load: (...args: any[]) => any };

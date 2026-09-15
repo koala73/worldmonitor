@@ -124,7 +124,8 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const RELAY_SECRET = process.env.CONVEX_NOTIFICATION_RELAY_SECRET ?? '';
+const ANALYST_RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 // Brief/digest is an editorial daily read, not an incident alarm — route it
@@ -153,7 +154,7 @@ if (!UPSTASH_URL || !UPSTASH_TOKEN) {
   process.exit(1);
 }
 if (!CONVEX_SITE_URL || !RELAY_SECRET) {
-  console.error('[digest] CONVEX_SITE_URL / RELAY_SHARED_SECRET not set');
+  console.error('[digest] CONVEX_SITE_URL / CONVEX_NOTIFICATION_RELAY_SECRET not set');
   process.exit(1);
 }
 
@@ -265,7 +266,7 @@ function normalizeForDescriptionEquality(s) {
  * (See feedback_gate_on_ground_truth_not_configured_state.md.)
  */
 async function callAnalystWhyMatters(story) {
-  if (!RELAY_SECRET) return null;
+  if (!ANALYST_RELAY_SECRET) return null;
   // Forward a trimmed story payload so the endpoint only sees the
   // fields it validates. `description` is NEW for prompt-v2 — when
   // upstream has a real one (falls back to headline via
@@ -294,7 +295,7 @@ async function callAnalystWhyMatters(story) {
     const resp = await fetch(BRIEF_WHY_MATTERS_ENDPOINT_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${RELAY_SECRET}`,
+        Authorization: `Bearer ${ANALYST_RELAY_SECRET}`,
         'Content-Type': 'application/json',
         // Explicit UA — Node undici's default is short/empty enough to
         // trip middleware.ts's "No user-agent or suspiciously short"

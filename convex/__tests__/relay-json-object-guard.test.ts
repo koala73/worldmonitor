@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -19,24 +19,20 @@ const routes = [
 ];
 
 describe("relay JSON object body guard", () => {
-  let originalSecret: string | undefined;
-
   beforeEach(() => {
-    originalSecret = process.env.RELAY_SHARED_SECRET;
-    process.env.RELAY_SHARED_SECRET = RELAY_SECRET;
+    vi.stubEnv("RELAY_SHARED_SECRET", "ingestion-only");
+    vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", RELAY_SECRET);
+    vi.stubEnv("CONVEX_NOTIFICATION_RELAY_SECRET", "delivery-secret");
+    vi.stubEnv("CONVEX_EMAIL_SUPPRESSION_SECRET", "suppression-secret");
   });
-
-  afterEach(() => {
-    if (originalSecret === undefined) delete process.env.RELAY_SHARED_SECRET;
-    else process.env.RELAY_SHARED_SECRET = originalSecret;
-  });
+  afterEach(() => vi.unstubAllEnvs());
 
   test.each(routes)("%s rejects a JSON null body with 400 INVALID_JSON", async (path) => {
     const t = convexTest(schema, modules);
     const res = await t.fetch(path, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${RELAY_SECRET}`,
+        Authorization: `Bearer ${path === "/relay/bulk-suppress-emails" ? "suppression-secret" : ["/relay/deactivate", "/relay/channels", "/relay/user-preferences", "/relay/entitlement"].includes(path) ? "delivery-secret" : RELAY_SECRET}`,
         "Content-Type": "application/json",
       },
       body: "null",

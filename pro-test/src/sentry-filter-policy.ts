@@ -445,6 +445,13 @@ const MASKED_URL_FRAME = /^webkit-masked-url:/;
  */
 const CSP_EVAL_BLOCK = /unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval/;
 /**
+ * Chrome's wording for a `<script>` whose inline source failed to parse when it
+ * was inserted: the DOM call is prefixed onto the parse error. Deliberately NOT
+ * in `MARKETING_IGNORE_ERRORS`: this bundle appends scripts too (turnstile.ts,
+ * debugbear-rum.ts), so only a frame gate can tell an injected script from ours.
+ */
+const APPEND_CHILD_PARSE_FAILURE = /^Failed to execute 'appendChild' on 'Node': /;
+/**
  * A script the browser fetched but could not PARSE. Deliberately NOT in
  * `MARKETING_IGNORE_ERRORS`: a `SyntaxError` message is generic enough that our
  * own bundle could in principle produce one (a `JSON.parse` on a malformed API
@@ -649,6 +656,28 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // injection.
   if (nonInfraFrames.length === 0
       && CSP_EVAL_BLOCK.test(msg)
+      && frames.some((f) => f.filename === '<anonymous>')) return null;
+
+  // An injected script inserting a `<script>` whose inline source fails to
+  // parse. WORLDMONITOR-12D is the shape: `SyntaxError: Failed to execute
+  // 'appendChild' on 'Node': Invalid regular expression: missing /` on Chrome
+  // 152 / Windows at `/`, an `onerror` capture whose eight frames are all
+  // `<anonymous>`, beside breadcrumbs from a third-party RUM beacon this surface
+  // never loads. The dashboard drops the same class through its
+  // `/Invalid regular expression: missing/` entry and `appendChild.*Unexpected`
+  // gate; the two surfaces run separate Sentry clients.
+  //
+  // Gated like the eval rule above, on the WHOLE stack being `<anonymous>` or
+  // infra: a parse failure attributable to this bundle's own script loaders
+  // would ride a `/pro/assets/*.js` frame, and one from an inline first-party
+  // script would put the document URL on the stack. A frame with no filename
+  // is dropped from `nonInfraFrames` yet could be that attributing frame, so
+  // it keeps the event reporting (PR #8174 review). The `SyntaxError` type
+  // keeps a script that parsed and then threw reporting.
+  if (nonInfraFrames.length === 0
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && exceptionType === 'SyntaxError'
+      && APPEND_CHILD_PARSE_FAILURE.test(msg)
       && frames.some((f) => f.filename === '<anonymous>')) return null;
 
   // A module the browser fetched but could not parse. WORLDMONITOR-TS is the

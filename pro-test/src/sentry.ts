@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react';
+import { sanitizeSentryTelemetry, sentryPrivacyOptions } from '../../shared/sentry-privacy';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
@@ -26,6 +27,7 @@ export function initSentry(): void {
     : 'development';
 
   Sentry.init({
+    ...sentryPrivacyOptions,
     dsn: sentryDsn || undefined,
     ...getSentryBuildMetadata(__APP_VERSION__, __BUILD_HASH__, environment),
     environment,
@@ -41,14 +43,14 @@ export function initSentry(): void {
         const safeRequestUrl = sanitizeMarketingRequestUrl(filteredEvent.request.url);
         filteredEvent.request.url = safeRequestUrl;
       }
-      return decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
+      return sanitizeSentryTelemetry(decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
         document,
         location,
         servedLanguage,
         applicationLanguage: currentLanguageBase(),
         browserLanguage: navigator.language,
         browserLanguages: [...navigator.languages],
-      }));
+      })));
     },
   });
 }

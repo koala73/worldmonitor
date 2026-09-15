@@ -520,6 +520,24 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 0);
   });
 
+  it('diseaseOutbreaks retries unavailable hydration and retains confirmed-empty RPC data', async () => {
+    const payload = { outbreaks: [], fetchedAt: Date.now(), alertLevelMethodologyVersion: 'v1' };
+    const requests = bootstrapStub({ diseaseOutbreaks: { outbreaks: [], fetchedAt: 0 } }, () => payload);
+    await harness.fetchBootstrapData();
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.equal(rpcUrlCount(requests), 1);
+  });
+
+  it('diseaseOutbreaks retains confirmed-empty hydration without an RPC', async () => {
+    const payload = { outbreaks: [], fetchedAt: Date.now(), alertLevelMethodologyVersion: 'v1' };
+    const requests = bootstrapStub({ diseaseOutbreaks: payload });
+    await harness.fetchBootstrapData();
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.equal(rpcUrlCount(requests), 0);
+  });
+
   it('diseaseOutbreaks (no breaker): the hydration handoff answers recurring reads', async () => {
     const requests = bootstrapStub({ diseaseOutbreaks: { outbreaks: [OUTBREAK], fetchedAt: 1, alertLevelMethodologyVersion: 'v1' } });
     await harness.fetchBootstrapData();

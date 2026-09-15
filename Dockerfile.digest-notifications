@@ -17,7 +17,8 @@
 #   UPSTASH_REDIS_REST_URL
 #   UPSTASH_REDIS_REST_TOKEN
 #   CONVEX_URL                    (or CONVEX_SITE_URL)
-#   RELAY_SHARED_SECRET
+#   CONVEX_NOTIFICATION_RELAY_SECRET
+#   RELAY_SHARED_SECRET (analyst enrichment only)
 #   RESEND_API_KEY
 #   TELEGRAM_BOT_TOKEN
 #   BRIEF_URL_SIGNING_SECRET      (brief compose disabled without this)

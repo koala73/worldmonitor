@@ -67,7 +67,7 @@ import {
   handleCheckoutReturn,
   resolveCheckoutReturnRouting,
 } from '@/services/checkout-return';
-import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
+import { showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
 import {
   markProActivationPending,
   ProActivationController,
@@ -495,8 +495,7 @@ export class PanelLayoutManager implements AppModule {
     // post-checkout:
     //   1. Full-page Dodo redirect — handleCheckoutReturn() reads
     //      subscription_id/status URL params and cleans them.
-    //   2. Dodo overlay success — setTimeout(reload) with no URL params;
-    //      we stash a session flag before the reload and consume it here.
+    //   2. A legacy overlay-success flag left by an older tab.
     const returnResult = handleCheckoutReturn();
     const returnedFromOverlayFlag = consumePostCheckoutFlag();
     const routing = resolveCheckoutReturnRouting(returnResult, returnedFromOverlayFlag);
@@ -641,18 +640,6 @@ export class PanelLayoutManager implements AppModule {
       initSubscriptionWatch(userId).catch(() => {});
     }
 
-    // Overlay success fires BEFORE the entitlement-watcher reload. The
-    // banner stays mounted through the reload via waitForEntitlement so
-    // the user sees visual continuity from "Payment received!" through
-    // "Premium activated" without a blank intermediate state. Read the
-    // email lazily at fire-time (not at register-time) so a just-signed-
-    // in buyer who completes checkout in the same session still sees
-    // the receipt acknowledgement.
-    registerCheckoutSuccessCallback(() => showCheckoutSuccess({
-      waitForEntitlement: true,
-      email: getAuthState().user?.email ?? null,
-    }));
-
     // Reload at most once per account and browser tab on a free→pro
     // transition. Legacy-pro users whose first snapshot is already pro must
     // not reload, while a newly upgraded user gets one clean boot with every
@@ -672,8 +659,7 @@ export class PanelLayoutManager implements AppModule {
     // another transient free→pro sequence and reloads again every ~500ms.
     //
     // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — this remains the sole
-    // automatic reload source for post-checkout success (the overlay handler
-    // in checkout.ts deliberately does NOT reload). Regression guards:
+    // automatic reload source for post-checkout success. Regression guards:
     // tests/entitlement-transition.test.mts locks the raw transition semantics;
     // tests/entitlement-reload-controller.test.mts locks the cross-boot
     // one-navigation invariant from the daypesta customer recording.
@@ -933,9 +919,6 @@ export class PanelLayoutManager implements AppModule {
 
     this.proActivationController.destroy();
     this.passkeyOfferController.destroy();
-
-    // Reset checkout overlay so next layout init can register its callback
-    destroyCheckoutOverlay();
 
     removeResponsiveZoneListener(this.responsiveZoneListener);
     this.responsiveZoneListener = null;

@@ -25,7 +25,7 @@ import { validateBearerToken } from '../server/auth-session';
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -98,7 +98,7 @@ export default async function handler(
     return idempotency.response;
   }
 
-  if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
+  if (!CONVEX_SITE_URL || !CONVEX_TENANT_RELAY_SECRET) {
     return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
@@ -107,7 +107,7 @@ export default async function handler(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${RELAY_SHARED_SECRET}`,
+        Authorization: `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
       },
       body: JSON.stringify({ userId: session.userId }),
       signal: AbortSignal.timeout(15_000),

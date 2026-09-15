@@ -189,12 +189,6 @@ const stubSources: Record<string, string> = {
       fn({ addBreadcrumb: () => {}, captureMessage: () => {}, captureException: () => {} });
     }
   `,
-  'dodopayments-checkout': `
-    export const DodoPayments = {
-      Initialize() {},
-      Checkout: { isOpen: () => false, close: () => {}, open: () => {} },
-    };
-  `,
   // The one behavioural knob: which runtime the case is asserting. The real
   // detector has its own coverage in tests/desktop-external-handoff.test.mts,
   // which drives it from a synthesised Tauri window.
@@ -252,11 +246,6 @@ const stubSources: Record<string, string> = {
   `,
   './checkout-plan-names': `
     export const resolvePlanDisplayName = () => 'Pro';
-  `,
-  './entitlement-watchdog': `
-    export function createEntitlementWatchdog() {
-      return { start: () => {}, stop: () => {}, isActive: () => false };
-    }
   `,
 };
 

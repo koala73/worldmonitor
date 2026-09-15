@@ -50,6 +50,7 @@ const {
   OPENROUTER_PROVIDER_ROUTING,
 } = require('./lib/llm-model-policy.cjs');
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
+const { SAUDI_CIVIL_DEFENSE, MAX_POST_CHARS, publishSaudiCivilDefenseAlerts } = require('./lib/saudi-civil-defense-alerts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const {
@@ -1174,9 +1175,11 @@ function loadTelegramChannels() {
 
 function normalizeTelegramMessage(msg, channel) {
   const handle = sanitizeTelegramUsername(channel.handle);
+  const isSaudiCivilDefense = handle.toLowerCase() === SAUDI_CIVIL_DEFENSE.handle.toLowerCase();
   const textRaw = String(msg?.message || '');
-  const text = textRaw.slice(0, TELEGRAM_MAX_TEXT_CHARS);
-  const ts = msg?.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString();
+  const text = textRaw.slice(0, isSaudiCivilDefense
+    ? MAX_POST_CHARS : TELEGRAM_MAX_TEXT_CHARS);
+  const ts = msg?.date ? new Date(msg.date * 1000).toISOString() : isSaudiCivilDefense ? '' : new Date().toISOString();
   return {
     id: `${handle}:${msg.id}`,
     source: 'telegram',
@@ -1185,6 +1188,7 @@ function normalizeTelegramMessage(msg, channel) {
     url: `https://t.me/${handle}/${msg.id}`,
     ts,
     text,
+    textTruncated: text.length < textRaw.length,
     topic: channel.topic || 'other',
     tags: [channel.region].filter(Boolean),
     earlySignal: true,
@@ -4531,6 +4535,7 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 const RELAY_SOURCE_TIERS = {
   ...requireShared('source-tiers.json'),
   ...requireShared('x-account-source-tiers.json'),
+  [SAUDI_CIVIL_DEFENSE.name]: SAUDI_CIVIL_DEFENSE.tier,
 };
 const {
   createExplicitTierFourSourceSet,
@@ -4838,9 +4843,9 @@ const CLASSIFY_LLM_PROVIDERS = [
   },
 ];
 
-function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout) {
+function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200) {
   return new Promise((resolve) => {
-    const sanitized = titles.map((t) => t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, 200).trim());
+    const sanitized = titles.map((t) => t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, maxTextChars).trim());
     const prompt = sanitized.map((t, i) => `${i}|${t}`).join('\n');
     const bodyStr = JSON.stringify({
       model,
@@ -4883,7 +4888,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
   });
 }
 
-async function classifyFetchLlm(titles) {
+async function classifyFetchLlm(titles, maxTextChars = 200) {
   for (const provider of CLASSIFY_LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
@@ -4892,7 +4897,7 @@ async function classifyFetchLlm(titles) {
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
     const headers = provider.headers(envVal);
 
-    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout);
+    const result = await classifyFetchLlmSingle(titles, envVal, apiUrl, model, headers, provider.extraBody || {}, provider.timeout, maxTextChars);
     if (result) {
       return result;
     }
@@ -5114,6 +5119,27 @@ async function seedClassify() {
     if (!hasAnyProvider) {
       console.log('[Classify] Skipped — no LLM provider keys configured');
       return;
+    }
+
+    try {
+      await publishSaudiCivilDefenseAlerts(telegramState.items, {
+        now: Date.now,
+        readCache: upstashGet,
+        writeCache: upstashSet,
+        classify: (posts) => classifyFetchLlm(posts, MAX_POST_CHARS),
+        publish: (event) => publishNotificationEvent({
+          ...event,
+          payload: {
+            ...event.payload,
+            importanceScore: relayComputeImportanceScore(
+              event.severity, event.payload.source, 1, event.payload.publishedAt,
+              { title: event.payload.title, classSource: 'llm', entityCorroborationCount: 0 },
+            ),
+          },
+        }),
+      });
+    } catch (e) {
+      console.warn('[Classify] Saudi Civil Defense alerts failed:', e?.message || e);
     }
 
     let totalClassified = 0;

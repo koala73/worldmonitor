@@ -730,3 +730,16 @@ test('mint still succeeds when the cookie header is malformed', async () => {
   assert.equal(body.hadSession, false);
   assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
 });
+
+test('vendor origins cannot mint a session even with a valid privileged cookie', async () => {
+  for (const origin of ['https://clerk.worldmonitor.app', 'https://abacus.worldmonitor.app']) {
+    const response = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: { origin, cookie: 'wm-pro-key=enterprise-secret' },
+    }));
+    assert.equal(response.status, 403, origin);
+    assert.equal(setCookies(response).length, 0);
+    // The denial remains readable; echoing a refusal is not an origin grant.
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+  }
+});

@@ -28,7 +28,7 @@ import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-checkout-edge/1.0';
 
@@ -161,7 +161,7 @@ export default async function handler(
     return idempotency.response;
   }
 
-  if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
+  if (!CONVEX_SITE_URL || !CONVEX_TENANT_RELAY_SECRET) {
     return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
@@ -173,7 +173,7 @@ export default async function handler(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${RELAY_SHARED_SECRET}`,
+        Authorization: `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
         'User-Agent': CHECKOUT_RELAY_USER_AGENT,
       },
       body: JSON.stringify({

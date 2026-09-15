@@ -1303,7 +1303,7 @@ Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA kno
 | Name | Type | Description |
 |------|------|-------------|
 | `threat_type` | string | Filter to one threat type (case-insensitive substring, e.g. "malware", "vulnerability", "c2"). |
-| `min_severity` | string: low / medium / high / critical | Drop threats below this severity level. |
+| `min_severity` | string: low / medium / high / critical | Keep only threats with a known severity at or above this level; exclude missing or unrecognized severities. |
 | `country` | string | Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
 | `limit` | number | Cap the threat list to at most this many items (default 30, pass 0 for no cap). |
 

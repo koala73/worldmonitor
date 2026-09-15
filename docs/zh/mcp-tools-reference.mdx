@@ -1085,7 +1085,7 @@ curl -s https://worldmonitor.app/mcp \
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `threat_type` | string | 筛选为一种威胁类型（不区分大小写的子串，例如 "malware"、"vulnerability"、"c2"）。 |
-| `min_severity` | string: low / medium / high / critical | 丢弃低于此严重级别的威胁。 |
+| `min_severity` | string: low / medium / high / critical | 仅保留严重级别已知且达到或高于此级别的威胁；排除严重级别缺失或无法识别的威胁。 |
 | `country` | string | 筛选为一个 ISO 3166-1 alpha-2 国家代码（许多威胁没有国家，会被此筛选丢弃）。 |
 | `limit` | number | 将威胁列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
 

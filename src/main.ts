@@ -283,8 +283,8 @@ function shouldSuppressCspViolation(
       // `div.show` — an origin-only frame (no path) that appears nowhere in our
       // source, repeated across many users over months. The injector is not
       // identified, but it does not need to be: frame-src is a BOUNDED
-      // allowlist — named hosts plus five vendor wildcard subdomains
-      // (*.clerk.accounts.dev, *.vercel.app, *.dodopayments.com and two more) —
+      // allowlist — named hosts plus four vendor wildcard subdomains
+      // (*.clerk.accounts.dev, *.dodopayments.com and two more) —
       // and div.show falls under none of them, so it can only have been framed
       // into the page from outside. That safety argument depends on frame-src
       // staying bounded — pinned by "CSP frame-src stays a bounded host

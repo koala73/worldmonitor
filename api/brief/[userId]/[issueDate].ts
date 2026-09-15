@@ -113,7 +113,7 @@ async function fetchFollowedCountriesEdge(
   const convexSiteUrl =
     process.env.CONVEX_SITE_URL
     ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-  const relaySecret = process.env.RELAY_SHARED_SECRET ?? '';
+  const relaySecret = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
   if (!convexSiteUrl || !relaySecret) return [];
   if (typeof userId !== 'string' || userId.length === 0) return [];
   try {

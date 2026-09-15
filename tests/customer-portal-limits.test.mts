@@ -4,7 +4,8 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 process.env.CLERK_JWT_ISSUER_DOMAIN = 'https://clerk.portal.test';
 process.env.CONVEX_SITE_URL = 'https://portal.convex.site';
-process.env.RELAY_SHARED_SECRET = 'synthetic-relay-secret';
+process.env.RELAY_SHARED_SECRET = 'synthetic-ingestion-secret';
+process.env.CONVEX_TENANT_RELAY_SECRET = 'synthetic-tenant-relay-secret';
 process.env.UPSTASH_REDIS_REST_URL = 'https://portal-redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 const { default: handler } = await import('../api/customer-portal.ts');
@@ -39,6 +40,7 @@ it('limits portal sessions per authenticated user before the relay, across token
       }));
     }
     assert.equal(url, 'https://portal.convex.site/relay/customer-portal');
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer synthetic-tenant-relay-secret');
     relayCalls++;
     return Response.json({ url: 'https://billing.test/session' });
   };

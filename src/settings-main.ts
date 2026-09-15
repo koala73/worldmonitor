@@ -726,7 +726,7 @@ function initDiagnostics(): void {
       const rows = entries.slice().reverse().map((e) => {
         const ts = e.timestamp.split('T')[1]?.replace('Z', '') || e.timestamp;
         const cls = e.status < 300 ? 'ok' : e.status < 500 ? 'warn' : 'err';
-        return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${e.method}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
+        return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${escapeHtml(e.method)}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
       }).join('');
 
       setTrustedHtml(trafficLogEl, trustedHtml(`<table class="diag-table"><thead><tr><th scope="col">${t('modals.settingsWindow.table.time')}</th><th scope="col">${t('modals.settingsWindow.table.method')}</th><th scope="col">${t('modals.settingsWindow.table.path')}</th><th scope="col">${t('modals.settingsWindow.table.status')}</th><th scope="col">${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`, "legacy direct innerHTML migration"));

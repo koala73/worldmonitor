@@ -31,7 +31,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     Object.assign(process.env, {
       UPSTASH_REDIS_REST_URL: 'https://upstash.test', UPSTASH_REDIS_REST_TOKEN: 'fake',
       CONVEX_URL: 'https://convex.test', CONVEX_SITE_URL: 'https://convex.test',
-      RELAY_SHARED_SECRET: 'fake', TELEGRAM_BOT_TOKEN: 'fake', AI_IMPACT_ENABLED: '0',
+      CONVEX_NOTIFICATION_RELAY_SECRET: 'fake', TELEGRAM_BOT_TOKEN: 'fake', AI_IMPACT_ENABLED: '0',
     });
     const loader = Module as unknown as { _load: (...args: any[]) => any };
     const originalLoad = loader._load;

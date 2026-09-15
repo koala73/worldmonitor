@@ -1987,8 +1987,14 @@ export const RPC_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['resilience:food-stocks:v1', 'seed-meta:resilience:food-stocks'],
     _execute: async (params, base, context, execution) => {
-      const q = new URLSearchParams();
-      if (params.country_code) q.set('countryCode', String(params.country_code).trim().toUpperCase());
+      const countryCode = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
+      if (!/^(?:[A-Z]{2}|WORLD|WLD|_WORLD)$/.test(countryCode)) {
+        throw new RpcValidationError('get-food-stocks', [{
+          field: 'country_code',
+          description: 'country_code is required and must be a 2-letter ISO 3166-1 alpha-2 code or WORLD',
+        }]);
+      }
+      const q = new URLSearchParams({ countryCode });
       if (params.commodity) q.set('commodity', String(params.commodity).trim());
       const qs = q.toString();
       const url = `${base}/api/resilience/v1/get-food-stocks${qs ? `?${qs}` : ''}`;

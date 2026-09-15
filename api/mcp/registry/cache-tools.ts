@@ -1297,7 +1297,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         min_severity: {
           type: 'string',
           enum: ['low', 'medium', 'high', 'critical'],
-          description: 'Drop threats below this severity level.',
+          description: 'Keep only threats with a known severity at or above this level; exclude missing or unrecognized severities.',
         },
         country: { type: 'string', description: 'Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
         limit: { type: 'number', description: 'Cap the threat list to at most this many items (default 30, pass 0 for no cap).' },
@@ -1330,7 +1330,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'threats-bootstrap', 'threats', (t) => {
           const tok = argStr(t.severity).replace('criticality_level_', '');
           const r = ranks[tok];
-          return r == null || r >= minRank;
+          return r != null && r >= minRank;
         });
       }
       capNested(data, 'threats-bootstrap', 'threats', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));

@@ -15,6 +15,7 @@ import {
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
+import { sanitizeSentryTelemetry } from '../shared/sentry-privacy.ts';
 import { buildCheckoutReportTags } from '../src/services/checkout-sentry-policy.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,7 +55,7 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 // eslint-disable-next-line no-new-func
 const rawBeforeSend = new Function(
   'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
-  'isolateNonProductionSentryEvent', 'environment',
+  'isolateNonProductionSentryEvent', 'environment', 'sanitizeSentryTelemetry',
   `${tpMatch[0]}\n${fnBody}`,
 );
 
@@ -81,7 +82,7 @@ const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
 const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
 
 function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production') {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment);
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, sanitizeSentryTelemetry);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -181,6 +182,39 @@ describe('ignoreErrors filters', () => {
       'Only the enumerated extension identifiers may be ignored',
     );
   });
+
+  // WORLDMONITOR-ZS: an injected script redeclaring its own top-level
+  // `nativeIframe` binding. The only frame is the document itself
+  // (`/dashboard:1:1`), on Chrome 152 / Windows and Electron 39.
+  it('suppresses the injected nativeIframe redeclaration', () => {
+    assert.ok(
+      isIgnored("Identifier 'nativeIframe' has already been declared", 'SyntaxError'),
+      'nativeIframe duplicate-declaration must be ignored',
+    );
+  });
+
+  // Two classic scripts on one page share a global lexical scope, so the
+  // message-only entry is safe only while no script we ship declares the name.
+  it('keeps the licence true: nativeIframe is absent from our own source', () => {
+    const offenders = [];
+    for (const rel of ['../src', '../api']) {
+      for (const file of walkTsFiles(resolve(__dirname, rel))) {
+        if (/sentry-init\.ts$/.test(file)) continue;
+        if (/\bnativeIframe\b/.test(readFileSync(file, 'utf-8'))) offenders.push(file);
+      }
+    }
+    const publicDir = resolve(__dirname, '../public');
+    const documents = [
+      resolve(__dirname, '../index.html'),
+      ...readdirSync(publicDir).filter((f) => f.endsWith('.html')).map((f) => join(publicDir, f)),
+    ];
+    assert.ok(documents.length > 1, 'sanity: the scan must reach the shipped HTML documents');
+    for (const file of documents) {
+      if (/\bnativeIframe\b/.test(readFileSync(file, 'utf-8'))) offenders.push(file);
+    }
+    assert.deepEqual(offenders, [],
+      `nativeIframe now appears in our own source — the suppression is no longer safe:\n${offenders.join('\n')}`);
+  });
 });
 
 // ─── P2: firstPartyFile regex covers all Vite chunk patterns ─────────────
@@ -206,7 +240,7 @@ describe('first-party file detection', () => {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
       const filter = ${rawBeforeSend.toString()};
       const run = event => filter(event, () => false, () => false,
-        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production');
+        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production', event => event);
       process.stdout.write(JSON.stringify({
         malformed: run(${JSON.stringify(malformed)}),
         wellFormed: run(${JSON.stringify(wellFormed)}),
@@ -446,6 +480,150 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
   }
 });
 
+// ─── WORLDMONITOR-XT: Vite's CSS preload failure for an owned stylesheet ───
+//
+// Vite's preload helper inserts a `<link rel="stylesheet">` for each CSS
+// dependency of an `import()` and rejects that import with `Unable to preload CSS
+// for <url>` when the link fires `error`, after dispatching `vite:preloadError`
+// (which installChunkReloadGuard turns into a reload). The helper is bundled
+// into our own chunks, so the event always carries a first-party frame; the
+// owned hashed URL is what licenses the suppression, exactly as for the JS twin.
+describe('Vite CSS preload failures (WORLDMONITOR-XT)', () => {
+  // Verbatim production shape: Chrome Mobile / Android 10, one frame in the
+  // chunk that holds the preload helper, the deferred `import('./App')` whose
+  // catch rethrows on purpose.
+  const PROD_MSG = 'Unable to preload CSS for /assets/debugbear-rum-9hl8Iil4.css';
+  const helperFrame = () => firstPartyFrame('https://www.worldmonitor.app/assets/clerk-DyIi5-Wc.js', 'HTMLLinkElement.<anonymous>');
+
+  it('suppresses the verbatim production event despite its first-party frame', () => {
+    assert.equal(beforeSend(makeEvent(PROD_MSG, 'Error', [helperFrame()])), null);
+  });
+
+  it('suppresses an absolute owned stylesheet URL', () => {
+    for (const url of [
+      'https://www.worldmonitor.app/assets/happy-theme-DInLuQYM.css',
+      'https://tech.worldmonitor.app/assets/debugbear-rum-9hl8Iil4.css',
+    ]) {
+      assert.equal(beforeSend(makeEvent(`Unable to preload CSS for ${url}`, 'Error', [helperFrame()])), null, url);
+    }
+  });
+
+  it('keeps an off-origin stylesheet', () => {
+    const event = makeEvent('Unable to preload CSS for https://cdn.example.com/assets/vendor-abc123.css', 'Error', [helperFrame()]);
+    assert.ok(beforeSend(event) !== null, 'a foreign host is not our deploy');
+  });
+
+  it('keeps a non-hashed stylesheet on an owned origin', () => {
+    const event = makeEvent('Unable to preload CSS for /assets/main.css', 'Error', [helperFrame()]);
+    assert.ok(beforeSend(event) !== null, 'only a hashed Vite asset is a stale-or-dropped chunk');
+  });
+
+  it('keeps a message that merely embeds the wording', () => {
+    const event = makeEvent('Theme failed: Unable to preload CSS for /assets/happy-theme-DInLuQYM.css (retrying)', 'Error', [helperFrame()]);
+    assert.ok(beforeSend(event) !== null, 'the helper emits the sentence alone');
+  });
+});
+
+// ─── WORLDMONITOR-11A: Safari module fetch failure behind a first-party await ───
+//
+// Safari's `Importing a module script failed.` names no URL, and WebKit's async
+// stack trace appends the awaiting `import()` site, so the `!hasFirstParty`
+// gate misses it whenever that site is ours. The module loader's own builtins
+// on the stack prove the rejection came from fetching the module graph.
+describe('Safari module fetch failure with a first-party await site (WORLDMONITOR-11A)', () => {
+  const native = (fn) => ({ filename: '[native code]', function: fn });
+  // Verbatim production frame order (Safari 16.3, oldest first). The awaiting
+  // site is `await import('./Map')` in MapContainer.initSvgMap; anonymous
+  // frames reach beforeSend as '?', not the null Sentry displays.
+  const PRODUCTION_FRAMES = [
+    native('promiseReactionJob'),
+    { filename: 'https://www.worldmonitor.app/assets/clerk-YhAdCMS6.js', lineno: 1, colno: 2176, function: '?' },
+    native('asyncFunctionResume'),
+    { filename: 'https://www.worldmonitor.app/assets/MapContainer-BJGWKB_G.js', lineno: 2, colno: 9, function: '?' },
+    native('?'),
+    native('asyncFunctionResume'),
+    native('?'),
+    native('requestSatisfy'),
+    native('requestInstantiate'),
+    native('asyncFunctionResume'),
+    native('?'),
+    native('requestFetch'),
+    native('fetch'),
+  ];
+
+  it('suppresses the verbatim production event', () => {
+    assert.equal(beforeSend(makeEvent('Importing a module script failed.', 'TypeError', PRODUCTION_FRAMES)), null);
+  });
+
+  it('suppresses the type-prefixed spelling', () => {
+    assert.equal(beforeSend(makeEvent('TypeError: Importing a module script failed.', 'TypeError', PRODUCTION_FRAMES)), null);
+  });
+
+  // The hand-built frames above are only honest if the SDK builds the same
+  // shape before beforeSend runs, so parse the Safari stack (innermost first)
+  // through the real client instead of trusting the ingest rendering.
+  it('suppresses the event the real SDK builds from the Safari stack', async () => {
+    const safariStack = [
+      'fetch@[native code]',
+      'requestFetch@[native code]',
+      '@[native code]',
+      'asyncFunctionResume@[native code]',
+      'requestInstantiate@[native code]',
+      'requestSatisfy@[native code]',
+      '@[native code]',
+      'asyncFunctionResume@[native code]',
+      '@[native code]',
+      '@https://www.worldmonitor.app/assets/MapContainer-BJGWKB_G.js:2:9',
+      'asyncFunctionResume@[native code]',
+      '@https://www.worldmonitor.app/assets/clerk-CVT8SHsT.js:1:2176',
+      'promiseReactionJob@[native code]',
+    ].join('\n');
+    const reason = new TypeError('Importing a module script failed.');
+    Object.defineProperty(reason, 'stack', { value: safariStack });
+    const client = new BrowserClient({ stackParser: defaultStackParser, integrations: [] });
+    const event = await client.eventFromException(reason);
+    const frames = event.exception.values[0].stacktrace?.frames ?? [];
+    assert.ok(frames.some((f) => f.filename === '[native code]' && f.function === 'requestFetch'),
+      'the SDK must keep the loader builtin as a named [native code] frame');
+    assert.ok(frames.some((f) => /\/assets\/MapContainer-/.test(f.filename ?? '')),
+      'the first-party await site must be on the stack, or this is not the 11A shape');
+    assert.equal(beforeSend(event), null);
+  });
+
+  // Positive control for the loader-builtin gate: the same message with only
+  // our await site and no module-loader frames is not proven to be a fetch.
+  it('keeps the message when no module-loader builtin is on the stack', () => {
+    const frames = PRODUCTION_FRAMES.filter((f) => !/^request/.test(f.function));
+    assert.ok(beforeSend(makeEvent('Importing a module script failed.', 'TypeError', frames)) !== null);
+  });
+
+  // A same-named function in our own chunk is not WebKit's builtin.
+  it('keeps the message when `requestFetch` is a bundle function, not native code', () => {
+    const frames = [
+      firstPartyFrame('https://www.worldmonitor.app/assets/MapContainer-BJGWKB_G.js', 'requestFetch'),
+      firstPartyFrame(),
+    ];
+    assert.ok(beforeSend(makeEvent('Importing a module script failed.', 'TypeError', frames)) !== null);
+  });
+
+  // Positive control for the message gate: an evaluation-time throw rides the
+  // same loader frames but rejects with its own error.
+  it('keeps a different error thrown under the module loader', () => {
+    const event = makeEvent("undefined is not an object (evaluating 'e.map')", 'TypeError', PRODUCTION_FRAMES);
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  // Positive control for the type gate: WebKit raises this sentence only as a
+  // TypeError, so the same words under another type are not the loader's
+  // rejection (PR #8174 review).
+  it('keeps the sentence under a type other than TypeError', () => {
+    for (const type of ['Error', 'SyntaxError']) {
+      const event = makeEvent('Importing a module script failed.', type, PRODUCTION_FRAMES);
+      assert.ok(beforeSend(event) !== null, type);
+    }
+  });
+});
+
 // ─── Zero-frame async-rejection patterns: AbortSignal timeouts + DOMException(NotSupportedError) ───
 //
 // AbortSignal.timeout() rejections and DOMException(NotSupportedError) bubble
@@ -466,7 +644,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
       event.tags = { kind: 'panel_call_rejected', panel: 'insights', method: 'updateInsights', dispatch };
       assert.equal(isIgnored('signal timed out'), false);
-      assert.equal(beforeSend(event), event);
+      assert.deepEqual(beforeSend(event), event);
     });
   }
 
@@ -517,7 +695,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.equal(event.exception.values[0].stacktrace?.frames?.length ?? 0, 0);
       event.tags = { kind };
       assert.equal(isIgnored('signal timed out'), false);
-      assert.equal(beforeSend(event), event);
+      assert.deepEqual(beforeSend(event), event);
     });
   }
 
@@ -550,7 +728,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       );
       const event = makeEvent(message, name, []);
       event.tags = { ...CHECKOUT_REPORT_TAGS };
-      assert.equal(beforeSend(event), event);
+      assert.deepEqual(beforeSend(event), event);
     });
 
     it(`still suppresses ${label} with no first-party report`, () => {
@@ -1808,7 +1986,7 @@ describe('bare "Failed to fetch" is decided by host, not stack shape (WORLDMONIT
     // Owned: the one verdict that changed.
     const owned = makeEvent('Load failed (api.worldmonitor.app)', 'TypeError', []);
     owned.tags = { ...CHECKOUT_REPORT_TAGS };
-    assert.equal(beforeSend(owned), owned);
+    assert.deepEqual(beforeSend(owned), owned);
   });
 
   // ── The shape that hid a P0 ────────────────────────────────────────────────

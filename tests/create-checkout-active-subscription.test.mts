@@ -12,7 +12,7 @@ function restoreEnv(): void {
 
 async function importFreshCreateCheckout() {
   process.env.CONVEX_SITE_URL = 'https://convex.test';
-  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  process.env.CONVEX_TENANT_RELAY_SECRET = 'relay-secret';
   return import(`../api/create-checkout.ts?test=${Date.now()}-${Math.random()}`);
 }
 
@@ -72,6 +72,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     assert.equal(consoleError.mock.calls.length, 0);
     assert.equal(relayFetch.mock.calls.length, 1);
     const relayInit = relayFetch.mock.calls[0].arguments[1] as RequestInit;
+    assert.equal((relayInit.headers as Record<string, string>).Authorization, 'Bearer relay-secret');
     assert.equal((relayInit.headers as Record<string, string>)['User-Agent'], 'worldmonitor-checkout-edge/1.0');
   });
 

@@ -88,7 +88,7 @@ afterEach(() => {
   // once-values/implementations so no test inherits another's provider script.
   vi.mocked(createDodoCheckoutSession).mockReset();
   delete process.env.DODO_IDENTITY_SIGNING_SECRET;
-  delete process.env.RELAY_SHARED_SECRET;
+  delete process.env.CONVEX_TENANT_RELAY_SECRET;
 });
 
 describe("checkout rate-limit classification", () => {
@@ -259,7 +259,7 @@ describe("checkout rate-limit classification", () => {
 describe("relay and public action contracts", () => {
   test("a transient provider 429 is absorbed by the bounded retry and checkout succeeds (#6027)", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     const sleeps = pinRetryClock();
     // Local call counter instead of chained *Once mocks: an unconsumed once-
     // queue entry would leak into the next test (restoreAllMocks does not
@@ -298,7 +298,7 @@ describe("relay and public action contracts", () => {
 
   test("an anonymous user keeps the claim token through an absorbed 429", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     pinRetryClock();
     let providerCalls = 0;
     vi.mocked(createDodoCheckoutSession).mockImplementation(async () => {
@@ -335,7 +335,7 @@ describe("relay and public action contracts", () => {
 
   test("the internal relay preserves the real action outcome as HTTP 429", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     mockSustainedProviderRateLimit();
     const sleeps = pinRetryClock();
     const t = convexTest(schema, modules);
@@ -371,7 +371,7 @@ describe("relay and public action contracts", () => {
 
   test("a non-429 provider timeout remains relay HTTP 500 after one provider call", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     const sleeps = pinRetryClock();
     vi.mocked(createDodoCheckoutSession).mockRejectedValue(
       Object.assign(new Error("Request timed out."), { name: "TimeoutError" }),
@@ -698,7 +698,7 @@ describe("terminal rate-limit alarm", () => {
 
   test("an exhausted ladder records exactly one occurrence with its buyer context", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     mockSustainedProviderRateLimit();
     pinRetryClock();
     const t = convexTest(schema, modules);
@@ -722,7 +722,7 @@ describe("terminal rate-limit alarm", () => {
 
   test("a checkout the ladder rescues records nothing", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    process.env.RELAY_SHARED_SECRET = TEST_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
     pinRetryClock();
     // 429 once, then success — #6027 working as designed. Counting this would
     // make the alarm measure provider turbulence the buyer never saw.

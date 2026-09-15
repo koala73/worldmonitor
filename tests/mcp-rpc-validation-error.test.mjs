@@ -72,7 +72,7 @@ describe('validation body budget (#6559 follow-up)', () => {
     const body = JSON.stringify({ violations });
     assert.ok(utf8Bytes(body) > 4096 && utf8Bytes(body) <= VALIDATION_BODY_BUDGET_BYTES);
 
-    const res = await callTool('get_food_stocks', {}, async () => json400Response(body));
+    const res = await callTool('get_food_stocks', { country_code: 'EG' }, async () => json400Response(body));
     assert.equal(res.status, 200);
     const parsed = await res.json();
     assert.equal(parsed.error.code, -32602);
@@ -94,7 +94,7 @@ describe('validation body budget (#6559 follow-up)', () => {
     assert.ok(body.length <= 4096, 'character length still fits the old 4 KB gate');
     assert.ok(utf8Bytes(body) > 4096 && utf8Bytes(body) <= VALIDATION_BODY_BUDGET_BYTES);
 
-    const res = await callTool('get_food_stocks', {}, async () => json400Response(body));
+    const res = await callTool('get_food_stocks', { country_code: 'EG' }, async () => json400Response(body));
     const parsed = await res.json();
     assert.equal(parsed.error.code, -32602);
     assert.equal(parsed.error.data.violations.length, 8);
@@ -110,7 +110,7 @@ describe('validation body budget (#6559 follow-up)', () => {
     const body = JSON.stringify({ extra: 'y'.repeat(5000), violations });
     assert.ok(utf8Bytes(body) > 4096 && utf8Bytes(body) <= VALIDATION_BODY_BUDGET_BYTES);
 
-    const res = await callTool('get_food_stocks', {}, async () => json400Response(body));
+    const res = await callTool('get_food_stocks', { country_code: 'EG' }, async () => json400Response(body));
     const parsed = await res.json();
     assert.equal(parsed.error.code, -32602);
     assert.deepEqual(parsed.error.data.violations, [
@@ -127,7 +127,7 @@ describe('validation body budget (#6559 follow-up)', () => {
     const body = `${prefix}${' '.repeat(pad)}${tail}`;
     assert.ok(utf8Bytes(body) > VALIDATION_BODY_BUDGET_BYTES);
 
-    const res = await callTool('get_food_stocks', {}, async () => json400Response(body));
+    const res = await callTool('get_food_stocks', { country_code: 'EG' }, async () => json400Response(body));
     assert.equal(res.status, 200);
     const parsed = await res.json();
     const serialized = JSON.stringify(parsed);
@@ -148,7 +148,7 @@ describe('MCP RPC ValidationError preservation', () => {
   it('GET get_food_stocks 400 returns JSON-RPC -32602 with data.violations', async () => {
     const res = await callTool(
       'get_food_stocks',
-      {},
+      { country_code: 'EG' },
       async (input) => {
         const url = String(typeof input === 'string' ? input : input.url);
         assert.match(url, /\/api\/resilience\/v1\/get-food-stocks/);
