@@ -34,6 +34,11 @@ describe('isAnalyzableSymbol', () => {
 });
 
 describe('selectStockAnalysisTargets', () => {
+  it('deduplicates case variants across picks and default top-ups', () => {
+    const targets = selectStockAnalysisTargets([{ symbol: 'aapl' }, { symbol: 'AAPL' }], DEFAULTS, { isPro: true });
+    assert.deepEqual(symbolsOf(targets), ['aapl', 'MSFT', 'NVDA', 'GOOGL']);
+  });
+
   it('free tier with empty watchlist falls back to the first 4 analysable defaults', () => {
     const targets = selectStockAnalysisTargets([], DEFAULTS, { isPro: false });
     assert.deepEqual(symbolsOf(targets), ['AAPL', 'MSFT', 'NVDA', 'GOOGL']);

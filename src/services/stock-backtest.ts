@@ -55,10 +55,10 @@ export function hasFreshStoredStockBacktests(
   maxAgeMs = STOCK_BACKTEST_FRESH_MS,
 ): boolean {
   if (symbols.length === 0) return false;
-  const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+  const bySymbol = new Map(items.map((item) => [item.symbol.toUpperCase(), item]));
   const now = Date.now();
   return symbols.every((symbol) => {
-    const item = bySymbol.get(symbol);
+    const item = bySymbol.get(symbol.toUpperCase());
     const ts = Date.parse(item?.generatedAt || '');
     return !!item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs;
   });
@@ -69,10 +69,10 @@ export function getMissingOrStaleStoredStockBacktests(
   symbols: string[],
   maxAgeMs = STOCK_BACKTEST_FRESH_MS,
 ): string[] {
-  const bySymbol = new Map(items.map((item) => [item.symbol, item]));
+  const bySymbol = new Map(items.map((item) => [item.symbol.toUpperCase(), item]));
   const now = Date.now();
   return symbols.filter((symbol) => {
-    const item = bySymbol.get(symbol);
+    const item = bySymbol.get(symbol.toUpperCase());
     const ts = Date.parse(item?.generatedAt || '');
     return !(item?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs);
   });

@@ -24,7 +24,7 @@ function compareSnapshots(a: StockAnalysisSnapshot, b: StockAnalysisSnapshot): n
 }
 
 function isSameSnapshot(a: StockAnalysisSnapshot, b: StockAnalysisSnapshot): boolean {
-  return a.symbol === b.symbol
+  return a.symbol.toUpperCase() === b.symbol.toUpperCase()
     && a.generatedAt === b.generatedAt
     && a.signal === b.signal
     && a.ratingSignal === b.ratingSignal
@@ -42,7 +42,7 @@ export function mergeStockAnalysisHistory(
 
   for (const snapshot of incoming) {
     if (!snapshot?.symbol || !snapshot.available) continue;
-    const symbol = snapshot.symbol;
+    const symbol = snapshot.symbol.toUpperCase();
     const current = next[symbol] ? [...next[symbol]!] : [];
     if (!current.some((item) => isSameSnapshot(item, snapshot))) {
       current.push(snapshot);
@@ -109,7 +109,7 @@ export function hasFreshStockAnalysisHistory(
 ): boolean {
   if (symbols.length === 0) return false;
   const now = Date.now();
-  return symbols.every((symbol) => isFreshSnapshot(history[symbol]?.[0], now, maxAgeMs));
+  return symbols.every((symbol) => isFreshSnapshot(history[symbol.toUpperCase()]?.[0], now, maxAgeMs));
 }
 
 export function getMissingOrStaleStockAnalysisSymbols(
@@ -118,7 +118,7 @@ export function getMissingOrStaleStockAnalysisSymbols(
   maxAgeMs = STOCK_ANALYSIS_FRESH_MS,
 ): string[] {
   const now = Date.now();
-  return symbols.filter((symbol) => !isFreshSnapshot(history[symbol]?.[0], now, maxAgeMs));
+  return symbols.filter((symbol) => !isFreshSnapshot(history[symbol.toUpperCase()]?.[0], now, maxAgeMs));
 }
 
 export async function fetchStockAnalysisHistory(
@@ -134,7 +134,7 @@ export async function fetchStockAnalysisHistory(
 
   const history: StockAnalysisHistory = {};
   for (const item of response.items) {
-    history[item.symbol] = [...item.snapshots].sort(compareSnapshots);
+    history[item.symbol.toUpperCase()] = [...item.snapshots].sort(compareSnapshots);
   }
   return history;
 }

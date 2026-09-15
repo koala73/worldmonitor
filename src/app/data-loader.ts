@@ -2375,15 +2375,15 @@ export class DataLoaderManager implements AppModule {
       // Build a combined view so a partial refetch does not shrink the panel:
       // preserve still-fresh cached snapshots for symbols we did NOT refetch,
       // and use live results for symbols we did. Watchlist order is preserved.
-      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
+      const resultBySymbol = new Map(results.map((r) => [r.symbol.toUpperCase(), r]));
       const combined: StockAnalysisResult[] = [];
       for (const target of targets) {
-        const live = resultBySymbol.get(target.symbol);
+        const live = resultBySymbol.get(target.symbol.toUpperCase());
         if (live) {
           combined.push(live);
           continue;
         }
-        const cached = storedHistory[target.symbol]?.[0];
+        const cached = storedHistory[target.symbol.toUpperCase()]?.[0];
         if (cached?.available) combined.push(cached);
       }
       const snapshotsToRender = combined.length > 0 ? combined : results;
@@ -2457,16 +2457,16 @@ export class DataLoaderManager implements AppModule {
       // Build a combined view so a partial refetch does not shrink the panel:
       // keep still-fresh cached backtests for symbols we did NOT refetch, swap
       // in live results for the ones we did. Watchlist order is preserved.
-      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
-      const storedBySymbol = new Map(stored.map((s) => [s.symbol, s]));
+      const resultBySymbol = new Map(results.map((r) => [r.symbol.toUpperCase(), r]));
+      const storedBySymbol = new Map(stored.map((s) => [s.symbol.toUpperCase(), s]));
       const combined: StockBacktestResult[] = [];
       for (const target of targets) {
-        const live = resultBySymbol.get(target.symbol);
+        const live = resultBySymbol.get(target.symbol.toUpperCase());
         if (live) {
           combined.push(live);
           continue;
         }
-        const cached = storedBySymbol.get(target.symbol);
+        const cached = storedBySymbol.get(target.symbol.toUpperCase());
         if (cached) combined.push(cached);
       }
       panel.renderBacktests(combined.length > 0 ? combined : results);
