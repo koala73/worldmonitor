@@ -88,6 +88,12 @@ describe('DIRECT_HLS_MAP integrity', () => {
     const ids = hlsMapEntries.map(e => e.id);
     assert.equal(ids.length, new Set(ids).size, 'Duplicate IDs in DIRECT_HLS_MAP');
   });
+
+  it('no HLS URL points at a slate clip', () => {
+    // CNN's cnn_slate playlist is a ~10-minute VOD (#EXT-X-ENDLIST) that played under a LIVE label.
+    const slates = hlsMapEntries.filter(({ url }) => /cnn_slate|[/_-]slate[/_.-]/i.test(url)).map(({ id }) => id);
+    assert.deepEqual(slates, [], 'a slate is a recording, not a live stream; use the channel\'s live YouTube fallback');
+  });
 });
 
 // ── 2. Channel data integrity ──
@@ -99,6 +105,27 @@ describe('channel data integrity', () => {
       assert.ok(match, `Channel '${id}' not found`);
       assert.match(match[0], /fallbackVideoId:\s*'[^']+'/,
         `FULL channel '${id}' missing fallbackVideoId`);
+    }
+  });
+
+  it('does not ship CNBC, whose only YouTube live stream is a documentary marathon', () => {
+    assert.ok(!allChannelIds.has('cnbc'), 'cnbc must not be a built-in Live News channel');
+    assert.doesNotMatch(liveNewsSrc, /'cnbc'/, 'no region list, HLS map or proxy entry may still name cnbc');
+  });
+
+  it('no two webcam feeds play the same video', () => {
+    const ids = [...liveWebcamsSrc.matchAll(/fallbackVideoId:\s*'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(ids.length > 0, 'no webcam fallbackVideoId found');
+    const repeated = ids.filter((id, index) => ids.indexOf(id) !== index);
+    assert.deepEqual(repeated, [], 'point one webcam feed at a stream instead of listing the same video twice');
+  });
+
+  it('every default webcam grid id names a webcam feed', () => {
+    const gridIds = liveWebcamsSrc.match(/ALL_GRID_IDS\s*=\s*\[([^\]]*)\]/)?.[1];
+    assert.ok(gridIds, 'ALL_GRID_IDS not found');
+    const feedIds = new Set([...liveWebcamsSrc.matchAll(/\{\s*id:\s*'([^']+)',\s*city:/g)].map((m) => m[1]));
+    for (const [, id] of gridIds.matchAll(/'([^']+)'/g)) {
+      assert.ok(feedIds.has(id), `ALL_GRID_IDS '${id}' has no WEBCAM_FEEDS entry`);
     }
   });
 

@@ -21,41 +21,35 @@ interface WebcamFeed {
   city: string;
   country: string;
   region: WebcamRegion;
-  channelHandle: string;
   fallbackVideoId: string;
 }
 
-// Verified YouTube live stream IDs — validated Feb 2026 via title cross-check.
-// IDs may rotate; update when stale.
+// YouTube live stream IDs, each checked live on 2026-09-14 with `npm run live-video:check`.
+// Broadcasters end and restart streams, so re-run the checker before trusting an ID.
 const WEBCAM_FEEDS: WebcamFeed[] = [
-  // Middle East — Jerusalem & Tehran adjacent (conflict hotspots)
-  { id: 'jerusalem', city: 'Jerusalem', country: 'Israel', region: 'middle-east', channelHandle: '@TheWesternWall', fallbackVideoId: 'e34xb-Fbl0U' },
-  { id: 'middle-east', city: 'Middle East', country: 'Multi', region: 'middle-east', channelHandle: '@MiddleEastCams', fallbackVideoId: 'oxT5R6I0N6E' },
-  { id: 'tel-aviv', city: 'Tel Aviv', country: 'Israel', region: 'middle-east', channelHandle: '@IsraelLiveCam', fallbackVideoId: 'gmtlJ_m2r5A' },
-  { id: 'mecca', city: 'Mecca', country: 'Saudi Arabia', region: 'middle-east', channelHandle: '@MakkahLive', fallbackVideoId: 'kJwEsQTegxk' },
-  { id: 'beirut-mtv', city: 'Beirut', country: 'Lebanon', region: 'middle-east', channelHandle: '@MTVLebanonNews', fallbackVideoId: 'djF-Lkgfp6k' },
-  // Europe
-  { id: 'kyiv', city: 'Kyiv', country: 'Ukraine', region: 'europe', channelHandle: '@DWNews', fallbackVideoId: '-Q7FuPINDjA' },
-  { id: 'odessa', city: 'Odessa', country: 'Ukraine', region: 'europe', channelHandle: '@UkraineLiveCam', fallbackVideoId: 'e2gC37ILQmk' },
-  { id: 'paris', city: 'Paris', country: 'France', region: 'europe', channelHandle: '@PalaisIena', fallbackVideoId: 'OzYp4NRZlwQ' },
-  { id: 'st-petersburg', city: 'St. Petersburg', country: 'Russia', region: 'europe', channelHandle: '@SPBLiveCam', fallbackVideoId: 'CjtIYbmVfck' },
-  { id: 'london', city: 'London', country: 'UK', region: 'europe', channelHandle: '@EarthCam', fallbackVideoId: 'Lxqcg1qt0XU' },
+  // Middle East (conflict hotspots)
+  { id: 'jerusalem', city: 'Jerusalem', country: 'Israel', region: 'middle-east', fallbackVideoId: 'zp6LNSoq000' },
+  { id: 'middle-east', city: 'Middle East', country: 'Multi', region: 'middle-east', fallbackVideoId: 'AkqGOcpDvZU' },
+  { id: 'mecca', city: 'Mecca', country: 'Saudi Arabia', region: 'middle-east', fallbackVideoId: 'ju3cuAIc1i4' },
+  // Europe — the Ukraine feed rotates through Kyiv, Odesa, Kharkiv, Kramatorsk, Sloviansk, Donetsk and Dnipro
+  { id: 'kyiv', city: 'Ukraine', country: 'Ukraine', region: 'europe', fallbackVideoId: 'e2gC37ILQmk' },
+  { id: 'paris', city: 'Paris', country: 'France', region: 'europe', fallbackVideoId: '-xzg3wujOVM' },
+  { id: 'st-petersburg', city: 'St. Petersburg', country: 'Russia', region: 'europe', fallbackVideoId: 'CjtIYbmVfck' },
+  { id: 'london', city: 'London', country: 'UK', region: 'europe', fallbackVideoId: 'zMCea32gpmg' },
   // Americas
-  { id: 'washington', city: 'Washington DC', country: 'USA', region: 'americas', channelHandle: '@AxisCommunications', fallbackVideoId: '1wV9lLe14aU' },
-  { id: 'new-york', city: 'New York', country: 'USA', region: 'americas', channelHandle: '@EarthCam', fallbackVideoId: '4qyZLflp-sI' },
-  { id: 'los-angeles', city: 'Los Angeles', country: 'USA', region: 'americas', channelHandle: '@VeniceVHotel', fallbackVideoId: 'EO_1LWqsCNE' },
-  { id: 'miami', city: 'Miami', country: 'USA', region: 'americas', channelHandle: '@FloridaLiveCams', fallbackVideoId: '5YCajRjvWCg' },
+  { id: 'washington', city: 'Washington DC', country: 'USA', region: 'americas', fallbackVideoId: 'oDCAAfOSqvA' },
+  { id: 'new-york', city: 'New York', country: 'USA', region: 'americas', fallbackVideoId: 'JQ_jwk_7OVE' },
+  { id: 'los-angeles', city: 'Los Angeles', country: 'USA', region: 'americas', fallbackVideoId: 'EO_1LWqsCNE' },
+  { id: 'miami', city: 'Miami', country: 'USA', region: 'americas', fallbackVideoId: 'nPGlLfGX6SA' },
   // Asia-Pacific — Taipei first (strait hotspot), then Shanghai, Tokyo, Seoul
-  { id: 'taipei', city: 'Taipei', country: 'Taiwan', region: 'asia', channelHandle: '@JackyWuTaipei', fallbackVideoId: 'z_fY1pj1VBw' },
-  { id: 'shanghai', city: 'Shanghai', country: 'China', region: 'asia', channelHandle: '@SkylineWebcams', fallbackVideoId: '76EwqI5XZIc' },
-  { id: 'tokyo', city: 'Tokyo', country: 'Japan', region: 'asia', channelHandle: '@TokyoLiveCam4K', fallbackVideoId: '_k-5U7IeK8g' },
-  { id: 'seoul', city: 'Seoul', country: 'South Korea', region: 'asia', channelHandle: '@UNvillage_live', fallbackVideoId: '-JhoMGoAfFc' },
-  { id: 'sydney', city: 'Sydney', country: 'Australia', region: 'asia', channelHandle: '@WebcamSydney', fallbackVideoId: '7pcL-0Wo77U' },
+  { id: 'taipei', city: 'Taipei', country: 'Taiwan', region: 'asia', fallbackVideoId: 'z_fY1pj1VBw' },
+  { id: 'shanghai', city: 'Shanghai', country: 'China', region: 'asia', fallbackVideoId: 'Z-g8M1QGKbg' },
+  { id: 'tokyo', city: 'Tokyo', country: 'Japan', region: 'asia', fallbackVideoId: '_k-5U7IeK8g' },
+  { id: 'seoul', city: 'Seoul', country: 'South Korea', region: 'asia', fallbackVideoId: 'vk5BHoDxXf0' },
+  { id: 'sydney', city: 'Sydney', country: 'Australia', region: 'asia', fallbackVideoId: '5uZa3-RMFos' },
   // Space
-  { id: 'iss-earth', city: 'ISS Earth View', country: 'Space', region: 'space', channelHandle: '@NASA', fallbackVideoId: 'vytmBNhc9ig' },
-  { id: 'nasa-live', city: 'NASA TV', country: 'Space', region: 'space', channelHandle: '@NASA', fallbackVideoId: 'zPH5KtjJFaQ' },
-  { id: 'space-x', city: 'SpaceX', country: 'Space', region: 'space', channelHandle: '@SpaceX', fallbackVideoId: 'fO9e9jnhYK8' },
-  { id: 'space-walk', city: 'Space', country: 'Space', region: 'space', channelHandle: '@NASA', fallbackVideoId: 'fO9e9jnhYK8' },
+  { id: 'iss-earth', city: 'ISS Earth View', country: 'Space', region: 'space', fallbackVideoId: 'M3HKLzjvKPc' },
+  { id: 'space-walk', city: 'Space', country: 'Space', region: 'space', fallbackVideoId: 'fO9e9jnhYK8' },
 ];
 
 const MAX_GRID_CELLS = 4;

@@ -384,17 +384,17 @@ This is curated public news-account monitoring, not a general-purpose follow lis
 
 The YouTube live-stream catalog covers geopolitical hotspots across global regions and provides continuous visual situational awareness:
 
-| Region             | Cities                                                           |
-| ------------------ | ---------------------------------------------------------------- |
-| **Iran / Attacks** | Tehran, Tel Aviv, Jerusalem (Western Wall)                       |
-| **Middle East**    | Jerusalem (Western Wall), Tehran, Tel Aviv, Mecca (Grand Mosque) |
-| **Europe**         | Kyiv, Odessa, Paris, St. Petersburg, London                      |
-| **Americas**       | Washington DC, New York, Los Angeles, Miami                      |
-| **Asia-Pacific**   | Taipei, Shanghai, Tokyo, Seoul, Sydney                           |
+| Region           | Cities                                                                 |
+| ---------------- | ---------------------------------------------------------------------- |
+| **Middle East**  | Jerusalem (Western Wall), multi-camera Middle East feed, Mecca         |
+| **Europe**       | Ukraine (Kyiv, Odesa, Kharkiv and more), Paris, St. Petersburg, London |
+| **Americas**     | Washington DC, New York, Los Angeles, Miami                            |
+| **Asia-Pacific** | Taipei, Shanghai, Tokyo, Seoul, Sydney                                 |
+| **Space**        | ISS Earth view, Earth from orbit                                       |
 
-The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
+The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Middle East, Ukraine, Washington DC) and a single-feed expanded view. Region tabs (ALL/MIDEAST/EUROPE/AMERICAS/ASIA/SPACE) filter the available feeds.
 
-Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), paused after 5 minutes of user inactivity, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed carries a fallback video ID in case the primary stream goes offline.
+Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), stopped with an explanatory notice after a configurable period without mouse, keyboard or touch input, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds load through the local sidecar (`/api/youtube-embed`), which gives the player an http parent origin that YouTube accepts. Each feed is a curated YouTube live stream; broadcasters end and restart streams, so the IDs are re-checked for liveness.
 
 ### Source Credibility & Feed Tiering
 

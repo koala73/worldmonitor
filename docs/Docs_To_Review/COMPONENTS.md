@@ -680,7 +680,7 @@ domain-specific markup.
 | **Purpose** | Embedded YouTube live-stream player with channel switching. |
 | **DOM** | YouTube IFrame player, channel switcher bar, mute/live buttons. |
 | **Services** | `fetchLiveVideoId`, `isDesktopRuntime`, `getRemoteApiBaseUrl` |
-| **Variant channels** | `tech` → `TECH_LIVE_CHANNELS` (Bloomberg, Yahoo Finance, CNBC, NASA TV). `world` / `full` → `FULL_LIVE_CHANNELS` (Bloomberg, Sky, Euronews, DW, CNBC, France24, Al Arabiya, Al Jazeera). |
+| **Variant channels** | `tech` → `TECH_LIVE_CHANNELS` (Bloomberg, Yahoo Finance, NASA TV). `world` / `full` → `FULL_LIVE_CHANNELS` (Bloomberg, Sky, Euronews, DW, France24, Al Arabiya, Al Jazeera). |
 | **Notes** | Idle pause after 5 minutes of inactivity. |
 
 #### PredictionPanel
