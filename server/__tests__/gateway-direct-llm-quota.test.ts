@@ -57,6 +57,13 @@ import { createDomainGateway } from "../gateway";
 import { getRequiredTier } from "../_shared/entitlement-check";
 import { createIntelligenceServiceRoutes } from "../../src/generated/server/worldmonitor/intelligence/v1/service_server";
 import { intelligenceHandler } from "../worldmonitor/intelligence/v1/handler";
+import {
+  drainUnservedLlmResponse,
+  markRetryableResponse,
+  markUnservedLlmResponse,
+} from "../_shared/response-headers";
+import { getCountryIntelBrief } from "../worldmonitor/intelligence/v1/get-country-intel-brief";
+import { summarizeArticle } from "../worldmonitor/news/v1/summarize-article";
 
 const callLlm = vi.fn();
 vi.mock("../_shared/llm", async (importOriginal) => ({
@@ -867,5 +874,298 @@ describe("direct LLM limit resolution by caller class", () => {
     expect(res.status).toBe(200);
     expect(calls.deduct).toBe(1);
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
+  });
+});
+
+// The reservation is charged BEFORE the handler runs, so every outcome that
+// serves no answer has to give the slot back through the reservation's own
+// rollback (#5147's open checklist item; the same defect api/chat-analyst.ts
+// fixed for its self-metered reservation in #7217). The stub routes pin the
+// gateway's decision; the real intelligence routes pin that the handlers'
+// degraded envelopes actually raise the marker the gateway acts on.
+describe("direct LLM quota release on unserved requests", () => {
+  const rollback = vi.fn();
+
+  function proSession() {
+    const entitlements = {
+      planKey: "pro",
+      features: { tier: 1, planLimits: { dashboardAiCallsPerDay: 50 } },
+      validUntil: Date.now() + 60_000,
+    };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    checkEntitlementDetailed.mockResolvedValue({ response: null, entitlements });
+    getEntitlements.mockResolvedValue(entitlements);
+  }
+
+  function deductRequest(query: string) {
+    const body = JSON.stringify({ query });
+    return req(DEDUCT_PATH, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer pro",
+        "Content-Type": "application/json",
+        "Content-Length": String(new TextEncoder().encode(body).length),
+      },
+      body,
+    });
+  }
+
+  function classifyRequest() {
+    return req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+      headers: { Authorization: "Bearer pro" },
+    });
+  }
+
+  function stubGateway(handler: (request: Request) => Promise<Response>) {
+    return createDomainGateway([{ method: "GET", path: CLASSIFY_PATH, handler }]);
+  }
+
+  beforeEach(() => {
+    rollback.mockReset().mockResolvedValue(undefined);
+    reserveDirectLlmQuota.mockResolvedValue({ ok: true, newCount: 1, rollback });
+    proSession();
+  });
+
+  test("a served 200 keeps the reservation", async () => {
+    const res = await stubGateway(async () => json({ ok: true }))(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  test("a handler that throws releases the reservation with the 500", async () => {
+    const res = await stubGateway(async () => {
+      throw new Error("upstream exploded");
+    })(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(500);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([400, 429, 503])("a handler %s response releases the reservation", async (status) => {
+    const res = await stubGateway(async () => json({ message: "no" }, status))(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(status);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("a 200 envelope marked unserved releases the reservation", async () => {
+    const res = await stubGateway(async (request) => {
+      markUnservedLlmResponse(request);
+      return json({ classification: undefined });
+    })(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("a retryable 200 envelope releases the reservation", async () => {
+    const res = await stubGateway(async (request) => {
+      markRetryableResponse(request);
+      return json({ summary: "", fallback: true });
+    })(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("a response body that fails to stream releases the reservation with the rejection", async () => {
+    const gateway = stubGateway(async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new Error("body stream broke"));
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(gateway(classifyRequest(), { waitUntil: () => {} })).rejects.toThrow("body stream broke");
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failed jmespath projection releases the reservation with the 400", async () => {
+    const res = await stubGateway(async () => json({ classification: { category: "conflict" } }))(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline&jmespath=%5B%5B%5B`, { headers: { Authorization: "Bearer pro" } }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(400);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("a successful jmespath projection keeps the reservation", async () => {
+    const res = await stubGateway(async () => json({ classification: { category: "conflict" } }))(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline&jmespath=classification.category`, { headers: { Authorization: "Bearer pro" } }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  test("the unserved marker is drained even when nothing was reserved", async () => {
+    const entitlements = {
+      planKey: "enterprise",
+      features: { tier: 2, planLimits: { dashboardAiCallsPerDay: null } },
+      validUntil: Date.now() + 60_000,
+    };
+    checkEntitlementDetailed.mockResolvedValue({ response: null, entitlements });
+    getEntitlements.mockResolvedValue(entitlements);
+    const request = classifyRequest();
+
+    const res = await stubGateway(async (handled) => {
+      markUnservedLlmResponse(handled);
+      return json({ classification: undefined });
+    })(request, { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
+    expect(rollback).not.toHaveBeenCalled();
+    expect(drainUnservedLlmResponse(request)).toBe(false);
+  });
+
+  test("real classification keeps the charge on a served answer", async () => {
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ classification: { category: "conflict" } });
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  test("real classification keeps the charge on a cache hit", async () => {
+    cachedFetchJson.mockResolvedValue({ level: "high", category: "conflict", timestamp: Date.now() });
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
+  test("real classification releases the reservation when the LLM returns nothing", async () => {
+    callLlm.mockResolvedValue(null);
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
+    expect(callLlm).toHaveBeenCalledTimes(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("real classification releases the reservation for a blank title", async () => {
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(req(`${CLASSIFY_PATH}?title=`, { headers: { Authorization: "Bearer pro" } }), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("real classification releases the reservation when the LLM transport throws", async () => {
+    cachedFetchJson.mockRejectedValue(new Error("redis down"));
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(classifyRequest(), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("real deduct-situation releases the reservation when the reasoning budget yields nothing", async () => {
+    cachedFetchJson.mockResolvedValue(null);
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(deductRequest("What happens next in the Red Sea?"), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ provider: "error" });
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("real deduct-situation releases the reservation for a blank query", async () => {
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(deductRequest("   "), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ provider: "skipped" });
+    expect(cachedFetchJson).not.toHaveBeenCalled();
+    expect(reserveDirectLlmQuota).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("real deduct-situation keeps the charge on a served analysis", async () => {
+    cachedFetchJson.mockResolvedValue({ analysis: "Escalation is likely.", model: "m", provider: "groq" });
+    const gateway = createDomainGateway(createIntelligenceServiceRoutes(intelligenceHandler));
+    const res = await gateway(deductRequest("What happens next in the Red Sea?"), { waitUntil: () => {} });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ analysis: "Escalation is likely.", provider: "groq" });
+    expect(rollback).not.toHaveBeenCalled();
+  });
+});
+
+// The two remaining gateway-metered handlers are driven directly: what
+// matters is that each empty envelope raises the marker on the very Request
+// the gateway will drain, and that a served summary does not.
+describe("unserved-LLM marker on the remaining metered handlers", () => {
+  function handlerCtx(url: string, init: RequestInit = {}) {
+    const request = new Request(url, init);
+    return { ctx: { request } as never, request };
+  }
+
+  test("country brief marks an invalid country code as unserved", async () => {
+    const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=ZZZ");
+    const res = await getCountryIntelBrief(ctx, { countryCode: "ZZZ" } as never);
+
+    expect(res.brief).toBe("");
+    expect(drainUnservedLlmResponse(request)).toBe(true);
+  });
+
+  test("country brief marks a failed LLM path as unserved", async () => {
+    cachedFetchJson.mockRejectedValue(new Error("redis down"));
+    const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=US");
+    const res = await getCountryIntelBrief(ctx, { countryCode: "US" } as never);
+
+    expect(res.brief).toBe("");
+    expect(drainUnservedLlmResponse(request)).toBe(true);
+  });
+
+  test("country brief keeps a served brief charged", async () => {
+    cachedFetchJson.mockResolvedValue({
+      countryCode: "US", countryName: "United States", brief: "Stable.", model: "m", generatedAt: 1, sources: [],
+    });
+    const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=US");
+    const res = await getCountryIntelBrief(ctx, { countryCode: "US" } as never);
+
+    expect(res.brief).toBe("Stable.");
+    expect(drainUnservedLlmResponse(request)).toBe(false);
+  });
+
+  test("summarize-article marks a denied non-premium call as unserved", async () => {
+    const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/news/v1/summarize-article", { method: "POST" });
+    const res = await summarizeArticle(ctx, { provider: "groq", mode: "brief", headlines: ["A headline"] } as never);
+
+    expect(res.summary).toBe("");
+    expect(res.status).toBe("SUMMARIZE_STATUS_ERROR");
+    expect(drainUnservedLlmResponse(request)).toBe(true);
+  });
+
+  test("summarize-article marks a rejected headline set as unserved", async () => {
+    const { ctx, request } = handlerCtx("https://www.worldmonitor.app/api/news/v1/summarize-article", { method: "POST" });
+    const res = await summarizeArticle(ctx, { provider: "groq", mode: "translate", headlines: [] } as never);
+
+    expect(res.summary).toBe("");
+    expect(drainUnservedLlmResponse(request)).toBe(true);
   });
 });
