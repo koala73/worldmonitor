@@ -206,8 +206,9 @@ export async function shareHappyCard(item: NewsItem): Promise<void> {
         files: [file],
       });
       return;
-    } catch {
-      /* user cancelled or share failed — fall through */
+    } catch (error) {
+      if ((error as { name?: string } | null)?.name === 'AbortError') return;
+      /* share failed — fall through */
     }
   }
 
