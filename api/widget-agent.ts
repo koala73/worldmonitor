@@ -275,7 +275,10 @@ async function proxyWidgetAgent(
       const hasWidgetKey = await timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY);
       const hasProKey = await timingSafeEqualSecret(proKey, PRO_WIDGET_KEY);
       if (!hasWidgetKey && !hasProKey) {
-        return json({ error: 'Forbidden' }, 403, corsHeaders);
+        const errorCode = !WIDGET_AGENT_KEY && PRO_WIDGET_KEY
+          ? 'invalid_pro_key'
+          : 'invalid_widget_key';
+        return json({ error: 'Forbidden', errorCode }, 403, corsHeaders);
       }
       isPro = hasProKey;
     }
