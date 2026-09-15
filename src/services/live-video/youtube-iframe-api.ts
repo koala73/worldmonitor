@@ -60,7 +60,13 @@ export function loadYouTubeIframeApi(): Promise<YouTubeNamespaceLike | null> {
       previousReady?.();
       resolve(loadedApi());
     };
-    if (document.querySelector('script[data-youtube-iframe-api="true"]')) return;
+    // Script tag can outlive a missed ready callback (API finished between the
+    // first loadedApi() probe and waiter install). Re-check before waiting.
+    if (document.querySelector('script[data-youtube-iframe-api="true"]')) {
+      const alreadyReady = loadedApi();
+      if (alreadyReady) resolve(alreadyReady);
+      return;
+    }
 
     const script = document.createElement('script');
     script.src = 'https://www.youtube.com/iframe_api';
