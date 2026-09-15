@@ -58,8 +58,9 @@ async function tryOEmbed(videoId: string): Promise<GetYoutubeLiveStreamInfoRespo
 }
 
 /**
- * GetYoutubeLiveStreamInfo names a YouTube video through oEmbed. Deprecated: channel live detection
- * is retired, so a channel-only query answers error 'channel_live_detection_retired' without I/O.
+ * GetYoutubeLiveStreamInfo names a YouTube video through oEmbed. Channel live detection is retired
+ * (the channel, isLive and hlsUrl fields are deprecated), so a channel-only query answers error
+ * 'channel_live_detection_retired' without I/O.
  */
 export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStreamInfo'] = async (
   _ctx: ServerContext,
