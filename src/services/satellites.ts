@@ -1,3 +1,4 @@
+import { isSatelliteSnapshot } from '../../shared/intelligence-snapshots.js';
 // TODO: Phase 2 — Orbital Surveillance Analysis Panel
 // - Overhead Pass Prediction: compute next pass times over user-selected locations
 //   (hotspots, conflict zones, bases). "GAOFEN-12 will be overhead Tartus in 14 min"
@@ -63,6 +64,7 @@ export interface SatRecEntry {
 
 let cachedData: SatelliteTLE[] | null = null;
 let cachedAt = 0;
+const STALE_MAX = 60 * 60 * 1000;
 const CACHE_TTL = 10 * 60 * 1000;
 
 let failures = 0;
@@ -72,6 +74,7 @@ const COOLDOWN_MS = 10 * 60 * 1000;
 
 export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   const now = Date.now();
+  if (now - cachedAt >= STALE_MAX) cachedData = null;
   if (now < cooldownUntil) return cachedData;
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
@@ -84,6 +87,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     } finally {
       clearTimeout(timeoutId);
     }
+    if (!isSatelliteSnapshot(resp)) throw new Error('Satellite snapshot unavailable');
     // Proto returns `id` (the NORAD identifier); local SatelliteTLE uses `noradId`.
     // `alt`/`velocity`/`inclination` in the proto are unused by the propagation
     // client — we compute them ourselves from the TLE via satellite.js.
@@ -96,7 +100,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
       country: s.country,
     }));
     cachedData = satellites;
-    cachedAt = now;
+    cachedAt = Date.now();
     failures = 0;
     return cachedData;
   } catch {
@@ -104,7 +108,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     if (failures >= MAX_FAILURES) {
       cooldownUntil = now + COOLDOWN_MS;
     }
-    return cachedData;
+    return Date.now() - cachedAt < STALE_MAX ? cachedData : null;
   }
 }
 

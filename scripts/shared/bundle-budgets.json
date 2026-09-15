@@ -65,7 +65,7 @@
   },
   "deferred": {
     "total": {
-      "raw": 1366498
+      "raw": 1368955
     },
     "chunks": {
       "App": {
@@ -101,7 +101,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 105467,
+        "raw": 107924,
         "files": 1
       },
       "index": {

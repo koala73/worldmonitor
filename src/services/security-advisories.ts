@@ -1,3 +1,4 @@
+import { isAdvisorySnapshot } from '../../shared/intelligence-snapshots.js';
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
 import { dataFreshness } from './data-freshness';
@@ -39,6 +40,7 @@ function normalizeAdvisories(
 
 let cachedResult: SecurityAdvisory[] | null = null;
 let lastFetch = 0;
+const STALE_MAX = 60 * 60 * 1000;
 const CACHE_TTL = 15 * 60 * 1000;
 
 export async function loadAdvisoriesFromServer(): Promise<SecurityAdvisoriesFetchResult> {
@@ -48,19 +50,20 @@ export async function loadAdvisoriesFromServer(): Promise<SecurityAdvisoriesFetc
   }
 
   const hydrated = getHydratedData('securityAdvisories') as ListSecurityAdvisoriesResponse | undefined;
-  if (hydrated?.advisories?.length) {
+  if (hydrated && isAdvisorySnapshot(hydrated)) {
     const advisories = normalizeAdvisories(hydrated);
     cachedResult = advisories;
-    lastFetch = now;
+    lastFetch = Date.now();
     dataFreshness.recordUpdate('security_advisories', advisories.length);
     return { ok: true, advisories };
   }
 
   try {
     const resp = await getClient().listSecurityAdvisories({});
+    if (!isAdvisorySnapshot(resp)) throw new Error('Security advisory snapshot unavailable');
     const advisories = normalizeAdvisories(resp);
     cachedResult = advisories;
-    lastFetch = now;
+    lastFetch = Date.now();
     if (advisories.length > 0) {
       dataFreshness.recordUpdate('security_advisories', advisories.length);
     }
@@ -69,7 +72,7 @@ export async function loadAdvisoriesFromServer(): Promise<SecurityAdvisoriesFetc
     console.warn('[SecurityAdvisories] RPC failed:', e);
   }
 
-  return { ok: true, advisories: [] };
+  return { ok: false, advisories: Date.now() - lastFetch < STALE_MAX ? cachedResult ?? [] : [] };
 }
 
 /** @deprecated Use loadAdvisoriesFromServer() instead */
