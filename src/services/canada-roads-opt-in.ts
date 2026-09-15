@@ -17,14 +17,14 @@ export interface CanadaRoadsOptInStorage {
 export function applyCanadaRoadsOptInMigration<T extends { canadaRoads?: boolean }>(
   mapLayers: T,
   storage: CanadaRoadsOptInStorage,
-  saveMapLayers: (layers: T) => void,
+  saveMapLayers: (layers: T) => boolean,
 ): T {
   if (storage.getItem(CANADA_ROADS_OPT_IN_KEY)) return mapLayers;
 
   let next = mapLayers;
   if (mapLayers.canadaRoads) {
     next = { ...mapLayers, canadaRoads: false };
-    saveMapLayers(next);
+    if (!saveMapLayers(next)) return next;
   }
   storage.setItem(CANADA_ROADS_OPT_IN_KEY, 'done');
   return next;
