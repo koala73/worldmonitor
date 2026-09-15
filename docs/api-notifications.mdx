@@ -96,7 +96,9 @@ For programmatic and partner access use the authenticated RPC [`GET /api/intelli
 
 ### `GET /api/youtube/embed?videoId=...`
 
-SSR'd YouTube embed iframe with CSP-compatible wrapping. Used to bypass WKWebView autoplay restrictions on the desktop app.
+Hosted YouTube iframe wrapper retained for compatibility. The current web app embeds YouTube directly; the desktop app uses the local sidecar's `/api/youtube-embed` route to handle WKWebView autoplay restrictions. Neither uses this hosted route.
+
+The `origin` and `parentOrigin` parameters accept enumerated app origins, team-pinned Vercel previews, and local development or Tauri origins. Vendor subdomains such as `clerk.worldmonitor.app` and `abacus.worldmonitor.app` are excluded.
 
 ### `GET /api/youtube/live?channel=<handle>` or `?videoId=<11-char-id>`
 
