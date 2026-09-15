@@ -23,20 +23,21 @@ async function loadGeometry() {
 }
 
 describe('geographic signal attribution', () => {
-  it('keeps unresolved names unknown before preload and resolves names after preload', async () => {
+  it('resolves known names before preload and keeps unknown names unattributed', async () => {
     const { signalAggregator } = await import('@/services/signal-aggregator');
     const ingest = (country: string) => signalAggregator.ingestOutages([{
       id: country, country, lat: 0, lon: 0, title: 'Outage', pubDate: new Date(),
       severity: 'major', link: '', description: '', categories: [],
     }]);
-    for (const country of ['Israel', 'Neverland']) {
+    for (const country of ['Neverland', 'constructor']) {
       ingest(country);
       expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['XX']);
     }
     ingest(' il ');
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
-    await loadGeometry();
     ingest('Israel');
+    expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
+    await loadGeometry();
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
     ingest('Neverland');
     expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['XX']);
@@ -48,6 +49,12 @@ it('preserves unknown sanctions and fire countries while using resolved fire nam
   signalAggregator.ingestSanctionsPressure([{ countryCode: '', countryName: 'Neverland', entryCount: 30,
     newEntryCount: 1, vesselCount: 0, aircraftCount: 0 }]);
   expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['XX']);
+  signalAggregator.ingestSanctionsPressure([{ countryCode: 'UKR', countryName: 'Ukraine', entryCount: 30,
+    newEntryCount: 1, vesselCount: 0, aircraftCount: 0 }]);
+  expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['UA']);
+  signalAggregator.ingestSanctionsPressure([{ countryCode: 'IL', countryName: 'Ukraine', entryCount: 30,
+    newEntryCount: 1, vesselCount: 0, aircraftCount: 0 }]);
+  expect(signalAggregator.getCountryClusters().map(c => c.country)).toEqual(['IL']);
   signalAggregator.clear();
   const fire = { lat: 0, lon: 0, brightness: 370, frp: 10, acq_date: new Date().toISOString() };
   signalAggregator.ingestSatelliteFires([{ ...fire, region: 'Neverland' }]);

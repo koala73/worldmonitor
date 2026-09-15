@@ -14,6 +14,7 @@ import type {
 import type { CountrySanctionsPressure } from './sanctions-pressure';
 import type { RadiationObservation } from './radiation';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
+import countryNames from '../../shared/country-names.json';
 
 export const SIGNAL_AGGREGATOR_MAX_SIGNALS = 1000;
 
@@ -96,10 +97,13 @@ const REGION_DEFINITIONS: Record<string, { countries: string[]; name: string }> 
   },
 };
 
+// Cached feeds are not replayed after geometry loads, so resolve bundled names immediately.
+const fallbackCountryCodes = new Map<string, string>(Object.entries(countryNames));
+
 function normalizeCountryCode(country: string): string {
   const trimmed = country.trim();
   if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
-  return nameToCountryCode(trimmed) ?? '';
+  return nameToCountryCode(trimmed) ?? fallbackCountryCodes.get(trimmed.toLowerCase()) ?? '';
 }
 
 function getCountryName(code: string): string {
@@ -360,7 +364,7 @@ class SignalAggregator {
     this.clearSignalType('sanctions_pressure');
 
     for (const country of countries) {
-      const code = normalizeCountryCode(country.countryCode || country.countryName) || 'XX';
+      const code = normalizeCountryCode(country.countryCode) || normalizeCountryCode(country.countryName) || 'XX';
       const severity: 'low' | 'medium' | 'high' =
         country.newEntryCount >= 5 || country.entryCount >= 50
           ? 'high'
