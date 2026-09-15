@@ -2034,7 +2034,8 @@
       "channelOrVideoUrl": "Канал YouTube или URL видео",
       "channelUrlHint": "Вставьте URL канала (youtube.com/channel/UC…) или URL прямого видео",
       "youtubeChannel": "Канал YouTube",
-      "insecureStream": "{{name}} использует небезопасный (http) поток, который блокируют браузеры. Добавьте его снова с безопасным (https) URL потока"
+      "insecureStream": "{{name}} использует небезопасный (http) поток, который блокируют браузеры. Добавьте его снова с безопасным (https) URL потока",
+      "httpsStreamHint": "Браузеры блокируют небезопасные (http) потоки. Вставьте безопасный (https) URL потока"
     },
     "map": {
       "showMap": "Показать карту",

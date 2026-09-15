@@ -2303,7 +2303,8 @@
       "playNextChannel": "Reproduciraj sljedeći kanal",
       "channelOrVideoUrl": "YouTube kanal ili URL videa",
       "channelUrlHint": "Zalijepite URL kanala (youtube.com/channel/UC…) ili URL uživo videa",
-      "youtubeChannel": "YouTube kanal"
+      "youtubeChannel": "YouTube kanal",
+      "httpsStreamHint": "Preglednici blokiraju nesigurne (http) tokove. Zalijepite sigurni (https) URL toka"
     },
     "map": {
       "showMap": "Prikaži mapu",

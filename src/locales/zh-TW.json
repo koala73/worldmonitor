@@ -2022,7 +2022,8 @@
       "playNextChannel": "播放下一個頻道",
       "channelOrVideoUrl": "YouTube 頻道或影片 URL",
       "channelUrlHint": "貼上頻道 URL (youtube.com/channel/UC…) 或直播影片 URL",
-      "youtubeChannel": "YouTube 頻道"
+      "youtubeChannel": "YouTube 頻道",
+      "httpsStreamHint": "瀏覽器會阻止不安全的 (http) 流。請貼上安全的 (https) 流 URL"
     },
     "map": {
       "showMap": "顯示地圖",

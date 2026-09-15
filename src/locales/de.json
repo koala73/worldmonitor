@@ -1973,7 +1973,8 @@
       "channelOrVideoUrl": "YouTube-Kanal oder Video-URL",
       "channelUrlHint": "Kanal-URL (youtube.com/channel/UC…) oder Live-Video-URL einfügen",
       "youtubeChannel": "YouTube-Kanal",
-      "insecureStream": "{{name}} verwendet einen unsicheren (http) Stream, den Browser blockieren. Fügen Sie ihn mit einer sicheren (https) Stream-URL erneut hinzu"
+      "insecureStream": "{{name}} verwendet einen unsicheren (http) Stream, den Browser blockieren. Fügen Sie ihn mit einer sicheren (https) Stream-URL erneut hinzu",
+      "httpsStreamHint": "Browser blockieren unsichere (http) Streams. Fügen Sie eine sichere (https) Stream-URL ein"
     },
     "securityAdvisories": {
       "loading": "Reisehinweise werden geladen...",

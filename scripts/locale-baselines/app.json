@@ -943,6 +943,7 @@
   "components.liveNews.displayName": "Display name (optional)",
   "components.liveNews.embedBlocked": "YouTube won’t play {{name}} inside other sites right now",
   "components.liveNews.hlsUrl": "HLS Stream URL (optional)",
+  "components.liveNews.httpsStreamHint": "Browsers block insecure (http) streams. Paste a secure (https) stream URL",
   "components.liveNews.insecureStream": "{{name}} uses an insecure (http) stream, which browsers block. Add it again with a secure (https) stream URL",
   "components.liveNews.invalidHlsUrl": "Enter a valid HLS stream URL (.m3u8)",
   "components.liveNews.manage": "Manage channels",

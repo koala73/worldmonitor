@@ -2295,7 +2295,8 @@
       "channelOrVideoUrl": "Chaneli ya YouTube au URL ya video",
       "channelUrlHint": "Bandika URL ya chaneli (youtube.com/channel/UC…) au URL ya video ya moja kwa moja",
       "youtubeChannel": "Chaneli ya YouTube",
-      "insecureStream": "{{name}} inatumia mtiririko usioaminifu (http), ambao vivinjari huzuia. Ongeza tena kwa URL ya mtiririko salama (https)"
+      "insecureStream": "{{name}} inatumia mtiririko usioaminifu (http), ambao vivinjari huzuia. Ongeza tena kwa URL ya mtiririko salama (https)",
+      "httpsStreamHint": "Vivinjari huzuia mitiririko isiyo salama (http). Bandika URL ya mtiririko salama (https)"
     },
     "map": {
       "showMap": "Onyesha Ramani",

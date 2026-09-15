@@ -1502,7 +1502,8 @@
       "playNextChannel": "Volgende kanaal afspelen",
       "channelOrVideoUrl": "YouTube-kanaal of video-URL",
       "channelUrlHint": "Plak een kanaal-URL (youtube.com/channel/UC…) of een live-video-URL",
-      "youtubeChannel": "YouTube-kanaal"
+      "youtubeChannel": "YouTube-kanaal",
+      "httpsStreamHint": "Browsers blokkeren onveilige (http) streams. Plak een veilige (https) stream-URL"
     },
     "securityAdvisories": {
       "loading": "Reisadviezen laden...",

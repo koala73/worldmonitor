@@ -1504,7 +1504,8 @@
       "channelOrVideoUrl": "Canal YouTube ou URL de vídeo",
       "channelUrlHint": "Cole uma URL de canal (youtube.com/channel/UC…) ou uma URL de vídeo ao vivo",
       "youtubeChannel": "Canal YouTube",
-      "insecureStream": "{{name}} usa um stream inseguro (http), que navegadores bloqueiam. Adicione novamente com uma URL de stream segura (https)"
+      "insecureStream": "{{name}} usa um stream inseguro (http), que navegadores bloqueiam. Adicione novamente com uma URL de stream segura (https)",
+      "httpsStreamHint": "Navegadores bloqueiam streams inseguros (http). Cole uma URL de stream segura (https)"
     },
     "securityAdvisories": {
       "loading": "Carregando alertas de viagem...",

@@ -2030,7 +2030,8 @@
       "channelOrVideoUrl": "Canal YouTube sau adresă URL de video",
       "channelUrlHint": "Lipiți o adresă URL de canal (youtube.com/channel/UC…) sau o adresă URL de video live",
       "youtubeChannel": "Canal YouTube",
-      "insecureStream": "{{name}} folosește un flux nesecurizat (http), pe care browserele îl blochează. Adăugați-l din nou cu o adresă URL de flux securizată (https)"
+      "insecureStream": "{{name}} folosește un flux nesecurizat (http), pe care browserele îl blochează. Adăugați-l din nou cu o adresă URL de flux securizată (https)",
+      "httpsStreamHint": "Browserele blochează fluxurile nesecurizate (http). Lipiți o adresă URL de flux securizată (https)"
     },
     "map": {
       "showMap": "Arată harta",

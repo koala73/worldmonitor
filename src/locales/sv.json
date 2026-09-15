@@ -1502,7 +1502,8 @@
       "channelOrVideoUrl": "YouTube-kanal eller video-URL",
       "channelUrlHint": "Klistra in en kanal-URL (youtube.com/channel/UC…) eller en live-video-URL",
       "youtubeChannel": "YouTube-kanal",
-      "insecureStream": "{{name}} använder en osäker (http) ström som webbläsare blockerar. Lägg till den igen med en säker (https) ström-URL"
+      "insecureStream": "{{name}} använder en osäker (http) ström som webbläsare blockerar. Lägg till den igen med en säker (https) ström-URL",
+      "httpsStreamHint": "Webbläsare blockerar osäkra (http) strömmar. Klistra in en säker (https) ström-URL"
     },
     "securityAdvisories": {
       "loading": "Hämtar resevarningar...",

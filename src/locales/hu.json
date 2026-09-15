@@ -2292,7 +2292,8 @@
       "playNextChannel": "Következő csatorna lejátszása",
       "channelOrVideoUrl": "YouTube-csatorna vagy videó URL",
       "channelUrlHint": "Illesszen be egy csatorna URL-t (youtube.com/channel/UC…) vagy egy élő videó URL-t",
-      "youtubeChannel": "YouTube-csatorna"
+      "youtubeChannel": "YouTube-csatorna",
+      "httpsStreamHint": "A böngészők blokkolják a nem biztonságos (http) streameket. Illesszen be egy biztonságos (https) stream URL-t"
     },
     "map": {
       "showMap": "Térkép megjelenítése",

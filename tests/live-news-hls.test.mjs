@@ -129,7 +129,8 @@ describe('Live News playback', () => {
     );
     assert.match(renderPlayer, /const generation = \+\+this\.playerGeneration/);
     assert.match(renderPlayer, /onState: \(state\) => \{\s*if \(isCurrent\(\)\) this\.onVideoState\(channel, state\);/);
-    assert.match(renderPlayer, /if \(isCurrent\(\)\) this\.videoSession = session;\s*else session\.destroy\(\);/);
+    // The synchronous handoff (keep only the newest session) is pinned by the DOM test in
+    // tests/dom/live-news-live-verification.test.mts that starts past a channel with no stream.
   });
 });
 

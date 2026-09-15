@@ -2022,7 +2022,8 @@
       "playNextChannel": "다음 채널 재생",
       "channelOrVideoUrl": "YouTube 채널 또는 비디오 URL",
       "channelUrlHint": "채널 URL(youtube.com/channel/UC…) 또는 라이브 비디오 URL을 붙여넣으세요",
-      "youtubeChannel": "YouTube 채널"
+      "youtubeChannel": "YouTube 채널",
+      "httpsStreamHint": "브라우저는 안전하지 않은(http) 스트림을 차단합니다. 보안(https) 스트림 URL을 붙여넣으세요"
     },
     "map": {
       "showMap": "지도 표시",

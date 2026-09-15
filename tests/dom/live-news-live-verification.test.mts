@@ -586,4 +586,120 @@ describe('Live News live verification', () => {
     await flush(POLL);
     expect(status()).toBeNull();
   });
+
+  it('plays the edited channel in its place when an edit from its offline card changes the channel id', async () => {
+    mount(['bloomberg', 'custom-foo-news'], { custom: [{ id: 'custom-foo-news', name: 'Foo News', handle: '@FooNews' }] });
+    await playFromPlaceholder();
+    await playHlsLive();
+    channelButton('custom-foo-news').click();
+    await flush();
+    expect(offlineText()).toBe('Add Foo News again with its channel URL (youtube.com/channel/UC…) or a live video URL');
+
+    // Manage channels replaces the handle with a channel URL, which gives the row a new id.
+    const replacementId = 'custom-uc-UCknLrEdhRCp1aegoMqRaCZg';
+    localStorage.setItem(STORAGE_KEYS.liveChannels, JSON.stringify({
+      order: ['bloomberg', replacementId],
+      custom: [{ id: replacementId, name: 'Foo News', channelId: 'UCknLrEdhRCp1aegoMqRaCZg' }],
+      displayNameOverrides: {},
+    }));
+    panel?.refreshChannelsFromStorage();
+    await flush();
+
+    expect(channelButton(replacementId).classList.contains('active')).toBe(true);
+    expect(savedActiveChannel()).toBe(replacementId);
+    expect(getActiveLiveMedia('live-news')?.streamId).toBe(replacementId);
+    expect(api().playerFor('Foo News live feed').embeddedVideoId).toBe('live_stream');
+    expect(content().querySelector('.live-offline')).toBeNull();
+  });
+
+  it('replaces the insecure-stream card with the stream once an edit gives it an https URL', async () => {
+    mount(['custom-hls-1'], { custom: [{ id: 'custom-hls-1', name: 'Local TV', hlsUrl: 'http://tv.example/live.m3u8' }] });
+    await playFromPlaceholder();
+    expect(offlineText()).toBe('Local TV uses an insecure (http) stream, which browsers block. Add it again with a secure (https) stream URL');
+
+    saveCustomStream('https://tv.example/live.m3u8');
+    panel?.refreshChannelsFromStorage();
+    await flush();
+
+    expect(content().querySelector('.live-offline')).toBeNull();
+    expect(latestHls().url).toBe('https://tv.example/live.m3u8');
+    expect(content().querySelectorAll('video.live-news-media')).toHaveLength(1);
+    expect(getActiveLiveMedia('live-news')?.streamId).toBe('custom-hls-1');
+  });
+
+  it('asks for a channel URL for a saved handle channel that older versions stored with a resolved video or YouTube manifest', async () => {
+    // Older versions wrote the video and manifest they scraped for a handle onto the saved channel.
+    for (const [record, name] of [
+      [{ id: 'custom-foo', name: 'Foo', handle: '@Foo', videoId: 'AbCdEfGhIjK', isLive: true }, 'Foo'],
+      [{ id: 'custom-bar', handle: '@Bar', hlsUrl: 'https://manifest.googlevideo.com/api/manifest/hls_playlist/x/index.m3u8' }, '@Bar'],
+    ] as const) {
+      panel?.destroy();
+      document.body.innerHTML = '';
+      mount([record.id], { custom: [record] });
+      await playFromPlaceholder();
+
+      expect(offlineText()).toBe(`Add ${name} again with its channel URL (youtube.com/channel/UC…) or a live video URL`);
+    }
+    expect(api().players).toHaveLength(0);
+    expect(hlsState.instances).toHaveLength(0);
+  });
+
+  it('still plays a video and a stream that older versions saved with their fallback fields', async () => {
+    mount(['custom-vid-AbCdEfGhIjK'], {
+      custom: [{ id: 'custom-vid-AbCdEfGhIjK', name: 'My stream', handle: '@video', fallbackVideoId: 'AbCdEfGhIjK', useFallbackOnly: true, videoId: 'AbCdEfGhIjK', isLive: false }],
+    });
+    await playFromPlaceholder();
+    expect(api().playerFor('My stream live feed').embeddedVideoId).toBe('AbCdEfGhIjK');
+
+    panel?.destroy();
+    document.body.innerHTML = '';
+    mount(['custom-hls-1'], { custom: [{ id: 'custom-hls-1', name: 'Local TV', hlsUrl: 'https://tv.example/live.m3u8', useFallbackOnly: true }] });
+    await playFromPlaceholder();
+    expect(latestHls().url).toBe('https://tv.example/live.m3u8');
+    expect(content().querySelector('.live-offline')).toBeNull();
+  });
+
+  it('makes the channel an implicit start landed on the viewer’s choice when its button is clicked, without restarting it', async () => {
+    catalog.news.bloomberg = [BLOOMBERG_HLS];
+    mount(['cnn', 'bloomberg', 'dw'], { active: 'cnn' });
+    await playFromPlaceholder();
+    api().playerFor('CNN live feed').error(150);
+    await flush(POLL);
+    const video = mediaVideo();
+    const streams = hlsState.instances.length;
+
+    channelButton('bloomberg').click();
+    await flush();
+
+    expect(savedActiveChannel()).toBe('bloomberg');
+    expect(mediaVideo()).toBe(video);
+    expect(hlsState.instances).toHaveLength(streams);
+
+    // Chosen explicitly now, so going offline explains itself instead of moving on to DW.
+    latestHls().emit('hlsError', { fatal: true, details: 'manifestLoadError' });
+    await flush(POLL);
+    expect(offlineText()).toBe('Bloomberg can’t be played right now');
+    expect(getActiveLiveMedia('live-news')?.streamId).toBe('bloomberg');
+    expect(hlsState.instances).toHaveLength(streams);
+  });
+
+  it('hands an implicit start past a channel with no stream to the next one in the same call, leaving one player', async () => {
+    catalog.news.cnn = [];
+    mount(['cnn', 'bloomberg'], { active: 'cnn' });
+    await playFromPlaceholder();
+
+    const media = content().querySelectorAll('iframe, video.live-news-media');
+    expect(media).toHaveLength(1);
+    expect(media[0]?.getAttribute('title')).toBe('Bloomberg live feed');
+    expect(latestHls().url).toBe(BLOOMBERG_HLS);
+    expect(getActiveLiveMedia('live-news')?.streamId).toBe('bloomberg');
+    expect(savedActiveChannel()).toBe('cnn');
+    expect(channelButton('cnn').classList.contains('offline')).toBe(true);
+
+    const stream = latestHls();
+    headerButton('Toggle playback').click();
+    await flush();
+    expect(stream.destroyed).toBe(true);
+    expect(content().querySelectorAll('iframe, video.live-news-media')).toHaveLength(0);
+  });
 });

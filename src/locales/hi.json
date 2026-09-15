@@ -2292,7 +2292,8 @@
       "playNextChannel": "अगला चैनल चलाएं",
       "channelOrVideoUrl": "YouTube चैनल या वीडियो URL",
       "channelUrlHint": "चैनल URL (youtube.com/channel/UC…) या लाइव वीडियो URL पेस्ट करें",
-      "youtubeChannel": "YouTube चैनल"
+      "youtubeChannel": "YouTube चैनल",
+      "httpsStreamHint": "ब्राउज़र असुरक्षित (http) स्ट्रीम ब्लॉक करते हैं। एक सुरक्षित (https) स्ट्रीम URL पेस्ट करें"
     },
     "map": {
       "showMap": "मानचित्र दिखाएं",

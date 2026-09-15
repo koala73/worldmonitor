@@ -2295,7 +2295,8 @@
       "playNextChannel": "پخش کانال بعدی",
       "channelOrVideoUrl": "کانال یا ویدیوی یوتیوب",
       "channelUrlHint": "URL کانال (youtube.com/channel/UC…) یا URL ویدیوی زندهٔ را کپی کنید",
-      "youtubeChannel": "کانال یوتیوب"
+      "youtubeChannel": "کانال یوتیوب",
+      "httpsStreamHint": "مرورگرها جریان‌های نایمن (http) را مسدود می‌کنند. یک URL جریانِ ایمن (https) را جای‌گذاری کنید"
     },
     "map": {
       "showMap": "Show Map",

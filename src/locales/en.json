@@ -2285,6 +2285,7 @@
       "remove": "Remove",
       "channelOrVideoUrl": "YouTube channel or video URL",
       "channelUrlHint": "Paste a channel URL (youtube.com/channel/UC…) or a live video URL",
+      "httpsStreamHint": "Browsers block insecure (http) streams. Paste a secure (https) stream URL",
       "youtubeChannel": "YouTube channel",
       "displayName": "Display name (optional)",
       "channelSettings": "Channel Settings",

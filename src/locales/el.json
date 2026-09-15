@@ -2026,7 +2026,8 @@
       "playNextChannel": "Αναπαραγωγή του επόμενου καναλιού",
       "channelOrVideoUrl": "Κανάλι YouTube ή διεύθυνση URL βίντεο",
       "channelUrlHint": "Επικολλήστε μια διεύθυνση URL καναλιού (youtube.com/channel/UC…) ή μια διεύθυνση URL live βίντεο",
-      "youtubeChannel": "Κανάλι YouTube"
+      "youtubeChannel": "Κανάλι YouTube",
+      "httpsStreamHint": "Οι περιηγητές μπλοκάρουν τα μη ασφαλή streams (http). Επικολλήστε μια ασφαλή διεύθυνση URL stream (https)"
     },
     "map": {
       "showMap": "Εμφάνιση χάρτη",

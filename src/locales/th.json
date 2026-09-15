@@ -2022,7 +2022,8 @@
       "playNextChannel": "เล่นช่องถัดไป",
       "channelOrVideoUrl": "URL ช่อง YouTube หรือ URL วิดีโอ",
       "channelUrlHint": "วางลิงก์ URL ช่อง (youtube.com/channel/UC…) หรือ URL วิดีโอสด",
-      "youtubeChannel": "ช่อง YouTube"
+      "youtubeChannel": "ช่อง YouTube",
+      "httpsStreamHint": "เบราว์เซอร์จะบล็อกสตรีมที่ไม่ปลอดภัย (http) วาง URL สตรีมที่ปลอดภัย (https)"
     },
     "map": {
       "showMap": "แสดงแผนที่",

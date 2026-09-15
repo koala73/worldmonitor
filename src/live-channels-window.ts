@@ -13,7 +13,7 @@ import {
   getFilteredChannelRegions,
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
-import { parseSourceEntry, type Candidate } from '@/services/live-video/model';
+import { parseSourceEntry, type Candidate, type EntryProblem } from '@/services/live-video/model';
 import { escapeHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
@@ -29,6 +29,13 @@ function customChannelFor(candidate: Candidate, name: string, current?: LiveChan
   if (candidate.kind === 'video') return { id: `custom-vid-${candidate.videoId}`, name, videoId: candidate.videoId };
   const id = current?.id.startsWith('custom-hls-') ? current.id : `custom-hls-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   return { id, name, hlsUrl: candidate.url };
+}
+
+/** What to paste instead of a source that cannot play: an https stream for an http one, else a channel or video URL. */
+function sourceProblemHint(problem: EntryProblem): string {
+  return problem === 'not-https'
+    ? t('components.liveNews.httpsStreamHint') ?? 'Browsers block insecure (http) streams. Paste a secure (https) stream URL'
+    : t('components.liveNews.channelUrlHint') ?? 'Paste a channel URL (youtube.com/channel/UC…) or a live video URL';
 }
 
 // Persist active region tab across re-renders
@@ -180,7 +187,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   }
 
   /**
-   * Applies edit form state to channels and returns the new array, 'invalid-source' when the edited
+   * Applies edit form state to channels and returns the new array, the parse problem when the edited
    * source is not a channel, video or https stream URL, or null if nothing to save.
    * Used by the Save button in the edit form.
    */
@@ -189,7 +196,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     formRow: HTMLElement,
     isCustom: boolean,
     displayName: string,
-  ): LiveChannel[] | 'invalid-source' | null {
+  ): LiveChannel[] | EntryProblem | null {
     const idx = channels.findIndex((c) => c.id === currentCh.id);
     if (idx === -1) return null;
 
@@ -198,7 +205,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       const sourceRaw = (formRow.querySelector('.live-news-manage-edit-handle') as HTMLInputElement | null)?.value?.trim();
       if (sourceRaw && sourceRaw !== customChannelEntry(currentCh)) {
         const parsed = parseSourceEntry(sourceRaw);
-        if (!parsed.ok) return 'invalid-source';
+        if (!parsed.ok) return parsed.problem;
         const replacement = customChannelFor(parsed.candidate, displayName, currentCh);
         if (channels.some((c) => c.id === replacement.id && c.id !== currentCh.id)) return null;
         next[idx] = replacement;
@@ -256,10 +263,10 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     saveBtn.addEventListener('click', () => {
       const displayName = nameInput.value.trim() || ch.name || ch.handle || '';
       const next = applyEditFormToChannels(ch, row, isCustom, displayName);
-      if (next === 'invalid-source') {
+      if (typeof next === 'string') {
         // Keep the edit open and say why, the same guidance the add form gives.
         sourceInput?.classList.add('invalid');
-        editHint.textContent = t('components.liveNews.channelUrlHint') ?? 'Paste a channel URL (youtube.com/channel/UC…) or a live video URL';
+        editHint.textContent = sourceProblemHint(next);
         editHint.hidden = false;
         return;
       }
@@ -475,6 +482,11 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   const hideSourceHint = () => {
     if (sourceHint) sourceHint.hidden = true;
   };
+  const showSourceHint = (problem: EntryProblem) => {
+    if (!sourceHint) return;
+    sourceHint.textContent = sourceProblemHint(problem);
+    sourceHint.hidden = false;
+  };
 
   // Clear validation state on input
   document.getElementById('liveChannelsHandle')?.addEventListener('input', (e) => {
@@ -483,6 +495,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   });
   document.getElementById('liveChannelsHlsUrl')?.addEventListener('input', (e) => {
     (e.target as HTMLInputElement).classList.remove('invalid');
+    hideSourceHint();
   });
 
   document.getElementById('liveChannelsRestoreBtn')?.addEventListener('click', () => {
@@ -523,6 +536,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
           hlsInput.classList.add('invalid');
           hlsInput.setAttribute('title', t('components.liveNews.invalidHlsUrl') ?? 'Enter a valid HLS stream URL (.m3u8)');
         }
+        if (!parsed.ok && parsed.problem === 'not-https') showSourceHint(parsed.problem);
         return;
       }
       addChannel(customChannelFor(parsed.candidate, chosenName || 'HLS Stream'));
@@ -534,10 +548,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     const parsed = parseSourceEntry(raw);
     if (!parsed.ok) {
       handleInput?.classList.add('invalid');
-      if (sourceHint) {
-        sourceHint.textContent = t('components.liveNews.channelUrlHint') ?? 'Paste a channel URL (youtube.com/channel/UC…) or a live video URL';
-        sourceHint.hidden = false;
-      }
+      showSourceHint(parsed.problem);
       return;
     }
 

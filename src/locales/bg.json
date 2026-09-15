@@ -2026,7 +2026,8 @@
       "playNextChannel": "Възпроизведи следващия канал",
       "channelOrVideoUrl": "YouTube канал или видео URL",
       "channelUrlHint": "Поставете URL на канал (youtube.com/channel/UC…) или URL на живо видео",
-      "youtubeChannel": "YouTube канал"
+      "youtubeChannel": "YouTube канал",
+      "httpsStreamHint": "Браузърите блокират небезопасни (http) потоци. Поставете безопасен (https) URL на потока"
     },
     "map": {
       "showMap": "Показване на карта",

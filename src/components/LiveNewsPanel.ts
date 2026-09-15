@@ -4,7 +4,7 @@ import { t } from '../services/i18n';
 import { createFocusTrap } from '@/utils/focus-trap';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS, SITE_VARIANT } from '@/config';
-import { LIVE_NEWS_SOURCES } from '@/config/live-video-sources';
+import { LIVE_NEWS_SOURCES, type LiveNewsSlotId } from '@/config/live-video-sources';
 
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
@@ -26,10 +26,13 @@ export interface LiveChannel {
   geoAvailability?: string[]; // ISO 3166-1 alpha-2 codes; undefined = available everywhere
 }
 
-// The streams each built-in channel plays live in src/config/live-video-sources.ts.
+/** A built-in channel. Its id names the catalog slot in src/config/live-video-sources.ts that holds its streams. */
+interface BuiltinLiveChannel extends LiveChannel {
+  id: LiveNewsSlotId;
+}
 
 // Full variant: World news channels (24/7 live streams)
-const FULL_LIVE_CHANNELS: LiveChannel[] = [
+const FULL_LIVE_CHANNELS: BuiltinLiveChannel[] = [
   { id: 'bloomberg', name: 'Bloomberg', handle: '@markets' },
   { id: 'sky', name: 'SkyNews', handle: '@SkyNews' },
   { id: 'euronews', name: 'Euronews', handle: '@euronews' },
@@ -41,7 +44,7 @@ const FULL_LIVE_CHANNELS: LiveChannel[] = [
 ];
 
 // Tech variant: Tech & business channels
-const TECH_LIVE_CHANNELS: LiveChannel[] = [
+const TECH_LIVE_CHANNELS: BuiltinLiveChannel[] = [
   { id: 'bloomberg', name: 'Bloomberg', handle: '@markets' },
   { id: 'yahoo', name: 'Yahoo Finance', handle: '@YahooFinance' },
   { id: 'nasa', name: 'Sen Space Live', handle: '@NASA' },
@@ -49,7 +52,7 @@ const TECH_LIVE_CHANNELS: LiveChannel[] = [
 
 // Optional channels users can add from the "Available Channels" tab UI
 // Includes default channels so they appear in the grid for toggle on/off
-export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
+export const OPTIONAL_LIVE_CHANNELS: BuiltinLiveChannel[] = [
   // North America (defaults first)
   { id: 'bloomberg', name: 'Bloomberg', handle: '@markets' },
   { id: 'yahoo', name: 'Yahoo Finance', handle: '@YahooFinance' },
@@ -172,14 +175,15 @@ export function getDefaultLiveChannels(): LiveChannel[] {
   return [...DEFAULT_LIVE_CHANNELS];
 }
 
-export const BUILTIN_IDS = new Set([
+export const BUILTIN_IDS = new Set<string>([
   ...FULL_LIVE_CHANNELS.map((c) => c.id),
   ...TECH_LIVE_CHANNELS.map((c) => c.id),
   ...OPTIONAL_LIVE_CHANNELS.map((c) => c.id),
 ]);
 
-function builtinEntries(channelId: string): readonly string[] {
-  return (LIVE_NEWS_SOURCES as Record<string, readonly string[]>)[channelId] ?? [];
+/** The built-in channel arrays are typed with catalog slot ids, so every id in BUILTIN_IDS names a slot. */
+function isBuiltinId(id: string): id is LiveNewsSlotId {
+  return BUILTIN_IDS.has(id);
 }
 
 /** The one entry a user-added channel plays: its stream, channel, video, or (saved before channel URLs) handle. */
@@ -192,8 +196,8 @@ export function customChannelEntry(channel: LiveChannel): string | null {
 
 /** What the live video session tries for a channel, in order. */
 function liveVideoSourceFor(channel: LiveChannel): LiveVideoSource {
-  if (BUILTIN_IDS.has(channel.id)) {
-    return { slot: `live-news/${channel.id}`, entries: builtinEntries(channel.id), origin: 'builtin' };
+  if (isBuiltinId(channel.id)) {
+    return { slot: `live-news/${channel.id}`, entries: LIVE_NEWS_SOURCES[channel.id], origin: 'builtin' };
   }
   const entry = customChannelEntry(channel);
   // Per-channel slot so failure memory does not bleed across custom streams.
@@ -201,8 +205,8 @@ function liveVideoSourceFor(channel: LiveChannel): LiveVideoSource {
 }
 
 /** A built-in channel with no configured stream has nothing to play, so channel management hides it. */
-function hasBuiltinStreams(channel: LiveChannel): boolean {
-  return builtinEntries(channel.id).length > 0;
+function hasBuiltinStreams(channel: BuiltinLiveChannel): boolean {
+  return LIVE_NEWS_SOURCES[channel.id].length > 0;
 }
 
 /** Returns playable optional channels filtered by user country. Channels without geoAvailability pass through. */
@@ -239,6 +243,8 @@ interface StoredCustomChannel {
   channelId?: string;
   /** How older versions saved a user-added video. */
   fallbackVideoId?: string;
+  /** Older versions set this on user-added videos (handle '@video') and streams, never on a handle channel. */
+  useFallbackOnly?: boolean;
 }
 
 /**
@@ -249,6 +255,9 @@ function customChannelFromStorage(stored: StoredCustomChannel): LiveChannel | nu
   const { id } = stored;
   if (!id) return null;
   const name = stored.name || stored.handle || id;
+  // A handle channel first: older versions also saved the video or YouTube manifest they last scraped for it,
+  // which would now play frozen. Its live video cannot be looked up, so playback asks for a channel URL.
+  if (stored.handle && stored.handle !== '@video' && !stored.useFallbackOnly) return { id, name, handle: stored.handle };
   if (stored.hlsUrl) return { id, name, hlsUrl: stored.hlsUrl };
   const videoId = stored.videoId ?? stored.fallbackVideoId;
   if (videoId) return { id, name, videoId };
@@ -924,7 +933,15 @@ export class LiveNewsPanel extends Panel {
   }
 
   private switchChannel(channel: LiveChannel): void {
-    if (channel.id === this.activeChannel.id) return;
+    if (channel.id === this.activeChannel.id) {
+      // An implicit start may have landed here without saving it. Choosing it makes it the viewer's channel:
+      // saved, and explained rather than skipped if it goes offline. What is playing keeps playing.
+      if (this.playbackOrigin === 'implicit') {
+        saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
+        this.playbackOrigin = 'explicit';
+      }
+      return;
+    }
 
     this.activeChannel = channel;
     saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
@@ -981,7 +998,7 @@ export class LiveNewsPanel extends Panel {
     if (reason === 'needs-channel-url' || reason === 'insecure-url') {
       actions.appendChild(actionButton(t('components.liveNews.manage') || 'Manage channels', () => this.openChannelManagementModal()));
     } else if (reason !== 'no-entries') {
-      // switchChannel no-ops when the id is already active, so retry re-requests playback for the current stream.
+      // switchChannel never restarts the channel it already holds, so retry re-requests playback for the current stream.
       const retry = actionButton(t('common.retry') || 'Retry', () => this.beginPlayback('explicit'));
       retry.dataset.liveRetry = '';
       actions.appendChild(retry);
@@ -1121,22 +1138,27 @@ export class LiveNewsPanel extends Panel {
 
   /** Reload channel list from storage (e.g. after edit in separate channel management window). */
   public refreshChannelsFromStorage(): void {
+    const activeIndex = this.channels.findIndex((c) => c.id === this.activeChannel.id);
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
     this.refreshChannelSwitcher();
     const current = this.channels.find((c) => c.id === this.activeChannel.id);
     if (!current) {
-      // The active channel was removed. switchChannel ignores the channel it already holds, so hand it
-      // the replacement instead of assigning it first; it stops the removed channel and saves the new one.
-      const next = this.channels[0];
+      // The active channel was removed, or an edit gave it a new id (a channel URL in place of a handle), so
+      // take the channel now in its position. switchChannel never restarts the channel it already holds, so
+      // hand it the replacement instead of assigning it first; it stops the old channel and saves the new one.
+      const next = this.channels[Math.min(Math.max(activeIndex, 0), this.channels.length - 1)];
       if (next) this.switchChannel(next);
       return;
     }
-    // An edit can keep the id and change what plays (a custom stream URL). Hold the edited channel, and
-    // move a running session onto its new source; a stopped channel plays the new source next time.
+    // An edit can keep the id and change what plays (a custom stream URL). Hold the edited channel, and move a
+    // running session, or the offline card its last attempt left, onto the new source; a stopped channel plays
+    // the new source next time.
     const sourceChanged = liveVideoSourceFor(current).entries.join('\n') !== liveVideoSourceFor(this.activeChannel).entries.join('\n');
     this.activeChannel = current;
-    if (sourceChanged && this.videoSession) this.renderPlayer();
+    if (!sourceChanged) return;
+    if (this.videoSession) this.renderPlayer();
+    else if (this.ownsActiveLiveMedia()) this.beginPlayback('explicit');
   }
 
   public stopLiveMediaForClose(): void {

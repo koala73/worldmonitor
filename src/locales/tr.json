@@ -2026,7 +2026,8 @@
       "playNextChannel": "Sonraki kanalı oynat",
       "channelOrVideoUrl": "YouTube kanal veya video URL'si",
       "channelUrlHint": "Kanal URL'si (youtube.com/channel/UC…) veya canlı video URL'si yapıştırın",
-      "youtubeChannel": "YouTube kanalı"
+      "youtubeChannel": "YouTube kanalı",
+      "httpsStreamHint": "Tarayıcılar güvensiz (http) yayınları engeller. Güvenli (https) bir yayın URL'si yapıştırın"
     },
     "map": {
       "showMap": "Haritayı Göster",
