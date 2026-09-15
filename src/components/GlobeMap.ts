@@ -941,7 +941,7 @@ export class GlobeMap {
         if (d.pathType === 'stormHistory') return 0;
         return 5000;
       })
-      .pathLabel((d: GlobePath) => d?.name ?? '');
+      .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
 
     // Polygon accessors — set once
     (globe as any)

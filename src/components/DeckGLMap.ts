@@ -5002,7 +5002,7 @@ export class DeckGLMap {
         const item = (obj as { item: DiseaseOutbreakItem }).item;
         if (!item) return null;
         const lvlColor = item.alertLevel === 'alert' ? '#e74c3c' : item.alertLevel === 'warning' ? '#e67e22' : '#f1c40f';
-        const casesHtml = item.cases ? ` | ${item.cases} case${item.cases !== 1 ? 's' : ''}` : '';
+        const casesHtml = item.cases ? ` | ${text(item.cases)} case${item.cases !== 1 ? 's' : ''}` : '';
         const dateStr = new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const metaHtml = `<br/><span style="opacity:.6;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${text(item.sourceName || '')} | ${dateStr}${casesHtml}</span>`;
         const summaryHtml = item.summary ? `<br/><span style="opacity:.75">${text(item.summary.slice(0, 100))}${item.summary.length > 100 ? '…' : ''}</span>` : '';
