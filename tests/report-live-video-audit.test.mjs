@@ -233,6 +233,26 @@ describe('live video audit issue', () => {
     assert.match(calls.at(-1).payload.body, /Canaries: 1 of 2 live on retry/);
   });
 
+  it('throws when canaries only recover on retry and stalled YouTube entries never got alone rechecks', async () => {
+    const stalled = attempt(watch('zp6LNSoq000'), 'unverifiable', {
+      why: 'the player frame loaded but never became ready',
+      unverifiableFromRunner: true,
+      evidence: { aloneChecks: 0, recheckSkipped: false },
+    });
+    const report = reportFor(baseCatalog, { 'webcams/jerusalem': { status: 'unverifiable-from-runner', attempts: [stalled] } });
+    report.canaries = [dead(CANARY_1), dead(CANARY_2)];
+    let retried = false;
+
+    await assert.rejects(
+      publish(report, {
+        gh: unexpectedGh,
+        probeCanaries: async (entries) => { retried = true; return entries.map(live); },
+      }),
+      /canaries only recovered on retry, but alone rechecks never ran/,
+    );
+    assert.equal(retried, true);
+  });
+
   it('throws before any GitHub call when every canary fails the retry too', async () => {
     const report = reportFor(baseCatalog, { 'webcams/jerusalem': { status: 'needs-replacement', attempts: [dead(watch('zp6LNSoq000'))] } });
     report.canaries = [dead(CANARY_1), dead(CANARY_2)];

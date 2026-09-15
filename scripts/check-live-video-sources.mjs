@@ -622,6 +622,11 @@ export async function runCheck(argv, {
   const slotRows = rows.filter((row) => !isCanary(row));
   await probeRows(canaryRows, { probeYouTube, probeHls });
   await probeRows(slotRows, { probeYouTube, probeHls });
+  // Retry canaries once before alone rechecks — same flake tolerance as confirmProbeWorks —
+  // so a flaky first canary pass does not skip alone rechecks and leave dead feeds unverifiable.
+  if (!canaryRows.some((row) => row.verdict?.verdict === 'live')) {
+    await probeRows(canaryRows, { probeYouTube, probeHls });
+  }
   if (canaryRows.some((row) => row.verdict?.verdict === 'live')) {
     await recheckStalledAlone(slotRows, probeYouTube, { budgetMs: ALONE_RECHECK_BUDGET_MS, clock });
   }

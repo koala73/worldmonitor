@@ -260,7 +260,23 @@ export async function publishAudit(report, {
   assertCompleteReport(report, catalog);
   // Before the canary retry, which starts a browser: a run that cannot publish fails fast.
   if (!repository) throw new Error('GITHUB_REPOSITORY is required to publish the live video audit');
+  const firstPassHadLiveCanary = report.canaries.some((attempt) => attempt.verdict === 'live');
   const canaries = await confirmProbeWorks(report.canaries, probeCanaries);
+  // If canaries only recovered on retry, the checker may have skipped alone rechecks. Publishing
+  // would treat those stalls as unverifiable and silently omit real dead feeds.
+  if (!firstPassHadLiveCanary) {
+    const aloneRechecksNeverRan = report.slots.some((slot) => slot.attempts.some((attempt) => (
+      attempt.unverifiableFromRunner
+      && attempt.kind !== 'hls'
+      && (attempt.evidence?.aloneChecks ?? 0) === 0
+      && attempt.evidence?.recheckSkipped !== true
+    )));
+    if (aloneRechecksNeverRan) {
+      throw new Error(
+        'canaries only recovered on retry, but alone rechecks never ran on stalled YouTube entries; re-run the checker so those stalls are not published as unverifiable',
+      );
+    }
+  }
   const rendering = { runUrl, canaries, gridPriority: catalog.gridPriority ?? [] };
   if (summaryPath) appendFileSync(summaryPath, `${renderAuditBody(report, rendering)}\n`);
   const body = issueBody(report, rendering);

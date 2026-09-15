@@ -668,7 +668,8 @@ describe('audit report (--all --report)', () => {
     const catalog = { webcams: {}, gridPriority: [], news: { bloomberg: [watch('QB5BNdBFujE')] }, canaries: [CANARY] };
     const { calls, probeYouTube } = recordingProbe(() => silentVerdict);
     const { writes: [{ report }] } = await audit(['--all', '--report', 'audit.json'], { catalog, probeYouTube });
-    assert.equal(calls.length, 2);
+    // First canary pass (no live) + slot batch + one canary retry.
+    assert.equal(calls.length, 3);
     const [slot] = report.slots;
     assert.equal(slot.status, 'unverifiable-from-runner');
     assert.deepEqual(
@@ -676,6 +677,28 @@ describe('audit report (--all --report)', () => {
       [true, 0, false, 'the player frame loaded but never became ready'],
     );
     assert.equal(report.canaries[0].verdict, 'unverifiable');
+  });
+
+  it('retries canaries once before alone rechecks so a flaky first canary pass still re-checks stalls', async () => {
+    const catalog = { webcams: {}, gridPriority: [], news: { bloomberg: [watch('QB5BNdBFujE')] }, canaries: [CANARY] };
+    const { calls, probeYouTube } = recordingProbe((candidate, call) => {
+      if (candidate.kind === 'channel') return call === 1 ? silentVerdict : live('gCNeDWCI0vo');
+      return call === 4 ? live('QB5BNdBFujE') : silentVerdict;
+    });
+    const { writes: [{ report }] } = await audit(['--all', '--report', 'audit.json'], { catalog, probeYouTube });
+    assert.deepEqual(calls.map((call) => call.ids), [
+      ['UCNye-wNBqNL5ZzHSJj3l8Bg'],
+      ['QB5BNdBFujE'],
+      ['UCNye-wNBqNL5ZzHSJj3l8Bg'],
+      ['QB5BNdBFujE'],
+    ]);
+    const [slot] = report.slots;
+    assert.equal(slot.status, 'ok');
+    assert.deepEqual(
+      [slot.attempts[0].verdict, slot.attempts[0].evidence.aloneChecks, slot.attempts[0].unverifiableFromRunner],
+      ['live', 1, false],
+    );
+    assert.equal(report.canaries[0].verdict, 'live');
   });
 
   it('re-checks every YouTube stall alone: plays alone is ok, stalls in both alone checks is dead, no live canary leaves it unverifiable', async () => {
@@ -704,7 +727,8 @@ describe('audit report (--all --report)', () => {
       );
 
       const noCanary = await run(() => stall);
-      assert.equal(noCanary.calls.length, 2, `${kind}: no alone check without a live canary`);
+      // First canary pass (no live) + slot batch + one canary retry; still no alone check.
+      assert.equal(noCanary.calls.length, 3, `${kind}: no alone check without a live canary`);
       assert.deepEqual([noCanary.status, noCanary.attempt.unverifiableFromRunner], ['unverifiable-from-runner', true], `${kind}: no live canary`);
     }
   });
