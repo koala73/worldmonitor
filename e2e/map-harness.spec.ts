@@ -779,3 +779,47 @@ test.describe('DeckGL map harness', () => {
     expect(afterTransform).not.toBe(beforeTransform);
   });
 });
+
+test('military bases retain the current viewport after reverse RPC completion', async ({ page }, testInfo) => {
+  const requests: import('@playwright/test').Route[] = [];
+  await page.route('**/api/military/v1/list-military-bases**', async (route) => { requests.push(route); });
+  await page.goto('/tests/map-harness.html?serverBases=1');
+  await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness?.ready)).toBe(true);
+  await page.locator('.layer-warn-ok').click();
+  await expect(page.locator('.layer-warn-dialog')).toHaveCount(0);
+  await page.evaluate(() => {
+    const harness = (window as HarnessWindow).__mapHarness!;
+    harness.setLayersForSnapshot(['bases']);
+    harness.setCamera({ lon: 15, lat: 42, zoom: 5 });
+  });
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  const first = requests.length - 1;
+  const box = await page.locator('.maplibregl-canvas').boundingBox();
+  if (!box) throw new Error('Map canvas missing');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 240, box.y + box.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(() => requests.length).toBeGreaterThan(first + 1);
+  const current = requests.length - 1;
+  const respond = async (index: number, count: number) => {
+    const request = requests[index]!.request();
+    const url = new URL(request.url());
+    const params = request.method() === 'POST' ? request.postDataJSON() : Object.fromEntries(url.searchParams);
+    const lat = (Number(params.sw_lat ?? 0) + Number(params.ne_lat ?? 0)) / 2;
+    const lon = (Number(params.sw_lon ?? 0) + Number(params.ne_lon ?? 0)) / 2;
+    await requests[index]!.fulfill({ json: {
+      bases: Array.from({ length: count }, (_, i) => ({ id: `fixture-${index}-${i}`, name: `Controlled base ${i + 1}`, latitude: lat + i * 0.2, longitude: lon + i * 0.2, type: 'us', countryIso2: 'US' })),
+      clusters: [], totalInView: count, truncated: false,
+    } });
+  };
+  await respond(current, 2);
+  const count = () => page.evaluate(() => (window as HarnessWindow).__mapHarness!.getLayerDataCount('bases-layer'));
+  await expect.poll(count).toBe(2);
+  await page.screenshot({ path: testInfo.outputPath('current-viewport-controlled-bases.png') });
+  await respond(first, 1);
+  // Allow the older response and the next render frames to complete.
+  await page.waitForTimeout(350);
+  expect(await count()).toBe(2);
+  await page.screenshot({ path: testInfo.outputPath('after-older-response.png') });
+});
