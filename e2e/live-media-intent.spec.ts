@@ -31,9 +31,20 @@ async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<st
 async function liveNewsTransportCount(page: Page): Promise<number> {
   return page.evaluate(() => (
     document.querySelectorAll(
-      '.panel[data-panel="live-news"] iframe[src*="youtube"], .panel[data-panel="live-news"] iframe[src*="/api/youtube-embed"], .panel[data-panel="live-news"] video.live-news-native-video',
+      '.panel[data-panel="live-news"] iframe[src*="youtube"], .panel[data-panel="live-news"] iframe[src*="/api/youtube-embed"], .panel[data-panel="live-news"] video.live-news-media',
     ).length
   ));
+}
+
+/**
+ * The dashboard swaps a deferred shell for the real panel while it settles. Scrolling or observing the
+ * shell races that swap ("Element is not attached"), and the real panel's lazy start never sees it.
+ */
+async function waitForRealPanel(page: Page, panelId: string): Promise<void> {
+  await page.waitForFunction((id) => {
+    const panel = document.querySelector<HTMLElement>(`.panel[data-panel="${id}"]`);
+    return panel !== null && panel.dataset.deferredPanel !== 'true';
+  }, panelId, { timeout: 60_000 });
 }
 
 async function webcamTransportCount(page: Page): Promise<number> {
@@ -90,6 +101,7 @@ test.describe('live media intent gating', () => {
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
 
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForRealPanel(page, 'live-webcams');
     await webcams.scrollIntoViewIfNeeded();
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(3000);
@@ -394,6 +406,7 @@ test.describe('live media intent gating', () => {
     await page.goto('/dashboard?liveMediaAlwaysOnToggleOff=1', { waitUntil: 'domcontentloaded' });
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     await expect(liveNews).toBeAttached({ timeout: 60_000 });
+    await waitForRealPanel(page, 'live-news');
 
     await liveNews.scrollIntoViewIfNeeded();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
