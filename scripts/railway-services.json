@@ -38,6 +38,7 @@
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/poll-generation-guard.cjs",
+      "scripts/lib/saudi-civil-defense-alerts.cjs",
       "scripts/lib/usni-fleet-parser.cjs",
       "scripts/lib/x-news-accounts.cjs",
       "scripts/lib/x-post-budget.cjs",
