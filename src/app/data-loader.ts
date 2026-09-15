@@ -3876,6 +3876,7 @@ export class DataLoaderManager implements AppModule {
       const degradedCount = cableIds.filter((id) => healthData.cables[id]?.status === 'degraded').length;
       this.ctx.statusPanel?.updateFeed('CableHealth', { status: 'ok', itemCount: faultCount + degradedCount });
     } catch {
+      this.ctx.map?.setCableHealth({});
       this.ctx.statusPanel?.updateFeed('CableHealth', { status: 'error' });
     }
   }

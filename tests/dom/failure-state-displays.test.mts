@@ -2,11 +2,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
 import { MapPopup } from '@/components/MapPopup';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
-import { getCableHealthRecord } from '@/services/cable-health';
+import { DataLoaderManager } from '@/app/data-loader';
+import type { AppContext } from '@/app/app-context';
+import { fetchCableHealth, getCableHealthRecord } from '@/services/cable-health';
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
 vi.mock('@/services/disease-outbreaks', () => ({ fetchDiseaseOutbreaks: vi.fn() }));
-vi.mock('@/services/cable-health', () => ({ getCableHealthRecord: vi.fn() }));
+vi.mock('@/services/cable-health', () => ({ getCableHealthRecord: vi.fn(), fetchCableHealth: vi.fn() }));
 beforeAll(initTestI18n);
 let panel: DiseaseOutbreaksPanel | undefined;
 let popup: MapPopup | undefined;
@@ -28,6 +30,18 @@ describe('failure-state displays', () => {
     await vi.waitFor(() => expect(document.body.textContent).not.toContain('Test cholera'));
     await vi.waitFor(() => expect(document.body.textContent).toContain(tt('components.diseaseOutbreaks.empty')));
     expect(document.body.textContent).not.toContain(tt('components.diseaseOutbreaks.errors.noData'));
+  });
+
+  it('clears renderer cable health when no retained snapshot is available', async () => {
+    const setCableHealth = vi.fn();
+    const updateFeed = vi.fn();
+    const manager = new DataLoaderManager({
+      map: { setCableHealth }, statusPanel: { updateFeed },
+    } as unknown as AppContext, {} as ConstructorParameters<typeof DataLoaderManager>[1]);
+    vi.mocked(fetchCableHealth).mockRejectedValue(new Error('Cable health unavailable'));
+    await manager.loadCableHealth();
+    expect(setCableHealth).toHaveBeenCalledWith({});
+    expect(updateFeed).toHaveBeenCalledWith('CableHealth', { status: 'error' });
   });
 
   it('does not label a cable active without a health record', () => {

@@ -40,10 +40,15 @@ test('cable health retries unavailable data, preserves source clocks, clears fau
     assert.equal(good.generatedAt, new Date(observed).toISOString());
     assert.equal(good.cables.test.lastUpdated, '');
     assert.equal(good.cables.test.evidence[0].ts, '');
+    for (const malformed of [null, {}, { evidence: null }, { evidence: [], lastUpdated: 1e20 }]) {
+      now += 11 * 60_000;
+      rpc.response = { generatedAt: now, cables: { test: malformed } } as unknown as GetCableHealthResponse;
+      assert.deepEqual(await service.fetchCableHealth(), good, 'malformed records must preserve last-good data');
+    }
     now += 11 * 60_000;
     rpc.response = { generatedAt: 0, cables: {} };
     assert.deepEqual(await service.fetchCableHealth(), good, 'failed refresh retains original source time');
-    now += 61_000;
+    now += 6 * 60_000;
     rpc.response = { generatedAt: now, cables: {} };
     const empty = await service.fetchCableHealth();
     assert.deepEqual(empty.cables, {}, 'confirmed empty clears outdated fault records');

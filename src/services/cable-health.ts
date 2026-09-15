@@ -39,10 +39,17 @@ const LOCAL_CACHE_MS = 60_000;
 const MAX_RETAINED_AGE_MS = 90 * 60 * 1000;
 
 function isUsableResponse(response: GetCableHealthResponse): boolean {
+  if (!response) return false;
   const age = Date.now() - response.generatedAt;
   return !!response.cables && typeof response.cables === 'object' && !Array.isArray(response.cables)
     && Number.isFinite(response.generatedAt) && response.generatedAt > 0
-    && age >= 0 && age < MAX_RETAINED_AGE_MS;
+    && age >= 0 && age < MAX_RETAINED_AGE_MS
+    && Object.values(response.cables).every((record) => record && typeof record === 'object'
+      && typeof record.lastUpdated === 'number' && Number.isFinite(new Date(record.lastUpdated).getTime())
+      && Array.isArray(record.evidence)
+      && record.evidence.every((e) => e && typeof e === 'object'
+        && typeof e.source === 'string' && typeof e.summary === 'string'
+        && typeof e.ts === 'number' && Number.isFinite(new Date(e.ts).getTime())));
 }
 
 function retainedResponse(): CableHealthResponse | null {
