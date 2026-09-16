@@ -1,9 +1,9 @@
-import { normalizePinnedWebcam, type PinnedWebcam } from './pinned-validation';
-export type { PinnedWebcam } from './pinned-validation';
+import { normalizePinnedWebcam, normalizePinnedWebcams, normalizePinnedWebcamList, MAX_PINNED_WEBCAMS, MAX_ACTIVE_WEBCAMS, type PinnedWebcam } from '../../../shared/pinned-webcams';
+export type { PinnedWebcam } from '../../../shared/pinned-webcams';
 
 const STORAGE_KEY = 'wm-pinned-webcams';
 const CHANGE_EVENT = 'wm-pinned-webcams-changed';
-const MAX_ACTIVE = 4;
+const MAX_ACTIVE = MAX_ACTIVE_WEBCAMS;
 
 let _cachedList: PinnedWebcam[] | null = null;
 let _cacheFrame: number | null = null;
@@ -12,10 +12,11 @@ function load(): PinnedWebcam[] {
   if (_cachedList !== null) return _cachedList;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    _cachedList = Array.isArray(parsed)
-      ? parsed.map(normalizePinnedWebcam).filter((row): row is PinnedWebcam => row !== null)
-      : [];
+    _cachedList = normalizePinnedWebcams(raw);
+    const normalized = JSON.stringify(_cachedList);
+    if (raw !== null && raw !== normalized) {
+      try { localStorage.setItem(STORAGE_KEY, normalized); } catch { /* Reads remain safe when storage is unavailable. */ }
+    }
   } catch {
     _cachedList = [];
   }
@@ -35,7 +36,7 @@ function showToast(msg: string): void {
 
 function save(webcams: PinnedWebcam[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(webcams));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizePinnedWebcamList(webcams)));
   } catch (err) {
     console.warn('[pinned-webcams] localStorage save failed:', err);
     showToast('Could not save pinned webcams — storage full');
@@ -62,6 +63,10 @@ export function isPinned(webcamId: string): boolean {
 export function pinWebcam(webcam: Omit<PinnedWebcam, 'active' | 'pinnedAt'>): void {
   const list = load();
   if (list.some(w => w.webcamId === webcam.webcamId)) return;
+  if (list.length >= MAX_PINNED_WEBCAMS) {
+    showToast(`You can pin up to ${MAX_PINNED_WEBCAMS} webcams`);
+    return;
+  }
   const activeCount = list.filter(w => w.active).length;
   const pinned = normalizePinnedWebcam({
     ...webcam,
@@ -69,8 +74,12 @@ export function pinWebcam(webcam: Omit<PinnedWebcam, 'active' | 'pinnedAt'>): vo
     pinnedAt: Date.now(),
   });
   if (!pinned) return;
-  list.push(pinned);
-  save(list);
+  const next = normalizePinnedWebcamList([...list, pinned]);
+  if (next.length === list.length) {
+    showToast('Could not pin webcam because the saved webcam size limit was reached');
+    return;
+  }
+  save(next);
 }
 
 export function unpinWebcam(webcamId: string): void {

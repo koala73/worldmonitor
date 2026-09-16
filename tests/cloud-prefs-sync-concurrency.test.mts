@@ -466,6 +466,17 @@ describe('cloud preference write serialization', () => {
     });
   });
 
+  it('normalizes a legacy webcam blob carried through a conflict retry', async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', { 'wm-pinned-webcams': '[null,{}]', 'wm-market-watchlist-v1': 'unchanged' }, 10);
+      await cloudPrefs.syncNow();
+      assert.equal(localStorage.getItem('wm-pinned-webcams'), '[]');
+    });
+    assert.equal(result.conflictCount, 1);
+    assert.equal(result.acceptedDataByToken['test-token']['wm-pinned-webcams'], '[]');
+    assert.equal(result.acceptedDataByToken['test-token']['wm-market-watchlist-v1'], 'unchanged');
+  });
+
   it('coalesces overlapping uploads instead of racing stale sync versions', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       await Promise.all(Array.from({ length: 6 }, () => cloudPrefs.syncNow()));

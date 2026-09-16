@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, beforeEach, test } from 'node:test';
-import { normalizePinnedWebcam, resolveWebcamPlayerUrl } from '../src/services/webcams/pinned-validation.ts';
+import { normalizePinnedWebcam, resolveWebcamPlayerUrl, normalizePinnedWebcamsPreference, MAX_PINNED_WEBCAMS_BYTES } from '../shared/pinned-webcams.ts';
 import { getPinnedWebcams, getActiveWebcams, pinWebcam, toggleWebcam, unpinWebcam } from '../src/services/webcams/pinned-store.ts';
 
 const base = 'https://webcams.windy.com/webcams/public/embed/player';
@@ -54,17 +54,46 @@ test('validates record fields, drops extra fields, and preserves missing-URL fal
   ]) assert.equal(normalizePinnedWebcam(value), null, JSON.stringify(value));
 });
 
-test('direct storage restores reject malformed envelopes and filter rows without rewriting storage', () => {
+test('direct storage restores normalize legacy records idempotently', () => {
   for (const payload of ['null', '{}', '42', '"text"', '{broken', '[null,{},false]']) {
     nextFrame?.(); raw = payload;
     assert.deepEqual(getPinnedWebcams(), []);
     assert.deepEqual(getActiveWebcams(), []);
-    assert.equal(raw, payload);
+    assert.equal(raw, '[]');
   }
   nextFrame?.();
   raw = JSON.stringify([null, fixture, { ...fixture, webcamId: '456', playerUrl: 'javascript:parent.__webcamCanary=true' }]);
   assert.deepEqual(getActiveWebcams().map(cam => cam.playerUrl), [`${base}/123/day`, `${base}/456/day`]);
-  assert.ok(raw.includes('javascript:'));
+  assert.ok(!raw.includes('javascript:'));
+  const normalized = raw;
+  nextFrame?.();
+  getPinnedWebcams();
+  assert.equal(raw, normalized);
+});
+
+test('bounds serialized bytes, unique records and active streams', () => {
+  const rows = Array.from({ length: 40 }, (_, i) => ({ ...fixture, webcamId: String(i), pinnedAt: i }));
+  const raw = normalizePinnedWebcamsPreference(JSON.stringify([rows[0], ...rows]));
+  const parsed = JSON.parse(raw);
+  assert.equal(parsed.length, 32);
+  assert.equal(parsed.filter((cam: typeof fixture) => cam.active).length, 4);
+  assert.equal(normalizePinnedWebcamsPreference(raw), raw);
+  for (const value of [null, {}, [], 3, 'null', '{}', '[', ' '.repeat(MAX_PINNED_WEBCAMS_BYTES + 1), JSON.stringify([{ ...fixture, title: '🌍'.repeat(5000) }])]) {
+    assert.equal(normalizePinnedWebcamsPreference(value), '[]');
+  }
+  assert.ok(Buffer.byteLength(raw) <= MAX_PINNED_WEBCAMS_BYTES);
+});
+
+test('keeps validated reads when legacy storage repair is rejected', () => {
+  raw = JSON.stringify([{ ...fixture, playerUrl: 'javascript:canary' }]);
+  const setItem = localStorage.setItem;
+  localStorage.setItem = () => { throw new Error('Storage full'); };
+  try {
+    assert.equal(getPinnedWebcams()[0]?.playerUrl, `${base}/123/day`);
+    assert.ok(raw.includes('javascript:'));
+  } finally {
+    localStorage.setItem = setItem;
+  }
 });
 
 test('pin validates provider data and retains toggle, limit and removal behavior', () => {
