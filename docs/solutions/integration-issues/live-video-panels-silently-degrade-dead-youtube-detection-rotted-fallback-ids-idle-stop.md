@@ -132,7 +132,7 @@ Dead IDs render YouTube's own error inside the tile, not the app's blocked overl
 Live News full-variant defaults (`src/components/LiveNewsPanel.ts:69-79`), observed on production 2026-09-14:
 
 - **Played.** bloomberg, sky, euronews, dw, france24, alarabiya, and aljazeera have `DIRECT_HLS_MAP` entries (`src/components/LiveNewsPanel.ts:244`).
-- **cnbc.** It has HLS only on desktop: `PROXIED_HLS_MAP` (`:300-302`) is gated by `isDesktopRuntime()` (`:620`). On web it goes to detection, gets null, and plays fallback `9NyxcX3rhQs` (`:74`), titled "LIVE: CNBC Marathon - Documentaries and deep dives 24/7".
+- **cnbc.** It has HLS only on desktop: `PROXIED_HLS_MAP` (`:300-302`) is gated by `isDesktopRuntime()` (`:620`). On web it goes to detection, gets null, and plays fallback `9NyxcX3rhQs` (`:74`), titled "LIVE: CNBC Marathon - Documentaries and deep dives 24/7". Resolved by removal: CNBC is no longer a Live News channel, and a stored channel order that names it drops it on load.
 - **cnn.** Its HLS stream (`:252`) hit `[LiveNews] HLS fatal error for cnn` (`:1398`). The handler sets a cooldown and re-initializes the player (`:1403-1408`; `HLS_COOLDOWN_MS` is 5 minutes, `:411`). Detection then returns null, and the panel plays fallback `w_Ma8oQLmSM` (`:75`), a deleted ABC News Live video. That is the error 150 message.
 
 The current tree has 47 unique Live News fallback IDs. The session audited 46 and found many ended or gone:

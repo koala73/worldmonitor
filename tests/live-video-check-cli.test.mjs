@@ -59,6 +59,10 @@ describe('catalog modes', () => {
       'new-york': ['JQ_jwk_7OVE', 'VGnFLdQW39A'],
       'tel-aviv': [],
     },
+    news: {
+      cnn: ['https://www.youtube.com/watch?v=GotlA1KKWoo'],
+      rtve: [],
+    },
     canaries: ['https://www.youtube.com/channel/UCNye-wNBqNL5ZzHSJj3l8Bg'],
   };
 
@@ -76,8 +80,15 @@ describe('catalog modes', () => {
 
   it('checks every slot and the canaries with --all', () => {
     const { entries, empty } = catalogTargets({ mode: 'all' }, catalog);
-    assert.deepEqual(entries.map((row) => row.name), ['webcams/kyiv', 'webcams/new-york', 'webcams/new-york#2', 'canary/1']);
-    assert.deepEqual(empty, ['webcams/tel-aviv']);
+    assert.deepEqual(entries.map((row) => row.name), ['webcams/kyiv', 'webcams/new-york', 'webcams/new-york#2', 'live-news/cnn', 'canary/1']);
+    assert.deepEqual(empty, ['webcams/tel-aviv', 'live-news/rtve']);
+  });
+
+  it('checks one Live News channel by slot', () => {
+    assert.deepEqual(catalogTargets({ mode: 'slot', slot: 'live-news/cnn' }, catalog), {
+      entries: [{ name: 'live-news/cnn', entry: 'https://www.youtube.com/watch?v=GotlA1KKWoo' }],
+      empty: [],
+    });
   });
 
   it('reports a slot with no entries and exits 1 even when every stream is live', async () => {

@@ -4,7 +4,7 @@
 // Run with: npm run live-video:check -- <entry> [name=<entry> ...]
 
 import { isMainModule } from './lib/main-module.mjs';
-import { AUDIT_CANARIES, WEBCAM_SOURCES } from '../src/config/live-video-sources.ts';
+import { AUDIT_CANARIES, LIVE_NEWS_SOURCES, WEBCAM_SOURCES } from '../src/config/live-video-sources.ts';
 import { classifyAttempt, LIVE_VIDEO_TIMING, parseSourceEntry } from '../src/services/live-video/model.ts';
 
 const PROBE_ORIGIN = 'https://www.worldmonitor.app';
@@ -14,10 +14,11 @@ const MAX_POLLS = Math.ceil((2 * LIVE_VIDEO_TIMING.verdictDeadlineMs) / LIVE_VID
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const INDENT = ' '.repeat(12);
 const CATALOG_FILE = 'src/config/live-video-sources.ts';
-const DEFAULT_CATALOG = { webcams: WEBCAM_SOURCES, canaries: AUDIT_CANARIES };
+const DEFAULT_CATALOG = { webcams: WEBCAM_SOURCES, news: LIVE_NEWS_SOURCES, canaries: AUDIT_CANARIES };
 
 const USAGE = `Usage: npm run live-video:check -- <entry> [<entry> ...]
        npm run live-video:check -- --slot webcams/<id>
+       npm run live-video:check -- --slot live-news/<id>
        npm run live-video:check -- --all
 
 Checks whether each entry is live right now, with the classifier the dashboard uses.
@@ -489,7 +490,10 @@ export async function probeHlsCandidates(candidates, fetchImpl = defaultFetch) {
 
 /** The entries a catalog mode checks, named by slot (a second entry is `slot#2`), plus the slots with no entries. */
 export function catalogTargets(target, catalog = DEFAULT_CATALOG) {
-  const slots = Object.entries(catalog.webcams).map(([id, entries]) => [`webcams/${id}`, entries]);
+  const slots = [
+    ...Object.entries(catalog.webcams).map(([id, entries]) => [`webcams/${id}`, entries]),
+    ...Object.entries(catalog.news ?? {}).map(([id, entries]) => [`live-news/${id}`, entries]),
+  ];
   const selected = target.mode === 'all' ? slots : slots.filter(([slot]) => slot === target.slot);
   if (target.mode === 'slot' && selected.length === 0) {
     throw new Error(`Unknown slot ${target.slot}. Slots: ${slots.map(([slot]) => slot).join(', ')}`);
