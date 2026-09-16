@@ -38,6 +38,7 @@ test('filters restored and imported records before frame navigation under shippe
   await expect(frames).toHaveCount(1);
   await page.locator('#import').setInputFiles({ name: 'settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, data: { 'wm-pinned-webcams': JSON.stringify([null, { ...fixture, playerUrl: 'https://www.youtube.com/embed/canary' }]) } })) });
   await expect(page.locator('#status')).toHaveText('Imported and read');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wm-pinned-webcams')!))).toEqual([{ ...fixture, playerUrl: `${base}/123/day` }]);
   await expect(frames).toHaveCount(1);
   await expect(frames).toHaveAttribute('src', `${base}/123/day`);
   await expect(page.frameLocator('.pinned-webcam-iframe').locator('body')).toContainText('Windy player test response');

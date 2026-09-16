@@ -447,6 +447,25 @@ async function runHarness(
 }
 
 describe('cloud preference write serialization', () => {
+  it('normalizes legacy webcam data on upload without changing other preferences', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      localStorage.setItem('wm-pinned-webcams', '[null,{}]');
+      localStorage.setItem('wm-market-watchlist-v1', 'unchanged');
+      await cloudPrefs.syncNow();
+    });
+    assert.equal(result.acceptedDataByToken['test-token']['wm-pinned-webcams'], '[]');
+    assert.equal(result.acceptedDataByToken['test-token']['wm-market-watchlist-v1'], 'unchanged');
+  });
+
+  it('normalizes legacy cloud webcam data before restoring local storage', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', { 'wm-pinned-webcams': '[null,{}]', 'wm-market-watchlist-v1': 'unchanged' }, 1);
+      await cloudPrefs.onSignIn('user-1', 'full');
+      assert.equal(localStorage.getItem('wm-pinned-webcams'), '[]');
+      assert.equal(localStorage.getItem('wm-market-watchlist-v1'), 'unchanged');
+    });
+  });
+
   it('coalesces overlapping uploads instead of racing stale sync versions', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       await Promise.all(Array.from({ length: 6 }, () => cloudPrefs.syncNow()));
