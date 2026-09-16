@@ -140,18 +140,36 @@ function hkoCoverage(dataAvailable = true) {
   };
 }
 
-function runNatural({ gdacs, gdacsFail = {}, eonet = { events: [] }, hko = hkoCoverage() } = {}) {
+const retainedNhcSnapshot = {
+  version: 1,
+  fetchedAt: NOW - 5 * 60_000,
+  retainedUntil: NOW - 5 * 60_000 + 540 * 60_000,
+  events: [],
+  lastAttemptAt: NOW - 5 * 60_000,
+  consecutiveFailures: 0,
+  firstFailureAt: null,
+  errorCode: null,
+};
+
+function runNatural({
+  gdacs,
+  gdacsFail = {},
+  eonet = { events: [] },
+  hko = hkoCoverage(),
+  nhc = async () => Response.json({ type: 'FeatureCollection', features: [] }),
+  previousNhcSnapshot = null,
+} = {}) {
   const { fetchFn: gdacsFetch } = gdacsStub(gdacs, { fail: gdacsFail });
   return fetchNaturalEvents({
     now: NOW,
-    previousNhcSnapshot: null,
+    previousNhcSnapshot,
     fetchHkoWarningsFn: async () => hko,
     fetchFn: async (input, init) => {
-      const url = String(input);
-      if (url.includes('eonet.gsfc.nasa.gov')) return Response.json(eonet);
-      if (url.includes('gdacs.org')) return gdacsFetch(input, init);
-      if (url.includes('mapservices.weather.noaa.gov')) return Response.json({ type: 'FeatureCollection', features: [] });
-      throw new Error(`unexpected request ${url}`);
+      const { hostname } = new URL(String(input));
+      if (hostname === 'eonet.gsfc.nasa.gov') return Response.json(eonet);
+      if (hostname === 'www.gdacs.org') return gdacsFetch(input, init);
+      if (hostname === 'mapservices.weather.noaa.gov') return nhc(input, init);
+      throw new Error(`unexpected request ${hostname}`);
     },
   });
 }
@@ -221,4 +239,46 @@ test('western-Pacific cyclone coverage is proven by the TC list, not by any othe
     hko: hkoCoverage(false),
   });
   assert.equal(voFailed.westernPacific.dataAvailable, true, 'the TC list answered, so the empty cyclone set is real');
+});
+
+test('the feed cap never decides whether a cyclone exists: TC events stay available uncapped', async () => {
+  // 120 newer Orange earthquakes outrank an older Orange typhoon in the capped
+  // feed, but the cyclone snapshot must still see it — its dataAvailable says
+  // the TC list answered, so an omitted storm would be a vouched-for absence.
+  const earthquakes = Array.from({ length: 120 }, (_, i) => feature('EQ', 1000 + i, 'Orange'));
+  const typhoon = feature('TC', 5000, 'Orange', {
+    fromdate: new Date(NOW - 30 * 24 * 60 * 60_000).toISOString(),
+    eventname: 'Typhoon Fixture',
+    severitydata: { severity: 120, severitytext: 'Typhoon' },
+  });
+  const { fetchFn } = gdacsStub({ EQ: earthquakes, TC: [typhoon] });
+
+  const { events, cycloneEvents } = await fetchGdacs(fetchFn);
+
+  assert.equal(events.length, 100);
+  assert.equal(events.some((e) => e.id === 'gdacs-TC-5000'), false, 'capped out of the general feed');
+  assert.deepEqual(cycloneEvents.map((e) => e.id), ['gdacs-TC-5000'], 'but retained for the cyclone snapshot');
+});
+
+test('a GDACS gap during an NHC failure is reported, not hidden behind the NHC grace period', async () => {
+  const data = await runNatural({
+    gdacs: { EQ: [feature('EQ', 1, 'Orange')] },
+    gdacsFail: { FL: 503 },
+    previousNhcSnapshot: retainedNhcSnapshot,
+    nhc: async () => new Response('temporarily unavailable', { status: 503 }),
+  });
+
+  assert.equal(data._unsafePublication, false, 'the retained NHC snapshot keeps the run publishable');
+  assert.equal(data._nhcSnapshot.consecutiveFailures, 1);
+
+  const after = naturalEventsAfterPublish(data);
+  assert.equal(after.completionState, 'DEGRADED');
+  assert.equal(after.freshnessMetaPatch.errorCode, 'GDACS_TYPE_COVERAGE_INCOMPLETE', 'no health policy grants this code grace');
+  assert.deepEqual(after.freshnessMetaPatch.failedSources, ['gdacs:FL', 'nhc']);
+  assert.equal(after.freshnessMetaPatch.nhcErrorCode, data._nhcSnapshot.errorCode);
+  assert.equal(after.freshnessMetaPatch.consecutiveSourceFailures, 1, 'NHC diagnostics ride along');
+
+  const verdict = classify(data);
+  assert.notEqual(verdict.status, 'ok');
+  assert.equal(verdict.sourceFailurePendingUntil, undefined, 'not parked in the NHC pending bucket');
 });

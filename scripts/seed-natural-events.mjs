@@ -304,7 +304,16 @@ export async function fetchGdacs(fetchFn = globalThis.fetch) {
     });
   }
 
-  return { events: events.slice(0, 100), failedTypes };
+  // The cap is a feed-size budget for the general list only. The cyclone
+  // snapshot is built from GDACS TC members and its `dataAvailable` is proven
+  // by the TC list answering, so it reads the uncapped TC events: a hundred
+  // higher-ranked or newer non-TC features must not turn an active storm into
+  // a vouched-for absence.
+  return {
+    events: events.slice(0, 100),
+    cycloneEvents: events.filter((event) => event.id.startsWith('gdacs-TC-')),
+    failedTypes,
+  };
 }
 
 // NHC ArcGIS layer IDs per storm slot (5 slots per basin)
@@ -728,6 +737,7 @@ export async function fetchNaturalEvents({
   // answered; a fulfilled one may still carry failed types, which is partial
   // coverage: published, but marked degraded and never counted as proof.
   const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value.events : [];
+  const gdacsCyclones = gdacsResult.status === 'fulfilled' ? gdacsResult.value.cycloneEvents : [];
   const gdacsFailedTypes = gdacsResult.status === 'fulfilled'
     ? gdacsResult.value.failedTypes.map((t) => t.eventtype)
     : Object.keys(GDACS_TO_CATEGORY);
@@ -754,7 +764,9 @@ export async function fetchNaturalEvents({
   if (nhcResult.status === 'rejected') console.log('[NHC]', nhcResult.reason?.message);
   if (hkoResult.status === 'rejected') console.log('[HKO]', hkoResult.reason?.message);
 
-  const westernPacificCandidates = gdacsEvents.filter(isWesternPacificCyclone);
+  // Uncapped TC list (see fetchGdacs): the general feed's 100-event cap must
+  // not decide whether a western-Pacific storm exists.
+  const westernPacificCandidates = gdacsCyclones.filter(isWesternPacificCyclone);
   const westernPacific = buildWesternPacificCycloneSnapshot({
     storms: westernPacificCandidates.map(toWesternPacificObservation),
     hkoWarnings: hko.warnings,
@@ -888,17 +900,34 @@ export function naturalEventsAfterPublish(data) {
     };
   }
   console.warn(`[NHC] DEGRADED: ${data?._nhcFailureDetail || snapshot.errorCode}`);
+  const patch = {
+    sourceState: 'degraded',
+    errorCode: snapshot.errorCode,
+    skipReason: 'nhc-required-point-coverage-incomplete',
+    lastSourceSuccessAt: snapshot.fetchedAt,
+    lastSourceAttemptAt: snapshot.lastAttemptAt,
+    firstSourceFailureAt: snapshot.firstFailureAt,
+    consecutiveSourceFailures: snapshot.consecutiveFailures,
+    lastSourceFailureCode: snapshot.errorCode,
+  };
+  // NHC and GDACS can degrade in the same run. The NHC failure codes carry a
+  // pending grace in api/health.js (a retained storm set stays healthy for a
+  // few consecutive misses), and that grace would hide a concurrently
+  // incomplete GDACS feed behind a green badge. So when both degrade, the
+  // meta reports the GDACS code — no policy grants it grace, so health warns
+  // immediately — and keeps the NHC diagnostics alongside; once GDACS is whole
+  // again the next run returns to the plain NHC patch and its grace.
+  const gdacsFailedTypes = Array.isArray(data?._gdacsFailedTypes) ? data._gdacsFailedTypes : [];
+  if (gdacsFailedTypes.length === 0) return { completionState: 'DEGRADED', freshnessMetaPatch: patch };
+  console.warn(`[GDACS] DEGRADED: type list(s) unavailable — ${gdacsFailedTypes.join(', ')}`);
   return {
     completionState: 'DEGRADED',
     freshnessMetaPatch: {
-      sourceState: 'degraded',
-      errorCode: snapshot.errorCode,
-      skipReason: 'nhc-required-point-coverage-incomplete',
-      lastSourceSuccessAt: snapshot.fetchedAt,
-      lastSourceAttemptAt: snapshot.lastAttemptAt,
-      firstSourceFailureAt: snapshot.firstFailureAt,
-      consecutiveSourceFailures: snapshot.consecutiveFailures,
-      lastSourceFailureCode: snapshot.errorCode,
+      ...patch,
+      errorCode: 'GDACS_TYPE_COVERAGE_INCOMPLETE',
+      skipReason: 'gdacs-type-coverage-incomplete',
+      failedSources: [...gdacsFailedTypes.map((eventtype) => `gdacs:${eventtype}`), 'nhc'],
+      nhcErrorCode: snapshot.errorCode,
     },
   };
 }
