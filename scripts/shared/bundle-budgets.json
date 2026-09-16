@@ -128,6 +128,10 @@
         "raw": 3735,
         "files": 1
       },
+      "pinned-webcams": {
+        "raw": 2073,
+        "files": 1
+      },
       "sanitize": {
         "raw": 1146,
         "files": 1
@@ -145,7 +149,7 @@
         "files": 1
       },
       "sync-keys": {
-        "raw": 1036,
+        "raw": 1073,
         "files": 1
       },
       "user-location": {
