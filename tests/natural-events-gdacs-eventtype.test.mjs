@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { fetchGdacs } from '../scripts/seed-natural-events.mjs';
+import { __testing__ as health } from '../api/health.js';
+import {
+  fetchGdacs,
+  fetchNaturalEvents,
+  naturalEventsAfterPublish,
+  naturalEventsPublishTransform,
+} from '../scripts/seed-natural-events.mjs';
 
 // GDACS changed `/gdacsapi/api/events/geteventlist/MAP` on or before 2026-09-16:
 // a request without `eventtype` now answers `400 {"message":"Eventtype is
@@ -11,19 +17,20 @@ import { fetchGdacs } from '../scripts/seed-natural-events.mjs';
 // `[GDACS] GDACS 400` and, whenever EONET also blipped, crashed gracefully
 // (seed-natural-events, 4 of 4 runs in the 36 h window on 2026-09-16).
 
+const NOW = Date.parse('2026-09-16T18:00:00.000Z');
 const GDACS_TYPES = ['EQ', 'FL', 'TC', 'VO', 'WF', 'DR'];
 
 function feature(eventtype, eventid, alertlevel, extra = {}) {
   return {
     type: 'Feature',
-    geometry: { type: 'Point', coordinates: [10 + eventid, 20 + eventid] },
+    geometry: { type: 'Point', coordinates: [10 + (eventid % 90), 20 + (eventid % 60)] },
     properties: {
       eventtype,
       eventid,
       alertlevel,
       name: `${eventtype} ${eventid}`,
       description: `${eventtype} event`,
-      fromdate: '2026-09-15T00:00:00',
+      fromdate: new Date(NOW - eventid * 60_000).toISOString(),
       url: { report: `https://www.gdacs.org/report.aspx?eventid=${eventid}&eventtype=${eventtype}` },
       ...extra,
     },
@@ -55,7 +62,7 @@ test('requests one MAP list per GDACS event type and merges the non-green events
     TC: [feature('TC', 4, 'Red', { severitydata: { severitytext: 'Cat 3' } })],
   });
 
-  const events = await fetchGdacs(fetchFn);
+  const { events, failedTypes } = await fetchGdacs(fetchFn);
 
   assert.deepEqual(
     requests.map((u) => u.searchParams.get('eventtype')).sort(),
@@ -63,30 +70,155 @@ test('requests one MAP list per GDACS event type and merges the non-green events
     'one request per known GDACS event type, each carrying eventtype=',
   );
   assert.ok(requests.every((u) => u.pathname.endsWith('/geteventlist/MAP')), 'still the MAP list endpoint');
+  assert.deepEqual(failedTypes, []);
   assert.deepEqual(events.map((e) => e.id).sort(), ['gdacs-EQ-1', 'gdacs-FL-2', 'gdacs-TC-4']);
   assert.equal(events.find((e) => e.id === 'gdacs-FL-2').category, 'floods');
   assert.equal(events.find((e) => e.id === 'gdacs-TC-4').description, 'TC event - Cat 3');
 });
 
-test('a single failing type rejects the whole GDACS fetch so coverage is never overclaimed', async () => {
-  // fetchNaturalEvents treats a rejected GDACS result as "cannot prove complete
-  // empty coverage" (the exit-75 guard). A type that 503s is exactly that
-  // partial coverage, so it must surface as a rejection, not as a shorter list.
+test('a failing type is reported as partial coverage, not dropped and not fatal', async () => {
   const { fetchFn } = gdacsStub({ EQ: [feature('EQ', 1, 'Orange')] }, { fail: { VO: 503 } });
 
-  await assert.rejects(fetchGdacs(fetchFn), /GDACS 503 \(VO\)/);
+  const { events, failedTypes } = await fetchGdacs(fetchFn);
+
+  assert.deepEqual(events.map((e) => e.id), ['gdacs-EQ-1']);
+  assert.deepEqual(failedTypes.map((t) => t.eventtype), ['VO']);
+  assert.match(failedTypes[0].message, /GDACS 503 \(VO\)/);
+});
+
+test('rejects only when every type list failed — the pre-existing "no GDACS at all" path', async () => {
+  const fail = Object.fromEntries(GDACS_TYPES.map((t) => [t, 503]));
+  const { fetchFn } = gdacsStub({}, { fail });
+
+  await assert.rejects(fetchGdacs(fetchFn), /GDACS unavailable: .*GDACS 503 \(EQ\)/);
+});
+
+test('the 100-event cap ranks by alert level then recency, so a flood of earthquakes cannot evict a Red cyclone', async () => {
+  // Per-type lists arrive grouped; capping the raw concatenation would let
+  // 120 Orange earthquakes (EQ is first in insertion order) push every TC out,
+  // including the member the western-Pacific snapshot is built from.
+  const earthquakes = Array.from({ length: 120 }, (_, i) => feature('EQ', 1000 + i, 'Orange'));
+  const { fetchFn } = gdacsStub({
+    EQ: earthquakes,
+    TC: [feature('TC', 5000, 'Red', { fromdate: new Date(NOW - 7 * 24 * 60 * 60_000).toISOString() })],
+    FL: [feature('FL', 6000, 'Orange', { fromdate: new Date(NOW).toISOString() })],
+  });
+
+  const { events } = await fetchGdacs(fetchFn);
+
+  assert.equal(events.length, 100);
+  assert.equal(events[0].id, 'gdacs-TC-5000', 'Red outranks Orange regardless of age');
+  assert.equal(events[1].id, 'gdacs-FL-6000', 'among Orange, the newest event comes first');
+  assert.equal(events.filter((e) => e.category === 'earthquakes').length, 98);
 });
 
 test('dedupes an event that GDACS lists under two types by eventtype+eventid, not eventid alone', async () => {
-  // eventid namespaces are per type, so the same number under EQ and FL is
-  // two different events; the pre-existing `${eventtype}-${eventid}` key keeps
-  // both. A duplicate within one type is still collapsed.
   const { fetchFn } = gdacsStub({
     EQ: [feature('EQ', 7, 'Orange'), feature('EQ', 7, 'Orange')],
     FL: [feature('FL', 7, 'Orange')],
   });
 
-  const events = await fetchGdacs(fetchFn);
+  const { events } = await fetchGdacs(fetchFn);
 
   assert.deepEqual(events.map((e) => e.id).sort(), ['gdacs-EQ-7', 'gdacs-FL-7']);
+});
+
+// ── the reader: fetchNaturalEvents + publish/after-publish ─────────────────
+
+function hkoCoverage(dataAvailable = true) {
+  return {
+    warnings: [],
+    dataAvailable,
+    sourceDecision: {
+      source: 'HKO warning summary',
+      host: 'data.weather.gov.hk',
+      status: dataAvailable ? 'used' : 'blocked',
+      reason: dataAvailable ? 'VALID_EMPTY' : 'FETCH_FAILED',
+      optional: false,
+      requestCount: 1,
+    },
+  };
+}
+
+function runNatural({ gdacs, gdacsFail = {}, eonet = { events: [] }, hko = hkoCoverage() } = {}) {
+  const { fetchFn: gdacsFetch } = gdacsStub(gdacs, { fail: gdacsFail });
+  return fetchNaturalEvents({
+    now: NOW,
+    previousNhcSnapshot: null,
+    fetchHkoWarningsFn: async () => hko,
+    fetchFn: async (input, init) => {
+      const url = String(input);
+      if (url.includes('eonet.gsfc.nasa.gov')) return Response.json(eonet);
+      if (url.includes('gdacs.org')) return gdacsFetch(input, init);
+      if (url.includes('mapservices.weather.noaa.gov')) return Response.json({ type: 'FeatureCollection', features: [] });
+      throw new Error(`unexpected request ${url}`);
+    },
+  });
+}
+
+function classify(data, now = NOW) {
+  const key = health.BOOTSTRAP_KEYS.naturalEvents;
+  const meta = {
+    fetchedAt: now,
+    recordCount: data.events.length,
+    ...naturalEventsAfterPublish(data).freshnessMetaPatch,
+  };
+  return health.classifyKey('naturalEvents', key, { allowOnDemand: false }, {
+    keyStrens: new Map([[key, 1000]]),
+    keyErrors: new Map(),
+    keyMetaErrors: new Map(),
+    keyMetaValues: new Map([[health.SEED_META.naturalEvents.key, JSON.stringify(meta)]]),
+    now,
+  });
+}
+
+test('partial GDACS coverage publishes the answered types and marks the seed degraded', async () => {
+  const data = await runNatural({
+    gdacs: { EQ: [feature('EQ', 1, 'Orange')], FL: [feature('FL', 2, 'Orange')] },
+    gdacsFail: { VO: 503 },
+  });
+
+  assert.equal(data._unsafePublication, false, 'a non-empty feed publishes');
+  assert.deepEqual(data.events.map((e) => e.id).sort(), ['gdacs-EQ-1', 'gdacs-FL-2'], 'answered types are kept');
+  assert.deepEqual(data._gdacsFailedTypes, ['VO']);
+  assert.equal(naturalEventsPublishTransform(data)._gdacsFailedTypes, undefined, 'internal marker never reaches Redis');
+
+  const after = naturalEventsAfterPublish(data);
+  assert.equal(after.completionState, 'DEGRADED');
+  assert.equal(after.freshnessMetaPatch.sourceState, 'degraded');
+  assert.equal(after.freshnessMetaPatch.errorCode, 'GDACS_TYPE_COVERAGE_INCOMPLETE');
+  assert.deepEqual(after.freshnessMetaPatch.failedSources, ['gdacs:VO']);
+
+  const verdict = classify(data);
+  assert.notEqual(verdict.status, 'ok', 'health must not show a clean badge over partial coverage');
+});
+
+test('complete GDACS coverage still reports ok', async () => {
+  const data = await runNatural({ gdacs: { EQ: [feature('EQ', 1, 'Orange')] } });
+
+  assert.deepEqual(data._gdacsFailedTypes, []);
+  assert.deepEqual(naturalEventsAfterPublish(data), { freshnessMetaPatch: { sourceState: 'ok' } });
+});
+
+test('an empty feed with a missing type is still refused — partial coverage never proves emptiness', async () => {
+  await assert.rejects(
+    runNatural({ gdacs: {}, gdacsFail: { DR: 503 } }),
+    /cannot prove complete empty coverage/,
+  );
+});
+
+test('western-Pacific cyclone coverage is proven by the TC list, not by any other type answering', async () => {
+  const tcFailed = await runNatural({
+    gdacs: { EQ: [feature('EQ', 1, 'Orange')] },
+    gdacsFail: { TC: 503 },
+    hko: hkoCoverage(false),
+  });
+  assert.equal(tcFailed.westernPacific.dataAvailable, false, 'five healthy lists say nothing about cyclones');
+
+  const voFailed = await runNatural({
+    gdacs: { EQ: [feature('EQ', 1, 'Orange')] },
+    gdacsFail: { VO: 503 },
+    hko: hkoCoverage(false),
+  });
+  assert.equal(voFailed.westernPacific.dataAvailable, true, 'the TC list answered, so the empty cyclone set is real');
 });

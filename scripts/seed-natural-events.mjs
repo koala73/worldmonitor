@@ -214,9 +214,20 @@ function parseGdacsTcFields(props) {
 // specify only 1 eventtype."}`, so the single mixed-type call this seeder made
 // since #5276 failed every run and crashed it whenever EONET also blipped. The
 // per-type responses carry the same GeoJSON feature shape the mapper below
-// reads. Any type failing rejects the whole fetch: fetchNaturalEvents treats a
-// rejected GDACS result as "cannot prove complete coverage", and a silently
-// shorter list would overclaim exactly that (tests/natural-events-gdacs-eventtype.test.mjs).
+// reads.
+//
+// Coverage is now per type, and the reader must know which types answered:
+// a rejected list used to mean "no GDACS coverage at all", but six requests
+// have six times the failure surface, and dropping every GDACS event because
+// one type timed out would publish a silently shorter feed under an `ok`
+// source state. So fetchGdacs settles the six independently and returns the
+// events of the types that answered PLUS the list of types that did not;
+// fetchNaturalEvents publishes the partial list but marks the seed `degraded`
+// (naturalEventsAfterPublish), proves western-Pacific cyclone coverage only
+// when the TC list itself answered, and still refuses to publish an empty
+// feed while any type is unaccounted for. Only when EVERY type fails does
+// the fetch reject, which is the pre-existing "no GDACS at all" path
+// (tests/natural-events-gdacs-eventtype.test.mjs).
 async function fetchGdacsType(eventtype, fetchFn) {
   const res = await fetchFn(`${GDACS_API}?eventtype=${eventtype}`, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
@@ -229,10 +240,30 @@ async function fetchGdacsType(eventtype, fetchFn) {
   return data.features;
 }
 
+const GDACS_ALERT_RANK = { Red: 0, Orange: 1 };
+
 export async function fetchGdacs(fetchFn = globalThis.fetch) {
-  const features = (await Promise.all(
-    Object.keys(GDACS_TO_CATEGORY).map((eventtype) => fetchGdacsType(eventtype, fetchFn)),
-  )).flat();
+  const types = Object.keys(GDACS_TO_CATEGORY);
+  const settled = await Promise.allSettled(types.map((eventtype) => fetchGdacsType(eventtype, fetchFn)));
+  const failedTypes = [];
+  const features = [];
+  settled.forEach((result, i) => {
+    if (result.status === 'fulfilled') features.push(...result.value);
+    else failedTypes.push({ eventtype: types[i], message: result.reason?.message || String(result.reason) });
+  });
+  if (failedTypes.length === types.length) {
+    throw new Error(`GDACS unavailable: ${failedTypes.map((t) => t.message).join('; ')}`);
+  }
+
+  // The 100-event cap used to fall on GDACS's own mixed-type ordering. The
+  // per-type lists arrive grouped, so capping the raw concatenation would let
+  // 100 earthquakes evict every cyclone, including the TC members the
+  // western-Pacific snapshot is built from. Rank by alert level, then newest
+  // first, so the cap drops the least urgent events regardless of type.
+  const rank = (f) => GDACS_ALERT_RANK[f?.properties?.alertlevel] ?? 2;
+  const started = (f) => new Date(f?.properties?.fromdate || 0).getTime() || 0;
+  features.sort((a, b) => rank(a) - rank(b) || started(b) - started(a));
+
   const seen = new Set();
   const events = [];
 
@@ -273,7 +304,7 @@ export async function fetchGdacs(fetchFn = globalThis.fetch) {
     });
   }
 
-  return events.slice(0, 100);
+  return { events: events.slice(0, 100), failedTypes };
 }
 
 // NHC ArcGIS layer IDs per storm slot (5 slots per basin)
@@ -693,7 +724,15 @@ export async function fetchNaturalEvents({
   ]);
 
   const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
-  const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value : [];
+  // Per-type coverage (see fetchGdacs). A rejected result means no type
+  // answered; a fulfilled one may still carry failed types, which is partial
+  // coverage: published, but marked degraded and never counted as proof.
+  const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value.events : [];
+  const gdacsFailedTypes = gdacsResult.status === 'fulfilled'
+    ? gdacsResult.value.failedTypes.map((t) => t.eventtype)
+    : Object.keys(GDACS_TO_CATEGORY);
+  const gdacsComplete = gdacsResult.status === 'fulfilled' && gdacsFailedTypes.length === 0;
+  const gdacsTcCovered = gdacsResult.status === 'fulfilled' && !gdacsFailedTypes.includes('TC');
   const nhcSnapshot = nhcResult.status === 'fulfilled'
     ? successfulNhcSnapshot(nhcResult.value, now)
     : failedNhcSnapshot(
@@ -709,6 +748,9 @@ export async function fetchNaturalEvents({
 
   if (eonetResult.status === 'rejected') console.log('[EONET]', eonetResult.reason?.message);
   if (gdacsResult.status === 'rejected') console.log('[GDACS]', gdacsResult.reason?.message);
+  else if (gdacsFailedTypes.length) {
+    console.log('[GDACS] partial coverage —', gdacsResult.value.failedTypes.map((t) => `${t.eventtype}: ${t.message}`).join('; '));
+  }
   if (nhcResult.status === 'rejected') console.log('[NHC]', nhcResult.reason?.message);
   if (hkoResult.status === 'rejected') console.log('[HKO]', hkoResult.reason?.message);
 
@@ -720,9 +762,11 @@ export async function fetchNaturalEvents({
     sourceDecisions: [hko.sourceDecision],
     now,
   });
-  // A healthy GDACS response is valid coverage even when no named storm is
-  // active. HKO remains independently visible in its own coverage snapshot.
-  westernPacific.dataAvailable = hko.dataAvailable || gdacsResult.status === 'fulfilled';
+  // A healthy GDACS tropical-cyclone list is valid coverage even when no named
+  // storm is active — the TC list specifically, since the other five types
+  // say nothing about cyclones. HKO remains independently visible in its own
+  // coverage snapshot.
+  westernPacific.dataAvailable = hko.dataAvailable || gdacsTcCovered;
   const westernPacificSourceIds = new Set(westernPacificCandidates.map((event) => event.id));
 
   // NHC events take priority for storms (have forecast tracks/cones)
@@ -780,7 +824,7 @@ export async function fetchNaturalEvents({
     nhcResult.status === 'rejected' && nhcSnapshot.fetchedAt === null
   ) || (merged.length === 0 && (
     eonetResult.status === 'rejected'
-      || gdacsResult.status === 'rejected'
+      || !gdacsComplete
       || hko.dataAvailable !== true
       || nhcResult.status === 'rejected'
   ));
@@ -801,6 +845,7 @@ export async function fetchNaturalEvents({
     },
     _nhcSnapshot: nhcSnapshot,
     _nhcFailureDetail: nhcResult.status === 'rejected' ? nhcResult.reason?.message : null,
+    _gdacsFailedTypes: gdacsFailedTypes,
     _unsafePublication: unsafePublication,
   };
 }
@@ -815,14 +860,32 @@ export function declareRecords(data) {
 
 export function naturalEventsPublishTransform(data) {
   if (data._unsafePublication) return null;
-  const { _nhcSnapshot, _nhcFailureDetail, _unsafePublication, ...publicData } = data;
+  const { _nhcSnapshot, _nhcFailureDetail, _gdacsFailedTypes, _unsafePublication, ...publicData } = data;
   return publicData;
 }
 
 export function naturalEventsAfterPublish(data) {
   const snapshot = data?._nhcSnapshot;
   if (!snapshot || snapshot.consecutiveFailures === 0) {
-    return { freshnessMetaPatch: { sourceState: 'ok' } };
+    // NHC is whole; GDACS may not be. A run that published while one or more
+    // GDACS type lists failed (or all of them — a rejected fetch) is serving
+    // a feed it cannot vouch for, so it reports `degraded` rather than `ok`
+    // and health surfaces the missing types instead of a clean badge. The
+    // run still exits 0: the retained events are real, and the next tick
+    // clears the state as soon as every list answers again.
+    const failedTypes = Array.isArray(data?._gdacsFailedTypes) ? data._gdacsFailedTypes : [];
+    if (failedTypes.length === 0) return { freshnessMetaPatch: { sourceState: 'ok' } };
+    console.warn(`[GDACS] DEGRADED: type list(s) unavailable — ${failedTypes.join(', ')}`);
+    return {
+      completionState: 'DEGRADED',
+      freshnessMetaPatch: {
+        sourceState: 'degraded',
+        errorCode: 'GDACS_TYPE_COVERAGE_INCOMPLETE',
+        skipReason: 'gdacs-type-coverage-incomplete',
+        failedSources: failedTypes.map((eventtype) => `gdacs:${eventtype}`),
+        lastSourceAttemptAt: Date.now(),
+      },
+    };
   }
   console.warn(`[NHC] DEGRADED: ${data?._nhcFailureDetail || snapshot.errorCode}`);
   return {
