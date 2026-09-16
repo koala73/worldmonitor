@@ -152,7 +152,7 @@ vi.mock('maplibre-gl', () => {
     Map: FakeMap,
     setWorkerUrl: (): void => {},
     getRTLTextPluginStatus: (): string => 'loaded',
-    setRTLTextPlugin: (): void => {},
+    setRTLTextPlugin: (): Promise<void> => Promise.resolve(),
     addProtocol: (): void => {},
     removeProtocol: (): void => {},
     NavigationControl: class {},

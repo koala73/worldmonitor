@@ -1084,10 +1084,17 @@ export class DeckGLMap {
   private async initMapLibre(): Promise<void> {
     maplibregl.setWorkerUrl(maplibreWorkerUrl);
     if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
-      maplibregl.setRTLTextPlugin(
-        '/mapbox-gl-rtl-text.min.js',
-        true,
-      );
+      // Lazy load; RTL shaping is progressive enhancement. The promise must
+      // not become an unhandled rejection when the vendor script fetch fails
+      // (e.g. a stale conditional 304 before cache headers were corrected).
+      void Promise.resolve(
+        maplibregl.setRTLTextPlugin(
+          '/mapbox-gl-rtl-text.min.js',
+          true,
+        ),
+      ).catch((err) => {
+        console.warn('[DeckGLMap] RTL text plugin failed to load:', err);
+      });
     }
 
     const { mapTheme: initialMapTheme, style: primaryStyle } = await this.resolveInitialBasemapStyle();
