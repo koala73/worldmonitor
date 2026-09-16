@@ -1,7 +1,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp } from '../_rate-limit.js';
+import { getClientIp, RATE_LIMIT_DEGRADED_HEADERS } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 import { Ratelimit } from '@upstash/ratelimit';
@@ -78,14 +78,20 @@ export default async function handler(req) {
     return jsonResp({ error: 'method_not_allowed' }, 405);
   }
 
-  const rl = getRatelimit();
-  if (rl) {
-    try {
-      const { success } = await rl.limit(`ip:${getClientIp(req)}`);
-      if (!success) {
-        return jsonResp({ error: 'rate_limit_exceeded', error_description: 'Too many registration requests.' }, 429);
-      }
-    } catch { /* graceful degradation */ }
+  let admission;
+  try {
+    const rl = getRatelimit();
+    if (rl) admission = await rl.limit(`ip:${getClientIp(req)}`);
+  } catch { /* Missing admission is unavailable, never permission to persist. */ }
+  // Upstash can resolve a timeout with success:true without an admission decision.
+  if (!admission || admission.reason === 'timeout' || typeof admission.success !== 'boolean') {
+    return jsonResponse({
+      error: 'temporarily_unavailable',
+      error_description: 'Client registration admission is temporarily unavailable.',
+    }, 503, { ...corsHeaders, ...RATE_LIMIT_DEGRADED_HEADERS, 'Cache-Control': 'no-store' });
+  }
+  if (!admission.success) {
+    return jsonResp({ error: 'rate_limit_exceeded', error_description: 'Too many registration requests.' }, 429);
   }
 
   let body;
