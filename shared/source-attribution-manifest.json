@@ -14369,9 +14369,6 @@
           "path": "api/youtube/live.js"
         },
         {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
           "path": "scripts/check-live-video-sources.mjs"
         },
         {

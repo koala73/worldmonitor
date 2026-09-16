@@ -2352,6 +2352,32 @@ test('does not soft-pass provider auth 403 JSON responses even with cf-ray heade
   }
 });
 
+test('serves no unauthenticated HLS proxy', async () => {
+  // The referer-spoofing /api/hls-proxy route was auth-exempt. With it retired the path is an ordinary
+  // authenticated request, so a caller without the token is refused before any upstream is contacted.
+  const localApi = await setupApiDir({});
+  const originalToken = process.env.LOCAL_API_TOKEN;
+  process.env.LOCAL_API_TOKEN = 'secret-token-123';
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const upstream = encodeURIComponent('https://example.com/live/index.m3u8');
+    const response = await fetch(`http://127.0.0.1:${port}/api/hls-proxy?url=${upstream}`);
+    assert.equal(response.status, 401);
+  } finally {
+    if (originalToken === undefined) delete process.env.LOCAL_API_TOKEN;
+    else process.env.LOCAL_API_TOKEN = originalToken;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('auth-required behavior unchanged — rejects unauthenticated requests when token is set', async () => {
   const localApi = await setupApiDir({});
   const originalToken = process.env.LOCAL_API_TOKEN;

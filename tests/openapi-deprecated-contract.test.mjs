@@ -200,6 +200,51 @@ describe('OpenAPI deprecated + operation-description contract', () => {
     assert.deepEqual(example.hackerNewsMentions, []);
     assert.ok(example.secFilings.recentFilings[0].items.length > 0);
   });
+
+  it('keeps the YouTube video lookup example truthful to the retired live detection', () => {
+    const path = '/api/aviation/v1/get-youtube-live-stream-info';
+    const json = JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8'));
+    const example = json.paths[path].get.responses['200'].content['application/json'].example;
+    assert.equal(example.isLive, false, 'oEmbed never reports a video as live');
+    assert.equal(example.hlsUrl, '', 'manifest URLs are no longer returned');
+    assert.equal(example.error, '', 'a successful lookup carries no error');
+    assert.match(example.videoId, /^[A-Za-z0-9_-]{11}$/);
+    assert.equal(example.channelExists, true);
+    assert.ok(example.title && example.channelName, 'a named video has a title and a channel name');
+
+    for (const file of ['AviationService.openapi.yaml', 'worldmonitor.openapi.yaml']) {
+      const block = yamlPathBlock(readFileSync(resolve(apiDir, file), 'utf8'), path);
+      assert.match(block, /"isLive": false/, `${file} isLive`);
+      assert.match(block, /"hlsUrl": ""/, `${file} hlsUrl`);
+      assert.doesNotMatch(block, /"error": "example"|example\.com\/worldmonitor/, `${file} placeholder values`);
+    }
+  });
+
+  it('propagates the degenerate YouTube live-stream fields to every generated contract', () => {
+    // isLive and hlsUrl are constants, and channelExists now carries exactly `error === ''`. All three
+    // are deprecated in the proto, so every contract must say so or an integrator keeps branching on them.
+    const json = JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8'));
+    const response = json.components.schemas.GetYoutubeLiveStreamInfoResponse.properties;
+    assert.equal(response.isLive.deprecated, true);
+    assert.equal(response.channelExists.deprecated, true);
+    assert.equal(response.hlsUrl.deprecated, true);
+    assert.equal(json.components.schemas.GetYoutubeLiveStreamInfoRequest.properties.channel.deprecated, true);
+
+    for (const file of ['AviationService.openapi.yaml', 'worldmonitor.openapi.yaml']) {
+      const block = yamlSchemaBlock(readFileSync(resolve(apiDir, file), 'utf8'), 'GetYoutubeLiveStreamInfoResponse');
+      assert.match(block, /^\s{16}isLive:\n\s{20}deprecated: true/m, `${file} isLive field`);
+      assert.match(block, /^\s{16}channelExists:\n\s{20}deprecated: true/m, `${file} channelExists field`);
+      assert.match(block, /^\s{16}hlsUrl:\n\s{20}deprecated: true/m, `${file} hlsUrl field`);
+    }
+
+    for (const family of ['client', 'server']) {
+      const generated = readFileSync(
+        resolve(root, `src/generated/${family}/worldmonitor/aviation/v1/service_${family}.ts`),
+        'utf8',
+      );
+      assert.match(generated, /export interface GetYoutubeLiveStreamInfoResponse \{[\s\S]*? {2}\/\*\* @deprecated \*\/\n {2}channelExists: boolean;/);
+    }
+  });
 });
 
 function yamlSchemaBlock(text, name) {

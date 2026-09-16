@@ -41,7 +41,7 @@ description: "航空情报面板整合 6 大标签页，涵盖机场实时运营
 | 航空公司延误/取消汇总 | `GET /api/aviation/v1/get-carrier-ops` | 关注机场的 `airlines` 标签页。 |
 | 特定航班状态 | `GET /api/aviation/v1/get-flight-status` | `tracking` 标签页查询。 |
 | 飞机位置追踪 | `GET /api/aviation/v1/track-aircraft` | `tracking` 标签页和民用空域地图工作流。 |
-| YouTube 直播流元数据 | `GET /api/aviation/v1/get-youtube-live-stream-info` | 航空直播流元数据的服务 RPC；不属于六标签页自动刷新循环。 |
+| YouTube 视频元数据 | `GET /api/aviation/v1/get-youtube-live-stream-info` | 通过 oEmbed 返回 YouTube 视频名称。频道直播检测已停用：只传频道的查询返回错误 `channel_live_detection_retired`，`channel`、`isLive` 与 `hlsUrl` 字段已弃用。不属于六标签页自动刷新循环。 |
 | 旧版航班报价 | `GET /api/aviation/v1/search-flight-prices` | 带 provider/degraded-state 元数据的直接报价搜索路径。 |
 | 航空新闻 | `GET /api/aviation/v1/list-aviation-news` | `news` 标签页。 |
 | Google Flights 行程搜索 | `GET /api/aviation/v1/search-google-flights` | `prices` 标签页显式搜索。 |
