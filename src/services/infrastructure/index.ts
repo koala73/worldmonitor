@@ -241,7 +241,7 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
   const services = resp.statuses.map(toServiceResult);
 
   return {
-    success: true,
+    success: services.length > 0,
     timestamp: new Date().toISOString(),
     summary: computeSummary(services),
     services,
