@@ -261,7 +261,7 @@ test.describe('DeckGL map harness', () => {
 
   test('boots without deck assertions or unhandled runtime errors', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const pageErrors: string[] = [];
     const deckAssertionErrors: string[] = [];
     const ignorablePageErrorPatterns = [/could not compile fragment shader/i];
@@ -278,7 +278,11 @@ test.describe('DeckGL map harness', () => {
       }
     });
 
+    const workerReady = page.waitForEvent('worker', {
+      predicate: (worker) => worker.url().includes('maplibre-gl-worker'),
+    }).then((worker) => worker.evaluate(() => typeof self.addEventListener));
     await waitForHarnessReady(page);
+    expect(await workerReady).toBe('function');
     await page.waitForTimeout(1000);
 
     const unexpectedPageErrors = pageErrors.filter(
@@ -288,6 +292,9 @@ test.describe('DeckGL map harness', () => {
 
     expect(unexpectedPageErrors).toEqual([]);
     expect(deckAssertionErrors).toEqual([]);
+    const warning = page.locator('.layer-warn-ok');
+    if (await warning.isVisible()) await warning.click();
+    await page.screenshot({ path: testInfo.outputPath('maplibre-worker-ready.png') });
   });
 
   test('renders non-empty visual data for every renderable layer in current variant', async ({

@@ -1,4 +1,5 @@
 import type { Page, TestInfo } from '@playwright/test';
+import { test as callerTest } from '@playwright/test';
 import { test, expect, HYDRATED_MARKET } from './country-brief-fixtures';
 import { readFile } from 'node:fs/promises';
 import { installCountryBriefDesignData, installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
@@ -656,6 +657,142 @@ for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true
   }
 });
 
+test('GDELT availability failure shows an error and a recovered empty result clears it', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  let unavailable = true;
+  let requests = 0;
+  await page.route('**/api/intelligence/v1/search-gdelt-documents*', async route => {
+    requests++;
+    await route.fulfill({ json: { articles: [], query: 'military', error: unavailable ? 'seed-unavailable' : '' } });
+  });
+  await page.goto('/dashboard');
+  const panel = page.locator('[data-panel="gdelt-intel"]');
+  await panel.scrollIntoViewIfNeeded();
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('.panel-header')).toHaveClass(/panel-header-error/);
+  expect(requests).toBeGreaterThan(0);
+  const framePanel = async () => {
+    await panel.evaluate(element => {
+      element.scrollIntoView({ block: 'start', behavior: 'instant' });
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (parent.scrollHeight > parent.clientHeight && /auto|scroll/.test(getComputedStyle(parent).overflowY)) {
+          parent.scrollTop = Math.max(0, parent.scrollTop - 96);
+          break;
+        }
+      }
+    });
+    await expect(panel.locator('.panel-header')).toBeInViewport();
+  };
+  await framePanel();
+  await page.screenshot({ path: testInfo.outputPath('gdelt-unavailable.png') });
+  const failedRequests = requests;
+  unavailable = false;
+  await expect.poll(() => requests).toBeGreaterThan(failedRequests);
+  await expect(panel.locator('.empty-state')).toBeVisible();
+  await expect(panel.locator('.panel-header')).not.toHaveClass(/panel-header-error/);
+  await framePanel();
+  await page.screenshot({ path: testInfo.outputPath('gdelt-recovered-empty.png') });
+});
+
+callerTest('availability callers clear expired satellites and apply confirmed empty', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+  await page.clock.install({ time: new Date('2019-06-06T00:00:00Z') });
+  const states = await page.evaluate(async () => {
+    const { DataLoaderManager } = await import('/src/app/data-loader.ts');
+    const { getSatelliteStatus } = await import('/src/services/satellites.ts');
+    const satellite = { id: '25544', name: 'ISS', country: 'US', type: 'station', line1: '1 25544U 98067A   19156.50900463  .00003075  00000-0  59442-4 0  9992', line2: '2 25544  51.6433  59.2583 0008217  16.4489 347.6017 15.51174618173442' };
+    let mode: 'good' | 'error' | 'empty' = 'good';
+    window.fetch = async () => mode === 'error'
+      ? new Response('{}', { status: 503 })
+      : new Response(JSON.stringify({ satellites: mode === 'good' ? [satellite] : [] }));
+    let positions: unknown[] = [];
+    const loader = new DataLoaderManager({ map: { setSatellites: (data: unknown[]) => { positions = data; } } } as never, {} as never);
+    const read = () => ({ count: positions.length, status: getSatelliteStatus() });
+    await loader.loadSatellites();
+    const fresh = read();
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    try {
+      mode = 'error';
+      now += 16 * 60_000;
+      await loader.loadSatellites();
+      const retained = read();
+      now += 45 * 60_000;
+      await loader.loadSatellites();
+      const expired = read();
+      mode = 'good';
+      await loader.loadSatellites();
+      const recovered = read();
+      now += 11 * 60_000;
+      mode = 'empty';
+      await loader.loadSatellites();
+      return { fresh, retained, expired, recovered, empty: read() };
+    } finally {
+      Date.now = realNow;
+      loader.stopLayerActivity('satellites');
+    }
+  });
+  expect(states).toEqual({
+    fresh: { count: 1, status: 'ok' }, retained: { count: 1, status: 'degraded' },
+    expired: { count: 0, status: 'degraded' }, recovered: { count: 1, status: 'ok' }, empty: { count: 0, status: 'ok' },
+  });
+});
+
+callerTest('availability callers clear expired advisories and expose failure until empty recovery', async ({ page }, testInfo) => {
+  await page.goto('/tests/runtime-harness.html');
+  await page.clock.install({ time: new Date('2026-09-15T12:00:00Z') });
+  await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const [{ DataLoaderManager }, { SecurityAdvisoriesPanel }] = await Promise.all([
+      import('/src/app/data-loader.ts'), import('/src/components/SecurityAdvisoriesPanel.ts'),
+    ]);
+    const panel = new SecurityAdvisoriesPanel();
+    const cache: { advisories?: unknown[] } = {};
+    let mode = 'good';
+    window.fetch = async () => mode === 'error' ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({
+      advisories: mode === 'good' ? [{ title: 'Controlled travel advisory', link: 'https://example.com/advice', pubDate: '2026-09-15T00:00:00Z', source: 'FCDO', sourceCountry: 'UK', level: 'caution', country: 'UA' }] : [],
+      byCountry: mode === 'good' ? Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`C${String(i).padStart(3, '0')}`, i === 0 ? 'caution' : 'normal'])) : {},
+    }));
+    const loader = new DataLoaderManager({ panels: { 'security-advisories': panel }, intelligenceCache: cache } as never, {} as never);
+    const refresh = async () => {
+      await loader.loadSecurityAdvisories();
+      document.body.dataset.advisoryCount = String(cache.advisories?.length);
+    };
+    panel.setRefreshHandler(() => { void refresh(); });
+    const heading = document.createElement('h1');
+    heading.textContent = 'Controlled advisory availability fixture';
+    document.body.replaceChildren(heading, panel.getElement());
+    panel.getElement().style.cssText = 'width:700px;height:420px;margin:16px';
+    for (const state of ['error', 'empty']) {
+      const button = document.createElement('button');
+      button.textContent = `Fetch ${state} fixture`;
+      button.onclick = () => { mode = state; void refresh(); };
+      document.body.append(button);
+    }
+    await refresh();
+  });
+  await expect(page.locator('.sa-title')).toHaveText('Controlled travel advisory');
+  await page.clock.setSystemTime(new Date('2026-09-15T12:16:00Z'));
+  await page.getByRole('button', { name: 'Fetch error fixture', exact: true }).click();
+  await expect(page.locator('.sa-title')).toHaveText('Controlled travel advisory');
+  await expect(page.locator('.panel-header')).toHaveClass(/panel-header-error/);
+  await expect(page.locator('body')).toHaveAttribute('data-advisory-count', '1');
+  await page.screenshot({ path: testInfo.outputPath('advisories-retained-error.png'), animations: 'disabled' });
+  await page.clock.setSystemTime(new Date('2026-09-15T13:01:00Z'));
+  await page.getByRole('button', { name: 'Fetch error fixture', exact: true }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-advisory-count', '0');
+  await expect(page.locator('.sa-item')).toHaveCount(0);
+  await expect(page.locator('.panel-error-state')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('advisories-expired-error.png'), animations: 'disabled' });
+  await page.getByRole('button', { name: 'Fetch empty fixture', exact: true }).click();
+  await expect(page.locator('.panel-error-state')).toHaveCount(0);
+  await expect(page.locator('.panel-empty')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-advisory-count', '0');
+  await page.screenshot({ path: testInfo.outputPath('advisories-empty-recovery.png'), animations: 'disabled' });
+});
 
 test('country brief excludes global temporal observations from country signals', async ({ page, countryBrief }, testInfo) => {
   countryBrief.temporalCount = 3;
@@ -680,11 +817,16 @@ test('country brief excludes global temporal observations from country signals',
 
 test('country brief shows unavailable temporal evidence after a failed feed read', async ({ page, countryBrief }, testInfo) => {
   void countryBrief;
-  await page.route('**/api/infrastructure/v1/list-temporal-anomalies*', route => route.fulfill({ status: 503, json: { error: 'Synthetic feed failure' } }));
+  let temporalReads = 0;
+  await page.route('**/api/infrastructure/v1/list-temporal-anomalies*', route => {
+    temporalReads += 1;
+    return route.fulfill({ status: 503, json: { error: 'Synthetic feed failure' } });
+  });
   await page.goto('/dashboard?country=UA');
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel.locator('.cdp-country-name')).toHaveText('Ukraine');
   await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+  await expect.poll(() => temporalReads).toBeGreaterThan(0);
   const signals = panel.locator('#cdp-section-signals');
   await signals.scrollIntoViewIfNeeded();
   await expect(signals).toContainText('Temporal observations unavailable');

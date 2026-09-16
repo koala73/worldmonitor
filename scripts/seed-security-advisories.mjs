@@ -3,6 +3,11 @@
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+// Keep this numeric floor aligned with shared/intelligence-snapshots.js.
+// This nixpacks-root-scripts service cannot import ../shared/*.js: /app is
+// scripts/, so that ESM edge crashes the cron at startup.
+export const MIN_ADVISORY_COUNTRY_COVERAGE = 100;
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:advisories:v1';
@@ -14,10 +19,10 @@ const TTL = 10800; // 180min — 2h buffer over 1h cron cadence (was 120min = ex
 // travel level.
 const PER_SOURCE_DISPLAY_LIMIT = 15;
 // Travel-advisory feeds are country registers, not sparse event feeds. The US
-// and Australian registers each cover far more than 100 countries, so require
-// that floor before replacing the last-good global level index. This still
-// tolerates normal source differences while rejecting a partial-feed blackout.
-export const MIN_ADVISORY_COUNTRY_COVERAGE = 100;
+// and Australian registers each cover far more than 100 countries, so the
+// shared snapshot floor (MIN_ADVISORY_COUNTRY_COVERAGE) applies before
+// replacing the last-good global level index. This still tolerates normal
+// source differences while rejecting a partial-feed blackout.
 // Two MiB accepts the current ~1.1 MiB State Department register while still
 // bounding an allowed upstream's processing and memory use before XML parsing.
 export const MAX_ADVISORY_FEED_BYTES = 2 * 1024 * 1024;

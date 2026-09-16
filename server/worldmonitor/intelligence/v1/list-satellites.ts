@@ -1,3 +1,5 @@
+import { isSatelliteSnapshot } from '../../../../shared/intelligence-snapshots.js';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import type {
   IntelligenceServiceHandler,
   ServerContext,
@@ -5,7 +7,7 @@ import type {
   ListSatellitesResponse,
   Satellite,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { getCachedJson } from '../../../_shared/redis';
+import { readCachedJson } from '../../../_shared/redis';
 
 const REDIS_KEY = 'intelligence:satellites:tle:v1';
 
@@ -23,7 +25,7 @@ interface SatelliteCacheItem {
 }
 
 interface SatelliteCacheResponse {
-  satellites?: SatelliteCacheItem[];
+  satellites: SatelliteCacheItem[];
 }
 
 function toNumber(value: number | string | undefined): number {
@@ -49,15 +51,11 @@ export const listSatellites: IntelligenceServiceHandler['listSatellites'] = asyn
   _ctx: ServerContext,
   req: ListSatellitesRequest,
 ): Promise<ListSatellitesResponse> => {
-  const cached = await getCachedJson(REDIS_KEY, true);
-  if (!cached || typeof cached !== 'object') {
-    return { satellites: [] };
+  const read = await readCachedJson(REDIS_KEY, true);
+  if (read.status !== 'hit' || !isSatelliteSnapshot(read.value)) {
+    throw new ApiError(503, 'Satellite snapshot unavailable', '');
   }
-
-  const payload = cached as SatelliteCacheResponse;
-  if (!Array.isArray(payload.satellites)) {
-    return { satellites: [] };
-  }
+  const payload = read.value as SatelliteCacheResponse;
 
   const filterCountry = req.country?.trim().toUpperCase();
   const satellites = payload.satellites

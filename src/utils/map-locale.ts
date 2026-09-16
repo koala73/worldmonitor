@@ -47,7 +47,7 @@ const LANG_TO_TILE_FIELDS: Record<string, readonly string[]> = {
   // this row is addable; left alone here as it is not part of the zh-TW fix.
 };
 
-type Expression = ['coalesce', ...Array<['get', string]>];
+type Expression = ['coalesce', ...['get', string][]];
 
 interface MapStyleLayer {
   id: string;
