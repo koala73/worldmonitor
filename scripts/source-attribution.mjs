@@ -979,6 +979,7 @@ const LOGICAL_ENTRIES = [
 // drop them. The file is pinned but the line deliberately is not: a line pin
 // hard-fails the whole scan the moment an unrelated edit shifts it.
 const DYNAMIC_HOSTS = [
+  { host: 'webcams.windy.com', kind: 'structured', path: 'shared/pinned-webcams.ts' },
   { host: 'api.groq.com', kind: 'structured', path: 'shared/llm-health-providers.js' },
   { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },

@@ -10015,7 +10015,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/services/webcams/pinned-validation.ts"
+          "path": "shared/pinned-webcams.ts"
         }
       ]
     },

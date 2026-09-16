@@ -2,6 +2,11 @@ const PLAYER_ORIGIN = 'https://webcams.windy.com';
 const PLAYER_PATH = '/webcams/public/embed/player';
 const WEBCAM_ID = /^[\w-]{1,64}$/;
 const PLAYER_PERIODS = new Set(['day', 'month', 'year', 'lifetime', 'live']);
+export const PINNED_WEBCAMS_KEY = 'wm-pinned-webcams';
+export const MAX_PINNED_WEBCAMS = 32;
+export const MAX_ACTIVE_WEBCAMS = 4;
+export const MAX_PINNED_WEBCAMS_BYTES = 16 * 1024;
+const encoder = new TextEncoder();
 
 export interface PinnedWebcam {
   webcamId: string;
@@ -37,7 +42,6 @@ export function resolveWebcamPlayerUrl(webcamId: string, playerUrl: unknown): st
   }
 }
 
-/** Parse at consumption, since cloud restore and imports can bypass pinWebcam. */
 export function normalizePinnedWebcam(value: unknown): PinnedWebcam | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
@@ -55,4 +59,45 @@ export function normalizePinnedWebcam(value: unknown): PinnedWebcam | null {
     category: row.category, country: row.country, playerUrl,
     active: row.active, pinnedAt: row.pinnedAt,
   };
+}
+
+export function normalizePinnedWebcams(raw: unknown): PinnedWebcam[] {
+  if (typeof raw !== 'string' || raw.length > MAX_PINNED_WEBCAMS_BYTES
+    || encoder.encode(raw).length > MAX_PINNED_WEBCAMS_BYTES) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return []; }
+  return normalizePinnedWebcamList(parsed);
+}
+
+export function normalizePinnedWebcamList(parsed: unknown): PinnedWebcam[] {
+  if (!Array.isArray(parsed)) return [];
+  const webcams: PinnedWebcam[] = [];
+  const ids = new Set<string>();
+  let bytes = 2;
+  for (const value of parsed) {
+    const webcam = normalizePinnedWebcam(value);
+    if (!webcam || ids.has(webcam.webcamId)) continue;
+    const size = encoder.encode(JSON.stringify({ ...webcam, active: false })).length + (webcams.length ? 1 : 0);
+    if (bytes + size > MAX_PINNED_WEBCAMS_BYTES) continue;
+    webcams.push(webcam);
+    ids.add(webcam.webcamId);
+    bytes += size;
+    if (webcams.length === MAX_PINNED_WEBCAMS) break;
+  }
+  const activeIds = new Set(webcams.filter(cam => cam.active)
+    .sort((a, b) => a.pinnedAt - b.pinnedAt)
+    .slice(0, MAX_ACTIVE_WEBCAMS).map(cam => cam.webcamId));
+  for (const webcam of webcams) webcam.active = activeIds.has(webcam.webcamId);
+  return webcams;
+}
+
+export function normalizePinnedWebcamsPreference(raw: unknown): string {
+  return JSON.stringify(normalizePinnedWebcams(raw));
+}
+
+export function normalizeWebcamPreferences(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || Array.isArray(data)
+    || !Object.prototype.hasOwnProperty.call(data, PINNED_WEBCAMS_KEY)) return data;
+  const prefs = data as Record<string, unknown>;
+  return { ...prefs, [PINNED_WEBCAMS_KEY]: normalizePinnedWebcamsPreference(prefs[PINNED_WEBCAMS_KEY]) };
 }
