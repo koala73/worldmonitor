@@ -1,4 +1,5 @@
 import { normalizePinnedWebcam, normalizePinnedWebcams, normalizePinnedWebcamList, MAX_PINNED_WEBCAMS, MAX_ACTIVE_WEBCAMS, type PinnedWebcam } from '../../../shared/pinned-webcams';
+import { safeStorageSet } from '../../utils/safe-storage';
 export type { PinnedWebcam } from '../../../shared/pinned-webcams';
 
 const STORAGE_KEY = 'wm-pinned-webcams';
@@ -15,7 +16,7 @@ function load(): PinnedWebcam[] {
     _cachedList = normalizePinnedWebcams(raw);
     const normalized = JSON.stringify(_cachedList);
     if (raw !== null && raw !== normalized) {
-      try { localStorage.setItem(STORAGE_KEY, normalized); } catch { /* Reads remain safe when storage is unavailable. */ }
+      safeStorageSet(STORAGE_KEY, normalized);
     }
   } catch {
     _cachedList = [];
