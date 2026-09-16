@@ -1083,12 +1083,11 @@ export class DeckGLMap {
 
   private async initMapLibre(): Promise<void> {
     maplibregl.setWorkerUrl(maplibreWorkerUrl);
-    if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
-      maplibregl.setRTLTextPlugin(
-        '/mapbox-gl-rtl-text.min.js',
-        true,
-      );
-    }
+    // No `setRTLTextPlugin` here: MapLibre 6 shapes Arabic and reorders
+    // bidirectional text itself and deprecates the plugin. Registering the
+    // self-hosted plugin after the 6.x upgrade also broke RTL labels outright —
+    // the v6 worker loads a non-`.mjs` plugin URL with `globalThis.eval`, which
+    // the dashboard CSP blocks (WORLDMONITOR-12T; tests/map-locale.test.mts).
 
     const { mapTheme: initialMapTheme, style: primaryStyle } = await this.resolveInitialBasemapStyle();
     // The component can be torn down (renderer switch) while the style import
