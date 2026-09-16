@@ -880,7 +880,11 @@
       },
       "paused": "Kamery wstrzymane",
       "play": "Odtwórz",
-      "previewStatus": "Podgląd na żywo"
+      "previewStatus": "Gotowe do odtworzenia",
+      "connecting": "Łączenie…",
+      "unverified": "Nie można potwierdzić, że ten strumień jest na żywo",
+      "offline": "{{city}} jest teraz offline",
+      "noFeeds": "W tej chwili brak aktywnych kamer internetowych w tym regionie"
     },
     "regulation": {
       "timeline": "Oś czasu",

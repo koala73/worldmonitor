@@ -865,7 +865,11 @@
         "space": "UZAY"
       },
       "play": "Oynat",
-      "previewStatus": "Canlı önizleme"
+      "previewStatus": "Oynatılmaya hazır",
+      "connecting": "Bağlanıyor…",
+      "unverified": "Bu akışın canlı olduğu doğrulanamıyor",
+      "offline": "{{city}} şu anda çevrimdışı",
+      "noFeeds": "Bu bölgede şu anda canlı web kamerası yok"
     },
     "positiveNewsFeed": {
       "noStories": "Bu kategoride henüz haber yok"

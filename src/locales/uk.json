@@ -932,7 +932,7 @@
     "webcams": {
       "paused": "Webcams paused",
       "play": "Play",
-      "previewStatus": "Live preview",
+      "previewStatus": "Готово до відтворення",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",
@@ -940,7 +940,11 @@
         "americas": "AMERICAS",
         "asia": "ASIA",
         "space": "SPACE"
-      }
+      },
+      "connecting": "Підключення…",
+      "unverified": "Не вдається підтвердити, що потік в прямому ефірі",
+      "offline": "{{city}} зараз у режимі офлайн",
+      "noFeeds": "Немає живих веб-камер у цьому регіоні"
     },
     "pinnedWebcams": {
       "pinFromMap": "Pin a webcam from the map"

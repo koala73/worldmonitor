@@ -862,7 +862,11 @@
         "space": "KHÔNG GIAN"
       },
       "play": "Phát",
-      "previewStatus": "Xem trước trực tiếp"
+      "previewStatus": "Sẵn sàng phát",
+      "connecting": "Đang kết nối…",
+      "unverified": "Không thể xác nhận luồng này đang phát trực tiếp",
+      "offline": "{{city}} hiện đang ngoại tuyến",
+      "noFeeds": "Không có webcam trực tiếp trong khu vực này lúc này"
     },
     "positiveNewsFeed": {
       "noStories": "Chưa có bài viết trong danh mục này"

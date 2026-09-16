@@ -868,7 +868,11 @@
         "space": "SPAȚIU"
       },
       "play": "Redă",
-      "previewStatus": "Previzualizare live"
+      "previewStatus": "Gata de redare",
+      "connecting": "Se conectează…",
+      "unverified": "Nu pot confirma că acest flux este live",
+      "offline": "{{city}} este offline acum",
+      "noFeeds": "Nu există camere web live în această regiune acum"
     },
     "positiveNewsFeed": {
       "noStories": "Încă nu există povești în această categorie"

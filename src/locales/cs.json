@@ -871,7 +871,11 @@
       },
       "paused": "Webkamery pozastaveny",
       "play": "Přehrát",
-      "previewStatus": "Živý náhled"
+      "previewStatus": "Připraveno k přehrání",
+      "connecting": "Připojování…",
+      "unverified": "Nelze potvrdit, že je tento stream živý",
+      "offline": "{{city}} je nyní offline",
+      "noFeeds": "V této oblasti nejsou momentálně žádné živé webkamery"
     },
     "monitor": {
       "placeholder": "Klíčová slova (oddělená čárkou)",

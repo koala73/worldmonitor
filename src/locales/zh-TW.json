@@ -862,7 +862,11 @@
         "space": "太空"
       },
       "play": "播放",
-      "previewStatus": "即時預覽"
+      "previewStatus": "準備播放",
+      "connecting": "正在連線…",
+      "unverified": "無法確認此直播流是否即時",
+      "offline": "{{city}} 目前離線",
+      "noFeeds": "此地區目前沒有即時攝影機"
     },
     "positiveNewsFeed": {
       "noStories": "此類別暫無報道"

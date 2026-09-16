@@ -877,7 +877,11 @@
       },
       "paused": "Webcam in pausa",
       "play": "Riproduci",
-      "previewStatus": "Anteprima live"
+      "previewStatus": "Pronto per la riproduzione",
+      "connecting": "Connessione in corso…",
+      "unverified": "Impossibile confermare che il flusso è in diretta",
+      "offline": "{{city}} è offline in questo momento",
+      "noFeeds": "Nessuna webcam in diretta in questa regione al momento"
     },
     "regulation": {
       "timeline": "Cronologia",

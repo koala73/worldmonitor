@@ -941,7 +941,11 @@
         "space": "SVEMIR"
       },
       "play": "Pokreni",
-      "previewStatus": "Pregled uživo"
+      "previewStatus": "Spremno za reprodukciju",
+      "connecting": "Povezivanje…",
+      "unverified": "Ne mogu potvrditi je li ovaj stream uživo",
+      "offline": "{{city}} je trenutno izvan mreže",
+      "noFeeds": "Nema živih web kamera u ovoj regiji u ovom trenutku"
     },
     "pinnedWebcams": {
       "pinFromMap": "Prikvačite web kameru sa karte"
