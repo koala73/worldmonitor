@@ -386,6 +386,23 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // already pending` would also drop a first-party message that merely CONTAINS
   // the phrase while riding a `/pro/assets/*.js` frame.
   /^(?:Error: )?OperationError: A request is already pending\.$/,
+  // Clerk's own SDK wrapping a failed fetch to its frontend API. The dashboard
+  // has carried `/ClerkJS: Network error/` for months; this surface runs a
+  // separate client and never got the entry, so WORLDMONITOR-12W leaked through
+  // it: `ClerkJS: Network error at "https://clerk.worldmonitor.app/v1/client/
+  // sign_ups/<id>/attempt_verification" - TypeError: Failed to fetch
+  // (clerk.worldmonitor.app). Please try again.` on Chrome 152 / Windows at
+  // `/pro`, via `onunhandledrejection`, every frame in `/pro/assets/clerk-*.js`.
+  // That frame is why the `MARKETING_NETWORK_NOISE` rule in `marketingBeforeSend`
+  // cannot catch it either: Clerk's chunk lives under `/pro/assets/`, so it
+  // counts as first-party there, and the value is an `Error`, not a `TypeError`.
+  //
+  // `ClerkJS:` is the SDK's own message prefix and appears in no `pro-test/src`
+  // file, no `shared/` leaf and neither inline script (pinned by
+  // tests/pro-sentry-filter-policy.test.mts), so the anchored prefix can only
+  // ever match Clerk. A user's flaky connection to Clerk is not actionable here;
+  // Clerk's UI already tells them to retry.
+  /^(?:Error: )?ClerkJS: Network error\b/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */

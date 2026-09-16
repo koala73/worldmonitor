@@ -2564,3 +2564,49 @@ describe('malformed numeric literal SyntaxError (WORLDMONITOR-10B)', () => {
       'the entry is anchored to the whole engine sentence');
   });
 });
+
+describe('beforeSend — MapLibre 6 Object.hasOwn on pre-15.4 WebKit / old Chromium forks (WORLDMONITOR-12V/12X)', () => {
+  const HASOWN = 'Object.hasOwn is not a function';
+  const HASOWN_WEBKIT = "Object.hasOwn is not a function. (In 'Object.hasOwn(this._values,e)', 'Object.hasOwn' is undefined)";
+
+  it('drops the zero-frame rejection from the map worker (Chrome Mobile iOS on iOS 15.3)', () => {
+    assert.equal(beforeSend(makeEvent(HASOWN_WEBKIT, 'Error', [])), null);
+  });
+
+  it('drops the Chromium phrasing with only vendor map frames (Whale 4.34)', () => {
+    const event = makeEvent(HASOWN, 'TypeError', [
+      { filename: '/assets/maplibre-C1CBGVpC.js', lineno: 1, function: 'setValue' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('keeps it when a first-party frame is on the stack', () => {
+    // Our source never calls `Object.hasOwn` (pinned below); if it ever does
+    // on an engine that lacks it, that is a real compatibility break to see.
+    const event = makeEvent(HASOWN, 'TypeError', [firstPartyFrame('src/services/i18n.ts', 'pick')]);
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  it('keeps other "is not a function" messages with no frames', () => {
+    assert.ok(beforeSend(makeEvent('Object.groupBy is not a function', 'TypeError', [])) !== null);
+  });
+
+  it('pins the browser source (src/) as Object.hasOwn-free, the rule\'s licence', () => {
+    // api/ and the server-only shared/ leaves (e.g. shared/story-phase.js, used
+    // by api/og-story) run under Node, where Object.hasOwn is universal and
+    // nothing they throw reaches this beforeSend.
+    const roots = ['src'].map((d) => resolve(__dirname, '..', d));
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) { if (entry.name !== 'node_modules') walk(full); continue; }
+        if (!/\.(?:ts|mts|tsx|js|mjs)$/.test(entry.name)) continue;
+        if (full.endsWith('sentry-init.ts')) continue;
+        if (/\bObject\.hasOwn\(/.test(readFileSync(full, 'utf-8'))) offenders.push(full);
+      }
+    };
+    for (const root of roots) walk(root);
+    assert.deepEqual(offenders, [], 'first-party code now calls Object.hasOwn — re-derive the WORLDMONITOR-12V rule');
+  });
+});

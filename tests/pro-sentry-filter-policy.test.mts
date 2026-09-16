@@ -1484,3 +1484,36 @@ describe('marketingBeforeSend — leaked fetch deadline stays visible (WORLDMONI
     assert.equal(marketingBeforeSend(kept), kept);
   });
 });
+
+describe('MARKETING_IGNORE_ERRORS — Clerk SDK network failure (WORLDMONITOR-12W)', () => {
+  const VALUE = 'ClerkJS: Network error at "https://clerk.worldmonitor.app/v1/client/sign_ups/sua_3JOrGrIdgb1q4iGoehhFRkIKkFL/attempt_verification" - TypeError: Failed to fetch (clerk.worldmonitor.app). Please try again.';
+
+  it('drops the verbatim production value', () => {
+    assert.equal(isIgnored('Error', VALUE), true);
+    // Some engines fold the type into the value.
+    assert.equal(isIgnored('Error', `Error: ${VALUE}`), true);
+  });
+
+  it('is not reachable through marketingBeforeSend, which is why it needs an entry', () => {
+    // Clerk's chunk lives under /pro/assets/, so the frame counts as
+    // first-party and the value is an `Error`, not a `TypeError`.
+    const kept = event(VALUE, ['https://www.worldmonitor.app/pro/assets/clerk-Dl1fSlM7.js']);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a message that merely mentions ClerkJS mid-sentence', () => {
+    assert.equal(isIgnored('Error', 'Checkout aborted after ClerkJS: Network error'), false);
+  });
+
+  it('keeps other ClerkJS failures so a misconfiguration still reports', () => {
+    assert.equal(isIgnored('Error', 'ClerkJS: Response: invalid redirect_url'), false);
+  });
+
+  it('pins the marketing surface as ClerkJS-free, the rule\'s licence', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /ClerkJS/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [], 'the marketing surface now mints a ClerkJS-prefixed message — re-derive the WORLDMONITOR-12W rule');
+  });
+});

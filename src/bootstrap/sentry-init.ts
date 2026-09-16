@@ -579,6 +579,19 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       if (/undefined is not an object \(evaluating '\w{1,3}\.isHidden'\)|Cannot read properties of undefined \(reading 'isHidden'\)/.test(msg)) {
         if (!hasFirstParty) return null;
       }
+      // MapLibre 6 (#8209) calls `Object.hasOwn` in its style-property store
+      // (`Object.hasOwn(this._values, e)` in maplibre-gl-shared), which
+      // Safari < 15.4 and pre-93 Chromium forks lack. The map's own error
+      // handler logs it (`[DeckGLMap] map error: Object.hasOwn is not a
+      // function`) and the rejection then reaches `onunhandledrejection` with
+      // ZERO frames — WORLDMONITOR-12V (Chrome Mobile iOS on iOS 15.3, whose
+      // WebKit also lacks `AbortSignal.throwIfAborted`) and -12X (Whale
+      // 4.34 / Windows). Those engines sit below MapLibre 6's floor, and a
+      // main-thread polyfill would not reach the worker, so it is unactionable.
+      // Gated on the vendor-shaped stack: our browser source never calls
+      // `Object.hasOwn` (`hasOwnProperty.call` throughout), and a call that
+      // ever did would carry a first-party frame and still report.
+      if (!hasFirstParty && /^(?:TypeError: )?Object\.hasOwn is not a function\b/.test(msg)) return null;
       // Short minified ReferenceError from Safari ("Can't find variable: ss"). With an empty stack
       // and no first-party frames, this is userscript/extension injection. Our own minified bundle
       // would keep frames via the source-mapped assets/*.js chunks; if the SDK strips them, the
