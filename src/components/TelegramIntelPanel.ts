@@ -508,11 +508,12 @@ export class TelegramIntelPanel extends Panel {
       h('div', { className: 'telegram-intel-text' }, safeHtml(textHtml)),
       item.mediaUrls && item.mediaUrls.length > 0 ? h('div', { className: 'telegram-intel-media-grid' },
         ...item.mediaUrls.map(url => {
+          const mediaUrl = sanitizeUrl(url) ? url : '';
           const isVideo = url.match(/\.(mp4|webm|mov)(\?.*)?$/i);
           if (isVideo) {
             return h('video', {
               className: 'telegram-intel-video',
-              src: sanitizeUrl(url),
+              src: mediaUrl,
               controls: true,
               preload: 'metadata',
               playsinline: true,
@@ -520,15 +521,15 @@ export class TelegramIntelPanel extends Panel {
           }
           return h('img', {
             className: 'telegram-intel-image',
-            src: sanitizeUrl(url),
+            src: mediaUrl,
             loading: 'lazy',
-            onClick: () => window.open(sanitizeUrl(url), '_blank', 'noopener,noreferrer'),
+            onClick: () => { if (mediaUrl) window.open(mediaUrl, '_blank', 'noopener,noreferrer'); },
           });
         })
       ) : null,
       h('div', { className: 'telegram-intel-item-actions' },
         h('a', {
-          href: sanitizeUrl(item.url),
+          href: sanitizeUrl(item.url) ? item.url : '',
           target: '_blank',
           rel: 'noopener noreferrer',
           className: 'telegram-follow-btn',
