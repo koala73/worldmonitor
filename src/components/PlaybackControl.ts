@@ -6,6 +6,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 export class PlaybackControl {
   private element: HTMLElement;
   private isPlaybackMode = false;
+  private snapshotGeneration = 0;
   private timestamps: number[] = [];
   private currentIndex = 0;
   private onSnapshotChange: ((snapshot: DashboardSnapshot | null) => void) | null = null;
@@ -96,11 +97,12 @@ export class PlaybackControl {
       return;
     }
 
+    const generation = ++this.snapshotGeneration;
     this.isPlaybackMode = true;
     this.updateTimeDisplay();
 
     const snapshot = await getSnapshotAt(timestamp);
-    if (!this.element?.isConnected) return;
+    if (generation !== this.snapshotGeneration || !this.isPlaybackMode || !this.element?.isConnected) return;
     this.onSnapshotChange?.(snapshot);
 
     document.body.classList.add('playback-mode');
@@ -108,6 +110,7 @@ export class PlaybackControl {
   }
 
   private goLive(): void {
+    this.snapshotGeneration++;
     this.isPlaybackMode = false;
     this.currentIndex = this.timestamps.length - 1;
 
