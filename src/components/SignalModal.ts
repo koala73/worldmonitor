@@ -360,7 +360,9 @@ export class SignalModal {
       const data = signal.data as Record<string, unknown>;
       const newsCorrelation = data?.newsCorrelation as string | null;
       const focalPoints = data?.focalPointContext as string[] | null;
-      const locationData = { lat: data?.lat as number | undefined, lon: data?.lon as number | undefined, regionName: data?.regionName as string | undefined };
+      const locationData = { lat: signal.location?.lat ?? data?.lat as number | undefined, lon: signal.location?.lon ?? data?.lon as number | undefined, regionName: signal.location?.name ?? data?.regionName as string | undefined };
+      const hasLocation = typeof locationData.lat === 'number' && Number.isFinite(locationData.lat)
+        && typeof locationData.lon === 'number' && Number.isFinite(locationData.lon);
 
       return `
         <div class="signal-item ${escapeHtml(signal.type)}">
@@ -386,10 +388,10 @@ export class SignalModal {
               <pre class="news-correlation-text">${escapeHtml(newsCorrelation)}</pre>
             </div>
           ` : ''}
-          ${locationData.lat && locationData.lon ? `
+          ${hasLocation ? `
             <div class="signal-location">
               <button class="location-link" data-lat="${locationData.lat}" data-lon="${locationData.lon}">
-                📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName ? escapeHtml(locationData.regionName) : `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}
+                📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName ? escapeHtml(locationData.regionName) : `${locationData.lat!.toFixed(2)}°, ${locationData.lon!.toFixed(2)}°`}
               </button>
             </div>
           ` : ''}

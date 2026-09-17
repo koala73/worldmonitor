@@ -120,6 +120,7 @@ export interface CorrelationSignalCore {
   description: string;
   confidence: number;
   timestamp: Date;
+  location?: { lat: number; lon: number; name?: string };
   data: {
     newsVelocity?: number;
     marketChange?: number;
