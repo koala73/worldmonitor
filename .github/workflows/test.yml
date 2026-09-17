@@ -334,6 +334,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
+      - name: Synthetic assessment demo boundaries
+        if: matrix.shard == 1
+        run: python3 -m unittest discover -s security-assessment/tests -v
       - name: zh-TW catalogues reproduce from their Simplified source (#6555)
         # The zh-TW catalogues are generated from zh.json, not translated from
         # en.json, so the EN baseline in translate-locales.mjs is the wrong
