@@ -378,6 +378,15 @@ test('a follower whose owner publishes nothing within the probe budget reports t
   assert.match(entry.error, /lease/);
   assert.equal(relayCalls.length, 0);
   assert.ok(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS * 1_000 > RELAY_GATEWAY_GATE_TIMEOUT_MS, 'a crashed owner cannot wedge the gate past its own probe budget');
+  // The follower must outwait the owner's whole critical path: the relay
+  // probe, then the verdict publish with its own Redis timeout, plus slack —
+  // or a follower that is the monitor request gives up a moment before the
+  // verdict lands and pages a false warning (#8282 review).
+  const { RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS, RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS } = __testing__;
+  assert.ok(RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS > RELAY_GATEWAY_GATE_TIMEOUT_MS + RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+    'follower wait covers probe + publish');
+  assert.ok(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS * 1_000 > RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+    'the lease outlives the follower wait, so a follower never sees a free lease while the owner is still publishing');
 });
 
 test('a follower accepts a verdict the owner published after the follower\'s own sweep began', async () => {

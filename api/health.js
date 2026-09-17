@@ -3750,7 +3750,15 @@ function parseCachedRelayGatewayGate(raw, now) {
 const RELAY_GATEWAY_GATE_LEASE_KEY = `${RELAY_GATEWAY_GATE_PROBE_KEY}:lease`;
 const RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS = 10;
 const RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS = 250;
-const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS = RELAY_GATEWAY_GATE_TIMEOUT_MS + 1_000;
+// Redis budget for the cache read, the lease and the verdict publish.
+const RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS = 2_000;
+// A follower must outwait the owner's WHOLE critical path — the relay probe,
+// then the verdict publish (its own Redis timeout), plus polling slack —
+// otherwise a follower that happens to be the 15-minute monitor request
+// gives up a moment before the verdict lands and pages a false
+// RELAY_GATE_UNREACHABLE. The lease TTL below stays longer than this wait.
+const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS =
+  RELAY_GATEWAY_GATE_TIMEOUT_MS + RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS + 1_000;
 
 async function readOrProbeRelayGatewayGate({
   now,
@@ -3773,7 +3781,7 @@ async function readOrProbeRelayGatewayGate({
   // outside a production build) touches neither the cache nor the lease.
   if (!probeRelayGatewayGateApplies()) return null;
   const readCached = async () => {
-    const cached = await redisPipeline([['GET', key]], 2_000, true).catch(() => null);
+    const cached = await redisPipeline([['GET', key]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
     return parseCachedRelayGatewayGate(cached?.[0]?.result, clock());
   };
   const reused = await readCached();
@@ -3786,7 +3794,7 @@ async function readOrProbeRelayGatewayGate({
   const leaseToken = `${now}:${crypto.randomUUID()}`;
   const lease = await redisPipeline(
     [['SET', leaseKey, leaseToken, 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
-    2_000,
+    RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
     true,
   ).catch(() => null);
   const ownsLease = lease?.[0]?.result === 'OK';
@@ -3816,7 +3824,7 @@ async function readOrProbeRelayGatewayGate({
     // empty cache in the same instant.
     await redisPipeline(
       [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS)]],
-      2_000,
+      RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
       true,
     ).catch(() => {});
     return fresh;
@@ -3827,7 +3835,7 @@ async function readOrProbeRelayGatewayGate({
       '1',
       leaseKey,
       leaseToken,
-    ]], 2_000, true).catch(() => {});
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(release);
     else await release;
   }
@@ -4776,6 +4784,8 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
   RELAY_GATEWAY_GATE_LEASE_KEY,
   RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
   probeRelayGatewayGate,
   parseCachedRelayGatewayGate,
   readOrProbeRelayGatewayGate,
