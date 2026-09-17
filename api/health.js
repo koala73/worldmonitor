@@ -3728,6 +3728,13 @@ const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS = RELAY_GATEWAY_GATE_TIMEOUT_MS + 1_00
 
 async function readOrProbeRelayGatewayGate({
   now,
+  // Cache validation reads the live clock, not the sweep's fixed `now`: a
+  // follower polls for a verdict the lease owner publishes AFTER this sweep
+  // began, and that verdict's `evaluatedAt` is later than `now`. Validating
+  // against `now` would reject it as future-dated and persist a false
+  // RELAY_GATE_UNREACHABLE in both snapshots. `now` still stamps any verdict
+  // this sweep creates itself.
+  clock = Date.now,
   key,
   leaseKey,
   ctx,
@@ -3738,13 +3745,18 @@ async function readOrProbeRelayGatewayGate({
 } = {}) {
   const readCached = async () => {
     const cached = await redisPipeline([['GET', key]], 2_000, true).catch(() => null);
-    return parseCachedRelayGatewayGate(cached?.[0]?.result, now);
+    return parseCachedRelayGatewayGate(cached?.[0]?.result, clock());
   };
   const reused = await readCached();
   if (reused) return reused;
 
+  // The lease carries a per-sweep token and is released with the same
+  // compare-and-delete script as the verdict refresh lock: if the TTL lapses
+  // mid-probe and another sweep takes the lease, an unconditional DEL here
+  // would free the successor's lease and let a third sweep overlap it.
+  const leaseToken = `${now}:${crypto.randomUUID()}`;
   const lease = await redisPipeline(
-    [['SET', leaseKey, String(now), 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
+    [['SET', leaseKey, leaseToken, 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
     2_000,
     true,
   ).catch(() => null);
@@ -3780,7 +3792,13 @@ async function readOrProbeRelayGatewayGate({
     ).catch(() => {});
     return fresh;
   } finally {
-    const release = redisPipeline([['DEL', leaseKey]], 2_000, true).catch(() => {});
+    const release = redisPipeline([[
+      'EVAL',
+      HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
+      '1',
+      leaseKey,
+      leaseToken,
+    ]], 2_000, true).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(release);
     else await release;
   }

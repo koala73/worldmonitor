@@ -98,6 +98,12 @@ function mockTransports({ relay }) {
         return { result: 'OK' };
       }
       if (op === 'DEL' && key in snapshotStore) { snapshotStore[key] = null; return { result: 1 }; }
+      if (op === 'EVAL') {
+        // The compare-and-delete release script: EVAL <script> 1 <key> <token>.
+        const [, , , target, token] = [op, key, value, ...rest];
+        if (target in snapshotStore && snapshotStore[target] === token) { snapshotStore[target] = null; return { result: 1 }; }
+        return { result: 0 };
+      }
       return { result: 'OK' };
     });
     return new Response(JSON.stringify(results), { status: 200 });
@@ -370,6 +376,50 @@ test('a follower whose owner publishes nothing within the probe budget reports t
   assert.match(entry.error, /lease/);
   assert.equal(relayCalls.length, 0);
   assert.ok(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS * 1_000 > RELAY_GATEWAY_GATE_TIMEOUT_MS, 'a crashed owner cannot wedge the gate past its own probe budget');
+});
+
+test('a follower accepts a verdict the owner published after the follower\'s own sweep began', async () => {
+  // The owner's `evaluatedAt` is later than the follower's fixed `now`;
+  // validating against `now` would call it future-dated and persist a false
+  // RELAY_GATE_UNREACHABLE in both snapshots (#8282 review).
+  productionEnv();
+  const { relayCalls, snapshotStore } = mockTransports({ relay: rejected });
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'owner-token';
+  const followerNow = Date.now() - 2_000;
+  const ownerVerdict = { role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'OK', httpStatus: 400, evaluatedAt: new Date(followerNow + 1_500).toISOString() };
+  snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = JSON.stringify(ownerVerdict);
+
+  const entry = await readOrProbeRelayGatewayGate({
+    now: followerNow,
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 10_000,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+
+  assert.deepEqual(entry, ownerVerdict);
+  assert.equal(relayCalls.length, 0);
+});
+
+test('an owner whose lease lapsed mid-probe does not release a successor\'s lease', async () => {
+  productionEnv();
+  const { snapshotStore } = mockTransports({
+    relay: () => {
+      // The TTL expired during the probe and another sweep took the lease.
+      snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'successor-token';
+      return rejected();
+    },
+  });
+
+  await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+  });
+
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], 'successor-token', 'compare-and-delete left the successor lease in place');
+  assert.ok(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], 'the lapsed owner still published its verdict');
 });
 
 test('the lease owner publishes before releasing, and the lease is free after the sweep', async () => {
