@@ -4,6 +4,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import { checkRateLimit } from './_rate-limit.js';
 
 export const config = { runtime: 'edge' };
 
@@ -199,6 +200,16 @@ export default async function handler(req) {
   if (keyCheck.required && !keyCheck.valid) {
     return jsonResponse({ error: keyCheck.error }, 401, { 'Cache-Control': 'no-store', ...corsHeaders });
   }
+
+  // Budget token reuse by caller IP; anonymous session tokens are replaceable.
+  // Keep the relay protected when the distributed limiter is unavailable.
+  const rateLimitResponse = await checkRateLimit(req, { ...corsHeaders, 'Cache-Control': 'no-store' }, {
+    scope: 'x-feed',
+    limit: 60,
+    window: '60 s',
+    failClosed: true,
+  });
+  if (rateLimitResponse) return rateLimitResponse;
 
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) {
