@@ -79,11 +79,13 @@ export function openStoryModal(data: StoryData): void {
   });
   focusTrap.activate();
 
+  const owner = modalEl;
   requestAnimationFrame(async () => {
-    if (!modalEl) return;
+    if (modalEl !== owner) return;
     try {
-      await renderAndDisplay(data);
+      await renderAndDisplay(data, owner);
     } catch (err) {
+      if (modalEl !== owner) return;
       console.error('[StoryModal] Render error:', err);
       const content = modalEl?.querySelector('.story-modal-content');
       if (content) setTrustedHtml(content, trustedHtml(`<div class="story-error">${t('modals.story.error')}</div>`, "legacy direct innerHTML migration"));
@@ -91,9 +93,11 @@ export function openStoryModal(data: StoryData): void {
   });
 }
 
-async function renderAndDisplay(data: StoryData): Promise<void> {
+async function renderAndDisplay(data: StoryData, owner: HTMLElement): Promise<void> {
   const { renderStoryToCanvas } = await import('@/services/story-renderer');
+  if (modalEl !== owner) return;
   const canvas = await renderStoryToCanvas(data);
+  if (modalEl !== owner) return;
   currentDataUrl = canvas.toDataURL('image/png');
 
   const binStr = atob(currentDataUrl.split(',')[1] ?? '');
