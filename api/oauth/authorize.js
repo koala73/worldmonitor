@@ -5,6 +5,7 @@ import { timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
+import { redirectDisplayHost } from './register.js';
 
 export const config = { runtime: 'edge' };
 
@@ -134,7 +135,7 @@ function htmlError(title, detail) {
 //      `…/oauth/authorize?…#api-key` to skip the disclosure click.
 export function consentPage(params, nonce, errorMsg = '') {
   const { client_name, redirect_uri } = params;
-  const redirectHost = new URL(redirect_uri).hostname;
+  const redirectHost = redirectDisplayHost(redirect_uri);
   // U3 contract: bridge URL is apex (no www, no return_to). Apex page reads
   // oauth:nonce:<nonce> itself to recover client metadata + mint a grant.
   const proCtaHref = `https://worldmonitor.app/mcp-grant?nonce=${encodeURIComponent(nonce)}`;

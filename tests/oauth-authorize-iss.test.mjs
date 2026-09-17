@@ -102,8 +102,8 @@ async function startFlow(host) {
   return { nonce: nonceKey.slice('oauth:nonce:'.length), nonceData: JSON.parse(store.get(nonceKey)) };
 }
 
-function submitConsent(nonce, { host = 'api.worldmonitor.app', xhr = false } = {}) {
-  const body = new URLSearchParams({ api_key: ENTERPRISE_KEY, _nonce: nonce, ...(xhr ? { _js: '1' } : {}) });
+function submitConsent(nonce, { host = 'api.worldmonitor.app', xhr = false, apiKey = ENTERPRISE_KEY } = {}) {
+  const body = new URLSearchParams({ api_key: apiKey, _nonce: nonce, ...(xhr ? { _js: '1' } : {}) });
   return authorizeHandler(new Request(`https://${host}/oauth/authorize`, {
     method: 'POST',
     headers: { host, origin: `https://${host}`, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -167,6 +167,21 @@ describe('RFC 9207 — API-key consent redirect carries iss', () => {
     assert.equal(res.status, 200);
     const { location } = await res.json();
     assert.equal(new URL(location).searchParams.get('iss'), 'https://worldmonitor.app');
+  });
+
+  it('a bad-key retry mints a fresh nonce that still carries the original issuer', async () => {
+    installRedisStub();
+    registerClient();
+    const { nonce } = await startFlow('www.worldmonitor.app');
+    const retry = await submitConsent(nonce, { host: 'www.worldmonitor.app', xhr: true, apiKey: 'not-a-valid-key' });
+    assert.equal(retry.status, 400);
+    const { error, nonce: retryNonce } = await retry.json();
+    assert.equal(error, 'invalid_key');
+    assert.ok(retryNonce && retryNonce !== nonce);
+
+    const res = await submitConsent(retryNonce, { host: 'api.worldmonitor.app' });
+    assert.equal(res.status, 302);
+    assert.equal(new URL(res.headers.get('Location')).searchParams.get('iss'), 'https://www.worldmonitor.app');
   });
 
   it('a nonce stored before the deploy (no iss) redirects without an iss param', async () => {

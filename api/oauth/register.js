@@ -57,6 +57,14 @@ export function isAllowedRedirectUri(uri) {
   } catch { return false; }
 }
 
+// Where the authorization code goes, as shown on the consent screens
+// (api/oauth/authorize.js, api/internal/mcp-grant-context.ts). A custom-scheme
+// callback keeps its scheme: `anysphere.cursor-mcp` alone reads like a web host.
+export function redirectDisplayHost(uri) {
+  const u = new URL(uri);
+  return u.protocol === 'https:' || u.protocol === 'http:' ? u.hostname : `${u.protocol}//${u.hostname}`;
+}
+
 function jsonResp(body, status = 200) {
   return jsonResponse(body, status, getPublicCorsHeaders('POST, OPTIONS'));
 }
