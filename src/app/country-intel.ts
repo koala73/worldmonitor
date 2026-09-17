@@ -176,7 +176,11 @@ export class CountryIntelManager implements AppModule {
 
   destroy(): void {
     this.briefRequestToken++;
-    this.abortCountryCoverage();
+    // Drop the handle without aborting in-flight body reads. WebKit rejects
+    // those as unhandled `AbortError: Fetch is aborted` on panel teardown
+    // (WORLDMONITOR-132) even when the coverage promise chain catches AbortError.
+    // Superseded opens still abort via claimBriefRequest / startCountryCoverageRequest.
+    this.releaseCountryCoverage();
     this.pendingBriefRequest = null;
     if (this._fwDebounce) { clearTimeout(this._fwDebounce); this._fwDebounce = null; }
     this.ctx.countryTimeline?.destroy();
@@ -241,6 +245,10 @@ export class CountryIntelManager implements AppModule {
 
   private abortCountryCoverage(): void {
     this.coverageAbortController?.abort();
+    this.coverageAbortController = null;
+  }
+
+  private releaseCountryCoverage(): void {
     this.coverageAbortController = null;
   }
 
@@ -316,7 +324,7 @@ export class CountryIntelManager implements AppModule {
 
     this.ctx.countryBriefPage.onClose(() => {
       this.briefRequestToken++;
-      this.abortCountryCoverage();
+      this.releaseCountryCoverage();
       this.ctx.map?.clearCountryHighlight();
       this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();
