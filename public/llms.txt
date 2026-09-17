@@ -122,7 +122,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - Interactive 3D WebGL globe with deck.gl rendering and a shared map-layer catalog (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
 - AI-powered intelligence: source-attributed world briefs, hybrid threat classification, focal point detection, CII v8 instability scores for 31 Tier-1 countries, CRI resilience scores for the 196-country public rankable universe, trending keyword spike detection, and strategic posture assessment
 - Curated RSS feeds across geopolitics, defense, energy, tech, and finance with a domain-allowlisted proxy
-- Live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
+- Live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNN, Al Arabiya)
 - Live webcams from geopolitical hotspots across regions
 - Multilingual UI with RTL support
 - 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index

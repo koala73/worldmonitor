@@ -806,6 +806,7 @@ test.describe('dashboard news request budget (#5376)', () => {
 });
 
 const STABLECOIN_GLOB = '**/api/market/v1/list-stablecoin-markets*';
+const SLOW_TIER_GATE_HOLD_MS = 4_000;
 const SCROLL_HYDRATION_PANEL_ORDER = [
   'live-news',
   'intel',
@@ -1229,6 +1230,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         const target = document.querySelector('[data-panel="stablecoins"]');
         return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
       });
+      await page.waitForTimeout(SLOW_TIER_GATE_HOLD_MS);
       expect(
         await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
         'the App viewport handler must stay dormant while the slow tier is pending',

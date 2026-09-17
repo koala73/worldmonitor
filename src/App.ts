@@ -369,6 +369,7 @@ export class App {
   private visiblePanelPrimeRaf: number | null = null;
   private viewportHydrationReady = false;
   private viewportHydrationReadyAt = 0;
+  private slowTierWaitTimedOut = false;
   /** Scroll/resize register at readiness; marks/primes arm only after fan-out. */
   private viewportTriggersArmed = false;
   private followedCountriesCapDropToastTimer: number | null = null;
@@ -1885,16 +1886,50 @@ export class App {
     }
   }
 
-  private async waitForSlowBootstrapCheckpoint(): Promise<void> {
+  private async waitForSlowBootstrapCheckpoint(): Promise<boolean> {
     markLcpDebug('wm:data:slow-tier-wait-start');
     try {
       const settled = await waitForBootstrapSlowTier(isDesktopRuntime() ? 8_500 : 3_500);
       markLcpDebug('wm:data:slow-tier-wait-end', { settled });
-      if (this.state.isDestroyed) return;
+      if (this.state.isDestroyed) return settled;
       this.bootstrapHydrationState = getBootstrapHydrationState();
       this.updateConnectivityUi();
+      return settled;
     } catch {
       markLcpDebug('wm:data:slow-tier-wait-error');
+      return false;
+    }
+  }
+
+  private completePendingSlowTierFanout(): void {
+    if (!this.slowTierWaitTimedOut || this.state.isDestroyed) return;
+    this.slowTierWaitTimedOut = false;
+    void this.runVisibleDataFanout();
+  }
+
+  private async runVisibleDataFanout(): Promise<void> {
+    if (this.viewportHydrationReady || this.state.isDestroyed) return;
+    this.viewportHydrationReady = true;
+    window.addEventListener('scroll', this.handleViewportPrime, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener('resize', this.handleViewportPrime);
+    markLcpDebug('wm:data:initial-fanout-start');
+    await Promise.all([
+      this.dataLoader.loadAllData(),
+      this.primeVisiblePanelData(),
+    ]);
+    markLcpDebug('wm:data:initial-fanout-complete');
+    if (this.state.isDestroyed) return;
+    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
+      typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    this.viewportTriggersArmed = true;
+    void this.primeVisiblePanelData();
+    if (import.meta.env.VITE_E2E === '1') {
+      document.documentElement.dataset.wmInitialDataReady = 'true';
     }
   }
 
@@ -2554,6 +2589,7 @@ export class App {
       if (this.state.isDestroyed) return;
       this.bootstrapHydrationState = getBootstrapHydrationState();
       this.updateConnectivityUi();
+      this.completePendingSlowTierFanout();
     });
     markLcpDebug('wm:boot:fast-bootstrap-ready');
     this.bootstrapHydrationState = getBootstrapHydrationState();
@@ -2966,47 +3002,21 @@ export class App {
     // painted back in panelLayout.init() (Phase 1), so awaiting here is OFF the
     // LCP critical path; it stays bounded by waitForBootstrapSlowTier's timeout
     // (3.5 s browser / 8.5 s desktop). (#4512)
-    await slowTierReady;
+    const settled = await slowTierReady;
     if (this.state.isDestroyed) return;
-    // Open readiness so deferred panel mounts can call primeVisiblePanelData,
-    // but keep scroll/resize triggers disarmed until the fan-out finishes.
-    // Scrolls before readiness (and layout thrash during fan-out after an early
-    // scroll) are covered by the fan-out's current-viewport scan. (#5876)
-    this.viewportHydrationReady = true;
-    window.addEventListener('scroll', this.handleViewportPrime, {
-      passive: true,
-      capture: true,
-    });
-    window.addEventListener('resize', this.handleViewportPrime);
-    // Prime panel-specific data concurrently with bulk loading.
-    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
-    // are NOT part of loadAllData. Running them in parallel prevents those
-    // panels from being blocked when a loadAllData batch is slow.
     // Snapshot whether precision geometry was already loaded BEFORE the fan-out
     // (the map renderer triggers the memoized fetch early). If so, the fan-out's
     // geometry-dependent CII ingests already attributed correctly and the
     // post-LCP replay would just be a redundant second CII compute + choropleth
     // repaint, so we skip it below. (#4512)
     const geometryReadyBeforeFanout = isCountryGeometryLoaded();
-    markLcpDebug('wm:data:initial-fanout-start');
-    await Promise.all([
-      this.dataLoader.loadAllData(),
-      this.primeVisiblePanelData(),
-    ]);
-    markLcpDebug('wm:data:initial-fanout-complete');
-    if (this.state.isDestroyed) return;
-    // Stamp + arm only after fan-out so an early scroll cannot schedule or
-    // replay a viewport-trigger mark across readiness. (#5876)
-    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
-      typeof performance.now === 'function'
-      ? performance.now()
-      : Date.now();
-    this.viewportTriggersArmed = true;
-    // The viewport can move after the initial synchronous geometry scan while
-    // other fan-out requests are pending. Hydrate its current position once.
-    void this.primeVisiblePanelData();
-    if (import.meta.env.VITE_E2E === '1') {
-      document.documentElement.dataset.wmInitialDataReady = 'true';
+    if (!settled) {
+      this.slowTierWaitTimedOut = true;
+      // No fan-out mark here: the deferred runVisibleDataFanout() emits the paired
+      // start/complete, and a second start would read as a phantom fan-out.
+      await this.dataLoader.loadAllData();
+    } else {
+      await this.runVisibleDataFanout();
     }
     const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();
 
@@ -3547,6 +3557,7 @@ export class App {
     this.viewportHydrationReady = false;
     this.viewportHydrationReadyAt = 0;
     this.viewportTriggersArmed = false;
+    this.slowTierWaitTimedOut = false;
     cancelBootstrapSlowTier();
     window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
