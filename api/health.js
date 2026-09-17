@@ -35,6 +35,7 @@ import {
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
 import { assessContentAge } from './_content-age.js';
+import { readHumanitarianRetention } from './_humanitarian-retention.js';
 
 export const config = { runtime: 'edge' };
 
@@ -3102,6 +3103,15 @@ function classifyKey(name, redisKey, opts, ctx) {
   // proof is checked here, even when an earlier stale/error verdict won. This
   // proves that the current request found a real served payload; freshness is
   // deliberately left to the unchanged diagnostic status.
+  if (name === 'humanitarianSummary' && ctx.humanitarianRetention?.until > now) {
+    entry.containmentUntil = new Date(ctx.humanitarianRetention.until).toISOString();
+  }
+  if (name === 'humanitarianSummary') {
+    const sourceMeta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
+    for (const field of ['lastSourceAttemptAt', 'lastSuccessAt', 'retryAt']) {
+      if (Number.isSafeInteger(sourceMeta?.[field]) && sourceMeta[field] > 0) entry[field] = sourceMeta[field];
+    }
+  }
   ctx.containmentEvidenceByName?.set(name, {
     status,
     records: hasData ? metaCount : null,
@@ -3122,6 +3132,8 @@ function classifyKey(name, redisKey, opts, ctx) {
       && (!contentAge || (Number.isFinite(contentAge.newestItemAt) && contentAge.newestItemAt <= now
         && Number.isFinite(contentAge.contentAgeMin) && contentAge.contentAgeMin >= 0))
       && resilienceCacheState?.ok !== false
+      && (name !== 'humanitarianSummary' || (ctx.humanitarianRetention?.until > now
+        && ctx.humanitarianRetention.records === metaCount))
       // These records include missing/stale input placeholders. A positive
       // count alone cannot prove that the reader serves a usable index.
       && !seedCfg?.enforceInputFreshUntil,
@@ -4604,6 +4616,13 @@ export async function handleHealth(req, ctx, options = {}) {
     contractsFinderReadFailed = !payload || Boolean(payload[0]?.error);
     contractsFinderSnapshot = unwrapEnvelope(parseRedisValue(payload?.[0]?.result)).data;
   }
+  const humanitarianMetaResult = results[allDataKeys.length + allMetaKeys.indexOf(SEED_META.humanitarianSummary.key)];
+  const humanitarianMeta = unwrapEnvelope(parseRedisValue(humanitarianMetaResult?.result)).data;
+  const humanitarianNeedsProof = humanitarianMeta?.sourceState === 'degraded'
+    || (snapshotNow() - humanitarianMeta?.fetchedAt > SEED_META.humanitarianSummary.maxStaleMin * 60_000);
+  const humanitarianRetention = humanitarianMetaResult?.error || !humanitarianNeedsProof ? null : await readHumanitarianRetention(
+    humanitarianMeta, SEED_META.humanitarianSummary.minRecordCount, snapshotNow(), redisPipeline,
+  );
   const evaluationNow = snapshotNow();
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)
@@ -4677,6 +4696,7 @@ export async function handleHealth(req, ctx, options = {}) {
     rolloutPendingUntilMs,
     educationPayloadReadFailed: Boolean(educationPayloadResult?.error),
     educationPayloadRankableCount,
+    humanitarianRetention,
     now: evaluationNow,
   };
   const checks = {};
@@ -4923,14 +4943,16 @@ export async function handleHealth(req, ctx, options = {}) {
   // only the verdict payload is reused, for at most 60 seconds. All other
   // responses already carry the no-store defaults from `headers` (a cached
   // 401 pins an auth failure; a cached 503 masks REDIS_DOWN recovery).
-  // Persistence can cross a tender deadline after classification. The cached
+  // Persistence can cross a retention deadline after classification. The cached
   // snapshot is already rejected at that deadline; recheck the cold response too.
-  const contractsFinder = checks.globalTendersContractsFinder;
-  if (contractsFinder?.containmentUntil
-    && isContainedHealthWarning(contractsFinder, containmentEvidenceByName.get('globalTendersContractsFinder'), evaluationNow)
-    && isExpiredDeadline(contractsFinder.containmentUntil, snapshotNow())) {
-    verdictSnapshot.summary.containedWarn--;
-    verdictSnapshot.status = computeOverallStatus({ ...counts, containedWarn: verdictSnapshot.summary.containedWarn }, totalChecks).overall;
+  for (const name of ['globalTendersContractsFinder', 'humanitarianSummary']) {
+    const entry = checks[name];
+    if (entry?.containmentUntil
+      && isContainedHealthWarning(entry, containmentEvidenceByName.get(name), evaluationNow)
+      && isExpiredDeadline(entry.containmentUntil, snapshotNow())) {
+      verdictSnapshot.summary.containedWarn--;
+      verdictSnapshot.status = computeOverallStatus({ ...counts, containedWarn: verdictSnapshot.summary.containedWarn }, totalChecks).overall;
+    }
   }
   return healthResponse(verdictSnapshot, compact, headers);
 }
