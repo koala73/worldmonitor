@@ -128,7 +128,7 @@ import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
-import { fetchTelegramFeed } from '@/services/telegram-intel';
+import { fetchTelegramFeed, getTelegramIntelGeneration } from '@/services/telegram-intel';
 import { fetchXFeed, isUsableHydratedXFeed } from '@/services/x-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
@@ -4997,14 +4997,20 @@ export class DataLoaderManager implements AppModule {
 
   async loadTelegramIntel(): Promise<void> {
     if (isDesktopRuntime() && !hasPremiumAccess()) return;
+    const generation = getTelegramIntelGeneration();
+    const isCurrent = () => !this.ctx.isDestroyed
+      && generation === getTelegramIntelGeneration()
+      && (!isDesktopRuntime() || hasPremiumAccess());
     try {
       const result = await fetchTelegramFeed();
-      this.callPanel('telegram-intel', 'setData', result);
+      if (!isCurrent()) return;
+      this.callPanel('telegram-intel', 'setData', result, generation);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[App] Telegram intel fetch failed:', error);
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],
-      });
+      }, generation);
     }
   }
 
