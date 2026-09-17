@@ -462,7 +462,9 @@ describe('seed freshness workflow control plane', () => {
       git('commit', '-m', 'current probe and publisher');
       const head = git('rev-parse', 'HEAD');
       const gateIndex = monitorSteps.indexOf(scheduledGateStep());
-      const publisherIndex = monitorSteps.indexOf(stepNamed('Publish ingestion operational transitions'));
+      const publisherStep = stepNamed('Publish ingestion operational transitions');
+      const publisherIndex = monitorSteps.indexOf(publisherStep);
+      const statusAnchor = publisherStep.env.SEED_STATUS_SHA;
       // Run every shell step after gate selection, including any checkout, so
       // reintroducing an ancestor checkout exercises the actual regression.
       for (const step of monitorSteps.slice(gateIndex + 1, publisherIndex + 1)) {
@@ -470,7 +472,7 @@ describe('seed freshness workflow control plane', () => {
         const result = spawnSync('bash', ['-e', '-c', step.run], {
           cwd: dir, encoding: 'utf8',
           env: { ...gitEnv, GITHUB_SHA: head, GATED_SHA: ancestor,
-            SEED_ACCEPTANCE_SHA: ancestor, SEED_STATUS_SHA: ancestor,
+            SEED_ACCEPTANCE_SHA: ancestor, SEED_STATUS_SHA: statusAnchor,
             SEED_ACCEPTANCE_OUTCOME: 'success', RUNNER_TEMP: dir,
             ARGS_LOG: join(dir, 'publisher-args.json') },
         });
@@ -481,7 +483,7 @@ describe('seed freshness workflow control plane', () => {
         revision: 'head', pending: ['new-kind'],
       });
       assert.deepEqual(JSON.parse(readFileSync(join(dir, 'publisher-args.json'), 'utf8')), [
-        '--sha', ancestor, '--status-sha', ancestor,
+        '--sha', ancestor, '--status-sha', statusAnchor,
         '--report', join(dir, 'seed-freshness-observation.json'),
       ]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
