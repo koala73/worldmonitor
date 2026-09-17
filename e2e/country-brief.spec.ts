@@ -632,8 +632,9 @@ for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true
     }
     expect(JSON.parse(files.JSON!)).toEqual(snapshot);
     const exported = await page.context().newPage();
-    await exported.route('http://commodity-export.test/', route => route.fulfill({ body: files.HTML!, contentType: 'text/html' }));
-    await exported.goto('http://commodity-export.test/');
+    // Fake-host goto+fulfill aborts under CI (net::ERR_ABORTED / detached frame).
+    // The download already has the HTML. Load it directly.
+    await exported.setContent(files.HTML!, { waitUntil: 'domcontentloaded' });
     expect(JSON.parse(await exported.locator('#commodity-brief-snapshot').textContent() ?? 'null')).toEqual(snapshot);
     await expect(exported.locator('.cdp-decision-action')).toHaveText(snapshot.action.text);
     await expect(exported.locator('body')).toContainText(snapshot.action.constraint);
