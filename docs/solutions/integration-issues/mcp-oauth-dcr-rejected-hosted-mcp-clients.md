@@ -51,7 +51,7 @@ Dynamic Client Registration accepted only the two Claude callbacks plus http loo
 
 Fixed in PR #8305.
 
-**1. Exact-match allowlist of vendor-published callbacks** in `api/oauth/_redirect-uri.js` (`ALLOWED_REDIRECT_URIS`, `isAllowedRedirectUri`), imported by `register.js` and re-checked by `api/internal/mcp-grant-mint.ts` before a Pro grant is minted. Loopback stays `http:` on `localhost` or `127.0.0.1` with any port and path.
+**1. Exact-match allowlist of vendor-owned callbacks** in `api/oauth/_redirect-uri.js` (`ALLOWED_REDIRECT_URIS`, `isAllowedRedirectUri`), imported by `register.js` and re-checked by `api/internal/mcp-grant-mint.ts` before a Pro grant is minted. Loopback stays `http:` on `localhost` or `127.0.0.1` with any port and path.
 
 | Client | Callback(s) | Evidence |
 |---|---|---|
@@ -61,11 +61,11 @@ Fixed in PR #8305.
 | Grok | `https://grok.com/connectors-oauth-exchange-code/`, `https://console.x.ai/connectors-oauth-exchange-code/` | grok.com/oauth/mcp-client.json (fetched live) |
 | VS Code for the Web | `https://vscode.dev/redirect`, `https://insiders.vscode.dev/redirect` | [microsoft/vscode `fetchDynamicRegistration`](https://github.com/microsoft/vscode/blob/main/src/vs/base/common/oauth.ts) |
 | Perplexity | `https://www.perplexity.ai/rest/connections/oauth_callback`, `https://enterprise.perplexity.ai/rest/connections/oauth_callback` | Perplexity help center |
-| Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` | no vendor doc; 7+ independent MCP servers, including aws-samples/mistral-on-aws |
+| Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` | **documented exception** — no vendor doc or client source found; 7+ independent MCP servers allowlist this exact URL, including `aws-samples/mistral-on-aws`, and one reports observing it on live traffic |
 | Devin | `https://api.devin.ai/mcp/oauth/callback` | docs.devin.ai |
 | Google Antigravity | `https://antigravity.google/oauth-callback` | antigravity.google/docs/mcp |
 
-Deliberately excluded: LobeHub, Linear Agent, and Amp (a single third-party source each), Gemini custom apps and Copilot Studio (per-user or per-tenant callbacks), and M365 Copilot (needs a confidential client).
+Mistral is the one entry admitted without evidence from the client itself, so it is marked as an exception in the table above. What made it admissible is not the number of repositories citing it: it is that the URL is on a host the vendor owns, several independent implementations agree on it byte for byte, and a wrong entry here cannot grant anything — an exact-match string either matches what a client sends or never fires, and only Mistral can receive a code sent to `callback.mistral.ai`. Excluded for failing that same test: LobeHub, Linear Agent, and Amp, each resting on one uncorroborated third-party mention; Gemini custom apps and Copilot Studio, whose callbacks are generated per user or per tenant and cannot be matched exactly; and M365 Copilot, which needs a confidential client.
 
 **2. Registration cap 3 → 8** (`MAX_REDIRECT_URIS` in `api/oauth/register.js`). VS Code sends four URIs in one request. Every entry still has to pass the allowlist, so the cap only bounds the stored record.
 
@@ -93,13 +93,16 @@ if (typeof nonceData.iss === 'string' && nonceData.iss) {
 
 ## Why This Works
 
-The allowlist was right to be closed. A registered callback is where the authorization code is delivered, so accepting arbitrary URIs would let anyone send a victim's code to their own server. The defect was that the list covered one vendor. Each new entry is a vendor-owned callback matched byte for byte, so the attack surface stays the one the claude.ai entry already had. An attacker can start a flow in their own account on that platform and phish a user into approving it. The consent page shows the redirect host, and the token endpoint binds the code to the PKCE verifier, `client_id`, and `redirect_uri`.
+The allowlist was right to be closed. A registered callback is where the authorization code is delivered, so accepting arbitrary URIs would let anyone send a victim's code to their own server. The defect was that the list covered one vendor. Each new entry is a vendor-owned callback matched byte for byte, so the *threat class* is the one the claude.ai entry already carried: an attacker starts a flow in their own account on that platform and phishes a user into approving it. The consent page shows the redirect host, and the token endpoint binds the code to the PKCE verifier, `client_id`, and `redirect_uri`, so a code delivered to a platform is useless to anyone who did not initiate that flow.
+
+The trusted surface did grow, though, and that is the cost of the fix. Nine more platforms can now receive an authorization code for a WorldMonitor account, which means nine more places where such a flow can be started and nine more vendors whose own callback handling we now depend on. That is the trade for supporting hosted clients at all; it is bounded by keeping entries exact, vendor-owned, and few, and by the fact that each addition is a deliberate, recorded decision rather than a pattern that admits a family of URLs.
 
 The `iss` bug class is a mismatch between where the issuer is decided and where the response is sent. Capturing it at the start of the flow ties it to the only host whose metadata the client could have used, whichever host finishes the flow.
 
 ## Prevention
 
-- **Take callback URLs only from the client itself:** vendor docs, the client's source (VS Code), or its published client metadata document (Grok). Third-party issues and blog posts give leads, not answers. For each entry, record where the URL came from, in the PR description or in the "Redirect URI allowlist" table in `docs/mcp-overview.mdx`.
+- **Take callback URLs from the client itself:** vendor docs, the client's source (VS Code), or its published client metadata document (Grok). Third-party issues and blog posts give leads, not answers. For each entry, record where the URL came from, in the PR description or in the "Redirect URI allowlist" table in `docs/mcp-overview.mdx`.
+- **Admit an exception only against the stated bar, and mark it as one.** When the client publishes nothing, an entry is admissible only if the URL is on a host the vendor owns and several independent implementations agree on it byte for byte, and it must be labelled an exception where it is recorded, with what is missing. Two things that do *not* qualify it: a count of citations, and a claim you could not trace to a specific repository or document. Re-check an exception whenever the vendor publishes its own list.
 - **Test the exact multi-URI arrays clients send, not single URIs.** `tests/oauth-register-redirect-allowlist.test.mjs` registers Grok Bot's three-URI array and VS Code's four-URI array verbatim, and rejects lookalikes (`wwwxcursor.com`, `cursor.com` without `www`, `www.grok.com`, trailing-slash and query variants).
 - **Any response value that must equal a host-derived identifier gets captured at the request that fixed the host.** Never recompute it on a later hop. This applies to `iss`, and to any future `resource` or audience value.
 - **Route entries never import each other.** `tests/edge-functions.test.mjs` ("imports no sibling route entry") fails any `api/*.js` or `api/oauth/*.js` entry whose relative import is not `_`-prefixed.
