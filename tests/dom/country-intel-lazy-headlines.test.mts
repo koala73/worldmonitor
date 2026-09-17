@@ -9,8 +9,8 @@ const coverageMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/components/CountryDeepDivePanel', () => ({
-  CountryDeepDivePanel: class {
-    constructor() { return coverageMocks.createPanel(); }
+  CountryDeepDivePanel: function CountryDeepDivePanel() {
+    return coverageMocks.createPanel();
   },
 }));
 
