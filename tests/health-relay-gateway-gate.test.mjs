@@ -576,14 +576,20 @@ test('an owner whose lease lapsed mid-probe does not release a successor\'s leas
     now: Date.now(),
     key: RELAY_GATEWAY_GATE_PROBE_KEY,
     leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 5,
+    followerPollMs: 1,
+    sleep: async () => {},
   });
 
   assert.equal(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], 'successor-token', 'compare-and-delete left the successor lease in place');
   // The publish is guarded by the same token: a lapsed owner resuming after
   // its successor published must not overwrite the newer verdict with an
   // older one (an old OK masking a new rejection, or an old failure
-  // replacing a recovery) (#8282 review).
-  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], null, 'the lapsed owner did not publish over its successor');
+  // replacing a recovery) (#8282 review). What it may leave behind is only
+  // the follower fallback it becomes — a predecessor, never a verdict.
+  const left = JSON.parse(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY]);
+  assert.notEqual(left.status, 'RELAY_GATE_REJECTED', 'the lapsed owner did not publish its own verdict');
+  assert.equal(left.probed, false);
 });
 
 test('a lapsed owner never overwrites the verdict its successor already published', async () => {
@@ -604,8 +610,56 @@ test('a lapsed owner never overwrites the verdict its successor already publishe
     key: RELAY_GATEWAY_GATE_PROBE_KEY,
     leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
   });
-  assert.equal(entry.status, 'OK', 'the stale owner still reports what it saw for its own sweep');
   assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], successorVerdict, 'the newer rejection stayed published');
+  // Losing the lease makes this sweep a follower: it adopts the successor's
+  // verdict instead of carrying its own stale OK into the health snapshot,
+  // which handleHealth writes unconditionally for the snapshot TTL (#8282 review).
+  assert.deepEqual(entry, JSON.parse(successorVerdict), 'the stale owner adopts the successor verdict');
+});
+
+test('a lapsed owner whose successor is still probing waits for that verdict like any follower', async () => {
+  productionEnv();
+  const successorVerdict = JSON.stringify({ role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'RELAY_GATE_REJECTED', httpStatus: 401, evaluatedAt: new Date().toISOString() });
+  const { snapshotStore } = mockTransports({
+    relay: () => {
+      // The successor holds the lease but has not published yet.
+      snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'successor-token';
+      return admitted();
+    },
+  });
+  let polls = 0;
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 10_000,
+    followerPollMs: 1,
+    sleep: async () => { if (++polls === 2) snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = successorVerdict; },
+  });
+  assert.deepEqual(entry, JSON.parse(successorVerdict), 'adopted once the successor published');
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], 'successor-token', 'the successor lease was left alone');
+});
+
+test('a lapsed owner whose successor never publishes falls back to the graced unclassified verdict, not its own stale one', async () => {
+  productionEnv();
+  const { snapshotStore } = mockTransports({
+    relay: () => {
+      snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'successor-token';
+      return admitted();
+    },
+  });
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 5,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
+  assert.match(entry.error, /lease/);
+  assert.ok(Date.parse(entry.transportGraceUntil) > Date.now(), 'graced like any follower fallback');
+  assert.equal(JSON.parse(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY]).probed, false, 'the fallback deadline is persisted');
 });
 
 test('the lease owner publishes before releasing, and the lease is free after the sweep', async () => {

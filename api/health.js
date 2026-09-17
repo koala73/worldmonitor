@@ -3917,7 +3917,11 @@ async function readOrProbeRelayGatewayGate({
   ).catch(() => null);
   const ownsLease = lease?.[0]?.result === 'OK';
 
-  if (!ownsLease) {
+  // The follower path: wait for whoever holds the lease to publish, then
+  // adopt that verdict; if none lands in the probe budget, report the gate
+  // unclassified with transport grace. Taken by a sweep that lost the lease
+  // race AND by an owner that lost its lease mid-probe (below).
+  const follow = async () => {
     const deadline = Date.now() + followerWaitMs;
     while (Date.now() < deadline) {
       await sleep(followerPollMs);
@@ -3951,7 +3955,9 @@ async function readOrProbeRelayGatewayGate({
       String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
     ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
     return fallback;
-  }
+  };
+
+  if (!ownsLease) return follow();
 
   try {
     const probed = await probeRelayGatewayGate({ now, fetchImpl });
@@ -3962,7 +3968,7 @@ async function readOrProbeRelayGatewayGate({
     // this sweep's token (see RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT).
     // Retained past the freshness window so the next sweep can still see
     // this verdict as its predecessor.
-    await redisPipeline([[
+    const published = await redisPipeline([[
       'EVAL',
       RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT,
       '2',
@@ -3971,7 +3977,14 @@ async function readOrProbeRelayGatewayGate({
       leaseToken,
       JSON.stringify(fresh),
       String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
-    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    // A refused publish (script returned 0) means the lease lapsed mid-probe
+    // and a successor owns the gate now. This sweep's verdict is the older
+    // one, and handleHealth would still write it into the health snapshot
+    // for the snapshot TTL — so become a follower of the successor instead.
+    // A Redis error (null) is not a refusal: the verdict may well have
+    // landed, and there is no newer one to defer to.
+    if (published?.[0]?.result === 0) return follow();
     return fresh;
   } finally {
     const release = redisPipeline([[
