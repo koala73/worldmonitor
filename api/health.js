@@ -3921,13 +3921,17 @@ async function readOrProbeRelayGatewayGate({
   // adopt that verdict; if none lands in the probe budget, report the gate
   // unclassified with transport grace. Taken by a sweep that lost the lease
   // race AND by an owner that lost its lease mid-probe (below).
-  const follow = async () => {
+  // `own` is set by an owner whose publish result was indeterminate: it did
+  // probe, so if no newer verdict appears its own observation stands rather
+  // than an unclassified fallback it would have to invent.
+  const follow = async (own = null) => {
     const deadline = Date.now() + followerWaitMs;
     while (Date.now() < deadline) {
       await sleep(followerPollMs);
       const published = await readCached();
       if (published) return published;
     }
+    if (own) return own;
     if (!probeRelayGatewayGateApplies()) return null;
     // Same grace as a directly probed unreachable verdict: one slow or crashed
     // owner is a single observation, not yet a problem. `lastRaw` is the last
@@ -3978,14 +3982,16 @@ async function readOrProbeRelayGatewayGate({
       JSON.stringify(fresh),
       String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
     ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
-    // A refused publish (script returned 0) means the lease lapsed mid-probe
-    // and a successor owns the gate now. This sweep's verdict is the older
-    // one, and handleHealth would still write it into the health snapshot
-    // for the snapshot TTL — so become a follower of the successor instead.
-    // A Redis error (null) is not a refusal: the verdict may well have
-    // landed, and there is no newer one to defer to.
-    if (published?.[0]?.result === 0) return follow();
-    return fresh;
+    // Only an explicit 'OK' proves this verdict landed while the lease was
+    // still ours. A refusal (0) means the lease lapsed mid-probe and a
+    // successor owns the gate; an indeterminate result (timeout, error,
+    // malformed reply) may hide the same thing. Either way this sweep's
+    // verdict may be the older one, and handleHealth would write it into the
+    // health snapshot for the snapshot TTL — so follow the current owner. On
+    // an indeterminate result the own verdict stands if nothing newer lands.
+    const result = published?.[0]?.result;
+    if (result === 'OK') return fresh;
+    return follow(result === 0 ? null : fresh);
   } finally {
     const release = redisPipeline([[
       'EVAL',

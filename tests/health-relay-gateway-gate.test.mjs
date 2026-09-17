@@ -617,6 +617,55 @@ test('a lapsed owner never overwrites the verdict its successor already publishe
   assert.deepEqual(entry, JSON.parse(successorVerdict), 'the stale owner adopts the successor verdict');
 });
 
+test('an owner whose publish result is indeterminate adopts a successor verdict that lands, rather than trusting its own', async () => {
+  // The publish EVAL times out / errors: nothing proves the verdict landed
+  // before the lease lapsed, and a successor may already own the gate. Only an
+  // explicit publish success makes returning `fresh` safe (#8282 review).
+  productionEnv();
+  const successorVerdict = JSON.stringify({ role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'RELAY_GATE_REJECTED', httpStatus: 401, evaluatedAt: new Date().toISOString() });
+  const { snapshotStore } = mockTransports({ relay: admitted });
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (typeof init?.body === 'string' && init.body.includes(`"2","${RELAY_GATEWAY_GATE_LEASE_KEY}"`)) {
+      throw new Error('redis publish timed out');
+    }
+    return redisFetch(url, init);
+  };
+  let polls = 0;
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 10_000,
+    followerPollMs: 1,
+    sleep: async () => { if (++polls === 2) snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = successorVerdict; },
+  });
+  assert.deepEqual(entry, JSON.parse(successorVerdict), 'the newer verdict wins over the unproven own one');
+});
+
+test('an owner whose publish result is indeterminate and sees no successor verdict still reports its own probe, not an unreachable fallback', async () => {
+  productionEnv();
+  const { snapshotStore, relayCalls } = mockTransports({ relay: admitted });
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (typeof init?.body === 'string' && init.body.includes(`"2","${RELAY_GATEWAY_GATE_LEASE_KEY}"`)) {
+      throw new Error('redis publish timed out');
+    }
+    return redisFetch(url, init);
+  };
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 5,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(relayCalls.length, 1);
+  assert.equal(entry.status, 'OK', 'this sweep did probe; with no newer verdict its own observation stands');
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], null, 'and no unclassified fallback was persisted over nothing');
+});
+
 test('a lapsed owner whose successor is still probing waits for that verdict like any follower', async () => {
   productionEnv();
   const successorVerdict = JSON.stringify({ role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'RELAY_GATE_REJECTED', httpStatus: 401, evaluatedAt: new Date().toISOString() });
