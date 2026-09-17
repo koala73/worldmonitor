@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -425,9 +425,13 @@ describe('seed freshness workflow control plane', () => {
   });
 
   it('runs head scripts while retaining the gated ancestor for acceptance bookkeeping', () => {
+    const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+    const localGitVariables = execFileSync('git', ['rev-parse', '--local-env-vars'], { encoding: 'utf8' })
+      .trim().split('\n').filter(Boolean);
+    for (const name of localGitVariables) delete gitEnv[name];
     const dir = mkdtempSync(join(repoRoot, '.tmp-seed-revision-'));
     const git = (...args) => {
-      const result = spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+      const result = spawnSync('git', args, { cwd: dir, env: gitEnv, encoding: 'utf8' });
       assert.equal(result.status, 0, result.stderr);
       return result.stdout.trim();
     };
@@ -465,7 +469,7 @@ describe('seed freshness workflow control plane', () => {
         assert.equal(typeof step.run, 'string', 'post-gate steps must run from the initial checkout');
         const result = spawnSync('bash', ['-e', '-c', step.run], {
           cwd: dir, encoding: 'utf8',
-          env: { ...process.env, GITHUB_SHA: head, GATED_SHA: ancestor,
+          env: { ...gitEnv, GITHUB_SHA: head, GATED_SHA: ancestor,
             SEED_ACCEPTANCE_SHA: ancestor, SEED_STATUS_SHA: ancestor,
             SEED_ACCEPTANCE_OUTCOME: 'success', RUNNER_TEMP: dir,
             ARGS_LOG: join(dir, 'publisher-args.json') },
