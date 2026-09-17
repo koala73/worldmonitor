@@ -26,6 +26,7 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler, __testing__ } = await import('../api/health.js');
+const { findOperationalProblems, findPendingDiagnostics } = await import('../scripts/check-seed-freshness.mjs');
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
   HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY: HEALTH_COMPACT_SNAPSHOT_KEY,
@@ -37,6 +38,9 @@ const {
   RELAY_GATEWAY_GATE_LEASE_KEY,
   RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
+  RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
+  withTransportGrace,
   parseCachedRelayGatewayGate,
   readOrProbeRelayGatewayGate,
   STATUS_COUNTS,
@@ -242,7 +246,7 @@ test('outside production a missing gateway env omits the check instead of failin
   assert.equal(relayCalls.length, 0);
 });
 
-test('an unreachable or erroring relay is RELAY_GATE_UNREACHABLE, a warning, never a credential verdict', async () => {
+test('a first unreachable or erroring relay is RELAY_GATE_UNREACHABLE under grace: pending, not yet a problem, never a credential verdict', async () => {
   const control = await controlSummary();
   productionEnv();
   mockTransports({ relay: async () => { throw new TypeError('fetch failed'); } });
@@ -253,9 +257,54 @@ test('an unreachable or erroring relay is RELAY_GATE_UNREACHABLE, a warning, nev
   assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
   assert.equal(STATUS_COUNTS.RELAY_GATE_UNREACHABLE, 'warn');
   assert.match(entry.error, /fetch failed/);
-  assert.equal(detailed.summary.warn, control.warn + 1, 'one more warn, no new crit');
+  // One blip is not evidence: the first sighting carries a bounded grace,
+  // buckets as ok, lands in compact `pending`, and the 15-minute monitor's
+  // own predicates agree it is not operational (#8282 review).
+  const graceUntil = Date.parse(entry.transportGraceUntil);
+  assert.ok(graceUntil > Date.now() && graceUntil <= Date.now() + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + 1_000);
+  assert.equal(detailed.summary.warn, control.warn, 'no new warn while under grace');
   assert.equal(detailed.summary.crit, control.crit);
+  assert.equal(detailed.summary.pending, (control.pending ?? 0) + 1, 'summary.pending is published once something is pending');
+  assert.equal(compact.problems?.[RELAY_GATEWAY_GATE_CHECK_NAME], undefined);
+  assert.equal(compact.pending[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
+  assert.equal(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), false);
+  assert.ok(findPendingDiagnostics(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME));
+});
+
+test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHABLE problem and the grace is carried, not restarted', async () => {
+  productionEnv();
+  const { snapshotStore, redisCommands } = mockTransports({ relay: () => new Response('upstream', { status: 502 }) });
+  // Previous window: unreachable, grace already expired, verdict itself stale
+  // (older than the freshness window) but still retained for the streak.
+  const expiredGrace = new Date(Date.now() - 1_000).toISOString();
+  snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = JSON.stringify({
+    role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'RELAY_GATE_UNREACHABLE',
+    evaluatedAt: new Date(Date.now() - 2 * RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS * 1_000).toISOString(),
+    transportGraceUntil: expiredGrace,
+  });
+
+  const { detailed, compact } = await sweep();
+
+  const entry = detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME];
+  assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
+  assert.equal(entry.transportGraceUntil, expiredGrace, 'the original deadline is carried across windows');
   assert.equal(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
+  assert.ok(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), 'now operational');
+  const publish = redisCommands.find(([op, key]) => op === 'SET' && key === RELAY_GATEWAY_GATE_PROBE_KEY);
+  assert.deepEqual(publish.slice(3), ['EX', String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS)], 'retained past the freshness window for the streak');
+  assert.ok(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS * 1_000 > RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS);
+});
+
+test('withTransportGrace only decorates unreachable verdicts and restarts after a healthy window', () => {
+  const now = Date.parse('2026-09-17T12:00:00Z');
+  const ok = { status: 'OK' };
+  assert.deepEqual(withTransportGrace(ok, { status: 'RELAY_GATE_UNREACHABLE', transportGraceUntil: 'x' }, now), ok);
+  const first = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, { status: 'OK' }, now);
+  assert.equal(first.transportGraceUntil, new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString());
+  const carried = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, first, now + 60_000);
+  assert.equal(carried.transportGraceUntil, first.transportGraceUntil);
+  const malformed = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, { status: 'RELAY_GATE_UNREACHABLE', transportGraceUntil: 'not-a-date' }, now);
+  assert.equal(malformed.transportGraceUntil, new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString());
 });
 
 test('an unexpected admit-side answer is also RELAY_GATE_UNREACHABLE, so a relay 5xx cannot read as "credential fine"', async () => {

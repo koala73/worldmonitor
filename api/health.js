@@ -3171,6 +3171,13 @@ function healthStatusBucket(entry, now) {
     && Object.prototype.hasOwnProperty.call(entry, 'staleContentGraceUntil')
     && !isExpiredDeadline(entry.staleContentGraceUntil, now)
   ) return 'ok';
+  // A relay transport blip is pending, not a problem, until its bounded
+  // grace passes (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).
+  if (
+    entry?.status === 'RELAY_GATE_UNREACHABLE'
+    && typeof entry.transportGraceUntil === 'string'
+    && !isExpiredDeadline(entry.transportGraceUntil, now)
+  ) return 'ok';
   return STATUS_COUNTS[entry?.status] ?? 'warn';
 }
 
@@ -3565,6 +3572,7 @@ const ENTRY_SOFTENING_DEADLINES = [
   { field: 'sourceFailurePendingUntil', kind: 'source', status: 'SEED_ERROR' },
   { field: 'chinaCoveragePendingUntil', kind: 'source', status: null },
   { field: 'containmentUntil', kind: 'source', status: null },
+  { field: 'transportGraceUntil', kind: 'source', status: 'RELAY_GATE_UNREACHABLE' },
 ];
 
 function entryDeadlineRaw(entry, { field, status }) {
@@ -3728,6 +3736,42 @@ const RELAY_GATEWAY_GATE_PROBE_KEY = healthVerdictRedisKey(
   process.env.VERCEL_GIT_COMMIT_SHA,
 );
 const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS;
+// Transport grace. A single timeout or 5xx from the relay is not yet evidence
+// of anything: the first RELAY_GATE_UNREACHABLE verdict carries a
+// `transportGraceUntil` deadline during which it buckets as `ok` (compact
+// `pending`), and only a stall that is still there when the deadline passes
+// becomes an operational problem. Three verdict windows is enough for one
+// blip to clear and short enough that a real outage still pages inside the
+// monitor's 15-minute cadence. The verdict is kept in Redis for the grace
+// PLUS the freshness window (freshness is judged on `evaluatedAt`, not the
+// Redis TTL) so the streak survives between windows.
+const RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1_000;
+const RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS =
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS / 1_000;
+
+/** The previous verdict regardless of freshness, for streak continuity. */
+function parsePreviousRelayGatewayGate(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && typeof parsed.status === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function withTransportGrace(fresh, previous, now) {
+  if (fresh.status !== 'RELAY_GATE_UNREACHABLE') return fresh;
+  const carried = previous?.status === 'RELAY_GATE_UNREACHABLE'
+    && typeof previous.transportGraceUntil === 'string'
+    && Number.isFinite(Date.parse(previous.transportGraceUntil))
+    ? previous.transportGraceUntil
+    : null;
+  return {
+    ...fresh,
+    transportGraceUntil: carried ?? new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString(),
+  };
+}
 
 function parseCachedRelayGatewayGate(raw, now) {
   if (typeof raw !== 'string' || raw.length === 0) return null;
@@ -3781,12 +3825,17 @@ async function readOrProbeRelayGatewayGate({
   // A deployment that would not report the gate at all (no gateway env
   // outside a production build) touches neither the cache nor the lease.
   if (!probeRelayGatewayGateApplies()) return null;
+  let lastRaw = null;
   const readCached = async () => {
     const cached = await redisPipeline([['GET', key]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
-    return parseCachedRelayGatewayGate(cached?.[0]?.result, clock());
+    lastRaw = cached?.[0]?.result ?? null;
+    return parseCachedRelayGatewayGate(lastRaw, clock());
   };
   const reused = await readCached();
   if (reused) return reused;
+  // Whatever was cached, fresh or not, is the previous verdict for the
+  // transport-grace streak (see withTransportGrace).
+  const previous = parsePreviousRelayGatewayGate(lastRaw);
 
   // The lease carries a per-sweep token and is released with the same
   // compare-and-delete script as the verdict refresh lock: if the TTL lapses
@@ -3819,12 +3868,14 @@ async function readOrProbeRelayGatewayGate({
   }
 
   try {
-    const fresh = await probeRelayGatewayGate({ now, fetchImpl });
-    if (!fresh) return null;
+    const probed = await probeRelayGatewayGate({ now, fetchImpl });
+    if (!probed) return null;
+    const fresh = withTransportGrace(probed, previous, now);
     // Publish before releasing so a follower never sees a free lease and an
-    // empty cache in the same instant.
+    // empty cache in the same instant. Retained past the freshness window so
+    // the next sweep can still see this verdict as its predecessor.
     await redisPipeline(
-      [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS)]],
+      [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS)]],
       RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
       true,
     ).catch(() => {});
@@ -4799,6 +4850,9 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
   RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
   RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+  RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
+  RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
+  withTransportGrace,
   probeRelayGatewayGate,
   parseCachedRelayGatewayGate,
   readOrProbeRelayGatewayGate,
