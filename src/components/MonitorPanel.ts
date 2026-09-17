@@ -146,7 +146,7 @@ export class MonitorPanel extends Panel {
           h('div', { className: 'item-source' }, item.source),
           h('a', {
             className: 'item-title',
-            href: sanitizeUrl(item.link),
+            href: sanitizeUrl(item.link) ? item.link : '',
             target: '_blank',
             rel: 'noopener',
           }, item.title),
