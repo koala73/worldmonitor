@@ -596,7 +596,18 @@ function isAllowedEval(args) {
 // source and evals it standalone; a class declared elsewhere in this file
 // would be undefined there.
 function assertCommandAllowed(args) {
-  const cmd = String(args[0]).toUpperCase();
+  // Shape first, authorization second. String(args[0]) turns a missing verb
+  // into "undefined" and a null one into "null", and the allowlist then
+  // refuses those as if they were commands — so `[[]]` and `[[null]]` came
+  // back as 403 "Command not allowed: UNDEFINED"/"NULL" while a null ELEMENT
+  // (which throws before this line) came back as 500. Same malformed body,
+  // two status classes, two of them in the authorization channel. A
+  // well-formed command that is simply not allowed is the only thing past
+  // this point.
+  if (!Array.isArray(args) || typeof args[0] !== 'string' || args[0].trim() === '') {
+    throw new TypeError('Malformed command: expected an array whose first element is the command name');
+  }
+  const cmd = args[0].toUpperCase();
   if (cmd === 'EVAL') {
     if (!isAllowedEval(args)) {
       console.error('Command not allowed: EVAL (script not in the pinned allowlist)');

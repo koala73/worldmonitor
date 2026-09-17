@@ -306,19 +306,35 @@ describe('redis-rest-proxy POST /multi-exec', () => {
     assert.match(JSON.parse(res.body).error, /multi\.addCommand exploded/);
   });
 
-  it('reports a malformed command element as 500, not as an authorization error', async () => {
-    // Narrowing the try around commandForExecution is not sufficient: the gate
-    // itself throws a TypeError (not a refusal) on a null element, because
-    // assertCommandAllowed opens with String(args[0]). Before the throw was
-    // tagged, a caller whose .map() produced one null entry got
-    // 403 "Cannot read properties of null (reading '0')" — the #8265
-    // misdirection surviving one layer in.
-    const app = await boot();
-    const res = await app.post('/multi-exec', [['SET', 't:a', 'hello'], null]);
+  // Every malformed body shape must leave the authorization channel, not just
+  // the one that happens to throw before the allowlist runs. Narrowing the try
+  // around commandForExecution was not sufficient for `null` (the gate itself
+  // throws a TypeError there), and tagging the refusal was not sufficient for
+  // `[]` or `[null]`: String(args[0]) turned those into the "commands"
+  // UNDEFINED and NULL, which the allowlist then refused for real — 403,
+  // the #8265 misdirection surviving one more layer in.
+  for (const [label, element] of [
+    ['a null element', null],
+    ['an empty command array', []],
+    ['a null verb', [null]],
+    ['a non-array element', 'SET t:a hello'],
+  ]) {
+    it(`reports ${label} as a server error, not as an authorization error`, async () => {
+      const app = await boot();
+      const res = await app.post('/multi-exec', [['SET', 't:a', 'hello'], element]);
 
-    assert.equal(res.status, 500, `expected 500, got ${res.status} ${res.body}`);
-    assert.doesNotMatch(JSON.parse(res.body).error, /Command not allowed/);
-    assert.equal(app.transaction().execCalls(), 0);
+      assert.equal(res.status, 500, `expected 500, got ${res.status} ${res.body}`);
+      assert.doesNotMatch(JSON.parse(res.body).error, /Command not allowed/);
+      assert.equal(app.transaction().execCalls(), 0);
+    });
+  }
+
+  it('still accepts a lower-case verb — the shape guard checks the type, not the casing', async () => {
+    const app = await boot();
+    const res = await app.post('/multi-exec', [['get', 't:a']]);
+
+    assert.equal(res.status, 200, `expected 200, got ${res.status} ${res.body}`);
+    assert.deepEqual(app.transaction().queued, [['GET', 't:a']]);
   });
 
   it('leaves a server-side record for a 500 as well as for a refusal', async () => {
