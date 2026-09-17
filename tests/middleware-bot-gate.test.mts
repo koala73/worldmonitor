@@ -470,6 +470,35 @@ describe('legacy root map-state links (#7660)', () => {
     'lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts%2Cbases';
   const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 
+  for (const state of ['c=IR&t=ciianalysis&ts=123', 'country=BF&expanded=1', 'chokepoint=suez']) {
+    it(`forwards bounded entity state ${state} for people and crawlers in one hop`, () => {
+      for (const ua of [CHROME_UA, GOOGLEBOT_UA, 'ChatGPT-User/1.0']) {
+        const res = call(`/?${state}&utm_source=shared#map`, ua);
+        assert.ok(res instanceof Response);
+        assert.equal(res.status, 308);
+        const expectedQuery = ua === GOOGLEBOT_UA ? state : `${state}&utm_source=shared`;
+        assert.equal(res.headers.get('location'), `https://www.worldmonitor.app/dashboard?${expectedQuery}#map`);
+        assert.match(res.headers.get('vary') ?? '', /User-Agent/i);
+        for (const header of ['cache-control', 'cdn-cache-control', 'vercel-cdn-cache-control']) {
+          assert.match(res.headers.get(header) ?? '', /no-store/);
+        }
+        assert.equal(call(`/dashboard?${state}`, ua), undefined);
+      }
+    });
+  }
+
+  it('collapses coordinate links including entity modifiers for crawlers only', () => {
+    const state = 'country=IR&expanded=1&c=IR&t=brief&ts=123&chokepoint=suez&zoom=4';
+    assert.equal(call(`/?${state}`, GOOGLEBOT_UA)?.headers.get('location'), 'https://www.worldmonitor.app/dashboard');
+    assert.equal(call(`/?${state}`, CHROME_UA)?.headers.get('location'), `https://www.worldmonitor.app/dashboard?${state}`);
+  });
+
+  it('does not reinterpret homepage preferences or standalone modifiers as dashboard state', () => {
+    for (const query of ['lang=ar', '_f=uuaa', 'expanded=1', 't=brief&ts=123']) {
+      for (const ua of [CHROME_UA, GOOGLEBOT_UA]) assert.equal(call(`/?${query}`, ua), undefined);
+    }
+  });
+
   it('sends a crawler to the param-free /dashboard document', () => {
     const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
     assert.ok(res instanceof Response, 'crawler must be redirected');

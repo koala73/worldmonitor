@@ -3179,6 +3179,15 @@ const STATUS_COUNTS = {
   CHINA_UNAVAILABLE: 'crit',
   EMPTY: 'crit',
   EMPTY_DATA: 'crit',
+  // Tenant-relay gateway gate (probeRelayGatewayGate). Both crit statuses mean
+  // checkout / customer-portal / notification-channels are dead right now:
+  // MISCONFIGURED is the Vercel half of #8208 (the build cannot see the
+  // secret), REJECTED is the Convex half (the deployed gate does not admit
+  // it). UNREACHABLE is a transport verdict, not a credential one, and stays
+  // a warning so a single Convex blip inside one 60 s snapshot does not page.
+  RELAY_GATE_MISCONFIGURED: 'crit',
+  RELAY_GATE_REJECTED: 'crit',
+  RELAY_GATE_UNREACHABLE: 'warn',
 };
 
 function healthStatusBucket(entry, now) {
@@ -3192,6 +3201,13 @@ function healthStatusBucket(entry, now) {
     entry?.status === 'STALE_CONTENT'
     && Object.prototype.hasOwnProperty.call(entry, 'staleContentGraceUntil')
     && !isExpiredDeadline(entry.staleContentGraceUntil, now)
+  ) return 'ok';
+  // A relay transport blip is pending, not a problem, until its bounded
+  // grace passes (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).
+  if (
+    entry?.status === 'RELAY_GATE_UNREACHABLE'
+    && typeof entry.transportGraceUntil === 'string'
+    && !isExpiredDeadline(entry.transportGraceUntil, now)
   ) return 'ok';
   return STATUS_COUNTS[entry?.status] ?? 'warn';
 }
@@ -3588,6 +3604,7 @@ const ENTRY_SOFTENING_DEADLINES = [
   { field: 'workerControlPendingUntil', kind: 'source', status: 'SEED_ERROR' },
   { field: 'chinaCoveragePendingUntil', kind: 'source', status: null },
   { field: 'containmentUntil', kind: 'source', status: null },
+  { field: 'transportGraceUntil', kind: 'source', status: 'RELAY_GATE_UNREACHABLE' },
 ];
 
 function entryDeadlineRaw(entry, { field, status }) {
@@ -3685,6 +3702,433 @@ function snapshotTtlSeconds(snapshot, now) {
  * ROLLOUT_PENDING is never contained (#6059): it stays availability-affecting
  * until its deadline promotes a missing payload to critical.
  */
+// ── Tenant-relay gateway gate probe (#8208 / #8217) ──────────────────────
+//
+// #8208 took checkout, the customer portal and notification channels down for
+// nine hours while every credential existed in the right store: the Vercel
+// build predated CONVEX_TENANT_RELAY_SECRET, so `create-checkout` answered its
+// env-missing 503 before reaching Convex, and the Convex deploy predated it
+// too, so every `/relay/*` route answered 401. Presence in a store proves
+// nothing; only the deployed gate admitting the deployed secret does.
+//
+// So the sweep sends ONE credentialed, body-less POST to the gateway-role
+// route. The relay's own contract makes that safe and decisive
+// (convex/http.ts `authorizeTenantRelay` → `parseJsonObjectBody`): a wrong or
+// missing bearer is `401 UNAUTHORIZED`; an admitted bearer with `{}` is
+// `400 MISSING_FIELDS`, returned before any Convex mutation runs. Anything
+// else — network error, timeout, 5xx, an unexpected 200 — is a transport
+// verdict (`RELAY_GATE_UNREACHABLE`, warn), never a credential one, so a
+// Convex stall cannot read as "credential fine" and a credential fault cannot
+// hide behind a stall.
+//
+// Cost: the probe lives inside the verdict recompute, which the snapshot TTL
+// and refresh lock already bound to one run per 60 s regardless of poll
+// volume (~115k `?compact=1` reads/day), and it is skipped entirely when the
+// gateway env is absent outside production (previews, local, the existing
+// test suites). On a production build a missing var is itself the fault.
+//
+// Counted in `summary.total` whenever it applies, so the endpoint's partition
+// invariant (`ok + warn + onDemandWarn + crit == total`) holds; the published
+// examples stay pinned to the registry size by the docs-stats gate and the
+// docs state that a production build reports one more. Its verdict lands in
+// compact `problems`, which is what the 15-minute seed-freshness monitor
+// fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
+const RELAY_GATEWAY_GATE_CHECK_NAME = 'relayGatewayGate';
+const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
+const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
+const RELAY_GATEWAY_GATE_USER_AGENT = 'worldmonitor-health-relay-gate/1.0';
+const RELAY_GATEWAY_GATE_ENV = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET'];
+
+// The same resolution the gateways use (api/create-checkout.ts,
+// api/customer-portal.ts, api/notification-channels.ts): CONVEX_SITE_URL, or
+// the `.convex.site` twin of CONVEX_URL. A deployment configured through
+// CONVEX_URL alone is a supported shape and must not read as misconfigured.
+function resolveRelayGatewaySiteUrl() {
+  return process.env.CONVEX_SITE_URL
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+}
+
+/** Names of the gateway inputs this deployment lacks, in RELAY_GATEWAY_GATE_ENV terms. */
+function relayGatewayGateMissingEnv() {
+  const missing = [];
+  if (!resolveRelayGatewaySiteUrl()) missing.push('CONVEX_SITE_URL');
+  if (!process.env.CONVEX_TENANT_RELAY_SECRET) missing.push('CONVEX_TENANT_RELAY_SECRET');
+  return missing;
+}
+// Last probe verdict, shared by every concurrent sweep. TTL equals the verdict
+// snapshot TTL so the gate is re-asked exactly as often as the verdict itself.
+// Scoped per deployment exactly like the verdict snapshot keys: preview and
+// production share one Upstash, so a preview's verdict or lease must never be
+// reused by production, nor a production verdict read by a preview.
+// `healthVerdictRedisKey` folds VERCEL_ENV and the commit SHA in, and these
+// keys are sent verbatim (no `sweepKey` prefixing), the same as the snapshot.
+const RELAY_GATEWAY_GATE_PROBE_KEY = healthVerdictRedisKey(
+  'health:relay-gate:v1',
+  process.env.VERCEL_ENV,
+  process.env.VERCEL_GIT_COMMIT_SHA,
+);
+const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS;
+// Transport grace. A single timeout or 5xx from the relay is not yet evidence
+// of anything: the first RELAY_GATE_UNREACHABLE verdict carries a
+// `transportGraceUntil` deadline during which it buckets as `ok` (compact
+// `pending`), and only a stall that is still there when the deadline passes
+// becomes an operational problem. Three verdict windows is enough for one
+// blip to clear and short enough that a real outage still pages inside the
+// monitor's 15-minute cadence. The verdict is kept in Redis for the grace
+// PLUS the freshness window (freshness is judged on `evaluatedAt`, not the
+// Redis TTL) so the streak survives between windows.
+const RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1_000;
+// The streak must survive at least one operational-monitor interval with NO
+// other traffic: `seed-freshness-monitor.yml` polls every 15 minutes, and if
+// the previous verdict had already expired by then, every run would see a
+// "first sighting", mint a fresh grace and park a dead relay in `pending`
+// forever. Retention = freshness window + grace + one monitor interval +
+// slack; freshness itself is still judged on `evaluatedAt`.
+const SEED_FRESHNESS_MONITOR_INTERVAL_MS = 15 * 60 * 1_000;
+const RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS =
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS
+  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS + 60_000) / 1_000;
+
+/** The previous verdict regardless of freshness, for streak continuity. */
+function parsePreviousRelayGatewayGate(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && typeof parsed.status === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function withTransportGrace(fresh, previous, now) {
+  if (fresh.status !== 'RELAY_GATE_UNREACHABLE') return fresh;
+  // The streak anchor survives its own deadline: after the grace lapses it
+  // rides in `transportGraceExpiredAt`, so an unreachable relay that recovers
+  // and fails again still reads as one continuous outage.
+  const carried = previous?.status === 'RELAY_GATE_UNREACHABLE'
+    ? [previous.transportGraceUntil, previous.transportGraceExpiredAt]
+      .find((raw) => typeof raw === 'string' && Number.isFinite(Date.parse(raw))) ?? null
+    : null;
+  const deadline = carried ?? new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString();
+  // Publish it as a softening deadline ONLY while it is still in force.
+  // `transportGraceUntil` is registered in ENTRY_SOFTENING_DEADLINES, so an
+  // expired one makes hasExpiredActivationGrace reject every snapshot that
+  // carries it and snapshotTtlSeconds clip the TTL to a second — turning a
+  // persistent relay outage into a full Redis sweep and relay probe on every
+  // single health poll, hammering both failing services (#8282 review).
+  return isExpiredDeadline(deadline, now)
+    ? { ...fresh, transportGraceExpiredAt: deadline }
+    : { ...fresh, transportGraceUntil: deadline };
+}
+
+function parseCachedRelayGatewayGate(raw, now) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || typeof parsed.status !== 'string') return null;
+  // A persisted follower fallback is a predecessor for the grace streak,
+  // never a verdict to serve warm: nobody probed, so the next sweep must.
+  if (parsed.probed === false) return null;
+  const evaluatedAt = Date.parse(parsed.evaluatedAt ?? '');
+  if (!Number.isFinite(evaluatedAt) || evaluatedAt > now) return null;
+  if (now - evaluatedAt >= RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS * 1_000) return null;
+  return parsed;
+}
+
+// The owner's publish is guarded by its lease token (KEYS[1] = lease,
+// KEYS[2] = verdict): an owner paused past its 10 s lease resumes to find a
+// successor that already probed and published, and an unconditional SET here
+// would let its OLDER verdict overwrite the newer one — an old OK masking a
+// new rejection, or an old failure replacing a recovery. Losing the lease
+// means losing the right to publish; the sweep still reports what it saw.
+const RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT = [
+  "if redis.call('get', KEYS[1]) == ARGV[1] then",
+  "  return redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 0',
+].join('\n');
+
+// Compare-and-set for the follower fallback: publish only if the key still
+// holds what the follower last read (ARGV[1], '' for absent), so a verdict
+// the owner landed between the last poll and this write is never clobbered.
+const RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT = [
+  "local current = redis.call('get', KEYS[1])",
+  "if current == false then current = '' end",
+  'if current == ARGV[1] then',
+  "  return redis.call('set', KEYS[1], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 0',
+].join('\n');
+
+// Single-flight population. When no verdict is cached, exactly one sweep may
+// probe: it takes a short `SET NX` lease, probes, publishes the verdict and
+// releases. Every other sweep that finds the lease taken polls for the
+// published verdict for as long as the probe itself may run; if none appears
+// in that budget it reports the gate as unclassified (`RELAY_GATE_UNREACHABLE`,
+// warn) rather than either probing itself or vouching for a credential it
+// never checked. The lease outlives the probe budget so a crashed owner
+// cannot wedge the gate for longer than one snapshot.
+const RELAY_GATEWAY_GATE_LEASE_KEY = `${RELAY_GATEWAY_GATE_PROBE_KEY}:lease`;
+const RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS = 10;
+const RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS = 250;
+// Redis budget for the cache read, the lease and the verdict publish.
+const RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS = 2_000;
+// A follower must outwait the owner's WHOLE critical path — the relay probe,
+// then the verdict publish (its own Redis timeout), plus polling slack —
+// otherwise a follower that happens to be the 15-minute monitor request
+// gives up a moment before the verdict lands and pages a false
+// RELAY_GATE_UNREACHABLE. The lease TTL below stays longer than this wait.
+const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS =
+  RELAY_GATEWAY_GATE_TIMEOUT_MS + RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS + 1_000;
+
+async function readOrProbeRelayGatewayGate({
+  now,
+  // Cache validation reads the live clock, not the sweep's fixed `now`: a
+  // follower polls for a verdict the lease owner publishes AFTER this sweep
+  // began, and that verdict's `evaluatedAt` is later than `now`. Validating
+  // against `now` would reject it as future-dated and persist a false
+  // RELAY_GATE_UNREACHABLE in both snapshots. `now` still stamps any verdict
+  // this sweep creates itself.
+  clock = Date.now,
+  key,
+  leaseKey,
+  ctx,
+  fetchImpl,
+  followerWaitMs = RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+  followerPollMs = RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  // A deployment that would not report the gate at all (no gateway env
+  // outside a production build) touches neither the cache nor the lease.
+  if (!probeRelayGatewayGateApplies()) return null;
+  let lastRaw = null;
+  const readCached = async () => {
+    const cached = await redisPipeline([['GET', key]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    lastRaw = cached?.[0]?.result ?? null;
+    return parseCachedRelayGatewayGate(lastRaw, clock());
+  };
+  const reused = await readCached();
+  if (reused) return reused;
+  // Whatever was cached, fresh or not, is the previous verdict for the
+  // transport-grace streak (see withTransportGrace).
+  const previous = parsePreviousRelayGatewayGate(lastRaw);
+
+  // The lease carries a per-sweep token and is released with the same
+  // compare-and-delete script as the verdict refresh lock: if the TTL lapses
+  // mid-probe and another sweep takes the lease, an unconditional DEL here
+  // would free the successor's lease and let a third sweep overlap it.
+  const leaseToken = `${now}:${crypto.randomUUID()}`;
+  const lease = await redisPipeline(
+    [['SET', leaseKey, leaseToken, 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
+    RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+    true,
+  ).catch(() => null);
+  const ownsLease = lease?.[0]?.result === 'OK';
+
+  // The follower path: wait for whoever holds the lease to publish, then
+  // adopt that verdict; if none lands in the probe budget, report the gate
+  // unclassified with transport grace. Taken by a sweep that lost the lease
+  // race AND by an owner that lost its lease mid-probe (below).
+  // `own` is set by an owner whose publish result was indeterminate: it did
+  // probe, so if no newer verdict appears its own observation stands rather
+  // than an unclassified fallback it would have to invent.
+  const follow = async (own = null) => {
+    const deadline = Date.now() + followerWaitMs;
+    while (Date.now() < deadline) {
+      await sleep(followerPollMs);
+      const published = await readCached();
+      if (published) return published;
+    }
+    if (own) return own;
+    if (!probeRelayGatewayGateApplies()) return null;
+    // Same grace as a directly probed unreachable verdict: one slow or crashed
+    // owner is a single observation, not yet a problem. `lastRaw` is the last
+    // cached verdict the polls saw, so a carried deadline still carries.
+    const fallback = withTransportGrace({
+      role: 'gateway',
+      route: RELAY_GATEWAY_GATE_ROUTE,
+      evaluatedAt: new Date(now).toISOString(),
+      status: 'RELAY_GATE_UNREACHABLE',
+      error: 'another sweep holds the probe lease and published no verdict within the probe budget',
+      hint: 'This sweep did not probe the gate itself (single-flight). Persistent across sweeps = the probing sweep keeps timing out against Convex.',
+    }, parsePreviousRelayGatewayGate(lastRaw), now);
+    // Persist the deadline, not just the snapshot: if the owner died without
+    // publishing and nothing else sweeps, the next monitor run (one interval
+    // later, after the snapshot expired) would otherwise find no predecessor
+    // and mint a fresh grace — one more interval before a dead relay pages.
+    // `probed: false` keeps it a predecessor only (see parseCachedRelayGatewayGate).
+    const published = await redisPipeline([[
+      'EVAL',
+      RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT,
+      '1',
+      key,
+      typeof lastRaw === 'string' ? lastRaw : '',
+      JSON.stringify({ ...fallback, probed: false }),
+      String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    // Anything but an explicit 'OK' means a verdict may have landed between
+    // this sweep's last poll and the CAS. Returning the fabricated fallback
+    // then lets handleHealth write it over the owner's real answer, hiding a
+    // fresh rejection as pending for a whole monitor run (#8282 review).
+    if (published?.[0]?.result !== 'OK') {
+      const winner = await readCached();
+      if (winner) return winner;
+    }
+    return fallback;
+  };
+
+  if (!ownsLease) return follow();
+
+  try {
+    const probed = await probeRelayGatewayGate({ now, fetchImpl });
+    if (!probed) return null;
+    const fresh = withTransportGrace(probed, previous, now);
+    // Publish before releasing so a follower never sees a free lease and an
+    // empty cache in the same instant, and only while the lease still holds
+    // this sweep's token (see RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT).
+    // Retained past the freshness window so the next sweep can still see
+    // this verdict as its predecessor.
+    const published = await redisPipeline([[
+      'EVAL',
+      RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT,
+      '2',
+      leaseKey,
+      key,
+      leaseToken,
+      JSON.stringify(fresh),
+      String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    // Only an explicit 'OK' proves this verdict landed while the lease was
+    // still ours. A refusal (0) means the lease lapsed mid-probe and a
+    // successor owns the gate; an indeterminate result (timeout, error,
+    // malformed reply) may hide the same thing. Either way this sweep's
+    // verdict may be the older one, and handleHealth would write it into the
+    // health snapshot for the snapshot TTL — so follow the current owner. On
+    // an indeterminate result the own verdict stands if nothing newer lands.
+    const result = published?.[0]?.result;
+    if (result === 'OK') return fresh;
+    return follow(result === 0 ? null : fresh);
+  } finally {
+    const release = redisPipeline([[
+      'EVAL',
+      HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
+      '1',
+      leaseKey,
+      leaseToken,
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(release);
+    else await release;
+  }
+}
+
+/** True when this deployment would report the gate at all (see probeRelayGatewayGate's omit rule). */
+function probeRelayGatewayGateApplies() {
+  const configured = relayGatewayGateMissingEnv().length === 0;
+  const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+  return configured || isProductionBuild;
+}
+
+// The default forwards through a wrapper rather than capturing `globalThis.fetch`
+// itself: on Edge runtimes the native implementation requires its global
+// receiver, and a detached call throws — which would have read here as
+// RELAY_GATE_UNREACHABLE on every sweep. AGENTS.md bans `fetch.bind` for the
+// stale-reference reason; the arrow keeps both the receiver and the current
+// (possibly wrapped) global.
+async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+  const missing = relayGatewayGateMissingEnv();
+  const base = {
+    role: 'gateway',
+    route: RELAY_GATEWAY_GATE_ROUTE,
+    evaluatedAt: new Date(now).toISOString(),
+  };
+  if (missing.length > 0) {
+    // "Production build" means a build Vercel is actually running (`VERCEL=1`
+    // is the platform's own system variable, present at runtime), in the
+    // production environment. Suites that set VERCEL_ENV=production on a
+    // laptop to model rollout semantics carry no tenant secret and must keep
+    // reading as they did; a missing var only becomes the fault on the build
+    // that serves paying customers.
+    const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+    if (!isProductionBuild) return null;
+    return {
+      ...base,
+      status: 'RELAY_GATE_MISCONFIGURED',
+      missing,
+      hint: `This production build cannot see ${missing.map((name) => (name === 'CONVEX_SITE_URL' ? 'CONVEX_SITE_URL (or CONVEX_URL)' : name)).join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
+    };
+  }
+  // The bearer is the tenant secret, so it never leaves over anything but
+  // TLS: a malformed or `http:` CONVEX_SITE_URL is a misconfiguration, not a
+  // transport failure, and is reported without a request being made.
+  // The target is built exactly as the gateways build theirs — the configured
+  // string with the route appended (api/create-checkout.ts:172) — so a value
+  // carrying a path or a trailing slash is probed at the same endpoint the
+  // paying path would hit, not at a normalised origin that may be healthy
+  // while the real one is not. Parsing is for the https check only.
+  let target;
+  try {
+    const configured = resolveRelayGatewaySiteUrl();
+    const site = new URL(configured);
+    if (site.protocol !== 'https:') throw new Error(`protocol ${site.protocol}`);
+    target = `${configured}${RELAY_GATEWAY_GATE_ROUTE}`;
+  } catch (error) {
+    const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+    if (!isProductionBuild) return null;
+    return {
+      ...base,
+      status: 'RELAY_GATE_MISCONFIGURED',
+      invalid: ['CONVEX_SITE_URL'],
+      error: String(error?.message ?? error),
+      hint: 'CONVEX_SITE_URL must be an https: origin; the gateway credential is never sent over plaintext, so no probe was made.',
+    };
+  }
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await fetchImpl(target, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CONVEX_TENANT_RELAY_SECRET}`,
+        'User-Agent': RELAY_GATEWAY_GATE_USER_AGENT,
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(RELAY_GATEWAY_GATE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    return {
+      ...base,
+      status: 'RELAY_GATE_UNREACHABLE',
+      latencyMs: Date.now() - startedAt,
+      error: String(error?.message ?? error),
+      hint: 'The Convex relay did not answer the gate probe; a credential verdict needs a reachable gate. Persistent over several sweeps = Convex outage or a wrong CONVEX_SITE_URL.',
+    };
+  }
+  const latencyMs = Date.now() - startedAt;
+  let body = null;
+  try { body = await response.json(); } catch { /* non-JSON is classified by status alone */ }
+  if (response.status === 401) {
+    return {
+      ...base,
+      status: 'RELAY_GATE_REJECTED',
+      httpStatus: 401,
+      latencyMs,
+      hint: 'The deployed Convex gate does not admit this build\'s CONVEX_TENANT_RELAY_SECRET. Either side can be stale: a value written after the last `convex deploy` reads as undefined inside deployed functions until the next push (#8217). Redeploy Convex, then confirm this check returns OK.',
+    };
+  }
+  if (response.status === 400 && body?.error === 'MISSING_FIELDS') {
+    return { ...base, status: 'OK', httpStatus: 400, latencyMs };
+  }
+  return {
+    ...base,
+    status: 'RELAY_GATE_UNREACHABLE',
+    httpStatus: response.status,
+    latencyMs,
+    error: typeof body?.error === 'string' ? body.error : `unexpected HTTP ${response.status}`,
+    hint: 'The gate answered something other than 401 or 400 MISSING_FIELDS, so this sweep cannot classify the credential. Persistent over several sweeps = relay contract drift or a Convex fault.',
+  };
+}
+
 function computeOverallStatus(counts, totalChecks) {
   const realWarnCount = counts.warn - counts.onDemandWarn;
   const containedWarnCount = Number.isInteger(counts.containedWarn)
@@ -4313,6 +4757,31 @@ export async function handleHealth(req, ctx, options = {}) {
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(graceCleanup);
   }
 
+  // Liveness of the paying path's credential, not a data key: see
+  // probeRelayGatewayGate. Added after the registry loop and counted in
+  // `totalChecks` when it applies, so `ok + warn + onDemandWarn + crit` still
+  // partitions `summary.total` (the invariant scripts/docs-stats.mjs pins on
+  // the published examples). On a production build `total` is therefore the
+  // registry size plus one; the docs say so.
+  //
+  // "One probe per 60 s" is enforced here, not inferred from the snapshot
+  // lock: a caller that loses the lock waits HEALTH_VERDICT_REFRESH_WAIT_MS
+  // (3 s) and then runs its own sweep, and the probe's own budget is longer
+  // than that wait, so a cold burst during the very outage this check exists
+  // for could otherwise fan out one relay call per caller. The last verdict
+  // is kept in Redis for the snapshot TTL and every sweep inside that window
+  // reuses it; only a sweep that finds it missing or expired touches Convex.
+  const relayGatewayGate = await readOrProbeRelayGatewayGate({
+    now: evaluationNow,
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    ctx,
+  });
+  if (relayGatewayGate) {
+    checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
+    totalChecks++;
+  }
+
   for (const [name, entry] of Object.entries(checks)) {
     const bucket = healthStatusBucket(entry, evaluationNow);
     counts[bucket]++;
@@ -4500,6 +4969,22 @@ export const __testing__ = {
   dataLenCommand,
   HEALTH_VERDICT_SNAPSHOT_KEY,
   HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+  RELAY_GATEWAY_GATE_CHECK_NAME,
+  RELAY_GATEWAY_GATE_ROUTE,
+  RELAY_GATEWAY_GATE_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_PROBE_KEY,
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_LEASE_KEY,
+  RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+  RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
+  RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
+  SEED_FRESHNESS_MONITOR_INTERVAL_MS,
+  withTransportGrace,
+  probeRelayGatewayGate,
+  parseCachedRelayGatewayGate,
+  readOrProbeRelayGatewayGate,
   buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
