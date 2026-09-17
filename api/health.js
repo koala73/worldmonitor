@@ -2150,6 +2150,9 @@ const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
 ]);
 
 const COMPANY_MONITORING_WORKER_STATUSES = new Set(['ok', 'error']);
+const COMPANY_MONITORING_CLAIM_FAILURE_KINDS = new Set([
+  'timeout', 'network', 'http_transient', 'http_error', 'invalid_response', 'unknown',
+]);
 const COMPANY_MONITORING_SCAN_OUTCOMES = new Set([
   'starting', 'disabled', 'idle', 'completed', 'non_reassuring', 'fenced',
   'replayed', 'claim_error', 'finalize_error',
@@ -2176,7 +2179,7 @@ function projectCompanyMonitoringWorkerSubsystem(raw, outcomes) {
   return { status: raw.status, outcome: raw.outcome };
 }
 
-function projectCompanyMonitoringWorkerControl(meta, enabled) {
+function projectCompanyMonitoringWorkerControl(meta, enabled, now) {
   if (!enabled || !COMPANY_MONITORING_WORKER_STATUSES.has(meta?.status)
     || !COMPANY_MONITORING_WORKER_OUTCOMES.has(meta?.outcome)) return null;
   let subsystems;
@@ -2192,6 +2195,21 @@ function projectCompanyMonitoringWorkerControl(meta, enabled) {
       COMPANY_MONITORING_ADMISSION_OUTCOMES,
     );
     if (!scan || !admission) return null;
+    const failure = meta.subsystems.scan.claimFailure;
+    if (scan.outcome === 'claim_error' && COMPANY_MONITORING_CLAIM_FAILURE_KINDS.has(failure?.kind)
+      && (failure.httpStatus === null
+        || (Number.isInteger(failure.httpStatus) && failure.httpStatus >= 400 && failure.httpStatus <= 599))) {
+      scan.claimFailure = {
+        kind: failure.kind,
+        httpStatus: failure.httpStatus,
+        consecutiveFailures: Number.isSafeInteger(failure.consecutiveFailures) && failure.consecutiveFailures > 0
+          ? Math.min(failure.consecutiveFailures, 9_999_999_999) : null,
+        lastHealthyAt: Number.isSafeInteger(failure.lastHealthyAt) && failure.lastHealthyAt > 0
+          && Number.isSafeInteger(meta.observedAt) && meta.observedAt === meta.fetchedAt
+          && failure.lastHealthyAt <= meta.observedAt && meta.observedAt <= now
+          ? failure.lastHealthyAt : null,
+      };
+    }
     subsystems = { scan, admission };
   }
   const counters = {};
@@ -2369,7 +2387,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
     : null;
-  const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl);
+  const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl, now);
   const resilienceCacheState = seedCfg.requireResilienceCacheState
     ? assessResilienceCacheState(meta)
     : null;
@@ -3031,6 +3049,19 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Closed, bounded projection from the worker's seed-meta. It contains only
   // control-loop state and counters, never work or customer identifiers.
   if (workerControl) entry.workerControl = workerControl;
+  const claimFailure = workerControl?.subsystems?.scan?.claimFailure;
+  if (entry.status === 'SEED_ERROR' && hasData && records > 0
+    && workerControl?.status === 'error' && workerControl.outcome === 'claim_error'
+    && workerControl.subsystems.scan.status === 'error'
+    && workerControl.subsystems.admission.status === 'ok'
+    && ['disabled', 'idle', 'admission_recorded', 'admission_replayed'].includes(workerControl.subsystems.admission.outcome)
+    && claimFailure?.consecutiveFailures >= 1 && claimFailure.consecutiveFailures < 3
+    && ((['timeout', 'network'].includes(claimFailure.kind) && claimFailure.httpStatus === null)
+      || (claimFailure.kind === 'http_transient' && [408, 429, 500, 502, 503, 504].includes(claimFailure.httpStatus)))
+    && claimFailure.lastHealthyAt !== null && claimFailure.lastHealthyAt <= now) {
+    const deadline = claimFailure.lastHealthyAt + seedCfg.maxStaleMin * 60_000;
+    if (now < deadline) entry.workerControlPendingUntil = new Date(deadline).toISOString();
+  }
   if (resilienceCacheState) entry.cacheState = resilienceCacheState;
   if (failedDatasets?.length > 0) entry.failedDatasets = failedDatasets;
   // Surface content-age fields when seeder opted in (presence of
@@ -3155,8 +3186,8 @@ function healthStatusBucket(entry, now) {
     && typeof entry.chinaCoveragePendingUntil === 'string'
     && !isExpiredDeadline(entry.chinaCoveragePendingUntil, now)) return 'ok';
   if (entry?.status === 'SEED_ERROR'
-    && typeof entry.sourceFailurePendingUntil === 'string'
-    && !isExpiredDeadline(entry.sourceFailurePendingUntil, now)) return 'ok';
+    && [entry.sourceFailurePendingUntil, entry.workerControlPendingUntil]
+      .some(deadline => typeof deadline === 'string' && !isExpiredDeadline(deadline, now))) return 'ok';
   if (
     entry?.status === 'STALE_CONTENT'
     && Object.prototype.hasOwnProperty.call(entry, 'staleContentGraceUntil')
@@ -3554,6 +3585,7 @@ const ENTRY_SOFTENING_DEADLINES = [
   { field: 'contentFreshnessPendingUntil', kind: 'content', status: null },
   { field: 'staleContentGraceUntil', kind: 'content', status: null },
   { field: 'sourceFailurePendingUntil', kind: 'source', status: 'SEED_ERROR' },
+  { field: 'workerControlPendingUntil', kind: 'source', status: 'SEED_ERROR' },
   { field: 'chinaCoveragePendingUntil', kind: 'source', status: null },
   { field: 'containmentUntil', kind: 'source', status: null },
 ];

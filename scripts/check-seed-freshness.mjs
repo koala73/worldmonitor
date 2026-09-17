@@ -141,12 +141,31 @@ export function isSourceFailurePendingProblem(problem, now = Date.now()) {
     && hasActiveBoundedDeadline(problem.sourceFailurePendingUntil, now, (earthquake ? 15 : 215) * 60_000);
 }
 
+function isWorkerControlPendingProblem(name, problem, now) {
+  const control = problem?.workerControl;
+  const failure = control?.subsystems?.scan?.claimFailure;
+  return name === 'companyMonitoringWorker' && problem?.status === 'SEED_ERROR'
+    && Number.isFinite(problem.records) && problem.records > 0 && problem.maxStaleMin === 5
+    && control?.status === 'error' && control.outcome === 'claim_error'
+    && control.subsystems?.scan?.status === 'error' && control.subsystems.scan.outcome === 'claim_error'
+    && control.subsystems.admission?.status === 'ok'
+    && ['disabled', 'idle', 'admission_recorded', 'admission_replayed'].includes(control.subsystems.admission.outcome)
+    && Number.isInteger(failure?.consecutiveFailures) && failure.consecutiveFailures >= 1 && failure.consecutiveFailures < 3
+    && ((['timeout', 'network'].includes(failure.kind) && failure.httpStatus === null)
+      || (failure.kind === 'http_transient' && [408, 429, 500, 502, 503, 504].includes(failure.httpStatus)))
+    && Number.isSafeInteger(failure.lastHealthyAt) && failure.lastHealthyAt > 0 && failure.lastHealthyAt <= now
+    && typeof problem.workerControlPendingUntil === 'string'
+    && Date.parse(problem.workerControlPendingUntil) === failure.lastHealthyAt + 300_000
+    && hasActiveBoundedDeadline(problem.workerControlPendingUntil, now, 300_000);
+}
+
 export function findPendingDiagnostics(payload, now = Date.now()) {
   return compactHealthEntries(payload)
-    .filter(([, problem]) => (
+    .filter(([name, problem]) => (
       isStaleContentGraceProblem(problem, now)
       || isSourceFailurePendingProblem(problem, now)
       || isChinaCoveragePendingProblem(problem, now)
+      || isWorkerControlPendingProblem(name, problem, now)
     ))
     .map(([name, problem]) => ({
       name,
@@ -154,6 +173,7 @@ export function findPendingDiagnostics(payload, now = Date.now()) {
       graceUntil: problem?.staleContentGraceUntil
         ?? problem?.sourceFailurePendingUntil
         ?? problem?.chinaCoveragePendingUntil
+        ?? problem?.workerControlPendingUntil
         ?? null,
     }));
 }
@@ -165,12 +185,13 @@ function compactHealthEntries(payload) {
 
 export function findOperationalProblems(payload, now = Date.now()) {
   return compactHealthEntries(payload)
-    .filter(([, problem]) => (
+    .filter(([name, problem]) => (
       !isOnDemandProblem(problem)
       && !isRolloutPendingProblem(problem, now)
       && !isStaleContentGraceProblem(problem, now)
       && !isSourceFailurePendingProblem(problem, now)
       && !isChinaCoveragePendingProblem(problem, now)
+      && !isWorkerControlPendingProblem(name, problem, now)
     ))
     .map(([name, problem]) => ({
       name,
