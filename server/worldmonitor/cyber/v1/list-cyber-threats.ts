@@ -3,14 +3,14 @@
  * All external IOC feed calls happen in seed-cyber.mjs on Railway.
  */
 
-import type {
-  ServerContext,
-  ListCyberThreatsRequest,
-  ListCyberThreatsResponse,
+import {
+  ApiError,
+  type ServerContext,
+  type ListCyberThreatsRequest,
+  type ListCyberThreatsResponse,
 } from '../../../../src/generated/server/worldmonitor/cyber/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
-import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+import { logCacheReadError, readCachedJson } from '../../../_shared/redis';
 import {
   DEFAULT_LIMIT,
   MAX_LIMIT,
@@ -46,29 +46,27 @@ function filterSeededThreats(
 }
 
 export async function listCyberThreats(
-  ctx: ServerContext,
+  _ctx: ServerContext,
   req: ListCyberThreatsRequest,
 ): Promise<ListCyberThreatsResponse> {
   const empty: ListCyberThreatsResponse = { threats: [], pagination: { nextCursor: '', totalCount: 0 } };
 
-  try {
-    const pageSize = clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
-    const offset = parseCursor(req.cursor);
-
-    const seedData = await getCachedJson(SEED_CACHE_KEY, true) as Pick<ListCyberThreatsResponse, 'threats'> | null;
-    if (!seedData || !Array.isArray(seedData.threats)) {
-      return markNoStoreFallbackResponse(ctx.request, empty);
-    }
-
-    const allThreats = filterSeededThreats(seedData.threats, req);
-    if (offset >= allThreats.length) return empty;
-    const page = allThreats.slice(offset, offset + pageSize);
-    const hasMore = offset + pageSize < allThreats.length;
-    return {
-      threats: page,
-      pagination: { totalCount: allThreats.length, nextCursor: hasMore ? String(offset + pageSize) : '' },
-    };
-  } catch {
-    return markNoStoreFallbackResponse(ctx.request, empty);
+  const cached = await readCachedJson(SEED_CACHE_KEY, true);
+  if (cached.status === 'error') logCacheReadError(SEED_CACHE_KEY, cached.error);
+  const seedData = cached.status === 'hit' ? cached.value as Pick<ListCyberThreatsResponse, 'threats'> | null : null;
+  if (!seedData || !Array.isArray(seedData.threats)) {
+    throw new ApiError(503, 'Cyber threats cache unavailable', '');
   }
+
+  const pageSize = clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
+  const offset = parseCursor(req.cursor);
+
+  const allThreats = filterSeededThreats(seedData.threats, req);
+  if (offset >= allThreats.length) return empty;
+  const page = allThreats.slice(offset, offset + pageSize);
+  const hasMore = offset + pageSize < allThreats.length;
+  return {
+    threats: page,
+    pagination: { totalCount: allThreats.length, nextCursor: hasMore ? String(offset + pageSize) : '' },
+  };
 }

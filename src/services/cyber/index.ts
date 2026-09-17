@@ -7,7 +7,7 @@ import type {
   CyberThreatSeverity,
   CyberThreatIndicatorType,
 } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { ensureHydrated } from '@/services/bootstrap';
 import { CyberServiceClient } from '@/services/generated-rpc-clients';
 
@@ -88,7 +88,7 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
   // reach here have already passed that gate, so fetch it now, through its own
   // CDN-shielded per-key URL. Falls through to the RPC below if that fetch fails.
   const hydrated = (await ensureHydrated('cyberThreats')) as { threats?: ProtoCyberThreat[] } | undefined;
-  if (hydrated?.threats?.length) return hydrated.threats.map(toCyberThreat);
+  if (Array.isArray(hydrated?.threats)) return hydrated.threats.map(toCyberThreat);
 
   const limit = clampInt(options.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const days = clampInt(options.days, DEFAULT_DAYS, 1, MAX_DAYS);
@@ -104,7 +104,7 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
       source: 'CYBER_THREAT_SOURCE_UNSPECIFIED',
       minSeverity: 'CRITICALITY_LEVEL_UNSPECIFIED',
     });
-  }, emptyFallback);
+  }, emptyFallback, { cacheKey: 'available-v1' });
 
   return resp.threats.map(toCyberThreat);
 }
