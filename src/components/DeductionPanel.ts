@@ -25,6 +25,9 @@ export class DeductionPanel extends Panel {
     private resultContainer: HTMLElement;
     private submitBtn: HTMLButtonElement;
     private isSubmitting = false;
+    private requestEpoch = 0;
+    private requestAbort: AbortController | null = null;
+    private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
     private getLatestNews?: () => NewsItem[];
     private contextHandler: EventListener;
     private fwSelector: FrameworkSelector;
@@ -80,6 +83,7 @@ export class DeductionPanel extends Panel {
         /* Styles moved to panels.css (PERF-012) */
 
         this.contextHandler = ((e: CustomEvent<DeductContextDetail>) => {
+            if (this.isLocked) return;
             const { query, geoContext, autoSubmit } = e.detail;
 
             if (query) {
@@ -106,7 +110,22 @@ export class DeductionPanel extends Panel {
         this.header.appendChild(this.fwSelector.el);
     }
 
+    protected override resetAccountState(): void {
+        this.requestEpoch += 1;
+        this.requestAbort?.abort();
+        this.requestAbort = null;
+        if (this.cooldownTimer !== null) clearTimeout(this.cooldownTimer);
+        this.cooldownTimer = null;
+        this.isSubmitting = false;
+        this.submitBtn.disabled = false;
+        this.inputEl.value = '';
+        this.geoInputEl.value = '';
+        this.resultContainer.replaceChildren();
+        this.resultContainer.className = 'deduction-result';
+    }
+
     public override destroy(): void {
+        this.resetAccountState();
         document.removeEventListener('wm:deduct-context', this.contextHandler);
         this.fwSelector.destroy();
         super.destroy();
@@ -222,7 +241,7 @@ export class DeductionPanel extends Panel {
 
     private async handleSubmit(e: Event) {
         e.preventDefault();
-        if (this.isSubmitting) return;
+        if (this.isLocked || this.isSubmitting) return;
 
         const query = this.inputEl.value.trim();
         if (!query) return;
@@ -238,6 +257,9 @@ export class DeductionPanel extends Panel {
 
         const fw = getActiveFrameworkForPanel('deduction');
 
+        const epoch = ++this.requestEpoch;
+        const controller = new AbortController();
+        this.requestAbort = controller;
         this.isSubmitting = true;
         this.submitBtn.disabled = true;
 
@@ -255,18 +277,18 @@ export class DeductionPanel extends Panel {
                 query,
                 geoContext,
                 framework: fw?.systemPromptAppend ?? '',
-            });
-            if (!this.element?.isConnected) return;
+            }, { signal: controller.signal });
+            if (epoch !== this.requestEpoch || !this.element?.isConnected) return;
 
             this.resultContainer.className = 'deduction-result';
             if (resp.analysis) {
                 const parsed = await marked.parse(resp.analysis);
-                if (!this.element?.isConnected) return;
+                if (epoch !== this.requestEpoch || !this.element?.isConnected) return;
                 // Yield so the response paint lands before the synchronous DOMPurify
                 // pass (the heavy `sanitize` chunk) — breaks the post-response long
                 // task instead of running parse+purify+innerHTML as one block (#4537).
                 await yieldToMain();
-                if (!this.element?.isConnected) return;
+                if (epoch !== this.requestEpoch || !this.element?.isConnected) return;
                 const safe = DOMPurify.sanitize(parsed);
                 setTrustedHtml(this.resultContainer, trustedHtml(safe, 'legacy direct innerHTML migration'));
                 this.reformatResult(this.resultContainer);
@@ -276,14 +298,20 @@ export class DeductionPanel extends Panel {
                     : 'No analysis available for this query.';
             }
         } catch (err) {
-            if (!this.element?.isConnected) return;
+            if (epoch !== this.requestEpoch || !this.element?.isConnected) return;
             console.error('[DeductionPanel] Error:', err);
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
-            this.isSubmitting = false;
-            if (this.element?.isConnected) {
-                setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            if (epoch === this.requestEpoch) {
+                this.requestAbort = null;
+                this.isSubmitting = false;
+                if (this.element?.isConnected) {
+                    this.cooldownTimer = setTimeout(() => {
+                        this.cooldownTimer = null;
+                        if (epoch === this.requestEpoch) this.submitBtn.disabled = false;
+                    }, COOLDOWN_MS);
+                }
             }
         }
     }

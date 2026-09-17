@@ -33,17 +33,22 @@ function sseReader(events: unknown[]): ReadableStreamDefaultReader<Uint8Array> {
 
 async function feedAction(panel: unknown, action: unknown): Promise<HTMLElement> {
   const panelAny = panel as {
+    streamAbort: AbortController | null;
     appendStreamingBubble: () => { bubble: HTMLElement; body: HTMLElement };
     readStream: (
       reader: ReadableStreamDefaultReader<Uint8Array>,
+      controller: AbortController,
       bubble: HTMLElement,
       body: HTMLElement,
       onToken: (text: string) => void,
     ) => Promise<string>;
   };
   const { bubble, body } = panelAny.appendStreamingBubble();
+  const controller = new AbortController();
+  panelAny.streamAbort = controller;
   const status = await panelAny.readStream(
     sseReader([{ action }, { delta: 'Answer continues.' }, { done: true }]),
+    controller,
     bubble,
     body,
     () => {},

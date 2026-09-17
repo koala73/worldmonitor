@@ -152,6 +152,7 @@ export class LatestBriefPanel extends Panel {
       const nextId = state.user?.id ?? null;
       if (nextId === this.lastUserId) return;
       this.lastUserId = nextId;
+      this.clearSensitiveContent();
       this.inflightAbort?.abort();
       this.inflightAbort = null;
       this.clearComposingPoll();
@@ -254,7 +255,7 @@ export class LatestBriefPanel extends Panel {
       // await (A→B) would otherwise paint user A's brief into user
       // B's session because getClerkToken caches for up to 50s
       // across account changes.
-      if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
+      if (controller.signal.aborted || this.gateLocked || !hasPremiumAccess(getAuthState())) return;
       if ((getAuthState().user?.id ?? null) !== requestUserId) return;
       // We have data — retire any auto-retry countdown a previous transient
       // denial (entitlement_desync / access_denied) left armed, and refund the
@@ -269,7 +270,7 @@ export class LatestBriefPanel extends Panel {
     } catch (err) {
       // AbortError comes from showGatedCta's abort() → render nothing.
       if ((err as { name?: string } | null)?.name === 'AbortError') return;
-      if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
+      if (controller.signal.aborted || this.gateLocked || !hasPremiumAccess(getAuthState())) return;
       if ((getAuthState().user?.id ?? null) !== requestUserId) return;
       // Terminal access errors render a CTA — retrying can't flip a
       // missing session or a genuinely free plan. Transient ones fall
@@ -325,6 +326,7 @@ export class LatestBriefPanel extends Panel {
     this.inflightAbort?.abort();
     this.inflightAbort = null;
     this.clearComposingPoll();
+    this.clearSensitiveContent();
     super.showGatedCta(reason, onAction);
   }
 

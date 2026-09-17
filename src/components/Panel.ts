@@ -183,6 +183,7 @@ export class Panel {
   // holds the actual DOM nodes; reattaching preserves any listeners and
   // any subclass references like `this.inputEl`.
   private _savedContent: ChildNode[] | null = null;
+  private accountScope: { ownerId: string | null; hasAccess: boolean } | null = null;
   private _collapsed = false;
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
@@ -1094,7 +1095,24 @@ export class Panel {
     this.retryAttempt = 0;
   }
 
+  /** Bind private state to the account and access window before applying its gate. */
+  public syncAccountScope(ownerId: string | null, hasAccess: boolean): void {
+    const previous = this.accountScope;
+    this.accountScope = { ownerId, hasAccess };
+    if (!previous || previous.ownerId !== ownerId || (previous.hasAccess && !hasAccess)) {
+      this.resetAccountState();
+    }
+  }
+
+  /**
+   * Private panels must scrub both model state and retained DOM references,
+   * including nodes held in the lock snapshot, and invalidate pending work.
+   * Shared datasets and constructor-only controls need no reset by default.
+   */
+  protected resetAccountState(): void {}
+
   public showLocked(features: string[] = []): void {
+    if (!this._locked) this.resetAccountState();
     this._locked = true;
     this.clearRetryCountdown();
     this._snapshotContentForRestore();
@@ -1199,6 +1217,7 @@ export class Panel {
     // Gating re-runs on every subscription-row change (#4771), including
     // Convex updates to fields irrelevant to the gate verdict.
     if (this._locked && this._lastGateReason === reason) return;
+    if (!this._locked) this.resetAccountState();
     this._lastGateReason = reason;
 
     // Bail-out done — now commit to the locked state. Doing this AFTER the

@@ -2582,6 +2582,7 @@ export class App {
     // loadTradePolicy) would sit empty until the next scheduled refresh — for
     // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
     let _prevHadPremium = hasPremiumAccess();
+    let previousPremiumOwnerId = getAuthState().user?.id ?? null;
     // Pro-loader fan-out runs on EITHER Clerk auth changes OR Convex
     // entitlement changes — Pro can come from either signal (Clerk
     // user.role === 'pro' OR Convex tier >= 1 via Dodo). User-reported
@@ -2596,6 +2597,14 @@ export class App {
       this.reconcileTierOwnedPreferences();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
+      const ownerId = getAuthState().user?.id ?? null;
+      const ownerChanged = ownerId !== previousPremiumOwnerId;
+      previousPremiumOwnerId = ownerId;
+      if (ownerChanged) {
+        // Tender filters are private input even though opportunity records are shared.
+        void this.dataLoader.clearGlobalTenders();
+        if (nowPremium && hadPremium) void this.dataLoader.loadGlobalTenders();
+      }
       if (nowPremium && !hadPremium) {
         // Entitlement just resolved → fire PRO-gated initial loads that were
         // skipped at boot. Each loader early-returns if the panel isn't

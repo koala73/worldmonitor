@@ -967,6 +967,8 @@ export class PanelLayoutManager implements AppModule {
       // resubscribe) so we never push a paying user toward duplicate checkout.
       if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
 
+      (panel as Panel).syncAccountScope(state.user?.id ?? null, reason === PanelGateReason.NONE);
+
       if (reason === PanelGateReason.NONE) {
         // User has access -- unlock if previously locked
         (panel as Panel).unlockPanel();

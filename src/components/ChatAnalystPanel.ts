@@ -144,6 +144,7 @@ function saveDashboardControlEnabled(enabled: boolean): void {
 
 export class ChatAnalystPanel extends Panel {
   private history: ChatMessage[] = [];
+  private contentEpoch = 0;
   private domainFocus = 'all';
   private streamAbort: AbortController | null = null;
   private isStreaming = false;
@@ -454,6 +455,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private async renderDashboardControlAction(bubble: HTMLElement, action: DashboardControlAction): Promise<void> {
+    const epoch = this.contentEpoch;
     let result: DashboardControlResult;
     if (!this.dashboardControlEnabled) {
       result = this.skippedDashboardAction(action, 'control_disabled', 'Dashboard control is off.');
@@ -465,6 +467,7 @@ export class ChatAnalystPanel extends Panel {
       result = await this.dashboardActionHandler(action);
     }
 
+    if (epoch !== this.contentEpoch) return;
     if (result.actionType) {
       trackAnalystControlAction(result.actionType, result.status, result.reason);
     }
@@ -512,7 +515,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   async send(query: string): Promise<void> {
-    if (this.isStreaming) return;
+    if (this.isLocked || this.isStreaming) return;
     this.isStreaming = true;
     this.setSendDisabled(true);
 
@@ -553,12 +556,11 @@ export class ChatAnalystPanel extends Panel {
         signal: controller.signal,
       });
 
+      if (this.streamAbort !== controller) return;
       if (!res.ok) {
-        this.finalizeStreamingBubble(
-          streamingBody,
-          `⚠ ${await describeDenial(res, requestBelief, requestUserId)}`,
-          false,
-        );
+        const denial = await describeDenial(res, requestBelief, requestUserId);
+        if (this.streamAbort !== controller) return;
+        this.finalizeStreamingBubble(streamingBody, `⚠ ${denial}`, false);
         return;
       }
 
@@ -568,8 +570,8 @@ export class ChatAnalystPanel extends Panel {
         return;
       }
 
-      const finished = await this.readStream(reader, bubble, streamingBody, (text) => { accumulatedText = text; });
-      if (finished === 'error') return;
+      const finished = await this.readStream(reader, controller, bubble, streamingBody, (text) => { accumulatedText = text; });
+      if (this.streamAbort !== controller || finished === 'error') return;
       if (finished === 'done') {
         this.finalizeStreamingBubble(streamingBody, accumulatedText, true);
         this.pushHistory(trimmedQuery, accumulatedText);
@@ -584,6 +586,7 @@ export class ChatAnalystPanel extends Panel {
         this.finalizeStreamingBubble(streamingBody, '⚠ Response cut off. Try again.', false);
       }
     } catch (err) {
+      if (this.streamAbort !== controller) return;
       if (err instanceof Error && err.name === 'AbortError') {
         if (accumulatedText) {
           this.finalizeStreamingBubble(streamingBody, `${accumulatedText}\n\n*Response cut off.*`, true);
@@ -617,6 +620,7 @@ export class ChatAnalystPanel extends Panel {
 
   private async readStream(
     reader: ReadableStreamDefaultReader<Uint8Array>,
+    controller: AbortController,
     bubble: HTMLElement,
     bodyEl: HTMLElement,
     onToken: (text: string) => void,
@@ -627,6 +631,10 @@ export class ChatAnalystPanel extends Panel {
 
     while (true) {
       const { done, value } = await reader.read();
+      if (this.streamAbort !== controller) {
+        void reader.cancel().catch(() => {});
+        return 'incomplete';
+      }
       if (done) break;
       buf += decoder.decode(value, { stream: true });
       const lines = buf.split('\n');
@@ -669,7 +677,9 @@ export class ChatAnalystPanel extends Panel {
   // Fire-and-forget (no async ripple through the sync streaming call sites);
   // guarded so a detached bubble (panel closed mid-flight) is skipped.
   private renderMarkdownDeferred(el: HTMLElement, content: string): void {
+    const epoch = this.contentEpoch;
     void yieldToMain().then(() => {
+      if (epoch !== this.contentEpoch) return;
       if (!el.isConnected) return;
       setTrustedHtml(el, renderMarkdown(content));
       // Scroll AFTER the markdown DOM lands — rendered markdown (headers, code
@@ -686,12 +696,19 @@ export class ChatAnalystPanel extends Panel {
   }
 
   clear(): void {
+    this.contentEpoch += 1;
     this.history = [];
     this.streamAbort?.abort();
     this.streamAbort = null;
     this.isStreaming = false;
     this.setSendDisabled(false);
     this.showWelcome();
+  }
+
+  protected override resetAccountState(): void {
+    // References reach the same nodes even while Panel holds them off-DOM.
+    this.clear();
+    if (this.inputEl) this.inputEl.value = '';
   }
 
   private exportChat(): void {
@@ -725,6 +742,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   override destroy(): void {
+    this.contentEpoch += 1;
     this.streamAbort?.abort();
     this.streamAbort = null;
     super.destroy();

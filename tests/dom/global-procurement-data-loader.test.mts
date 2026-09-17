@@ -137,4 +137,25 @@ describe('Global procurement DataLoader cancellation', () => {
     expect(procurementPanel.update).not.toHaveBeenCalled();
     expect(statusPanel.updateApi).not.toHaveBeenCalled();
   });
+  it('account clearing drops private filters and fences a delayed response', async () => {
+    const panel = {setRequestHandler: vi.fn(), setLoading: vi.fn(), update: vi.fn(), clear: vi.fn(), showUnavailable: vi.fn()};
+    const ctx = {panels: {'global-procurement': panel}, statusPanel: {updateApi: vi.fn()}} as unknown as AppContext;
+    const { DataLoaderManager } = await import('@/app/data-loader');
+    const loader = new DataLoaderManager(ctx, {renderCriticalBanner: () => undefined, refreshOpenCountryBrief: () => undefined});
+    const pending = deferred<ListGlobalTendersResponse>();
+    procurementMocks.fetchGlobalTenders.mockReset();
+    procurementMocks.fetchGlobalTenders.mockImplementationOnce(() => pending.promise);
+    const oldLoad = loader.loadGlobalTenders({query: 'private A search'});
+    await vi.waitFor(() => expect(procurementMocks.fetchGlobalTenders).toHaveBeenCalledTimes(1));
+    await loader.clearGlobalTenders();
+    procurementMocks.fetchGlobalTenders.mockResolvedValue(response(2));
+    await loader.loadGlobalTenders();
+    expect(procurementMocks.fetchGlobalTenders.mock.calls[1]?.[0]).toEqual({});
+    pending.resolve(response(99));
+    await oldLoad;
+    expect(panel.update).not.toHaveBeenCalledWith(expect.objectContaining({total: 99}), false);
+    expect(panel.update).toHaveBeenCalledWith(expect.objectContaining({total: 2}), false);
+    loader.destroy();
+  });
+
 });
