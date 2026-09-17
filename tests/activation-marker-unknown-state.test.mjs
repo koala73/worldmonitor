@@ -620,12 +620,8 @@ describe('#6095 — every activation marker is claimed by exactly one policy', (
   });
 });
 
-// The read-side guard (hasExpiredActivationGrace) refuses an expired softening,
-// but refusing still costs a full ~390-command sweep per concurrent waiter,
-// because the refresh wait budget is shorter than a sweep. The write side must
-// therefore stop the snapshot from outliving the deadline in the first place,
-// so the deadline lands as an ordinary cache MISS that the refresh lock
-// serialises to one sweep.
+// The snapshot TTL must end at its published grace deadline. The read-side
+// guard also rejects expired softening; the refresh lease then elects one owner.
 describe('#6152 review — the verdict cache cannot outlive the deadline it publishes', () => {
   const DEADLINE = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_MARKER];
 
@@ -635,11 +631,15 @@ describe('#6152 review — the verdict cache cannot outlive the deadline it publ
     const sets = [];
     globalThis.fetch = async (url, init) => {
       for (const command of JSON.parse(init.body)) {
-        // Snapshot writes only — the refresh lock is also a `health:verdict:*`
-        // SET and carries its own unrelated TTL.
-        const key = String(command[1]);
-        if (command[0] === 'SET' && key.startsWith('health:verdict') && !key.includes('refresh-lock')) {
-          sets.push(command);
+        if (command[0] === 'EVAL' && command[1] === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
+          assert.equal(command[2], '3');
+          assert.equal(command[3], __testing__.HEALTH_VERDICT_REFRESH_LOCK_KEY);
+          // Inspect the logical SET protected by this script, excluding the
+          // refresh lock's independent expiry. Keep the TTL assertions below.
+          sets.push(
+            ['SET', command[4], command[7], 'EX', command[9]],
+            ['SET', command[5], command[8], 'EX', command[9]],
+          );
         }
       }
       return inner(url, init);
@@ -648,6 +648,10 @@ describe('#6152 review — the verdict cache cannot outlive the deadline it publ
       headers: { 'x-worldmonitor-key': 'test-health-admin-key' },
     }), undefined, { now });
     const body = await res.json();
+    assert.deepEqual(sets.map((command) => command[1]).sort(), [
+      __testing__.HEALTH_VERDICT_SNAPSHOT_KEY,
+      __testing__.HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+    ].sort(), 'both distinct snapshot keys must be published');
     return { sets, body };
   }
 

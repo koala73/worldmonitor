@@ -10,6 +10,7 @@ import YAML from 'yaml';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import {
+  fetchCompactHealth,
   applyAcceptanceBaseline,
   buildAcceptanceObservation,
   findOperationalProblems,
@@ -137,14 +138,16 @@ describe('production acceptance summary', () => {
     assert.match(expired, /baseline expired/);
   });
 
-  it('writes JSON and Markdown from one CLI request before returning a failed verdict', () => {
+  it('writes JSON and Markdown after a pending refresh before returning a failed verdict', () => {
     const dir = mkdtempSync(join(tmpdir(), 'seed-summary-'));
     try {
       const preload = join(dir, 'fetch.mjs');
       const calls = join(dir, 'calls');
       writeFileSync(preload, `import { appendFileSync } from 'node:fs';
+let attempts = 0;
 globalThis.fetch = async () => {
   appendFileSync(${JSON.stringify(calls)}, 'request\\n');
+  if (attempts++ === 0) return Response.json({ status: 'REFRESH_PENDING' }, { status: 503, headers: { 'Retry-After': '0' } });
   return Response.json({ status: 'WARNING', checkedAt: new Date().toISOString(), problems: { wildfires: { status: 'SEED_ERROR', records: 2 } } });
 };\n`);
       const json = join(dir, 'observation.json');
@@ -157,7 +160,7 @@ globalThis.fetch = async () => {
       const report = JSON.parse(readFileSync(json, 'utf8'));
       assert.equal(report.report.failed, true);
       assert.equal(readFileSync(markdown, 'utf8'), formatAcceptanceMarkdown(report));
-      assert.equal(readFileSync(calls, 'utf8'), 'request\n');
+      assert.equal(readFileSync(calls, 'utf8'), 'request\nrequest\n');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -1587,5 +1590,73 @@ describe('scheduled seed freshness monitor', () => {
     assert.match(workflow, /context\s*==\s*"gate"/);
     assert.match(workflow, /gate_state.*success/s);
     assert.match(workflow, /node scripts\/check-seed-freshness\.mjs/);
+  });
+});
+
+
+describe('bounded compact-health refresh retries', () => {
+  function fixture(responses) {
+    let clock = Date.parse('2026-09-16T12:00:00Z');
+    const sleeps = [];
+    let calls = 0;
+    return {
+      options: {
+        now: () => clock,
+        sleep: async (ms) => { sleeps.push(ms); clock += ms; },
+        fetchFn: async () => {
+          const value = responses[Math.min(calls++, responses.length - 1)];
+          if (value instanceof Error) throw value;
+          return value.clone();
+        },
+      },
+      sleeps,
+      get calls() { return calls; },
+    };
+  }
+  const pending = (retryAfter) => Response.json({ status: 'REFRESH_PENDING' }, {
+    status: 503, headers: retryAfter == null ? {} : { 'Retry-After': retryAfter },
+  });
+  it('recovers normal contention using Retry-After seconds', async () => {
+    const expected = { status: 'HEALTHY', checkedAt: '2026-09-16T12:00:04Z' };
+    const f = fixture([pending('4'), Response.json(expected)]);
+    assert.deepEqual(await fetchCompactHealth('https://health.test', f.options), expected);
+    assert.deepEqual(f.sleeps, [4000]);
+    assert.equal(f.calls, 2);
+  });
+  it('honors HTTP dates and defaults malformed or absent Retry-After to three seconds', async () => {
+    for (const [header, expected] of [['Wed, 16 Sep 2026 12:00:05 GMT', 5000], ['bad', 3000], ['-1', 3000], [null, 3000]]) {
+      const f = fixture([pending(header), Response.json({ status: 'HEALTHY' })]);
+      await fetchCompactHealth('https://health.test', f.options);
+      assert.deepEqual(f.sleeps, [expected]);
+    }
+  });
+  it('bounds persistent pending by elapsed budget and attempts without shortening Retry-After', async () => {
+    for (const header of ['3', '0', '90']) {
+      const f = fixture([pending(header)]);
+      await assert.rejects(fetchCompactHealth('https://health.test', f.options), /refresh remained pending/);
+      assert.ok(f.calls <= 12);
+      assert.ok(f.sleeps.reduce((sum, ms) => sum + ms, 0) < 45_000);
+      if (header === '90') assert.equal(f.calls, 1);
+    }
+  });
+  it('preserves Redis/auth/network and malformed response failures without retries', async () => {
+    for (const response of [
+      Response.json({ status: 'REDIS_DOWN' }, { status: 503 }),
+      Response.json({ status: 'REFRESH_PENDING' }, { status: 401 }),
+      Response.json({ status: 'REFRESH_PENDING' }, { status: 500 }),
+      new Response('broken JSON', { status: 503 }),
+      new Error('network unavailable'),
+    ]) {
+      const f = fixture([response]);
+      await assert.rejects(fetchCompactHealth('https://health.test', f.options));
+      assert.equal(f.calls, 1);
+      assert.deepEqual(f.sleeps, []);
+    }
+  });
+  it('does not hide an outage following a pending response', async () => {
+    const f = fixture([pending('1'), Response.json({ status: 'REDIS_DOWN' }, { status: 503 })]);
+    await assert.rejects(fetchCompactHealth('https://health.test', f.options), /HTTP 503/);
+    assert.equal(f.calls, 2);
+    assert.deepEqual(f.sleeps, [1000]);
   });
 });

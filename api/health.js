@@ -184,14 +184,14 @@ const CHINA_TRANSIENT_COVERAGE_REASONS = new Set([
 ]);
 const HEALTH_VERDICT_SNAPSHOT_TTL_MS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS * 1_000;
 const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-lock`;
-// The sweep can consume its full 8s timeout, followed by a 4s failure-log read
-// and 4s snapshot write. Keep the lease comfortably above that worst case.
+// Bound abandoned ownership. Snapshot publication and release also verify
+// the token, because a paused invocation can outlive any fixed lease.
 const HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS = 30;
 const HEALTH_VERDICT_REFRESH_WAIT_ATTEMPTS = 45;
 const HEALTH_VERDICT_REFRESH_WAIT_MS = 3_000;
 // Avoid starting a Redis HTTP request that cannot realistically complete
-// inside the remaining contention budget. The direct-sweep fallback below is
-// preferable to turning a deadline-boundary timeout into false REDIS_DOWN.
+// inside the remaining contention budget. Contention returns REFRESH_PENDING;
+// only failed Redis operations report REDIS_DOWN.
 const HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS = 100;
 // #6339 deploy-before-provisioning bridge. A production health sweep claims
 // this versioned deadline with SET NX, so the 24h window starts when the reader
@@ -212,6 +212,29 @@ const HEALTH_VERDICT_RELEASE_LOCK_SCRIPT = [
   'end',
   'return 0',
 ].join('\n');
+
+// Fence publication as well as release: a paused owner can resume after its
+// lease expired and a successor already published a newer verdict.
+const HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT = [
+  "if redis.call('get', KEYS[1]) ~= ARGV[1] then return nil end",
+  "redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[4])",
+  "redis.call('set', KEYS[3], ARGV[3], 'EX', ARGV[4])",
+  "return 'OK'",
+].join('\n');
+
+const HEALTH_VERDICT_MUTATION_SCRIPT = [
+  "if redis.call('get', KEYS[1]) ~= ARGV[1] then return nil end",
+  "return redis.call(ARGV[2], KEYS[2], unpack(ARGV, 3))",
+].join('\n');
+const HEALTH_REFRESH_MUTATIONS = new Set(['SET', 'DEL', 'HSETNX', 'HDEL', 'PEXPIRE', 'LPUSH', 'LTRIM', 'EXPIRE']);
+
+// All callers provide final keys: seeder-owned rollout state stays raw while
+// route-owned grace/history keys carry this deployment's prefix exactly once.
+function fenceHealthMutations(commands, token) {
+  return commands.map(([op, key, ...args]) => HEALTH_REFRESH_MUTATIONS.has(op)
+    ? ['EVAL', HEALTH_VERDICT_MUTATION_SCRIPT, '2', HEALTH_VERDICT_REFRESH_LOCK_KEY, key, token, op, ...args]
+    : [op, key, ...args]);
+}
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF everywhere; set
 // IRAN_EVENTS_ENABLED=true to restore the whole domain. Mirrors the backend
@@ -1857,7 +1880,7 @@ function staleContentGraceCandidateUntil(evidence, now) {
  * `claimCommands` must be awaited: their HGET replies decide what deadline (if
  * any) this response publishes. `cleanupCommands` only reap state for sources
  * that have recovered, so nothing in this response depends on them and they are
- * dispatched fire-and-forget rather than charged to request latency.
+ * awaited before releasing the refresh lease so recovery cannot lose its cleanup.
  *
  * Claims are gated on the CLASSIFIED status, not on content evidence alone.
  * Several classifier branches (REDIS_PARTIAL, EMPTY, SEED_ERROR, STALE_SEED,
@@ -3668,12 +3691,9 @@ function nearestActivationDeadlineMs(snapshot, now) {
  * Cache lifetime for a verdict snapshot: the normal 60s, SHORTENED so the entry
  * cannot outlive any softening deadline it publishes.
  *
- * Without this, a snapshot written just before a deadline stays cacheable for
- * the full minute, every reader correctly refuses it via hasExpiredActivationGrace,
- * and — because the refresh wait budget (3s) is shorter than a ~390-command
- * sweep — each concurrent waiter then falls through to its OWN sweep. Expiring
- * the key AT the deadline turns that into an ordinary cache miss, which the
- * existing lock already serialises to one sweep.
+ * Expire at the deadline instead of retaining a softened verdict that every
+ * reader must reject through hasExpiredActivationGrace. The next request
+ * elects a refresher; concurrent waiters use its result or return pending.
  *
  * Floor, never ceil: the entry must die at or before the deadline, not after.
  * Redis EX has a 1s granularity, so a sub-second overhang remains possible —
@@ -4339,6 +4359,14 @@ function healthResponse(snapshot, compact, headers) {
   });
 }
 
+function healthRefreshPendingResponse(headers) {
+  return jsonResponse({
+    status: 'REFRESH_PENDING',
+    error: 'Health refresh is pending. Retry shortly.',
+    retryAfterSeconds: 3,
+  }, 503, { ...headers, 'Retry-After': '3' });
+}
+
 export async function handleHealth(req, ctx, options = {}) {
   const hasInjectedClock = Object.prototype.hasOwnProperty.call(options, 'now');
   const now = hasInjectedClock ? options.now : Date.now();
@@ -4438,6 +4466,7 @@ export async function handleHealth(req, ctx, options = {}) {
   // miss: returning 503 preserves UptimeRobot's hard-down signal.
   let refreshLockToken = null;
   let ownsSnapshotRefreshLock = false;
+  let refreshLeaseStartedAt = 0;
   try {
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     // Read the snapshot this request will actually render. `?compact=1` — the
@@ -4459,6 +4488,7 @@ export async function handleHealth(req, ctx, options = {}) {
     }
 
     refreshLockToken = `${now}:${crypto.randomUUID()}`;
+    refreshLeaseStartedAt = Date.now();
     let lockResult = await redisPipeline([[
       'SET',
       HEALTH_VERDICT_REFRESH_LOCK_KEY,
@@ -4467,7 +4497,8 @@ export async function handleHealth(req, ctx, options = {}) {
       String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
       'NX',
     ]], 4_000, true);
-    if (!lockResult || lockResult[0]?.error) throw new Error('Redis snapshot lock failed');
+    if (!lockResult || lockResult.length !== 1 || lockResult[0]?.error
+      || !['OK', null].includes(lockResult[0]?.result)) throw new Error('Redis snapshot lock failed');
     ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
 
     if (!ownsSnapshotRefreshLock) {
@@ -4498,6 +4529,9 @@ export async function handleHealth(req, ctx, options = {}) {
           return healthResponse(refreshedSnapshot, compact, headers);
         }
 
+        const retryRemainingMs = waitDeadline - Date.now();
+        if (retryRemainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) break;
+        refreshLeaseStartedAt = Date.now();
         lockResult = await redisPipeline([[
           'SET',
           HEALTH_VERDICT_REFRESH_LOCK_KEY,
@@ -4505,15 +4539,13 @@ export async function handleHealth(req, ctx, options = {}) {
           'EX',
           String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
           'NX',
-        ]], redisTimeoutMs, true);
-        if (!lockResult || lockResult[0]?.error) throw new Error('Redis snapshot lock retry failed');
+        ]], Math.min(4_000, retryRemainingMs), true);
+        if (!lockResult || lockResult.length !== 1 || lockResult[0]?.error
+          || !['OK', null].includes(lockResult[0]?.result)) throw new Error('Redis snapshot lock retry failed');
         ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
         if (ownsSnapshotRefreshLock) break;
       }
-      // Redis stayed reachable but another refresher held the lock through our
-      // request budget. Fall back to one direct sweep rather than mislabeling
-      // healthy Redis as REDIS_DOWN. This path is bounded and should be rare;
-      // the normal cold-burst path still permits only the elected owner.
+      if (!ownsSnapshotRefreshLock) return healthRefreshPendingResponse(headers);
     }
   } catch (err) {
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
@@ -4522,6 +4554,12 @@ export async function handleHealth(req, ctx, options = {}) {
       error: err.message,
       checkedAt: new Date(now).toISOString(),
     }, 503, headers);
+  }
+
+  // Count from before SET, so network delay cannot extend our local lease.
+  if (Date.now() - refreshLeaseStartedAt >= HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS * 1_000) {
+    await releaseHealthVerdictRefreshLock(refreshLockToken);
+    return healthRefreshPendingResponse(headers);
   }
 
   const allDataKeys = [
@@ -4561,11 +4599,11 @@ export async function handleHealth(req, ctx, options = {}) {
       ...fredRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
-    results = await redisPipeline(commands, 8_000, true);
+    results = await redisPipeline(fenceHealthMutations(commands, refreshLockToken), 8_000, true);
     if (!results) throw new Error('Redis request failed');
   } catch (err) {
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
-    // REDIS_DOWN is the one hard-down state that returns 503: with Redis
+    // REDIS_DOWN is a failed health read (distinct from REFRESH_PENDING): with Redis
     // unreachable the endpoint can assess nothing, so a plain HTTP-status
     // monitor (UptimeRobot, k8s probe, LB) must see a failure. DEGRADED/
     // UNHEALTHY/WARNING stay 200 (verdict in body) so warn-level seed jitter
@@ -4733,8 +4771,8 @@ export async function handleHealth(req, ctx, options = {}) {
 
   // Now that every key has a status, claim (or read back) the one durable
   // deadline per STALE_CONTENT source and publish it. Only the claim half is
-  // awaited — the recovery cleanup is bookkeeping no reader of this response
-  // depends on, so it must not sit in the request path.
+  // used to classify this response. Cleanup and history also finish before
+  // release; a token check at each mutation rejects an expired owner.
   const graceStatePlan = staleContentGraceStatePlan(graceEvidenceByName, checks, evaluationNow);
   if (graceStatePlan.claimCommands.length > 0) {
     // `redisPipeline` resolves null rather than throwing on every failure shape
@@ -4744,7 +4782,7 @@ export async function handleHealth(req, ctx, options = {}) {
     // warning", which is the fail-closed direction.
     // The grace state hash key is deployment-prefixed via
     // healthVerdictRedisKey — send the plan verbatim (#7674).
-    const graceResults = await redisPipeline(graceStatePlan.claimCommands, 4_000, true).catch(() => null);
+    const graceResults = await redisPipeline(fenceHealthMutations(graceStatePlan.claimCommands, refreshLockToken), 4_000, true).catch(() => null);
     applyStaleContentGrace(
       checks,
       graceEvidenceByName,
@@ -4753,8 +4791,7 @@ export async function handleHealth(req, ctx, options = {}) {
     );
   }
   if (graceStatePlan.cleanupCommands.length > 0) {
-    const graceCleanup = redisPipeline(graceStatePlan.cleanupCommands, 4_000, true).catch(() => {});
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(graceCleanup);
+    await redisPipeline(fenceHealthMutations(graceStatePlan.cleanupCommands, refreshLockToken), 4_000, true).catch(() => {});
   }
 
   // Liveness of the paying path's credential, not a data key: see
@@ -4830,10 +4867,10 @@ export async function handleHealth(req, ctx, options = {}) {
       previousSignature,
       now: evaluationNow,
     });
-    await redisPipeline(persistencePlan.commands, 4_000).catch(() => {});
+    const commands = persistencePlan.commands.map(([op, key, ...args]) => [op, applyRedisKeyPrefix(key), ...args]);
+    await redisPipeline(fenceHealthMutations(commands, refreshLockToken), 4_000, true).catch(() => {});
   };
-  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persistFailureLog());
-  else await persistFailureLog();
+  await persistFailureLog();
 
   const verdictSnapshot = {
     status: overall,
@@ -4872,32 +4909,29 @@ export async function handleHealth(req, ctx, options = {}) {
   // Await the write so the next request cannot race an unstarted background
   // SET and repeat the full sweep. A write failure does not invalidate the
   // live verdict just computed; the next request will retry by sweeping.
-  // Both snapshots are written by the SAME sweep, in one pipeline, so the compact
+  // Both snapshots are written by the SAME sweep, in one atomic script, so the compact
   // form can never disagree with the full one or outlive it.
   // Both keys share one TTL for the same reason they share one sweep: they
   // carry the same deadlines, so they must stop being servable together.
   const snapshotTtl = String(snapshotTtlSeconds(verdictSnapshot, snapshotNow()));
   // Both snapshot keys are deployment-prefixed via healthVerdictRedisKey —
   // write them verbatim (#7674).
-  const snapshotWriteResult = await redisPipeline([
-    [
-      'SET',
-      HEALTH_VERDICT_SNAPSHOT_KEY,
-      JSON.stringify(verdictSnapshot),
-      'EX',
-      snapshotTtl,
-    ],
-    [
-      'SET',
-      HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
-      JSON.stringify(buildCompactVerdictSnapshot(verdictSnapshot)),
-      'EX',
-      snapshotTtl,
-    ],
-  ], 4_000, true).catch(() => null);
+  const snapshotWriteResult = await redisPipeline([[
+    'EVAL',
+    HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT,
+    '3',
+    HEALTH_VERDICT_REFRESH_LOCK_KEY,
+    HEALTH_VERDICT_SNAPSHOT_KEY,
+    HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+    refreshLockToken,
+    JSON.stringify(verdictSnapshot),
+    JSON.stringify(buildCompactVerdictSnapshot(verdictSnapshot)),
+    snapshotTtl,
+  ]], 4_000, true).catch(() => null);
   const snapshotWriteFailed = !snapshotWriteResult
-    || snapshotWriteResult.length !== 2
-    || snapshotWriteResult.some((entry) => entry?.error);
+    || snapshotWriteResult.length !== 1
+    || snapshotWriteResult[0]?.error
+    || snapshotWriteResult[0]?.result !== 'OK';
   if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
   // A failed cache write does not invalidate the live verdict. Releasing only
   // this request's token lets the next caller retry immediately without ever
@@ -4912,7 +4946,7 @@ export async function handleHealth(req, ctx, options = {}) {
   // no-store guarantees that Redis reachability is checked on every request;
   // only the verdict payload is reused, for at most 60 seconds. All other
   // responses already carry the no-store defaults from `headers` (a cached
-  // 401 pins an auth failure; a cached 503 masks REDIS_DOWN recovery).
+  // 401 pins an auth failure; a cached 503 masks outage or refresh recovery).
   // Persistence can cross a tender deadline after classification. The cached
   // snapshot is already rejected at that deadline; recheck the cold response too.
   const contractsFinder = checks.globalTendersContractsFinder;
@@ -4989,6 +5023,10 @@ export const __testing__ = {
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
+  HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT,
+  HEALTH_VERDICT_MUTATION_SCRIPT,
+  HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
+  fenceHealthMutations,
   CHINA_COVERAGE_SUMMARY_KEY,
   CHINA_DECISION_SIGNALS_PENDING_MS,
   projectChinaCoverageStatus,
