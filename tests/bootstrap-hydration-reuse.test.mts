@@ -851,6 +851,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const aviation = roundTrip('Flight Delays v2', [{ updatedAt: new Date(1) }]);
     assert.ok(aviation[0]?.updatedAt instanceof Date);
 
+    const news = roundTrip('Aviation News', [{ publishedAt: new Date(6) }]);
+    assert.ok(news[0]?.publishedAt instanceof Date);
+    assert.equal(news[0]?.publishedAt.getTime(), 6);
+    assert.doesNotThrow(() => news[0]?.publishedAt.toLocaleTimeString());
+
     const pizzint = roundTrip('PizzINT', { lastUpdate: new Date(2) });
     assert.ok(pizzint.lastUpdate instanceof Date);
 
