@@ -76,13 +76,23 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 
 ### Redirect URI 允许列表
 
-动态客户端注册**不**对任意 HTTPS 重定向开放。仅接受以下前缀：
+动态客户端注册**不**对任意重定向开放。`redirect_uri` 必须是 `http://localhost:<port>` 或 `http://127.0.0.1:<port>`（任意端口、任意路径），或与下表中托管 MCP 客户端实际发送的回调地址完全一致。厂商有官方文档时附上链接。
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>`（任意端口） —— 适用于 Claude Code、MCP Inspector、本地开发
+| 客户端 | 回调地址 |
+|--------|----------|
+| Claude | `https://claude.ai/api/mcp/auth_callback`、`https://claude.com/api/mcp/auth_callback` |
+| Cursor Agents、Cursor 网页版、Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback`、`cursor://anysphere.cursor-mcp/oauth/callback`（[Cursor MCP 文档](https://cursor.com/docs/mcp)） |
+| ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect`（[OpenAI 认证文档](https://developers.openai.com/plugins/build/auth)） |
+| Grok | `https://grok.com/connectors-oauth-exchange-code/`、`https://console.x.ai/connectors-oauth-exchange-code/`（[Grok 客户端元数据](https://grok.com/oauth/mcp-client.json)） |
+| VS Code 网页版 | `https://vscode.dev/redirect`、`https://insiders.vscode.dev/redirect` |
+| Perplexity | `https://www.perplexity.ai/rest/connections/oauth_callback`、`https://enterprise.perplexity.ai/rest/connections/oauth_callback`（[Perplexity 帮助中心](https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors)） |
+| Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
+| Devin | `https://api.devin.ai/mcp/oauth/callback`（[Devin MCP 文档](https://docs.devin.ai/work-with-devin/mcp)） |
+| Google Antigravity | `https://antigravity.google/oauth-callback`（[Antigravity MCP 文档](https://antigravity.google/docs/mcp)） |
 
-其他客户端必须通过这些重定向之一代理，或在本地运行。
+Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、Zed 与 MCP Inspector 使用本地回环形式。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
+
+授权响应携带 `iss`（[RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)），其值为发起流程的主机的 `issuer`。ChatGPT 需要该参数才会使用其固定回调地址。
 
 ### Token 生命周期
 
@@ -199,6 +209,12 @@ Claude Desktop 会在首次连接时自动处理 OAuth 流程。
   }
 }
 ```
+
+Cursor Agents、Cursor 网页版与 Grok Bot 使用同一 URL，并通过 Cursor 的托管回调完成登录。
+
+### 其他托管客户端
+
+ChatGPT、Grok、Perplexity、Mistral Le Chat、Devin、Google Antigravity 与 VS Code：将 `https://worldmonitor.app/mcp` 添加为自定义连接器或远程 MCP 服务器。注册接受 [Redirect URI 允许列表](#redirect-uri-允许列表) 中列出的回调地址。
 
 ### MCP Inspector（调试）
 

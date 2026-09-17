@@ -187,6 +187,30 @@ describe('authorizeProHandler — happy path', () => {
     assert.equal(loc.searchParams.get('code'), FIXED_CODE);
   });
 
+  it('RFC 9207: redirect carries the iss captured when the flow started, not this host', async () => {
+    const grant = await makeGrantToken();
+    const { deps } = await makeDeps({
+      redisGetDel: async (key) => {
+        if (key === `oauth:nonce:${NONCE}`) return { ...BASE_NONCE_REDIS, iss: 'https://www.worldmonitor.app' };
+        if (key === `mcp-grant:${NONCE}`) return BASE_GRANT_REDIS;
+        return null;
+      },
+    });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+    assert.equal(res.status, 302);
+    const loc = new URL(res.headers.get('Location'));
+    assert.equal(loc.searchParams.get('iss'), 'https://www.worldmonitor.app');
+    assert.equal(loc.searchParams.get('state'), 'state_round_trip_value');
+  });
+
+  it('RFC 9207: a nonce stored before the deploy (no iss) redirects without an iss param', async () => {
+    const grant = await makeGrantToken();
+    const { deps } = await makeDeps();
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+    assert.equal(res.status, 302);
+    assert.equal(new URL(res.headers.get('Location')).searchParams.has('iss'), false);
+  });
+
   it('Order of Redis ops: HMAC verify → GETDEL mcp-grant → GETDEL oauth:nonce → GET oauth:client → SETEX oauth:code', async () => {
     const grant = await makeGrantToken();
     const { deps, ops } = await makeDeps();

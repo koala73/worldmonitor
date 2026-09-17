@@ -10,20 +10,47 @@ import { Redis } from '@upstash/redis';
 export const config = { runtime: 'edge' };
 
 const CLIENT_TTL_SECONDS = 90 * 24 * 3600; // 90 days sliding
+// VS Code registers 4 redirect URIs at once. Every entry must still pass the
+// allowlist, so this only bounds the stored record.
+const MAX_REDIRECT_URIS = 8;
 
-// Allowlisted redirect URI prefixes — DCR is not open to arbitrary HTTPS URIs
-const ALLOWED_REDIRECT_PREFIXES = [
+// DCR is not open to arbitrary redirect URIs: the registered callback receives
+// the authorization code. Each entry is a vendor-owned MCP client callback,
+// matched exactly as that client sends it. Sources are listed in
+// docs/mcp-overview.mdx#redirect-uri-allowlist.
+const ALLOWED_REDIRECT_URIS = new Set([
+  // Claude
   'https://claude.ai/api/mcp/auth_callback',
   'https://claude.com/api/mcp/auth_callback',
-];
+  // Cursor Agents and web; Grok Bot registers both Cursor entries
+  'https://www.cursor.com/agents/mcp/oauth/callback',
+  'cursor://anysphere.cursor-mcp/oauth/callback',
+  // ChatGPT: the stable callback requires RFC 9207 `iss` (api/oauth/authorize.js)
+  'https://chatgpt.com/connector_platform_oauth_redirect',
+  // Grok
+  'https://grok.com/connectors-oauth-exchange-code/',
+  'https://console.x.ai/connectors-oauth-exchange-code/',
+  // VS Code for the Web (desktop VS Code uses loopback)
+  'https://vscode.dev/redirect',
+  'https://insiders.vscode.dev/redirect',
+  // Perplexity
+  'https://www.perplexity.ai/rest/connections/oauth_callback',
+  'https://enterprise.perplexity.ai/rest/connections/oauth_callback',
+  // Mistral Le Chat
+  'https://callback.mistral.ai/v1/integrations_auth/oauth2_callback',
+  // Devin
+  'https://api.devin.ai/mcp/oauth/callback',
+  // Google Antigravity
+  'https://antigravity.google/oauth-callback',
+]);
 
 // Exported so `api/internal/mcp-grant-mint.ts` (U3) can re-validate the
 // registered client's redirect URIs as a defense-in-depth check before
 // minting a Pro-MCP grant. Re-uses the SAME allowlist that DCR enforces
 // at registration time — no parallel implementation drift.
 export function isAllowedRedirectUri(uri) {
-  if (ALLOWED_REDIRECT_PREFIXES.includes(uri)) return true;
-  // localhost / 127.0.0.1 any port (Claude Code, MCP inspector)
+  if (ALLOWED_REDIRECT_URIS.has(uri)) return true;
+  // localhost / 127.0.0.1 any port (Claude Code, Cursor, VS Code, MCP Inspector)
   try {
     const u = new URL(uri);
     return (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.protocol === 'http:';
@@ -100,14 +127,14 @@ export default async function handler(req) {
   if (!Array.isArray(redirect_uris) || redirect_uris.length === 0) {
     return jsonResp({ error: 'invalid_request', error_description: 'redirect_uris is required' }, 400);
   }
-  if (redirect_uris.length > 3) {
-    return jsonResp({ error: 'invalid_request', error_description: 'Maximum 3 redirect_uris allowed' }, 400);
+  if (redirect_uris.length > MAX_REDIRECT_URIS) {
+    return jsonResp({ error: 'invalid_request', error_description: `Maximum ${MAX_REDIRECT_URIS} redirect_uris allowed` }, 400);
   }
   for (const uri of redirect_uris) {
     if (typeof uri !== 'string' || !isAllowedRedirectUri(uri)) {
       return jsonResp({
         error: 'invalid_redirect_uri',
-        error_description: `Redirect URI not allowed: ${uri}. Allowed: claude.ai/claude.com callbacks and localhost.`,
+        error_description: `Redirect URI not allowed: ${uri}. Allowed: http loopback and the MCP client callbacks listed at https://www.worldmonitor.app/docs/mcp-overview#redirect-uri-allowlist`,
       }, 400);
     }
   }

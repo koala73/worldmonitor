@@ -76,13 +76,23 @@ OAuth bearer requests re-check the resolved MCP token, user binding, and entitle
 
 ### Redirect URI allowlist
 
-Dynamic Client Registration is **not** open to arbitrary HTTPS redirects. Only these prefixes are accepted:
+Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_uri` must be `http://localhost:<port>` or `http://127.0.0.1:<port>` (any port, any path), or exactly match a hosted MCP client callback below, as the client sends it. Links point to the vendor's own documentation where one exists.
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>` (any port) — for Claude Code, MCP Inspector, local development
+| Client | Callback |
+|--------|----------|
+| Claude | `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` |
+| Cursor Agents, Cursor web, Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback`, `cursor://anysphere.cursor-mcp/oauth/callback` ([Cursor MCP docs](https://cursor.com/docs/mcp)) |
+| ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect` ([OpenAI auth docs](https://developers.openai.com/plugins/build/auth)) |
+| Grok | `https://grok.com/connectors-oauth-exchange-code/`, `https://console.x.ai/connectors-oauth-exchange-code/` ([Grok client metadata](https://grok.com/oauth/mcp-client.json)) |
+| VS Code for the Web | `https://vscode.dev/redirect`, `https://insiders.vscode.dev/redirect` |
+| Perplexity | `https://www.perplexity.ai/rest/connections/oauth_callback`, `https://enterprise.perplexity.ai/rest/connections/oauth_callback` ([Perplexity help](https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors)) |
+| Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
+| Devin | `https://api.devin.ai/mcp/oauth/callback` ([Devin MCP docs](https://docs.devin.ai/work-with-devin/mcp)) |
+| Google Antigravity | `https://antigravity.google/oauth-callback` ([Antigravity MCP docs](https://antigravity.google/docs/mcp)) |
 
-Other clients must proxy via one of these redirects or run locally.
+Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, Zed, and MCP Inspector use the loopback form. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Clients with per-user or per-tenant callbacks, such as Gemini custom apps and Microsoft Copilot Studio, cannot be exact-matched and are not supported.
+
+The authorization response carries `iss` ([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)), set to the `issuer` of the host where the flow started. ChatGPT requires it to use its stable callback.
 
 ### Token lifetimes
 
@@ -199,6 +209,12 @@ Add via **Settings → Connectors → Add custom connector**:
   }
 }
 ```
+
+Cursor Agents, Cursor web, and Grok Bot take the same URL and sign in through Cursor's hosted callback.
+
+### Other hosted clients
+
+ChatGPT, Grok, Perplexity, Mistral Le Chat, Devin, Google Antigravity, and VS Code: add `https://worldmonitor.app/mcp` as a custom connector or remote MCP server. Registration accepts the callbacks listed in [Redirect URI allowlist](#redirect-uri-allowlist).
 
 ### MCP Inspector (debugging)
 

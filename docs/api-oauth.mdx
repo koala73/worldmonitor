@@ -9,6 +9,7 @@ WorldMonitor runs a minimal OAuth 2.1 authorization server whose only client-fac
 - [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE (required, S256 only)
 - [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) — Authorization Server Metadata
 - [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) — Protected Resource Metadata
+- [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) — Authorization Server Issuer Identification
 
 ## Discovery
 
@@ -46,13 +47,9 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 }
 ```
 
-**Redirect URI allowlist**: only these prefixes are accepted:
+**Redirect URI allowlist**: `http://localhost:<port>` / `http://127.0.0.1:<port>` (any port), or an exact match for a hosted MCP client callback listed in [MCP server → Redirect URI allowlist](/mcp-overview#redirect-uri-allowlist). Any other entry returns `400 invalid_redirect_uri` for the whole registration.
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
-
-At most **3** `redirect_uris` per registration; more returns `400 invalid_request`.
+At most **8** `redirect_uris` per registration; more returns `400 invalid_request`.
 
 **Rate limit**: 5 registrations / 60 s / IP.
 
@@ -71,6 +68,8 @@ Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-i
 - `code_challenge_method=S256`
 - `state` — opaque
 - `scope` (optional)
+
+**Authorization response**: redirects to `redirect_uri` with `code`, `state` (when one was sent), and `iss`. `iss` is the `issuer` from the AS metadata of the host where the flow started ([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)); the metadata advertises `authorization_response_iss_parameter_supported: true`.
 
 **Code TTL**: 10 minutes. Single-use (atomic `GETDEL` on exchange).
 

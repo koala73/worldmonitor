@@ -23,6 +23,19 @@ const CLIENT_TTL_SECONDS = 90 * 24 * 3600; // 90-day sliding reset
 // worldmonitor.app.evil.example, evilworldmonitor.app, and any :port.
 const WM_ORIGIN = /^https:\/\/(?:[a-z0-9-]+\.)?worldmonitor\.app$/;
 
+// RFC 9207 issuer for a flow starting on this request: the host-derived AS
+// metadata `issuer`, which named this host's /oauth/authorize. Mirrors
+// resolveMetadataOrigin in api/_agent-metadata.ts (this edge .js entry does not
+// import TypeScript); tests/oauth-authorize-iss.test.mjs pins the two together.
+// Captured on GET into the nonce because the authorization response can leave
+// from another host: the native consent submit and the Pro flow both land on
+// api.worldmonitor.app.
+export function resolveAuthorizationIssuer(req) {
+  const host = (req.headers.get('host') ?? new URL(req.url).host).toLowerCase();
+  const origin = `https://${host}`;
+  return WM_ORIGIN.test(origin) ? origin : 'https://worldmonitor.app';
+}
+
 let _rl = null;
 function getRatelimit() {
   if (_rl) return _rl;
@@ -278,7 +291,8 @@ export default async function handler(req) {
     }
 
     const nonce = crypto.randomUUID();
-    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, created_at: Date.now() }, 600);
+    const iss = resolveAuthorizationIssuer(req);
+    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, iss, created_at: Date.now() }, 600);
     if (!nonceStored) {
       return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
     }
@@ -321,7 +335,7 @@ export default async function handler(req) {
     }
 
     // Authoritative values come exclusively from server-stored nonce.
-    const { client_id, redirect_uri, code_challenge, state } = nonceData;
+    const { client_id, redirect_uri, code_challenge, state, iss } = nonceData;
 
     let client;
     try {
@@ -381,6 +395,8 @@ export default async function handler(req) {
     const redirectUrl = new URL(redirect_uri);
     redirectUrl.searchParams.set('code', code);
     if (state) redirectUrl.searchParams.set('state', state);
+    // Absent only on a nonce stored before issuers were captured.
+    if (iss) redirectUrl.searchParams.set('iss', iss);
 
     // XHR (JavaScript fetch) path: return JSON so the page can navigate the WebView.
     // Native form submit path: return 302 redirect (curl, non-JS fallback).
