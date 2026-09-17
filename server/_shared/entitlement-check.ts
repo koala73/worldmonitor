@@ -551,7 +551,10 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       const hasCurrentEmbedAccessShape = typeof ent.features?.embedAccess === 'boolean';
       // Verification markers have their own short Redis TTL. Serve them even
       // though validUntil is expired so cooldown requests stop at Redis instead
-      // of repeating the Convex action/claim chain. The cache-shape check must
+      // of repeating the Convex action/claim chain. A marker can carry a paid
+      // fallback whose validUntil lapses during this TTL; consumers must check
+      // expiry before granting access and retain the marker for denial details.
+      // The cache-shape check must
       // run first: a pre-embedAccess marker is still an authorization row, and
       // serving it would bypass the canonical Convex merge below.
       if (hasCurrentEmbedAccessShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
