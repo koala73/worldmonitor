@@ -3697,6 +3697,23 @@ const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
 const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
 const RELAY_GATEWAY_GATE_USER_AGENT = 'worldmonitor-health-relay-gate/1.0';
 const RELAY_GATEWAY_GATE_ENV = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET'];
+
+// The same resolution the gateways use (api/create-checkout.ts,
+// api/customer-portal.ts, api/notification-channels.ts): CONVEX_SITE_URL, or
+// the `.convex.site` twin of CONVEX_URL. A deployment configured through
+// CONVEX_URL alone is a supported shape and must not read as misconfigured.
+function resolveRelayGatewaySiteUrl() {
+  return process.env.CONVEX_SITE_URL
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+}
+
+/** Names of the gateway inputs this deployment lacks, in RELAY_GATEWAY_GATE_ENV terms. */
+function relayGatewayGateMissingEnv() {
+  const missing = [];
+  if (!resolveRelayGatewaySiteUrl()) missing.push('CONVEX_SITE_URL');
+  if (!process.env.CONVEX_TENANT_RELAY_SECRET) missing.push('CONVEX_TENANT_RELAY_SECRET');
+  return missing;
+}
 // Last probe verdict, shared by every concurrent sweep. TTL equals the verdict
 // snapshot TTL so the gate is re-asked exactly as often as the verdict itself.
 // Scoped per deployment exactly like the verdict snapshot keys: preview and
@@ -3818,7 +3835,7 @@ async function readOrProbeRelayGatewayGate({
 
 /** True when this deployment would report the gate at all (see probeRelayGatewayGate's omit rule). */
 function probeRelayGatewayGateApplies() {
-  const configured = RELAY_GATEWAY_GATE_ENV.every((name) => Boolean(process.env[name]));
+  const configured = relayGatewayGateMissingEnv().length === 0;
   const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
   return configured || isProductionBuild;
 }
@@ -3830,7 +3847,7 @@ function probeRelayGatewayGateApplies() {
 // stale-reference reason; the arrow keeps both the receiver and the current
 // (possibly wrapped) global.
 async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
-  const missing = RELAY_GATEWAY_GATE_ENV.filter((name) => !process.env[name]);
+  const missing = relayGatewayGateMissingEnv();
   const base = {
     role: 'gateway',
     route: RELAY_GATEWAY_GATE_ROUTE,
@@ -3849,7 +3866,7 @@ async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) =
       ...base,
       status: 'RELAY_GATE_MISCONFIGURED',
       missing,
-      hint: `This production build cannot see ${missing.join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
+      hint: `This production build cannot see ${missing.map((name) => (name === 'CONVEX_SITE_URL' ? 'CONVEX_SITE_URL (or CONVEX_URL)' : name)).join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
     };
   }
   // The bearer is the tenant secret, so it never leaves over anything but
@@ -3857,7 +3874,7 @@ async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) =
   // transport failure, and is reported without a request being made.
   let target;
   try {
-    const site = new URL(process.env.CONVEX_SITE_URL);
+    const site = new URL(resolveRelayGatewaySiteUrl());
     if (site.protocol !== 'https:') throw new Error(`protocol ${site.protocol}`);
     target = `${site.origin}${RELAY_GATEWAY_GATE_ROUTE}`;
   } catch (error) {

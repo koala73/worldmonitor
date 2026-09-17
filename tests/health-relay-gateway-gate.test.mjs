@@ -44,7 +44,7 @@ const {
 
 const realFetch = globalThis.fetch;
 const savedEnv = {};
-const ENV_KEYS = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET', 'VERCEL_ENV', 'VERCEL'];
+const ENV_KEYS = ['CONVEX_SITE_URL', 'CONVEX_URL', 'CONVEX_TENANT_RELAY_SECRET', 'VERCEL_ENV', 'VERCEL'];
 
 beforeEach(() => {
   for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
@@ -65,7 +65,7 @@ const SITE = 'https://convex-site.test';
  * relay stub. `relay` decides what the gate answers; `relayCalls` records what
  * the sweep sent so the probe's own contract is pinned, not just its verdict.
  */
-function mockTransports({ relay }) {
+function mockTransports({ relay, relayOrigin = SITE }) {
   // Verdict snapshots and the shared probe verdict live in the same store so a
   // second sweep can be forced (clear the snapshots) while the probe cache is
   // left to do its job.
@@ -79,7 +79,7 @@ function mockTransports({ relay }) {
   const redisCommands = [];
   globalThis.fetch = async (url, init) => {
     const target = String(url);
-    if (new URL(target).origin === new URL(SITE).origin) {
+    if (new URL(target).origin === new URL(relayOrigin).origin) {
       relayCalls.push({ url: target, init });
       return relay(target, init);
     }
@@ -490,6 +490,24 @@ test('the probe reaches fetch through a forwarding wrapper, not a detached refer
 
   assert.equal(relayCalls.length, 1);
   assert.equal(detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'OK');
+});
+
+test('a deployment configured through CONVEX_URL alone is probed at its .convex.site twin, not flagged misconfigured', async () => {
+  // The gateways resolve CONVEX_SITE_URL ?? CONVEX_URL with .convex.cloud →
+  // .convex.site (api/create-checkout.ts, customer-portal.ts,
+  // notification-channels.ts); the probe must accept the same shape (#8282 review, P1).
+  process.env.VERCEL = '1';
+  process.env.VERCEL_ENV = 'production';
+  delete process.env.CONVEX_SITE_URL;
+  process.env.CONVEX_URL = 'https://fixture-123.convex.cloud';
+  process.env.CONVEX_TENANT_RELAY_SECRET = SECRET;
+  const { relayCalls } = mockTransports({ relay: admitted, relayOrigin: 'https://fixture-123.convex.site' });
+
+  const { detailed } = await sweep();
+
+  assert.equal(detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'OK');
+  assert.equal(relayCalls.length, 1);
+  assert.equal(relayCalls[0].url, `https://fixture-123.convex.site${RELAY_GATEWAY_GATE_ROUTE}`);
 });
 
 test('a cached verdict is only trusted when it is well-formed and inside its window', () => {
