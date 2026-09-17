@@ -83,8 +83,10 @@ function makeMulti({ onAddCommand, onExec } = {}) {
   return { multi, queued, execCalls: () => execCalls };
 }
 
-// node-redis's ErrorReply — what a `-ERR ...` RESP reply becomes. The class
-// NAME is the contract the proxy duck-types on, so it must match exactly.
+// node-redis's ErrorReply — what any `-...` RESP reply becomes, whether the
+// text is a deterministic `ERR wrong number of arguments` or a transient
+// `LOADING`. One type for both is exactly why the handler cannot use the type
+// to decide whether a failure is worth retrying.
 class ErrorReply extends Error {}
 
 // node-redis's MultiErrorReply, reduced to the two properties the handler reads.
@@ -256,29 +258,32 @@ describe('redis-rest-proxy POST /multi-exec', () => {
     ]);
   });
 
-  it('answers a queue-time Redis refusal with a permanent 4xx, not a retryable 500', async () => {
-    // Redis can also refuse a command when it is QUEUED (bad arity, unknown
-    // command). Nothing runs, so there is no reply array — node-redis rejects
-    // with a bare ErrorReply. That failure is deterministic: the identical
-    // request fails identically forever. As a 500 it is retryable
-    // (isRetryableHttpStatus, scripts/_seed-utils.mjs) and burns a caller's
-    // whole retry budget; 400 is in PERMANENT_4XX_STATUSES, so atomicPublish
-    // aborts on the first attempt and surfaces Redis's own message.
-    const app = await boot({
-      onExec: () => Promise.reject(new ErrorReply("ERR wrong number of arguments for 'hset' command")),
-    });
-    const res = await app.post('/multi-exec', [['SET', 't:a', 'hello'], ['HSET', 'h:a', 'field']]);
+  // Redis can also refuse at QUEUE time, before anything runs: node-redis
+  // rejects with a bare ErrorReply and no reply array. Splitting that off as a
+  // permanent 4xx is a trap, because the deterministic refusals and the
+  // transient server states arrive as the same bare type. These two cases
+  // differ only in the message, so any rule that makes the first permanent
+  // makes the second permanent too — and a self-hosted Redis answers `-LOADING`
+  // for a few seconds on every restart. Both must stay retryable.
+  for (const [label, message] of [
+    ['a deterministic refusal', "ERR wrong number of arguments for 'hset' command"],
+    ['a transient server state', 'LOADING Redis is loading the dataset in memory'],
+  ]) {
+    it(`keeps ${label} from Redis retryable and surfaces its message`, async () => {
+      const app = await boot({ onExec: () => Promise.reject(new ErrorReply(message)) });
+      const res = await app.post('/multi-exec', [['SET', 't:a', 'hello'], ['HSET', 'h:a', 'field']]);
 
-    assert.equal(res.status, 400, `expected 400, got ${res.status} ${res.body}`);
-    assert.match(JSON.parse(res.body).error, /ERR wrong number of arguments for 'hset' command/);
-    assert.ok(app.stderr.some((line) => /Transaction refused by Redis.*wrong number of arguments/.test(line)),
-      `a 4xx is where the caller stops retrying, so it must be on stderr; got ${JSON.stringify(app.stderr)}`);
-  });
+      assert.equal(res.status, 500, `expected 500, got ${res.status} ${res.body}`);
+      assert.equal(JSON.parse(res.body).error, message,
+        'the caller must get Redis\'s own words, not a generic server error');
+      assert.ok(app.stderr.some((line) => line.includes(message)),
+        `the refusal must reach the container log; got ${JSON.stringify(app.stderr)}`);
+    });
+  }
 
   it('still reports a transport failure as 500', async () => {
-    // A dropped connection is neither a per-command error nor a refusal: there
-    // is no reply array and Redis said nothing. It is genuinely transient, so
-    // it must stay retryable. This is the case the 400 above must NOT swallow.
+    // A dropped connection carries no reply array either, and is the reason the
+    // fall-through has to stay a 500 rather than become a blanket 4xx.
     const app = await boot({ onExec: () => Promise.reject(new Error('Socket closed unexpectedly')) });
     const res = await app.post('/multi-exec', [['SET', 't:a', 'hello']]);
 

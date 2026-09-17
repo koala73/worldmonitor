@@ -800,22 +800,6 @@ function respondError(res, err) {
   res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
 }
 
-// "Redis itself refused this command" vs "the connection broke" — see the
-// /multi-exec handler below for why the two need different statuses.
-//
-// Matched on constructor names along the prototype chain rather than
-// `instanceof ErrorReply`: importing the class means a named import against a
-// floating `redis@4` (docker/Dockerfile.redis-rest), and a named import the
-// installed 4.x happens not to export is a startup SyntaxError — a container
-// that never boots. An unrecognized shape returns false and keeps the old 500,
-// so this can only ever narrow a misclassification, never widen one.
-function isRedisErrorReply(err) {
-  for (let proto = err; proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
-    if (proto.constructor?.name === 'ErrorReply') return true;
-  }
-  return false;
-}
-
 const server = http.createServer(async (req, res) => {
   res.setHeader('content-type', 'application/json');
 
@@ -885,29 +869,31 @@ const server = http.createServer(async (req, res) => {
         // wrote a key on a self-hosted install (#8265).
         multi.addCommand(queuedCommand);
       }
-      // exec() rejects in three distinct situations that need three distinct
-      // answers. All three were unreachable until #8265 was fixed — nothing was
-      // ever queued — so none has run in production; they are live now.
+      // exec() rejects two different ways, and only one of them is a response
+      // rather than a failure. Both were unreachable until #8265 was fixed —
+      // nothing was ever queued — so neither has run in production.
       //
-      //   1. MultiErrorReply: the transaction RAN and some commands replied
-      //      with an error. node-redis hides the ordered replies on
-      //      err.replies instead of returning them. Upstash answers this with
-      //      HTTP 200 and an ordered array carrying {error} for the failed
-      //      entries — the shape /pipeline above emits and the shape
-      //      server/_shared/redis.ts already scans
-      //      (`data.find((item) => item.error || item.result === 'ERR')`).
-      //   2. A bare ErrorReply: Redis refused a command at QUEUE time (bad
-      //      arity, unknown command), so nothing ran. Deterministic — the same
-      //      request fails identically forever.
-      //   3. Anything else: a dropped socket, a closed client, a timeout.
-      //      Genuinely transient, and a 500 is the right answer.
+      // MultiErrorReply means the transaction RAN and some commands replied
+      // with an error; node-redis hides the ordered replies on err.replies
+      // instead of returning them. Upstash answers that with HTTP 200 and an
+      // ordered array carrying {error} for the failed entries — the shape
+      // /pipeline above emits and the shape server/_shared/redis.ts already
+      // scans (`data.find((item) => item.error || item.result === 'ERR')`), a
+      // branch that could never fire while this route always threw. Before
+      // this, one WRONGTYPE turned a transaction that DID run into an opaque
+      // 500 naming neither the command nor the error.
       //
-      // 1 and 2 were both 500 before, and 500 is retryable
-      // (isRetryableHttpStatus, scripts/_seed-utils.mjs), so a WRONGTYPE became
-      // an opaque 500 naming neither command nor error, and an arity mistake
-      // spent a caller's whole retry budget on a request that can never pass.
-      // 400 is in PERMANENT_4XX_STATUSES, so atomicPublish now aborts on the
-      // first attempt with Redis's own message.
+      // Everything else — a bare ErrorReply from Redis refusing a command at
+      // QUEUE time, a dropped socket, a closed client — stays a 500, on
+      // purpose. It is tempting to split the queue-time refusal off as a
+      // permanent 4xx so a deterministic mistake (bad arity) stops burning the
+      // caller's retry budget, but node-redis raises `-LOADING`, `-BUSY`,
+      // `-MASTERDOWN` and other transient states through that exact same bare
+      // type. A self-hosted Redis restarting answers `-LOADING` for a few
+      // seconds; classifying that as permanent would make atomicPublish skip
+      // the whole publication instead of retrying past it, so the mistake
+      // costs a stale cycle while the one it avoids costs two retries. Failing
+      // toward retryable is the cheaper error here.
       let results;
       try {
         results = await multi.exec();
@@ -917,15 +903,6 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify(err.replies.map((reply) => (
             reply instanceof Error ? { error: reply.message } : { result: reply }
           ))));
-          return;
-        }
-        if (isRedisErrorReply(err)) {
-          // Logged for the same reason assertCommandAllowed logs its own
-          // refusals: a 4xx is where the caller stops retrying, so the
-          // container log is the operator's only account of why.
-          console.error(`Transaction refused by Redis: ${err.message}`);
-          res.writeHead(400);
-          res.end(JSON.stringify({ error: err.message }));
           return;
         }
         throw err;
