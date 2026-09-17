@@ -3713,20 +3713,84 @@ function parseCachedRelayGatewayGate(raw, now) {
   return parsed;
 }
 
-async function readOrProbeRelayGatewayGate({ now, key, ctx, fetchImpl } = {}) {
-  const cached = await redisPipeline([['GET', key]], 2_000, true).catch(() => null);
-  const reused = parseCachedRelayGatewayGate(cached?.[0]?.result, now);
+// Single-flight population. When no verdict is cached, exactly one sweep may
+// probe: it takes a short `SET NX` lease, probes, publishes the verdict and
+// releases. Every other sweep that finds the lease taken polls for the
+// published verdict for as long as the probe itself may run; if none appears
+// in that budget it reports the gate as unclassified (`RELAY_GATE_UNREACHABLE`,
+// warn) rather than either probing itself or vouching for a credential it
+// never checked. The lease outlives the probe budget so a crashed owner
+// cannot wedge the gate for longer than one snapshot.
+const RELAY_GATEWAY_GATE_LEASE_KEY = 'health:relay-gate:lease:v1';
+const RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS = 10;
+const RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS = 250;
+const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS = RELAY_GATEWAY_GATE_TIMEOUT_MS + 1_000;
+
+async function readOrProbeRelayGatewayGate({
+  now,
+  key,
+  leaseKey,
+  ctx,
+  fetchImpl,
+  followerWaitMs = RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+  followerPollMs = RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const readCached = async () => {
+    const cached = await redisPipeline([['GET', key]], 2_000, true).catch(() => null);
+    return parseCachedRelayGatewayGate(cached?.[0]?.result, now);
+  };
+  const reused = await readCached();
   if (reused) return reused;
-  const fresh = await probeRelayGatewayGate({ now, fetchImpl });
-  if (!fresh) return null;
-  const persist = redisPipeline(
-    [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS)]],
+
+  const lease = await redisPipeline(
+    [['SET', leaseKey, String(now), 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
     2_000,
     true,
-  ).catch(() => {});
-  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
-  else await persist;
-  return fresh;
+  ).catch(() => null);
+  const ownsLease = lease?.[0]?.result === 'OK';
+
+  if (!ownsLease) {
+    const deadline = Date.now() + followerWaitMs;
+    while (Date.now() < deadline) {
+      await sleep(followerPollMs);
+      const published = await readCached();
+      if (published) return published;
+    }
+    if (!probeRelayGatewayGateApplies()) return null;
+    return {
+      role: 'gateway',
+      route: RELAY_GATEWAY_GATE_ROUTE,
+      evaluatedAt: new Date(now).toISOString(),
+      status: 'RELAY_GATE_UNREACHABLE',
+      error: 'another sweep holds the probe lease and published no verdict within the probe budget',
+      hint: 'This sweep did not probe the gate itself (single-flight). Persistent across sweeps = the probing sweep keeps timing out against Convex.',
+    };
+  }
+
+  try {
+    const fresh = await probeRelayGatewayGate({ now, fetchImpl });
+    if (!fresh) return null;
+    // Publish before releasing so a follower never sees a free lease and an
+    // empty cache in the same instant.
+    await redisPipeline(
+      [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS)]],
+      2_000,
+      true,
+    ).catch(() => {});
+    return fresh;
+  } finally {
+    const release = redisPipeline([['DEL', leaseKey]], 2_000, true).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(release);
+    else await release;
+  }
+}
+
+/** True when this deployment would report the gate at all (see probeRelayGatewayGate's omit rule). */
+function probeRelayGatewayGateApplies() {
+  const configured = RELAY_GATEWAY_GATE_ENV.every((name) => Boolean(process.env[name]));
+  const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+  return configured || isProductionBuild;
 }
 
 async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
@@ -3752,11 +3816,29 @@ async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = globalThis.
       hint: `This production build cannot see ${missing.join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
     };
   }
-  const siteUrl = process.env.CONVEX_SITE_URL.replace(/\/+$/, '');
+  // The bearer is the tenant secret, so it never leaves over anything but
+  // TLS: a malformed or `http:` CONVEX_SITE_URL is a misconfiguration, not a
+  // transport failure, and is reported without a request being made.
+  let target;
+  try {
+    const site = new URL(process.env.CONVEX_SITE_URL);
+    if (site.protocol !== 'https:') throw new Error(`protocol ${site.protocol}`);
+    target = `${site.origin}${RELAY_GATEWAY_GATE_ROUTE}`;
+  } catch (error) {
+    const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+    if (!isProductionBuild) return null;
+    return {
+      ...base,
+      status: 'RELAY_GATE_MISCONFIGURED',
+      invalid: ['CONVEX_SITE_URL'],
+      error: String(error?.message ?? error),
+      hint: 'CONVEX_SITE_URL must be an https: origin; the gateway credential is never sent over plaintext, so no probe was made.',
+    };
+  }
   const startedAt = Date.now();
   let response;
   try {
-    response = await fetchImpl(`${siteUrl}${RELAY_GATEWAY_GATE_ROUTE}`, {
+    response = await fetchImpl(target, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -4442,6 +4524,7 @@ export async function handleHealth(req, ctx, options = {}) {
   const relayGatewayGate = await readOrProbeRelayGatewayGate({
     now: evaluationNow,
     key: sweepKey(RELAY_GATEWAY_GATE_PROBE_KEY),
+    leaseKey: sweepKey(RELAY_GATEWAY_GATE_LEASE_KEY),
     ctx,
   });
   if (relayGatewayGate) checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
@@ -4638,8 +4721,11 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_TIMEOUT_MS,
   RELAY_GATEWAY_GATE_PROBE_KEY,
   RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_LEASE_KEY,
+  RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
   probeRelayGatewayGate,
   parseCachedRelayGatewayGate,
+  readOrProbeRelayGatewayGate,
   buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,

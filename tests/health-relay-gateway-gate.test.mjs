@@ -34,8 +34,11 @@ const {
   RELAY_GATEWAY_GATE_TIMEOUT_MS,
   RELAY_GATEWAY_GATE_PROBE_KEY,
   RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_LEASE_KEY,
+  RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   parseCachedRelayGatewayGate,
+  readOrProbeRelayGatewayGate,
   STATUS_COUNTS,
 } = __testing__;
 
@@ -70,6 +73,7 @@ function mockTransports({ relay }) {
     [HEALTH_SNAPSHOT_KEY]: null,
     [HEALTH_COMPACT_SNAPSHOT_KEY]: null,
     [RELAY_GATEWAY_GATE_PROBE_KEY]: null,
+    [RELAY_GATEWAY_GATE_LEASE_KEY]: null,
   };
   const relayCalls = [];
   globalThis.fetch = async (url, init) => {
@@ -79,14 +83,21 @@ function mockTransports({ relay }) {
       return relay(target, init);
     }
     const commands = JSON.parse(init.body);
-    const results = commands.map(([op, key, value]) => {
+    const results = commands.map(([op, key, value, ...rest]) => {
       if (op === 'GET' && key in snapshotStore) return { result: snapshotStore[key] };
       if (op === 'STRLEN') return { result: 100 };
       if (op === 'LLEN') return { result: 1 };
       if (op === 'GET') return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
       if (op === 'EXISTS') return { result: 0 };
       if (op === 'HEXISTS') return { result: 1 };
-      if (op === 'SET' && key in snapshotStore) { snapshotStore[key] = value; return { result: 'OK' }; }
+      if (op === 'SET' && key in snapshotStore) {
+        // Honour NX like Redis does: a held key is not overwritten and the
+        // reply is null, which is how a sweep learns it lost the lease.
+        if (rest.includes('NX') && snapshotStore[key] != null) return { result: null };
+        snapshotStore[key] = value;
+        return { result: 'OK' };
+      }
+      if (op === 'DEL' && key in snapshotStore) { snapshotStore[key] = null; return { result: 1 }; }
       return { result: 'OK' };
     });
     return new Response(JSON.stringify(results), { status: 200 });
@@ -287,6 +298,89 @@ test('concurrent or back-to-back sweeps inside the TTL reuse one probe verdict i
   snapshotStore[HEALTH_COMPACT_SNAPSHOT_KEY] = null;
   await sweep();
   assert.equal(relayCalls.length, 2, 'an expired verdict is re-probed');
+});
+
+test('the gateway credential is never sent over plaintext: a non-https or malformed site URL is MISCONFIGURED without a request', async () => {
+  productionEnv();
+  process.env.CONVEX_SITE_URL = 'http://convex-site.test';
+  const { relayCalls } = mockTransports({ relay: admitted });
+
+  const { detailed } = await sweep();
+
+  const entry = detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME];
+  assert.equal(entry.status, 'RELAY_GATE_MISCONFIGURED');
+  assert.deepEqual(entry.invalid, ['CONVEX_SITE_URL']);
+  assert.equal(relayCalls.length, 0, 'no request carried the bearer');
+
+  process.env.CONVEX_SITE_URL = 'not a url';
+  mockTransports({ relay: admitted });
+  const malformed = (await sweep()).detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME];
+  assert.equal(malformed.status, 'RELAY_GATE_MISCONFIGURED');
+
+  // Outside a production build the same misconfiguration is omitted, like a
+  // missing var, so a local http: Convex never fails a laptop sweep.
+  delete process.env.VERCEL;
+  process.env.CONVEX_SITE_URL = 'http://127.0.0.1:3210';
+  const { relayCalls: localCalls } = mockTransports({ relay: admitted });
+  const local = (await sweep()).detailed;
+  assert.equal(local.checks[RELAY_GATEWAY_GATE_CHECK_NAME], undefined);
+  assert.equal(localCalls.length, 0);
+});
+
+test('population is single-flight: a sweep that loses the probe lease waits for the published verdict and never probes itself', async () => {
+  productionEnv();
+  const { relayCalls, snapshotStore } = mockTransports({ relay: rejected });
+  // Another sweep holds the lease; it publishes its verdict on the follower's
+  // second poll.
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = String(Date.now());
+  const ownerVerdict = { role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'OK', httpStatus: 400, evaluatedAt: new Date().toISOString() };
+  let polls = 0;
+  const sleep = async () => { polls += 1; if (polls === 2) snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = JSON.stringify(ownerVerdict); };
+
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 10_000,
+    followerPollMs: 1,
+    sleep,
+  });
+
+  assert.deepEqual(entry, ownerVerdict, 'the follower reports the owner\'s verdict');
+  assert.equal(relayCalls.length, 0, 'the follower never touched Convex');
+  assert.equal(polls, 2);
+  assert.ok(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], 'the follower does not release a lease it does not own');
+});
+
+test('a follower whose owner publishes nothing within the probe budget reports the gate unclassified, not admitted', async () => {
+  productionEnv();
+  const { relayCalls, snapshotStore } = mockTransports({ relay: admitted });
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = String(Date.now());
+
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 5,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+
+  assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
+  assert.match(entry.error, /lease/);
+  assert.equal(relayCalls.length, 0);
+  assert.ok(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS * 1_000 > RELAY_GATEWAY_GATE_TIMEOUT_MS, 'a crashed owner cannot wedge the gate past its own probe budget');
+});
+
+test('the lease owner publishes before releasing, and the lease is free after the sweep', async () => {
+  productionEnv();
+  const { relayCalls, snapshotStore } = mockTransports({ relay: rejected });
+
+  await sweep();
+
+  assert.equal(relayCalls.length, 1);
+  assert.ok(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], 'verdict published');
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], null, 'lease released');
 });
 
 test('a cached verdict is only trusted when it is well-formed and inside its window', () => {
