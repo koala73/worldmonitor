@@ -392,6 +392,18 @@ One of the published plain-text or Markdown documents an assistant reads to lear
 
 The load-bearing rule: each file is partly hand-authored and partly generated, and every generated section has exactly one producing script, which splices it into the hand-authored text at a stable anchor and can re-derive it byte-for-byte for a staleness check. A page family that only a registry knows about must be listed by that script, never typed in by hand — otherwise it is crawlable but invisible to assistants. See also: MCP Server Card, Discovery Read vs. Transport Operation.
 
+### Client Callback Allowlist
+
+The closed set of redirect addresses an MCP client may register for its OAuth sign-in: any plain-http address on the local host name or the IPv4 loopback address, plus the published callbacks of named hosted clients, each matched exactly as that client sends it.
+
+Registration is all-or-nothing. A client registers every callback it might use in one request, and a single unlisted entry rejects the whole registration, so supporting a hosted client means accepting every callback it sends together, not just the one it uses on a given surface. An entry is added only when the vendor documents or publishes it; a callback recalled from a third-party write-up has been wrong. Only the Pro sign-in re-checks the list before granting, so removing an entry blocks new Pro sign-ins from clients registered before the removal; the API-key sign-in trusts the callbacks stored at registration. See also: Credential Class, Flow Issuer.
+
+### Flow Issuer
+
+The authorization-server identity one MCP sign-in is bound to: the host whose OAuth metadata the client read, which that metadata names as issuer and which receives the request that starts the sign-in.
+
+Every first-party host describes itself as its own issuer, but a sign-in can finish on a different host — the consent form's non-script submission and the Pro sign-in both complete on the API host. The issuer returned to the client is therefore fixed when the sign-in starts and travels with it, never recomputed from the host that sends the final redirect. Strict clients compare the returned issuer to the one they discovered and abandon the sign-in on a mismatch, so recomputing it breaks clients that otherwise work. See also: Client Callback Allowlist, Variant Host.
+
 ## Structured Data & Entity Graph
 
 ### Canonical Entity Node
