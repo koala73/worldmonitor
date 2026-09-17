@@ -108,15 +108,21 @@ function mockTransports({ relay, relayOrigin = SITE }) {
         // EVAL <script> 1 <key> <expected> [<next> <ttl>]: the compare-and-set
         // fallback publish when the script sets, the compare-and-delete
         // release otherwise. `expected` is '' for an absent key, as in Lua.
-        const [, , , target, expected, next, ttl] = [op, key, value, ...rest];
-        if (!(target in snapshotStore)) return { result: 0 };
-        const current = snapshotStore[target] ?? '';
+        // Keys and args follow Redis' `EVAL script numkeys key... arg...`
+        // shape. The guard key is always KEYS[1]; a set script writes KEYS[n].
+        const numkeys = Number(value);
+        const keys = rest.slice(0, numkeys);
+        const [expected, next, ttl] = rest.slice(numkeys);
+        const guard = keys[0];
+        const target = keys[keys.length - 1];
+        if (!(guard in snapshotStore)) return { result: 0 };
+        const current = snapshotStore[guard] ?? '';
         if (key.includes("'set'")) {
           if (current !== expected) return { result: 0 };
           snapshotStore[target] = next;
           return { result: ttl ? 'OK' : 0 };
         }
-        if (current === expected) { snapshotStore[target] = null; return { result: 1 }; }
+        if (current === expected) { snapshotStore[guard] = null; return { result: 1 }; }
         return { result: 0 };
       }
       return { result: 'OK' };
@@ -299,8 +305,10 @@ test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHA
   assert.equal(entry.transportGraceUntil, expiredGrace, 'the original deadline is carried across windows');
   assert.equal(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
   assert.ok(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), 'now operational');
-  const publish = redisCommands.find(([op, key]) => op === 'SET' && key === RELAY_GATEWAY_GATE_PROBE_KEY);
-  assert.deepEqual(publish.slice(3), ['EX', String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS)], 'retained past the freshness window for the streak');
+  // Owner publish: EVAL <script> 2 <lease> <verdict> <token> <json> <ttl>.
+  const publish = redisCommands.find(([op, , numkeys, , target]) => op === 'EVAL' && numkeys === '2' && target === RELAY_GATEWAY_GATE_PROBE_KEY);
+  assert.equal(publish[3], RELAY_GATEWAY_GATE_LEASE_KEY, 'the publish is guarded by the lease');
+  assert.equal(String(publish[7]), String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS), 'retained past the freshness window for the streak');
   // With no other traffic the operational monitor is the only sweep, every
   // 15 minutes; the streak must survive that gap or every run would be a
   // "first sighting" and a dead relay would sit in pending forever.
@@ -481,7 +489,7 @@ test('a follower fallback persists its grace deadline, so the next owner carries
   const persisted = JSON.parse(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY]);
   assert.equal(persisted.transportGraceUntil, fallback.transportGraceUntil, 'the fallback deadline is in Redis');
   assert.equal(persisted.probed, false, 'the persisted fallback says it never probed');
-  const publish = redisCommands.find(([op, , , target]) => op === 'EVAL' && target === RELAY_GATEWAY_GATE_PROBE_KEY);
+  const publish = redisCommands.find(([op, , numkeys, target]) => op === 'EVAL' && numkeys === '1' && target === RELAY_GATEWAY_GATE_PROBE_KEY);
   assert.ok(publish, 'the fallback is published with a compare-and-set, never a blind SET');
   assert.equal(String(publish[6]), String(__testing__.RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS), 'retained across a monitor interval');
 
@@ -571,7 +579,33 @@ test('an owner whose lease lapsed mid-probe does not release a successor\'s leas
   });
 
   assert.equal(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], 'successor-token', 'compare-and-delete left the successor lease in place');
-  assert.ok(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], 'the lapsed owner still published its verdict');
+  // The publish is guarded by the same token: a lapsed owner resuming after
+  // its successor published must not overwrite the newer verdict with an
+  // older one (an old OK masking a new rejection, or an old failure
+  // replacing a recovery) (#8282 review).
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], null, 'the lapsed owner did not publish over its successor');
+});
+
+test('a lapsed owner never overwrites the verdict its successor already published', async () => {
+  productionEnv();
+  const successorVerdict = JSON.stringify({ role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'RELAY_GATE_REJECTED', httpStatus: 401, evaluatedAt: new Date().toISOString() });
+  const { snapshotStore } = mockTransports({
+    relay: () => {
+      // While this owner was paused the successor took the lease, probed,
+      // published a rejection, and released; the stale owner then resumes
+      // with an admitted answer.
+      snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = null;
+      snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = successorVerdict;
+      return admitted();
+    },
+  });
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+  });
+  assert.equal(entry.status, 'OK', 'the stale owner still reports what it saw for its own sweep');
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], successorVerdict, 'the newer rejection stayed published');
 });
 
 test('the lease owner publishes before releasing, and the lease is free after the sweep', async () => {

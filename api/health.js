@@ -3827,6 +3827,19 @@ function parseCachedRelayGatewayGate(raw, now) {
   return parsed;
 }
 
+// The owner's publish is guarded by its lease token (KEYS[1] = lease,
+// KEYS[2] = verdict): an owner paused past its 10 s lease resumes to find a
+// successor that already probed and published, and an unconditional SET here
+// would let its OLDER verdict overwrite the newer one — an old OK masking a
+// new rejection, or an old failure replacing a recovery. Losing the lease
+// means losing the right to publish; the sweep still reports what it saw.
+const RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT = [
+  "if redis.call('get', KEYS[1]) == ARGV[1] then",
+  "  return redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 0',
+].join('\n');
+
 // Compare-and-set for the follower fallback: publish only if the key still
 // holds what the follower last read (ARGV[1], '' for absent), so a verdict
 // the owner landed between the last poll and this write is never clobbered.
@@ -3945,13 +3958,20 @@ async function readOrProbeRelayGatewayGate({
     if (!probed) return null;
     const fresh = withTransportGrace(probed, previous, now);
     // Publish before releasing so a follower never sees a free lease and an
-    // empty cache in the same instant. Retained past the freshness window so
-    // the next sweep can still see this verdict as its predecessor.
-    await redisPipeline(
-      [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS)]],
-      RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
-      true,
-    ).catch(() => {});
+    // empty cache in the same instant, and only while the lease still holds
+    // this sweep's token (see RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT).
+    // Retained past the freshness window so the next sweep can still see
+    // this verdict as its predecessor.
+    await redisPipeline([[
+      'EVAL',
+      RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT,
+      '2',
+      leaseKey,
+      key,
+      leaseToken,
+      JSON.stringify(fresh),
+      String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
     return fresh;
   } finally {
     const release = redisPipeline([[
