@@ -3802,15 +3802,23 @@ function parsePreviousRelayGatewayGate(raw) {
 
 function withTransportGrace(fresh, previous, now) {
   if (fresh.status !== 'RELAY_GATE_UNREACHABLE') return fresh;
+  // The streak anchor survives its own deadline: after the grace lapses it
+  // rides in `transportGraceExpiredAt`, so an unreachable relay that recovers
+  // and fails again still reads as one continuous outage.
   const carried = previous?.status === 'RELAY_GATE_UNREACHABLE'
-    && typeof previous.transportGraceUntil === 'string'
-    && Number.isFinite(Date.parse(previous.transportGraceUntil))
-    ? previous.transportGraceUntil
+    ? [previous.transportGraceUntil, previous.transportGraceExpiredAt]
+      .find((raw) => typeof raw === 'string' && Number.isFinite(Date.parse(raw))) ?? null
     : null;
-  return {
-    ...fresh,
-    transportGraceUntil: carried ?? new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString(),
-  };
+  const deadline = carried ?? new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString();
+  // Publish it as a softening deadline ONLY while it is still in force.
+  // `transportGraceUntil` is registered in ENTRY_SOFTENING_DEADLINES, so an
+  // expired one makes hasExpiredActivationGrace reject every snapshot that
+  // carries it and snapshotTtlSeconds clip the TTL to a second — turning a
+  // persistent relay outage into a full Redis sweep and relay probe on every
+  // single health poll, hammering both failing services (#8282 review).
+  return isExpiredDeadline(deadline, now)
+    ? { ...fresh, transportGraceExpiredAt: deadline }
+    : { ...fresh, transportGraceUntil: deadline };
 }
 
 function parseCachedRelayGatewayGate(raw, now) {
@@ -3949,7 +3957,7 @@ async function readOrProbeRelayGatewayGate({
     // later, after the snapshot expired) would otherwise find no predecessor
     // and mint a fresh grace — one more interval before a dead relay pages.
     // `probed: false` keeps it a predecessor only (see parseCachedRelayGatewayGate).
-    await redisPipeline([[
+    const published = await redisPipeline([[
       'EVAL',
       RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT,
       '1',
@@ -3957,7 +3965,15 @@ async function readOrProbeRelayGatewayGate({
       typeof lastRaw === 'string' ? lastRaw : '',
       JSON.stringify({ ...fallback, probed: false }),
       String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
-    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    // Anything but an explicit 'OK' means a verdict may have landed between
+    // this sweep's last poll and the CAS. Returning the fabricated fallback
+    // then lets handleHealth write it over the owner's real answer, hiding a
+    // fresh rejection as pending for a whole monitor run (#8282 review).
+    if (published?.[0]?.result !== 'OK') {
+      const winner = await readCached();
+      if (winner) return winner;
+    }
     return fallback;
   };
 

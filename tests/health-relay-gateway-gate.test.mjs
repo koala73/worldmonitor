@@ -302,7 +302,14 @@ test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHA
 
   const entry = detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME];
   assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
-  assert.equal(entry.transportGraceUntil, expiredGrace, 'the original deadline is carried across windows');
+  // The streak is carried, but NOT as a live softening deadline: an expired
+  // `transportGraceUntil` is registered in ENTRY_SOFTENING_DEADLINES, so
+  // republishing it would make every snapshot instantly unservable and turn a
+  // persistent outage into a full Redis sweep + relay probe per poll (#8282 review).
+  assert.equal(entry.transportGraceExpiredAt, expiredGrace, 'the original deadline is carried across windows');
+  assert.equal(entry.transportGraceUntil, undefined, 'an expired deadline is never republished as a softening');
+  const snapshotWrite = redisCommands.find(([op, key]) => op === 'SET' && key === HEALTH_SNAPSHOT_KEY);
+  assert.equal(snapshotWrite[4], String(__testing__.HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS), 'the warning snapshot keeps its full TTL');
   assert.equal(compact.problems[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_UNREACHABLE');
   assert.ok(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), 'now operational');
   // Owner publish: EVAL <script> 2 <lease> <verdict> <token> <json> <ttl>.
@@ -329,6 +336,48 @@ test('withTransportGrace only decorates unreachable verdicts and restarts after 
   assert.equal(carried.transportGraceUntil, first.transportGraceUntil);
   const malformed = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, { status: 'RELAY_GATE_UNREACHABLE', transportGraceUntil: 'not-a-date' }, now);
   assert.equal(malformed.transportGraceUntil, new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString());
+  // Past the deadline the streak moves to a field that is NOT a softening
+  // deadline, so the snapshot stays servable for its full TTL (#8282 review).
+  const elapsed = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, first, now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + 1);
+  assert.equal(elapsed.transportGraceUntil, undefined);
+  assert.equal(elapsed.transportGraceExpiredAt, first.transportGraceUntil);
+  // And the expired anchor is itself carried, so the streak never restarts.
+  const stillElapsed = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, elapsed, now + 60 * 60_000);
+  assert.equal(stillElapsed.transportGraceExpiredAt, first.transportGraceUntil);
+  // A healthy window clears it: the next unreachable sighting is a first one.
+  const restarted = withTransportGrace({ status: 'RELAY_GATE_UNREACHABLE' }, { status: 'OK' }, now + 60 * 60_000);
+  assert.equal(restarted.transportGraceUntil, new Date(now + 60 * 60_000 + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString());
+  assert.equal(restarted.transportGraceExpiredAt, undefined);
+});
+
+test('a follower whose fallback publish is defeated adopts the verdict that beat it', async () => {
+  // The owner publishes between the follower's last poll and its fallback
+  // CAS. The CAS correctly refuses, but returning the fabricated fallback
+  // anyway would let handleHealth write it over the owner's real verdict —
+  // hiding a fresh rejection as pending for a whole monitor run (#8282 review).
+  productionEnv();
+  const ownerVerdict = JSON.stringify({ role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'RELAY_GATE_REJECTED', httpStatus: 401, evaluatedAt: new Date().toISOString() });
+  const { snapshotStore, relayCalls } = mockTransports({ relay: admitted });
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'owner-token';
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    // Land the owner's verdict just before the follower's fallback CAS runs.
+    if (typeof init?.body === 'string' && init.body.includes('probed') && init.body.includes('false')) {
+      snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = ownerVerdict;
+    }
+    return redisFetch(url, init);
+  };
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 5,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(relayCalls.length, 0, 'the follower never probed');
+  assert.deepEqual(entry, JSON.parse(ownerVerdict), 'the owner verdict that defeated the CAS wins');
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], ownerVerdict, 'and stayed published');
 });
 
 test('an unexpected admit-side answer is also RELAY_GATE_UNREACHABLE, so a relay 5xx cannot read as "credential fine"', async () => {
@@ -506,7 +555,8 @@ test('a follower fallback persists its grace deadline, so the next owner carries
   });
   assert.equal(relayCalls.length, 1, 'the fallback is never served as a fresh verdict');
   assert.equal(next.status, 'RELAY_GATE_UNREACHABLE');
-  assert.equal(next.transportGraceUntil, fallback.transportGraceUntil, 'the streak carried');
+  assert.equal(next.transportGraceExpiredAt, fallback.transportGraceUntil, 'the streak carried past its deadline');
+  assert.equal(next.transportGraceUntil, undefined, 'and not as a live softening');
   assert.equal(next.probed, undefined);
   assert.equal(__testing__.healthStatusBucket(next, monitorNow), 'warn', 'and the expired deadline pages');
 });
@@ -534,8 +584,8 @@ test('a follower fallback never overwrites a verdict the owner published after t
     followerPollMs: 1,
     sleep: async () => {},
   });
-  assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
   assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], ownerVerdict, 'compare-and-set left the owner\'s verdict in place');
+  assert.deepEqual(entry, JSON.parse(ownerVerdict), 'and the follower reports it rather than its own fallback');
 });
 
 test('a follower accepts a verdict the owner published after the follower\'s own sweep began', async () => {
