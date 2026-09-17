@@ -126,11 +126,15 @@ function abortInFlightRequest(): void {
       // call site — so a browser extension's fetch hook that leaks this reason
       // reported as a first-party insights-loader rejection
       // (WORLDMONITOR-125/12Z/11N) instead of the zero-frame timeout it is.
-      Object.defineProperty(reason, 'stack', {
-        value: 'TimeoutError: signal timed out',
-        configurable: true,
-        writable: true,
-      });
+      try {
+        Object.defineProperty(reason, 'stack', {
+          value: 'TimeoutError: signal timed out',
+          configurable: true,
+          writable: true,
+        });
+      } catch {
+        /* engine pins `stack`; an unstamped reason must still abort below */
+      }
     }
     inFlightAbort.abort(reason);
   } catch {

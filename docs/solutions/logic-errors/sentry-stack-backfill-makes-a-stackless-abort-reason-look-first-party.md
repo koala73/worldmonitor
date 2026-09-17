@@ -1,6 +1,7 @@
 ---
 title: "Sentry's fetch stack backfill makes a stackless abort reason look first-party — a foreign extension's leaked rejection passed hasFirstParty"
 date: 2026-09-17
+last_updated: 2026-09-17
 category: logic-errors
 module: Sentry error filtering
 problem_type: logic_error
@@ -37,8 +38,8 @@ tags:
 ## Symptoms
 
 - Per this session's Sentry pull: WORLDMONITOR-125 (2 events, first seen 2026-09-09), WORLDMONITOR-12Z (1 event, 2026-09-16) and the older WORLDMONITOR-11N (7 events), all `TimeoutError: signal timed out`, mechanism `auto.browser.global_handlers.onunhandledrejection`, `handled: no`, Chrome/Edge 151-152 on Windows, about 10 events from at least 6 IPs.
-- The innermost frames were the loader's own `const resp = await fetch(...)` (column 26) and its closing `})();`. At the pre-fix line numbers those were `:190` and `:204`. In the current tree they are `src/services/insights-loader.ts:201` and `:215`. Below them were `InsightsPanel.ts:195` (`paintCachedBriefEarly`) or `:309` (`updateInsights`), then `invokePanelMethod`, then `data-loader.ts`.
-- The stack didn't make sense: that same `await` sits inside `try { ... } catch { return null; }` (`src/services/insights-loader.ts:200-210`), so the loader's own promise can't be the unhandled one.
+- The innermost frames were the loader's own `const resp = await fetch(...)` (column 26) and its closing `})();`. At the pre-fix line numbers those were `:190` and `:204`. In the current tree they are `src/services/insights-loader.ts:205` and `:219`. Below them were `InsightsPanel.ts:195` (`paintCachedBriefEarly`) or `:309` (`updateInsights`), then `invokePanelMethod`, then `data-loader.ts`.
+- The stack didn't make sense: that same `await` sits inside `try { ... } catch { return null; }` (`src/services/insights-loader.ts:204-214`), so the loader's own promise can't be the unhandled one.
 - Only this one call site ever showed up. Timeouts from native `AbortSignal.timeout()` that the same kind of hook leaked were dropped without a trace.
 
 ## What Didn't Work
@@ -63,22 +64,26 @@ inFlightAbort.abort(
 );
 ```
 
-After (`src/services/insights-loader.ts:120-135`):
+After (`src/services/insights-loader.ts:120-139`, line comments omitted). The stamp sits in its own `try`, added under issue #8300 and explained under Prevention:
 
 ```ts
 let reason: DOMException | undefined;
 if (typeof DOMException === 'function') {
   reason = new DOMException('signal timed out', 'TimeoutError');
-  Object.defineProperty(reason, 'stack', {
-    value: 'TimeoutError: signal timed out',
-    configurable: true,
-    writable: true,
-  });
+  try {
+    Object.defineProperty(reason, 'stack', {
+      value: 'TimeoutError: signal timed out',
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    /* engine pins `stack`; an unstamped reason must still abort below */
+  }
 }
 inFlightAbort.abort(reason);
 ```
 
-The stamp is applied on every engine, not only Chromium. Where a JS-built DOMException does get a stack, that stack holds the construction frames, which here are `abortInFlightRequest` called from the `setTimeout` at `src/services/insights-loader.ts:151`. Those frames are first-party too. On Node v24.15.0 in this session, `new DOMException(...).stack` included the calling frames. This investigation found Firefox's DOMException carries a stack too.
+The stamp is attempted on every engine, not only Chromium. Where a JS-built DOMException does get a stack, that stack holds the construction frames, which here are `abortInFlightRequest` called from the `setTimeout` at `src/services/insights-loader.ts:155`. Those frames are first-party too. On Node v24.15.0 in this session, `new DOMException(...).stack` included the calling frames. This investigation found Firefox's DOMException carries a stack too.
 
 The same PR also fixed a false comment in `src/bootstrap/sentry-init.ts`. It used to say "our shipped code cannot synthesize the literal 'signal timed out'". Our code does build that reason: in insights-loader and in the fallback at `src/services/timeout-signal.ts:40-63`. The new comment (`src/bootstrap/sentry-init.ts:945-956`) names both places.
 
@@ -92,7 +97,7 @@ The whole bug is three facts combined:
 
 A native `AbortSignal.timeout` reason already has `stack === "TimeoutError: signal timed out"` (checked in Chromium in this investigation). That value isn't `undefined`, so the check at `fetch.js:100` skips it, the SDK parses zero frames, and the suppression drops it. That's why only the hand-built reason ever surfaced. Once the loader's reason has the same shape, a leaked rejection is filtered the same way. A first-party failure reported with a `kind` tag still gets through, because the tag exempts it at `src/bootstrap/sentry-init.ts:1003`.
 
-Trade-off: if our own code ever left this reason unhandled, Sentry would now drop it too. The stamp creates no blind spot that a native `AbortSignal.timeout` rejection doesn't already have, but a tag protects only the paths that set one. Not every caller does: the `InsightsPanel` constructor starts the early brief paint with a bare `void this.paintCachedBriefEarly()` (`src/components/InsightsPanel.ts:90`), which bypasses `invokePanelMethod` and its `panel_call_rejected` tag. That path is safe today for a different reason: `fetchServerInsights` catches its own aborted fetch and resolves `null` (`src/services/insights-loader.ts:200-210`), so the reason never propagates to any first-party caller. The containment comes from that catch, not from a tag.
+Trade-off: if our own code ever left this reason unhandled, Sentry would now drop it too. The stamp creates no blind spot that a native `AbortSignal.timeout` rejection doesn't already have, but a tag protects only the paths that set one. Not every caller does: the `InsightsPanel` constructor starts the early brief paint with a bare `void this.paintCachedBriefEarly()` (`src/components/InsightsPanel.ts:90`), which bypasses `invokePanelMethod` and its `panel_call_rejected` tag. That path is safe today for a different reason: `fetchServerInsights` catches its own aborted fetch and resolves `null` (`src/services/insights-loader.ts:204-214`), so the reason never propagates to any first-party caller. The containment comes from that catch, not from a tag.
 
 ## Prevention
 
@@ -104,9 +109,9 @@ Trade-off: if our own code ever left this reason unhandled, Sentry would now dro
 
 Next, check the event's console breadcrumbs for `chrome-extension://` or `moz-extension://` URLs in a `window.fetch` chain. A frame stack that runs through a call site you already fixed means the frames describe where fetch was entered, not which promise leaked.
 
-**Rule for JS-built abort reasons.** A timeout reason we build ourselves should look like the native one: a `stack` that is only the header line, set with `Object.defineProperty`. A `stack` of `undefined` invites Sentry to backfill it. A real stack with frames makes a foreign leak look first-party. Matching the native shape only removes the misattribution; it does not make our own leaks visible. So the rule has a precondition: every first-party consumer of the reason either catches it or reports through a `kind`-tagged capture. A leak that is left unhandled and untagged is invisible whether the reason is native or stamped.
+**Rule for JS-built abort reasons.** A timeout reason we build ourselves in the native `signal timed out` wording should look like the native one: a `stack` that is only the header line, set with `Object.defineProperty` inside its own `try`. The stamp only improves telemetry, while the abort *is* the deadline. If the stamp shares the abort's swallowing `catch`, an engine that refuses to redefine `stack` skips the abort, and the fetch never times out at all. That is worse than any misattribution. A `stack` of `undefined` invites Sentry to backfill it. A real stack with frames makes a foreign leak look first-party. Matching the native shape only removes the misattribution; it does not make our own leaks visible. So the rule has a precondition: every first-party consumer of the reason either catches it or reports through a `kind`-tagged capture. A leak that is left unhandled and untagged is invisible whether the reason is native or stamped.
 
-The rule also covers the fallback in `src/services/timeout-signal.ts:40-63`, which runs where `AbortSignal.timeout` is missing (`src/services/timeout-signal.ts:27-29`). Issue #8300 stamped it the same way. The stamp landed in both bundles, because the marketing bundle carries a byte-identical copy pinned by `tests/marketing-mirror-parity.test.mts`. It changed only legacy-engine behavior, bringing it in line with what native engines already produce. `tests/pro-timeout-signal.test.mts` pins both copies against both engine shapes: the stackless Chromium one and the framed one Node and Firefox build.
+The rule also covers the fallback in `src/services/timeout-signal.ts:40-63`, which runs where `AbortSignal.timeout` is missing (`src/services/timeout-signal.ts:27-29`). Issue #8300 (PR #8304) stamps it the same way, in both bundles, because the marketing bundle carries a byte-identical copy pinned by `tests/marketing-mirror-parity.test.mts`. It changes only legacy-engine behavior, bringing it in line with what native engines already produce. `tests/pro-timeout-signal.test.mts` pins both copies against both engine shapes: the stackless Chromium one and the framed one Node and Firefox build. It adds a third shape, a DOMException whose `stack` refuses redefinition, and requires the signal to abort anyway. `tests/insights-loader.test.mjs` holds the same refusal case for the loader. Before the stamp moved into its own `try`, all three refusal tests (one per bundle, plus the loader's) timed out because the signal never aborted.
 
 **Regression test pattern.** Node's DOMException already has a stack, so the test has to recreate Chromium's stackless one. Otherwise it passes before the fix too. `tests/insights-loader.test.mjs:320-353` swaps in a stackless subclass, asserts that precondition, and reads the reason through a stubbed `fetch`:
 

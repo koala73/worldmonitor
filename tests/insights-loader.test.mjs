@@ -352,6 +352,39 @@ describe('insights-loader', () => {
       assert.equal(reason?.stack, 'TimeoutError: signal timed out');
     });
 
+    it('still aborts when the engine refuses the stack stamp', { timeout: 1_000 }, async () => {
+      // The stamp only improves telemetry; the abort is the fetch deadline. A
+      // DOMException that pins `stack` makes defineProperty throw, and that
+      // throw must not skip the abort and leave the request hanging.
+      const NativeDOMException = globalThis.DOMException;
+      class LockedStackDOMException extends NativeDOMException {
+        constructor(...args) {
+          super(...args);
+          Object.defineProperty(this, 'stack', { value: 'TimeoutError: signal timed out\n    at locked', configurable: false, writable: false });
+        }
+      }
+      assert.throws(
+        () => Object.defineProperty(new LockedStackDOMException('x', 'TimeoutError'), 'stack', { value: 'y' }),
+        TypeError,
+        'precondition: the stub refuses a stack redefinition',
+      );
+      let reason;
+      globalThis.DOMException = LockedStackDOMException;
+      try {
+        globalThis.fetch = (_url, init) => new Promise((_, reject) => {
+          init.signal.addEventListener('abort', () => {
+            reason = init.signal.reason;
+            reject(reason);
+          }, { once: true });
+        });
+        const result = await fetchServerInsights(10);
+        assert.equal(result, null);
+      } finally {
+        globalThis.DOMException = NativeDOMException;
+      }
+      assert.equal(reason?.name, 'TimeoutError');
+    });
+
     it('coalesces concurrent fetches into one network request (#7290)', async () => {
       const valid = makeValidInsights();
       let fetchCount = 0;
