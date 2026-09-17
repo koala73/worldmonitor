@@ -523,7 +523,10 @@ test('canonical publication strips NHC recovery state and diagnostics', () => {
   });
 });
 
-async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
+async function seedProcess(initial, now, {
+  failStateWrite = false, eonetEmpty = false, eonetFails = false,
+  gdacsFails = [], gdacsFeatures = {}, nhcHealthy = false, failSourceStateWrite = false,
+} = {}) {
   Date.now = () => now;
   const store = new Map(initial);
   const calls = { eonet: 0, gdacs: 0, nhc: 0, hko: 0 };
@@ -544,12 +547,16 @@ async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
       if (failStateWrite && body[0] === 'SET' && body[1] === 'natural:events:nhc-snapshot:v1') {
         return new Response('', { status: 403 });
       }
+      if (failSourceStateWrite && body[0] === 'SET' && body[1] === 'natural:events:source-snapshots:v1') {
+        return new Response('', { status: 403 });
+      }
       return Response.json(Array.isArray(body[0])
         ? body.map(command => ({ result: redis(command) }))
         : { result: redis(body) });
     }
     if (url.hostname === 'eonet.gsfc.nasa.gov') {
       calls.eonet += 1;
+      if (eonetFails) return new Response('', { status: 503 });
       return Response.json({ events: eonetEmpty ? [] : [{
         id: 'eonet-volcano-process', title: 'Volcano process fixture', description: '',
         categories: [{ id: 'volcanoes', title: 'Volcanoes' }],
@@ -559,10 +566,13 @@ async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
     }
     if (url.hostname === 'www.gdacs.org') {
       calls.gdacs += 1;
-      return Response.json({ features: [] });
+      const type = url.searchParams.get('eventtype') || url.searchParams.get('eventlist');
+      if (gdacsFails.includes(type)) return new Response('', { status: 503 });
+      return Response.json({ features: gdacsFeatures[type] || [] });
     }
     if (url.hostname === 'mapservices.weather.noaa.gov') {
       calls.nhc += 1;
+      if (nhcHealthy) return Response.json({ type: 'FeatureCollection', features: [] });
       return new Response('', { status: 503 });
     }
     if (url.hostname === 'data.weather.gov.hk') {
@@ -576,8 +586,8 @@ async function seedProcess(initial, now, failStateWrite, eonetEmpty) {
   await module.runNaturalEventsSeed();
 }
 
-function runSeedFixture(initial, now, { failStateWrite = false, eonetEmpty = false } = {}) {
-  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(initial)}, ${now}, ${failStateWrite}, ${eonetEmpty})`], {
+function runSeedFixture(initial, now, options = {}) {
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', `(${seedProcess.toString()})(${JSON.stringify(initial)}, ${now}, ${JSON.stringify(options)})`], {
     encoding: 'utf8',
     timeout: 10_000,
     env: {
@@ -683,4 +693,35 @@ test('real seeder keeps first-failure diagnostics after a valid zero-record aggr
   assert.equal(meta.sourceState, 'degraded');
   assert.equal(meta.lastSourceSuccessAt, NOW);
   assert.equal(meta.consecutiveSourceFailures, 1);
+});
+
+test('real seeder retains failed EONET/GDACS sources and writes their honest success times', () => {
+  const flood = { type: 'Feature', geometry: { type: 'Point', coordinates: [20, 30] }, properties: {
+    eventtype: 'FL', eventid: 1, alertlevel: 'Orange', fromdate: new Date(NOW).toISOString(), name: 'Flood',
+  } };
+  const first = runSeedFixture([], NOW, { nhcHealthy: true, gdacsFeatures: { FL: [flood] } });
+  assert.equal(first.status, 0, first.output);
+  const second = runSeedFixture(first.store, NOW + 60 * MIN, { nhcHealthy: true, eonetFails: true, gdacsFails: ['FL'] });
+  assert.equal(second.status, 0, second.output);
+  const store = new Map(second.store);
+  const envelope = JSON.parse(store.get('natural:events:v1'));
+  const meta = JSON.parse(store.get('seed-meta:natural:events'));
+  assert.equal(envelope._seed.fetchedAt, NOW + 60 * MIN, 'publication time advances');
+  assert.equal(envelope.data.fetchedAt, NOW, 'full-source observation time does not');
+  assert.deepEqual(envelope.data.events.map(event => event.id).sort(), ['eonet-volcano-process', 'gdacs-FL-1']);
+  assert.equal('_sourceSnapshots' in envelope.data, false);
+  assert.equal('_eonetFailed' in envelope.data, false);
+  assert.deepEqual(meta.failedSources, ['gdacs:FL', 'eonet']);
+  assert.equal(meta.sourceHealth.eonet.lastSuccessAt, NOW);
+  assert.equal(meta.sourceHealth.eonet.status, 'retained');
+  assert.equal(meta.sourceHealth['gdacs:FL'].lastSuccessAt, NOW);
+  assert.deepEqual(second.calls, { eonet: 1, gdacs: 6, nhc: 15, hko: 1 });
+
+  const failed = runSeedFixture(first.store, NOW + 60 * MIN, { nhcHealthy: true, failSourceStateWrite: true });
+  assert.notEqual(failed.status, 0, failed.output);
+  const failedStore = new Map(failed.store);
+  for (const key of ['natural:events:v1', 'seed-meta:natural:events', 'natural:events:source-snapshots:v1']) {
+    assert.equal(failedStore.get(key), new Map(first.store).get(key), key);
+  }
+  assert.deepEqual(failed.calls, { eonet: 1, gdacs: 6, nhc: 15, hko: 1 });
 });

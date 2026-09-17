@@ -44,7 +44,7 @@ function gdacsStub(byType, { fail = {} } = {}) {
     const url = new URL(String(input));
     requests.push(url);
     assert.ok(url.hostname === 'www.gdacs.org', `unexpected host ${url.hostname}`);
-    const eventtype = url.searchParams.get('eventtype');
+    const eventtype = url.searchParams.get('eventtype') || url.searchParams.get('eventlist');
     if (!eventtype) return Response.json({ message: 'Eventtype is required.' }, { status: 400 });
     if (eventtype.includes(';') || eventtype === 'ALL') {
       return Response.json({ message: 'Please specify only 1 eventtype.' }, { status: 400 });
@@ -55,7 +55,7 @@ function gdacsStub(byType, { fail = {} } = {}) {
   return { fetchFn, requests };
 }
 
-test('requests one MAP list per GDACS event type and merges the non-green events', async () => {
+test('requests one list per GDACS event type and merges the non-green events', async () => {
   const { fetchFn, requests } = gdacsStub({
     EQ: [feature('EQ', 1, 'Orange')],
     FL: [feature('FL', 2, 'Orange'), feature('FL', 3, 'Green')],
@@ -65,11 +65,12 @@ test('requests one MAP list per GDACS event type and merges the non-green events
   const { events, failedTypes } = await fetchGdacs(fetchFn);
 
   assert.deepEqual(
-    requests.map((u) => u.searchParams.get('eventtype')).sort(),
+    requests.map((u) => u.searchParams.get('eventtype') || u.searchParams.get('eventlist')).sort(),
     [...GDACS_TYPES].sort(),
-    'one request per known GDACS event type, each carrying eventtype=',
+    'one request per known GDACS event type',
   );
-  assert.ok(requests.every((u) => u.pathname.endsWith('/geteventlist/MAP')), 'still the MAP list endpoint');
+  assert.equal(requests.filter((u) => u.pathname.endsWith('/geteventlist/MAP')).length, 5);
+  assert.equal(requests.filter((u) => u.pathname.endsWith('/geteventlist/SEARCH')).length, 1);
   assert.deepEqual(failedTypes, []);
   assert.deepEqual(events.map((e) => e.id).sort(), ['gdacs-EQ-1', 'gdacs-FL-2', 'gdacs-TC-4']);
   assert.equal(events.find((e) => e.id === 'gdacs-FL-2').category, 'floods');
@@ -215,7 +216,10 @@ test('complete GDACS coverage still reports ok', async () => {
   const data = await runNatural({ gdacs: { EQ: [feature('EQ', 1, 'Orange')] } });
 
   assert.deepEqual(data._gdacsFailedTypes, []);
-  assert.deepEqual(naturalEventsAfterPublish(data), { freshnessMetaPatch: { sourceState: 'ok' } });
+  const { freshnessMetaPatch } = naturalEventsAfterPublish(data);
+  assert.equal(freshnessMetaPatch.sourceState, 'ok');
+  assert.deepEqual(freshnessMetaPatch.failedSources, []);
+  assert.ok(Object.values(freshnessMetaPatch.sourceHealth).every(source => source.status === 'ok'));
 });
 
 test('an empty feed with a missing type is still refused — partial coverage never proves emptiness', async () => {

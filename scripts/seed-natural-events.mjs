@@ -24,10 +24,12 @@ const GDACS_API = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP';
 const NHC_BASE = 'https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer';
 const CANONICAL_KEY = 'natural:events:v1';
 const NHC_SNAPSHOT_KEY = 'natural:events:nhc-snapshot:v1';
+const SOURCE_SNAPSHOT_KEY = 'natural:events:source-snapshots:v1';
 const WESTERN_PACIFIC_CYCLONES_KEY = 'natural:western-pacific-cyclones:v1';
 const HKO_WARNINGS_KEY = 'weather:hko-warnings:v1';
 const CACHE_TTL = 64800; // 18h — 6x the 3h Railway bundle cadence; preserves last-good through health grace.
 const NHC_RETAIN_MS = 540 * 60_000;
+const SOURCE_RETAIN_MS = 540 * 60_000;
 const NHC_FAILURE_CODES = new Set([
   'NHC_POINT_REQUEST_FAILED',
   'NHC_POINT_RESPONSE_INVALID',
@@ -86,7 +88,41 @@ function normalizeCategory(id) {
   return NATURAL_EVENT_CATEGORIES.has(c) ? c : 'manmade';
 }
 
-async function fetchEonet(days, fetchFn = globalThis.fetch) {
+function validPosition(lon, lat) {
+  return Number.isFinite(lon) && Math.abs(lon) <= 180
+    && Number.isFinite(lat) && Math.abs(lat) <= 90;
+}
+
+function validEonetRecords(records) {
+  return Array.isArray(records) && records.every(event =>
+    typeof event?.id === 'string' && event.id.length > 0
+    && typeof event.title === 'string' && NATURAL_EVENT_CATEGORIES.has(event.category)
+    && validPosition(event.lon, event.lat) && Number.isFinite(event.date) && event.date > 0);
+}
+
+function validGdacsFeatures(features, eventtype) {
+  return Array.isArray(features) && features.every(feature => {
+    const props = feature?.properties;
+    const coordinates = feature?.geometry?.coordinates;
+    return props?.eventtype === eventtype && props.eventid != null && String(props.eventid).length > 0
+      && typeof props.alertlevel === 'string' && Number.isFinite(Date.parse(props.fromdate))
+      && feature.geometry?.type === 'Point' && Array.isArray(coordinates)
+      && validPosition(coordinates[0], coordinates[1]);
+  });
+}
+
+function selectSourceSnapshot(result, previous, now, validateRecords) {
+  if (result.status === 'fulfilled') {
+    return { version: 1, fetchedAt: now, retainedUntil: now + SOURCE_RETAIN_MS, records: result.value };
+  }
+  return previous?.version === 1
+    && Number.isSafeInteger(previous.fetchedAt) && previous.fetchedAt > 0 && previous.fetchedAt <= now
+    && Number.isSafeInteger(previous.retainedUntil) && now < previous.retainedUntil
+    && previous.retainedUntil <= previous.fetchedAt + SOURCE_RETAIN_MS
+    && validateRecords(previous.records) ? previous : null;
+}
+
+async function fetchEonet(days, fetchFn = globalThis.fetch, now = Date.now()) {
   const url = `${EONET_API_URL}?status=open&days=${days}`;
   const res = await fetchFn(url, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
@@ -97,16 +133,18 @@ async function fetchEonet(days, fetchFn = globalThis.fetch) {
   const data = await res.json();
   if (!Array.isArray(data?.events)) throw new Error('EONET malformed response');
   const events = [];
-  const now = Date.now();
 
   for (const event of data.events || []) {
     const category = event.categories?.[0];
-    if (!category) continue;
+    if (!category) throw new Error('EONET malformed event category');
     const normalizedCategory = normalizeCategory(category.id);
     if (normalizedCategory === 'earthquakes') continue;
 
     const latestGeo = event.geometry?.[event.geometry.length - 1];
-    if (!latestGeo || latestGeo.type !== 'Point') continue;
+    if (!latestGeo || !['Point', 'Polygon'].includes(latestGeo.type) || !Array.isArray(latestGeo.coordinates)) {
+      throw new Error('EONET malformed event geometry');
+    }
+    if (latestGeo.type !== 'Point') continue;
 
     const eventDate = new Date(latestGeo.date);
     const [lon, lat] = latestGeo.coordinates;
@@ -131,6 +169,7 @@ async function fetchEonet(days, fetchFn = globalThis.fetch) {
     });
   }
 
+  if (!validEonetRecords(events)) throw new Error('EONET malformed event');
   return events;
 }
 
@@ -208,50 +247,54 @@ function parseGdacsTcFields(props) {
   return fields;
 }
 
-// One list request per event type. GDACS changed the MAP endpoint on or before
-// 2026-09-16: a bare request answers `400 {"message":"Eventtype is required."}`
-// and `eventtype=ALL` / a `;`-joined list answers `400 {"message":"Please
-// specify only 1 eventtype."}`, so the single mixed-type call this seeder made
-// since #5276 failed every run and crashed it whenever EONET also blipped. The
-// per-type responses carry the same GeoJSON feature shape the mapper below
-// reads.
-//
-// Coverage is now per type, and the reader must know which types answered:
-// a rejected list used to mean "no GDACS coverage at all", but six requests
-// have six times the failure surface, and dropping every GDACS event because
-// one type timed out would publish a silently shorter feed under an `ok`
-// source state. So fetchGdacs settles the six independently and returns the
-// events of the types that answered PLUS the list of types that did not;
-// fetchNaturalEvents publishes the partial list but marks the seed `degraded`
-// (naturalEventsAfterPublish), proves western-Pacific cyclone coverage only
-// when the TC list itself answered, and still refuses to publish an empty
-// feed while any type is unaccounted for. Only when EVERY type fails does
-// the fetch reject, which is the pre-existing "no GDACS at all" path
-// (tests/natural-events-gdacs-eventtype.test.mjs).
-async function fetchGdacsType(eventtype, fetchFn) {
-  const res = await fetchFn(`${GDACS_API}?eventtype=${eventtype}`, {
+async function fetchGdacsType(eventtype, fetchFn, now) {
+  // MAP requires one type, but its VO route returns 404. SEARCH supplies
+  // recent volcano events, not an assertion that those volcanoes are active.
+  const url = new URL(eventtype === 'VO' ? GDACS_API.replace(/MAP$/, 'SEARCH') : GDACS_API);
+  if (eventtype === 'VO') {
+    url.search = new URLSearchParams({
+      eventlist: 'VO',
+      fromDate: new Date(now - DAYS * 86_400_000).toISOString().slice(0, 10),
+      toDate: new Date(now).toISOString().slice(0, 10),
+      pageSize: '100', pageNumber: '1',
+    }).toString();
+  } else url.searchParams.set('eventtype', eventtype);
+  const res = await fetchFn(url.toString(), {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`GDACS ${res.status} (${eventtype})`);
 
   const data = await res.json();
-  if (!Array.isArray(data?.features)) throw new Error(`GDACS malformed response (${eventtype})`);
-  return data.features;
+  if (!Array.isArray(data?.features) || data.features.some(feature =>
+    !['Point', 'Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].includes(feature?.geometry?.type))) {
+    throw new Error(`GDACS malformed response (${eventtype})`);
+  }
+  if (eventtype === 'VO' && data.features.length >= 100) throw new Error('GDACS SEARCH page incomplete (VO)');
+  // MAP also carries impact polygons and forecast tracks. They are not event
+  // records; retaining them would inflate snapshots without adding coverage.
+  const points = data.features.filter(feature => feature.geometry.type === 'Point');
+  if (!validGdacsFeatures(points, eventtype)) throw new Error(`GDACS malformed response (${eventtype})`);
+  return points;
 }
 
 const GDACS_ALERT_RANK = { Red: 0, Orange: 1 };
 
-export async function fetchGdacs(fetchFn = globalThis.fetch) {
+export async function fetchGdacs(fetchFn = globalThis.fetch, { previousSources = null, now = Date.now() } = {}) {
   const types = Object.keys(GDACS_TO_CATEGORY);
-  const settled = await Promise.allSettled(types.map((eventtype) => fetchGdacsType(eventtype, fetchFn)));
+  const settled = await Promise.allSettled(types.map((eventtype) => fetchGdacsType(eventtype, fetchFn, now)));
   const failedTypes = [];
   const features = [];
+  const snapshots = {};
   settled.forEach((result, i) => {
-    if (result.status === 'fulfilled') features.push(...result.value);
-    else failedTypes.push({ eventtype: types[i], message: result.reason?.message || String(result.reason) });
+    const type = types[i];
+    const source = `gdacs:${type}`;
+    const snapshot = selectSourceSnapshot(result, previousSources?.[source], now, records => validGdacsFeatures(records, type));
+    snapshots[source] = snapshot;
+    if (snapshot) features.push(...snapshot.records);
+    if (result.status === 'rejected') failedTypes.push({ eventtype: type, message: result.reason?.message || String(result.reason) });
   });
-  if (failedTypes.length === types.length) {
+  if (failedTypes.length === types.length && !Object.values(snapshots).some(Boolean)) {
     throw new Error(`GDACS unavailable: ${failedTypes.map((t) => t.message).join('; ')}`);
   }
 
@@ -313,6 +356,7 @@ export async function fetchGdacs(fetchFn = globalThis.fetch) {
     events: events.slice(0, 100),
     cycloneEvents: events.filter((event) => event.id.startsWith('gdacs-TC-')),
     failedTypes,
+    snapshots,
   };
 }
 
@@ -722,26 +766,30 @@ function toWesternPacificObservation(event) {
 export async function fetchNaturalEvents({
   now = Date.now(),
   previousNhcSnapshot = null,
+  previousSources = null,
   fetchFn = globalThis.fetch,
   fetchHkoWarningsFn = fetchHkoWarnings,
 } = {}) {
   const [eonetResult, gdacsResult, nhcResult, hkoResult] = await Promise.allSettled([
-    fetchEonet(DAYS, fetchFn),
-    fetchGdacs(fetchFn),
+    fetchEonet(DAYS, fetchFn, now),
+    fetchGdacs(fetchFn, { previousSources, now }),
     fetchNhc(fetchFn),
     fetchHkoWarningsFn({ now, fetchFn }),
   ]);
 
-  const eonetEvents = eonetResult.status === 'fulfilled' ? eonetResult.value : [];
-  // Per-type coverage (see fetchGdacs). A rejected result means no type
-  // answered; a fulfilled one may still carry failed types, which is partial
-  // coverage: published, but marked degraded and never counted as proof.
+  const eonetSnapshot = selectSourceSnapshot(eonetResult, previousSources?.eonet, now, validEonetRecords);
+  const eonetEvents = eonetSnapshot?.records || [];
+  const sourceSnapshots = {
+    ...(gdacsResult.status === 'fulfilled' ? gdacsResult.value.snapshots
+      : Object.fromEntries(Object.keys(GDACS_TO_CATEGORY).map(type => [`gdacs:${type}`, null]))),
+    eonet: eonetSnapshot,
+  };
+  // Failed types remain explicit even when bounded last-good records survive.
   const gdacsEvents = gdacsResult.status === 'fulfilled' ? gdacsResult.value.events : [];
   const gdacsCyclones = gdacsResult.status === 'fulfilled' ? gdacsResult.value.cycloneEvents : [];
   const gdacsFailedTypes = gdacsResult.status === 'fulfilled'
     ? gdacsResult.value.failedTypes.map((t) => t.eventtype)
     : Object.keys(GDACS_TO_CATEGORY);
-  const gdacsComplete = gdacsResult.status === 'fulfilled' && gdacsFailedTypes.length === 0;
   const gdacsTcCovered = gdacsResult.status === 'fulfilled' && !gdacsFailedTypes.includes('TC');
   const nhcSnapshot = nhcResult.status === 'fulfilled'
     ? successfulNhcSnapshot(nhcResult.value, now)
@@ -835,8 +883,7 @@ export async function fetchNaturalEvents({
   const unsafePublication = (
     nhcResult.status === 'rejected' && nhcSnapshot.fetchedAt === null
   ) || (merged.length === 0 && (
-    eonetResult.status === 'rejected'
-      || !gdacsComplete
+    Object.values(sourceSnapshots).some(snapshot => !snapshot)
       || hko.dataAvailable !== true
       || nhcResult.status === 'rejected'
   ));
@@ -847,6 +894,7 @@ export async function fetchNaturalEvents({
   }
   return {
     events: merged,
+    fetchedAt: Math.min(now, nhcSnapshot.fetchedAt ?? now, ...Object.values(sourceSnapshots).filter(Boolean).map(snapshot => snapshot.fetchedAt)),
     westernPacific,
     hkoWarnings: {
       evaluatedAt: westernPacific.evaluatedAt,
@@ -858,6 +906,8 @@ export async function fetchNaturalEvents({
     _nhcSnapshot: nhcSnapshot,
     _nhcFailureDetail: nhcResult.status === 'rejected' ? nhcResult.reason?.message : null,
     _gdacsFailedTypes: gdacsFailedTypes,
+    _sourceSnapshots: sourceSnapshots,
+    _eonetFailed: eonetResult.status === 'rejected',
     _unsafePublication: unsafePublication,
   };
 }
@@ -872,76 +922,64 @@ export function declareRecords(data) {
 
 export function naturalEventsPublishTransform(data) {
   if (data._unsafePublication) return null;
-  const { _nhcSnapshot, _nhcFailureDetail, _gdacsFailedTypes, _unsafePublication, ...publicData } = data;
+  const { _nhcSnapshot, _nhcFailureDetail, _gdacsFailedTypes, _sourceSnapshots, _eonetFailed, _unsafePublication, ...publicData } = data;
   return publicData;
 }
 
 export function naturalEventsAfterPublish(data) {
-  const snapshot = data?._nhcSnapshot;
-  if (!snapshot || snapshot.consecutiveFailures === 0) {
-    // NHC is whole; GDACS may not be. A run that published while one or more
-    // GDACS type lists failed (or all of them — a rejected fetch) is serving
-    // a feed it cannot vouch for, so it reports `degraded` rather than `ok`
-    // and health surfaces the missing types instead of a clean badge. The
-    // run still exits 0: the retained events are real, and the next tick
-    // clears the state as soon as every list answers again.
-    const failedTypes = Array.isArray(data?._gdacsFailedTypes) ? data._gdacsFailedTypes : [];
-    if (failedTypes.length === 0) return { freshnessMetaPatch: { sourceState: 'ok' } };
-    console.warn(`[GDACS] DEGRADED: type list(s) unavailable — ${failedTypes.join(', ')}`);
-    return {
-      completionState: 'DEGRADED',
-      freshnessMetaPatch: {
-        sourceState: 'degraded',
-        errorCode: 'GDACS_TYPE_COVERAGE_INCOMPLETE',
-        skipReason: 'gdacs-type-coverage-incomplete',
-        failedSources: failedTypes.map((eventtype) => `gdacs:${eventtype}`),
-        lastSourceAttemptAt: Date.now(),
-      },
-    };
-  }
-  console.warn(`[NHC] DEGRADED: ${data?._nhcFailureDetail || snapshot.errorCode}`);
-  const patch = {
-    sourceState: 'degraded',
-    errorCode: snapshot.errorCode,
-    skipReason: 'nhc-required-point-coverage-incomplete',
-    lastSourceSuccessAt: snapshot.fetchedAt,
-    lastSourceAttemptAt: snapshot.lastAttemptAt,
-    firstSourceFailureAt: snapshot.firstFailureAt,
-    consecutiveSourceFailures: snapshot.consecutiveFailures,
-    lastSourceFailureCode: snapshot.errorCode,
-  };
-  // NHC and GDACS can degrade in the same run. The NHC failure codes carry a
-  // pending grace in api/health.js (a retained storm set stays healthy for a
-  // few consecutive misses), and that grace would hide a concurrently
-  // incomplete GDACS feed behind a green badge. So when both degrade, the
-  // meta reports the GDACS code — no policy grants it grace, so health warns
-  // immediately — and keeps the NHC diagnostics alongside; once GDACS is whole
-  // again the next run returns to the plain NHC patch and its grace.
-  const gdacsFailedTypes = Array.isArray(data?._gdacsFailedTypes) ? data._gdacsFailedTypes : [];
-  if (gdacsFailedTypes.length === 0) return { completionState: 'DEGRADED', freshnessMetaPatch: patch };
-  console.warn(`[GDACS] DEGRADED: type list(s) unavailable — ${gdacsFailedTypes.join(', ')}`);
-  return {
-    completionState: 'DEGRADED',
-    freshnessMetaPatch: {
-      ...patch,
-      errorCode: 'GDACS_TYPE_COVERAGE_INCOMPLETE',
-      skipReason: 'gdacs-type-coverage-incomplete',
-      failedSources: [...gdacsFailedTypes.map((eventtype) => `gdacs:${eventtype}`), 'nhc'],
-      nhcErrorCode: snapshot.errorCode,
+  const nhc = data?._nhcSnapshot;
+  const nhcFailed = nhc?.consecutiveFailures > 0;
+  const gdacsFailed = data?._gdacsFailedTypes || [];
+  const failedSources = [
+    ...gdacsFailed.map(type => `gdacs:${type}`),
+    ...(data?._eonetFailed ? ['eonet'] : []),
+    ...(nhcFailed ? ['nhc'] : []),
+  ];
+  const sourceHealth = Object.fromEntries(Object.entries(data?._sourceSnapshots || {}).map(([source, snapshot]) => [
+    source, {
+      status: failedSources.includes(source) ? (snapshot ? 'retained' : 'unavailable') : 'ok',
+      lastSuccessAt: snapshot?.fetchedAt ?? null,
+      retainedUntil: snapshot?.retainedUntil ?? null,
+      lastAttemptAt: nhc?.lastAttemptAt,
+      recordCount: snapshot?.records.length ?? 0,
     },
-  };
+  ]));
+  const patch = { sourceState: failedSources.length ? 'degraded' : 'ok', sourceHealth, failedSources };
+  if (!failedSources.length) return { freshnessMetaPatch: patch };
+
+  console.warn(`[natural-events] DEGRADED: ${failedSources.join(', ')}`);
+  if (nhcFailed) Object.assign(patch, {
+    errorCode: nhc.errorCode,
+    skipReason: 'nhc-required-point-coverage-incomplete',
+    lastSourceSuccessAt: nhc.fetchedAt,
+    lastSourceAttemptAt: nhc.lastAttemptAt,
+    firstSourceFailureAt: nhc.firstFailureAt,
+    consecutiveSourceFailures: nhc.consecutiveFailures,
+    lastSourceFailureCode: nhc.errorCode,
+    nhcErrorCode: nhc.errorCode,
+  });
+  // NHC's pending policy must not hide an independent EONET/GDACS failure.
+  if (gdacsFailed.length || data?._eonetFailed) Object.assign(patch, {
+    errorCode: gdacsFailed.length ? 'GDACS_TYPE_COVERAGE_INCOMPLETE' : 'EONET_SOURCE_FAILED',
+    skipReason: gdacsFailed.length ? 'gdacs-type-coverage-incomplete' : 'eonet-source-failed',
+    lastSourceAttemptAt: nhc?.lastAttemptAt,
+  });
+  return { completionState: 'DEGRADED', freshnessMetaPatch: patch };
 }
 
 async function fetchNaturalEventsForSeed() {
-  const previousNhcSnapshot = await readSeedSnapshot(NHC_SNAPSHOT_KEY, { strict: true });
-  return fetchNaturalEvents({ previousNhcSnapshot });
+  const [previousNhcSnapshot, previousSources] = await Promise.all([
+    readSeedSnapshot(NHC_SNAPSHOT_KEY, { strict: true }),
+    readSeedSnapshot(SOURCE_SNAPSHOT_KEY, { strict: true }),
+  ]);
+  return fetchNaturalEvents({ previousNhcSnapshot, previousSources });
 }
 
 export function runNaturalEventsSeed() {
   return runSeed('natural', 'events', CANONICAL_KEY, fetchNaturalEventsForSeed, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'eonet+gdacs+nhc+hko-v2',
+    sourceVersion: 'eonet+gdacs+nhc+hko-v3',
     extraKeys: [
       {
         key: WESTERN_PACIFIC_CYCLONES_KEY,
@@ -970,10 +1008,12 @@ export function runNaturalEventsSeed() {
     maxStaleMin: 540,
     publishTransform: naturalEventsPublishTransform,
     beforePublish: async (data) => {
+      await writeExtraKey(SOURCE_SNAPSHOT_KEY, data._sourceSnapshots, CACHE_TTL);
       await writeExtraKey(NHC_SNAPSHOT_KEY, data._nhcSnapshot, CACHE_TTL);
     },
     afterPublish: naturalEventsAfterPublish,
     afterValidationSkip: async (data) => {
+      await writeExtraKey(SOURCE_SNAPSHOT_KEY, data._sourceSnapshots, CACHE_TTL);
       await writeExtraKey(NHC_SNAPSHOT_KEY, data._nhcSnapshot, CACHE_TTL);
       return naturalEventsAfterPublish(data);
     },
