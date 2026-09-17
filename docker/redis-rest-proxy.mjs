@@ -585,16 +585,26 @@ function isAllowedEval(args) {
 // status cannot change), which means callers branching on `response.ok` see
 // nothing at all. Server-side stderr is the operator's only signal, and its
 // absence is why the HSETNX/HINCRBY gap survived unnoticed (#6937).
+//
+// The `commandNotAllowed` tag is what lets a caller answer 403 for THIS
+// decision and nothing else. Without it a caller can only catch every throw
+// from this function, and `String(args[0])` throws a TypeError on a null or
+// undefined body element — so a malformed request comes back as an
+// authorization failure, which is precisely the misdirection #8265 was. Tagged
+// on the error object rather than raised as a named subclass because
+// tests/redis-rest-proxy-command-parity.test.mjs extracts this function's
+// source and evals it standalone; a class declared elsewhere in this file
+// would be undefined there.
 function assertCommandAllowed(args) {
   const cmd = String(args[0]).toUpperCase();
   if (cmd === 'EVAL') {
     if (!isAllowedEval(args)) {
       console.error('Command not allowed: EVAL (script not in the pinned allowlist)');
-      throw new Error('Command not allowed: EVAL (script not in the pinned allowlist)');
+      throw Object.assign(new Error('Command not allowed: EVAL (script not in the pinned allowlist)'), { commandNotAllowed: true });
     }
   } else if (!ALLOWED_COMMANDS.has(cmd)) {
     console.error(`Command not allowed: ${cmd}`);
-    throw new Error(`Command not allowed: ${cmd}`);
+    throw Object.assign(new Error(`Command not allowed: ${cmd}`), { commandNotAllowed: true });
   }
   return cmd;
 }
@@ -764,6 +774,15 @@ function respondError(res, err) {
   if (status === 413) {
     const from = err.remoteAddress || res.socket?.remoteAddress || 'unknown';
     console.warn(`Rejected oversized request body from ${from}: ${err.message}`);
+  } else if (status >= 500) {
+    // Same reasoning one status class over. A blocked command already logs
+    // itself in assertCommandAllowed; a 500 logged nothing, and the primary
+    // caller discards the body (`console.warn('[redis] runRedisTransaction HTTP
+    // ' + response.status)` in server/_shared/redis.ts), so a re-run of #8265
+    // would leave `docker compose logs redis-rest` silent and the app log
+    // holding a bare status with no cause. That is the same blind spot the
+    // HSETNX/HINCRBY gap sat in for months (#6937).
+    console.error(`Request failed (HTTP ${status}): ${err?.message || 'Internal error'}`);
   }
   // headersSent is checked separately from the writability guard below: if
   // something threw between writeHead() and end(), the response is neither ended
@@ -779,6 +798,22 @@ function respondError(res, err) {
   if (res.writableEnded || res.destroyed || res.socket?.destroyed) return;
   res.writeHead(status);
   res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
+}
+
+// "Redis itself refused this command" vs "the connection broke" — see the
+// /multi-exec handler below for why the two need different statuses.
+//
+// Matched on constructor names along the prototype chain rather than
+// `instanceof ErrorReply`: importing the class means a named import against a
+// floating `redis@4` (docker/Dockerfile.redis-rest), and a named import the
+// installed 4.x happens not to export is a startup SyntaxError — a container
+// that never boots. An unrecognized shape returns false and keeps the old 500,
+// so this can only ever narrow a misclassification, never widen one.
+function isRedisErrorReply(err) {
+  for (let proto = err; proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    if (proto.constructor?.name === 'ErrorReply') return true;
+  }
+  return false;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -822,15 +857,79 @@ const server = http.createServer(async (req, res) => {
       const commands = JSON.parse(await readBody(req));
       const multi = client.multi();
       for (const cmd of commands) {
+        // 403 means one thing: the gate refused this command. It used to mean
+        // "something threw somewhere in here" — the try wrapped the queueing
+        // call too, so the TypeError below was reported to operators as an
+        // authorization failure, and #8265 read as a misconfigured REDIS_TOKEN
+        // for as long as it did.
+        //
+        // Narrowing the try is not enough on its own: commandForExecution
+        // itself throws a TypeError, not a gate rejection, when a body element
+        // is null or undefined (`String(args[0])`). Keying on the tag rather
+        // than on "this line threw" is what keeps a malformed body out of the
+        // 403 channel. Everything untagged falls through to respondError().
+        let queuedCommand;
         try {
-          multi.sendCommand(commandForExecution(cmd));
+          queuedCommand = commandForExecution(cmd);
         } catch (err) {
+          if (!err?.commandNotAllowed) throw err;
           res.writeHead(403);
           res.end(JSON.stringify({ error: err.message }));
           return;
         }
+        // addCommand, not sendCommand: sendCommand is a method on the node-redis
+        // CLIENT, and the v4 transaction chain (redis@4, per
+        // docker/Dockerfile.redis-rest) queues raw commands with addCommand. The
+        // wrong one made every /multi-exec fail, so both seeders that publish
+        // exclusively through it — seed-fred-rates, seed-bis-extended — never
+        // wrote a key on a self-hosted install (#8265).
+        multi.addCommand(queuedCommand);
       }
-      const results = await multi.exec();
+      // exec() rejects in three distinct situations that need three distinct
+      // answers. All three were unreachable until #8265 was fixed — nothing was
+      // ever queued — so none has run in production; they are live now.
+      //
+      //   1. MultiErrorReply: the transaction RAN and some commands replied
+      //      with an error. node-redis hides the ordered replies on
+      //      err.replies instead of returning them. Upstash answers this with
+      //      HTTP 200 and an ordered array carrying {error} for the failed
+      //      entries — the shape /pipeline above emits and the shape
+      //      server/_shared/redis.ts already scans
+      //      (`data.find((item) => item.error || item.result === 'ERR')`).
+      //   2. A bare ErrorReply: Redis refused a command at QUEUE time (bad
+      //      arity, unknown command), so nothing ran. Deterministic — the same
+      //      request fails identically forever.
+      //   3. Anything else: a dropped socket, a closed client, a timeout.
+      //      Genuinely transient, and a 500 is the right answer.
+      //
+      // 1 and 2 were both 500 before, and 500 is retryable
+      // (isRetryableHttpStatus, scripts/_seed-utils.mjs), so a WRONGTYPE became
+      // an opaque 500 naming neither command nor error, and an arity mistake
+      // spent a caller's whole retry budget on a request that can never pass.
+      // 400 is in PERMANENT_4XX_STATUSES, so atomicPublish now aborts on the
+      // first attempt with Redis's own message.
+      let results;
+      try {
+        results = await multi.exec();
+      } catch (err) {
+        if (Array.isArray(err?.replies)) {
+          res.writeHead(200);
+          res.end(JSON.stringify(err.replies.map((reply) => (
+            reply instanceof Error ? { error: reply.message } : { result: reply }
+          ))));
+          return;
+        }
+        if (isRedisErrorReply(err)) {
+          // Logged for the same reason assertCommandAllowed logs its own
+          // refusals: a 4xx is where the caller stops retrying, so the
+          // container log is the operator's only account of why.
+          console.error(`Transaction refused by Redis: ${err.message}`);
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: err.message }));
+          return;
+        }
+        throw err;
+      }
       res.writeHead(200);
       res.end(JSON.stringify(results.map((r) => ({ result: r }))));
       return;
