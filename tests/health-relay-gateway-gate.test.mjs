@@ -105,9 +105,18 @@ function mockTransports({ relay, relayOrigin = SITE }) {
       }
       if (op === 'DEL' && key in snapshotStore) { snapshotStore[key] = null; return { result: 1 }; }
       if (op === 'EVAL') {
-        // The compare-and-delete release script: EVAL <script> 1 <key> <token>.
-        const [, , , target, token] = [op, key, value, ...rest];
-        if (target in snapshotStore && snapshotStore[target] === token) { snapshotStore[target] = null; return { result: 1 }; }
+        // EVAL <script> 1 <key> <expected> [<next> <ttl>]: the compare-and-set
+        // fallback publish when the script sets, the compare-and-delete
+        // release otherwise. `expected` is '' for an absent key, as in Lua.
+        const [, , , target, expected, next, ttl] = [op, key, value, ...rest];
+        if (!(target in snapshotStore)) return { result: 0 };
+        const current = snapshotStore[target] ?? '';
+        if (key.includes("'set'")) {
+          if (current !== expected) return { result: 0 };
+          snapshotStore[target] = next;
+          return { result: ttl ? 'OK' : 0 };
+        }
+        if (current === expected) { snapshotStore[target] = null; return { result: 1 }; }
         return { result: 0 };
       }
       return { result: 'OK' };
@@ -447,6 +456,78 @@ test('a follower whose owner publishes nothing within the probe budget reports t
     'follower wait covers probe + publish');
   assert.ok(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS * 1_000 > RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
     'the lease outlives the follower wait, so a follower never sees a free lease while the owner is still publishing');
+});
+
+test('a follower fallback persists its grace deadline, so the next owner carries the streak instead of minting a new one', async () => {
+  // Owner dies without publishing, relay stays down, no other traffic. The
+  // follower's fallback lived only in the 60 s health snapshot, so the next
+  // 15-minute monitor found no predecessor and granted a NEW three-minute
+  // grace — one more interval before a dead relay paged (#8282 review).
+  productionEnv();
+  const { relayCalls, snapshotStore, redisCommands } = mockTransports({ relay: () => new Response('upstream', { status: 502 }) });
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'crashed-owner';
+  const followerNow = Date.now();
+  const fallback = await readOrProbeRelayGatewayGate({
+    now: followerNow,
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 5,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(fallback.status, 'RELAY_GATE_UNREACHABLE');
+  assert.equal(relayCalls.length, 0);
+
+  const persisted = JSON.parse(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY]);
+  assert.equal(persisted.transportGraceUntil, fallback.transportGraceUntil, 'the fallback deadline is in Redis');
+  assert.equal(persisted.probed, false, 'the persisted fallback says it never probed');
+  const publish = redisCommands.find(([op, , , target]) => op === 'EVAL' && target === RELAY_GATEWAY_GATE_PROBE_KEY);
+  assert.ok(publish, 'the fallback is published with a compare-and-set, never a blind SET');
+  assert.equal(String(publish[6]), String(__testing__.RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS), 'retained across a monitor interval');
+
+  // The persisted fallback is a predecessor, not a verdict: the next sweep
+  // (the monitor, one interval later, lease free) still probes — and its
+  // unreachable verdict carries the follower's deadline.
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = null;
+  const monitorNow = followerNow + 15 * 60_000;
+  const next = await readOrProbeRelayGatewayGate({
+    now: monitorNow,
+    clock: () => monitorNow,
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+  });
+  assert.equal(relayCalls.length, 1, 'the fallback is never served as a fresh verdict');
+  assert.equal(next.status, 'RELAY_GATE_UNREACHABLE');
+  assert.equal(next.transportGraceUntil, fallback.transportGraceUntil, 'the streak carried');
+  assert.equal(next.probed, undefined);
+  assert.equal(__testing__.healthStatusBucket(next, monitorNow), 'warn', 'and the expired deadline pages');
+});
+
+test('a follower fallback never overwrites a verdict the owner published after the follower\'s last read', async () => {
+  productionEnv();
+  const { snapshotStore } = mockTransports({ relay: admitted });
+  snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY] = 'slow-owner';
+  const ownerVerdict = JSON.stringify({ role: 'gateway', route: RELAY_GATEWAY_GATE_ROUTE, status: 'OK', httpStatus: 400, evaluatedAt: new Date().toISOString() });
+  // The owner lands its verdict after the follower's last read (here: the
+  // lease attempt is the first Redis call after the initial GET, and the
+  // wait budget of 0 means no poll follows it).
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (typeof init?.body === 'string' && init.body.includes(RELAY_GATEWAY_GATE_LEASE_KEY) && init.body.includes('"NX"')) {
+      snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = ownerVerdict;
+    }
+    return redisFetch(url, init);
+  };
+  const entry = await readOrProbeRelayGatewayGate({
+    now: Date.now(),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    followerWaitMs: 0,
+    followerPollMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], ownerVerdict, 'compare-and-set left the owner\'s verdict in place');
 });
 
 test('a follower accepts a verdict the owner published after the follower\'s own sweep began', async () => {

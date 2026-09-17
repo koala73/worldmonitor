@@ -3818,11 +3818,26 @@ function parseCachedRelayGatewayGate(raw, now) {
   let parsed;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed !== 'object' || typeof parsed.status !== 'string') return null;
+  // A persisted follower fallback is a predecessor for the grace streak,
+  // never a verdict to serve warm: nobody probed, so the next sweep must.
+  if (parsed.probed === false) return null;
   const evaluatedAt = Date.parse(parsed.evaluatedAt ?? '');
   if (!Number.isFinite(evaluatedAt) || evaluatedAt > now) return null;
   if (now - evaluatedAt >= RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS * 1_000) return null;
   return parsed;
 }
+
+// Compare-and-set for the follower fallback: publish only if the key still
+// holds what the follower last read (ARGV[1], '' for absent), so a verdict
+// the owner landed between the last poll and this write is never clobbered.
+const RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT = [
+  "local current = redis.call('get', KEYS[1])",
+  "if current == false then current = '' end",
+  'if current == ARGV[1] then',
+  "  return redis.call('set', KEYS[1], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 0',
+].join('\n');
 
 // Single-flight population. When no verdict is cached, exactly one sweep may
 // probe: it takes a short `SET NX` lease, probes, publishes the verdict and
@@ -3900,7 +3915,7 @@ async function readOrProbeRelayGatewayGate({
     // Same grace as a directly probed unreachable verdict: one slow or crashed
     // owner is a single observation, not yet a problem. `lastRaw` is the last
     // cached verdict the polls saw, so a carried deadline still carries.
-    return withTransportGrace({
+    const fallback = withTransportGrace({
       role: 'gateway',
       route: RELAY_GATEWAY_GATE_ROUTE,
       evaluatedAt: new Date(now).toISOString(),
@@ -3908,6 +3923,21 @@ async function readOrProbeRelayGatewayGate({
       error: 'another sweep holds the probe lease and published no verdict within the probe budget',
       hint: 'This sweep did not probe the gate itself (single-flight). Persistent across sweeps = the probing sweep keeps timing out against Convex.',
     }, parsePreviousRelayGatewayGate(lastRaw), now);
+    // Persist the deadline, not just the snapshot: if the owner died without
+    // publishing and nothing else sweeps, the next monitor run (one interval
+    // later, after the snapshot expired) would otherwise find no predecessor
+    // and mint a fresh grace — one more interval before a dead relay pages.
+    // `probed: false` keeps it a predecessor only (see parseCachedRelayGatewayGate).
+    await redisPipeline([[
+      'EVAL',
+      RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT,
+      '1',
+      key,
+      typeof lastRaw === 'string' ? lastRaw : '',
+      JSON.stringify({ ...fallback, probed: false }),
+      String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
+    return fallback;
   }
 
   try {
