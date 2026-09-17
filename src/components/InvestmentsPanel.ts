@@ -10,6 +10,7 @@ import type {
 import { toUniqueSorted } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
 
 interface InvestmentFilters {
@@ -110,7 +111,7 @@ export class InvestmentsPanel extends Panel {
       });
   }
 
-  private render(): void {
+  private render(resultsOnly = false): void {
     const filtered = this.getFiltered();
 
     const entities = toUniqueSorted(GULF_INVESTMENTS.map((i) => i.investingEntity));
@@ -147,6 +148,14 @@ export class InvestmentsPanel extends Panel {
           </div>
         </div>`;
     }).join('');
+
+    const rowsHtml = rows || `<div class="fdi-empty">${t('components.investments.noMatch')}</div>`;
+    if (this.countEl) this.countEl.textContent = String(filtered.length);
+    const list = resultsOnly ? this.content.querySelector('.fdi-list') : null;
+    if (list) {
+      setTrustedHtml(list, trustedHtml(rowsHtml, 'escaped investment rows'));
+      return;
+    }
 
     const toggleCls = this.filtersExpanded || hasActiveFilter ? 'fdi-filter-toggle fdi-filters-active' : 'fdi-filter-toggle';
     const filtersCls = this.filtersExpanded ? 'fdi-filters fdi-filters-open' : 'fdi-filters';
@@ -189,11 +198,10 @@ export class InvestmentsPanel extends Panel {
         </div>
       </div>
       <div class="fdi-list">
-        ${rows || `<div class="fdi-empty">${t('components.investments.noMatch')}</div>`}
+        ${rowsHtml}
       </div>`;
 
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
-    if (this.countEl) this.countEl.textContent = String(filtered.length);
+    this.setSafeContentImmediate(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   private setupEventDelegation(): void {
@@ -201,7 +209,7 @@ export class InvestmentsPanel extends Panel {
       const target = e.target as HTMLElement;
       if (target.classList.contains('fdi-search')) {
         this.filters.search = (target as HTMLInputElement).value;
-        this.render();
+        this.render(true);
       }
     });
 
