@@ -14243,6 +14243,9 @@
           "path": "api/not-found.ts"
         },
         {
+          "path": "api/story.js"
+        },
+        {
           "path": "scripts/build-accuracy-page.mjs"
         },
         {

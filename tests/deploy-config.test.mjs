@@ -1340,7 +1340,7 @@ describe('welcome landing page routing', () => {
   it('redirects legacy root map-state deep links to /dashboard before welcome routing', () => {
     assert.match(
       middlewareSource,
-      /LEGACY_DASHBOARD_ROOT_QUERY_KEYS = \['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'\]/,
+      /LEGACY_DASHBOARD_ROOT_QUERY_KEYS = \['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers', 'c', 'country', 'chokepoint'\]/,
       'middleware must list dashboard URL-state params that bypass the root welcome page',
     );
     assert.match(

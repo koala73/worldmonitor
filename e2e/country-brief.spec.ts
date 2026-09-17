@@ -43,6 +43,28 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
+test('country shortcut keeps the dashboard canonical and shares a working dashboard URL', async ({ page, context, countryBrief }, testInfo) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/dashboard?c=UA');
+  await expectCountry(page);
+  await expectMarkets(page);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
+  await page.locator('#country-deep-dive-panel .cdp-share-btn').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(new URL('/dashboard?c=UA', page.url()).href);
+  const sharedUrl = await page.evaluate(() => navigator.clipboard.readText());
+  expect(countryBrief.requests.length).toBeGreaterThan(0);
+  for (const [name, width, height] of [['desktop', 1280, 720], ['mobile', 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.locator('#country-deep-dive-panel .cdp-country-name').scrollIntoViewIfNeeded();
+    const path = testInfo.outputPath(`country-shortcut-${name}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach(`country-shortcut-${name}`, { path, contentType: 'image/png' });
+  }
+  await page.goto(sharedUrl);
+  await expectCountry(page);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
+});
+
 test('country brief renders exact RPC records and preserves the country after reload', async ({ page, countryBrief }, testInfo) => {
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
