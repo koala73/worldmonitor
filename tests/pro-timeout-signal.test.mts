@@ -19,6 +19,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createTimeoutSignal, isTimeoutOrAbortError } from '../pro-test/src/services/timeout-signal.ts';
+import { createTimeoutSignal as createDashboardTimeoutSignal } from '../src/services/timeout-signal.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -84,6 +85,57 @@ describe('createTimeoutSignal', () => {
       }, { once: true });
     });
   });
+
+  // A native `AbortSignal.timeout` reason's stack is the header line alone, so
+  // it parses to zero frames. A JS-built DOMException diverges two ways, and
+  // either one reaches Sentry as a first-party rejection when a browser
+  // extension's fetch hook leaks it, as the insights loader's reason did
+  // (WORLDMONITOR-125/12Z/11N): Chromium leaves it stackless, so Sentry's fetch
+  // instrumentation writes the fetch call site onto it, and engines that record
+  // a stack give it the timer callback's frames. Node's DOMException is the
+  // framed shape, so the stackless one has to be recreated or its case passes
+  // vacuously.
+  const NativeDOMException = globalThis.DOMException;
+  class StacklessDOMException extends NativeDOMException {
+    constructor(...args: ConstructorParameters<typeof DOMException>) {
+      super(...args);
+      delete (this as { stack?: string }).stack;
+    }
+  }
+  const engines = [
+    { engine: 'stackless (Chromium)', Engine: StacklessDOMException, framed: false },
+    { engine: 'framed (Firefox, Node)', Engine: NativeDOMException, framed: true },
+  ];
+  // Both copies, though the mirror-parity test pins them byte-identical: the
+  // dashboard copy is the one whose `!hasFirstParty` suppression this protects.
+  const bundles = [
+    { bundle: 'marketing', create: createTimeoutSignal },
+    { bundle: 'dashboard', create: createDashboardTimeoutSignal },
+  ];
+  for (const { bundle, create } of bundles) {
+    for (const { engine, Engine, framed } of engines) {
+      it(`${bundle}: stamps the native header-only stack on a ${engine} fallback reason`, async () => {
+        const probe = new Engine('x', 'TimeoutError').stack;
+        if (framed) assert.match(probe ?? '', /\n\s+at /, 'precondition: this engine records construction frames');
+        else assert.equal(probe, undefined, 'precondition: the stub reproduces Chromium\'s stackless DOMException');
+
+        globalThis.DOMException = Engine;
+        let reason: DOMException;
+        try {
+          const signal = withoutNativeTimeout(() => create(1));
+          reason = await new Promise<DOMException>((done) => {
+            signal.addEventListener('abort', () => done(signal.reason as DOMException), { once: true });
+          });
+        } finally {
+          globalThis.DOMException = NativeDOMException;
+        }
+        assert.ok(reason instanceof NativeDOMException);
+        assert.equal(reason.name, 'TimeoutError', 'analytics-collector-transport branches on the name');
+        assert.equal(reason.message, 'signal timed out');
+        assert.equal(reason.stack, 'TimeoutError: signal timed out');
+      });
+    }
+  }
 
   it('prefers native AbortSignal.timeout when present', () => {
     const original = AbortSignal.timeout;

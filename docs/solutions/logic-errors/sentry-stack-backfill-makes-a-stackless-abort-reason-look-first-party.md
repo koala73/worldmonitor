@@ -80,7 +80,7 @@ inFlightAbort.abort(reason);
 
 The stamp is applied on every engine, not only Chromium. Where a JS-built DOMException does get a stack, that stack holds the construction frames, which here are `abortInFlightRequest` called from the `setTimeout` at `src/services/insights-loader.ts:151`. Those frames are first-party too. On Node v24.15.0 in this session, `new DOMException(...).stack` included the calling frames. This investigation found Firefox's DOMException carries a stack too.
 
-The same PR also fixed a false comment in `src/bootstrap/sentry-init.ts`. It used to say "our shipped code cannot synthesize the literal 'signal timed out'". Our code does build that reason: in insights-loader and in the fallback at `src/services/timeout-signal.ts:40-44`. The new comment (`src/bootstrap/sentry-init.ts:945-956`) names both places.
+The same PR also fixed a false comment in `src/bootstrap/sentry-init.ts`. It used to say "our shipped code cannot synthesize the literal 'signal timed out'". Our code does build that reason: in insights-loader and in the fallback at `src/services/timeout-signal.ts:40-59`. The new comment (`src/bootstrap/sentry-init.ts:945-956`) names both places.
 
 ## Why This Works
 
@@ -106,7 +106,7 @@ Next, check the event's console breadcrumbs for `chrome-extension://` or `moz-ex
 
 **Rule for JS-built abort reasons.** A timeout reason we build ourselves should look like the native one: a `stack` that is only the header line, set with `Object.defineProperty`. A `stack` of `undefined` invites Sentry to backfill it. A real stack with frames makes a foreign leak look first-party. Matching the native shape only removes the misattribution; it does not make our own leaks visible. So the rule has a precondition: every first-party consumer of the reason either catches it or reports through a `kind`-tagged capture. A leak that is left unhandled and untagged is invisible whether the reason is native or stamped.
 
-The rule applies today to the fallback in `src/services/timeout-signal.ts:40-44`, which runs where `AbortSignal.timeout` is missing (`src/services/timeout-signal.ts:27-29`). It still builds a bare reason and has not been stamped yet. Stamping it is a code change that must land in both bundles: the marketing bundle carries a byte-identical copy, pinned by `tests/marketing-mirror-parity.test.mts`. It changes only legacy-engine behavior, bringing it in line with what native engines already produce.
+The rule also covers the fallback in `src/services/timeout-signal.ts:40-59`, which runs where `AbortSignal.timeout` is missing (`src/services/timeout-signal.ts:27-29`). Issue #8300 stamped it the same way. The stamp landed in both bundles, because the marketing bundle carries a byte-identical copy pinned by `tests/marketing-mirror-parity.test.mts`. It changed only legacy-engine behavior, bringing it in line with what native engines already produce. `tests/pro-timeout-signal.test.mts` pins both copies against both engine shapes: the stackless Chromium one and the framed one Node and Firefox build.
 
 **Regression test pattern.** Node's DOMException already has a stack, so the test has to recreate Chromium's stackless one. Otherwise it passes before the fix too. `tests/insights-loader.test.mjs:320-353` swaps in a stackless subclass, asserts that precondition, and reads the reason through a stubbed `fetch`:
 

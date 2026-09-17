@@ -948,8 +948,8 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // browser fires them from internal infra at the timer boundary). Our code
       // does build `signal timed out` reasons itself (insights-loader.ts,
       // timeout-signal.ts's fallback), but they carry no first-party frames by
-      // design — insights-loader stamps the native header-only stack so Sentry's
-      // fetch backfill cannot dress an extension hook's leak up as ours
+      // design — both stamp the native header-only stack so Sentry's fetch
+      // backfill cannot dress an extension hook's leak up as ours
       // (WORLDMONITOR-125/12Z) — and first-party failures that must surface are
       // reported with a `kind` tag, which exempts them below. Same
       // `!hasFirstParty` safety as the dynamic-import block (WORLDMONITOR-66 /
