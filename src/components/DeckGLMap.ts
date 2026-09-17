@@ -217,6 +217,12 @@ interface DeckMapState {
 
 interface DeckGLMapOptions {
   chrome?: boolean;
+  /**
+   * Fired when MapLibre cannot be (re)constructed after the initial ready
+   * handshake — e.g. WebGL2 lost mid-session while recreating the fallback
+   * basemap. MapContainer uses this to degrade to the SVG renderer.
+   */
+  onFatalError?: (error: unknown) => void;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -805,6 +811,7 @@ export class DeckGLMap {
   private destroyed = false;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
+  private readonly onFatalError: ((error: unknown) => void) | null;
   private initPromise: Promise<void> = Promise.resolve();
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private tileMonitorGeneration = 0;
@@ -883,6 +890,7 @@ export class DeckGLMap {
   constructor(container: HTMLElement, initialState: DeckMapState, options: DeckGLMapOptions = {}) {
     this.container = container;
     this.chrome = options.chrome ?? true;
+    this.onFatalError = options.onFatalError ?? null;
     this.state = {
       ...initialState,
       pan: { ...initialState.pan },
@@ -1129,35 +1137,83 @@ export class DeckGLMap {
         : {}),
     });
 
+    const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[DeckGLMap] Basemap fallback unavailable — handing off to SVG:', message);
+      this.pendingCenter = center;
+      // Defer so we never destroy() while still inside MapLibre construction /
+      // a style-load timer callback (Sentry WORLDMONITOR-133).
+      queueMicrotask(() => {
+        if (this.destroyed) return;
+        try {
+          this.onFatalError?.(error);
+        } catch (callbackError) {
+          console.warn('[DeckGLMap] Fatal-error callback failed:', callbackError);
+        }
+      });
+    };
+
     const recreateWithFallback = () => {
-      if (this.usedFallbackStyle) return;
+      if (this.usedFallbackStyle || this.destroyed) return;
+      const center = this.getCenter();
+      this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
+      // Style-load timeout still fires after webglcontextlost. Rebuilding
+      // MapLibre without WebGL2 throws GPUInitializationError as an uncaught
+      // window.onerror (Sentry WORLDMONITOR-133). Skip recreate and degrade.
+      if (this.webglLost) {
+        this.usedFallbackStyle = true;
+        if (this.styleLoadTimeoutId) {
+          clearTimeout(this.styleLoadTimeoutId);
+          this.styleLoadTimeoutId = null;
+        }
+        reportFatalBasemapFailure(
+          new Error('WebGL context lost during primary basemap fallback recreate'),
+        );
+        return;
+      }
       this.usedFallbackStyle = true;
       const fallback = isLightMapTheme(initialMapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
       console.warn(`[DeckGLMap] Primary basemap failed, recreating with fallback: ${fallback}`);
       const attr = this.container.querySelector('.map-attribution');
       if (attr) setTrustedHtml(attr, trustedHtml('© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', "legacy direct innerHTML migration"));
       this.detachMapLibreInteractionHandlers();
-      this.maplibreMap?.remove();
+      try {
+        this.maplibreMap?.remove();
+      } catch (error) {
+        console.warn('[DeckGLMap] Failed to remove primary basemap before fallback:', error instanceof Error ? error.message : error);
+      }
+      this.maplibreMap = null;
       const fallbackEl = document.getElementById('deckgl-basemap');
-      if (!fallbackEl) return;
-      this.maplibreMap = new DeckCompatibleMap({
-        container: fallbackEl,
-        style: fallback,
-        center: [preset.longitude, preset.latitude],
-        zoom: preset.zoom,
-        renderWorldCopies: false,
-        attributionControl: false,
-        interactive: true,
-        canvasContextAttributes: { powerPreference: 'high-performance' },
-        ...(MAP_INTERACTION_MODE === 'flat'
-          ? {
-            maxPitch: 0,
-            pitchWithRotate: false,
-            dragRotate: false,
-            touchPitch: false,
-          }
-          : {}),
-      });
+      if (!fallbackEl) {
+        reportFatalBasemapFailure(new Error('Missing #deckgl-basemap during fallback recreate'), center);
+        return;
+      }
+      try {
+        this.maplibreMap = new DeckCompatibleMap({
+          container: fallbackEl,
+          style: fallback,
+          center: center ? [center.lon, center.lat] : [preset.longitude, preset.latitude],
+          zoom: this.state.zoom,
+          renderWorldCopies: false,
+          attributionControl: false,
+          interactive: true,
+          canvasContextAttributes: { powerPreference: 'high-performance' },
+          ...(MAP_INTERACTION_MODE === 'flat'
+            ? {
+              maxPitch: 0,
+              pitchWithRotate: false,
+              dragRotate: false,
+              touchPitch: false,
+            }
+            : {}),
+        });
+      } catch (error) {
+        // MapLibre throws GPUInitializationError synchronously when WebGL2 is
+        // gone (lost context, software renderer revoked, etc.). Catch it so it
+        // never reaches window.onerror; MapContainer falls back to SVG.
+        reportFatalBasemapFailure(error, center);
+        return;
+      }
       this.maplibreMap.on('load', () => {
         this.attachMapLibreInteractionHandlers();
         localizeMapLabels(this.maplibreMap);
