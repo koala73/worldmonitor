@@ -10,6 +10,37 @@ import { Redis } from '@upstash/redis';
 export const config = { runtime: 'edge' };
 
 const CLIENT_TTL_SECONDS = 90 * 24 * 3600; // 90 days sliding
+const MAX_REQUEST_BYTES = 16 * 1024;
+const MAX_REDIRECT_URI_BYTES = 2 * 1024;
+const MAX_METADATA_BYTES = 8 * 1024;
+const encoder = new TextEncoder();
+
+async function readRegistrationBody(req) {
+  if (Number(req.headers.get('content-length')) > MAX_REQUEST_BYTES) {
+    throw new RangeError('Registration body too large');
+  }
+  if (!req.body) return '';
+
+  const reader = req.body.getReader();
+  const bytes = new Uint8Array(MAX_REQUEST_BYTES);
+  let total = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value.byteLength > MAX_REQUEST_BYTES - total) {
+        // Cancellation must not delay rejection if the stream never settles it.
+        void reader.cancel().catch(() => {});
+        throw new RangeError('Registration body too large');
+      }
+      bytes.set(value, total);
+      total += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return new TextDecoder().decode(bytes.subarray(0, total));
+}
 
 // Allowlisted redirect URI prefixes — DCR is not open to arbitrary HTTPS URIs
 const ALLOWED_REDIRECT_PREFIXES = [
@@ -49,7 +80,7 @@ function getRatelimit() {
   return _rl;
 }
 
-async function storeClient(clientId, metadata) {
+async function storeClient(clientId, serializedMetadata) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return false;
@@ -58,7 +89,7 @@ async function storeClient(clientId, metadata) {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify([
-        ['SET', `oauth:client:${clientId}`, JSON.stringify(metadata), 'EX', CLIENT_TTL_SECONDS],
+        ['SET', `oauth:client:${clientId}`, serializedMetadata, 'EX', CLIENT_TTL_SECONDS],
       ]),
       signal: AbortSignal.timeout(3_000),
     });
@@ -90,8 +121,11 @@ export default async function handler(req) {
 
   let body;
   try {
-    body = await req.json();
-  } catch {
+    body = JSON.parse(await readRegistrationBody(req));
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return jsonResp({ error: 'invalid_request', error_description: 'Registration body exceeds 16384 bytes' }, 413);
+    }
     return jsonResp({ error: 'invalid_request', error_description: 'Invalid JSON body' }, 400);
   }
 
@@ -104,6 +138,9 @@ export default async function handler(req) {
     return jsonResp({ error: 'invalid_request', error_description: 'Maximum 3 redirect_uris allowed' }, 400);
   }
   for (const uri of redirect_uris) {
+    if (typeof uri === 'string' && encoder.encode(uri).byteLength > MAX_REDIRECT_URI_BYTES) {
+      return jsonResp({ error: 'invalid_redirect_uri', error_description: 'Redirect URI exceeds 2048 bytes' }, 400);
+    }
     if (typeof uri !== 'string' || !isAllowedRedirectUri(uri)) {
       return jsonResp({
         error: 'invalid_redirect_uri',
@@ -119,7 +156,11 @@ export default async function handler(req) {
     created_at: Date.now(),
   };
 
-  const stored = await storeClient(clientId, metadata);
+  const serializedMetadata = JSON.stringify(metadata);
+  if (encoder.encode(serializedMetadata).byteLength > MAX_METADATA_BYTES) {
+    return jsonResp({ error: 'invalid_request', error_description: 'Client metadata exceeds 8192 bytes' }, 400);
+  }
+  const stored = await storeClient(clientId, serializedMetadata);
   if (!stored) {
     return jsonResp({ error: 'server_error', error_description: 'Client registration storage failed' }, 500);
   }
