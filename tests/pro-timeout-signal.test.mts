@@ -114,7 +114,7 @@ describe('createTimeoutSignal', () => {
   ];
   for (const { bundle, create } of bundles) {
     for (const { engine, Engine, framed } of engines) {
-      it(`${bundle}: stamps the native header-only stack on a ${engine} fallback reason`, async () => {
+      it(`${bundle}: stamps the native header-only stack on a ${engine} fallback reason`, { timeout: 1_000 }, async () => {
         const probe = new Engine('x', 'TimeoutError').stack;
         if (framed) assert.match(probe ?? '', /\n\s+at /, 'precondition: this engine records construction frames');
         else assert.equal(probe, undefined, 'precondition: the stub reproduces Chromium\'s stackless DOMException');
@@ -135,6 +135,36 @@ describe('createTimeoutSignal', () => {
         assert.equal(reason.stack, 'TimeoutError: signal timed out');
       });
     }
+
+    it(`${bundle}: still aborts when the engine refuses the stack stamp`, { timeout: 1_000 }, async () => {
+      // The stamp only improves telemetry; the abort is the deadline itself.
+      // An engine whose DOMException pins `stack` would make defineProperty
+      // throw inside the timer, and a swallowed throw there must not cost the
+      // fetch its deadline (the WORLDMONITOR-109 class this fallback exists for).
+      class LockedStackDOMException extends NativeDOMException {
+        constructor(...args: ConstructorParameters<typeof DOMException>) {
+          super(...args);
+          Object.defineProperty(this, 'stack', { value: 'TimeoutError: signal timed out\n    at locked', configurable: false, writable: false });
+        }
+      }
+      assert.throws(
+        () => Object.defineProperty(new LockedStackDOMException('x', 'TimeoutError'), 'stack', { value: 'y' }),
+        TypeError,
+        'precondition: the stub refuses a stack redefinition',
+      );
+      globalThis.DOMException = LockedStackDOMException;
+      let reason: DOMException;
+      try {
+        const signal = withoutNativeTimeout(() => create(1));
+        reason = await new Promise<DOMException>((done) => {
+          signal.addEventListener('abort', () => done(signal.reason as DOMException), { once: true });
+        });
+      } finally {
+        globalThis.DOMException = NativeDOMException;
+      }
+      assert.equal(reason.name, 'TimeoutError');
+      assert.equal(reason.message, 'signal timed out');
+    });
   }
 
   it('prefers native AbortSignal.timeout when present', () => {

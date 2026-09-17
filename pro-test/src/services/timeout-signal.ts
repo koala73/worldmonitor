@@ -50,11 +50,15 @@ export function createTimeoutSignal(ms: number): AbortSignal {
         // insights loader's own reason did (WORLDMONITOR-125/12Z/11N). The
         // cost is the native one: a caller that must surface a timeout has to
         // catch it or report it with a `kind` tag.
-        Object.defineProperty(reason, 'stack', {
-          value: 'TimeoutError: signal timed out',
-          configurable: true,
-          writable: true,
-        });
+        try {
+          Object.defineProperty(reason, 'stack', {
+            value: 'TimeoutError: signal timed out',
+            configurable: true,
+            writable: true,
+          });
+        } catch {
+          /* engine pins `stack`; an unstamped reason must still abort below */
+        }
       }
       controller.abort(reason);
     } catch {
