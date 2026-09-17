@@ -3687,11 +3687,12 @@ function snapshotTtlSeconds(snapshot, now) {
 // gateway env is absent outside production (previews, local, the existing
 // test suites). On a production build a missing var is itself the fault.
 //
-// Not counted in `summary.total`: that figure is pinned to the key registries
-// by the docs-stats gate (tests/docs-stats-health-total.test.mts), and this
-// is a liveness probe, not a data key. It still counts in `crit`/`warn` and
-// lands in compact `problems`, which is what the 15-minute seed-freshness
-// monitor fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
+// Counted in `summary.total` whenever it applies, so the endpoint's partition
+// invariant (`ok + warn + onDemandWarn + crit == total`) holds; the published
+// examples stay pinned to the registry size by the docs-stats gate and the
+// docs state that a production build reports one more. Its verdict lands in
+// compact `problems`, which is what the 15-minute seed-freshness monitor
+// fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
 const RELAY_GATEWAY_GATE_CHECK_NAME = 'relayGatewayGate';
 const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
 const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
@@ -3880,11 +3881,17 @@ async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) =
   // The bearer is the tenant secret, so it never leaves over anything but
   // TLS: a malformed or `http:` CONVEX_SITE_URL is a misconfiguration, not a
   // transport failure, and is reported without a request being made.
+  // The target is built exactly as the gateways build theirs — the configured
+  // string with the route appended (api/create-checkout.ts:172) — so a value
+  // carrying a path or a trailing slash is probed at the same endpoint the
+  // paying path would hit, not at a normalised origin that may be healthy
+  // while the real one is not. Parsing is for the https check only.
   let target;
   try {
-    const site = new URL(resolveRelayGatewaySiteUrl());
+    const configured = resolveRelayGatewaySiteUrl();
+    const site = new URL(configured);
     if (site.protocol !== 'https:') throw new Error(`protocol ${site.protocol}`);
-    target = `${site.origin}${RELAY_GATEWAY_GATE_ROUTE}`;
+    target = `${configured}${RELAY_GATEWAY_GATE_ROUTE}`;
   } catch (error) {
     const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
     if (!isProductionBuild) return null;
@@ -4572,8 +4579,11 @@ export async function handleHealth(req, ctx, options = {}) {
   }
 
   // Liveness of the paying path's credential, not a data key: see
-  // probeRelayGatewayGate. Added after the registry loop so it is never part
-  // of `totalChecks`, before the bucket census so its verdict counts.
+  // probeRelayGatewayGate. Added after the registry loop and counted in
+  // `totalChecks` when it applies, so `ok + warn + onDemandWarn + crit` still
+  // partitions `summary.total` (the invariant scripts/docs-stats.mjs pins on
+  // the published examples). On a production build `total` is therefore the
+  // registry size plus one; the docs say so.
   //
   // "One probe per 60 s" is enforced here, not inferred from the snapshot
   // lock: a caller that loses the lock waits HEALTH_VERDICT_REFRESH_WAIT_MS
@@ -4588,7 +4598,10 @@ export async function handleHealth(req, ctx, options = {}) {
     leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
     ctx,
   });
-  if (relayGatewayGate) checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
+  if (relayGatewayGate) {
+    checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
+    totalChecks++;
+  }
 
   for (const [name, entry] of Object.entries(checks)) {
     const bucket = healthStatusBucket(entry, evaluationNow);

@@ -530,17 +530,40 @@ test('a cached verdict is only trusted when it is well-formed and inside its win
   assert.equal(parseCachedRelayGatewayGate(null, now), null);
 });
 
-test('the gate check does not change summary.total, which the docs pin to the key registries', async () => {
+test('the gate check counts in summary.total exactly once, so the partition invariant holds with and without it', async () => {
+  // `ok + warn + onDemandWarn + crit == total` is the endpoint's documented
+  // partition (scripts/docs-stats.mjs pins it on the published examples). A
+  // check that lands in a bucket but not in `total` breaks it by one for
+  // every consumer computing ratios (#8282 review).
+  const partition = (s) => s.ok + s.warn + s.onDemandWarn + s.crit;
+
   productionEnv();
   mockTransports({ relay: rejected });
   const withGate = (await sweep()).detailed;
 
   process.env.VERCEL_ENV = 'preview';
+  delete process.env.VERCEL;
   delete process.env.CONVEX_TENANT_RELAY_SECRET;
   mockTransports({ relay: admitted });
   const withoutGate = (await sweep()).detailed;
 
-  assert.equal(withGate.summary.total, withoutGate.summary.total);
   assert.ok(withGate.checks[RELAY_GATEWAY_GATE_CHECK_NAME]);
   assert.equal(withoutGate.checks[RELAY_GATEWAY_GATE_CHECK_NAME], undefined);
+  assert.equal(withGate.summary.total, withoutGate.summary.total + 1, 'one liveness entry, counted once');
+  assert.equal(partition(withGate.summary), withGate.summary.total);
+  assert.equal(partition(withoutGate.summary), withoutGate.summary.total);
+});
+
+test('the probe hits exactly the URL the gateways build, path and trailing slash included', async () => {
+  // The gateways append the route to the configured string as-is
+  // (api/create-checkout.ts). Probing a normalised origin instead could pass
+  // while checkout hits a different, dead endpoint (#8282 review, P1).
+  productionEnv();
+  process.env.CONVEX_SITE_URL = 'https://convex-site.test/base/';
+  const { relayCalls } = mockTransports({ relay: admitted });
+
+  const { detailed } = await sweep();
+
+  assert.equal(detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'OK');
+  assert.equal(relayCalls[0].url, `https://convex-site.test/base/${RELAY_GATEWAY_GATE_ROUTE}`);
 });
