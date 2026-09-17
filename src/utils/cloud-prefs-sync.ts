@@ -1397,6 +1397,43 @@ export function getLastSyncAt(): number {
 
 // ── install ───────────────────────────────────────────────────────────────────
 
+/** Apply a validated backup without publishing partial writes to cloud sync. */
+export function applyLocalPreferenceImport(entries: Array<[string, string]>): void {
+  const previous = entries.map(([key]) => {
+    const read = safeStorageGetChecked(key);
+    if (!read.ok) throw new Error('Cannot read settings before import.');
+    return [key, read.value] as const;
+  });
+  const wasSuppressed = _suppressPatch;
+  _suppressPatch = true;
+  let written = 0;
+  try {
+    try {
+      for (const [key, value] of entries) {
+        if (!safeStorageSetChecked(key, value)) throw new Error('Cannot persist imported settings.');
+        written++;
+      }
+    } catch (error) {
+      // Remove replacements first so restoring a larger old value has its original space.
+      for (const [key] of previous.slice(0, written)) {
+        if (!safeStorageRemoveChecked(key)) throw new Error('Settings rollback failed.');
+      }
+      for (const [key, value] of previous.slice(0, written)) {
+        if (value !== null && !safeStorageSetChecked(key, value)) throw new Error('Settings rollback failed.');
+      }
+      throw error;
+    }
+  } finally {
+    _suppressPatch = wasSuppressed;
+  }
+  if (_installed && !wasSuppressed) {
+    for (const [key] of entries) {
+      if (CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) markDirtyKey(key as CloudSyncKey);
+    }
+    if (entries.some(([key]) => CLOUD_SYNC_KEYS.includes(key as CloudSyncKey))) schedulePrefUpload(_currentVariant);
+  }
+}
+
 export function install(variant: string): void {
   if (!isEnabled() || _installed) return;
   _installed = true;

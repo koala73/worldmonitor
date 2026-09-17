@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 440105
+    "raw": 441053
   },
   "chunks": {
     "clerk": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "main": {
-      "raw": 126143,
+      "raw": 126559,
       "files": 1
     },
     "panels": {
@@ -55,7 +55,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 132057,
+      "raw": 132589,
       "files": 1
     },
     "theme-manager": {
@@ -65,15 +65,23 @@
   },
   "deferred": {
     "total": {
-      "raw": 1366498
+      "raw": 1370221
     },
     "chunks": {
       "App": {
-        "raw": 873455,
+        "raw": 865752,
+        "files": 1
+      },
+      "ai-flow-settings": {
+        "raw": 1975,
+        "files": 1
+      },
+      "analysis-framework-store": {
+        "raw": 9275,
         "files": 1
       },
       "base": {
-        "raw": 2335,
+        "raw": 2337,
         "files": 1
       },
       "cached-risk-scores": {
@@ -81,7 +89,11 @@
         "files": 1
       },
       "checkout": {
-        "raw": 30104,
+        "raw": 24511,
+        "files": 1
+      },
+      "cloud-prefs-sync": {
+        "raw": 6800,
         "files": 1
       },
       "continuous": {
@@ -97,19 +109,23 @@
         "files": 1
       },
       "feeds": {
-        "raw": 111294,
+        "raw": 101855,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 105467,
+        "raw": 106280,
         "files": 1
       },
       "index": {
-        "raw": 36600,
+        "raw": 36516,
         "files": 1
       },
       "layout-batch": {
         "raw": 17357,
+        "files": 1
+      },
+      "markets": {
+        "raw": 9415,
         "files": 1
       },
       "panel-gating": {
@@ -121,7 +137,7 @@
         "files": 1
       },
       "persistent-cache": {
-        "raw": 3771,
+        "raw": 3701,
         "files": 1
       },
       "sanitize": {
@@ -134,6 +150,10 @@
       },
       "storage-facility-registry-store": {
         "raw": 14199,
+        "files": 1
+      },
+      "storage-quota": {
+        "raw": 247,
         "files": 1
       },
       "string": {
@@ -149,11 +169,11 @@
         "files": 1
       },
       "user-location": {
-        "raw": 10758,
+        "raw": 9033,
         "files": 1
       },
       "widget-store": {
-        "raw": 23344,
+        "raw": 23154,
         "files": 1
       }
     }

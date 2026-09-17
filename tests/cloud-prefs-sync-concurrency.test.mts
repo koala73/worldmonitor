@@ -1014,3 +1014,28 @@ describe('cloud prefs marker ordering (#7833 review)', () => {
     assert.equal(result.state, 'error');
   });
 });
+
+describe('settings import cloud transaction', () => {
+  it('does not mark partial imports dirty when a later write fails', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      cloudPrefs.install('full');
+      const before = localStorage.getItem('worldmonitor-theme');
+      const dirtyBefore = localStorage.getItem('wm-cloud-prefs-dirty-keys');
+      controls.rejectWritesTo('wm-font-scale');
+      assert.throws(() => cloudPrefs.applyLocalPreferenceImport([
+        ['worldmonitor-theme', 'light'], ['wm-font-scale', '1.2'],
+      ]));
+      assert.equal(localStorage.getItem('worldmonitor-theme'), before);
+      assert.equal(localStorage.getItem('wm-cloud-prefs-dirty-keys'), dirtyBefore);
+    });
+  });
+
+  it('publishes successful validated imports through the normal sync path', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      cloudPrefs.install('full');
+      cloudPrefs.applyLocalPreferenceImport([['worldmonitor-theme', 'light']]);
+      await cloudPrefs.syncNow();
+    });
+    assert.equal(result.acceptedDataByToken['test-token']?.['worldmonitor-theme'], 'light');
+  });
+});
