@@ -3697,6 +3697,37 @@ const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
 const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
 const RELAY_GATEWAY_GATE_USER_AGENT = 'worldmonitor-health-relay-gate/1.0';
 const RELAY_GATEWAY_GATE_ENV = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET'];
+// Last probe verdict, shared by every concurrent sweep. TTL equals the verdict
+// snapshot TTL so the gate is re-asked exactly as often as the verdict itself.
+const RELAY_GATEWAY_GATE_PROBE_KEY = 'health:relay-gate:v1';
+const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS;
+
+function parseCachedRelayGatewayGate(raw, now) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || typeof parsed.status !== 'string') return null;
+  const evaluatedAt = Date.parse(parsed.evaluatedAt ?? '');
+  if (!Number.isFinite(evaluatedAt) || evaluatedAt > now) return null;
+  if (now - evaluatedAt >= RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS * 1_000) return null;
+  return parsed;
+}
+
+async function readOrProbeRelayGatewayGate({ now, key, ctx, fetchImpl } = {}) {
+  const cached = await redisPipeline([['GET', key]], 2_000, true).catch(() => null);
+  const reused = parseCachedRelayGatewayGate(cached?.[0]?.result, now);
+  if (reused) return reused;
+  const fresh = await probeRelayGatewayGate({ now, fetchImpl });
+  if (!fresh) return null;
+  const persist = redisPipeline(
+    [['SET', key, JSON.stringify(fresh), 'EX', String(RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS)]],
+    2_000,
+    true,
+  ).catch(() => {});
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
+  else await persist;
+  return fresh;
+}
 
 async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
   const missing = RELAY_GATEWAY_GATE_ENV.filter((name) => !process.env[name]);
@@ -4400,7 +4431,19 @@ export async function handleHealth(req, ctx, options = {}) {
   // Liveness of the paying path's credential, not a data key: see
   // probeRelayGatewayGate. Added after the registry loop so it is never part
   // of `totalChecks`, before the bucket census so its verdict counts.
-  const relayGatewayGate = await probeRelayGatewayGate({ now: evaluationNow });
+  //
+  // "One probe per 60 s" is enforced here, not inferred from the snapshot
+  // lock: a caller that loses the lock waits HEALTH_VERDICT_REFRESH_WAIT_MS
+  // (3 s) and then runs its own sweep, and the probe's own budget is longer
+  // than that wait, so a cold burst during the very outage this check exists
+  // for could otherwise fan out one relay call per caller. The last verdict
+  // is kept in Redis for the snapshot TTL and every sweep inside that window
+  // reuses it; only a sweep that finds it missing or expired touches Convex.
+  const relayGatewayGate = await readOrProbeRelayGatewayGate({
+    now: evaluationNow,
+    key: sweepKey(RELAY_GATEWAY_GATE_PROBE_KEY),
+    ctx,
+  });
   if (relayGatewayGate) checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
 
   for (const [name, entry] of Object.entries(checks)) {
@@ -4593,7 +4636,10 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_CHECK_NAME,
   RELAY_GATEWAY_GATE_ROUTE,
   RELAY_GATEWAY_GATE_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_PROBE_KEY,
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
   probeRelayGatewayGate,
+  parseCachedRelayGatewayGate,
   buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,

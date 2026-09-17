@@ -32,6 +32,10 @@ const {
   RELAY_GATEWAY_GATE_CHECK_NAME,
   RELAY_GATEWAY_GATE_ROUTE,
   RELAY_GATEWAY_GATE_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_PROBE_KEY,
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
+  HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
+  parseCachedRelayGatewayGate,
   STATUS_COUNTS,
 } = __testing__;
 
@@ -59,11 +63,18 @@ const SITE = 'https://convex-site.test';
  * the sweep sent so the probe's own contract is pinned, not just its verdict.
  */
 function mockTransports({ relay }) {
-  const snapshotStore = { [HEALTH_SNAPSHOT_KEY]: null, [HEALTH_COMPACT_SNAPSHOT_KEY]: null };
+  // Verdict snapshots and the shared probe verdict live in the same store so a
+  // second sweep can be forced (clear the snapshots) while the probe cache is
+  // left to do its job.
+  const snapshotStore = {
+    [HEALTH_SNAPSHOT_KEY]: null,
+    [HEALTH_COMPACT_SNAPSHOT_KEY]: null,
+    [RELAY_GATEWAY_GATE_PROBE_KEY]: null,
+  };
   const relayCalls = [];
   globalThis.fetch = async (url, init) => {
     const target = String(url);
-    if (target.startsWith(SITE)) {
+    if (new URL(target).origin === new URL(SITE).origin) {
       relayCalls.push({ url: target, init });
       return relay(target, init);
     }
@@ -237,6 +248,56 @@ test('an unexpected admit-side answer is also RELAY_GATE_UNREACHABLE, so a relay
   const entry = detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME];
   assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
   assert.equal(entry.httpStatus, 502);
+});
+
+test('concurrent or back-to-back sweeps inside the TTL reuse one probe verdict instead of each asking Convex', async () => {
+  // A caller that loses the snapshot lock waits 3 s and then sweeps on its
+  // own; the probe budget is longer than that wait, so without a shared
+  // verdict a cold burst during an outage would fan out one relay call per
+  // caller (#8282 review). The verdict is kept in Redis for the snapshot TTL.
+  productionEnv();
+  const { relayCalls, snapshotStore } = mockTransports({ relay: rejected });
+
+  const first = await sweep();
+  assert.equal(relayCalls.length, 1);
+  assert.ok(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], 'the verdict is persisted for the next sweep');
+  const persisted = snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY];
+
+  // Force a second full sweep (drop the verdict snapshots) while the probe
+  // verdict is still inside its window.
+  snapshotStore[HEALTH_SNAPSHOT_KEY] = null;
+  snapshotStore[HEALTH_COMPACT_SNAPSHOT_KEY] = null;
+  const second = await sweep();
+
+  assert.equal(relayCalls.length, 1, 'the second sweep reused the cached verdict');
+  assert.equal(second.detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'RELAY_GATE_REJECTED');
+  assert.equal(second.detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].evaluatedAt,
+    first.detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].evaluatedAt);
+  assert.equal(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], persisted, 'a reused verdict is not rewritten');
+  assert.equal(RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS, HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
+    'the gate is re-asked exactly as often as the verdict itself');
+
+  // Once the window has passed the next sweep probes again.
+  const stale = JSON.stringify({
+    ...JSON.parse(persisted),
+    evaluatedAt: new Date(Date.now() - (RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS + 1) * 1_000).toISOString(),
+  });
+  snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY] = stale;
+  snapshotStore[HEALTH_SNAPSHOT_KEY] = null;
+  snapshotStore[HEALTH_COMPACT_SNAPSHOT_KEY] = null;
+  await sweep();
+  assert.equal(relayCalls.length, 2, 'an expired verdict is re-probed');
+});
+
+test('a cached verdict is only trusted when it is well-formed and inside its window', () => {
+  const now = Date.parse('2026-09-17T12:00:00Z');
+  const fresh = { status: 'OK', evaluatedAt: new Date(now - 10_000).toISOString() };
+  assert.deepEqual(parseCachedRelayGatewayGate(JSON.stringify(fresh), now), fresh);
+  assert.equal(parseCachedRelayGatewayGate(JSON.stringify({ ...fresh, evaluatedAt: new Date(now + 5_000).toISOString() }), now), null, 'future-dated is not trusted');
+  assert.equal(parseCachedRelayGatewayGate(JSON.stringify({ ...fresh, evaluatedAt: new Date(now - 61_000).toISOString() }), now), null, 'expired');
+  assert.equal(parseCachedRelayGatewayGate(JSON.stringify({ evaluatedAt: fresh.evaluatedAt }), now), null, 'no status');
+  assert.equal(parseCachedRelayGatewayGate('{not-json', now), null);
+  assert.equal(parseCachedRelayGatewayGate(null, now), null);
 });
 
 test('the gate check does not change summary.total, which the docs pin to the key registries', async () => {
