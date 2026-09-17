@@ -76,6 +76,7 @@ function mockTransports({ relay }) {
     [RELAY_GATEWAY_GATE_LEASE_KEY]: null,
   };
   const relayCalls = [];
+  const redisCommands = [];
   globalThis.fetch = async (url, init) => {
     const target = String(url);
     if (new URL(target).origin === new URL(SITE).origin) {
@@ -83,6 +84,7 @@ function mockTransports({ relay }) {
       return relay(target, init);
     }
     const commands = JSON.parse(init.body);
+    redisCommands.push(...commands);
     const results = commands.map(([op, key, value, ...rest]) => {
       if (op === 'GET' && key in snapshotStore) return { result: snapshotStore[key] };
       if (op === 'STRLEN') return { result: 100 };
@@ -108,7 +110,7 @@ function mockTransports({ relay }) {
     });
     return new Response(JSON.stringify(results), { status: 200 });
   };
-  return { relayCalls, snapshotStore };
+  return { relayCalls, snapshotStore, redisCommands };
 }
 
 async function sweep() {
@@ -431,6 +433,63 @@ test('the lease owner publishes before releasing, and the lease is free after th
   assert.equal(relayCalls.length, 1);
   assert.ok(snapshotStore[RELAY_GATEWAY_GATE_PROBE_KEY], 'verdict published');
   assert.equal(snapshotStore[RELAY_GATEWAY_GATE_LEASE_KEY], null, 'lease released');
+});
+
+test('the verdict and lease keys are scoped per deployment like the snapshot keys', () => {
+  // Preview and production share one Upstash; a preview's verdict or lease
+  // must never be reused by production (#8282 review, P1).
+  const { healthVerdictRedisKey } = __testing__;
+  assert.equal(RELAY_GATEWAY_GATE_PROBE_KEY,
+    healthVerdictRedisKey('health:relay-gate:v1', process.env.VERCEL_ENV, process.env.VERCEL_GIT_COMMIT_SHA));
+  assert.equal(RELAY_GATEWAY_GATE_LEASE_KEY, `${RELAY_GATEWAY_GATE_PROBE_KEY}:lease`);
+  // Production is one live deployment and keeps the bare key; every preview
+  // deploy gets its own env+sha namespace, so no preview can publish into or
+  // read from production's verdict.
+  const prod = healthVerdictRedisKey('health:relay-gate:v1', 'production', 'abcdef0123456789');
+  const preview = healthVerdictRedisKey('health:relay-gate:v1', 'preview', 'abcdef0123456789');
+  assert.equal(prod, 'health:relay-gate:v1');
+  assert.notEqual(prod, preview, 'the same commit on preview and production gets different keys');
+  assert.notEqual(preview, healthVerdictRedisKey('health:relay-gate:v1', 'preview', 'fedcba9876543210'),
+    'two preview deploys get different keys');
+});
+
+test('a deployment that would not report the gate never reads the shared verdict or lease', async () => {
+  process.env.VERCEL_ENV = 'preview';
+  delete process.env.VERCEL;
+  delete process.env.CONVEX_SITE_URL;
+  delete process.env.CONVEX_TENANT_RELAY_SECRET;
+  const { relayCalls, redisCommands } = mockTransports({ relay: admitted });
+
+  await sweep();
+
+  const touched = redisCommands.filter(([, key]) => key === RELAY_GATEWAY_GATE_PROBE_KEY || key === RELAY_GATEWAY_GATE_LEASE_KEY);
+  assert.deepEqual(touched, [], 'applicability is decided before any Redis access');
+  assert.equal(relayCalls.length, 0);
+});
+
+test('the probe reaches fetch through a forwarding wrapper, not a detached reference', async () => {
+  // Edge runtimes require the native fetch to be called with its global
+  // receiver; a captured `globalThis.fetch` invoked bare throws, which would
+  // have read as RELAY_GATE_UNREACHABLE on every sweep (#8282 review, P1).
+  productionEnv();
+  const { relayCalls } = mockTransports({ relay: admitted });
+  const wrapped = globalThis.fetch;
+  globalThis.fetch = function receiverSensitiveFetch(url, init) {
+    // Only the relay call is under test; the Redis mock is reached by bare
+    // `fetch(...)` calls whose receiver is undefined, which native fetch
+    // tolerates. A detached `const f = globalThis.fetch; f(url)` also arrives
+    // with an undefined receiver, so the relay-origin branch is where the
+    // wrapper (receiver = globalThis) and a detached reference differ.
+    if (new URL(String(url)).origin === new URL(SITE).origin && this !== globalThis) {
+      throw new TypeError('Illegal invocation');
+    }
+    return wrapped(url, init);
+  };
+
+  const { detailed } = await sweep();
+
+  assert.equal(relayCalls.length, 1);
+  assert.equal(detailed.checks[RELAY_GATEWAY_GATE_CHECK_NAME].status, 'OK');
 });
 
 test('a cached verdict is only trusted when it is well-formed and inside its window', () => {

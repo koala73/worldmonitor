@@ -3699,7 +3699,16 @@ const RELAY_GATEWAY_GATE_USER_AGENT = 'worldmonitor-health-relay-gate/1.0';
 const RELAY_GATEWAY_GATE_ENV = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET'];
 // Last probe verdict, shared by every concurrent sweep. TTL equals the verdict
 // snapshot TTL so the gate is re-asked exactly as often as the verdict itself.
-const RELAY_GATEWAY_GATE_PROBE_KEY = 'health:relay-gate:v1';
+// Scoped per deployment exactly like the verdict snapshot keys: preview and
+// production share one Upstash, so a preview's verdict or lease must never be
+// reused by production, nor a production verdict read by a preview.
+// `healthVerdictRedisKey` folds VERCEL_ENV and the commit SHA in, and these
+// keys are sent verbatim (no `sweepKey` prefixing), the same as the snapshot.
+const RELAY_GATEWAY_GATE_PROBE_KEY = healthVerdictRedisKey(
+  'health:relay-gate:v1',
+  process.env.VERCEL_ENV,
+  process.env.VERCEL_GIT_COMMIT_SHA,
+);
 const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS;
 
 function parseCachedRelayGatewayGate(raw, now) {
@@ -3721,7 +3730,7 @@ function parseCachedRelayGatewayGate(raw, now) {
 // warn) rather than either probing itself or vouching for a credential it
 // never checked. The lease outlives the probe budget so a crashed owner
 // cannot wedge the gate for longer than one snapshot.
-const RELAY_GATEWAY_GATE_LEASE_KEY = 'health:relay-gate:lease:v1';
+const RELAY_GATEWAY_GATE_LEASE_KEY = `${RELAY_GATEWAY_GATE_PROBE_KEY}:lease`;
 const RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS = 10;
 const RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS = 250;
 const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS = RELAY_GATEWAY_GATE_TIMEOUT_MS + 1_000;
@@ -3743,6 +3752,9 @@ async function readOrProbeRelayGatewayGate({
   followerPollMs = RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
+  // A deployment that would not report the gate at all (no gateway env
+  // outside a production build) touches neither the cache nor the lease.
+  if (!probeRelayGatewayGateApplies()) return null;
   const readCached = async () => {
     const cached = await redisPipeline([['GET', key]], 2_000, true).catch(() => null);
     return parseCachedRelayGatewayGate(cached?.[0]?.result, clock());
@@ -3811,7 +3823,13 @@ function probeRelayGatewayGateApplies() {
   return configured || isProductionBuild;
 }
 
-async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
+// The default forwards through a wrapper rather than capturing `globalThis.fetch`
+// itself: on Edge runtimes the native implementation requires its global
+// receiver, and a detached call throws — which would have read here as
+// RELAY_GATE_UNREACHABLE on every sweep. AGENTS.md bans `fetch.bind` for the
+// stale-reference reason; the arrow keeps both the receiver and the current
+// (possibly wrapped) global.
+async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
   const missing = RELAY_GATEWAY_GATE_ENV.filter((name) => !process.env[name]);
   const base = {
     role: 'gateway',
@@ -4541,8 +4559,8 @@ export async function handleHealth(req, ctx, options = {}) {
   // reuses it; only a sweep that finds it missing or expired touches Convex.
   const relayGatewayGate = await readOrProbeRelayGatewayGate({
     now: evaluationNow,
-    key: sweepKey(RELAY_GATEWAY_GATE_PROBE_KEY),
-    leaseKey: sweepKey(RELAY_GATEWAY_GATE_LEASE_KEY),
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
     ctx,
   });
   if (relayGatewayGate) checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
