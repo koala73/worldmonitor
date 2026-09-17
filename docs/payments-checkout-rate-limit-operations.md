@@ -198,7 +198,6 @@ floor and silently disable every retry.
 - `tests/checkout-rate-limit-alarm.test.mts`,
   `convex/__tests__/checkoutRateLimit.test.ts` — threshold and end-to-end coverage
 
-
 ## Session-creation timeouts
 
 The same ladder permits one immediate retry for the SDK's typed attempt timeout,
