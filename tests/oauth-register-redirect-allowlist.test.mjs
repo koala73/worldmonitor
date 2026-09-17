@@ -20,7 +20,8 @@ const originalFetch = globalThis.fetch;
 const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'];
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
-const { default: registerHandler, isAllowedRedirectUri } = await import('../api/oauth/register.js');
+const { default: registerHandler } = await import('../api/oauth/register.js');
+const { isAllowedRedirectUri } = await import('../api/oauth/_redirect-uri.js');
 
 const HOSTED_CLIENT_CALLBACKS = {
   'Claude (claude.ai)': 'https://claude.ai/api/mcp/auth_callback',

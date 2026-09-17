@@ -5,7 +5,7 @@ import { timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
-import { redirectDisplayHost } from './register.js';
+import { redirectDisplayHost } from './_redirect-uri.js';
 
 export const config = { runtime: 'edge' };
 

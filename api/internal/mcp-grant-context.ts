@@ -47,7 +47,7 @@ import {
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
 // @ts-expect-error — JS module, no declaration file
-import { redirectDisplayHost } from '../oauth/register.js';
+import { redirectDisplayHost } from '../oauth/_redirect-uri.js';
 
 const NO_STORE_JSON: Record<string, string> = {
   'Content-Type': 'application/json',
