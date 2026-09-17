@@ -24,13 +24,15 @@ interface WebcamFeed {
   fallbackVideoId: string;
 }
 
-// YouTube live stream IDs, each checked live on 2026-09-14 with `npm run live-video:check`.
+// YouTube live stream IDs, each checked live on 2026-09-17 with `npm run live-video:check`.
 // Broadcasters end and restart streams, so re-run the checker before trusting an ID.
 const WEBCAM_FEEDS: WebcamFeed[] = [
   // Middle East (conflict hotspots)
   { id: 'jerusalem', city: 'Jerusalem', country: 'Israel', region: 'middle-east', fallbackVideoId: 'zp6LNSoq000' },
   { id: 'middle-east', city: 'Middle East', country: 'Multi', region: 'middle-east', fallbackVideoId: 'AkqGOcpDvZU' },
-  { id: 'mecca', city: 'Mecca', country: 'Saudi Arabia', region: 'middle-east', fallbackVideoId: 'ju3cuAIc1i4' },
+  { id: 'mecca', city: 'Mecca', country: 'Saudi Arabia', region: 'middle-east', fallbackVideoId: 'eC4LfEVxvKg' },
+  { id: 'istanbul', city: 'Istanbul', country: 'Turkey', region: 'middle-east', fallbackVideoId: 'bbVe5h7X3uw' },
+  { id: 'medina', city: 'Medina', country: 'Saudi Arabia', region: 'middle-east', fallbackVideoId: 'naaOMgZbIHQ' },
   // Europe — the Ukraine feed rotates through Kyiv, Odesa, Kharkiv, Kramatorsk, Sloviansk, Donetsk and Dnipro
   { id: 'kyiv', city: 'Ukraine', country: 'Ukraine', region: 'europe', fallbackVideoId: 'e2gC37ILQmk' },
   { id: 'paris', city: 'Paris', country: 'France', region: 'europe', fallbackVideoId: '-xzg3wujOVM' },
@@ -217,6 +219,11 @@ export class LiveWebcamsPanel extends Panel {
     return this.filteredFeeds.slice(0, MAX_GRID_CELLS);
   }
 
+  /** The feeds the current layout plays at once: the whole grid wall, or the single selected feed. */
+  private get layoutFeeds(): WebcamFeed[] {
+    return (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
+  }
+
   private createToolbar(): void {
     this.toolbar = document.createElement('div');
     this.toolbar.className = 'webcam-toolbar';
@@ -280,7 +287,9 @@ export class LiveWebcamsPanel extends Panel {
     this.toolbar?.querySelectorAll('.webcam-region-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.region === filter);
     });
-    // Region change swaps the entire feed set — stop the current wall and start fresh from previews.
+    // Region change swaps the entire feed set — tear the old wall down, then rebuild it from the
+    // new region's layout when the user already had video playing.
+    const wasPlaying = this.activeIframeFeedIds.size > 0;
     this.clearActivePlayback();
     if (this.idleStopped) this.idleStopped = { ...this.idleStopped, feedIds: [] };
     const feeds = this.filteredFeeds;
@@ -288,6 +297,9 @@ export class LiveWebcamsPanel extends Panel {
       this.activeFeed = feeds[0]!;
     }
     this.savePrefs();
+    if (wasPlaying) {
+      for (const feed of this.layoutFeeds) this.activeIframeFeedIds.add(feed.id);
+    }
     this.render();
   }
 
@@ -438,7 +450,7 @@ export class LiveWebcamsPanel extends Panel {
     // An idle stop ends only through Resume or Play, so autoplay must not rebuild the wall on tab return or scroll-back.
     if (this.idleStopped) return false;
     // In grid view auto-start the whole wall; single view auto-starts only the selected feed.
-    const feeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
+    const feeds = this.layoutFeeds;
     let added = false;
     for (const feed of feeds) {
       if (!this.activeIframeFeedIds.has(feed.id)) {
@@ -466,7 +478,7 @@ export class LiveWebcamsPanel extends Panel {
    * reload flashes.
    */
   private playAllFeeds(): void {
-    const layoutFeeds = (this.viewMode === 'grid' && !this.forceSingleView) ? this.gridFeeds : [this.activeFeed];
+    const layoutFeeds = this.layoutFeeds;
     const idleStopped = this.idleStopped;
     this.idleStopped = null;
     const restoredFeeds = idleStopped ? layoutFeeds.filter((feed) => idleStopped.feedIds.includes(feed.id)) : [];
