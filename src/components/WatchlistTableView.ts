@@ -107,6 +107,7 @@ export class WatchlistTableView<T> {
   private scaleRafGeneration: number | null = null;
   private scaleObservers: MutationObserver[] = [];
   private tableResizeObserver: ResizeObserver | null = null;
+  private bindingController: AbortController | null = null;
   private scaleObservationGeneration = 0;
   private lastMeasuredVirtualRowHeight: number | null = null;
   private lastMeasuredTableHeaderHeight: number | null = null;
@@ -361,6 +362,8 @@ export class WatchlistTableView<T> {
     this.disconnectScaleObserver();
     const rootEl = root.querySelector('.watchlist-table-view') as HTMLElement | null;
     if (!rootEl) return;
+    this.bindingController = new AbortController();
+    const { signal } = this.bindingController;
     const generation = this.scaleObservationGeneration;
 
     // Row click → toggle expanded (one-at-a-time semantics: clicking a
@@ -386,7 +389,7 @@ export class WatchlistTableView<T> {
           this.state.expandedKey = key;
         }
         onRerender();
-      });
+      }, { signal });
     }
 
     // Sortable header click → set sort option, rerender.
@@ -401,7 +404,7 @@ export class WatchlistTableView<T> {
           this.resetVirtualWindow();
           onRerender();
         }
-      });
+      }, { signal });
     });
 
     // Filter pill click.
@@ -413,7 +416,7 @@ export class WatchlistTableView<T> {
           this.resetVirtualWindow();
           onRerender();
         }
-      });
+      }, { signal });
     });
 
     // Sort dropdown change.
@@ -423,7 +426,7 @@ export class WatchlistTableView<T> {
         this.state.sort = sortSelect.value;
         this.resetVirtualWindow();
         onRerender();
-      });
+      }, { signal });
     }
 
     const scrollEl = rootEl.querySelector('[data-watchlist-scroll="1"]') as HTMLElement | null;
@@ -469,7 +472,7 @@ export class WatchlistTableView<T> {
           if (generation !== this.scaleObservationGeneration || !rootEl.isConnected) return;
           this.updateVirtualWindow(scrollEl, tbodyEl, rootEl, rowHeight);
         });
-      }, { passive: true });
+      }, { passive: true, signal });
 
       const reconcileScaledRows = (): void => {
         if (this.scaleRafGeneration === generation) return;
@@ -547,9 +550,9 @@ export class WatchlistTableView<T> {
         this.resetVirtualWindow();
         this.searchWasFocused = true;
         onRerender();
-      });
-      searchInput.addEventListener('focus', () => { this.searchWasFocused = true; });
-      searchInput.addEventListener('blur', () => { this.searchWasFocused = false; });
+      }, { signal });
+      searchInput.addEventListener('focus', () => { this.searchWasFocused = true; }, { signal });
+      searchInput.addEventListener('blur', () => { this.searchWasFocused = false; }, { signal });
     }
   }
 
@@ -722,6 +725,8 @@ export class WatchlistTableView<T> {
   }
 
   private disconnectScaleObserver(): void {
+    this.bindingController?.abort();
+    this.bindingController = null;
     this.scaleObservationGeneration += 1;
     this.scrollRafGeneration = null;
     this.scaleRafGeneration = null;

@@ -379,3 +379,31 @@ describe('WatchlistTableView scaled virtualization', () => {
     view.destroy();
   });
 });
+
+describe('WatchlistTableView binding ownership', () => {
+  it('rebinds retained nodes once with the latest callback and tears down on destroy', () => {
+    const view = createView();
+    const host = document.createElement('div');
+    document.body.append(host);
+    host.innerHTML = view.render();
+    const old = vi.fn();
+    const latest = vi.fn();
+    view.bind(host, old);
+    view.bind(host, latest);
+    host.querySelector<HTMLElement>('.watchlist-row')!.click();
+    expect(old).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledTimes(1);
+    expect(view.render()).toContain('watchlist-detail-row');
+    const search = host.querySelector<HTMLInputElement>('[data-watchlist-search="1"]')!;
+    search.value = 'SYM001';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(latest).toHaveBeenCalledTimes(2);
+    const sort = host.querySelector<HTMLSelectElement>('[data-watchlist-sort="1"]')!;
+    sort.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(latest).toHaveBeenCalledTimes(3);
+    view.destroy();
+    host.querySelector<HTMLElement>('.watchlist-row')!.click();
+    expect(latest).toHaveBeenCalledTimes(3);
+    host.remove();
+  });
+});
