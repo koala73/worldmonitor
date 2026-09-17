@@ -160,6 +160,10 @@ async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSi
       { signal },
     ),
     emptySnapshotFallback,
+    {
+      cacheKey: includeCandidates ? 'candidates' : 'density',
+      shouldCache: (result) => result.dataAvailable && result.snapshot !== undefined,
+    },
   );
 
   const snapshot = response.snapshot;
