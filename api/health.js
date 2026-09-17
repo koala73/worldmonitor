@@ -3148,6 +3148,15 @@ const STATUS_COUNTS = {
   CHINA_UNAVAILABLE: 'crit',
   EMPTY: 'crit',
   EMPTY_DATA: 'crit',
+  // Tenant-relay gateway gate (probeRelayGatewayGate). Both crit statuses mean
+  // checkout / customer-portal / notification-channels are dead right now:
+  // MISCONFIGURED is the Vercel half of #8208 (the build cannot see the
+  // secret), REJECTED is the Convex half (the deployed gate does not admit
+  // it). UNREACHABLE is a transport verdict, not a credential one, and stays
+  // a warning so a single Convex blip inside one 60 s snapshot does not page.
+  RELAY_GATE_MISCONFIGURED: 'crit',
+  RELAY_GATE_REJECTED: 'crit',
+  RELAY_GATE_UNREACHABLE: 'warn',
 };
 
 function healthStatusBucket(entry, now) {
@@ -3653,6 +3662,113 @@ function snapshotTtlSeconds(snapshot, now) {
  * ROLLOUT_PENDING is never contained (#6059): it stays availability-affecting
  * until its deadline promotes a missing payload to critical.
  */
+// ── Tenant-relay gateway gate probe (#8208 / #8217) ──────────────────────
+//
+// #8208 took checkout, the customer portal and notification channels down for
+// nine hours while every credential existed in the right store: the Vercel
+// build predated CONVEX_TENANT_RELAY_SECRET, so `create-checkout` answered its
+// env-missing 503 before reaching Convex, and the Convex deploy predated it
+// too, so every `/relay/*` route answered 401. Presence in a store proves
+// nothing; only the deployed gate admitting the deployed secret does.
+//
+// So the sweep sends ONE credentialed, body-less POST to the gateway-role
+// route. The relay's own contract makes that safe and decisive
+// (convex/http.ts `authorizeTenantRelay` → `parseJsonObjectBody`): a wrong or
+// missing bearer is `401 UNAUTHORIZED`; an admitted bearer with `{}` is
+// `400 MISSING_FIELDS`, returned before any Convex mutation runs. Anything
+// else — network error, timeout, 5xx, an unexpected 200 — is a transport
+// verdict (`RELAY_GATE_UNREACHABLE`, warn), never a credential one, so a
+// Convex stall cannot read as "credential fine" and a credential fault cannot
+// hide behind a stall.
+//
+// Cost: the probe lives inside the verdict recompute, which the snapshot TTL
+// and refresh lock already bound to one run per 60 s regardless of poll
+// volume (~115k `?compact=1` reads/day), and it is skipped entirely when the
+// gateway env is absent outside production (previews, local, the existing
+// test suites). On a production build a missing var is itself the fault.
+//
+// Not counted in `summary.total`: that figure is pinned to the key registries
+// by the docs-stats gate (tests/docs-stats-health-total.test.mts), and this
+// is a liveness probe, not a data key. It still counts in `crit`/`warn` and
+// lands in compact `problems`, which is what the 15-minute seed-freshness
+// monitor fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
+const RELAY_GATEWAY_GATE_CHECK_NAME = 'relayGatewayGate';
+const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
+const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
+const RELAY_GATEWAY_GATE_USER_AGENT = 'worldmonitor-health-relay-gate/1.0';
+const RELAY_GATEWAY_GATE_ENV = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET'];
+
+async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
+  const missing = RELAY_GATEWAY_GATE_ENV.filter((name) => !process.env[name]);
+  const base = {
+    role: 'gateway',
+    route: RELAY_GATEWAY_GATE_ROUTE,
+    evaluatedAt: new Date(now).toISOString(),
+  };
+  if (missing.length > 0) {
+    // "Production build" means a build Vercel is actually running (`VERCEL=1`
+    // is the platform's own system variable, present at runtime), in the
+    // production environment. Suites that set VERCEL_ENV=production on a
+    // laptop to model rollout semantics carry no tenant secret and must keep
+    // reading as they did; a missing var only becomes the fault on the build
+    // that serves paying customers.
+    const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+    if (!isProductionBuild) return null;
+    return {
+      ...base,
+      status: 'RELAY_GATE_MISCONFIGURED',
+      missing,
+      hint: `This production build cannot see ${missing.join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
+    };
+  }
+  const siteUrl = process.env.CONVEX_SITE_URL.replace(/\/+$/, '');
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await fetchImpl(`${siteUrl}${RELAY_GATEWAY_GATE_ROUTE}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CONVEX_TENANT_RELAY_SECRET}`,
+        'User-Agent': RELAY_GATEWAY_GATE_USER_AGENT,
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(RELAY_GATEWAY_GATE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    return {
+      ...base,
+      status: 'RELAY_GATE_UNREACHABLE',
+      latencyMs: Date.now() - startedAt,
+      error: String(error?.message ?? error),
+      hint: 'The Convex relay did not answer the gate probe; a credential verdict needs a reachable gate. Persistent over several sweeps = Convex outage or a wrong CONVEX_SITE_URL.',
+    };
+  }
+  const latencyMs = Date.now() - startedAt;
+  let body = null;
+  try { body = await response.json(); } catch { /* non-JSON is classified by status alone */ }
+  if (response.status === 401) {
+    return {
+      ...base,
+      status: 'RELAY_GATE_REJECTED',
+      httpStatus: 401,
+      latencyMs,
+      hint: 'The deployed Convex gate does not admit this build\'s CONVEX_TENANT_RELAY_SECRET. Either side can be stale: a value written after the last `convex deploy` reads as undefined inside deployed functions until the next push (#8217). Redeploy Convex, then confirm this check returns OK.',
+    };
+  }
+  if (response.status === 400 && body?.error === 'MISSING_FIELDS') {
+    return { ...base, status: 'OK', httpStatus: 400, latencyMs };
+  }
+  return {
+    ...base,
+    status: 'RELAY_GATE_UNREACHABLE',
+    httpStatus: response.status,
+    latencyMs,
+    error: typeof body?.error === 'string' ? body.error : `unexpected HTTP ${response.status}`,
+    hint: 'The gate answered something other than 401 or 400 MISSING_FIELDS, so this sweep cannot classify the credential. Persistent over several sweeps = relay contract drift or a Convex fault.',
+  };
+}
+
 function computeOverallStatus(counts, totalChecks) {
   const realWarnCount = counts.warn - counts.onDemandWarn;
   const containedWarnCount = Number.isInteger(counts.containedWarn)
@@ -4281,6 +4397,12 @@ export async function handleHealth(req, ctx, options = {}) {
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(graceCleanup);
   }
 
+  // Liveness of the paying path's credential, not a data key: see
+  // probeRelayGatewayGate. Added after the registry loop so it is never part
+  // of `totalChecks`, before the bucket census so its verdict counts.
+  const relayGatewayGate = await probeRelayGatewayGate({ now: evaluationNow });
+  if (relayGatewayGate) checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
+
   for (const [name, entry] of Object.entries(checks)) {
     const bucket = healthStatusBucket(entry, evaluationNow);
     counts[bucket]++;
@@ -4468,6 +4590,10 @@ export const __testing__ = {
   dataLenCommand,
   HEALTH_VERDICT_SNAPSHOT_KEY,
   HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+  RELAY_GATEWAY_GATE_CHECK_NAME,
+  RELAY_GATEWAY_GATE_ROUTE,
+  RELAY_GATEWAY_GATE_TIMEOUT_MS,
+  probeRelayGatewayGate,
   buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
