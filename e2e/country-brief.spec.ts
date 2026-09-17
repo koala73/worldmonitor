@@ -46,7 +46,10 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
 test('country shortcut keeps the dashboard canonical and shares a working dashboard URL', async ({ page, context, countryBrief }, testInfo) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/dashboard?c=UA');
-  await expectCountry(page);
+  const countryName = page.locator('#country-deep-dive-panel .cdp-country-name');
+  await expect(countryName).toHaveText('Ukraine');
+  await expect(countryName).toBeVisible();
+  await page.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Economy & trade', exact: true }).click();
   await expectMarkets(page);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
   await page.locator('#country-deep-dive-panel .cdp-share-btn').click();
@@ -61,7 +64,9 @@ test('country shortcut keeps the dashboard canonical and shares a working dashbo
     await testInfo.attach(`country-shortcut-${name}`, { path, contentType: 'image/png' });
   }
   await page.goto(sharedUrl);
-  await expectCountry(page);
+  await expect(countryName).toHaveText('Ukraine');
+  await expect(countryName).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe('/dashboard');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
 });
 
