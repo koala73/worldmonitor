@@ -53,7 +53,7 @@ test('natural-events consumer serves a retained NHC storm from the seeded envelo
 test('producer, RPC and health keep a failed EONET source visible without renewing its age', async () => {
   let failEonet = false;
   const fetchFn = async (input: string) => {
-    if (input.includes('eonet.gsfc.nasa.gov')) {
+    if (new URL(input).hostname === 'eonet.gsfc.nasa.gov') {
       if (failEonet) return new Response('', { status: 503 });
       return Response.json({ events: [{
         id: 'eonet-consumer', title: 'Volcano', categories: [{ id: 'volcanoes' }],

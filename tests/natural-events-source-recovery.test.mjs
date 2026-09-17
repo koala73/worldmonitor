@@ -15,7 +15,7 @@ const eonet = [{
 }];
 const feature = (type, id = 1) => ({
   type: 'Feature', geometry: { type: 'Point', coordinates: [id % 180, 40] },
-  properties: { eventtype: type, eventid: id, alertlevel: 'Orange', name: type, fromdate: new Date(NOW).toISOString() },
+  properties: { eventtype: type, eventid: id, alertlevel: 'Orange', name: type, fromdate: new Date(NOW).toISOString(), iscurrent: 'false' },
 });
 
 async function run({ previousSources, now = NOW, failures = [], eonetBody = { events: eonet }, types = { FL: [feature('FL')] }, requests = [] } = {}) {
@@ -51,6 +51,33 @@ test('VO uses bounded SEARCH, not the unavailable MAP route', async () => {
   assert.equal(vo.searchParams.get('toDate'), '2026-09-17');
   assert.equal(vo.searchParams.get('pageSize'), '100');
   assert.equal(requests.filter(url => url.hostname === 'www.gdacs.org').length, 6);
+});
+
+test('VO closure follows SEARCH current state, including during retention and recovery', async () => {
+  for (const [iscurrent, closed] of [['false', true], [false, true], ['true', false], [true, false]]) {
+    const volcano = feature('VO', 1000148);
+    volcano.properties.iscurrent = iscurrent;
+    const first = await run({ types: { VO: [volcano] } });
+    const second = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:VO'] });
+    for (const data of [first, second]) {
+      assert.equal(naturalEventsPublishTransform(data).events.find(event => event.id === 'gdacs-VO-1000148').closed, closed);
+    }
+    volcano.properties.iscurrent = closed ? 'true' : 'false';
+    const recovered = await run({ previousSources: second._sourceSnapshots, now: NOW + 2 * HOUR, types: { VO: [volcano] } });
+    assert.equal(recovered.events.find(event => event.id === 'gdacs-VO-1000148').closed, !closed);
+  }
+});
+
+test('VO with missing or malformed current state retains validated coverage instead of claiming activity', async () => {
+  const first = await run({ types: { VO: [feature('VO', 1000148)] } });
+  for (const iscurrent of [undefined, null, '', 'unknown', 0]) {
+    const volcano = feature('VO', 1000148);
+    volcano.properties.iscurrent = iscurrent;
+    const data = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, types: { VO: [volcano] } });
+    assert.deepEqual(data._gdacsFailedTypes, ['VO']);
+    assert.equal(data._sourceSnapshots['gdacs:VO'].fetchedAt, NOW);
+    assert.equal(data.events.find(event => event.id === 'gdacs-VO-1000148').closed, true);
+  }
 });
 
 test('source failure preserves pre-merge data while healthy companions update, without resetting clocks', async () => {

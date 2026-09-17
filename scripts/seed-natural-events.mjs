@@ -106,6 +106,7 @@ function validGdacsFeatures(features, eventtype) {
     const coordinates = feature?.geometry?.coordinates;
     return props?.eventtype === eventtype && props.eventid != null && String(props.eventid).length > 0
       && typeof props.alertlevel === 'string' && Number.isFinite(Date.parse(props.fromdate))
+      && (eventtype !== 'VO' || [true, false, 'true', 'false'].includes(props.iscurrent))
       && feature.geometry?.type === 'Point' && Array.isArray(coordinates)
       && validPosition(coordinates[0], coordinates[1]);
   });
@@ -249,7 +250,7 @@ function parseGdacsTcFields(props) {
 
 async function fetchGdacsType(eventtype, fetchFn, now) {
   // MAP requires one type, but its VO route returns 404. SEARCH supplies
-  // recent volcano events, not an assertion that those volcanoes are active.
+  // recent volcano events; their iscurrent field determines closure below.
   const url = new URL(eventtype === 'VO' ? GDACS_API.replace(/MAP$/, 'SEARCH') : GDACS_API);
   if (eventtype === 'VO') {
     url.search = new URLSearchParams({
@@ -339,7 +340,7 @@ export async function fetchGdacs(fetchFn = globalThis.fetch, { previousSources =
       magnitudeUnit: '',
       sourceUrl: props.url?.report || '',
       sourceName: 'GDACS',
-      closed: false,
+      closed: props.eventtype === 'VO' && (props.iscurrent === false || props.iscurrent === 'false'),
       ...tcFields,
       forecastTrack: [],
       conePolygon: [],
