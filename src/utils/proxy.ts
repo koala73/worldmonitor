@@ -169,6 +169,7 @@ async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Res
       const body = await response.clone().text();
       throwIfAborted(init.signal);
       await setPersistentCache(buildResponseCacheKey(url), toCachedPayload(url, response, body)).catch(() => {});
+      throwIfAborted(init.signal);
     } catch (error) {
       // Panel-close / country-switch abort mid-body-read is expected. Do not
       // console.warn it, and do not return a Response whose body is already

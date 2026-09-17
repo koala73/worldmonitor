@@ -27,6 +27,7 @@ interface ProxyPersistentResponseCacheTestState {
   fetchCalls: Array<{ input: string; init?: RequestInit }>;
   networkOutcomes: NetworkOutcome[];
   writes: Array<{ key: string; data: CachedResponsePayload; updatedAt?: number }>;
+  persist?: () => Promise<void>;
 }
 
 declare global {
@@ -50,6 +51,7 @@ async function loadProxyModule(): Promise<{
       }
       export async function setPersistentCache(key, data, updatedAt) {
         globalThis.${TEST_STATE_KEY}.writes.push({ key, data, updatedAt });
+        await globalThis.${TEST_STATE_KEY}.persist?.();
       }
     `],
   ]);
@@ -145,6 +147,24 @@ afterEach(() => {
 });
 
 describe('fetchWithProxy persistent response freshness', () => {
+  it('rejects when aborted while the cache write is pending', async () => {
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const persisted = Promise.withResolvers<void>();
+    state.persist = () => {
+      started.resolve();
+      return persisted.promise;
+    };
+    state.networkOutcomes.push(new Response('<rss>current</rss>'));
+    const request = proxyModule.fetchWithProxy(API_PATH, { signal: controller.signal });
+    const rejection = assert.rejects(request, { name: 'AbortError' });
+    await started.promise;
+    controller.abort();
+    persisted.resolve();
+    await rejection;
+  });
+
   it('returns a fresh cached response while revalidating it in the background', async () => {
     const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
     state.cached = cachedResponse('<rss>cached</rss>', 60_000);
