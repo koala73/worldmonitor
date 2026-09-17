@@ -3263,8 +3263,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         message: details.message,
         data: { countryCode },
       });
+      // Callers skip cancellations, so anything reaching here is a real load
+      // failure. The `kind` tag claims it for beforeSend: a scorecard deadline
+      // or a network failure arrives with zero frames (`signal timed out`,
+      // `Failed to fetch`) and would otherwise be dropped as extension noise.
       Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-        tags: { surface: 'country-deep-dive', widget: details.widget },
+        tags: { kind: 'country_deep_dive_load_failed', surface: 'country-deep-dive', widget: details.widget },
         extra: { countryCode },
       });
     });

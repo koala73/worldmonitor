@@ -659,11 +659,12 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
   // from extension noise, exactly as it had for panel dispatch before #7552.
   //
   // The escape hatch is the PRESENCE of a `kind` tag, not another message name.
-  // Only first-party capture call sites set `kind` (six across src/ at the time
-  // of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
+  // Only first-party capture call sites set `kind` (seven across src/ at the
+  // time of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
   // `variant_theme_load_failed`, app/pending-panel-data.ts
   // `panel_call_rejected`, services/wm-session.ts `wm_session_dead` and
-  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`),
+  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`,
+  // components/CountryDeepDivePanel.ts `country_deep_dive_load_failed`),
   // and a browser- or extension-originated rejection cannot carry one.
   //
   // The cases below are parameterised over a value that appears NOWHERE in
@@ -678,10 +679,11 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     'csp_violation',
     'variant_theme_load_failed',
     'wm_session_dead',
+    'country_deep_dive_load_failed',
     // Belongs to no call site. A name-list gate fails here and only here.
     'kind_presence_probe',
     // A truthiness gate reads this as absent and suppresses the report. No
-    // call site can emit it today — all six are string literals — but
+    // call site can emit it today — all seven are string literals — but
     // `kind: someVar` is one refactor away, and the failure would be silent.
     '',
   ]) {
