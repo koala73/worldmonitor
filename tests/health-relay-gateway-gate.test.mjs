@@ -292,7 +292,14 @@ test('a stall that outlives its grace becomes an operational RELAY_GATE_UNREACHA
   assert.ok(findOperationalProblems(compact).some((p) => p.name === RELAY_GATEWAY_GATE_CHECK_NAME), 'now operational');
   const publish = redisCommands.find(([op, key]) => op === 'SET' && key === RELAY_GATEWAY_GATE_PROBE_KEY);
   assert.deepEqual(publish.slice(3), ['EX', String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS)], 'retained past the freshness window for the streak');
-  assert.ok(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS * 1_000 > RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS);
+  // With no other traffic the operational monitor is the only sweep, every
+  // 15 minutes; the streak must survive that gap or every run would be a
+  // "first sighting" and a dead relay would sit in pending forever.
+  const { SEED_FRESHNESS_MONITOR_INTERVAL_MS } = __testing__;
+  assert.equal(SEED_FRESHNESS_MONITOR_INTERVAL_MS, 15 * 60 * 1_000, 'mirrors seed-freshness-monitor.yml cron */15');
+  assert.ok(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS * 1_000
+    > RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS,
+  'retention outlives grace plus one monitor interval');
 });
 
 test('withTransportGrace only decorates unreachable verdicts and restarts after a healthy window', () => {
@@ -426,6 +433,10 @@ test('a follower whose owner publishes nothing within the probe budget reports t
   assert.equal(entry.status, 'RELAY_GATE_UNREACHABLE');
   assert.match(entry.error, /lease/);
   assert.equal(relayCalls.length, 0);
+  // One slow or crashed owner is a single observation, so the follower's
+  // fallback carries the same grace as a probed unreachable verdict and
+  // buckets as pending rather than paging (#8282 review).
+  assert.ok(Date.parse(entry.transportGraceUntil) > Date.now(), 'follower fallback carries transport grace');
   assert.ok(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS * 1_000 > RELAY_GATEWAY_GATE_TIMEOUT_MS, 'a crashed owner cannot wedge the gate past its own probe budget');
   // The follower must outwait the owner's whole critical path: the relay
   // probe, then the verdict publish with its own Redis timeout, plus slack —

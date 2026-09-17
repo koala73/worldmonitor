@@ -3746,8 +3746,16 @@ const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS
 // PLUS the freshness window (freshness is judged on `evaluatedAt`, not the
 // Redis TTL) so the streak survives between windows.
 const RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1_000;
+// The streak must survive at least one operational-monitor interval with NO
+// other traffic: `seed-freshness-monitor.yml` polls every 15 minutes, and if
+// the previous verdict had already expired by then, every run would see a
+// "first sighting", mint a fresh grace and park a dead relay in `pending`
+// forever. Retention = freshness window + grace + one monitor interval +
+// slack; freshness itself is still judged on `evaluatedAt`.
+const SEED_FRESHNESS_MONITOR_INTERVAL_MS = 15 * 60 * 1_000;
 const RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS =
-  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS / 1_000;
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS
+  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS + 60_000) / 1_000;
 
 /** The previous verdict regardless of freshness, for streak continuity. */
 function parsePreviousRelayGatewayGate(raw) {
@@ -3857,14 +3865,17 @@ async function readOrProbeRelayGatewayGate({
       if (published) return published;
     }
     if (!probeRelayGatewayGateApplies()) return null;
-    return {
+    // Same grace as a directly probed unreachable verdict: one slow or crashed
+    // owner is a single observation, not yet a problem. `lastRaw` is the last
+    // cached verdict the polls saw, so a carried deadline still carries.
+    return withTransportGrace({
       role: 'gateway',
       route: RELAY_GATEWAY_GATE_ROUTE,
       evaluatedAt: new Date(now).toISOString(),
       status: 'RELAY_GATE_UNREACHABLE',
       error: 'another sweep holds the probe lease and published no verdict within the probe budget',
       hint: 'This sweep did not probe the gate itself (single-flight). Persistent across sweeps = the probing sweep keeps timing out against Convex.',
-    };
+    }, parsePreviousRelayGatewayGate(lastRaw), now);
   }
 
   try {
@@ -4852,6 +4863,7 @@ export const __testing__ = {
   RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
   RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
   RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
+  SEED_FRESHNESS_MONITOR_INTERVAL_MS,
   withTransportGrace,
   probeRelayGatewayGate,
   parseCachedRelayGatewayGate,
