@@ -169,7 +169,7 @@ function normalizeXFeed(parsed) {
   };
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
@@ -208,6 +208,7 @@ export default async function handler(req) {
     limit: 60,
     window: '60 s',
     failClosed: true,
+    ctx,
   });
   if (rateLimitResponse) return rateLimitResponse;
 
