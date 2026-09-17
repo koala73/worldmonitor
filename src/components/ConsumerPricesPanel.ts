@@ -124,7 +124,8 @@ export class ConsumerPricesPanel extends Panel {
   private inflationLoading = false;
   private inflationFilter = '';
   private settings: PanelSettings = loadSettings();
-  private loading = false; // tracks in-flight fetch to avoid duplicates
+  private requestGeneration = 0;
+  private activeRequestKey: string | null = null;
 
   // CMD+K deep-link: switch to the requested tab (e.g. World) when opened via
   // the `panel:consumer-prices@world` command. Bound once so destroy() can drop it.
@@ -153,6 +154,8 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public destroy(): void {
+    this.requestGeneration++;
+    this.activeRequestKey = null;
     if (typeof window !== 'undefined') {
       window.removeEventListener(OPEN_TAB_EVENT, this.openTabHandler);
     }
@@ -236,38 +239,45 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public async fetchData(): Promise<void> {
-    if (this.loading) return;
-    this.loading = true;
+    const { market, basket, range } = this.settings;
+    const requestKey = JSON.stringify([market, basket, range]);
+    if (this.activeRequestKey === requestKey) return;
+    const generation = ++this.requestGeneration;
+    this.activeRequestKey = requestKey;
     this.showLoading();
 
-    const { market, basket, range } = this.settings;
-
-    if (market === 'all') {
-      const results = await fetchAllMarketsOverview();
-      if (!this.element?.isConnected) { this.loading = false; return; }
-      this.allMarkets = results;
-      this.loading = false;
+    try {
+      if (market === 'all') {
+        const results = await fetchAllMarketsOverview();
+        if (generation !== this.requestGeneration || !this.element?.isConnected) return;
+        this.allMarkets = results;
+      } else {
+        const [overview, categories, movers, spread, freshness] = await Promise.all([
+          fetchConsumerPriceOverview(market, basket),
+          fetchConsumerPriceCategories(market, basket, range),
+          fetchConsumerPriceMovers(market, range),
+          fetchRetailerPriceSpreads(market, basket),
+          fetchConsumerPriceFreshness(market),
+        ]);
+        if (generation !== this.requestGeneration || !this.element?.isConnected) return;
+        this.overview = overview;
+        this.categories = categories;
+        this.movers = movers;
+        this.spread = spread;
+        this.freshness = freshness;
+        if ([overview, categories, movers, spread, freshness].some((response) => response.upstreamUnavailable)) {
+          this.showError(undefined, () => void this.fetchData());
+          return;
+        }
+      }
       this.render();
-      return;
+    } catch {
+      if (generation === this.requestGeneration && this.element?.isConnected) {
+        this.showError(undefined, () => void this.fetchData());
+      }
+    } finally {
+      if (generation === this.requestGeneration) this.activeRequestKey = null;
     }
-
-    const [overview, categories, movers, spread, freshness] = await Promise.all([
-      fetchConsumerPriceOverview(market, basket),
-      fetchConsumerPriceCategories(market, basket, range),
-      fetchConsumerPriceMovers(market, range),
-      fetchRetailerPriceSpreads(market, basket),
-      fetchConsumerPriceFreshness(market),
-    ]);
-
-    if (!this.element?.isConnected) { this.loading = false; return; }
-
-    this.overview = overview;
-    this.categories = categories;
-    this.movers = movers;
-    this.spread = spread;
-    this.freshness = freshness;
-    this.loading = false;
-    this.render();
   }
 
   private render(): void {
