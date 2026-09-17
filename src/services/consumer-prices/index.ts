@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { GetConsumerPriceOverviewResponse, GetConsumerPriceBasketSeriesResponse, ListConsumerPriceCategoriesResponse, ListConsumerPriceMoversResponse, ListRetailerPriceSpreadsResponse, GetConsumerPriceFreshnessResponse, CategorySnapshot, PriceMover, RetailerSpread, BasketPoint, RetailerFreshnessInfo } from '@/generated/client/worldmonitor/consumer_prices/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { ConsumerPricesServiceClient } from '@/services/generated-rpc-clients';
 
@@ -154,7 +154,7 @@ export async function fetchConsumerPriceOverview(
     return await overviewBreaker.execute(
       () => client.getConsumerPriceOverview({ marketCode, basketSlug }),
       emptyOverview,
-      { cacheKey: `${marketCode}:${basketSlug}` },
+      { cacheKey: `${marketCode}:${basketSlug}`, shouldCache: (result) => !result.upstreamUnavailable },
     );
   } catch {
     return emptyOverview;
@@ -170,7 +170,7 @@ export async function fetchConsumerPriceBasketSeries(
     return await seriesBreaker.execute(
       () => client.getConsumerPriceBasketSeries({ marketCode, basketSlug, range }),
       emptySeries,
-      { cacheKey: `${marketCode}:${basketSlug}:${range}` },
+      { cacheKey: `${marketCode}:${basketSlug}:${range}`, shouldCache: (result) => !result.upstreamUnavailable },
     );
   } catch {
     return { ...emptySeries, range };
@@ -184,7 +184,7 @@ export async function fetchConsumerPriceCategories(
 ): Promise<ListConsumerPriceCategoriesResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesCategories') as ListConsumerPriceCategoriesResponse | undefined;
-    if (hydrated?.categories?.length) {
+    if (hydrated && !hydrated.upstreamUnavailable && Array.isArray(hydrated.categories)) {
       // Warm the breaker only under the default snapshot's exact later cache
       // key (default market/basket at the default range) (#7048).
       if (basketSlug === DEFAULT_BASKET && range === '30d') {
@@ -198,7 +198,7 @@ export async function fetchConsumerPriceCategories(
     return await categoriesBreaker.execute(
       () => client.listConsumerPriceCategories({ marketCode, basketSlug, range }),
       emptyCategories,
-      { cacheKey: `${marketCode}:${basketSlug}:${range}` },
+      { cacheKey: `${marketCode}:${basketSlug}:${range}`, shouldCache: (result) => !result.upstreamUnavailable },
     );
   } catch {
     return emptyCategories;
@@ -212,7 +212,7 @@ export async function fetchConsumerPriceMovers(
 ): Promise<ListConsumerPriceMoversResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesMovers') as ListConsumerPriceMoversResponse | undefined;
-    if (hydrated?.risers?.length || hydrated?.fallers?.length) {
+    if (hydrated && !hydrated.upstreamUnavailable && Array.isArray(hydrated.risers) && Array.isArray(hydrated.fallers)) {
       // Warm the breaker only under the default snapshot's exact later cache
       // key (default market/range, unfiltered) (#7048).
       if (range === '30d' && !categorySlug) {
@@ -226,7 +226,7 @@ export async function fetchConsumerPriceMovers(
     return await moversBreaker.execute(
       () => client.listConsumerPriceMovers({ marketCode, range, categorySlug: categorySlug ?? '', limit: 10 }),
       emptyMovers,
-      { cacheKey: `${marketCode}:${range}:${categorySlug ?? ''}` },
+      { cacheKey: `${marketCode}:${range}:${categorySlug ?? ''}`, shouldCache: (result) => !result.upstreamUnavailable },
     );
   } catch {
     return emptyMovers;
@@ -239,7 +239,7 @@ export async function fetchRetailerPriceSpreads(
 ): Promise<ListRetailerPriceSpreadsResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesSpread') as ListRetailerPriceSpreadsResponse | undefined;
-    if (hydrated?.retailers?.length) {
+    if (hydrated && !hydrated.upstreamUnavailable && Array.isArray(hydrated.retailers)) {
       // Warm the breaker only under the default snapshot's exact later cache
       // key (default market/basket) (#7048).
       if (basketSlug === DEFAULT_BASKET) {
@@ -253,7 +253,7 @@ export async function fetchRetailerPriceSpreads(
     return await spreadBreaker.execute(
       () => client.listRetailerPriceSpreads({ marketCode, basketSlug }),
       emptySpread,
-      { cacheKey: `${marketCode}:${basketSlug}` },
+      { cacheKey: `${marketCode}:${basketSlug}`, shouldCache: (result) => !result.upstreamUnavailable },
     );
   } catch {
     return emptySpread;
@@ -267,7 +267,7 @@ export async function fetchConsumerPriceFreshness(
     return await freshnessBreaker.execute(
       () => client.getConsumerPriceFreshness({ marketCode }),
       emptyFreshness,
-      { cacheKey: marketCode },
+      { cacheKey: marketCode, shouldCache: (result) => !result.upstreamUnavailable },
     );
   } catch {
     return emptyFreshness;
@@ -286,5 +286,6 @@ export async function fetchAllMarketsOverview(): Promise<GetConsumerPriceOvervie
       SINGLE_MARKETS.map((m) => fetchConsumerPriceOverview(m.code, `essentials-${m.code}`)),
     ),
     [],
+    { shouldCache: (results) => results.every((result) => !result.upstreamUnavailable) },
   );
 }
