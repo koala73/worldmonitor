@@ -47,42 +47,61 @@ tags:
 
 The Convex deployment streams its logs into Axiom (dataset `convex-logs`, retention back to 2026-08-01 at the time of writing). Every execution is one row with `data.function.request_id`, `data.function.path`, `data.execution_time_ms`, `data.error_message`, and the deployment's queue counters. The Sentry `request_id` tag is the join key.
 
+Two rules apply to every query below. **Scope the time**: the API call takes `startTime` / `endTime` and the APL can carry its own `_time between (...)`; without one of them a summary runs over the whole retention and the target minute is either buried or dropped under result limits. Take the window from the Sentry event's `dateCreated` (±10 minutes for the profile, the whole retention only for the baseline). **Filter to executions**: the dataset also carries `concurrency_stats`, `scheduler_stats`, `console`, `audit_log` and `log_stream_egress` rows, so anything that counts failures or latency must take `['data.topic'] == 'function_execution'` first (the same rule the OCC write-conflict doc gives); the queue counters live on `concurrency_stats` rows and are read separately.
+
 ```text
-# 1. What did this request actually do?
+# 1. What did this request actually do? (window: Sentry dateCreated ± 10 min)
 ['convex-logs']
+| where ['data.topic'] == 'function_execution'
 | where ['data.function.request_id'] == '59f127a648c5cddb'
 | project _time, path=['data.function.path'], ms=['data.execution_time_ms'], err=['data.error_message']
 
-# 2. Platform or us? Profile the minute around it.
+# 2. Platform or us? Profile the minutes around it, with WHICH paths failed.
+#    (window: Sentry dateCreated ± 10 min)
 ['convex-logs']
+| where ['data.topic'] == 'function_execution'
 | summarize n=count(), fails=countif(isnotempty(['data.error_message'])),
-            p99=percentile(['data.execution_time_ms'], 99),
-            mq=max(['data.mutation.num_queued']), aq=max(['data.action.num_queued'])
+            failedPaths=dcountif(['data.function.path'], isnotempty(['data.error_message'])),
+            p99=percentile(['data.execution_time_ms'], 99)
   by bin(_time, 1m)
 | order by _time asc
 
-# 3. What else fails, ever? (retention ≈ 6 weeks)
+# 2b. Name the failed paths in the same window.
 ['convex-logs']
-| where isnotempty(['data.error_message'])
+| where ['data.topic'] == 'function_execution' and isnotempty(['data.error_message'])
+| summarize c=count(), mx=max(['data.execution_time_ms']) by bin(_time, 1m), path=['data.function.path']
+| order by _time asc
+
+# 2c. Was the deployment queued up? (concurrency_stats rows, same window)
+['convex-logs']
+| where ['data.topic'] == 'concurrency_stats'
+| summarize mq=max(['data.mutation.num_queued']), aq=max(['data.action.num_queued']),
+            hq=max(['data.http_action.num_queued'])
+  by bin(_time, 1m)
+| order by _time asc
+
+# 3. What else fails, ever? (window: the whole retention, ≈ 6 weeks)
+['convex-logs']
+| where ['data.topic'] == 'function_execution' and isnotempty(['data.error_message'])
 | summarize c=count(), fns=dcount(['data.function.path']), mx=max(['data.execution_time_ms'])
   by err=substring(['data.error_message'], 0, 120)
 | order by c desc
 ```
 
-Run them with `AXIOM_API_TOKEN` from the main checkout's `.env.local` against `POST https://api.axiom.co/v1/datasets/_apl?format=tabular` (the response is column-major; zip `tables[0].columns`). Axiom's APL has no `any()` / `take_any()`; use `countif`, `dcount`, `percentile`, `min`, `max`.
+Run them against `POST https://api.axiom.co/v1/datasets/_apl?format=tabular` with a token that has **query** access to `convex-logs` — `AXIOM_QUERY_TOKEN` per `docs/architecture/usage-telemetry.md`; the `AXIOM_API_TOKEN` in the main checkout's `.env.local` happened to have read access when this was written, but the documented contract for that variable is ingest, so do not rely on it. The response is column-major (zip `tables[0].columns`). Axiom's APL has no `any()` / `take_any()`; use `countif`, `dcountif`, `dcount`, `percentile`, `min`, `max`.
 
-The verdict rule that falls out of the baseline:
+The reading that falls out of the baseline. These are weights of evidence, not proofs: `execution_time_ms` is the function's wall time as Convex reports it and is not itself broken down into storage wait, and query 2c sees only the mutation, action and HTTP-action queues. Close an incident as "platform" only when the profile, the failed-path set **and** the baseline all point the same way.
 
 | Signal | Reading |
 |---|---|
-| Failures across several unrelated function paths in the same minute, `execution_time_ms` 1,000–3,500 on queries whose p50 is 0 ms, every queue counter at 0 | Convex backend stall. Resolve plainly; nothing to fix. |
-| `Your request timed out performing too many system operations` at exactly ~15,00x ms on a cached read | The same stall hitting Convex's 15 s hard limit. Same disposition. |
-| One function path failing while the minute's p99 is normal | Ours. Read that function; the request id gives you the exact execution. |
+| Failures across several unrelated function paths in the same minute (`failedPaths` ≥ 3 in query 2, confirmed by 2b), `execution_time_ms` 1,000–3,500 on queries whose p50 is 0 ms, the observed queues at 0 | Suggests a Convex-side stall: nothing per-function explains a shared cause across cached reads. Corroborate with query 3 (the same bursts recur across weeks on unrelated paths) before resolving plainly. |
+| `Your request timed out performing too many system operations` at ~15,000 ms (Convex's 15 s hard limit) on a cached read | The same stall pattern hitting the hard limit. Same reading, same corroboration. |
+| One function path failing while the minute's p99 and `failedPaths` are normal | Ours. Read that function; the request id gives you the exact execution. |
 | `Uncaught ConvexError: Checkout failed: Request timed out` from `payments/checkout:internalCreateCheckout` at ~3,540 ms | Our action's own 3.5 s Dodo budget (WORLDMONITOR-WQ), a different problem. |
 
 ## Why This Works
 
-The redaction happens inside Convex's runtime, so no consumer of the error string can see past it. What Convex does not redact is the execution record: how long the function ran, whether it returned, and what the deployment's queues looked like. Our hot queries (`entitlements:getEntitlementsForUser`, `payments/billing:getSubscriptionForUser`, `followedCountries:listFollowed`) are cached reads with p50 = 0 ms and p95 ≈ 25 ms measured over 10,000 executions, so a failure that took seconds on one of them is time spent waiting on Convex's storage layer, and a burst that spans unrelated paths in one minute is a shared cause, not per-function logic. On 2026-09-17 02:32 UTC the minute profile was: p99 from ~50–100 ms to 2,393 ms, 12 failures in ~1,000 executions across 6 paths, all queues 0, back to normal by 02:34. That is a platform stall, and the six-week baseline shows ~25 such bursts, several of them 15 s stalls (Aug 6, 13, 23, 26, 27, 31, Sep 8, 13, 17).
+The redaction happens inside Convex's runtime, so no consumer of the error string can see past it. What Convex does not redact is the execution record: how long the function ran, whether it returned, and what the deployment's queues looked like. Our hot queries (`entitlements:getEntitlementsForUser`, `payments/billing:getSubscriptionForUser`, `followedCountries:listFollowed`) are cached reads with p50 = 0 ms and p95 ≈ 25 ms measured over 10,000 executions, so a failure that took seconds on one of them is time spent somewhere below our code (the record does not say where; Convex reports wall time, not a storage-wait breakdown), and a burst that spans unrelated paths in one minute points to a shared cause rather than per-function logic. On 2026-09-17 02:32 UTC the minute profile was: p99 from ~50–100 ms to 2,393 ms, 12 failures in ~1,000 executions across 6 paths, the observed queues at 0, back to normal by 02:34. Together with the six-week baseline of ~25 such bursts on unrelated paths, several at the 15 s hard limit (Aug 6, 13, 23, 26, 27, 31, Sep 8, 13, 17), that reads as a Convex-side stall; no single one of those signals would have been enough on its own.
 
 The per-user concentration in S5 is an artefact of the sampling: a user with a tab open through a stall generates one event per subscribed query per retry, so a handful of users dominate every burst.
 
@@ -91,7 +110,7 @@ The per-user concentration in S5 is an artefact of the sampling: a user with a t
 - **Read `stats['30d']` on a Sentry issue before reading `count`.** A lifetime number on an issue that first fired months ago says nothing about now.
 - **For any `source: convex` event, run the Axiom join before classifying.** The Sentry event is a pointer, not evidence.
 - **Nothing here should become an `ignoreErrors` entry.** A future non-redacted error from our own function would arrive under the same `source` and must stay visible.
-- **A monitor would close the loop.** Axiom has no monitors or notifiers configured for this org (checked via `/v2/monitors` and `/v2/notifiers` on 2026-09-17). A monitor on `['convex-logs'] | where isnotempty(['data.error_message']) and not(['data.error_message'] contains 'Client disconnected') | summarize count() by bin(_time, 5m)` with a threshold around 5, plus a p99 > 2,000 ms companion, would page on the next stall with the function paths attached. It needs a notifier target chosen first.
+- **A monitor would close the loop.** Axiom has no monitors or notifiers configured for this org (checked via `/v2/monitors` and `/v2/notifiers` on 2026-09-17). A monitor on `['convex-logs'] | where ['data.topic'] == 'function_execution' and isnotempty(['data.error_message']) and not(['data.error_message'] contains 'Client disconnected') | summarize c=count() by bin(_time, 5m), path=['data.function.path']` with a threshold around 5 per bucket, plus a p99 > 2,000 ms companion over the same topic filter, would page on the next stall and, because the summary is grouped by path, name the failing functions in the alert. It needs a notifier target chosen first.
 - **`convex_request_id` on the edge captures already exists** (`api/user-prefs.ts`); keep any new edge capture tagging it so the same join works from the browser-facing issue.
 
 ## Related
