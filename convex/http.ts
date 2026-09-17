@@ -5,6 +5,7 @@ import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/n
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
+  isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
 } from "./payments/checkoutRateLimit";
 import { webhookHandler } from "./payments/webhookHandlers";
@@ -1684,6 +1685,10 @@ http.route({
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
+      if (isCheckoutTimedOutOutcome(result)) {
+        // Keep provider failures at 500; 502 triggers another browser retry.
+        return Response.json({ error: result.code }, { status: 500 });
+      }
       if (isCheckoutRateLimitedOutcome(result)) {
         return new Response(
           JSON.stringify({
