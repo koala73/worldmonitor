@@ -717,6 +717,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 503, 'transient Convex failure → 503');
+    assert.equal(resp.headers.get('Retry-After'), '5');
     const body = await resp.json();
     assert.equal(body.error, 'server_error');
     // F3: refresh token must be restored to Redis with the original payload.
@@ -952,6 +953,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal((await resp.json()).error, 'server_error');
   });
 
@@ -970,6 +972,28 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(resp.status, 400);
     assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
+  it('client lookup failure returns retry guidance and restores the refresh token', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    redis.store.set('oauth:refresh:rt-client-read', {
+      kind: 'pro', client_id: CLIENT_ID, userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro', family_id: 'fam_client_read',
+    });
+    const originalRedisGet = deps.redisGet;
+    deps.redisGet = async (key) => {
+      if (key === `oauth:client:${CLIENT_ID}`) throw new Error('redis unavailable');
+      return originalRedisGet(key);
+    };
+    const resp = await tokenHandler(makeReq('refresh_token', {
+      refresh_token: 'rt-client-read', client_id: CLIENT_ID,
+    }), deps);
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
+    assert.equal((await resp.json()).error, 'server_error');
+    assert.equal((await originalRedisGet('oauth:refresh:rt-client-read')).kind, 'pro');
+    assert.equal([...redis.store.keys()].some(key => key.startsWith('oauth:token:')), false);
   });
 
   it('revocation-state read failure restores the consumed token and does not rotate', async () => {
@@ -994,6 +1018,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     _uuidCounter = 950;
     const resp = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-live', client_id: CLIENT_ID }), deps);
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal((await resp.json()).error, 'server_error');
     const restored = redis.store.get('oauth:refresh:rt-live');
     assert.ok(restored, 'refresh token is restored when revocation state is unknown');
@@ -1027,6 +1052,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal(JSON.parse(redis.store.get('oauth:famptr:rt-read-fail')).kind, 'refresh_recovery_failed');
     assert.equal(JSON.parse(redis.store.get('oauth:famattempt:rt-read-fail')).state, 'failed');
     assert.deepEqual(restoreFailures, [
@@ -1058,6 +1084,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal(redis.store.has('oauth:refresh:rt-backfill-fail'), true);
     assert.equal(redis.store.has('oauth:famptr:rt-backfill-fail'), true);
     assert.deepEqual(restoreFailures, []);
@@ -1082,6 +1109,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
     assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-transient', FAMILY, REFRESH_TTL_SECONDS);
   });
