@@ -2073,6 +2073,7 @@ export function createDomainGateway(
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
+      let rollbackDailyMeter: (() => Promise<void>) | undefined;
       if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
         const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
@@ -2157,6 +2158,7 @@ export function createDomainGateway(
               allowance,
               pipeline: (cmds) => runRedisPipeline(cmds),
             });
+            if (meter.metered) rollbackDailyMeter = meter.rollback;
             if (meter.overLimit) {
               if (enforce) {
                 await meter.rollback();
@@ -2209,6 +2211,7 @@ export function createDomainGateway(
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
+          await rollbackDailyMeter?.();
           const reason = getRateLimitTelemetryReason(
             rateLimitResponse,
             'rate_limit_429_global',

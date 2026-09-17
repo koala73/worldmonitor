@@ -258,14 +258,40 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(rollback).toHaveBeenCalledTimes(1);
   });
 
+  test.each(['true', 'false'])("fallback rejection releases a metered daily unit (enforce=%s)", async (enforce) => {
+    process.env.API_RATE_LIMIT_ENFORCE = enforce;
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    const rollback = vi.fn(async () => {});
+    reserveDailyMeter.mockResolvedValue({ overLimit: false, metered: true, rollback });
+    const rejection = new Response('fallback', { status: 429 });
+    checkRateLimit.mockResolvedValue(rejection);
+
+    const res = await makeGateway()(userKeyRequest(), ctx);
+    expect(res).toBe(rejection);
+    expect(reserveDailyMeter).toHaveBeenCalledTimes(1);
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("fallback admission keeps the daily reservation", async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    const rollback = vi.fn(async () => {});
+    reserveDailyMeter.mockResolvedValue({ overLimit: false, metered: true, rollback });
+    expect((await makeGateway()(userKeyRequest(), ctx)).status).toBe(200);
+    expect(reserveDailyMeter).toHaveBeenCalledTimes(1);
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
   test("unavailable burst and meter still use the fallback response", async () => {
     process.env.API_RATE_LIMIT_ENFORCE = "true";
     checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
-    reserveDailyMeter.mockResolvedValue({ overLimit: false, metered: false });
+    const rollback = vi.fn(async () => {});
+    reserveDailyMeter.mockResolvedValue({ overLimit: false, metered: false, rollback });
     checkRateLimit.mockResolvedValue(new Response('fallback', { status: 429 }));
     const res = await makeGateway()(userKeyRequest(), ctx);
     expect(res.status).toBe(429);
     expect(await res.text()).toBe('fallback');
+    expect(rollback).not.toHaveBeenCalled();
   });
 
   test("shadow unavailable burst meters without enforcing daily denial", async () => {

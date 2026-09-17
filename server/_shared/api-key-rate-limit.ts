@@ -20,9 +20,8 @@ export interface MeterResult {
   metered: boolean;
   /** Seconds until UTC midnight — the daily 429 `Retry-After`. */
   retryAfterSec: number;
-  /** Idempotent DECR rollback. The gateway calls this only when it actually
-   *  rejects (enforce + overLimit); in shadow the request is served, so the
-   *  increment stands and reflects true demand. */
+  /** Idempotent DECR rollback for daily-limit or global-fallback rejection.
+   *  Served requests retain their increment, including in shadow mode. */
   rollback: () => Promise<void>;
 }
 
