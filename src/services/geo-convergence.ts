@@ -11,6 +11,7 @@ import {
   type GeoEventType,
   type GeoPlaceDatasets,
 } from '../../shared/analysis-geo-convergence';
+import { usableCoord } from '../../shared/analysis-adapter-guards';
 
 export { getCellId } from '../../shared/analysis-geo-convergence';
 export type { GeoEventType, GeoConvergenceAlert } from '../../shared/analysis-geo-convergence';
@@ -62,9 +63,12 @@ export function ingestVessels(vessels: MilitaryVessel[]): void {
 
 export function ingestEarthquakes(quakes: Earthquake[]): void {
   for (const q of quakes) {
+    const lat = q.location?.latitude ?? null;
+    const lon = q.location?.longitude ?? null;
+    if (!usableCoord(lat, lon) || lon === null) continue;
     engine.ingest(
-      q.location?.latitude ?? 0,
-      q.location?.longitude ?? 0,
+      lat,
+      lon,
       'earthquake',
       new Date(q.occurredAt).getTime()
     );
