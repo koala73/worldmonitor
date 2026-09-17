@@ -26,6 +26,7 @@ vi.mock("../_shared/api-key-rate-limit", () => ({
 }));
 
 // --- Stub the global fallback layer: spy whether checkRateLimit runs --------
+let endpointPolicy = false;
 const checkRateLimit = vi.fn().mockResolvedValue(null);
 const checkFailClosedScopedIpRateLimit = vi.fn().mockResolvedValue(null);
 vi.mock("../_shared/rate-limit", async (importActual) => {
@@ -35,7 +36,7 @@ vi.mock("../_shared/rate-limit", async (importActual) => {
     checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
     checkFailClosedScopedIpRateLimit: (...a: unknown[]) => checkFailClosedScopedIpRateLimit(...a),
     checkEndpointRateLimit: vi.fn().mockResolvedValue(null),
-    hasEndpointRatePolicy: () => false,
+    hasEndpointRatePolicy: () => endpointPolicy,
   };
 });
 
@@ -109,6 +110,7 @@ const ctx = { waitUntil: () => {} };
 const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
+  endpointPolicy = false;
   entitlement = STARTER;
   checkBurst.mockReset().mockResolvedValue({ ok: true });
   reserveDailyMeter.mockReset().mockResolvedValue({
@@ -232,6 +234,65 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     process.env.API_RATE_LIMIT_ENFORCE = "true";
     const res = await makeGateway()(userKeyRequest(), ctx);
     expect(res.status).toBe(200);
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  test.each(['timeout', 'not_configured', 'error'])("unavailable burst (%s) retains daily metering and principal fallback", async (reason) => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    checkBurst.mockResolvedValue({ ok: null, reason });
+    const res = await makeGateway()(userKeyRequest(), ctx);
+    expect(res.status).toBe(200);
+    expect(reserveDailyMeter).toHaveBeenCalledTimes(1);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object),
+      { principalUserId: "acct_starter", principalScope: "api_key" });
+  });
+
+  test("unavailable burst still rejects and rolls back an exceeded daily allowance", async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    const rollback = vi.fn();
+    reserveDailyMeter.mockResolvedValue({ overLimit: true, retryAfterSec: 100, rollback });
+    const res = await makeGateway()(userKeyRequest(), ctx);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ limit_type: 'daily' });
+    expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test("unavailable burst and meter still use the fallback response", async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    reserveDailyMeter.mockResolvedValue({ overLimit: false, metered: false });
+    checkRateLimit.mockResolvedValue(new Response('fallback', { status: 429 }));
+    const res = await makeGateway()(userKeyRequest(), ctx);
+    expect(res.status).toBe(429);
+    expect(await res.text()).toBe('fallback');
+  });
+
+  test("shadow unavailable burst meters without enforcing daily denial", async () => {
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    const rollback = vi.fn();
+    reserveDailyMeter.mockResolvedValue({ overLimit: true, rollback });
+    expect((await makeGateway()(userKeyRequest(), ctx)).status).toBe(200);
+    expect(rollback).not.toHaveBeenCalled();
+    expect(checkRateLimit).toHaveBeenCalledTimes(1);
+  });
+
+  test("enterprise unavailable burst retains IP fallback and unlimited daily policy", async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = "enterprise-browser-key";
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    expect((await makeGateway()(mixedEnterpriseRequest('wms_session'), ctx)).status).toBe(200);
+    expect(checkBurst).toHaveBeenCalledWith(1000, hashKeySync('enterprise-browser-key'));
+    expect(reserveDailyMeter).not.toHaveBeenCalled();
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.any(Request), expect.any(Object));
+  });
+
+  test("an existing endpoint policy still owns fallback protection during burst outage", async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    endpointPolicy = true;
+    checkBurst.mockResolvedValue({ ok: null, reason: 'timeout' });
+    expect((await makeGateway()(userKeyRequest(), ctx)).status).toBe(200);
+    expect(reserveDailyMeter).toHaveBeenCalledTimes(1);
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
 

@@ -2066,7 +2066,7 @@ export function createDomainGateway(
       // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
       // env key — are governed by a per-account burst + daily meter (enforced
       // at the sold allowance, #4635) instead of the global fallback. In ENFORCE
-      // they bypass that fallback below; in SHADOW they only record telemetry
+      // confirmed burst admission bypasses that fallback; in SHADOW they record telemetry
       // and still fall through to it. Validated user keys use their trusted
       // principal there, while enterprise keys retain IP attribution.
       // Limits are NOT in scope here (checkEntitlement discards `features`), so
@@ -2127,7 +2127,7 @@ export function createDomainGateway(
             planKey && planKey !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
           // 1. Per-minute burst (hard limit).
           const burst = await checkBurst(perMinute, identity);
-          if (!burst.ok) {
+          if (burst.ok === false) {
             if (enforce) {
               const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
               emitRequest(429, 'rl_min_429', null);
@@ -2188,11 +2188,11 @@ export function createDomainGateway(
               pendingShadowReason = 'rl_ceiling_shadow';
             }
           }
-          // Eligible + enforce + not rejected ⇒ the per-account layer governs
-          // this request and skips the global fallback. In shadow, keep that
+          // Confirmed burst admission + enforce ⇒ the per-account layer governs
+          // this request and skips the global fallback. If unavailable or in shadow, keep that
           // fallback active: validated user keys use their trusted principal,
           // while enterprise keys retain IP attribution.
-          if (enforce) governedByApiKeyLayer = true;
+          if (enforce && burst.ok === true) governedByApiKeyLayer = true;
         }
       }
 

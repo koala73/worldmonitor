@@ -4,6 +4,7 @@ import type { Ratelimit } from '@upstash/ratelimit';
 import * as core from '../../api/_api-key-rate-limit.js';
 export type BurstDecision =
   | { ok: true }
+  | { ok: null; reason: 'not_configured' | 'timeout' | 'error' }
   | { ok: false; limit: number; reset: number };
 
 export type RateLimitPipeline = (
