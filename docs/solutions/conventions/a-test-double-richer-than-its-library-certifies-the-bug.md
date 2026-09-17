@@ -81,12 +81,16 @@ const called = [...new Set([...code.matchAll(/\bmulti\.([A-Za-z_$][\w$]*)\s*\(/g
 
 assert.ok(called.length > 0, 'found no multi.<method>() call sites — the scan broke, not the proxy');
 assert.deepEqual(called, [...MULTI_V4_METHODS_USED].sort());
+
+// `makeMulti()` returns { multi, queued, execCalls } — `.multi` is the
+// transaction OBJECT, not a factory (the client stub's own `multi()` method is
+// the factory, and returns this object). So these are its method names.
 // A stub richer than the library hides a call site that throws in production;
 // a poorer one fails for the wrong reason.
 assert.deepEqual(Object.keys(makeMulti().multi).sort(), [...MULTI_V4_METHODS_USED].sort());
 ```
 
-Note what this replaced. The obvious guard — `assert.equal(typeof stub.multi.sendCommand, 'undefined')` — restates the fixture defined a hundred lines above it in the same file. It is true whether or not production is broken, and it was the single test that stayed green when the bug was reintroduced.
+Note what this replaced. The obvious guard — `assert.equal(typeof makeMulti().multi.sendCommand, 'undefined')` — restates the fixture defined a hundred lines above it in the same file. It is true whether or not production is broken, and it was the single test that stayed green when the bug was reintroduced.
 
 ### 2. A source-scrape assertion cannot be the only proof that a call site works
 
