@@ -802,9 +802,7 @@ test('maps a relay-only host to 502 when the relay is unavailable', async () => 
 });
 
 test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
-  // The timeout is only observable through the AbortSignal that
-  // fetchWithTimeout arms, and it is cleared as soon as fetch settles — so the
-  // fetch is held pending while the fake clock is advanced across each
+  // Hold fetch pending while the fake clock is advanced across each
   // boundary. Fake timers keep this deterministic (no real waiting).
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
@@ -847,7 +845,6 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
     mock.timers.reset();
   }
 });
-
 
 // ---------------------------------------------------------------------------
 // Browser User-Agent on the RSS proxy (#6624)
