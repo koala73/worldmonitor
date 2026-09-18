@@ -404,6 +404,12 @@ The authorization-server identity one MCP sign-in is bound to: the host whose OA
 
 Every first-party host describes itself as its own issuer, but a sign-in can finish on a different host — the consent form's non-script submission and the Pro sign-in both complete on the API host. The issuer returned to the client is therefore fixed when the sign-in starts and travels with it, never recomputed from the host that sends the final redirect. Strict clients compare the returned issuer to the one they discovered and abandon the sign-in on a mismatch, so recomputing it breaks clients that otherwise work. See also: Client Callback Allowlist, Variant Host.
 
+### Connect-Time Challenge
+
+The refusal the MCP transport gives an opening handshake that carries no credentials: an authentication error that names where to sign in and echoes the request's identifier, sent before anything else is served.
+
+Hosted connectors classify a server by how this first request is answered. One that succeeds is recorded as needing no sign-in, and a refusal that arrives later, mid-session, leaves the connector with no authorization server to send the user to, so its sign-in control never works. Only the handshake is challenged. Stateless callers that never send one keep their credential-free catalog reads and the free tool, and the machine-discovery aliases still accept an anonymous handshake for scanners. A refusal without the request's identifier is as harmful as none, because a strict client cannot match it to the pending request and waits out its timeout. See also: Credential Class, Streamable HTTP Transport, MCP Server Card.
+
 ## Structured Data & Entity Graph
 
 ### Canonical Entity Node
