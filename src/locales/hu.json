@@ -2379,6 +2379,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Ütemezett makrogazdasági közlemények: CPI, NFP, GDP, PMI és jegybanki döntések. Előrejelzést, tényleges értéket és előző értéket mutatja. A nagy hatású eseményeket kiemelve. Forrás: gazdasági adatszolgáltatók."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Pénzügyi stresszmutató</strong> A HYG és TLT árfolyamából, a VIX-ből és a magas hozamú kötvények felárából származtatott piaci stresszarány. A magasabb érték alacsonyabb stresszt, az alacsonyabb érték magasabb stresszt jelez.",
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): az amerikai pénzügyi piacok stresszét méri 11 mutató felhasználásával, beleértve a hozamszpreadeket, a volatilitást és a keresztkorreláció-kat. A pozitív értékek az átlagosnál magasabb stresszre utalnak. Forrás: Federal Reserve Bank of Kansas City.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI ÉRTÉK",

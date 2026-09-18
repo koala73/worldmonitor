@@ -2390,7 +2390,8 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> A market-stress ratio derived from HYG and TLT prices, VIX, and the high-yield spread. Higher values indicate lower stress; lower values indicate higher stress.",
+      "methodologyTooltip": "<strong>Financial Stress Indicator</strong> A market-stress ratio derived from HYG and TLT prices, VIX, and the high-yield spread. Higher values indicate lower stress; lower values indicate higher stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",

@@ -86,7 +86,7 @@ export class FSIPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'fsi', title: t('components.fsi.title'), showCount: false, infoTooltip: t('components.fsi.infoTooltip') });
+    super({ id: 'fsi', title: t('components.fsi.title'), showCount: false, infoTooltip: t('components.fsi.methodologyTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {

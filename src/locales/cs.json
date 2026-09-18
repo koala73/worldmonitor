@@ -2190,6 +2190,7 @@
       "infoTooltip": "<strong>Ekonomický kalendář</strong> Plánované makroekonomické publikace: CPI, NFP, GDP, PMI a rozhodnutí centrálních bank. Zobrazuje prognózu vs. skutečnost vs. předchozí. Události s vysokým dopadem jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Ukazatel finančního stresu</strong> Poměr tržního stresu odvozený z cen HYG a TLT, indexu VIX a rozpětí dluhopisů s vysokým výnosem. Vyšší hodnoty znamenají nižší stres; nižší hodnoty znamenají vyšší stres.",
       "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Index finančního stresu Federální rezervní banky Kansas City (KCFSI): měří stres na finančních trzích USA pomocí 11 ukazatelů včetně výnosových spreadů, volatility a křížových korelací. Kladné hodnoty indikují nadprůměrný stres. Zdroj: Federální rezervní banka Kansas City.",
       "title": "Indikátor finanční stability",
       "usFsiValue": "HODNOTA US FSI",

@@ -2395,6 +2395,7 @@
       "infoTooltip": "<strong>Ekonomski kalendar</strong> Planirana makroekonomska objavljivanja: CPI, NFP, GDP, PMI i odluke središnjih banaka. Prikazuje prognozu naspram stvarnih vrijednosti naspram prethodnih. Događaji visokog utjecaja su označeni. Izvor: davatelji ekonomskih podataka."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Indikator financijskog stresa</strong> Omjer tržišnog stresa izveden iz cijena HYG-a i TLT-a, VIX-a i raspona visokoprinosnih obveznica. Više vrijednosti označavaju manji stres; niže vrijednosti označavaju veći stres.",
       "infoTooltip": "<strong>Indikator financijskog stresa</strong> Indeks financijskog stresa Federalne rezervne banke Kansas City (KCFSI): mjeri stres na američkim financijskim tržištima koristeći 11 indikatora uključujući razlike u prinosima, volatilnost i međukorelacije. Pozitivne vrijednosti ukazuju na stres iznad prosjeka. Izvor: Federalna rezervna banka Kansas City.",
       "title": "Indikator financijskog stresa",
       "usFsiValue": "VRIJEDNOST US FSI",

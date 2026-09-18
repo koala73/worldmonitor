@@ -1791,6 +1791,7 @@
       "infoTooltip": "<strong>Economische kalender</strong> Geplande macro-economische publicaties: CPI, NFP, GDP, PMI en centrale bankbesluiten. Toont prognose vs. werkelijk vs. vorig. Gebeurtenissen met hoge impact zijn gemarkeerd. Bron: economische dataproviders."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Financiële stressindicator</strong> Een marktstressratio afgeleid van HYG- en TLT-prijzen, de VIX en de high-yieldspread. Hogere waarden wijzen op minder stress; lagere waarden wijzen op meer stress.",
       "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City.",
       "title": "Financiële stressindicator",
       "usFsiValue": "US FSI-WAARDE",

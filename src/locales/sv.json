@@ -1791,6 +1791,7 @@
       "infoTooltip": "<strong>Ekonomisk kalender</strong> Schemalagda makroekonomiska publiceringar: CPI, NFP, GDP, PMI och centralbanksbeslut. Visar prognos vs. faktisk vs. föregående. Händelser med hög påverkan markerade. Källa: ekonomiska dataleverantörer."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Finansiell stressindikator</strong> Ett marknadsstressförhållande härlett från HYG- och TLT-priser, VIX och high-yield-spreaden. Högre värden visar lägre stress; lägre värden visar högre stress.",
       "infoTooltip": "<strong>Finansiell stressindikator</strong> Kansas City Feds Financial Stress Index (KCFSI): mäter stress på amerikanska finansmarknader med 11 indikatorer inklusive avkastningsspreadar, volatilitet och korskorrelationer. Positiva värden indikerar stress över genomsnittet. Källa: Federal Reserve Bank of Kansas City.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI-VÄRDE",

@@ -1798,6 +1798,7 @@
       "infoTooltip": "<strong>Calendário económico</strong> Publicações macroeconómicas programadas: CPI, NFP, GDP, PMI e decisões de bancos centrais. Mostra previsão vs. real vs. anterior. Eventos de alto impacto destacados. Fonte: provedores de dados económicos."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Indicador de stress financeiro</strong> Um rácio de stress do mercado derivado dos preços de HYG e TLT, do VIX e do spread de alto rendimento. Valores mais altos indicam menor stress; valores mais baixos indicam maior stress.",
       "infoTooltip": "<strong>Indicador de stress financeiro</strong> Índice de Stress Financeiro do Fed de Kansas City (KCFSI): mede o stress nos mercados financeiros dos EUA usando 11 indicadores incluindo spreads de rendimento, volatilidade e correlações cruzadas. Valores positivos indicam stress acima da média. Fonte: Federal Reserve Bank of Kansas City.",
       "title": "Indicador de Estresse Financeiro",
       "usFsiValue": "VALOR FSI EUA",

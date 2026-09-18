@@ -2181,6 +2181,7 @@
       "infoTooltip": "<strong>Calendar economic</strong> Publicări macroeconomice programate: CPI, NFP, GDP, PMI și decizii ale băncilor centrale. Afișează prognoză vs. real vs. anterior. Evenimentele cu impact ridicat sunt evidențiate. Sursă: furnizori de date economice."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Indicator de stres financiar</strong> Un raport de stres al pieței derivat din prețurile HYG și TLT, VIX și spreadul cu randament ridicat. Valorile mai mari indică stres mai redus; valorile mai mici indică stres mai ridicat.",
       "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City.",
       "title": "Indicatorul de Stres Financiar",
       "usFsiValue": "VALOARE FSI SUA",

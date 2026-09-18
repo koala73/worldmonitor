@@ -2163,6 +2163,7 @@
       "infoTooltip": "<strong>Lịch kinh tế</strong> Các công bố kinh tế vĩ mô theo lịch: CPI, NFP, GDP, PMI và quyết định ngân hàng trung ương. Hiển thị dự báo so với thực tế so với trước đó. Sự kiện tác động cao được đánh dấu. Nguồn: nhà cung cấp dữ liệu kinh tế."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Tỷ lệ căng thẳng thị trường được suy ra từ giá HYG và TLT, VIX và chênh lệch lợi suất cao. Giá trị cao hơn cho thấy căng thẳng thấp hơn; giá trị thấp hơn cho thấy căng thẳng cao hơn.",
       "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Chỉ số căng thẳng tài chính của Fed Kansas City (KCFSI): đo lường căng thẳng trên thị trường tài chính Hoa Kỳ bằng 11 chỉ báo bao gồm chênh lệch lợi suất, biến động và tương quan chéo. Giá trị dương cho thấy căng thẳng trên mức trung bình. Nguồn: Federal Reserve Bank of Kansas City.",
       "title": "Chỉ Số Áp Lực Tài Chính",
       "usFsiValue": "GIÁ TRỊ FSI CỦA MỸ",

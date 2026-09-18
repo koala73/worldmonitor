@@ -2172,6 +2172,7 @@
       "infoTooltip": "<strong>Ekonomik Takvim</strong> Planlanmış makroekonomik yayınlar: CPI, NFP, GDP, PMI ve merkez bankası kararları. Tahmin, gerçek ve önceki değeri gösterir. Yüksek etkili olaylar vurgulanır. Kaynak: ekonomik veri sağlayıcıları."
     },
     "fsi": {
+      "methodologyTooltip": "<strong>Finansal Stres Göstergesi</strong> HYG ve TLT fiyatları, VIX ve yüksek getirili spreadden türetilen bir piyasa stresi oranı. Daha yüksek değerler daha düşük stresi; daha düşük değerler daha yüksek stresi gösterir.",
       "infoTooltip": "<strong>Finansal Stres Göstergesi</strong> Kansas City Fed Finansal Stres Endeksi (KCFSI): getiri farkları, oynaklık ve çapraz korelasyonlar dahil 11 gösterge kullanarak ABD finans piyasalarındaki stresi ölçer. Pozitif değerler ortalamanın üzerinde stresi gösterir. Kaynak: Federal Reserve Bank of Kansas City.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD FSI DEĞERİ",
