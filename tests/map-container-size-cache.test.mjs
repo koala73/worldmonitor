@@ -80,10 +80,22 @@ describe('Map one-shot viewport commands read current size (#5022 review)', () =
   }
 
   it('ResizeObserver records zero-size (hidden) transitions, gating only the render on visibility', () => {
-    const ro = mapSrc.slice(mapSrc.indexOf('private setupResizeObserver('));
+    // The observer callback delegates every observation to onContainerResized()
+    // (#4547 moved the body there so it can be driven directly in
+    // tests/dom/map-mobile-label-rethin-on-resize.test.mts); the invariants
+    // below live in that method now.
+    const observer = mapSrc.slice(mapSrc.indexOf('private setupResizeObserver('));
+    const observerBody = observer.slice(0, observer.slice(1).search(/\n {2}(?:public|private) \w+\(/) + 1);
+    assert.match(observerBody, /this\.onContainerResized\(width, height\)/, 'the observer must hand every observation to onContainerResized');
+    const ro = mapSrc.slice(mapSrc.indexOf('private onContainerResized('));
     const body = ro.slice(0, ro.slice(1).search(/\n {2}(?:public|private) \w+\(/) + 1);
     // scheduleRender is gated on a visible size...
-    assert.match(body, /if \(width > 0 && height > 0\) this\.scheduleRender\(\)/, 'scheduleRender must fire only for a visible size');
+    assert.match(body, /if \(width > 0 && height > 0\) \{[\s\S]*?this\.scheduleRender\(\);/, 'scheduleRender must fire only for a visible size');
+    assert.equal(body.match(/this\.scheduleRender\(\)/g)?.length, 1, 'exactly one render trigger, inside the visible-size guard');
+    assert.ok(
+      body.indexOf('this.rememberContainerSize({ width, height });') < body.indexOf('if (width > 0 && height > 0) {'),
+      'the cache update must run before (and regardless of) the visibility gate',
+    );
     // ...but the cache update must run for ANY change (including -> 0), so the
     // old combined visible-only guard must be gone.
     assert.doesNotMatch(body, /width > 0 && height > 0 && \(width !== lastWidth/, 'must not gate the cache update behind the visible-size check (hidden state must be recorded so render() skips)');

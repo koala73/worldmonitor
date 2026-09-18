@@ -157,9 +157,16 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
     const resizeEnd = mapSrc.indexOf("  public setIsResizing", resizeStart);
     assert.ok(resizeStart > 0 && resizeEnd > resizeStart, "resize observer block should be present");
     const resizeBlock = mapSrc.slice(resizeStart, resizeEnd);
-    assert.ok(resizeBlock.includes("this.rememberContainerSize({ width, height });"));
+    // #4547: the observer delegates to onContainerResized(), which sits inside
+    // this block; the cache-before-render ordering is asserted within it so the
+    // visibilitychange handler's own scheduleRender() above does not confuse it.
+    assert.ok(resizeBlock.includes("this.onContainerResized(width, height);"));
+    const observationStart = resizeBlock.indexOf("private onContainerResized(");
+    assert.ok(observationStart > 0, "onContainerResized should live with the resize observer");
+    const observationBlock = resizeBlock.slice(observationStart);
+    assert.ok(observationBlock.includes("this.rememberContainerSize({ width, height });"));
     assert.ok(
-      resizeBlock.indexOf("this.rememberContainerSize({ width, height });") < resizeBlock.indexOf("this.scheduleRender();"),
+      observationBlock.indexOf("this.rememberContainerSize({ width, height });") < observationBlock.indexOf("this.scheduleRender();"),
       "ResizeObserver should refresh cached dimensions before scheduling render",
     );
 

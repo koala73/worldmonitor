@@ -299,6 +299,11 @@ export class MapComponent {
   // interaction. The effective value is set in the constructor (= !this.isMobile);
   // false here documents the mobile-off default.
   private mobileLabelVisibilityArmed = false;
+  // Last container size the ResizeObserver reported (0 until the first
+  // observation, and again while hidden). onContainerResized() tells a later
+  // layout change apart from the initial paint with it (#4547).
+  private observedContainerWidth = 0;
+  private observedContainerHeight = 0;
   // All container/document interaction listeners are registered with this signal so
   // destroy() can remove them in one shot. The container node is reused across
   // renderer switches (MapContainer keeps one element and rebuilds MapComponent on it),
@@ -391,22 +396,11 @@ export class MapComponent {
   }
 
   private setupResizeObserver(): void {
-    let lastWidth = 0;
-    let lastHeight = 0;
     this.resizeObserver = new ResizeObserver((entries) => {
       if (this.isResizing) return;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width === lastWidth && height === lastHeight) continue;
-        lastWidth = width;
-        lastHeight = height;
-        // Record zero-size (hidden) transitions too, not just visible sizes.
-        // getKnownContainerSize() falls back to a live read whenever the cache
-        // is zero, so recording the hide keeps render()'s zero-size skip intact
-        // and lets a reveal center off current dimensions instead of the last
-        // visible ones (#5022 review). Only a visible size is worth rendering.
-        this.rememberContainerSize({ width, height });
-        if (width > 0 && height > 0) this.scheduleRender();
+        this.onContainerResized(width, height);
       }
     });
     this.resizeObserver.observe(this.container);
@@ -418,6 +412,50 @@ export class MapComponent {
       }
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
+  }
+
+  /**
+   * One ResizeObserver observation of the map container.
+   *
+   * Records zero-size (hidden) transitions too, not just visible sizes:
+   * getKnownContainerSize() falls back to a live read whenever the cache is
+   * zero, so recording the hide keeps render()'s zero-size skip intact and lets
+   * a reveal center off current dimensions instead of the last visible ones
+   * (#5022 review). Only a visible size is worth rendering.
+   *
+   * #4547: a layout change after first paint (device rotation, split view, a
+   * desktop-width window resize on a touch device) re-lays the overlays out
+   * through the scheduled render → applyTransform(), but on mobile that pass
+   * skips label-overlap thinning until the first direct interaction, so the
+   * labels stayed stacked on the new geometry until the user touched the map.
+   * A WIDTH change from a previously visible width arms thinning; the render
+   * this schedules then does the one label pass. The first observation
+   * (no previous width) is the initial paint the deferral exists for, and a
+   * height-only change is what the mobile URL bar produces on every scroll,
+   * so neither may arm it. A reveal after a hide starts from width 0 again and
+   * is likewise not a layout change.
+   */
+  private onContainerResized(width: number, height: number): void {
+    if (width === this.observedContainerWidth && height === this.observedContainerHeight) return;
+    const previousWidth = this.observedContainerWidth;
+    this.observedContainerWidth = width;
+    this.observedContainerHeight = height;
+    this.rememberContainerSize({ width, height });
+    if (width > 0 && height > 0) {
+      if (previousWidth > 0 && width !== previousWidth) this.armMobileLabelVisibilityForLayoutChange();
+      this.scheduleRender();
+    }
+  }
+
+  /**
+   * Arms mobile label thinning without running a pass itself: the caller has a
+   * render scheduled, and that render's applyTransform() owns the pass.
+   * resumeMobileLabelVisibility() is the interaction-driven twin that measures
+   * immediately because no render follows a pan or pinch.
+   */
+  private armMobileLabelVisibilityForLayoutChange(): void {
+    if (!this.isMobile || this.mobileLabelVisibilityArmed) return;
+    this.mobileLabelVisibilityArmed = true;
   }
 
   public setIsResizing(value: boolean): void {
