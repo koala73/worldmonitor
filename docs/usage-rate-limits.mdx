@@ -217,6 +217,5 @@ WorldMonitor does **not** automatically upgrade a user, charge for overages, or 
 ## Hard caps (not soft limits)
 
 - Webhook callback URLs must be HTTPS (except localhost).
-- `api/download` file sizes capped at ~50 MB per request.
 - `POST /api/scenario/v1/run-scenario` globally pauses new jobs when the pending queue exceeds **100** — returns 429.
 - `api/v2/shipping/webhooks` TTL is **30 days** — re-register to extend.
