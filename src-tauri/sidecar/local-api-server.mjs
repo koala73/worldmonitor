@@ -851,7 +851,7 @@ const cloudPreferredExact = new Set([
   '/api/resilience/v1/get-resilience-runtime-manifest',
   '/api/sanctions/v1/list-sanctions-pressure',
   '/api/scenario/v1/get-scenario-status',
-  '/api/shipping/v2/route-intelligence',
+  '/api/v2/shipping/route-intelligence',
   '/api/supply-chain/v1/get-bypass-options',
   '/api/supply-chain/v1/get-chokepoint-dependencies',
   '/api/supply-chain/v1/get-country-chokepoint-index',

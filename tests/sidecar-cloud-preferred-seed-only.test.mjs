@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 
 import {
   classifyRpcHandler,
+  handlerFileForRoute,
   isAlwaysCloudPreferred,
   readSidecarCloudPreferred,
   scanRpcHandlers,
@@ -77,9 +78,8 @@ describe('sidecar cloud-preferred coverage of seed-only routes', () => {
     const stale = decl.exact
       .filter((route) => route !== '/api/bootstrap')
       .filter((route) => {
-        const m = route.match(/^\/api\/([^/]+)\/(v\d+)\/([^/]+)$/);
-        if (!m) return true;
-        return !existsSync(resolve(root, 'server/worldmonitor', m[1], m[2], `${m[3]}.ts`));
+        const handler = handlerFileForRoute(route);
+        return !handler || !existsSync(resolve(root, handler));
       });
     assert.deepEqual(stale, [], 'exact entries with no handler file behind them');
   });
@@ -89,5 +89,16 @@ describe('sidecar cloud-preferred coverage of seed-only routes', () => {
       sidecarSource,
       /function isCloudPreferred\(pathname\) \{[\s\S]*?cloudPreferredSeedOnlyPrefixes\.some\(p => pathname\.startsWith\(p\)\)[\s\S]*?\n\}/,
     );
+  });
+});
+
+describe('route derivation for versioned families (#5907)', () => {
+  it('maps the shipping v2 family to /api/v2/shipping/…, the URL api/v2/shipping/[rpc].ts actually serves', () => {
+    const shipping = routes.filter((r) => r.domain === 'shipping');
+    assert.ok(shipping.length > 0);
+    for (const r of shipping) assert.match(r.route, /^\/api\/v2\/shipping\//, r.route);
+    assert.equal(handlerFileForRoute('/api/v2/shipping/route-intelligence'), 'server/worldmonitor/shipping/v2/route-intelligence.ts');
+    assert.equal(handlerFileForRoute('/api/market/v1/list-market-quotes'), 'server/worldmonitor/market/v1/list-market-quotes.ts');
+    assert.equal(handlerFileForRoute('/api/bootstrap'), null);
   });
 });

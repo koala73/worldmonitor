@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -49,7 +49,12 @@ export function scanRpcHandlers(repoRoot) {
         if (!file.endsWith('.ts') || file.startsWith('_') || file === 'handler.ts' || file.includes('.test.')) continue;
         const source = readFileSync(join(versionDir, file), 'utf8');
         const { seedOnly } = classifyRpcHandler(source);
-        const route = `/api/${domain}/${version}/${file.slice(0, -3)}`;
+        // The v1 gateways live at api/{domain}/v1/[rpc].ts; a versioned family
+        // lives at api/v{N}/{domain}/[rpc].ts (api/v2/shipping), so its URL is
+        // /api/v2/shipping/…, not /api/shipping/v2/… (#5907).
+        const route = existsSync(join(repoRoot, 'api', domain, version, '[rpc].ts'))
+          ? `/api/${domain}/${version}/${file.slice(0, -3)}`
+          : `/api/${version}/${domain}/${file.slice(0, -3)}`;
         routes.push({ route, domain, file: `server/worldmonitor/${domain}/${version}/${file}`, seedOnly });
         const tally = byDomain.get(domain) ?? { total: 0, seedOnly: 0 };
         tally.total += 1;
@@ -88,4 +93,13 @@ export function isAlwaysCloudPreferred(route, decl) {
   return decl.exact.includes(route)
     || decl.alwaysPrefixes.some((p) => route.startsWith(p))
     || decl.seedOnlyPrefixes.some((p) => route.startsWith(p));
+}
+
+/** server/worldmonitor handler file behind an exact route, in either URL shape; null when the route is not an RPC. */
+export function handlerFileForRoute(route) {
+  const v1 = route.match(/^\/api\/([^/]+)\/(v\d+)\/([^/]+)$/);
+  if (v1) return `server/worldmonitor/${v1[1]}/${v1[2]}/${v1[3]}.ts`;
+  const versioned = route.match(/^\/api\/(v\d+)\/([^/]+)\/([^/]+)$/);
+  if (versioned) return `server/worldmonitor/${versioned[2]}/${versioned[1]}/${versioned[3]}.ts`;
+  return null;
 }
