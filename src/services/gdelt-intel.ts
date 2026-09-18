@@ -211,8 +211,25 @@ export async function fetchGdeltArticles(
 }
 
 export async function fetchHotspotContext(hotspot: Hotspot): Promise<GdeltArticle[]> {
-  const query = hotspot.keywords.slice(0, 5).join(' OR ');
-  return fetchGdeltArticles(query, 8, '48h');
+  return fetchGdeltArticles(selectHotspotTopicId(hotspot), 8, '48h');
+}
+
+/**
+ * The RPC serves the materializer's seeded topic identifiers. Hotspot labels
+ * are not a query language, so map them to the closest seeded topic instead
+ * of sending an unsupported concatenation of place names and keywords.
+ */
+export function selectHotspotTopicId(hotspot: Pick<Hotspot, 'name' | 'keywords' | 'description'>): string {
+  const text = [hotspot.name, hotspot.description, ...hotspot.keywords]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase();
+  if (/cyber|ransomware|hack|malware|breach/.test(text)) return 'cyber';
+  if (/nuclear|uranium|iaea|reactor|enrichment/.test(text)) return 'nuclear';
+  if (/sanction|embargo|tariff|trade war/.test(text)) return 'sanctions';
+  if (/spy|espionage|intelligence|surveillance/.test(text)) return 'intelligence';
+  if (/maritime|naval|piracy|strait|shipping|\bport\b(?!-)|sea lane|south china sea|warship/.test(text)) return 'maritime';
+  return 'military';
 }
 
 let _bootstrapConsumed = false;
@@ -238,7 +255,7 @@ export async function fetchTopicIntelligence(topic: IntelTopic): Promise<TopicIn
     _bootstrapData.delete(topic.id);
     return bootstrapped;
   }
-  const articles = await fetchGdeltArticles(topic.query, 10, '24h');
+  const articles = await fetchGdeltArticles(topic.id, 10, '24h');
   return {
     topic,
     articles,
