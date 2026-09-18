@@ -14,7 +14,7 @@ description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust s
 ### 桌面应用（Tauri）
 
 - **原生桌面应用**，支持 macOS、Windows 和 Linux —— 打包完整的仪表盘，并附带一个本地 Node.js sidecar，在本地运行 API 处理器
-- **OS 钥匙串集成** —— API 密钥存储在系统凭据管理器中（macOS Keychain、Windows Credential Manager），绝不以明文文件形式存储
+- **OS 钥匙串集成** —— API 密钥存储在系统凭据管理器中（macOS Keychain、Windows Credential Manager、Linux Secret Service），绝不以明文文件形式存储。 Linux 通过同一个 `keyring` crate 使用 Secret Service API；没有可激活的 Secret Service 提供者的 Linux 桌面目前会以空保险库启动（#802）。
 - **Token 鉴权的 sidecar** —— 一个唯一的会话 token 防止其他本地进程访问 localhost 上的 sidecar。每次启动时通过随机化哈希生成
 - **云端回退** —— 当本地 API 处理器失败或缺失时，请求会透明地回退到云端部署（worldmonitor.app），并剥离 Origin 头
 - **设置窗口** —— 专用配置 UI（Cmd+,），包含三个标签页：**LLMs**（Ollama 端点、模型选择、Groq、OpenRouter）、**API Keys**（受支持的数据源凭据目录，逐键校验）以及 **Debug & Logs**（流量日志、详细模式、日志文件）。每个标签页运行独立的校验流水线 —— 在 LLMs 标签页保存不会阻塞 API Keys 的校验
@@ -104,7 +104,7 @@ Tauri 桌面应用将仪表盘封装在一个原生窗口中（macOS、Windows�
 
 ## 密钥管理
 
-API 密钥存储在操作系统的凭据管理器中（macOS Keychain、Windows Credential Manager）—— 绝不以明文配置文件形式存储。所有密钥都合并到钥匙串中的单个 JSON 保险库条目里，因此无论配置了多少密钥，应用启动都只需要一次 OS 授权提示。
+API 密钥存储在操作系统的凭据管理器中（macOS Keychain、Windows Credential Manager、Linux Secret Service）—— 绝不以明文配置文件形式存储。 Linux 通过同一个 `keyring` crate 使用 Secret Service API；没有可激活的 Secret Service 提供者的 Linux 桌面目前会以空保险库启动（#802）。所有密钥都合并到钥匙串中的单个 JSON 保险库条目里，因此无论配置了多少密钥，应用启动都只需要一次 OS 授权提示。
 
 sidecar 启动时，会读取保险库、解析，并作为环境变量注入。空值或仅含空白字符的值会被跳过。密钥也可以在运行时更新而无需重启 sidecar：在 Settings 窗口保存密钥会触发一次 `POST /api/local-env-update` 调用，热补丁 `process.env`，使处理器立即取到新值。
 
@@ -221,10 +221,10 @@ sidecar 采用多种弹性模式，以在上游 API 降级时维持数据可用�
 
 ## 自动更新
 
-桌面应用通过轮询 `worldmonitor.app/api/version` 检查新版本 —— 启动时一次（延迟 5 秒），之后每 6 小时一次。当检测到较新版本时（semver 比较），会出现一个非侵入式的更新徽章，附带指向 GitHub Release 页面的直接链接。
+桌面应用通过轮询 `api.worldmonitor.app/api/version` 检查新版本 —— 启动时一次（延迟 5 秒），之后每 6 小时一次。当检测到较新版本时（semver 比较），会出现一个非侵入式的更新徽章，附带指向 GitHub Release 页面的直接链接。
 
 更新提示可按版本忽略 —— 忽略 v2.5.0 不会抑制 v2.6.0 的通知。只发布一个 World Monitor 二进制文件，所有变体均在应用内切换，因此更新器仅按操作系统和架构解析下载（`/api/download?platform=…`），而不按变体解析。
 
 更新器无法解析的版本会被报告为 `version_unparsable`，绝不会被当作"已是最新"—— 从无法读取的版本静默得出"无更新"的结论，正是单个格式错误的 release 标签能让所有客户端停止更新的原因（#5908）。
 
-`/api/version` 端点会读取最新的 GitHub Release 标签并将结果缓存 1 小时，因此版本检查不会在每次请求时都命中 GitHub API。
+`/api/version` 端点会读取最新的 GitHub Release 标签并在边缘缓存 5 分钟（`s-maxage=300`，重新验证期间最多提供 60 秒的陈旧结果，GitHub 出错时最多提供 1 小时），因此版本检查不会在每次请求时都命中 GitHub API。

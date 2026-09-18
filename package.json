@@ -190,6 +190,7 @@
     "desktop:tauri:build": "npm run security:vite-env-secrets -- --strict-local && npm run check:prereqs:desktop:bundle && npm run desktop:check-env && npm run version:sync && cross-env VITE_VARIANT=full VITE_DESKTOP_RUNTIME=1 tauri build",
     "desktop:package:macos": "node scripts/desktop-package.mjs --os macos",
     "desktop:package:windows": "node scripts/desktop-package.mjs --os windows",
+    "desktop:package:linux": "node scripts/desktop-package.mjs --os linux",
     "desktop:package:macos:sign": "node scripts/desktop-package.mjs --os macos --sign",
     "desktop:package:windows:sign": "node scripts/desktop-package.mjs --os windows --sign",
     "desktop:package": "node scripts/desktop-package.mjs",

@@ -33,7 +33,7 @@ Classifications: `parity` · `intentional difference` · `blocked` · `n/a`.
 | Desktop build env omits Clerk/Convex/VAPID/cyber `VITE_*` vars → sign-in, Pro, push, Cyber Threats dead in shipped builds | #5905 | fix landed (env declared + completeness gate + release preflight); remaining ops step: provision the four new repo secrets, after which release builds hard-fail if they go empty again |
 | Linux secret storage fails without an activatable Secret Service; every keyring error in `SecretsCache::load_from_keychain` is silently swallowed (`if let Ok`), so users get an empty vault with zero diagnostics | #802 / #1905 | open — needs secure fallback + migration + diagnostics |
 | Released 2.5.23 lacks Internet Outages / Cyber Threats layers | #5829 | diagnosed — three compounding causes, see row below |
-| Desktop readiness/error diagnosability; `src/services/desktop-readiness.ts:64-65` still cites deleted `/api/risk-scores` routes in the Service Status UI; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified | #1942 | open — reassess with this evidence |
+| Desktop readiness/error diagnosability; sidecar readiness is assumed on port-file timeout (`main.rs:1443-1452`) rather than verified. (The stale `/api/risk-scores` citation in `src/services/desktop-readiness.ts` was repointed at the intelligence RPC under #5910, pinned by `tests/desktop-readiness-registry-paths.test.mjs`) | #1942 | open — reassess with this evidence |
 | AppImage update metadata (AppImageUpdate/zsync) | #5757 | open |
 | Uninstall experience | #5435 / #5487 | open |
 
@@ -140,11 +140,16 @@ release-candidate checklist:
    `tests/desktop-one-binary-model.test.mjs` fails if any surface drifts back.
 2. Bundled Node 22.14.0 vs CI Node 24 everywhere; SHASUMS fetched without GPG
    verification. → #5909.
-3. README/docs drift: "Stable" label, missing Linux ARM64 row, `windows-exe`
-   badges vs `windows-msi` in-app, wrong updater host/TTL in
-   `docs/desktop-app.mdx`, phantom 50 MB cap in `docs/usage-rate-limits.mdx`,
-   `api/api-route-exceptions.json` misdescribing `api/fwdstart.js`, no Linux
-   packaging doc. → #5910.
+3. README/docs drift → #5910. Corrected: Linux ARM64 in the README binaries
+   row, updater host/TTL and Linux Secret Service in `docs/desktop-app.mdx`
+   (+ zh), the phantom 50 MB cap in `docs/usage-rate-limits.mdx` (+ zh), a
+   Linux section in `docs/release-packaging.mdx` with a `desktop:package:linux`
+   script, the two pre-sebuf `local-backend-audit.md` drafts marked superseded,
+   and the stale `/api/risk-scores` citation in `desktop-readiness.ts`.
+   `api/api-route-exceptions.json` already describes `api/fwdstart.js` correctly.
+   Still open: the "Stable" label against release cadence, and `windows-exe`
+   README/download.md badges vs the `windows-msi` in-app banner and updater —
+   a product call on which installer is canonical.
 4. macOS updater artifacts (`.app.tar.gz`) ship without `.sig` — no signed
    update chain. Documented as unsigned fallback; revisit with the release
    train. → tracked in #5902 §3.

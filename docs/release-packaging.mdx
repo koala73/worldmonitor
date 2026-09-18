@@ -23,6 +23,10 @@ Bundle identity is controlled by a single Tauri config,
 - OS-native Tauri build prerequisites:
   - macOS: Xcode command-line tools
   - Windows: Visual Studio Build Tools + NSIS + WiX
+  - Linux (Debian/Ubuntu, matching `.github/workflows/build-desktop.yml`):
+    `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf` plus the
+    `gstreamer1.0-*` plugin set (`plugins-base`, `plugins-good`, `plugins-bad`,
+    `plugins-ugly`, `libav`, `gl`) for the embedded video players
 
 Install dependencies (this also installs the pinned Tauri CLI used by desktop scripts):
 
@@ -76,10 +80,24 @@ npm run desktop:package:windows
 npm run desktop:package -- --os windows
 ```
 
+### Linux (`.AppImage`)
+
+```bash
+npm run desktop:package:linux
+# or generic runner
+npm run desktop:package -- --os linux
+```
+
+The Node sidecar target follows the host architecture (`x86_64-unknown-linux-gnu`
+on x64, `aarch64-unknown-linux-gnu` on arm64), or `NODE_TARGET` when set. CI
+builds both and `/api/download` serves them as `linux-appimage` and
+`linux-appimage-arm64`.
+
 Bundler targets are pinned in the Tauri config and enforced by packaging scripts:
 
 - macOS: `app,dmg`
 - Windows: `nsis,msi`
+- Linux: `appimage`
 
 ## Rust dependency modes (online vs restricted network)
 
@@ -210,6 +228,7 @@ Common subfolders:
 - `dmg/` → macOS `.dmg`
 - `nsis/` → Windows `.exe` installer
 - `msi/` → Windows `.msi` installer
+- `appimage/` → Linux `.AppImage`
 
 ## Release checklist (clean machine)
 
@@ -218,6 +237,7 @@ Common subfolders:
 3. Install/launch:
    - macOS: mount `.dmg`, drag app to Applications, launch.
    - Windows: run `.exe` or `.msi`, launch from Start menu.
+   - Linux: `chmod +x` the `.AppImage` and launch it.
 4. Validate startup:
    - App window opens without crash.
    - Map view renders.
