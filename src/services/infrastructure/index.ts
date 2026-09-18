@@ -96,6 +96,7 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     outagesConfigured = false;
     return [];
   }
+  if (outagesConfigured === false) outagesConfigured = null;
 
   const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
   let resp: ListInternetOutagesResponse;
@@ -115,7 +116,6 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   }
 
   if (resp.outages.length === 0) {
-    if (outagesConfigured === null) outagesConfigured = false;
     return [];
   }
 
