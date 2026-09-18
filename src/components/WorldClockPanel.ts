@@ -132,27 +132,32 @@ function saveSelectedCities(ids: string[]): void {
  * city per tick instead of two — and correct by construction.
  */
 function getTimeInZone(tz: string): {
-  h: number; m: number; s: number; dayOfWeek: string; abbr: string;
+  h: number; m: number; s: number; dayOfWeek: string; abbr: string; isWeekday: boolean;
 } {
   try {
     const now = new Date();
     const parts = new Intl.DateTimeFormat(getLocale(), {
       timeZone: tz, hour: 'numeric', minute: 'numeric', second: 'numeric',
       hour12: false, weekday: 'short', timeZoneName: 'short',
-      numberingSystem: 'latn',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      calendar: 'gregory', numberingSystem: 'latn',
     }).formatToParts(now);
-    let h = 0, m = 0, s = 0, dayOfWeek = '', abbr = '';
+    let h = 0, m = 0, s = 0, year = 0, month = 0, day = 0, dayOfWeek = '', abbr = '';
     for (const p of parts) {
       if (p.type === 'hour') h = parseInt(p.value, 10);
       if (p.type === 'minute') m = parseInt(p.value, 10);
       if (p.type === 'second') s = parseInt(p.value, 10);
+      if (p.type === 'year') year = parseInt(p.value, 10);
+      if (p.type === 'month') month = parseInt(p.value, 10);
+      if (p.type === 'day') day = parseInt(p.value, 10);
       if (p.type === 'weekday') dayOfWeek = p.value;
       if (p.type === 'timeZoneName') abbr = p.value;
     }
     if (h === 24) h = 0;
-    return { h, m, s, dayOfWeek, abbr };
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    return { h, m, s, dayOfWeek, abbr, isWeekday: weekday !== 0 && weekday !== 6 };
   } catch {
-    return { h: 0, m: 0, s: 0, dayOfWeek: '', abbr: '' };
+    return { h: 0, m: 0, s: 0, dayOfWeek: '', abbr: '', isWeekday: true };
   }
 }
 
@@ -361,12 +366,10 @@ export class WorldClockPanel extends Panel {
 
     let html = '<div class="wc-container" translate="no">';
     for (const city of sorted) {
-      const { h, m, s, dayOfWeek, abbr } = getTimeInZone(city.timezone);
+      const { h, m, s, dayOfWeek, abbr, isWeekday } = getTimeInZone(city.timezone);
       const isDay = h >= 6 && h < 20;
       const pct = ((h * 3600 + m * 60 + s) / 86400) * 100;
       const isHome = city.id === this.homeCityId;
-      const isWeekday = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun';
-
       let statusHtml = '';
       if (city.marketOpen !== undefined && city.marketClose !== undefined) {
         const isOpen = isWeekday && h >= city.marketOpen && h < city.marketClose;
@@ -429,7 +432,7 @@ export class WorldClockPanel extends Panel {
   private tickClocks(): void {
     for (const refs of this.clockRefs.values()) {
       const { city, last } = refs;
-      const { h, m, s, dayOfWeek, abbr } = getTimeInZone(city.timezone);
+      const { h, m, s, dayOfWeek, abbr, isWeekday } = getTimeInZone(city.timezone);
 
       const time = `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
       if (last.time !== time) {
@@ -458,7 +461,7 @@ export class WorldClockPanel extends Panel {
       }
 
       if (refs.status && city.marketOpen !== undefined && city.marketClose !== undefined) {
-        const isOpen = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun'
+        const isOpen = isWeekday
           && h >= city.marketOpen && h < city.marketClose;
         if (last.isOpen !== isOpen) {
           const state = isOpen ? 'open' : 'closed';
