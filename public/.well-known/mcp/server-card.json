@@ -573,7 +573,7 @@
     "authorization_servers": [
       "https://worldmonitor.app"
     ],
-    "resource": "https://worldmonitor.app",
+    "resource": "https://worldmonitor.app/mcp",
     "scopes": [
       "mcp"
     ],

@@ -49,8 +49,11 @@ import { safeJsonRpcId, utf8ByteLength } from './utils';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 import type { McpBudget } from './quota';
 
-// MCP methods servable WITHOUT authentication. These are the zero-data
-// discovery surface an agent (or an agent-readiness scanner) needs to learn
+// MCP methods servable WITHOUT authentication — on the machine-discovery
+// aliases only (WELL_KNOWN_MCP_PATHS). The transport paths (`/mcp`, `/api/mcp`)
+// challenge every unauthenticated request before this set is consulted; see
+// the connect-time challenge in mcpHandler for why. On the aliases, these are
+// the zero-data discovery surface an agent-readiness scanner needs to learn
 // what this server is and what it exposes BEFORE authenticating — exactly the
 // metadata already published in the static server-card.json and the public
 // docs. `tools/list`, `resources/list`, `resources/templates/list`,
@@ -837,6 +840,25 @@ async function mcpHandlerInner(
   }
 
   const { id, method } = body;
+
+  // Connect-time challenge. The transport refuses every request that presents
+  // no credential — `initialize` and the catalog methods included — with the
+  // same structured 401 + `WWW-Authenticate` an unauthenticated tool call gets.
+  // Hosted connectors (Cursor's agent backend, grok-connectors-manager) decide
+  // whether a server needs sign-in from their first unauthenticated probe: when
+  // that probe got a 200 they recorded "connected, nothing to authenticate",
+  // and the 401 a paid call later returned had no authorization server behind
+  // it, so their sign-in control never worked. The JSON-RPC id is echoed so an
+  // SDK transport correlates the refusal instead of waiting out its timeout.
+  // Anonymous discovery remains on the machine-discovery aliases only, which is
+  // where agent-readiness scanners POST their handshake.
+  if (!hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
+    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
+    if (!denied.ok) {
+      usage.phase = 'auth';
+      return denied.response;
+    }
+  }
 
   // Anonymous-servable resources/read promotions. Two kinds of resource carry
   // NO data and spend NO quota, so they are served on the anonymous discovery

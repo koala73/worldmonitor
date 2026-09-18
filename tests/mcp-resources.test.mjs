@@ -26,6 +26,7 @@ import { dirname, resolve } from 'node:path';
 import vm from 'node:vm';
 
 import {
+  ANON_DISCOVERY_URL,
   BASE_URL,
   HMAC_SECRET,
   callBody,
@@ -52,9 +53,11 @@ function envKeyReq(body, headers = {}) {
 }
 
 // Anonymous request (NO credentials) — exercises the public-discovery /
-// public-resource-read path an agent-readiness scanner (orank) uses.
+// public-resource-read path an agent-readiness scanner (orank) uses. It targets
+// the machine-discovery alias, which is where anonymous service lives; the
+// transport at BASE_URL challenges every credential-less request.
 function anonReq(body, headers = {}) {
-  return new Request(BASE_URL, {
+  return new Request(ANON_DISCOVERY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
@@ -488,7 +491,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   });
 
   it('resources/read of the ui:// shell is PUBLIC — served with NO credentials', async () => {
-    const anonReq = new Request(BASE_URL, {
+    const anonReq = new Request(ANON_DISCOVERY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(readBody('ui://worldmonitor/country-risk.html')),

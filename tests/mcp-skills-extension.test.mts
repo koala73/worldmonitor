@@ -4,7 +4,10 @@ import { createHash } from 'node:crypto';
 import handler from '../api/mcp.ts';
 import { buildResourceContent } from '../scripts/build-agent-skills-index.mjs';
 
-const endpoint = 'https://worldmonitor.app/mcp';
+// Every request in this file is credential-less, so it targets the
+// machine-discovery alias: the transport at /mcp challenges unauthenticated
+// requests, while anonymous skill enumeration is served here.
+const endpoint = 'https://worldmonitor.app/.well-known/mcp';
 function request(method: string, params: Record<string, unknown> = {}, id = 1): Request {
   return new Request(endpoint, {
     method: 'POST',

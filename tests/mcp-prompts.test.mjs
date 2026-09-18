@@ -33,6 +33,7 @@ import path from 'node:path';
 import jmespath from 'jmespath';
 
 import {
+  ANON_DISCOVERY_URL,
   BASE_URL,
 } from './helpers/mcp-pro-deps.mjs';
 import { buildProducerBackedMarketFixture } from './helpers/mcp-producer-fixtures.mjs';
@@ -240,13 +241,13 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
     assert.equal(body.error?.code, -32602, 'missing params must be -32602');
   });
 
-  // prompts/get is anonymously servable (#4937) and one arg is substituted
-  // into several step templates, so an unbounded value is a PUBLIC
-  // response-amplification vector. The cap must reject ANONYMOUSLY with a
-  // correlatable -32602 (HTTP 200 + echoed id), never by inflating the
-  // response.
+  // prompts/get is anonymously servable on the machine-discovery alias (#4937)
+  // and one arg is substituted into several step templates, so an unbounded
+  // value is a PUBLIC response-amplification vector. The cap must reject
+  // ANONYMOUSLY with a correlatable -32602 (HTTP 200 + echoed id), never by
+  // inflating the response.
   it('ANONYMOUS prompts/get with an oversize argument returns -32602 (response-amplification guard)', async () => {
-    const res = await handler(new Request(BASE_URL, {
+    const res = await handler(new Request(ANON_DISCOVERY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

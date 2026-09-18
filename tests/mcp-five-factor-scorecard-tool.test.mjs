@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
+import { ANON_DISCOVERY_URL, HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
@@ -48,7 +48,9 @@ describe('get_five_factor_scorecard MCP tool', () => {
   });
 
   it('lists one country-or-bloc tool and preserves the canonical API response byte-for-byte', async () => {
-    const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+    // Credential-less tools/list: anonymous discovery is served on the
+    // machine-discovery alias, not on the challenged transport path.
+    const listed = await mcpHandler(new Request(ANON_DISCOVERY_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     }));
@@ -185,7 +187,9 @@ describe('get_five_factor_scorecard MCP tool', () => {
       unavailable: false,
       unavailableReason: '',
     };
-    const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+    // Credential-less tools/list: anonymous discovery is served on the
+    // machine-discovery alias, not on the challenged transport path.
+    const listed = await mcpHandler(new Request(ANON_DISCOVERY_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     }));

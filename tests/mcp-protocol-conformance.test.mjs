@@ -1,6 +1,7 @@
 // End-to-end MCP session lifecycle (in-process). Walks a single thread:
 //
-//   unauth tools/call (gated 401) → unauth initialize + tools/list (public 200)
+//   unauth tools/call (gated 401) → unauth initialize + tools/list on the
+//   discovery alias (public 200)
 //   → initialize → tools/list → describe_tool (quota-exempt)
 //   → tools/call (pre-seeded near cap, success) → tools/call (cap exceeded)
 //   → re-initialize → tools/call (still cap exceeded)
@@ -23,6 +24,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import {
+  ANON_DISCOVERY_URL,
   BASE_URL,
   HMAC_SECRET,
   makeProDeps,
@@ -124,6 +126,14 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    // Same credential-less request, aimed at the machine-discovery alias —
+    // anonymous discovery is served there, while the transport at BASE_URL
+    // challenges every request that presents no credential.
+    const anonDiscoveryReq = (body) => new Request(ANON_DISCOVERY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     const step1Res = await mcpHandler(
       unauthReq({
         jsonrpc: '2.0', id: 1, method: 'tools/call',
@@ -139,11 +149,12 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     const step1Body = await step1Res.json();
     assert.equal(step1Body.error?.code, -32001, 'step 1 (unauth tools/call): JSON-RPC code must be -32001');
 
-    // Step 1b — discovery is PUBLIC. Unauthenticated initialize + tools/list
-    // succeed WITHOUT touching any dep (thrower-stub bundle stays untouched),
-    // proving the discovery surface bypasses the auth wall cleanly.
+    // Step 1b — discovery is PUBLIC on the machine-discovery alias.
+    // Unauthenticated initialize + tools/list succeed there WITHOUT touching
+    // any dep (thrower-stub bundle stays untouched), proving the discovery
+    // surface bypasses the auth wall cleanly.
     const step1bInit = await mcpHandler(
-      unauthReq({
+      anonDiscoveryReq({
         jsonrpc: '2.0', id: '1b', method: 'initialize',
         params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'lifecycle-test', version: '1.0' } },
       }),
@@ -153,7 +164,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     assert.ok(step1bInit.headers.get('mcp-session-id'), 'step 1b: anonymous initialize must still issue a session id');
 
     const step1bList = await mcpHandler(
-      unauthReq({ jsonrpc: '2.0', id: '1c', method: 'tools/list', params: {} }),
+      anonDiscoveryReq({ jsonrpc: '2.0', id: '1c', method: 'tools/list', params: {} }),
       step1Deps,
     );
     assert.equal(step1bList.status, 200, 'step 1b (unauth tools/list): discovery must be public');

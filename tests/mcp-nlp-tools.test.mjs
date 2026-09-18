@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  ANON_DISCOVERY_URL,
   HMAC_SECRET,
   callBody,
   makeProDeps,
@@ -200,7 +201,9 @@ describe('#5697 NLP MCP tools', () => {
   }
 
   it('lists all four tools with their caps in tools/list', async () => {
-    const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+    // Credential-less tools/list: anonymous discovery is served on the
+    // machine-discovery alias, not on the challenged transport path.
+    const listed = await mcpHandler(new Request(ANON_DISCOVERY_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     }));

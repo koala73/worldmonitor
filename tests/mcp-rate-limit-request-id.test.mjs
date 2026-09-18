@@ -29,7 +29,7 @@ import {
   applyAnonDiscoveryLimit,
   applyPerMinuteLimit,
 } from '../api/mcp/auth.ts';
-import { HMAC_SECRET, PRO_BEARER, makeProDeps } from './helpers/mcp-pro-deps.mjs';
+import { ANON_DISCOVERY_URL, HMAC_SECRET, PRO_BEARER, makeProDeps } from './helpers/mcp-pro-deps.mjs';
 import { assertJsonRpcError, assertJsonRpcResult } from './helpers/mcp-jsonrpc-schema.mjs';
 
 const BASE_URL = 'https://worldmonitor.app/mcp';
@@ -52,8 +52,10 @@ const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
 let deniedKeyPrefixes = [];
 let limiterCalls = [];
 
+// Unauthenticated traffic goes to the machine-discovery alias: the transport at
+// BASE_URL challenges every credential-less POST before the limiter can answer.
 function anonPost(body, headers = {}) {
-  return new Request(BASE_URL, {
+  return new Request(ANON_DISCOVERY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-real-ip': '203.0.113.42', ...headers },
     body: JSON.stringify(body),

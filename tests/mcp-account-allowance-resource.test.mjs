@@ -14,7 +14,7 @@ import { SHARED_API_BUDGET } from '../api/mcp/quota.ts';
 import { apiKeyDailyKey } from '../server/_shared/api-key-rate-limit.ts';
 import { dailyCounterKey, envPrefix } from '../server/_shared/pro-mcp-token.ts';
 import {
-  BASE_URL,
+  ANON_DISCOVERY_URL,
   HMAC_SECRET,
   PRO_USER_ID,
   makeProDeps,
@@ -79,7 +79,9 @@ describe('authenticated MCP allowance resource', () => {
     assert.ok(resource, 'authenticated resources/list must expose the allowance status URI');
     assert.equal(resource._meta?.['worldmonitor/access'], 'free-account');
 
-    const anonymous = await mcpHandler(new Request(BASE_URL, {
+    // The anonymous half of the comparison runs on the machine-discovery
+    // alias, where a credential-less resources/list is served at all.
+    const anonymous = await mcpHandler(new Request(ANON_DISCOVERY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'resources/list', params: {} }),
@@ -254,7 +256,10 @@ describe('authenticated MCP allowance resource', () => {
 
   it('rejects an anonymous account-status read', async () => {
     const { deps } = makeProDeps();
-    const req = new Request(BASE_URL, {
+    // On the alias, where anonymous discovery IS served, an account-scoped
+    // read must still be refused — that is the resource-level gate this test
+    // exists for, distinct from the transport's blanket challenge on /mcp.
+    const req = new Request(ANON_DISCOVERY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(readBody(304)),

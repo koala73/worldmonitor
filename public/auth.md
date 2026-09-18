@@ -3,9 +3,9 @@
 Use API keys or OAuth 2.1 to authenticate with the WorldMonitor API and MCP server.
 This walkthrough follows the WorkOS **auth.md** spec: <https://workos.com/auth-md>.
 
-Discovery is open. `get_sources` alone is credential- and daily-quota-free
-(10 anonymous calls/minute/IP, fail closed). Other MCP data tools need
-subscription credentials.
+The MCP transport challenges unauthenticated requests (`401` +
+`WWW-Authenticate`). A free account can connect, and `get_sources` spends
+no quota. Other MCP data tools need subscription credentials.
 
 Send a descriptive `User-Agent`, such as `mytool/1.0`. Default library values can receive a firewall 403.
 
@@ -13,8 +13,8 @@ Send a descriptive `User-Agent`, such as `mytool/1.0`. Default library values ca
 
 Discover the authentication requirements:
 
-1. Call any subscription-gated data method without credentials; read the
-   `WWW-Authenticate` header. (`get_sources` succeeds anonymously instead.)
+1. Send any MCP request without credentials; read the
+   `WWW-Authenticate` header on the `401`.
 
    ```
    401 Unauthorized
@@ -66,7 +66,7 @@ POST /oauth/register  {"client_name":"My Agent","redirect_uris":["https://claude
 → 201 {"client_id":"…","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"]}
 ```
 
-`redirect_uris` are allowlisted (Claude callbacks + `http://localhost` /
+`redirect_uris` are allowlisted (hosted client callbacks + `http://localhost` /
 `http://127.0.0.1` on any port). Clients are public — no secret; use PKCE
 (`S256`). **API-key path:** start at <https://www.worldmonitor.app/pro>, then use
 the signed-in dashboard's API Keys settings to self-issue or revoke keys — no
