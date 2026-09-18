@@ -51,7 +51,7 @@ Cursor、Claude 网页版和 MCP Inspector 使用相同的 URL。每个客户端
 
 此设置有两点需要注意：
 
-- **使用 API key 时，通过请求头传递。** 携带 key 的请求不会被质询。请使用单参数形式 `X-WorldMonitor-Key:wm_…`，**冒号后不要有空格**——这可以避开客户端/`npx` 对 `args` 中空格的转义问题（`mcp-remote` 已针对 Windows 上的 Cursor 与 Claude Desktop 记录该问题）。
+- **使用 API key 时，通过请求头传递。** 携带有效 key 的请求不会被质询；无效、过期或已撤销的 key 会得到 `401`。请使用单参数形式 `X-WorldMonitor-Key:wm_…`，**冒号后不要有空格**——这可以避开客户端/`npx` 对 `args` 中空格的转义问题（`mcp-remote` 已针对 Windows 上的 Cursor 与 Claude Desktop 记录该问题）。
 - **偏好 OAuth？** 省略 `--header`。服务器会对 `mcp-remote` 的首个 `initialize` 返回 `401` 质询，从而在连接时就打开其浏览器授权流程——这是 `mcp-remote` 处理得最可靠的路径（动态客户端注册在 `worldmonitor.app` 与 `www.worldmonitor.app` 上均可用）。免费账户即可完成该流程；订阅工具则取决于你的套餐。
 
 ## 3. 提出你的第一个问题

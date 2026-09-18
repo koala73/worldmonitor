@@ -51,7 +51,7 @@ Older Claude Desktop builds — and any stdio-only MCP client — connect throug
 
 Two things matter with this setup:
 
-- **With an API key, pass it as a header.** A request that carries the key is never challenged. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
+- **With an API key, pass it as a header.** A request that carries a valid key is not challenged; an invalid, expired or revoked key gets `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
 - **Prefer OAuth?** Omit `--header`. The server answers `mcp-remote`'s opening `initialize` with the `401` challenge, which opens its browser consent flow at connect time — the path `mcp-remote` handles most reliably (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). A free account can complete it; subscription tools then depend on your plan.
 
 ## 3. Ask your first question
