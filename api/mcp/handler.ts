@@ -687,7 +687,15 @@ async function mcpHandlerInner(
   // actually called: the MCP SDK accepts an advertised resource only when the
   // requested path starts with it, so a caller on the deployed `/api/mcp` route
   // must be pointed at that document rather than the one describing `/mcp`.
-  const transportPath = new URL(req.url).pathname.startsWith('/api/mcp') ? 'api/mcp' : 'mcp';
+  // `/mcp` is rewritten to `/api/mcp`, and whether a function observes the
+  // original path or the rewrite destination is a platform detail. The rewrite
+  // tags itself with `?transport=mcp`, so the public path survives either way;
+  // a direct call to the deployed `/api/mcp` route carries no tag and keeps its
+  // own document.
+  const requestUrl = new URL(req.url);
+  const transportPath = requestUrl.searchParams.get('transport') === 'mcp' || !requestUrl.pathname.startsWith('/api/mcp')
+    ? 'mcp'
+    : 'api/mcp';
   const resourceMetadataUrl = `${resolveMetadataOrigin(req)}/.well-known/oauth-protected-resource/${transportPath}`;
 
   if (req.method === 'HEAD') {

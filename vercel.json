@@ -121,7 +121,7 @@
     { "source": "/index.md", "destination": "/pro/home.md" },
     { "source": "/:mdPath((?!api/).+).md", "destination": "/api/md-twin?path=:mdPath" },
     { "source": "/pro", "destination": "/pro/index.html" },
-    { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/mcp", "destination": "/api/mcp?transport=mcp" },
     { "source": "/a2a", "destination": "/api/a2a" },
     { "source": "/ask", "destination": "/api/ask" },
     { "source": "/agent/auth", "destination": "/api/agent-auth" },

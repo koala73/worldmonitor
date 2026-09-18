@@ -152,6 +152,26 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
       /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
     );
   });
+
+  // `/mcp` is rewritten to `/api/mcp`, and whether the function observes the
+  // original path or the rewrite destination is a platform detail we should not
+  // bet the public URL on: advertising `/api/mcp` to a client that called `/mcp`
+  // fails its resource check just as surely as the reverse. The rewrite carries
+  // `?transport=mcp`, so both observable request shapes resolve to `/mcp`.
+  it('a request arriving in the rewritten shape still advertises the public /mcp path', async () => {
+    const res = await call('https://worldmonitor.app/api/mcp?transport=mcp', 'worldmonitor.app');
+    assert.equal(res.status, 401);
+    assert.match(
+      res.headers.get('www-authenticate'),
+      /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/,
+    );
+  });
+
+  it('the /mcp rewrite tags the transport path so the public URL survives it', () => {
+    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/mcp');
+    assert.ok(rewrite, 'expected the /mcp rewrite');
+    assert.equal(rewrite.destination, '/api/mcp?transport=mcp');
+  });
 });
 
 describe('routing', () => {
