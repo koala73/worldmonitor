@@ -31,14 +31,21 @@ export const config = { runtime: 'edge' };
 // `WWW-Authenticate` pointer — used to get the SPA 404 and abandon sign-in.
 // The rewrite carries `?resource=mcp` because a rewritten request may not
 // expose the original path; the path check covers direct invocation and tests.
+// Both transport paths are real: `/mcp` is the canonical URL and `/api/mcp` is
+// the deployed route (api/mcp.ts) that docs/usage-quickstart.mdx publishes. The
+// MCP SDK accepts an advertised resource only when the requested path starts
+// with it, so each path needs its own document — `/api/mcp` is not under `/mcp`.
+const RESOURCE_PATHS = new Set(['mcp', 'api/mcp']);
+
 function resolveResourcePath(req: Request): string | null {
   const url = new URL(req.url);
-  if (url.searchParams.get('resource') === 'mcp') return '/mcp';
+  const flag = url.searchParams.get('resource');
+  if (flag && RESOURCE_PATHS.has(flag)) return `/${flag}`;
   // Only a suffix under the well-known URI names a specific resource. Anything
   // else — including the rewrite destination path — is the origin-wide document.
   const suffix = url.pathname.replace(/\/+$/, '').match(/\/oauth-protected-resource\/(.+)$/)?.[1];
   if (suffix === undefined) return '';
-  return suffix === 'mcp' ? '/mcp' : null;
+  return RESOURCE_PATHS.has(suffix) ? `/${suffix}` : null;
 }
 
 export default function handler(req: Request): Response {

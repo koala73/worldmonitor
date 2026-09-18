@@ -55,9 +55,19 @@ describe('protected-resource metadata — path-scoped /mcp document', () => {
     assert.equal((await res.json()).resource, 'https://worldmonitor.app/mcp');
   });
 
-  it('only the /mcp suffix is served — an unknown resource path is not invented', async () => {
+  it('only known transport paths are served — an unknown resource path is not invented', async () => {
     const res = await get(prmHandler, 'worldmonitor.app', '/.well-known/oauth-protected-resource/not-a-resource');
     assert.equal(res.status, 404);
+  });
+
+  // `/api/mcp` is the deployed route (api/mcp.ts) and the URL
+  // docs/usage-quickstart.mdx publishes. The MCP SDK accepts a resource only
+  // when the requested path starts with the advertised one, so a client on
+  // `/api/mcp` cannot be handed the `/mcp` document.
+  it('describes /api/mcp for the deployed route', async () => {
+    const json = await (await get(prmHandler, 'api.worldmonitor.app', '/.well-known/oauth-protected-resource/api/mcp')).json();
+    assert.equal(json.resource, 'https://api.worldmonitor.app/api/mcp');
+    assert.deepEqual(json.authorization_servers, ['https://api.worldmonitor.app']);
   });
 });
 
@@ -83,17 +93,32 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
-  it('an unauthenticated data call answers with the path-scoped pointer', async () => {
+  const call = async (url, host) => {
     const { mcpHandler } = await import('../api/mcp/handler.ts');
-    const res = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
+    return mcpHandler(new Request(url, {
       method: 'POST',
-      headers: { host: 'worldmonitor.app', 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { host, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_world_brief', arguments: {} } }),
     }), undefined, { skip: false });
+  };
+
+  it('an unauthenticated data call answers with the path-scoped pointer', async () => {
+    const res = await call('https://worldmonitor.app/mcp', 'worldmonitor.app');
     assert.equal(res.status, 401);
     assert.match(
       res.headers.get('www-authenticate'),
       /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/,
+    );
+  });
+
+  // The advertised resource must cover the URL the client actually called, or
+  // the MCP SDK rejects it (requested path must start with the configured one).
+  it('the deployed /api/mcp route points at its own document, not /mcp', async () => {
+    const res = await call('https://api.worldmonitor.app/api/mcp', 'api.worldmonitor.app');
+    assert.equal(res.status, 401);
+    assert.match(
+      res.headers.get('www-authenticate'),
+      /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
     );
   });
 });
@@ -101,7 +126,9 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
 describe('routing', () => {
   for (const source of [
     '/.well-known/oauth-protected-resource/mcp',
+    '/.well-known/oauth-protected-resource/api/mcp',
     '/.well-known/oauth-authorization-server/mcp',
+    '/.well-known/oauth-authorization-server/api/mcp',
   ]) {
     it(`${source} is rewritten to its handler ahead of the SPA catch-all`, () => {
       const index = vercelConfig.rewrites.findIndex((r) => r.source === source);
