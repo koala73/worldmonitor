@@ -1,18 +1,9 @@
+import { normalizePinnedWebcam, type PinnedWebcam } from './pinned-validation';
+export type { PinnedWebcam } from './pinned-validation';
+
 const STORAGE_KEY = 'wm-pinned-webcams';
 const CHANGE_EVENT = 'wm-pinned-webcams-changed';
 const MAX_ACTIVE = 4;
-
-export interface PinnedWebcam {
-  webcamId: string;
-  title: string;
-  lat: number;
-  lng: number;
-  category: string;
-  country: string;
-  playerUrl: string;
-  active: boolean;
-  pinnedAt: number;
-}
 
 let _cachedList: PinnedWebcam[] | null = null;
 let _cacheFrame: number | null = null;
@@ -21,7 +12,10 @@ function load(): PinnedWebcam[] {
   if (_cachedList !== null) return _cachedList;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    _cachedList = raw ? (JSON.parse(raw) as PinnedWebcam[]) : [];
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    _cachedList = Array.isArray(parsed)
+      ? parsed.map(normalizePinnedWebcam).filter((row): row is PinnedWebcam => row !== null)
+      : [];
   } catch {
     _cachedList = [];
   }
@@ -69,11 +63,13 @@ export function pinWebcam(webcam: Omit<PinnedWebcam, 'active' | 'pinnedAt'>): vo
   const list = load();
   if (list.some(w => w.webcamId === webcam.webcamId)) return;
   const activeCount = list.filter(w => w.active).length;
-  list.push({
+  const pinned = normalizePinnedWebcam({
     ...webcam,
     active: activeCount < MAX_ACTIVE,
     pinnedAt: Date.now(),
   });
+  if (!pinned) return;
+  list.push(pinned);
   save(list);
 }
 

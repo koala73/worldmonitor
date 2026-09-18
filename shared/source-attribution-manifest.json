@@ -9995,7 +9995,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/PinnedWebcamsPanel.ts"
+          "path": "src/services/webcams/pinned-validation.ts"
         }
       ]
     },
