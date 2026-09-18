@@ -185,12 +185,14 @@ async function proxyWidgetAgent(
   const explicitWorldMonitorKey = isSessionTokenShape(headerWorldMonitorKey)
     ? ''
     : headerWorldMonitorKey;
-  const worldMonitorKey =
-    explicitWorldMonitorKey ||
-    getCookie(req, 'wm-pro-key') ||
-    getCookie(req, 'wm-widget-key') ||
-    headerWorldMonitorKey;
-  if (await hasValidWorldMonitorKey(worldMonitorKey)) {
+  const proCookie = getCookie(req, '__Host-wm-pro-key');
+  const widgetCookie = getCookie(req, '__Host-wm-widget-key');
+  // Explicit enterprise credentials must not fall back to ambient cookies.
+  // Otherwise validate each cookie: a rotated Pro key must not mask Widget.
+  const hasEnterpriseKey = explicitWorldMonitorKey
+    ? await hasValidWorldMonitorKey(explicitWorldMonitorKey)
+    : (await hasValidWorldMonitorKey(proCookie)) || (await hasValidWorldMonitorKey(widgetCookie));
+  if (hasEnterpriseKey) {
     isPro = true;
   } else {
     const authHeader = req.headers.get('Authorization');
@@ -270,8 +272,8 @@ async function proxyWidgetAgent(
       isPro = true;
     } else {
       // Legacy tester key path (wm-widget-key / wm-pro-key)
-      const widgetKey = req.headers.get('X-Widget-Key') || getCookie(req, 'wm-widget-key');
-      const proKey = req.headers.get('X-Pro-Key') || getCookie(req, 'wm-pro-key');
+      const widgetKey = req.headers.get('X-Widget-Key') || (explicitWorldMonitorKey ? '' : widgetCookie);
+      const proKey = req.headers.get('X-Pro-Key') || (explicitWorldMonitorKey ? '' : proCookie);
       const hasWidgetKey = await timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY);
       const hasProKey = await timingSafeEqualSecret(proKey, PRO_WIDGET_KEY);
       if (!hasWidgetKey && !hasProKey) {
