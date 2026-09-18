@@ -18,8 +18,8 @@ export const PRO_TOKEN_ID = 'k57mcptokenid';
 export const PRO_BEARER = 'pro-bearer-uuid';
 export const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
 export const BASE_URL = 'https://worldmonitor.app/mcp';
-// Anonymous discovery lives on the machine-discovery alias; the transport at
-// BASE_URL challenges unauthenticated requests with a 401 + WWW-Authenticate.
+// The transport at BASE_URL challenges an unauthenticated `initialize`. A full
+// anonymous handshake is served on the machine-discovery alias (same handler).
 export const ANON_DISCOVERY_URL = 'https://worldmonitor.app/.well-known/mcp';
 
 /**

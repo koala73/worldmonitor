@@ -1,9 +1,8 @@
 // Anonymous strict-client conformance (#4937 regression net).
 //
 // THE INVARIANT: every capability the ANONYMOUS `initialize` advertises must
-// be anonymously exercisable on the machine-discovery alias
-// (`/.well-known/mcp`, where an unauthenticated client lands), and every
-// response must be HTTP 200 with the request id echoed. This is exactly what a strict MCP SDK client (Claude
+// be anonymously exercisable, and every response must be HTTP 200 with the
+// request id echoed. This is exactly what a strict MCP SDK client (Claude
 // Desktop, mcp-remote, the reference SDKs) does right after connecting: it
 // reads `result.capabilities` and enumerates each advertised surface. A
 // gated method answers HTTP 401 with JSON-RPC id:null — the SDK transport
@@ -81,8 +80,11 @@ describe('api/mcp.ts — anonymous strict-client conformance (#4937)', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  // Anonymous discovery is served on the machine-discovery alias; the
-  // transport path challenges every credential-less request outright.
+  // A strict client opens with `initialize`, and the transport at BASE_URL
+  // challenges that handshake when it carries no credential
+  // (tests/mcp-transport-challenge.test.mjs). The anonymous handshake — and so
+  // the whole strict anonymous walk this file pins — lives on the
+  // machine-discovery alias.
   const anonReq = (body) => new Request(ANON_DISCOVERY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

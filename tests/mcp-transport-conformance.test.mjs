@@ -101,9 +101,6 @@ async function startMcpServer(mcpHandler, deps) {
 
   return {
     url: `http://127.0.0.1:${address.port}/mcp`,
-    // Anonymous discovery lives on the machine-discovery alias; the transport
-    // at `url` challenges every request that presents no credential.
-    anonUrl: `http://127.0.0.1:${address.port}/.well-known/mcp`,
     close: () => new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve())),
   };
 }
@@ -945,7 +942,7 @@ describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#78
 
   it('an over-limit anonymous resources/read parses as a spec-valid JSONRPCError carrying the request id', async () => {
     denyLimiter = true;
-    const res = await fetch(server.anonUrl, {
+    const res = await fetch(server.url, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -971,7 +968,7 @@ describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#78
 
   it('the same read succeeds and correlates once the window recovers', async () => {
     denyLimiter = false;
-    const res = await fetch(server.anonUrl, {
+    const res = await fetch(server.url, {
       method: 'POST',
       headers: {
         Accept: 'application/json',

@@ -23,7 +23,6 @@ import { setUsageContext, createMcpUsage } from '../api/mcp/usage.ts';
 import { principalIdForLog } from '../api/mcp/telemetry.ts';
 import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
 import { mcpHandler } from '../api/mcp/handler.ts';
-import { ANON_DISCOVERY_URL } from './helpers/mcp-pro-deps.mjs';
 
 const freeTools = TOOL_REGISTRY.filter((t) => t._freeTier === true);
 const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
@@ -269,10 +268,7 @@ describe('free-tier ceiling fails closed', () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     try {
-      // Anonymous `get_sources` is served on the machine-discovery alias; the
-      // transport at /mcp challenges every credential-less request before the
-      // free-tier limiter can answer.
-      const res = await mcpHandler(new Request(ANON_DISCOVERY_URL, {
+      const res = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
         body: JSON.stringify({

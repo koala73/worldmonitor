@@ -3,9 +3,10 @@
 Use API keys or OAuth 2.1 to authenticate with the WorldMonitor API and MCP server.
 This walkthrough follows the WorkOS **auth.md** spec: <https://workos.com/auth-md>.
 
-The MCP transport challenges unauthenticated requests (`401` +
-`WWW-Authenticate`). A free account can connect, and `get_sources` spends
-no quota. Other MCP data tools need subscription credentials.
+Catalog reads are open; an unauthenticated `initialize` is challenged (`401`).
+`get_sources` alone is credential- and daily-quota-free
+(10 anonymous calls/minute/IP, fail closed). Other MCP data tools need
+subscription credentials.
 
 Send a descriptive `User-Agent`, such as `mytool/1.0`. Default library values can receive a firewall 403.
 
@@ -13,8 +14,9 @@ Send a descriptive `User-Agent`, such as `mytool/1.0`. Default library values ca
 
 Discover the authentication requirements:
 
-1. Send any MCP request without credentials; read the
-   `WWW-Authenticate` header on the `401`.
+1. Send `initialize`, or any subscription-gated data method, without
+   credentials; read the `WWW-Authenticate` header. (`get_sources` succeeds
+   anonymously instead.)
 
    ```
    401 Unauthorized

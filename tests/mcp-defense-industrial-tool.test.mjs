@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  ANON_DISCOVERY_URL,
   HMAC_SECRET,
   callBody,
   makeProDeps,
@@ -90,9 +89,7 @@ describe('get_defense_industrial_base MCP tool', () => {
   });
 
   it('lists the tool and answers through the canonical military RPC', async () => {
-    // Credential-less tools/list: anonymous discovery is served on the
-    // machine-discovery alias, not on the challenged transport path.
-    const listed = await mcpHandler(new Request(ANON_DISCOVERY_URL, {
+    const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),

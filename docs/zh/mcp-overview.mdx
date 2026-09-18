@@ -16,7 +16,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 <Info>
 **Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**以及服务方确认已结束付费覆盖期的账户同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有经确认但不具备免费账户资格的权益不足或已停用套餐，才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
 
-连接始终需要凭据：传输端点会对未认证请求返回 `401` 与 `WWW-Authenticate` 质询，这正是触发客户端登录的信号。免费账户即可；登录后 `get_sources` 不产生任何费用（无需订阅，也不消耗每日配额）。其他数据工具需要具备相应权益的绑定用户凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
+`get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
 
 所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 调用使用专属的每日计数器，每个 UTC 日分别为 **50** 次和 **250** 次消耗配额的 `tools/call` / `resources/read` 调用，每次调用计一个单位。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
@@ -66,7 +66,9 @@ WorldMonitor 支持 Streamable HTTP POST 流程，可返回 JSON 或 SSE 响应�
 
 ## 认证
 
-**传输端点在连接时即发出质询。** 对 `https://worldmonitor.app/mcp` 的任何未携带凭据的请求——包括 `initialize`、`tools/list` 及其他目录方法——都会得到 `401`、JSON-RPC `-32001`，以及指向该路径[受保护资源文档](/zh/api-oauth#发现端点)的 `WWW-Authenticate` 质询，并回显请求 id。这第一个 `401` 正是 MCP 客户端得知需要登录的方式，托管连接器（Cursor Agents、Grok、ChatGPT）会在首次探测服务器时记录它：若该探测得到 `200`，它们会把服务器标记为无需登录，之后付费工具拒绝调用时便没有可供跳转的授权服务器。工具目录本身并非机密——它已发布在静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中，智能体就绪度扫描器仍可在机器发现别名 `/.well-known/mcp` 与 `/.well-known/mcp.json` 上完成匿名握手，限速为每个客户端 IP 每分钟 60 次。这些别名面向扫描器与爬虫；MCP 客户端请指向 `/mcp`。每个 `tools/list` 与 `describe_tool` 条目都带有 `_meta["worldmonitor/access"]`：`"free"` 表示无需订阅且不计配额，`"free-account"` 表示已登录的免费账户可用（缓存类数据调用消耗其额度；`describe_tool` 不消耗），`"subscription"` 表示仅限 Pro。资源模板与其对应工具使用相同标记。携带但无效的凭据会返回 `401`，绝不会被静默降级为匿名。
+**MCP 客户端在连接时登录。** 传输端点会对未认证的 `initialize` 返回 `401`、JSON-RPC `-32001`，以及指向该路径[受保护资源文档](/zh/api-oauth#发现端点)的 `WWW-Authenticate` 质询，并回显请求 id。`initialize` 是所有交互式客户端发出的第一个握手请求，托管连接器（Cursor Agents、Grok、ChatGPT）正是根据它的响应来判断服务器是否需要登录：若得到 `200`，它们会记录为「无需认证」，之后付费工具拒绝调用时便没有可供跳转的授权服务器。免费账户即可完成登录。智能体就绪度扫描器仍可在机器发现别名 `/.well-known/mcp` 与 `/.well-known/mcp.json` 上完成完整的匿名握手；MCP 客户端请指向 `/mcp`。
+
+**无状态的目录读取保持公开。** `tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 通知都可**无需凭据**提供服务——无密钥的 [`worldmonitor` CLI](/zh/cli) 与各 SDK 正是这样在从不发送 `initialize` 的情况下列出工具。任何 agent（或 agent 就绪性扫描器）都可以访问 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其匿名路径使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他承载数据的调用需要凭据。每个 `tools/list` 和 `describe_tool` 条目都携带 `_meta["worldmonitor/access"]`：`free` 表示匿名且不计额度，`free-account` 表示已认证免费账户可用（缓存数据调用消耗免费额度，`describe_tool` 不消耗），`subscription` 表示仅 Pro 可用。资源模板携带与其支撑工具相同的标记。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
 
 MCP handler 按优先级顺序接受两种认证模式：
 
@@ -149,7 +151,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 | 套餐 | MCP 访问 | 认证模式 | MCP 每日预留 | 每分钟突发 | 备注 |
 |------|------------|------------|-----------------------|------------|-------|
-| **Free** | 登录免费账户后可用 `get_sources`（不计配额）与 `free-account`（缓存读取）工具 | OAuth（已确认的免费账户可完成流程）或现有绑定用户凭据 | **每 UTC 日 5 次调用和 3 个空闲间隔请求窗口** | 匿名上限仅适用于发现别名：`get_sources` 每 IP 每分钟 10 次，发现方法每 IP 每分钟 60 次 | 令牌仅限 `free-account` 工具；`subscription` 工具返回升级拒绝。 |
+| **Free** | 匿名 `get_sources`；持有绑定用户凭据时可用 `free-account`（缓存读取）工具 | OAuth（已确认的免费账户可完成流程）或现有绑定用户凭据 | **每 UTC 日 5 次调用和 3 个空闲间隔请求窗口** | 仅有匿名上限：`get_sources` 每 IP 每分钟 10 次，发现方法每 IP 每分钟 60 次 | 令牌仅限 `free-account` 工具；`subscription` 工具返回升级拒绝。匿名 `get_sources` 超过每个 IP 每分钟 10 次时失败关闭。 |
 | **Pro** | ✅ 是 | 仅 OAuth | **50 次消耗配额的调用 / UTC 日**，每次调用计一个单位 | 每用户每分钟 **60** 次 | 经由 apex Clerk 登录跳转。无需或存储 `wm_…` key。 |
 | **Pro Business** | ✅ 是 | 仅 OAuth | **250 次消耗配额的调用 / UTC 日**，每次调用计一个单位 | 每用户每分钟 **60** 次 | 与 Pro 使用同一个专属 MCP 计数器，额度为其五倍。没有 REST 额度，因此没有 `wm_…` key。 |
 | **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | **每 UTC 日 1,000 个单位**，与 REST 共享，按工具权重扣减 | 每用户每分钟 **60** 次 | 标准开发者层 REST/API 访问。 |
@@ -447,9 +449,9 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ### 资源
 
-资源分为三个访问类别。**公开具体资源**出现在每个 `resources/list` 中，无需订阅且不计配额（匿名发现别名向扫描器提供的也是这些资源）；**账户资源**只向已认证、绑定用户的凭据公开，但读取时不消耗配额；**URI 模板**是参数化且承载数据的资源，其访问要求由 `_meta["worldmonitor/access"]` 声明为 `free-account` 或 `subscription`，并按调用者适用的免费额度或订阅配额计量。
+资源分为三个访问类别。**公开具体资源**可匿名且不计配额地读取；**账户资源**只向已认证、绑定用户的凭据公开，但读取时不消耗配额；**URI 模板**是参数化且承载数据的资源，其访问要求由 `_meta["worldmonitor/access"]` 声明为 `free-account` 或 `subscription`，并按调用者适用的免费额度或订阅配额计量。
 
-`resources/list` —— 具体、无需订阅、不计配额：
+`resources/list` —— 具体、可匿名读取、不计配额：
 
 | 资源 URI | 支撑数据 |
 |--------------|--------------|

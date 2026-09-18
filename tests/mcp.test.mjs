@@ -1,7 +1,6 @@
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
-  ANON_DISCOVERY_URL,
   BASE_URL,
   HMAC_SECRET,
   PRO_USER_ID,
@@ -29,17 +28,6 @@ function makeReq(method = 'POST', body = null, headers = {}) {
       ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
-}
-
-// Credential-less POST. Anonymous discovery is served on the machine-discovery
-// alias only; the transport at BASE_URL challenges every request that presents
-// no credential, so an anonymous probe belongs here.
-function anonReq(body, headers = {}) {
-  return new Request(ANON_DISCOVERY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
   });
 }
 
@@ -110,10 +98,17 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- Public discovery (initialize + tools/list + resources/list servable without creds) ---
 
-  it('initialize succeeds WITHOUT credentials (public discovery)', async () => {
-    const req = anonReq(initBody(1));
+  // The transport challenges an unauthenticated handshake
+  // (tests/mcp-transport-challenge.test.mjs); the anonymous handshake lives on
+  // the machine-discovery alias, where agent-readiness scanners POST theirs.
+  it('initialize succeeds WITHOUT credentials on the discovery alias (public discovery)', async () => {
+    const req = new Request('https://worldmonitor.app/.well-known/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(initBody(1)),
+    });
     const res = await handler(req);
-    assert.equal(res.status, 200, 'unauthenticated initialize must be public');
+    assert.equal(res.status, 200, 'unauthenticated initialize must be public on the discovery alias');
     const body = await res.json();
     assert.equal(body.result?.protocolVersion, '2025-03-26');
     assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
@@ -122,7 +117,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('tools/list succeeds WITHOUT credentials (public discovery) and returns tools', async () => {
-    const req = anonReq({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated tools/list must be public');
     const body = await res.json();
@@ -139,7 +138,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // anonymously: `initialize` advertises the `resources` capability, so an
     // unauthenticated resources/list MUST enumerate the catalog rather than
     // 401 — otherwise the capability reads as advertised-but-empty.
-    const req = anonReq({ jsonrpc: '2.0', id: 4, method: 'resources/list', params: {} });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'resources/list', params: {} }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated resources/list must be public');
     const body = await res.json();
@@ -151,7 +154,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // The data-bearing URI templates (country risk, chokepoint, market quote)
     // moved from resources/list to resources/templates/list — this metadata
     // method is public so agents can still discover them without auth.
-    const req = anonReq({ jsonrpc: '2.0', id: 5, method: 'resources/templates/list', params: {} });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'resources/templates/list', params: {} }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated resources/templates/list must be public');
     const body = await res.json();
@@ -165,7 +172,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // orank reads every resources/list entry via resources/read anonymously.
     // The concrete PUBLIC resources (freshness/health probes) return
     // metadata-only content, so they read cleanly without auth or quota.
-    const req = anonReq({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'worldmonitor://seed-meta/freshness' } });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'worldmonitor://seed-meta/freshness' } }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'anonymous resources/read of a public resource must be 200');
     const body = await res.json();
@@ -185,7 +196,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   // and logging/setLevel is a no-op ack — metadata-class, no data, no quota.
   // ping is a spec-mandated liveness check (SDK keepalives hang the same way).
   it('prompts/list succeeds WITHOUT credentials and echoes the request id (#4937 — anon hang)', async () => {
-    const req = anonReq({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated prompts/list must be public — a 401 hangs SDK clients that saw the advertised prompts capability');
     const body = await res.json();
@@ -196,7 +211,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('prompts/get succeeds WITHOUT credentials (static template, no data)', async () => {
-    const req = anonReq({ jsonrpc: '2.0', id: 8, method: 'prompts/get', params: { name: 'country-briefing', arguments: { iso2: 'DE' } } });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'prompts/get', params: { name: 'country-briefing', arguments: { iso2: 'DE' } } }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated prompts/get must be public — it renders a static workflow template');
     const body = await res.json();
@@ -207,7 +226,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('ping succeeds WITHOUT credentials (spec liveness check — SDK keepalives must not hang)', async () => {
-    const req = anonReq({ jsonrpc: '2.0', id: 9, method: 'ping', params: {} });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping', params: {} }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated ping must answer — the MCP spec requires ping to be answerable');
     const body = await res.json();
@@ -217,7 +240,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('logging/setLevel succeeds WITHOUT credentials (no-op ack for the advertised logging capability)', async () => {
-    const req = anonReq({ jsonrpc: '2.0', id: 10, method: 'logging/setLevel', params: { level: 'info' } });
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'logging/setLevel', params: { level: 'info' } }),
+    });
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated logging/setLevel must be public — the logging capability is advertised anonymously');
     const body = await res.json();

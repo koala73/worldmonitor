@@ -13,13 +13,14 @@
 //           converted to GET, and died with 405. No in-process test can see a
 //           CDN redirect rule.
 //
-// WHERE THE ANONYMOUS WALK RUNS: the transport at /mcp challenges every
-// unauthenticated request at connect time — hosted connectors (Cursor's agent
-// backend, grok-connectors-manager) read a 200 on their first probe as
-// "connected, nothing to authenticate" and could then never sign in. Anonymous
-// discovery lives on the machine-discovery alias /.well-known/mcp (same
-// handler), so the strict-client walk below targets the alias, and step 0
-// asserts the connect-time challenge on /mcp itself.
+// WHERE THE ANONYMOUS WALK RUNS: the transport at /mcp challenges an
+// unauthenticated `initialize` — hosted connectors (Cursor's agent backend,
+// grok-connectors-manager) read a 200 on that handshake as "connected, nothing
+// to authenticate" and could then never sign in. A strict client opens with
+// `initialize`, so its anonymous walk lives on the machine-discovery alias
+// /.well-known/mcp (same handler). Step 0 asserts the connect-time challenge
+// on /mcp itself, plus the stateless keyless calls the published CLI and SDKs
+// make there, which must keep answering.
 //
 // This script does what a strict anonymous MCP client does, against LIVE
 // production, on BOTH hosts (the apex serves /mcp too, and apex-vs-www split
@@ -27,7 +28,9 @@
 //   0. the connect-time challenge — an unauthenticated initialize on /mcp must
 //      answer 401 with a WWW-Authenticate challenge naming the /mcp
 //      protected-resource document, and echo the JSON-RPC id so an SDK
-//      transport can correlate the refusal (an id:null 401 hangs it, #4937)
+//      transport can correlate the refusal (an id:null 401 hangs it, #4937);
+//      and a keyless `tools/list` with no prior initialize must still answer
+//      200 — that is exactly what `worldmonitor-cli` sends
 //   1. initialize → notifications/initialized → ping (the connect sequence)
 //   2. a capability walk DERIVED from the initialize response — every
 //      advertised capability's methods must answer 200 with the id echoed
@@ -70,10 +73,11 @@
 // under the bucket even as the prompt/resource catalogs grow. The discovery
 // probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
 // the discovery branch and the transport 405 return ahead of
-// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). The connect
-// challenge (0) and the variant probes (6) add unauthenticated POSTs on /mcp
-// plus four GET/HEADs per variant host; all of them — challenge, redirect,
-// stream-open, and unauthenticated replay — stop before a limiter.
+// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). Step 0 adds
+// one challenged initialize (stops before a limiter) and one limiter-counted
+// keyless tools/list per host. The variant probes (6) add one limiter-counted
+// ping plus four GET/HEADs per variant host; redirect, stream-open, and
+// unauthenticated replay all stop before a limiter.
 //
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
@@ -87,8 +91,8 @@ import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
   .split(',').map((h) => h.trim()).filter(Boolean);
 const TIMEOUT_MS = 15_000;
-// The transport challenges unauthenticated requests; anonymous discovery is
-// served on the machine-discovery alias (same handler).
+// The transport challenges an unauthenticated `initialize`; a full anonymous
+// handshake is served on the machine-discovery alias (same handler).
 const TRANSPORT_PATH = '/mcp';
 const ANON_DISCOVERY_PATH = '/.well-known/mcp';
 const USER_AGENT = 'WorldMonitor-MCP-Smoke/1.0 (+https://worldmonitor.app; github-actions)';
@@ -240,10 +244,41 @@ async function probeConnectChallenge(host) {
   ok(host, check, `${ms}ms`);
 }
 
+// 0b. The published `worldmonitor` CLI and the SDKs never send `initialize`:
+//     they POST `tools/list` (and `tools/call get_sources`) straight to the
+//     transport with no key. Installed versions cannot be updated, so the
+//     connect-time challenge must never widen to catch this.
+async function probeStatelessKeylessList(host) {
+  const check = `tools/list on ${TRANSPORT_PATH} (keyless, no initialize → 200)`;
+  checks += 1;
+  const id = nextId++;
+  try {
+    const { res, text, ms } = await timedFetch(`${host}${TRANSPORT_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list' }),
+    });
+    if (res.status !== 200) {
+      fail(host, check, `expected HTTP 200, got ${res.status} — this breaks every installed worldmonitor CLI/SDK, which lists tools without a key`);
+      return;
+    }
+    let body;
+    try { body = JSON.parse(text); } catch { body = null; }
+    if (!(Array.isArray(body?.result?.tools) && body.result.tools.length > 0)) {
+      fail(host, check, 'HTTP 200 but no tool catalog in the body');
+      return;
+    }
+    ok(host, check, `${ms}ms, ${body.result.tools.length} tools`);
+  } catch (err) {
+    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+  }
+}
+
 async function walkHost(host) {
   console.log(`\n── ${host} ──`);
 
   await probeConnectChallenge(host);
+  await probeStatelessKeylessList(host);
 
   // 1. Connect sequence (anonymous, on the discovery alias).
   const init = await rpc(host, 'initialize', {
@@ -601,15 +636,12 @@ async function probeVariantCanonical(host) {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} }),
     });
-    // The transport challenges an unauthenticated POST, so the proof that the
-    // POST reached this host's origin (and was not canonicalized away) is the
-    // origin's own 401 + Bearer challenge rather than a 200.
     if (res.status >= 300 && res.status < 400) {
       fail(host, 'POST /mcp stays on host', `POST answered ${res.status} → ${res.headers.get('location')} — a redirected POST becomes a GET and the handshake dies (#4938)`);
-    } else if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
-      fail(host, 'POST /mcp stays on host', `expected the origin 401 with Bearer challenge, got ${res.status}`);
+    } else if (res.status !== 200) {
+      fail(host, 'POST /mcp stays on host', `expected 200 ping, got ${res.status}`);
     } else {
-      ok(host, 'POST /mcp stays on host', '401 challenge from this host — handshake not canonicalized');
+      ok(host, 'POST /mcp stays on host', '200 — handshake not canonicalized');
     }
   } catch (err) {
     fail(host, 'POST /mcp stays on host', `HANG/transport error: ${err?.name ?? err}`);

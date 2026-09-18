@@ -23,7 +23,6 @@ import path from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { validate } from './helpers/json-schema-mini.mjs';
-import { ANON_DISCOVERY_URL } from './helpers/mcp-pro-deps.mjs';
 import {
   buildProducerBackedMarketFixture,
   buildProducerBackedPhysicalComparisonFixture,
@@ -528,9 +527,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   });
 
   it('tools/list emits valid inputSchema and outputSchema values for every tool', async () => {
-    // No credentials on this probe, so it targets the machine-discovery alias
-    // where anonymous discovery is served.
-    const res = await mod.default(new Request(ANON_DISCOVERY_URL, {
+    const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),

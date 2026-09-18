@@ -4,7 +4,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
-  ANON_DISCOVERY_URL,
   BASE_URL,
   HMAC_SECRET,
   PRO_BEARER,
@@ -97,9 +96,7 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     const events = captureAxiom();
     const { ctx, settle } = makeCtx();
     const res = await mcpHandler(
-      // Anonymous discovery is served on the machine-discovery alias; the
-      // transport at BASE_URL challenges every credential-less request.
-      new Request(ANON_DISCOVERY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) }),
+      new Request(BASE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) }),
       deps,
       ctx,
     );
@@ -108,9 +105,7 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     assert.equal(events.length, 1, 'exactly one request event per POST');
     const ev = events[0];
     assert.equal(ev.event_type, 'request');
-    // `route` is the request pathname verbatim (api/mcp/usage.ts), so an
-    // anonymous probe is attributed to the alias it actually hit.
-    assert.equal(ev.route, '/.well-known/mcp');
+    assert.equal(ev.route, '/mcp');
     assert.equal(ev.domain, 'mcp');
     assert.equal(ev.origin_kind, 'mcp');
     assert.equal(ev.method, 'POST');
