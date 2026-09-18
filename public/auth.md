@@ -18,10 +18,10 @@ Discover the authentication requirements:
 
    ```
    401 Unauthorized
-   WWW-Authenticate: Bearer resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"
+   WWW-Authenticate: Bearer resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource/mcp"
    ```
 
-2. `GET /.well-known/oauth-protected-resource` (RFC 9728) → the `resource` id and
+2. `GET` the document that header names (RFC 9728) → the `resource` id and
    its `authorization_servers`.
 3. `GET /.well-known/oauth-authorization-server` (RFC 8414) → the OAuth endpoints
    plus the `agent_auth` block that points back here:

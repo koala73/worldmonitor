@@ -33,7 +33,8 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 | `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS 元数据（RFC 8414） |
 | `https://www.worldmonitor.app/docs/mcp` | 独立的匿名**文档** MCP 服务器（文档搜索 + 只读文档文件系统）——卡片位于 `/.well-known/mcp/docs-server-card.json`；参见[智能体发现](/zh/agent-discovery) |
-| `https://worldmonitor.app/.well-known/oauth-protected-resource` | 资源服务器元数据（RFC 9728） |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource/mcp` | MCP 端点的资源服务器元数据（RFC 9728），其 `resource` 为 `https://worldmonitor.app/mcp`；`401` 质询即指向此文档 |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource` | 源站的资源服务器元数据（RFC 9728），保留给在路径限定文档出现之前已完成发现的客户端 |
 
 服务器标识：`worldmonitor` v1.17.0。
 
@@ -564,7 +565,7 @@ MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、
 
 由外向内分诊：HTTP 状态 → JSON-RPC 错误码 → soft envelope。完整的每种形态参考（触发条件、配对状态、恢复方式、示例 payload）位于 [MCP 错误目录](/zh/mcp-error-catalog)。几个高频要点：
 
-- **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向 `/.well-known/oauth-protected-resource`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
+- **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向你所调用路径对应的文档：`/.well-known/oauth-protected-resource/mcp`，或已部署路由下的 `/api/mcp`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
 - **403 + `-32002`** 是已经发出的终止性权益拒绝。`lapsed-subscription` 只会在罕见竞态中出现：服务方确认的失效在 Pro 调用预检查通过后、执行中途才落地；若预检查时已经确认覆盖期结束，OAuth 身份会改走受限、按额度计量的 `free_account` 路径。`upgrade-required` 表示免费账户调用了订阅工具，或不具备免费账户资格的非免费权益不足。该错误不携带 `WWW-Authenticate`，重新运行 OAuth 无法修复这一次已经发出的拒绝。
 - **429 + `-32029`** 是按套餐解析的每日上限（`Retry-After: <距离 UTC 午夜的秒数>`），因此消息里的数字是实际触发拒绝的那份额度，并不总是 50。每分钟速率限制在 HTTP 200 内返回 `-32029`，而不是 429 —— 区别请见错误目录。
 - **Soft envelope 返回 HTTP 200** 且没有 JSON-RPC `error` 字段 —— 仅检查 JSON-RPC 层的客户端会静默地将它们视为成功。务必解析 `result.content[0].text` 并在将 payload 当作数据消费前检查带前导下划线的判别 key（`_budget_exceeded`、`_jmespath_error`）。

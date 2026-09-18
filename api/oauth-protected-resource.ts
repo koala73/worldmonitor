@@ -39,6 +39,10 @@ const RESOURCE_PATHS = new Set(['mcp', 'api/mcp']);
 
 function resolveResourcePath(req: Request): string | null {
   const url = new URL(req.url);
+  const path = url.pathname.replace(/\/+$/, '');
+  // The origin-wide well-known URL names the origin, whatever query a caller
+  // appends to it. Only the rewrite's own destination carries a resource flag.
+  if (path.endsWith('/.well-known/oauth-protected-resource')) return '';
   const flag = url.searchParams.get('resource');
   // A present query is the production rewrite path. Unknown values must 404
   // rather than fall through: after rewrite the pathname is the handler, so

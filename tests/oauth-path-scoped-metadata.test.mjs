@@ -74,6 +74,23 @@ describe('protected-resource metadata — path-scoped /mcp document', () => {
     assert.equal(json.resource, 'https://worldmonitor.app/mcp');
   });
 
+  // The suffix rewrite forwards a multi-segment suffix, which arrives either
+  // literally or percent-encoded depending on how the platform serializes it.
+  for (const query of ['resource=api/mcp', 'resource=api%2Fmcp']) {
+    it(`a rewritten ?${query} serves the /api/mcp document`, async () => {
+      const json = await (await get(prmHandler, 'api.worldmonitor.app', `/api/oauth-protected-resource?${query}`)).json();
+      assert.equal(json.resource, 'https://api.worldmonitor.app/api/mcp');
+    });
+  }
+
+  // A client can put anything in the query of the origin-wide well-known URL.
+  // That URL names the origin, whatever the query says.
+  it('the origin-wide well-known URL ignores a client-supplied resource query', async () => {
+    const res = await get(prmHandler, 'worldmonitor.app', '/.well-known/oauth-protected-resource?resource=mcp');
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).resource, 'https://worldmonitor.app');
+  });
+
   it('the rewritten origin-wide path without a resource query still describes the origin', async () => {
     const json = await (await get(prmHandler, 'worldmonitor.app', '/api/oauth-protected-resource')).json();
     assert.equal(json.resource, 'https://worldmonitor.app');
@@ -153,24 +170,41 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
-  // `/mcp` is rewritten to `/api/mcp`, and whether the function observes the
-  // original path or the rewrite destination is a platform detail we should not
-  // bet the public URL on: advertising `/api/mcp` to a client that called `/mcp`
-  // fails its resource check just as surely as the reverse. The rewrite carries
-  // `?transport=mcp`, so both observable request shapes resolve to `/mcp`.
-  it('a request arriving in the rewritten shape still advertises the public /mcp path', async () => {
-    const res = await call('https://worldmonitor.app/api/mcp?transport=mcp', 'worldmonitor.app');
+  // The well-known aliases are the same transport under a different URL
+  // (handler.ts WELL_KNOWN_MCP_PATHS). Neither `/mcp` nor `/api/mcp` is a
+  // prefix of `/.well-known/mcp`, so a path-scoped pointer would advertise a
+  // resource that does not cover the caller. The origin-wide document does.
+  for (const alias of ['/.well-known/mcp', '/.well-known/mcp.json']) {
+    it(`${alias} advertises the origin-wide document, which covers it`, async () => {
+      const res = await call(`https://worldmonitor.app${alias}`, 'worldmonitor.app');
+      assert.equal(res.status, 401);
+      assert.equal(
+        res.headers.get('www-authenticate'),
+        'Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"',
+      );
+    });
+  }
+
+  // The rewrite destination must not be a client-settable signal: a caller who
+  // appends the rewrite's own query to /api/mcp would otherwise be handed the
+  // /mcp document, which does not cover the URL they called.
+  it('a query parameter cannot talk the handler out of the /api/mcp document', async () => {
+    const res = await call('https://api.worldmonitor.app/api/mcp?transport=mcp', 'api.worldmonitor.app');
     assert.equal(res.status, 401);
     assert.match(
       res.headers.get('www-authenticate'),
-      /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/,
+      /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
     );
   });
 
-  it('the /mcp rewrite tags the transport path so the public URL survives it', () => {
+  // The edge function observes the original path: production serves markdown at
+  // /mcp and the JSON card at /.well-known/mcp, and both are rewritten to
+  // /api/mcp — handler.ts picks between them by pathname. So the transport path
+  // is read from the pathname alone, with no tag on the rewrite.
+  it('the /mcp rewrite stays a plain path rewrite', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/mcp');
     assert.ok(rewrite, 'expected the /mcp rewrite');
-    assert.equal(rewrite.destination, '/api/mcp?transport=mcp');
+    assert.equal(rewrite.destination, '/api/mcp');
   });
 });
 

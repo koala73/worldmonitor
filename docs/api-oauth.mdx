@@ -17,6 +17,7 @@ WorldMonitor runs a minimal OAuth 2.1 authorization server whose only client-fac
 |-----|---------|
 | `/.well-known/oauth-authorization-server` | AS metadata (endpoints, supported grants, PKCE methods) |
 | `/.well-known/oauth-authorization-server/mcp` | The same AS metadata, for clients that probe the path-scoped location |
+| `/.well-known/oauth-authorization-server/api/mcp` | The same, for clients that probe it under the deployed `/api/mcp` route |
 | `/.well-known/oauth-protected-resource` | Resource metadata for the origin (authorization servers, scopes) |
 | `/.well-known/oauth-protected-resource/mcp` | Resource metadata for the MCP endpoint, naming `https://<host>/mcp` as the `resource` ([RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1)) |
 | `/.well-known/oauth-protected-resource/api/mcp` | The same, for the deployed `/api/mcp` route, naming `https://<host>/api/mcp` |

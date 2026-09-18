@@ -17,6 +17,7 @@ WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向�
 |-----|---------|
 | `/.well-known/oauth-authorization-server` | AS 元数据(端点、支持的 grant、PKCE 方法) |
 | `/.well-known/oauth-authorization-server/mcp` | 同一份 AS 元数据,供探测路径限定位置的客户端使用 |
+| `/.well-known/oauth-authorization-server/api/mcp` | 同上,供在已部署的 `/api/mcp` 路由下探测的客户端使用 |
 | `/.well-known/oauth-protected-resource` | 源站范围的资源元数据(授权服务器、scope) |
 | `/.well-known/oauth-protected-resource/mcp` | MCP 端点的资源元数据,其 `resource` 为 `https://<host>/mcp`([RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1)) |
 | `/.well-known/oauth-protected-resource/api/mcp` | 同上,对应已部署的 `/api/mcp` 路由,其 `resource` 为 `https://<host>/api/mcp` |
