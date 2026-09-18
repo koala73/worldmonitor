@@ -994,7 +994,6 @@ const EXCLUDED_HOSTS = new Set([
   'customer.dodopayments.com',
   'worldmonitor.mintlify.dev',
   'discord.com',
-  'discord.gg',
   'slack.com',
   'workos.com',
   'twitter.com',

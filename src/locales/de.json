@@ -1295,9 +1295,6 @@
       "base": "Basis",
       "nuclear": "Nuklear"
     },
-    "community": {
-      "joinDiscussion": "Gestalten Sie mit, was als Nächstes kommt"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "HOCH",

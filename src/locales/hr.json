@@ -1327,9 +1327,6 @@
       "base": "Baza",
       "nuclear": "Nuklearna"
     },
-    "community": {
-      "joinDiscussion": "Pomozi oblikovati što dolazi"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "VISOKO",

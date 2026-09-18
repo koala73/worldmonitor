@@ -1175,9 +1175,6 @@
       "base": "군사 기지",
       "nuclear": "핵 시설"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "심각",
       "high": "높음",

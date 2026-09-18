@@ -1045,15 +1045,6 @@ small UI affordances.
 | **Exported** | `maybeShowDownloadBanner()` |
 | **Platform detection** | `macos-arm64`, `macos-x64`, `windows`, `linux` |
 
-### CommunityWidget
-
-| Field | Detail |
-|---|---|
-| **File** | `src/components/CommunityWidget.ts` |
-| **Purpose** | Small floating widget linking to GitHub Discussions. |
-| **Exported** | `mountCommunityWidget()` |
-| **Notes** | Dismissible via `localStorage`. |
-
 ### PizzIntIndicator
 
 | Field | Detail |
@@ -1135,7 +1126,6 @@ small UI affordances.
 | StoryModal | ✅ | ✅ | ✅ |
 | MobileWarningModal | ✅ | ✅ | ✅ |
 | DownloadBanner | ✅ | ✅ | ✅ |
-| CommunityWidget | ✅ | ✅ | ✅ |
 | PizzIntIndicator | ✅ | — | — |
 | IntelligenceFindingsBadge | ✅ | — | — |
 | VerificationChecklist | ✅ | ✅ | — |

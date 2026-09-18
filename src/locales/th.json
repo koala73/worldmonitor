@@ -1175,9 +1175,6 @@
       "base": "ฐานทัพ",
       "nuclear": "นิวเคลียร์"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "วิกฤต",
       "high": "สูง",

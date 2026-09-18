@@ -263,7 +263,6 @@
   "components.commodities.physical": "Physical",
   "components.commodities.physicalPremiums": "Physical premium",
   "components.commodities.premium": "Premium",
-  "components.community.joinDiscussion": "Help Shape What's Next",
   "components.conservationWins.infoTooltip": "<strong>Conservation Wins</strong> Positive conservation news: species population recoveries, habitat restoration milestones, and de-extinction efforts. Sourced from IUCN, WWF, and conservation research publications.",
   "components.consumerPrices.infoTooltip": "<strong>Consumer Prices</strong> Real-time basket price tracking:<ul><li><strong>Overview</strong>: Essentials index, value basket, and week-on-week change</li><li><strong>Categories</strong>: Per-category price trends with 30-day range</li><li><strong>Movers</strong>: Biggest rising and falling items this week</li><li><strong>Spread</strong>: Price variance across retailers for the same basket</li><li><strong>World</strong>: Official IMF annual inflation for every reporting economy</li></ul>Data sourced from live retailer price scraping and IMF WEO.",
   "components.consumerPrices.tabs.categories": "Categories",
