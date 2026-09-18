@@ -680,8 +680,10 @@ async function mcpHandlerInner(
   }
 
   // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
+  // Path-scoped (RFC 9728 §3.1): this transport is the `/mcp` resource, so the
+  // challenge names the document describing `/mcp`, not the origin-wide one.
   const requestHost = req.headers.get('host') ?? new URL(req.url).host;
-  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
+  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource/mcp`;
 
   if (req.method === 'HEAD') {
     // HEAD is GET without a response body. Preserve transport-shaped GET
