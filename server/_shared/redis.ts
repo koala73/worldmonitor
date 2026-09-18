@@ -899,6 +899,8 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
  *   `cachedFetchJson` and `cachedFetchJsonWithMeta`.
  */
 export interface CachedFetchOpts {
+  /** Serve cached data but do not start provider work when the cache cannot be read. */
+  skipFetchOnCacheError?: boolean;
   timeoutMs?: number;
   cacheFetcherErrors?: boolean;
   /**
@@ -932,6 +934,7 @@ export async function cachedFetchJson<T extends object>(
     ? undefined
     : {
         timeoutMs: opts.timeoutMs,
+        skipFetchOnCacheError: opts.skipFetchOnCacheError,
         cacheFetcherErrors: opts.cacheFetcherErrors,
         cacheUpstreamUnavailablePayloads: opts.cacheUpstreamUnavailablePayloads,
       };
@@ -1038,6 +1041,7 @@ async function cachedFetchJsonCore<T extends object>(
   const hadCacheReadError = cached.status === 'error';
   if (cached.status === 'error') {
     logCacheReadError(key, cached.error);
+    if (opts?.skipFetchOnCacheError) return { data: null, source: 'skipped', leader: false };
     if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache', leader: false };
   }
   if (hasLocalUnavailableBackoff(key)) {

@@ -15,7 +15,7 @@ import {
 import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { CHROME_UA } from '../../../_shared/constants';
 import { incrementProviderCounter } from './_counters';
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, readCachedJson, logCacheReadError } from '../../../_shared/redis';
 import { requirePremiumRpcAccess } from '../../../_shared/premium-check';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
@@ -414,26 +414,35 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
   const t0 = Date.now();
   let notamResult: LoadedNotamResult | null = null;
   let fromSeed = false;
+  let allowLiveFetch = true;
 
   try {
     // Two independent Redis reads — fetch them concurrently.
-    const [notamMeta, seedNotam] = await Promise.all([
-      getCachedJson('seed-meta:aviation:notam', true) as Promise<{ fetchedAt?: number } | null>,
-      getCachedJson(NOTAM_CACHE_KEY, true) as Promise<LoadedNotamResult | null>,
+    const [metaRead, seedRead] = await Promise.all([
+      readCachedJson('seed-meta:aviation:notam', true),
+      readCachedJson(NOTAM_CACHE_KEY, true),
     ]);
+    const notamMeta = metaRead.status === 'hit' ? metaRead.value as { fetchedAt?: number } : null;
+    const seedNotam = seedRead.status === 'hit' ? seedRead.value as LoadedNotamResult : null;
+    // An unreadable cache is not permission to spend provider quota. Retain
+    // any seed we could read, including last-good data with unavailable metadata.
+    if (metaRead.status === 'error') logCacheReadError('seed-meta:aviation:notam', metaRead.error);
+    if (seedRead.status === 'error') logCacheReadError(NOTAM_CACHE_KEY, seedRead.error);
+    allowLiveFetch = metaRead.status !== 'error' && seedRead.status !== 'error';
     const notamAge = notamMeta?.fetchedAt ? t0 - notamMeta.fetchedAt : Infinity;
-    if (seedNotam && (notamAge < SEED_FRESHNESS_MS || !process.env.SEED_FALLBACK_NOTAM)) {
+    if (seedNotam && (!allowLiveFetch || notamAge < SEED_FRESHNESS_MS || !process.env.SEED_FALLBACK_NOTAM)) {
       notamResult = seedNotam;
       fromSeed = true;
     }
   } catch (err) {
     console.warn(`[Aviation] NOTAM seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
     void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'seed-read' } });
+    allowLiveFetch = false;
   }
 
   if (!fromSeed && process.env.ICAO_API_KEY) {
     try {
-      notamResult = await cachedFetchJson<LoadedNotamResult>(
+      const cached = await cachedFetchJsonWithMeta<LoadedNotamResult>(
         NOTAM_CACHE_KEY, NOTAM_CACHE_TTL, async () => {
           const allAirports = MONITORED_AIRPORTS;
           const result = await fetchNotamClosures(allAirports);
@@ -442,8 +451,9 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
           const reasons: Record<string, string> = {};
           for (const [icao, reason] of result.notamsByIcao) reasons[icao] = reason;
           return { closedIcaos, restrictedIcaos, reasons };
-        }
+        }, 120, { skipFetchOnCacheError: true, shouldFetch: () => allowLiveFetch }
       );
+      notamResult = cached.data;
     } catch (err) {
       console.warn(`[Aviation] NOTAM fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
       void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'live-fetch' } });
