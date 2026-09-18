@@ -1251,6 +1251,11 @@ export async function getHashFieldsBatch(
     }
   } catch (err) {
     console.warn('[redis] getHashFieldsBatch failed:', errMsg(err));
+    if (
+      timeoutMs !== undefined
+      && err instanceof Error
+      && (err.name === 'TimeoutError' || err.name === 'AbortError')
+    ) throw err;
   }
   return result;
 }

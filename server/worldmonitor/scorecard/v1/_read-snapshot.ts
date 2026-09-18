@@ -82,6 +82,10 @@ function remainingReadBudget(deadlineAtMs: number): number {
   return Math.max(0, deadlineAtMs - Date.now());
 }
 
+function isReadDeadlineAbort(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
 export function createFiveFactorReadDeadline(): number {
   return Date.now() + SCORECARD_READ_DEADLINE_MS;
 }
@@ -107,6 +111,7 @@ async function readCanonicalFallback(deadlineAtMs: number): Promise<unknown> {
     // longer than the refresh window made a warm isolate serve nothing at all.
     const stale = serveStale(warm);
     if (stale) return stale;
+    if (isReadDeadlineAbort(error)) return null;
     throw error;
   }
   const validated = validateSnapshot(value);
@@ -166,7 +171,9 @@ export async function readFiveFactorSnapshot(
         if (!wholeCohortCorrupt && validateSnapshot(snapshot)) return snapshot;
       }
     }
-  } catch { /* fall through to the canonical last-good cohort */ }
+  } catch (error) {
+    if (isReadDeadlineAbort(error)) return serveStale(canonicalLastGood);
+  }
   return readCanonicalFallback(deadlineAtMs);
 }
 

@@ -3063,7 +3063,11 @@ export class PanelLayoutManager implements AppModule {
         'events',
         () => import('@/components/TechEventsPanel'),
         'TechEventsPanel',
-        (TechEventsPanel) => new TechEventsPanel('events', () => this.ctx.allNews),
+        (TechEventsPanel) => {
+          const panel = new TechEventsPanel('events', () => this.ctx.allNews);
+          panel.onLocationRequest = (lat, lon) => this.ctx.map?.setCenter(lat, lon, 10);
+          return panel;
+        },
       ),
     );
     this.lazyDefaultPanel('internet-disruptions', () => import('@/components/InternetDisruptionsPanel'), 'InternetDisruptionsPanel');

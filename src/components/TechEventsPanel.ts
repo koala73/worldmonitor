@@ -16,6 +16,7 @@ type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 const getResearchClient = createLazyClient(() => new ResearchServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class TechEventsPanel extends Panel {
+  public onLocationRequest?: (lat: number, lon: number) => void;
   private viewMode: ViewMode = 'upcoming';
   private events: TechEvent[] = [];
   private loading = true;
@@ -230,20 +231,13 @@ export class TechEventsPanel extends Panel {
               title: t('components.techEvents.showOnMap'),
               onClick: (e: Event) => {
                 e.preventDefault();
-                this.panToLocation(event.coords!.lat, event.coords!.lng);
+                this.onLocationRequest?.(event.coords!.lat, event.coords!.lng);
               },
             }, '📍')
             : false,
         ),
       ),
     );
-  }
-
-  private panToLocation(lat: number, lng: number): void {
-    // Dispatch event for map to handle
-    window.dispatchEvent(new CustomEvent('tech-event-location', {
-      detail: { lat, lng, zoom: 10 }
-    }));
   }
 
   public refresh(): void {

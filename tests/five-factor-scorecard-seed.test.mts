@@ -573,6 +573,40 @@ describe('five-factor atomic snapshot', () => {
     }
   });
 
+  it('does not start a full canonical fallback when the read-model abort leaves leftover budget', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    let requestCount = 0;
+    try {
+      __resetFiveFactorSnapshotCacheForTests();
+      process.env.UPSTASH_REDIS_REST_URL = 'https://scorecard-test-upstash.invalid';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      globalThis.fetch = async (_input, init = {}) => {
+        requestCount += 1;
+        if (requestCount === 1) {
+          return Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init.signal;
+          if (!signal) return reject(new Error('missing Redis deadline signal'));
+          const abort = () => reject(signal.reason);
+          if (signal.aborted) abort();
+          else signal.addEventListener('abort', abort, { once: true });
+        });
+      };
+      assert.equal(await readFiveFactorSnapshot(['AA'], Date.now() + 40), null);
+      assert.equal(requestCount, 1, 'a timed-out read-model attempt must not start the canonical fallback');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+      __resetFiveFactorSnapshotCacheForTests();
+    }
+  });
+
   it('scopes one corrupt country hash to that country instead of discarding the cohort', async () => {
     const snapshot = buildFiveFactorSnapshot(['AA', 'AB'], sources, '2026-08-29T00:00:00.000Z');
     const readModel = buildFiveFactorReadModel(snapshot);
