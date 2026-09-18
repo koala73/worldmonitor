@@ -119,6 +119,7 @@ function emptyFallback(): CachedTheaterPosture {
 
 const LS_KEY = 'wm:theater-posture';
 const LS_MAX_STALENESS_MS = 24 * 60 * 60 * 1000; // 24h — match IndexedDB ceiling
+const BREAKER_TTL_MS = 15 * 60 * 1000;
 
 function createAbortError(): DOMException {
   return new DOMException('The operation was aborted.', 'AbortError');
@@ -161,7 +162,7 @@ function loadFromStorage(): CachedTheaterPosture | null {
       localStorage.removeItem(LS_KEY);
       return null;
     }
-    return data;
+    return { ...data, stale: Date.now() - savedAt >= BREAKER_TTL_MS };
   } catch { return null; }
 }
 
@@ -175,7 +176,7 @@ function saveToStorage(data: CachedTheaterPosture): void {
 const stored = loadFromStorage();
 if (stored) breaker.recordSuccess(stored);
 
-export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<CachedTheaterPosture | null> {
+export async function fetchCachedTheaterPosture(signal?: AbortSignal, forceRefresh = false): Promise<CachedTheaterPosture | null> {
   if (signal?.aborted) throw createAbortError();
 
   // Layer 1: Bootstrap hydration (one-time, only when breaker has no cached data)
@@ -196,7 +197,7 @@ export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<C
       const data = toPostureData(resp);
       saveToStorage(data);
       return data;
-    }, emptyFallback(), { shouldCache: (r) => r.postures.length > 0 }),
+    }, emptyFallback(), { shouldCache: (r) => r.postures.length > 0, forceRefresh, staleRefreshMode: forceRefresh ? 'await' : 'background' }),
     signal,
   );
 
@@ -204,7 +205,13 @@ export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<C
     return null;
   }
 
-  return result;
+  const dataState = breaker.getDataState();
+  return {
+    ...result,
+    stale: result.stale || (dataState.mode === 'cached'
+      && dataState.timestamp !== null
+      && Date.now() - dataState.timestamp >= BREAKER_TTL_MS),
+  };
 }
 
 export function getCachedPosture(): CachedTheaterPosture | null {

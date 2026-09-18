@@ -123,7 +123,7 @@ export class StrategicPosturePanel extends Panel {
     });
   }
 
-  private async fetchAndRender(): Promise<void> {
+  private async fetchAndRender(forceRefresh = false): Promise<void> {
     // A deferred panel runs its constructor BEFORE panel-layout inserts the
     // element into the grid, and `init()` starts this fetch from that
     // constructor. Bootstrap hydration and the posture circuit breaker both
@@ -133,7 +133,7 @@ export class StrategicPosturePanel extends Panel {
     // Theaters" until the 15-minute scheduled refresh. Wait for the mount
     // instead (same idiom as LatestBriefPanel / McpDataPanel).
     if (!this.element?.isConnected) {
-      this.runWhenConnected(() => { void this.fetchAndRender(); });
+      this.runWhenConnected(() => { void this.fetchAndRender(forceRefresh); });
       return;
     }
     if (!this.isPanelVisible()) return;
@@ -141,7 +141,7 @@ export class StrategicPosturePanel extends Panel {
     try {
       // Fetch aircraft data from server
       this.showLoadingStage('aircraft');
-      const data = await fetchCachedTheaterPosture(this.signal);
+      const data = await fetchCachedTheaterPosture(this.signal, forceRefresh);
       if (!this.element?.isConnected) return;
       if (!data || !data.postures?.length) {
         this.showNoData();
@@ -165,10 +165,12 @@ export class StrategicPosturePanel extends Panel {
       this.updateBadges();
       this.render();
 
-      // If we rendered stale localStorage data, re-fetch fresh after a short delay
-      if (this.isStale) {
+      // Make one recovery attempt for retained data. A non-cacheable response
+      // can preserve the stale breaker entry, so rescheduling forced attempts
+      // here would otherwise poll an unavailable source indefinitely.
+      if (this.isStale && !forceRefresh) {
         setTimeout(() => {
-          void this.fetchAndRender();
+          void this.fetchAndRender(true);
         }, 3000);
       }
     } catch (error) {
