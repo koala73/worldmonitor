@@ -524,7 +524,7 @@ test('canonical publication strips NHC recovery state and diagnostics', () => {
 });
 
 async function seedProcess(initial, now, {
-  failStateWrite = false, eonetEmpty = false, eonetFails = false,
+  failStateWrite = false, eonetEmpty = false, eonetFails = false, eonetTransient = false,
   gdacsFails = [], gdacsFeatures = {}, nhcHealthy = false, failSourceStateWrite = false,
 } = {}) {
   Date.now = () => now;
@@ -556,6 +556,7 @@ async function seedProcess(initial, now, {
     }
     if (url.hostname === 'eonet.gsfc.nasa.gov') {
       calls.eonet += 1;
+      if (eonetTransient && calls.eonet === 1) throw new TypeError('fetch failed');
       if (eonetFails) return new Response('', { status: 503 });
       return Response.json({ events: eonetEmpty ? [] : [{
         id: 'eonet-volcano-process', title: 'Volcano process fixture', description: '',
@@ -715,7 +716,19 @@ test('real seeder retains failed EONET/GDACS sources and writes their honest suc
   assert.equal(meta.sourceHealth.eonet.lastSuccessAt, NOW);
   assert.equal(meta.sourceHealth.eonet.status, 'retained');
   assert.equal(meta.sourceHealth['gdacs:FL'].lastSuccessAt, NOW);
-  assert.deepEqual(second.calls, { eonet: 1, gdacs: 6, nhc: 15, hko: 1 });
+  assert.deepEqual(second.calls, { eonet: 2, gdacs: 7, nhc: 15, hko: 1 });
+
+  const recovered = runSeedFixture(second.store, NOW + 120 * MIN, { nhcHealthy: true, eonetTransient: true });
+  assert.equal(recovered.status, 0, recovered.output);
+  const recoveredStore = new Map(recovered.store);
+  const recoveredEnvelope = JSON.parse(recoveredStore.get('natural:events:v1'));
+  const recoveredMeta = JSON.parse(recoveredStore.get('seed-meta:natural:events'));
+  assert.deepEqual(recoveredEnvelope.data.events.map(event => event.id), ['eonet-volcano-process']);
+  assert.equal(recoveredEnvelope.data.fetchedAt, NOW + 120 * MIN);
+  assert.equal(recoveredMeta.sourceHealth.eonet.lastSuccessAt, NOW + 120 * MIN);
+  assert.equal(recoveredMeta.sourceState, 'ok');
+  assert.deepEqual(recoveredMeta.failedSources, []);
+  assert.deepEqual(recovered.calls, { eonet: 2, gdacs: 6, nhc: 15, hko: 1 });
 
   const failed = runSeedFixture(first.store, NOW + 60 * MIN, { nhcHealthy: true, failSourceStateWrite: true });
   assert.notEqual(failed.status, 0, failed.output);
