@@ -9,6 +9,7 @@ import type {
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { isSupportedNewsLanguage } from '../../../../src/shared/public-rpc-cache';
 import {
   cachedFetchJsonWithMeta,
   getCachedJson,
@@ -1887,8 +1888,8 @@ export async function listFeedDigest(
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
   const lang = req.lang === undefined || req.lang === '' ? 'en' : req.lang;
-  if (typeof lang !== 'string' || lang.length !== 2 || !/^[a-z]{2}$/.test(lang)) {
-    throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
+  if (typeof lang !== 'string' || !isSupportedNewsLanguage(lang)) {
+    throw new ValidationError([{ field: 'lang', description: 'must be a supported lowercase two-letter language code' }]);
   }
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;

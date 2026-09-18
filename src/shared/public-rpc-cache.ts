@@ -20,6 +20,10 @@ const NEWS_LANGUAGES = new Set([
   'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
   'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
 ]);
+
+export function isSupportedNewsLanguage(lang: string): boolean {
+  return NEWS_LANGUAGES.has(lang);
+}
 const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
 // Exact raw-query contract (no leading `?`): exactly one public displacement shape,
 // so the CDN key space stays at one entry. Compared against the raw search string —
@@ -82,7 +86,7 @@ function isNewsDigestShape(params: URLSearchParams): boolean {
     && hasSingleValue(params, 'variant')
     && hasSingleValue(params, 'lang')
     && NEWS_VARIANTS.has(params.get('variant') ?? '')
-    && NEWS_LANGUAGES.has(params.get('lang') ?? '');
+    && isSupportedNewsLanguage(params.get('lang') ?? '');
 }
 
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {

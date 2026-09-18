@@ -307,13 +307,13 @@ describe('durable last-good wiring (#7084)', () => {
     ...(coverage === undefined ? {} : { coverage }),
   });
 
-  it('rejects malformed language scopes before any cache or feed work', async () => {
-    for (const lang of ['english', 'en-US', 'EN', 'en\n', ' en', 'a', 'a'.repeat(10_000), '../en', 'en:other', 1, null, {}, false]) {
+  it('rejects malformed and unsupported language scopes before any cache or feed work', async () => {
+    for (const lang of ['zz', 'xx', 'aa', 'english', 'en-US', 'EN', 'en\n', ' en', 'a', 'a'.repeat(10_000), '../en', 'en:other', 1, null, {}, false]) {
       reset();
       stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
       await assert.rejects(mod.listFeedDigest(ctx(), { variant: 'full', lang }), {
         name: 'ValidationError',
-        violations: [{ field: 'lang', description: 'must be a lowercase two-letter language code' }],
+        violations: [{ field: 'lang', description: 'must be a supported lowercase two-letter language code' }],
       });
       assert.deepEqual(stub.fetchKeys, []);
       assert.deepEqual(stub.readCalls, []);
@@ -331,14 +331,14 @@ describe('durable last-good wiring (#7084)', () => {
     assert.ok(route);
     const response = await route.handler(new Request('https://x.test/api/news/v1/list-feed-digest?lang=english'), {});
     assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), { violations: [{ field: 'lang', description: 'must be a lowercase two-letter language code' }] });
+    assert.deepEqual(await response.json(), { violations: [{ field: 'lang', description: 'must be a supported lowercase two-letter language code' }] });
     assert.deepEqual(stub.fetchKeys, []);
     assert.deepEqual(stub.pipelineCalls, []);
     assert.deepEqual(stub.writes, []);
   });
 
-  it('preserves default English and two-letter language cache scopes', async () => {
-    for (const lang of [undefined, '', 'en', 'ar', 'fr', 'zh', 'ja', 'sw', 'xx']) {
+  it('preserves default English and supported language cache scopes', async () => {
+    for (const lang of [undefined, '', 'en', 'ar', 'fr', 'zh', 'ja', 'sw', 'uk']) {
       reset();
       const data = body(['https://a/1'], COVERAGE);
       stub.fetchMeta = { data, source: 'cache', leader: false };

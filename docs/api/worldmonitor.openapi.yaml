@@ -24110,7 +24110,9 @@ paths:
                     type: string
                 - name: lang
                   in: query
-                  description: ISO 639-1 language code (en, fr, ar, etc.)
+                  description: |-
+                    Supported lowercase language code: en, bg, cs, fr, de, el, es, hr, hu, it, pl, pt, nl, sv, sw, ru, uk, ar, fa, zh, ja, ko, ro, tr, th, vi, hi.
+                     Omitted or empty values default to en. Other values return HTTP 400 before digest cache access or build work.
                   required: false
                   example: "en"
                   schema:
@@ -50820,7 +50822,9 @@ components:
                     description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                 lang:
                     type: string
-                    description: ISO 639-1 language code (en, fr, ar, etc.)
+                    description: |-
+                        Supported lowercase language code: en, bg, cs, fr, de, el, es, hr, hu, it, pl, pt, nl, sv, sw, ru, uk, ar, fa, zh, ja, ko, ro, tr, th, vi, hi.
+                         Omitted or empty values default to en. Other values return HTTP 400 before digest cache access or build work.
         worldmonitor_news_v1_ListFeedDigestResponse:
             type: object
             properties:
