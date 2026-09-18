@@ -8,19 +8,38 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const mapSrc = readFileSync(resolve(root, 'src/components/Map.ts'), 'utf-8');
 const cssSrc = readFileSync(resolve(root, 'src/styles/main.css'), 'utf-8');
+const containerSrc = readFileSync(resolve(root, 'src/components/MapContainer.ts'), 'utf-8');
+const capsSrc = readFileSync(resolve(root, 'src/utils/mobile-feature-caps.ts'), 'utf-8');
+
+function sliceBetweenIn(src, start, end) {
+  const startIdx = src.indexOf(start);
+  assert.ok(startIdx >= 0, `missing start marker: ${start}`);
+  const endIdx = src.indexOf(end, startIdx + start.length);
+  assert.ok(endIdx > startIdx, `missing end marker after ${start}: ${end}`);
+  return src.slice(startIdx, endIdx);
+}
 
 function sliceBetween(start, end) {
-  const startIdx = mapSrc.indexOf(start);
-  const endIdx = mapSrc.indexOf(end, startIdx + start.length);
-  assert.ok(startIdx >= 0, `missing start marker: ${start}`);
-  assert.ok(endIdx > startIdx, `missing end marker after ${start}: ${end}`);
-  return mapSrc.slice(startIdx, endIdx);
+  return sliceBetweenIn(mapSrc, start, end);
 }
 
 describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () => {
-  it('declares the signed-off mobile caps as named constants', () => {
-    assert.match(mapSrc, /private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5/);
-    assert.match(mapSrc, /private static readonly MOBILE_MAX_IRAN_EVENTS = 50/);
+  it('declares the signed-off mobile caps as named constants, in one shared home', () => {
+    // #4545: these were `private static readonly` on MapComponent, which is why
+    // only the SVG renderer enforced them. The behaviour of the predicates is
+    // covered executably in tests/mobile-feature-caps.test.mts.
+    assert.match(capsSrc, /export const MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;/);
+    assert.match(capsSrc, /export const MOBILE_MAX_IRAN_EVENTS = 50;/);
+    assert.doesNotMatch(
+      mapSrc,
+      /private static readonly MOBILE_(MIN_EARTHQUAKE_MAGNITUDE|MAX_IRAN_EVENTS)/,
+      'a renderer-private copy of a cap is how #4545 happened; keep the thresholds shared',
+    );
+    assert.match(
+      mapSrc,
+      /import \{ capEarthquakesForMobile, capIranEventsForMobile \} from '@\/utils\/mobile-feature-caps';/,
+      'the SVG renderer must consume the shared predicates',
+    );
   });
 
   it('applies the mobile M5.0 earthquake cutoff after the time-range filter and before marker DOM creation', () => {
@@ -30,7 +49,7 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
 
     const timeFilterIdx = slices.indexOf('const filteredQuakes = withinTimeRange(activeQuakes);');
-    const mobileFilterIdx = slices.indexOf('quakes: this.isMobile');
+    const mobileFilterIdx = slices.indexOf('quakes: capEarthquakesForMobile(');
 
     assert.match(
       slices,
@@ -41,10 +60,9 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     assert.ok(mobileFilterIdx > timeFilterIdx, 'mobile cutoff should run after the time-range filter');
     assert.match(
       slices,
-      /filteredQuakes\.filter\(\(eq\) => eq\.magnitude >= MapComponent\.MOBILE_MIN_EARTHQUAKE_MAGNITUDE\)/,
-      'mobile path must filter earthquakes at the named M5.0 threshold',
+      /quakes: capEarthquakesForMobile\(filteredQuakes, this\.isMobile\),/,
+      'mobile path must filter earthquakes through the shared M5.0 predicate',
     );
-    assert.match(slices, /: filteredQuakes,/, 'desktop path must keep the full time-range-filtered list');
 
     // The slice is computed once, before any marker is built, and both the
     // budget plan and the render loop read that same slice — planning on the
@@ -79,8 +97,8 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     const slices = sliceBetween('private overlayFeedSlices(): {', 'private planOverlayMarkerBudget(');
     assert.match(
       slices,
-      /iranEvents: this\.isMobile\s*\?\s*activeIranEvents\.slice\(0, MapComponent\.MOBILE_MAX_IRAN_EVENTS\)\s*:\s*activeIranEvents,/,
-      'mobile path must cap Iran events at the named 50-event threshold and desktop must keep the full list',
+      /iranEvents: capIranEventsForMobile\(activeIranEvents, this\.isMobile\),/,
+      'mobile path must cap Iran events through the shared 50-event predicate',
     );
 
     const block = sliceBetween('// Iran events (severity-colored circles matching DeckGL layer)', '// Hotspots');
@@ -96,6 +114,70 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
       /add\('iranAttacks', slices\.iranEvents\);/,
       'the budget must plan on the same Iran slice the loop draws',
     );
+  });
+
+  it('caps the feeds MapContainer dispatches to the renderers that have no cap of their own (#4545)', () => {
+    // MapContainer.useGlobe carries no isMobile term — neither the persisted
+    // preference in the constructor nor switchToGlobe() — so a phone reaches
+    // GlobeMap, which maps whole arrays. Without a cap here, mobile 3D rendered
+    // up to GLOBE_MARKER_BUDGET_MOBILE.perLayer (150) of exactly the markers
+    // these caps exist to remove.
+    assert.match(
+      containerSrc,
+      /import \{ capEarthquakesForMobile, capIranEventsForMobile \} from '@\/utils\/mobile-feature-caps';/,
+    );
+    assert.doesNotMatch(
+      containerSrc,
+      /this\.useGlobe = [^;]*isMobile/,
+      'globe selection is deliberately independent of isMobile; the cap, not the renderer choice, is the fix',
+    );
+
+    const quakeSetter = sliceBetweenIn(
+      containerSrc,
+      'public setEarthquakes(earthquakes: Earthquake[]): void {',
+      'public setImageryScenes(',
+    );
+    const capIdx = quakeSetter.indexOf('capEarthquakesForMobile(earthquakes, this.isMobile)');
+    const globeIdx = quakeSetter.indexOf('this.globeMap?.setEarthquakes(capped)');
+    const deckIdx = quakeSetter.indexOf('this.deckGLMap?.setEarthquakes(capped)');
+    assert.ok(capIdx >= 0, 'the earthquake setter must apply the shared cap');
+    assert.ok(globeIdx > capIdx, 'the globe branch must dispatch the capped feed');
+    assert.ok(deckIdx > capIdx, 'the deck branch must dispatch the capped feed');
+    assert.match(
+      quakeSetter,
+      /this\.cachedEarthquakes = earthquakes;/,
+      'the replay cache must hold the raw feed, since a 2D⇄3D switch re-enters this setter',
+    );
+    assert.match(
+      quakeSetter,
+      /this\.svgMap\?\.setEarthquakes\(earthquakes\)/,
+      'SVG caps at render time and drops empty payloads, so pre-capping it would pin stale markers',
+    );
+
+    const iranSetter = sliceBetweenIn(
+      containerSrc,
+      'public setIranEvents(events: IranEvent[]): void {',
+      'public setNewsLocations(',
+    );
+    const iranCapIdx = iranSetter.indexOf('capIranEventsForMobile(events, this.isMobile)');
+    const iranGlobeIdx = iranSetter.indexOf('this.globeMap?.setIranEvents(capped)');
+    const iranDeckIdx = iranSetter.indexOf('this.deckGLMap?.setIranEvents(capped)');
+    assert.ok(iranCapIdx >= 0, 'the Iran setter must apply the shared cap');
+    assert.ok(iranGlobeIdx > iranCapIdx, 'the globe branch must dispatch the capped feed');
+    assert.ok(iranDeckIdx > iranCapIdx, 'the deck branch must dispatch the capped feed');
+    assert.match(
+      iranSetter,
+      /this\.cachedIranEvents = events;/,
+      'the replay cache must hold the raw feed',
+    );
+    assert.match(iranSetter, /this\.svgMap\?\.setIranEvents\(events\)/);
+  });
+
+  it('no longer claims mobile always uses the SVG renderer', () => {
+    // globe-marker-budget.ts asserted this as the justification for its mobile
+    // ceiling; the false premise is the documentation half of #4545.
+    const budgetSrc = readFileSync(resolve(root, 'src/utils/globe-marker-budget.ts'), 'utf-8');
+    assert.doesNotMatch(budgetSrc, /Mobile always uses the SVG renderer/);
   });
 
   it('keeps label overlap measurement disabled on mobile until movement or zoom needs it', () => {
