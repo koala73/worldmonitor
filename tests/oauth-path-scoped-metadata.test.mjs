@@ -60,6 +60,25 @@ describe('protected-resource metadata — path-scoped /mcp document', () => {
     assert.equal(res.status, 404);
   });
 
+  // Production rewrites suffixes to /api/oauth-protected-resource?resource=...,
+  // which drops the well-known pathname. An unknown query must still 404 rather
+  // than fall through to the origin-wide document.
+  it('a rewritten unknown resource query is 404, not the origin-wide document', async () => {
+    const res = await get(prmHandler, 'worldmonitor.app', '/api/oauth-protected-resource?resource=not-a-resource');
+    assert.equal(res.status, 404);
+    assert.equal((await res.json()).error, 'not_found');
+  });
+
+  it('a rewritten known resource query still serves that document', async () => {
+    const json = await (await get(prmHandler, 'worldmonitor.app', '/api/oauth-protected-resource?resource=mcp')).json();
+    assert.equal(json.resource, 'https://worldmonitor.app/mcp');
+  });
+
+  it('the rewritten origin-wide path without a resource query still describes the origin', async () => {
+    const json = await (await get(prmHandler, 'worldmonitor.app', '/api/oauth-protected-resource')).json();
+    assert.equal(json.resource, 'https://worldmonitor.app');
+  });
+
   // `/api/mcp` is the deployed route (api/mcp.ts) and the URL
   // docs/usage-quickstart.mdx publishes. The MCP SDK accepts a resource only
   // when the requested path starts with the advertised one, so a client on

@@ -40,7 +40,11 @@ const RESOURCE_PATHS = new Set(['mcp', 'api/mcp']);
 function resolveResourcePath(req: Request): string | null {
   const url = new URL(req.url);
   const flag = url.searchParams.get('resource');
-  if (flag && RESOURCE_PATHS.has(flag)) return `/${flag}`;
+  // A present query is the production rewrite path. Unknown values must 404
+  // rather than fall through: after rewrite the pathname is the handler, so
+  // treating a missing suffix as origin-wide would publish the root document
+  // for `/.well-known/oauth-protected-resource/not-a-resource`.
+  if (flag !== null) return RESOURCE_PATHS.has(flag) ? `/${flag}` : null;
   // Only a suffix under the well-known URI names a specific resource. Anything
   // else — including the rewrite destination path — is the origin-wide document.
   const suffix = url.pathname.replace(/\/+$/, '').match(/\/oauth-protected-resource\/(.+)$/)?.[1];
