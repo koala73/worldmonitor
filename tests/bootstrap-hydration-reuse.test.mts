@@ -997,7 +997,7 @@ describe('bootstrap hydration reuse (#7048)', () => {
       ['src/services/conflict/index.ts', /iranBreaker\.recordSuccess\(hydrated\)/],
       ['src/services/pizzint.ts', /pizzintBreaker\.recordSuccess\(status\)/],
       ['src/services/thermal-escalation.ts', /breaker\.recordSuccess\(watch, cacheKey\)/],
-      ['src/services/unrest/index.ts', /unrestBreaker\.recordSuccess\(hydrated\)/],
+      ['src/services/unrest/index.ts', /unrestBreaker\.recordSuccess\(hydrated,\s*'available-v1'\)/],
       ['src/services/economic/index.ts', /bisPolicyBreaker\.recordSuccess\(hPolicy\)/],
       ['src/services/consumer-prices/index.ts', /overviewBreaker\.recordSuccess\(hydrated,/],
     ];
