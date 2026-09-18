@@ -41,7 +41,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 - **JSON-RPC `error.code`** is the application-layer answer. Nine codes are in use: `-32001`, `-32002`, `-32003`, `-32004`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. The handler never emits another code — if you see one, treat it as a wire bug and file an issue.
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
 - **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
-- **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
+- **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at the protected-resource document for the route you called: `/.well-known/oauth-protected-resource/mcp` for `/mcp`, `/.well-known/oauth-protected-resource/api/mcp` for `/api/mcp`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
 
 ## JSON-RPC error codes
 
@@ -91,7 +91,7 @@ Example wire payload (case 1):
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource/mcp"
 Content-Type: application/json
 ```
 

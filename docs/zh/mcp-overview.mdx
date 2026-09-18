@@ -456,7 +456,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 资源 URI | 支撑数据 |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | 仅股票市场数据 bootstrap 的写入年龄：`seed-meta:market:stocks` 的 `cached_at` 与 `stale`。**不**证明板块估值完整度 —— 请用 `get_market_data` 的 `valuationCoverage`（`sourceStatus`、unavailable/last-good/diagnostics）。廉价 seeder 健康探针 —— 无需认证，不计配额。 |
-| `worldmonitor://account/mcp-allowance` | 当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。 |
+
+已认证的 `resources/list` 还会额外公开 `worldmonitor://account/mcp-allowance`：当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。
 
 `resources/templates/list` —— 参数化的 URI 模板。替换占位符，然后 `resources/read` 具体的 URI。客户端必须读取模板的 `_meta["worldmonitor/access"]`：`free-account` 模板允许已认证免费账户使用免费额度，`subscription` 模板需要有效订阅。计量方式与等价的 `tools/call` 对称：
 
