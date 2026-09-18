@@ -60,6 +60,21 @@ function isDegenerateBbox(req: TrackAircraftRequest): boolean {
     return req.swLat === req.neLat && req.swLon === req.neLon;
 }
 
+function assertAdmissibleBbox(req: TrackAircraftRequest): void {
+    if (![req.swLat, req.swLon, req.neLat, req.neLon].every(Number.isFinite)) {
+        throw new ApiError(400, 'Aircraft viewport coordinates must be finite', '');
+    }
+    // Match the Wingbits relay's clamp/sort policy, including MapLibre's
+    // unwrapped longitudes. Admission must precede both provider paths.
+    const clampLat = (value: number) => Math.max(-90, Math.min(90, value));
+    const clampLon = (value: number) => Math.max(-180, Math.min(180, value));
+    const latTiles = Math.max(1, Math.ceil(Math.abs(clampLat(req.neLat) - clampLat(req.swLat)) / 30));
+    const lonTiles = Math.max(1, Math.ceil(Math.abs(clampLon(req.neLon) - clampLon(req.swLon)) / 30));
+    if (latTiles * lonTiles > 36) {
+        throw new ApiError(422, 'Aircraft viewport requires more than 36 areas', '');
+    }
+}
+
 interface OpenSkyResponse {
     states?: unknown[][];
 }
@@ -121,6 +136,7 @@ export async function trackAircraft(
     if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ApiError(400, 'Expected a six-character hexadecimal ICAO address', '');
     if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ApiError(400, 'Expected an alphanumeric callsign of at most eight characters', '');
     req = { ...req, icao24, callsign };
+    assertAdmissibleBbox(req);
     if (icao24 || callsign) await admitIdentifierLookup(ctx.request);
 
     const redistributableOnly = requiresRedistributableProviders(ctx.request);
@@ -176,6 +192,9 @@ export async function trackAircraft(
                             const wbData = await wbResp.json() as WingbitsRelayResponse;
                             return { positions: wbData.positions ?? [], source: 'wingbits' };
                         }
+                        // Invalid/admission/auth requests are not provider outages.
+                        if (wbResp.status >= 400 && wbResp.status < 500
+                            && wbResp.status !== 408 && wbResp.status !== 429) return null;
                     } catch (err) {
                         // sentry-coverage-ok: provider failure is expected here and the bounded OpenSky fallback owns recovery.
                         console.warn(`[Aviation] Wingbits bbox relay failed: ${err instanceof Error ? err.message : err}`);

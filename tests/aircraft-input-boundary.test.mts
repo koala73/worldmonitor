@@ -318,3 +318,41 @@ test('native HTTP identifier admission preserves real auth, data, cache and wind
     await app.close();
   }
 });
+
+for (const status of [400, 401, 403, 404, 422]) test(`Wingbits bbox ${status} does not authorize OpenSky`, async () => {
+  wingbitsStatus = status;
+  const result = await read({ swLat: 24, swLon: 54, neLat: 26, neLon: 56 });
+  assert.equal(result.source, 'none');
+  assert.deepEqual(providers().map(url => url.pathname), ['/wingbits/track']);
+});
+test('oversized bbox fails before cache/provider work', async () => {
+  for (const options of [
+    { swLat: -90, swLon: -180, neLat: 90, neLon: 180 },
+    { swLat: NaN, swLon: 0, neLat: 1, neLon: 1 },
+    { swLat: 0, swLon: Infinity, neLat: 1, neLon: 1 },
+  ]) {
+    await assert.rejects(read(options), (error: unknown) => error instanceof ApiError && [400, 422].includes(error.statusCode));
+    assert.equal(calls.length, 0);
+  }
+});
+for (const [name, bbox] of [
+  ['exactly 36 areas', { swLat: -45, swLon: -180, neLat: 45, neLon: 180 }],
+  ['wrapped longitude', { swLat: 10, swLon: 170, neLat: 20, neLon: -170 }],
+  ['MapLibre unwrapped longitude', { swLat: 10, swLon: 170, neLat: 20, neLon: 190 }],
+  ['projection latitude overshoot', { swLat: 85, swLon: 10, neLat: 91, neLon: 20 }],
+] as const) test(`${name} retains current Wingbits map semantics`, async () => {
+  assert.equal((await read(bbox)).source, 'wingbits');
+  assert.equal(providers().length, 1);
+});
+
+test('gateway rejects a viewport just above the relay area limit without provider work', async () => {
+  const response = await gateway(request({ sw_lat: '-45', sw_lon: '-180', ne_lat: '45.01', ne_lon: '180' }));
+  assert.equal(response.status, 422);
+  assert.equal(providers().length, 0);
+  assert.ok(![...redis.redis.keys()].some(key => key.startsWith('aviation:track:')));
+});
+for (const status of [408, 429, 503]) test(`Wingbits ${status} outage retains display fallback`, async () => {
+  wingbitsStatus = status;
+  assert.equal((await read({ swLat: 24, swLon: 54, neLat: 26, neLon: 56 })).source, 'opensky');
+  assert.deepEqual(providers().map(url => url.pathname), ['/wingbits/track', '/opensky/states/all']);
+});
