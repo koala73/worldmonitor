@@ -92,6 +92,11 @@ export class ETFFlowsPanel extends Panel {
 
     const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
     const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral';
+    const netFlowLabel = s.netDirection.includes('INFLOW')
+      ? t('components.etfFlows.netInflow')
+      : s.netDirection.includes('OUTFLOW')
+        ? t('components.etfFlows.netOutflow')
+        : t('components.etfFlows.netFlow');
 
     const rows = d.etfs.map(etf => `
       <tr class="etf-row ${flowClass(etf.direction)}">
@@ -108,7 +113,7 @@ export class ETFFlowsPanel extends Panel {
         <div class="etf-summary ${dirClass}">
           <div class="etf-summary-item">
             <span class="etf-summary-label">${t('components.etfFlows.netFlow')}</span>
-            <span class="etf-summary-value ${dirClass}">${s.netDirection.includes('INFLOW') ? t('components.etfFlows.netInflow') : t('components.etfFlows.netOutflow')}</span>
+            <span class="etf-summary-value ${dirClass}">${netFlowLabel}</span>
           </div>
           <div class="etf-summary-item">
             <span class="etf-summary-label">${t('components.etfFlows.estFlow')}</span>
