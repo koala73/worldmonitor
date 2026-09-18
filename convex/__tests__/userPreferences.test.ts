@@ -528,3 +528,54 @@ describe("userPreferences.pruneStaleWriteRateLimits", () => {
     ).resolves.toMatchObject({ deleted: 1, rescheduled: false });
   });
 });
+
+describe("preference variant boundary", () => {
+  const variants = ["full", "tech", "finance", "happy", "commodity", "energy"];
+
+  test("round-trips all supported variants without crossing users or creating duplicate rows", async () => {
+    const t = makeT();
+    const a = t.withIdentity(USER_A);
+    const b = t.withIdentity(USER_B);
+    for (const variant of variants) {
+      const data = { theme: variant };
+      expect(await a.mutation(api.userPreferences.setPreferences, {
+        variant, data, expectedSyncVersion: 0,
+      })).toEqual({ ok: true, syncVersion: 1 });
+      expect(await a.mutation(api.userPreferences.setPreferences, {
+        variant, data, expectedSyncVersion: 1,
+      })).toEqual({ ok: true, syncVersion: 2 });
+      expect(await a.query(api.userPreferences.getPreferences, { variant })).toMatchObject({ data, syncVersion: 2 });
+      expect(await b.query(api.userPreferences.getPreferences, { variant })).toBeNull();
+      expect(await t.query(internal.userPreferences.getPreferencesByUserId, { userId: USER_A.subject, variant }))
+        .toMatchObject({ data, syncVersion: 2 });
+    }
+    expect(await t.run(ctx => ctx.db.query("userPreferences").collect())).toHaveLength(6);
+  });
+
+  test.each(["", "FULL", " full", "full ", "unknown", "__proto__", "x".repeat(1024)])(
+    "rejects unsupported variants at every entry point (%s)", async variant => {
+      const t = makeT();
+      const a = t.withIdentity(USER_A);
+      await expect(a.mutation(api.userPreferences.setPreferences, {
+        variant, data: {}, expectedSyncVersion: 0,
+      })).rejects.toThrow();
+      await expect(a.query(api.userPreferences.getPreferences, { variant })).rejects.toThrow();
+      await expect(t.query(internal.userPreferences.getPreferencesByUserId, {
+        userId: USER_A.subject, variant,
+      })).rejects.toThrow();
+      expect(await t.run(ctx => ctx.db.query("userPreferences").collect())).toEqual([]);
+      expect(await t.run(ctx => ctx.db.query("userPreferenceWriteRateLimits").collect())).toEqual([]);
+    },
+  );
+
+  test("leaves stored legacy variants intact while accepting valid preferences", async () => {
+    const t = makeT();
+    const legacy = { userId: USER_A.subject, variant: "legacy", data: { theme: "dark" },
+      schemaVersion: 1, syncVersion: 1, updatedAt: TEST_NOW };
+    const id = await t.run(ctx => ctx.db.insert("userPreferences", legacy));
+    await t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+      variant: "full", data: {}, expectedSyncVersion: 0,
+    });
+    expect(await t.run(ctx => ctx.db.get(id))).toMatchObject(legacy);
+  });
+});

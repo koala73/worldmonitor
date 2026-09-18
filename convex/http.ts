@@ -11,6 +11,7 @@ import {
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import {
   INTEL_HISTORY_EMBED_DIMS,
   INTEL_HISTORY_MAX_APPEND_RECORDS,
@@ -480,6 +481,13 @@ http.route({
       typeof body.expectedSyncVersion !== "number"
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
+        status: 400,
+        headers,
+      });
+    }
+
+    if (!isPreferenceVariant(body.variant)) {
+      return new Response(JSON.stringify({ error: "INVALID_VARIANT" }), {
         status: 400,
         headers,
       });
@@ -1100,8 +1108,14 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    if (!body.userId || !body.variant) {
+    if (!body.userId || typeof body.variant !== "string") {
       return new Response(JSON.stringify({ error: "userId and variant required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (!isPreferenceVariant(body.variant)) {
+      return new Response(JSON.stringify({ error: "INVALID_VARIANT" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
