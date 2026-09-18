@@ -1,4 +1,5 @@
 import { anyApi, httpRouter } from "convex/server";
+import { publicCheckoutError } from "../shared/checkout-errors";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
@@ -1733,8 +1734,8 @@ http.route({
       if (extractConvexErrorCode(err) === "INVALID_CHECKOUT_PRODUCT") {
         return Response.json({ error: "INVALID_CHECKOUT_PRODUCT" }, { status: 400 });
       }
-      const msg = err instanceof Error ? err.message : "Checkout creation failed";
-      return new Response(JSON.stringify({ error: msg }), {
+      console.error("[checkout-relay] Checkout creation failed", err);
+      return new Response(JSON.stringify({ error: publicCheckoutError(extractConvexErrorCode(err)) }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });

@@ -221,3 +221,17 @@ it('forwards invalid checkout product as HTTP 400 without a transport retry sign
   assert.deepEqual(await response.json(), { error: 'INVALID_CHECKOUT_PRODUCT' });
   assert.equal(relayFetch.mock.calls.length, 1);
 });
+
+it('masks unexpected relay exception text while retaining server diagnostics', async () => {
+  const mod = await importFreshCreateCheckout();
+  const log = mock.method(console, 'error', () => {});
+  const sentinel = 'synthetic-private-relay-detail';
+  mod.__setCreateCheckoutDepsForTests({
+    validateBearerToken: async () => ({ valid: true, userId: 'user_error_boundary' }),
+    fetch: async () => Response.json({ error: sentinel }, { status: 500 }),
+  });
+  const response = await mod.default(makeCheckoutRequest());
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'CHECKOUT_FAILED' });
+  assert.ok(JSON.stringify(log.mock.calls).includes(sentinel));
+});

@@ -392,7 +392,7 @@ describe("relay and public action contracts", () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({
-      error: expect.stringContaining("Checkout failed: Request timed out."),
+      error: "CHECKOUT_FAILED",
     });
     expect(createDodoCheckoutSession).toHaveBeenCalledTimes(1);
     expect(sleeps).not.toHaveBeenCalled();
