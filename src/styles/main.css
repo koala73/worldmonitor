@@ -28413,6 +28413,14 @@ body.map-width-resizing {
 .stock-research-chart {
   margin: 12px 0 20px;
 }
+.stock-research-provenance {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-dim, #9a9589);
+}
+.stock-research-provenance[data-analysis-provenance="rules-fallback"] {
+  color: var(--semantic-warning, #d9a441);
+}
 .stock-research-news {
   padding-left: 18px;
 }
