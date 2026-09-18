@@ -1,5 +1,6 @@
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
+import { resolveMetadataOrigin } from '../_agent-metadata';
 import {
   applyAnonDiscoveryLimit,
   applyFreeTierLimit,
@@ -679,14 +680,15 @@ async function mcpHandlerInner(
     return new Response(null, { status: 204, headers: withMcpNoStore(corsHeaders) });
   }
 
-  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
+  // The challenge must name a document we actually serve, so the origin comes
+  // from the same validated resolver the metadata handlers use — a spoofed Host
+  // would otherwise be reflected back as the discovery origin.
   // Path-scoped (RFC 9728 §3.1), and scoped to the transport path the client
   // actually called: the MCP SDK accepts an advertised resource only when the
   // requested path starts with it, so a caller on the deployed `/api/mcp` route
   // must be pointed at that document rather than the one describing `/mcp`.
-  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
   const transportPath = new URL(req.url).pathname.startsWith('/api/mcp') ? 'api/mcp' : 'mcp';
-  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource/${transportPath}`;
+  const resourceMetadataUrl = `${resolveMetadataOrigin(req)}/.well-known/oauth-protected-resource/${transportPath}`;
 
   if (req.method === 'HEAD') {
     // HEAD is GET without a response body. Preserve transport-shaped GET

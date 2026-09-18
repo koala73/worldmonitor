@@ -111,6 +111,18 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
+  // The challenge must name a host we actually serve metadata from. The
+  // metadata handlers validate Host and fall back to the apex, so a challenge
+  // built from the raw header could send discovery somewhere else entirely.
+  it('a spoofed Host is not reflected into the challenge', async () => {
+    const res = await call('https://worldmonitor.app/mcp', 'evil.example');
+    assert.equal(res.status, 401);
+    assert.match(
+      res.headers.get('www-authenticate'),
+      /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/,
+    );
+  });
+
   // The advertised resource must cover the URL the client actually called, or
   // the MCP SDK rejects it (requested path must start with the configured one).
   it('the deployed /api/mcp route points at its own document, not /mcp', async () => {
@@ -124,9 +136,17 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
 });
 
 describe('routing', () => {
+  // Every suffix reaches the handler, so an unsupported one gets the handler's
+  // JSON 404 rather than the SPA's HTML 404 — an exact-match rewrite per
+  // transport path would let unknown suffixes fall through to the filesystem.
+  it('any protected-resource suffix reaches the handler, carrying the suffix', () => {
+    const rewrite = vercelConfig.rewrites.find((r) => r.source.startsWith('/.well-known/oauth-protected-resource/'));
+    assert.ok(rewrite, 'expected a protected-resource suffix rewrite');
+    assert.match(rewrite.source, /:\w+\*?$/, 'the rewrite must capture any suffix');
+    assert.match(rewrite.destination, /^\/api\/oauth-protected-resource\?resource=:/);
+  });
+
   for (const source of [
-    '/.well-known/oauth-protected-resource/mcp',
-    '/.well-known/oauth-protected-resource/api/mcp',
     '/.well-known/oauth-authorization-server/mcp',
     '/.well-known/oauth-authorization-server/api/mcp',
   ]) {
