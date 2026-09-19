@@ -1175,9 +1175,6 @@
       "base": "Căn cứ",
       "nuclear": "Hạt nhân"
     },
-    "community": {
-      "joinDiscussion": "Đóng góp ý kiến phát triển"
-    },
     "threatLabels": {
       "critical": "N.TRỌNG",
       "high": "CAO",

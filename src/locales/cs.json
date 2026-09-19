@@ -1172,9 +1172,6 @@
       "base": "Základna",
       "nuclear": "Jaderné zařízení"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "VYS",

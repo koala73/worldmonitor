@@ -52,12 +52,13 @@ const SOURCE_ROOTS = ['scripts', 'server', 'api', 'src'];
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
 const FEED_FILES = new Set([
   ...FEED_DECLARATION_FILES,
-  // LiveNewsPanel owns optional native-video HLS feeds. They are observed for
+  // Live channel data and its player own optional native-video HLS feeds. They are observed for
   // completeness, but their playback transport is excluded from the data
   // provider count below.
   'src/components/LiveNewsPanel.ts',
+  'src/services/live-channels.ts',
 ]);
-const PRESENTATION_ONLY_FILES = new Set(['src/components/LiveNewsPanel.ts']);
+const PRESENTATION_ONLY_FILES = new Set(['src/components/LiveNewsPanel.ts', 'src/services/live-channels.ts']);
 const STATUS_FILE = 'server/worldmonitor/infrastructure/v1/list-service-statuses.ts';
 
 // URL literals are intentionally parsed before classification.  This catches
@@ -993,7 +994,6 @@ const EXCLUDED_HOSTS = new Set([
   'customer.dodopayments.com',
   'worldmonitor.mintlify.dev',
   'discord.com',
-  'discord.gg',
   'slack.com',
   'workos.com',
   'twitter.com',

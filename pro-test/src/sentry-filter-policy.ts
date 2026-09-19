@@ -641,8 +641,9 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // is still not a precedent to copy, though the old reason given here — that
   // the dashboard bundle mints its own DOMException carrying caller frames —
   // was wrong, and cost WORLDMONITOR-Q4. `createTimeoutSignal` only mints one
-  // on the pre-Baseline-2024 fallback path; every current engine takes the
-  // native `AbortSignal.timeout` branch and produces the same frameless
+  // on the pre-Baseline-2024 fallback path, and stamps it with the native
+  // header-only stack; every current engine takes the native
+  // `AbortSignal.timeout` branch instead. Both produce the same frameless
   // rejection seen here (Chromium 141: `stack` is the header line alone).
   // What separates the two surfaces is that the dashboard gate exempts any
   // event carrying a first-party `kind` tag, which its checkout and panel

@@ -1017,7 +1017,9 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           topStories: { type: 'array', items: { type: 'object', properties: {
             primaryTitle: { type: 'string' }, primarySource: { type: 'string' }, primaryLink: { type: 'string' },
-            pubDate: { type: 'string' }, sourceCount: { type: 'number' }, importanceScore: { type: 'number' },
+            // Epoch milliseconds from the digest pipeline, or an ISO string when a
+            // feed item carried only a text date (scripts/seed-insights.mjs).
+            pubDate: { type: ['string', 'number'] }, sourceCount: { type: 'number' }, importanceScore: { type: 'number' },
             credibilityScore: { type: 'number', description: '0-100 source-reliability score, distinct from importanceScore. Built from source tier, propaganda risk, and independent corroboration. State-controlled media is capped at 40.' },
             // Corroboration and clustering fields the seeder already writes
             // into every news:insights:v1 topStories entry (see the object
@@ -1792,7 +1794,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       entities: {
         type: ['array', 'object', 'null'],
         items: { type: 'object', properties: {
-          name: { type: 'string' }, cc: { type: 'string' }, et: { type: 'string' },
+          // Up to three ISO country codes per entity (scripts/seed-sanctions-pressure.mjs).
+          name: { type: 'string' }, cc: { type: 'array', items: { type: 'string' } }, et: { type: 'string' },
           addr: { type: 'string' },
         } },
       },

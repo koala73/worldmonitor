@@ -357,7 +357,7 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     const stored = redis.store.get(BODY_KEY);
     assert.equal(
       stored,
-      `{"acceptedAt":${NOW},"categoryCount":1,"itemCount":1,"data":${JSON.stringify(data)}}`,
+      `{"acceptedAt":${NOW},"categoryCount":1,"itemCount":1,"peakItemCount":1,"peakAt":${NOW},"data":${JSON.stringify(data)}}`,
       'the candidate body must be spliced in verbatim, never re-encoded',
     );
     assert.equal(redis.ttls.get(BODY_KEY), LASTGOOD_TTL_S);
@@ -401,6 +401,87 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
       initial: { [BODY_KEY]: snapshot(incumbent, NOW - 60_000) },
     });
     assert.equal(result, 0, 'breadth parity is not enough — depth must not regress either');
+  });
+
+  // Production, 2026-09-19: the `full` digest froze for ~6h because a fresh 289-item
+  // build was rejected against a 294-item incumbent (17 categories each). Item counts
+  // drift a few percent build to build, so a strict `<` ratchets the digest to its
+  // high-water mark and then serves it stale until it ages out.
+  const links = (n, host) => Array.from({ length: n }, (_, i) => `https://${host}.test/${i}`);
+
+  it('replaces a live incumbent when the candidate is only slightly shallower (289 vs 294)', () => {
+    const { result, redis } = publish({
+      data: bodyOf(links(289, 'fresh')),
+      initial: { [BODY_KEY]: snapshot(bodyOf(links(294, 'old')), NOW - 4 * 60 * 60 * 1000) },
+    });
+    assert.equal(result, 1, 'ordinary drift in item count must not freeze the digest');
+    assert.equal(JSON.parse(redis.store.get(BODY_KEY)).itemCount, 289);
+  });
+
+  it('draws the depth line at 80% of the incumbent, inclusive', () => {
+    const incumbent = { [BODY_KEY]: snapshot(bodyOf(links(100, 'old')), NOW - 60_000) };
+    assert.equal(publish({ data: bodyOf(links(80, 'fresh')), initial: incumbent }).result, 1, '80 of 100 replaces');
+    assert.equal(publish({ data: bodyOf(links(79, 'fresh')), initial: incumbent }).result, 0, '79 of 100 is materially shallower');
+  });
+
+  // The floor is anchored to the richest body accepted in the last six hours,
+  // not to the last accepted one. Anchored to the incumbent it compounds: 100 ->
+  // 80 -> 64 -> 52 ... each step passes, and the recovery snapshot is consumed.
+  const carry = (redis) => Object.fromEntries(redis.store);
+
+  it('does not let successive 20% steps compound: the floor follows the six-hour peak', () => {
+    const peakAt = NOW - 60_000;
+    const first = publish({
+      data: bodyOf(links(80, 'b')),
+      initial: { [BODY_KEY]: snapshot(bodyOf(links(100, 'a')), peakAt) },
+    });
+    assert.equal(first.result, 1);
+    const row = JSON.parse(first.redis.store.get(BODY_KEY));
+    assert.equal(row.itemCount, 80);
+    assert.equal(row.peakItemCount, 100, 'the richer incumbent stays the anchor');
+    assert.equal(row.peakAt, peakAt);
+
+    const second = publish({ data: bodyOf(links(64, 'c')), initial: carry(first.redis) });
+    assert.equal(second.result, 0, '64 is 80% of the incumbent but only 64% of the peak');
+    assert.equal(JSON.parse(second.redis.store.get(BODY_KEY)).itemCount, 80);
+
+    const third = publish({ data: bodyOf(links(120, 'd')), initial: carry(first.redis) });
+    assert.equal(third.result, 1);
+    const richer = JSON.parse(third.redis.store.get(BODY_KEY));
+    assert.equal(richer.peakItemCount, 120, 'a richer body becomes the new peak');
+    assert.equal(richer.peakAt, NOW);
+  });
+
+  it('lets the peak age out after six hours even while the incumbent stays fresh', () => {
+    const peakAt = NOW - LASTGOOD_MAX_AGE_MS - 1;
+    const incumbent = JSON.stringify({
+      acceptedAt: NOW - 60_000, categoryCount: 1, itemCount: 80, peakItemCount: 100, peakAt,
+      data: bodyOf(links(80, 'b')),
+    });
+    const { result, redis } = publish({ data: bodyOf(links(64, 'c')), initial: { [BODY_KEY]: incumbent } });
+    assert.equal(result, 1, 'an expired peak cannot veto; 64 is 80% of the live incumbent');
+    assert.equal(JSON.parse(redis.store.get(BODY_KEY)).peakItemCount, 80, 'the live incumbent is the carried peak');
+  });
+
+  it('ignores a stored peak once revocations shrank the incumbent it was measured on', () => {
+    const old = links(80, 'b');
+    const incumbent = JSON.stringify({
+      acceptedAt: NOW - 60_000, categoryCount: 1, itemCount: 80, peakItemCount: 100, peakAt: NOW - 120_000,
+      data: bodyOf(old),
+    });
+    const { result } = publish({
+      data: bodyOf(links(50, 'c')),
+      initial: { [BODY_KEY]: incumbent, [REVOKED_KEY]: old.slice(0, 30) },
+    });
+    assert.equal(result, 1, 'a publication-time peak must not veto the repair of a revoked incumbent');
+  });
+
+  it('applies the same 80% depth line to the live canonical body', () => {
+    const canonicalOnly = { [CANONICAL_KEY]: JSON.stringify(bodyOf(links(100, 'old'))) };
+    assert.equal(publishCanonicalAndLastGood({ data: bodyOf(links(80, 'fresh')), initial: canonicalOnly }).result, 1);
+    const held = publishCanonicalAndLastGood({ data: bodyOf(links(79, 'fresh')), initial: canonicalOnly });
+    assert.equal(held.result, 0);
+    assert.equal(held.redis.store.get(CANONICAL_KEY), canonicalOnly[CANONICAL_KEY], 'the served body is kept');
   });
 
   it('replaces an incumbent past the six-hour window', () => {

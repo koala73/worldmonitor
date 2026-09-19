@@ -278,7 +278,7 @@ describe('App bootstrap slow-tier lifecycle', () => {
   it('does not update connectivity UI from a slow callback after destroy', () => {
     assert.match(
       appSrc,
-      /fetchBootstrapData\(\(\) => \{\s*if \(this\.state\.isDestroyed\) return;\s*this\.bootstrapHydrationState = getBootstrapHydrationState\(\);\s*this\.updateConnectivityUi\(\);/s,
+      /fetchBootstrapData\(\(\) => \{\s*if \(this\.state\.isDestroyed\) return;\s*this\.bootstrapHydrationState = getBootstrapHydrationState\(\);\s*this\.updateConnectivityUi\(\);\s*this\.completePendingSlowTierFanout\(\);/s,
       'slow-tier callback should bail out after App.destroy()',
     );
     assert.ok(appSrc.includes('cancelBootstrapSlowTier();'), 'App.destroy() should cancel pending slow bootstrap work');
@@ -290,6 +290,7 @@ describe('App bootstrap slow-tier lifecycle', () => {
     const phase6 = appSrc.slice(phase6Start, phase6End);
     const slowStartIndex = phase6.indexOf('const slowTierReady = this.waitForSlowBootstrapCheckpoint();');
     const slowAwaitIndex = phase6.indexOf('await slowTierReady;');
+    const settledGateIndex = phase6.indexOf('if (!settled)');
     const fanoutIndex = phase6.indexOf('this.dataLoader.loadAllData()');
     const countryGeometryIndex = phase6.indexOf('const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();');
 
@@ -298,6 +299,8 @@ describe('App bootstrap slow-tier lifecycle', () => {
     // Slow-tier hydration keys are consume-once: the fan-out must NOT read them
     // before the tier settles, so the bounded checkpoint is awaited first (#4512).
     assert.ok(slowAwaitIndex > slowStartIndex, 'slow-tier checkpoint should be awaited before the fan-out');
+    assert.ok(settledGateIndex > slowAwaitIndex, 'viewport hydration must stay closed when the slow-tier wait times out');
+    assert.ok(phase6.includes('this.slowTierWaitTimedOut = true'), 'a timed-out wait must defer panel primes until onSlowSettled');
     assert.ok(fanoutIndex > slowAwaitIndex, 'visible data fan-out should start after the slow-tier checkpoint settles');
     assert.ok(countryGeometryIndex > fanoutIndex, 'country geometry preload should start after initial visible data fan-out');
     // Country geometry preload must stay deferred — re-introducing a pre-fanout

@@ -1159,6 +1159,13 @@ export default defineSchema({
     alertedAt: v.optional(v.number()),
   }).index("by_occurredAt", ["occurredAt"]),
 
+  // Terminal session-creation timeouts, kept separate from the 429 alarm.
+  checkoutTimeoutEvents: defineTable({
+    userId: v.string(),
+    productId: v.string(),
+    occurredAt: v.number(),
+  }).index("by_occurredAt", ["occurredAt"]),
+
   productPlans: defineTable({
     dodoProductId: v.string(),
     planKey: v.string(),

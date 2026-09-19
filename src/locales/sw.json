@@ -1319,9 +1319,6 @@
       "base": "Msingi",
       "nuclear": "Nyuklia"
     },
-    "community": {
-      "joinDiscussion": "Msaada Kuunda Kinachofuata"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "JUU",

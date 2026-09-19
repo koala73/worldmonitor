@@ -3749,10 +3749,6 @@ body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-container
   min-height: 0 !important;
 }
 
-body.live-news-fullscreen-active .community-widget {
-  display: none;
-}
-
 /* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
 body.live-news-fullscreen-active .layer-toggles,
 body.live-news-fullscreen-active .map-legend {
@@ -15238,11 +15234,6 @@ a.prediction-link:hover {
     display: none !important;
   }
 
-  /* Mobile: hide community discussion widget (accessible via settings) */
-  .community-widget {
-    display: none !important;
-  }
-
   .focus-label {
     display: none;
   }
@@ -20551,35 +20542,6 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
-/* Discussion link in settings */
-.us-discussion-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: var(--overlay-subtle);
-  border: 1px solid var(--border);
-  color: var(--text);
-  text-decoration: none;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  font-weight: 500;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.us-discussion-link:hover {
-  border-color: hsl(229, 48%, 55%);
-  background: rgba(99, 120, 198, 0.1);
-}
-
-.us-discussion-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: hsl(229, 48%, 55%);
-  flex-shrink: 0;
-}
-
 /* Data management buttons in settings */
 .us-data-mgmt {
   display: flex;
@@ -23251,167 +23213,6 @@ body.has-breaking-alert .panels-grid {
   body>*:not(.country-brief-overlay) {
     display: none !important;
   }
-}
-
-/* ============================================================
-   Community Discussion Widget — Floating Pill
-   ============================================================ */
-.community-widget {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  animation: cw-float-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.community-widget.cw-hiding {
-  animation: cw-float-out 0.3s ease-in forwards;
-}
-
-@keyframes cw-float-in {
-  0% {
-    transform: translateY(10px) scale(0.95);
-    opacity: 0;
-  }
-
-  100% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes cw-float-out {
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-
-  100% {
-    transform: translateY(10px) scale(0.95);
-    opacity: 0;
-  }
-}
-
-.cw-pill {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--panel-bg, #141414);
-  border: 1px solid var(--border, #2a2a2a);
-  border-radius: 28px;
-  padding: 8px 8px 8px 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-}
-
-.cw-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: hsl(229, 48%, 55%);
-  flex-shrink: 0;
-  animation: cw-dot-pulse 2s ease-in-out infinite;
-  position: relative;
-  overflow: visible;
-}
-
-.cw-dot::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: 1px solid hsla(229, 48%, 55%, 0.4);
-  border-radius: inherit;
-  opacity: 0.4;
-  pointer-events: none;
-  transform: scale(1);
-  animation: cw-dot-ring 2s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-@keyframes cw-dot-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.6;
-  }
-}
-
-@keyframes cw-dot-ring {
-
-  0%,
-  100% {
-    opacity: 0.4;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0;
-    transform: scale(2.4);
-  }
-}
-
-.cw-text {
-  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text, #e8e8e8);
-  white-space: nowrap;
-}
-
-.cw-cta {
-  padding: 6px 14px;
-  background: hsl(229, 48%, 55%);
-  border: none;
-  border-radius: 20px;
-  color: #fff;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background 0.2s;
-}
-
-.cw-cta:hover {
-  background: hsl(229, 48%, 62%);
-}
-
-.cw-close {
-  background: none;
-  border: none;
-  color: var(--text-ghost, #444);
-  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  line-height: 1;
-  transition: color 0.15s, background 0.15s;
-}
-
-.cw-close:hover {
-  color: var(--text-dim, #888);
-  background: var(--overlay-light, rgba(255, 255, 255, 0.05));
-}
-
-.cw-dismiss {
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-faint, #555);
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0 8px;
-  transition: color 0.2s;
-}
-
-.cw-dismiss:hover {
-  color: var(--text-dim, #888);
 }
 
 /* ── Ultra-wide layout: map left, panels beside it ── */

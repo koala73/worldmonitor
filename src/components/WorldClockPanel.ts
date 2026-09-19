@@ -128,8 +128,6 @@ function saveSelectedCities(ids: string[]): void {
  * scheme that caches it against a time-derived key is a heuristic that breaks at
  * a DST fall-back, where the same weekday/hour/minute occurs twice under
  * different zones (America/New_York 2026-11-01 01:30 is both EDT and EST).
- * Reading it from the authoritative call is both cheaper — one formatter per
- * city per tick instead of two — and correct by construction.
  */
 function getTimeInZone(tz: string): {
   h: number; m: number; s: number; dayOfWeek: string; abbr: string;
@@ -146,7 +144,9 @@ function getTimeInZone(tz: string): {
       if (p.type === 'hour') h = parseInt(p.value, 10);
       if (p.type === 'minute') m = parseInt(p.value, 10);
       if (p.type === 'second') s = parseInt(p.value, 10);
-      if (p.type === 'weekday') dayOfWeek = p.value;
+      if (p.type === 'weekday') {
+        dayOfWeek = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(now);
+      }
       if (p.type === 'timeZoneName') abbr = p.value;
     }
     if (h === 24) h = 0;

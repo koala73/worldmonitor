@@ -219,7 +219,7 @@ test('the channel that served a seed reaches the marker AND the seed-meta record
   assert.equal(authoritative.marker.sourceChannel, HAPI_SNAPSHOT_CHANNEL);
   assert.deepEqual(
     Object.keys(authoritative.channelProvenance),
-    ['sourceChannel'],
+    ['requiredCountryCodes', 'sourceChannel'],
     'an authoritative run must not carry snapshotFailureReason, sourceState or errorCode',
   );
 
@@ -872,7 +872,7 @@ test('a quota rejection on the demoted API backs off and names both channels', a
   assert.equal(backoff.status, 429);
   assert.equal(backoff.reasonCode, 'HAPI_RATE_LIMIT');
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
-  assert.equal(failureMeta.status, 'error');
+  assert.equal(failureMeta.sourceState, 'degraded');
   assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
   assert.equal(failureMeta.attemptedChannel, HAPI_API_CHANNEL);
   assert.equal(
@@ -1305,7 +1305,10 @@ test('a partial demoted tick retries the snapshot at the next cron boundary desp
     pace: async () => {},
     loadPreviousMarker: async () => marker,
     loadFailureBackoff: async () => failureBackoff,
-    writeFailureBackoff: async () => assert.fail('snapshot recovery must not extend API backoff'),
+    writeFailureBackoff: async (value) => {
+      assert.equal(value.retryAt, failureBackoff.retryAt);
+      assert.ok(value.nextSnapshotRetryAt > nextCronAt);
+    },
     writeFailureMeta: async () => assert.fail('snapshot recovery must not publish SEED_ERROR'),
     preserveLastGood: async () => assert.fail('snapshot recovery must publish new authoritative rows'),
     snapshotFetchFn: snapshotServing(hapiCsv(
@@ -1324,8 +1327,12 @@ test('a partial demoted tick retries the snapshot at the next cron boundary desp
     pace: async () => {},
     loadPreviousMarker: async () => marker,
     loadFailureBackoff: async () => failureBackoff,
-    writeFailureBackoff: async () => assert.fail('the active API backoff must remain unchanged'),
-    writeFailureMeta: async () => assert.fail('a snapshot-only retry must keep the previous health state'),
+    writeFailureBackoff: async (value) => assert.equal(value.retryAt, failureBackoff.retryAt),
+    writeFailureMeta: async (value) => {
+      assert.equal(value.sourceState, 'degraded');
+      assert.equal(value.fetchedAt, marker.updatedAt);
+      assert.equal(value.retryAt, failureBackoff.retryAt);
+    },
     preserveLastGood: async () => { preserved += 1; },
     snapshotFetchFn: snapshotDown(),
     fetchFn: async () => assert.fail('a failed snapshot-only retry must not bypass API backoff'),

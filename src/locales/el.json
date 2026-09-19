@@ -1178,9 +1178,6 @@
       "base": "Βάση",
       "nuclear": "Πυρηνικό"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "ΚΡΙΣ",
       "high": "ΥΨΗΛ",

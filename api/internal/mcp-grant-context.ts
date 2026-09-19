@@ -46,6 +46,8 @@ import {
   proMcpGateDenialResponse,
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
+// @ts-expect-error — JS module, no declaration file
+import { redirectDisplayHost } from '../oauth/_redirect-uri.js';
 
 const NO_STORE_JSON: Record<string, string> = {
   'Content-Type': 'application/json',
@@ -180,7 +182,7 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
 
   let redirectHost = '';
   try {
-    redirectHost = new URL(nonceData.redirect_uri).hostname;
+    redirectHost = redirectDisplayHost(nonceData.redirect_uri);
   } catch {
     // Already validated at registration time; defense-in-depth catch.
     return jsonError('INVALID_REDIRECT_URI', 'The registered redirect URI is malformed.', 400);

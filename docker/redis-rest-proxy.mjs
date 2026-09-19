@@ -132,7 +132,7 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '  return 0',
   'end',
   'local function isNarrower(nextData, currentData)',
-  '  return nextData.categories < currentData.categories or nextData.items < currentData.items',
+  '  return nextData.categories < currentData.categories or nextData.items * 100 < currentData.items * 80',
   'end',
   'local function isLiveCanonicalClock(value)',
   "  if type(value) ~= 'string' then return false end",
@@ -146,6 +146,7 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '  if day < 1 or day > monthDays[month] then return false end',
   '  return value >= ARGV[7] and value <= ARGV[8]',
   'end',
+  'local carriedPeak, carriedPeakAt = nil, nil',
   "local currentRaw = redis.call('GET', KEYS[1])",
   'if currentRaw then',
   '  local okCurrent, snapshot = pcall(cjson.decode, currentRaw)',
@@ -154,7 +155,17 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '    if current then',
   '      local delta = tonumber(ARGV[1]) - (tonumber(snapshot.acceptedAt) or 0)',
   '      local live = delta >= 0 and delta <= tonumber(ARGV[2])',
-  '      if live and isNarrower(candidate, current) then return rejectNarrower() end',
+  '      if live then',
+  '        local peak, peakAt = current.items, tonumber(snapshot.acceptedAt) or 0',
+  '        local storedPeak, storedPeakAt = tonumber(snapshot.peakItemCount), tonumber(snapshot.peakAt) or 0',
+  '        local peakDelta = tonumber(ARGV[1]) - storedPeakAt',
+  '        local peakLive = storedPeak and peakDelta >= 0 and peakDelta <= tonumber(ARGV[2])',
+  '        if peakLive and tonumber(snapshot.itemCount) == current.items and storedPeak > peak then',
+  '          peak, peakAt = storedPeak, storedPeakAt',
+  '        end',
+  '        if isNarrower(candidate, { categories = current.categories, items = peak }) then return rejectNarrower() end',
+  '        if peak > candidate.items then carriedPeak, carriedPeakAt = peak, peakAt end',
+  '      end',
   '    end',
   '  end',
   'end',
@@ -177,6 +188,8 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "local stored = '{\"acceptedAt\":' .. string.format('%.0f', tonumber(ARGV[3]) or 0)",
   "  .. ',\"categoryCount\":' .. string.format('%.0f', candidate.categories)",
   "  .. ',\"itemCount\":' .. string.format('%.0f', candidate.items)",
+  "  .. ',\"peakItemCount\":' .. string.format('%.0f', carriedPeak or candidate.items)",
+  "  .. ',\"peakAt\":' .. string.format('%.0f', carriedPeakAt or tonumber(ARGV[3]) or 0)",
   '  .. \',"data":\' .. ARGV[5] .. \'}\'',
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
   "if KEYS[3] then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6]) end",
@@ -585,16 +598,37 @@ function isAllowedEval(args) {
 // status cannot change), which means callers branching on `response.ok` see
 // nothing at all. Server-side stderr is the operator's only signal, and its
 // absence is why the HSETNX/HINCRBY gap survived unnoticed (#6937).
+//
+// The `commandNotAllowed` tag is what lets a caller answer 403 for THIS
+// decision and nothing else. Without it a caller can only catch every throw
+// from this function, and `String(args[0])` throws a TypeError on a null or
+// undefined body element — so a malformed request comes back as an
+// authorization failure, which is precisely the misdirection #8265 was. Tagged
+// on the error object rather than raised as a named subclass because
+// tests/redis-rest-proxy-command-parity.test.mjs extracts this function's
+// source and evals it standalone; a class declared elsewhere in this file
+// would be undefined there.
 function assertCommandAllowed(args) {
-  const cmd = String(args[0]).toUpperCase();
+  // Shape first, authorization second. String(args[0]) turns a missing verb
+  // into "undefined" and a null one into "null", and the allowlist then
+  // refuses those as if they were commands — so `[[]]` and `[[null]]` came
+  // back as 403 "Command not allowed: UNDEFINED"/"NULL" while a null ELEMENT
+  // (which throws before this line) came back as 500. Same malformed body,
+  // two status classes, two of them in the authorization channel. A
+  // well-formed command that is simply not allowed is the only thing past
+  // this point.
+  if (!Array.isArray(args) || typeof args[0] !== 'string' || args[0].trim() === '') {
+    throw new TypeError('Malformed command: expected an array whose first element is the command name');
+  }
+  const cmd = args[0].toUpperCase();
   if (cmd === 'EVAL') {
     if (!isAllowedEval(args)) {
       console.error('Command not allowed: EVAL (script not in the pinned allowlist)');
-      throw new Error('Command not allowed: EVAL (script not in the pinned allowlist)');
+      throw Object.assign(new Error('Command not allowed: EVAL (script not in the pinned allowlist)'), { commandNotAllowed: true });
     }
   } else if (!ALLOWED_COMMANDS.has(cmd)) {
     console.error(`Command not allowed: ${cmd}`);
-    throw new Error(`Command not allowed: ${cmd}`);
+    throw Object.assign(new Error(`Command not allowed: ${cmd}`), { commandNotAllowed: true });
   }
   return cmd;
 }
@@ -764,6 +798,15 @@ function respondError(res, err) {
   if (status === 413) {
     const from = err.remoteAddress || res.socket?.remoteAddress || 'unknown';
     console.warn(`Rejected oversized request body from ${from}: ${err.message}`);
+  } else if (status >= 500) {
+    // Same reasoning one status class over. A blocked command already logs
+    // itself in assertCommandAllowed; a 500 logged nothing, and the primary
+    // caller discards the body (`console.warn('[redis] runRedisTransaction HTTP
+    // ' + response.status)` in server/_shared/redis.ts), so a re-run of #8265
+    // would leave `docker compose logs redis-rest` silent and the app log
+    // holding a bare status with no cause. That is the same blind spot the
+    // HSETNX/HINCRBY gap sat in for months (#6937).
+    console.error(`Request failed (HTTP ${status}): ${err?.message || 'Internal error'}`);
   }
   // headersSent is checked separately from the writability guard below: if
   // something threw between writeHead() and end(), the response is neither ended
@@ -822,15 +865,72 @@ const server = http.createServer(async (req, res) => {
       const commands = JSON.parse(await readBody(req));
       const multi = client.multi();
       for (const cmd of commands) {
+        // 403 means one thing: the gate refused this command. It used to mean
+        // "something threw somewhere in here" — the try wrapped the queueing
+        // call too, so the TypeError below was reported to operators as an
+        // authorization failure, and #8265 read as a misconfigured REDIS_TOKEN
+        // for as long as it did.
+        //
+        // Narrowing the try is not enough on its own: commandForExecution
+        // itself throws a TypeError, not a gate rejection, when a body element
+        // is null or undefined (`String(args[0])`). Keying on the tag rather
+        // than on "this line threw" is what keeps a malformed body out of the
+        // 403 channel. Everything untagged falls through to respondError().
+        let queuedCommand;
         try {
-          multi.sendCommand(commandForExecution(cmd));
+          queuedCommand = commandForExecution(cmd);
         } catch (err) {
+          if (!err?.commandNotAllowed) throw err;
           res.writeHead(403);
           res.end(JSON.stringify({ error: err.message }));
           return;
         }
+        // addCommand, not sendCommand: sendCommand is a method on the node-redis
+        // CLIENT, and the v4 transaction chain (redis@4, per
+        // docker/Dockerfile.redis-rest) queues raw commands with addCommand. The
+        // wrong one made every /multi-exec fail, so both seeders that publish
+        // exclusively through it — seed-fred-rates, seed-bis-extended — never
+        // wrote a key on a self-hosted install (#8265).
+        multi.addCommand(queuedCommand);
       }
-      const results = await multi.exec();
+      // exec() rejects two different ways, and only one of them is a response
+      // rather than a failure. Both were unreachable until #8265 was fixed —
+      // nothing was ever queued — so neither has run in production.
+      //
+      // MultiErrorReply means the transaction RAN and some commands replied
+      // with an error; node-redis hides the ordered replies on err.replies
+      // instead of returning them. Upstash answers that with HTTP 200 and an
+      // ordered array carrying {error} for the failed entries — the shape
+      // /pipeline above emits and the shape server/_shared/redis.ts already
+      // scans (`data.find((item) => item.error || item.result === 'ERR')`), a
+      // branch that could never fire while this route always threw. Before
+      // this, one WRONGTYPE turned a transaction that DID run into an opaque
+      // 500 naming neither the command nor the error.
+      //
+      // Everything else — a bare ErrorReply from Redis refusing a command at
+      // QUEUE time, a dropped socket, a closed client — stays a 500, on
+      // purpose. It is tempting to split the queue-time refusal off as a
+      // permanent 4xx so a deterministic mistake (bad arity) stops burning the
+      // caller's retry budget, but node-redis raises `-LOADING`, `-BUSY`,
+      // `-MASTERDOWN` and other transient states through that exact same bare
+      // type. A self-hosted Redis restarting answers `-LOADING` for a few
+      // seconds; classifying that as permanent would make atomicPublish skip
+      // the whole publication instead of retrying past it, so the mistake
+      // costs a stale cycle while the one it avoids costs two retries. Failing
+      // toward retryable is the cheaper error here.
+      let results;
+      try {
+        results = await multi.exec();
+      } catch (err) {
+        if (Array.isArray(err?.replies)) {
+          res.writeHead(200);
+          res.end(JSON.stringify(err.replies.map((reply) => (
+            reply instanceof Error ? { error: reply.message } : { result: reply }
+          ))));
+          return;
+        }
+        throw err;
+      }
       res.writeHead(200);
       res.end(JSON.stringify(results.map((r) => ({ result: r }))));
       return;

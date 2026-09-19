@@ -4687,6 +4687,15 @@ Key distinction: "critical" requires GEOPOLITICAL scope — events that destabil
 - "Man killed his estranged wife" → domestic crime → info
 - "How to Crack the SAM Database in Kali Linux" → tutorial → info
 
+Do not under-rate "high". The EVENT itself is high even when nobody is hurt and even when the headline reports a vote, an approval or an announcement:
+- a sanctions package or sanctions bill passed, signed or imposed
+- a major arms sale or weapons transfer approved between states
+- a military deployment or force movement ahead of an operation
+- an armed attack, raid or clash with deaths, including one that was repelled
+- many deaths in state custody or by state action
+- a natural disaster that floods, destroys or displaces on a regional scale
+Use medium for analysis of or reaction to such an event, not for the event itself.
+
 Input: numbered lines "index|Title"
 Output: [{"i":0,"l":"high","c":"conflict"}, ...]
 
@@ -4809,7 +4818,14 @@ const CLASSIFY_LLM_PROVIDERS = [
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'deepseek/deepseek-v4-flash',
+    // Classification only — NOT the shared Flash default. Against 413 blind-judged
+    // headlines v4-flash raised 51 false critical/high labels for 42 real ones; v4.1
+    // with the "Do not under-rate high" prompt block raised 15-21 for 41 (three runs).
+    // Both halves are load-bearing: v4.1 without the block misses 7 of 44 real alerts
+    // instead of 3, and the block on v4-flash still raises 56 false ones.
+    // Pinned to that evidence by tests/classify-alert-label-precision.test.mjs;
+    // re-measure with scripts/eval-classify-labels.mjs before changing either.
+    model: 'deepseek/deepseek-v4.1-flash',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
     extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 30000,
@@ -4905,6 +4921,16 @@ async function classifyFetchLlm(titles, maxTextChars = 200) {
   }
   return null;
 }
+
+// Jev shadow (scripts/lib/jev-classify-relay.cjs): observes the labels the LLM
+// chain already cached, and records disagreements. It decides nothing, and is
+// inert without TYPESAFE_API_KEY.
+const jevShadow = require('./lib/jev-classify-relay.cjs');
+const JEV_SHADOW_PUSH_SCRIPT = "redis.call('LPUSH', KEYS[1], ARGV[1]) redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]) - 1) redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3])) return 1";
+const observeJevShadow = jevShadow.createShadowObserver({
+  fetchJevLabel: (title, maxTextChars) => jevShadow.fetchJevLabel(title, maxTextChars, { apiKey: jevShadow.jevApiKey() }),
+  record: (row) => upstashEval(JEV_SHADOW_PUSH_SCRIPT, [jevShadow.SHADOW_LOG_KEY], [JSON.stringify(row), jevShadow.SHADOW_LOG_MAX, jevShadow.SHADOW_LOG_TTL_S]),
+});
 
 let classifyInFlight = false;
 
@@ -5013,6 +5039,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
 
   let classified = 0;
   let skipped = 0;
+  const shadow = { asked: 0, answered: 0, agreed: 0, alertFlips: 0 };
 
   for (let b = 0; b < misses.length; b += CLASSIFY_BATCH_SIZE) {
     const chunk = misses.slice(b, b + CLASSIFY_BATCH_SIZE);
@@ -5027,6 +5054,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
 
     const classifiedSet = new Set();
+    const labelled = [];
     for (const entry of llmResult) {
       const idx = entry?.i;
       if (typeof idx !== 'number' || idx < 0 || idx >= chunk.length) continue;
@@ -5037,6 +5065,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       classifiedSet.add(idx);
       await upstashSet(classifyCacheKey(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
       classified++;
+      labelled.push({ title: chunk[idx], level });
       // Attribute newly classified title to country stats (global dedup via seenTitles)
       if (!seenTitles.has(chunk[idx])) {
         seenTitles.add(chunk[idx]);
@@ -5105,8 +5134,17 @@ async function seedClassifyForVariant(variant, seenTitles) {
         skipped++;
       }
     }
+
+    // Last, and read-only: every label above is already cached and published.
+    const observed = await observeJevShadow(variant, labelled).catch(() => null);
+    if (observed) {
+      for (const k of Object.keys(shadow)) shadow[k] += observed[k];
+    }
   }
 
+  if (shadow.asked > 0) {
+    console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
+  }
   return { total: titleArr.length, classified, skipped, byCountry };
 }
 

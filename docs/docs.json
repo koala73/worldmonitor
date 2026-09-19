@@ -30,7 +30,6 @@
         "https://www.npmjs.com/package/worldmonitor",
         "https://x.com/worldmonitorai",
         "https://x.com/eliehabib",
-        "https://discord.gg/re63kWKxaz",
         "https://www.wired.com/story/world-monitor-elie-habib/"
       ]
     }
@@ -508,7 +507,6 @@
         "footer": {
           "socials": {
             "github": "https://github.com/koala73/worldmonitor",
-            "discord": "https://discord.gg/re63kWKxaz",
             "x": "https://x.com/worldmonitorai"
           },
           "links": [
@@ -535,10 +533,6 @@
                 {
                   "label": "GitHub",
                   "href": "https://github.com/koala73/worldmonitor"
-                },
-                {
-                  "label": "Discord",
-                  "href": "https://discord.gg/re63kWKxaz"
                 },
                 {
                   "label": "X",
@@ -965,7 +959,6 @@
   "footer": {
     "socials": {
       "github": "https://github.com/koala73/worldmonitor",
-      "discord": "https://discord.gg/re63kWKxaz",
       "x": "https://x.com/worldmonitorai"
     },
     "links": [
@@ -992,10 +985,6 @@
           {
             "label": "GitHub",
             "href": "https://github.com/koala73/worldmonitor"
-          },
-          {
-            "label": "Discord",
-            "href": "https://discord.gg/re63kWKxaz"
           },
           {
             "label": "X",

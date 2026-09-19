@@ -1160,7 +1160,7 @@ describe('CI workflow coverage', () => {
     );
   });
 
-  it('batches pending and stale-contract gate discovery during the scheduled self-healing sweep', () => {
+  it('batches blocked and stale-contract gate discovery during the scheduled self-healing sweep', () => {
     const deployGateJob = deployGateScript;
 
     assert.match(
@@ -1181,7 +1181,9 @@ describe('CI workflow coverage', () => {
     assert.match(deployGateJob, /status \{ context\(name: "gate"\) \{ state description createdAt \} \}/);
     assert.match(deployGateJob, /stale_terminal_shas=/);
     assert.match(deployGateJob, /\$gate\.state == "SUCCESS"/);
-    assert.match(deployGateJob, /context\.state == "PENDING"/);
+    for (const state of ['PENDING', 'FAILURE', 'ERROR']) {
+      assert.ok(deployGateJob.includes(`$gate.state == "${state}"`));
+    }
     assert.match(deployGateJob, /endswith\(\$gate_stamp\) \| not/);
     assert.match(deployGateJob, /awk '!seen\[\$0\]\+\+'/);
     assert.match(deployGateJob, /context == null/);
