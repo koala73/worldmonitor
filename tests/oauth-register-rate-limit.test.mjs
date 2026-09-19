@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, it } from 'node:test';
+import { afterEach, beforeEach, it, mock } from 'node:test';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -8,8 +8,11 @@ let writes;
 let limiterCalls;
 let decision;
 let releaseLimiter;
+let errors;
 
 beforeEach(async () => {
+  errors = [];
+  mock.method(console, 'error', (...args) => errors.push(args.join(' ')));
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   writes = [];
@@ -25,7 +28,7 @@ beforeEach(async () => {
       if (['eval', 'evalsha'].includes(command[0].toLowerCase())) {
         limiterCalls.push(command);
         if (decision === 'timeout') await new Promise(resolve => { releaseLimiter = resolve; });
-        if (decision === 'error') results.push({ error: 'fixture admission failure' });
+        if (decision === 'error') results.push({ error: 'fixture admission failure secret-token client-private-data' });
         else results.push({ result: [decision === 'deny' ? -1 : 4, 5] });
       } else {
         assert.equal(command[0], 'SET');
@@ -39,6 +42,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  mock.restoreAll();
   releaseLimiter?.();
   globalThis.fetch = originalFetch;
   for (const key of Object.keys(process.env)) {
@@ -98,6 +102,11 @@ for (const failure of ['timeout', 'error', 'missing-url', 'missing-token', 'inva
     assert.equal(response.headers.get('x-ratelimit-mode'), 'degraded');
     assert.equal(response.headers.get('access-control-allow-origin'), '*');
     assert.equal(req.bodyUsed, false);
+    const stage = failure === 'timeout' ? 'oauthRegister:timeout'
+      : failure.startsWith('missing-') ? 'oauthRegister:missing-config' : 'oauthRegister';
+    assert.equal(errors.length, 1);
+    assert.ok(errors[0].startsWith(`[rate-limit] redis-error stage=${stage} msg=`));
+    assert.doesNotMatch(errors[0], /secret-token|client-private-data|192\.0\.2\.10/);
     if (failure === 'timeout') {
       // Exercise the real SDK's success:true/reason:timeout, then allow its
       // still-pending Redis operation to settle. Neither path may store a client.
@@ -108,6 +117,18 @@ for (const failure of ['timeout', 'error', 'missing-url', 'missing-token', 'inva
     }
   });
 }
+
+it('bounds repeated degraded reports and reports again after one minute', async () => {
+  let now = 1_800_000_030_000;
+  mock.method(Date, 'now', () => now);
+  decision = 'error';
+  for (let i = 0; i < 3; i++) assert.equal((await handler(request())).status, 503);
+  assert.equal(errors.length, 1);
+  now += 60_000;
+  assert.equal((await handler(request())).status, 503);
+  assert.equal(errors.length, 2);
+  assert.deepEqual(writes, []);
+});
 
 it('accepts a later request when admission recovers', async () => {
   decision = 'error';
