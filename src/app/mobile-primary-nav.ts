@@ -5,7 +5,7 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { SITE_VARIANT } from '@/config';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { track, trackMapViewChange, trackThemeChanged } from '@/services/analytics';
-import { getCurrentTheme, setTheme, showToast } from '@/utils';
+import { getCurrentTheme, setThemePreference, showToast } from '@/utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -205,7 +205,7 @@ export class MobilePrimaryNav {
     document.getElementById('mobileMenuTheme')?.addEventListener('click', () => {
       this.closeMenu();
       const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
-      setTheme(next);
+      setThemePreference(next);
       trackThemeChanged(next);
     }, options);
     document.getElementById('mobileMenuMission')?.addEventListener('click', (event) => {

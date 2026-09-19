@@ -9,7 +9,7 @@ import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from 
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
-import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
+import { initVercelAnalytics, stripSensitiveParamsFromUrl } from '@/bootstrap/secondary-startup';
 import { loadVariantThemeStylesheet } from '@/bootstrap/variant-theme';
 import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
@@ -565,6 +565,10 @@ if (capturedContentAttribution) {
   trackContentHandoff();
 }
 void initAnalytics();
+// Strip checkout/invite/Clerk secrets from the URL before analytics/RUM init
+// so the vendors never see them; the deferred consumers still re-strip their
+// own params after App.init's awaits. Must run before initVercelAnalytics().
+stripSensitiveParamsFromUrl();
 initVercelAnalytics();
 initDebugBearRum();
 

@@ -381,6 +381,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export class ExportPanel {}
       export function getCurrentTheme() { return 'dark'; }
       export function setTheme() {}
+      export function setThemePreference() {}
       export function showToast(message) {
         globalThis.__missionToastMessages = globalThis.__missionToastMessages || [];
         globalThis.__missionToastMessages.push(message);

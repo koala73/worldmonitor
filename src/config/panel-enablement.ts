@@ -9,7 +9,9 @@ import {
   isPanelNativeToVariant,
 } from './panels';
 
-export const SET_PANEL_ENABLED_ID_PATTERN = /^[a-z0-9][a-z0-9@_-]*$/;
+import { DASHBOARD_PANEL_ACTION_ID_PATTERN } from '../../shared/agent-bus-contract';
+
+export const SET_PANEL_ENABLED_ID_PATTERN = new RegExp(DASHBOARD_PANEL_ACTION_ID_PATTERN);
 export const SET_PANEL_ENABLED_ID_MAX_CHARS = 96;
 
 export type SetPanelEnabledStatus = 'applied' | 'denied' | 'invalid';

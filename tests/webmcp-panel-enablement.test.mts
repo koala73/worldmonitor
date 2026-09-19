@@ -278,12 +278,14 @@ describe('evaluateSetPanelEnabled', () => {
     assert.equal(evaluate({ panelId: 'not-a-real-panel' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: 'cw-custom-1' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: 'mcp-remote-1' }).reason, 'unknown_panel');
-    assert.equal(evaluate({ panelId: 'Markets' }).reason, 'malformed_arguments');
+    // Mixed-case catalog IDs are live panel IDs (#8369): 'GccNews' is
+    // schema-valid but not a catalog key, so it reaches catalog checks.
+    assert.equal(evaluate({ panelId: 'GccNews' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: '.markets' }).reason, 'malformed_arguments');
     assert.equal(evaluate({ panelId: 'a'.repeat(97) }).reason, 'malformed_arguments');
     assert.equal(evaluate({ panelId: 12 }).reason, 'malformed_arguments');
     assert.equal(evaluate({ enabled: 'true' }).reason, 'malformed_arguments');
-    assert.equal(evaluate({ panelId: 'Markets' }).status, 'invalid');
+    assert.equal(evaluate({ panelId: '.markets' }).status, 'invalid');
   });
 
   it('treats a catalog panel missing from settings as currently disabled', () => {

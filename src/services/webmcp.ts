@@ -2212,7 +2212,11 @@ export function buildWebMcpTools(
             description: 'Dashboard panel ID, such as "markets" or "giving".',
             minLength: 1,
             maxLength: 96,
-            pattern: '^[a-z0-9][a-z0-9@_-]*$',
+            // Must stay in lockstep with SET_PANEL_ENABLED_ID_PATTERN
+            // (src/config/panel-enablement.ts), which reuses
+            // DASHBOARD_PANEL_ACTION_ID_PATTERN so mixed-case catalog IDs
+            // (gccNews, regionalStartups) validate.
+            pattern: DASHBOARD_PANEL_ID_PATTERN,
           },
           enabled: {
             type: 'boolean',

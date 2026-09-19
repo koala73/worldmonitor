@@ -18,12 +18,14 @@ function updateThemeMetaColor(theme: Theme, variant = document.documentElement.d
 
 /**
  * Read the stored theme preference from localStorage.
- * Returns 'dark' or 'light' if valid, otherwise DEFAULT_THEME.
+ * Returns 'dark' or 'light' if valid; resolves 'auto' against the OS
+ * preference; otherwise DEFAULT_THEME.
  */
 export function getStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'dark' || stored === 'light') return stored;
+    if (stored === 'auto') return resolveAutoTheme();
   } catch {
     // localStorage unavailable (e.g., sandboxed iframe, private browsing)
   }
@@ -39,7 +41,7 @@ export function getThemePreference(): ThemePreference {
 }
 
 function resolveAutoTheme(): Theme {
-  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches) {
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)')?.matches) {
     return 'light';
   }
   return 'dark';
@@ -58,14 +60,10 @@ function teardownAutoListener(): void {
 
 export function setThemePreference(pref: ThemePreference): void {
   try { localStorage.setItem(STORAGE_KEY, pref); } catch { /* noop */ }
-  teardownAutoListener();
   const effective: Theme = pref === 'auto' ? resolveAutoTheme() : pref;
-  setTheme(effective);
-  if (pref === 'auto' && typeof window !== 'undefined' && window.matchMedia) {
-    autoMediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    autoMediaHandler = () => setTheme(resolveAutoTheme());
-    autoMediaQuery.addEventListener('change', autoMediaHandler);
-  }
+  applyTheme(effective);
+  if (pref === 'auto') attachAutoListener();
+  else teardownAutoListener();
 }
 
 /**
@@ -79,16 +77,20 @@ export function getCurrentTheme(): Theme {
 
 /**
  * Set the active theme: update DOM attribute, invalidate color cache,
- * persist to localStorage, update meta theme-color, and dispatch event.
+ * update meta theme-color, and dispatch event. Deliberately does NOT persist
+ * to localStorage — persistence is owned by setThemePreference() (explicit
+ * 'auto' | 'dark' | 'light' choice) so an 'auto' preference is never
+ * clobbered by its resolved value. Direct UI toggles that used to call
+ * setTheme() now persist through setThemePreference() instead.
  */
 export function setTheme(theme: Theme): void {
+  applyTheme(theme);
+}
+
+/** Apply the effective theme without touching the stored preference. */
+function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   invalidateColorCache();
-  try {
-    localStorage.setItem(STORAGE_KEY, theme);
-  } catch {
-    // localStorage unavailable
-  }
   updateThemeMetaColor(theme);
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
 }
@@ -123,4 +125,15 @@ export function applyStoredTheme(): void {
 
   document.documentElement.dataset.theme = effective;
   updateThemeMetaColor(effective, variant);
+  // A stored 'auto' preference needs its matchMedia listener after reload —
+  // setThemePreference() attaches it on change, but that never runs on boot.
+  if (raw === 'auto') attachAutoListener();
+}
+
+function attachAutoListener(): void {
+  if (typeof window === 'undefined' || !window.matchMedia) return;
+  teardownAutoListener();
+  autoMediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+  autoMediaHandler = () => applyTheme(resolveAutoTheme());
+  autoMediaQuery.addEventListener('change', autoMediaHandler);
 }

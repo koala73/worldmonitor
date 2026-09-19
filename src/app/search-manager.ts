@@ -41,7 +41,7 @@ import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { trackSearchResultSelected, trackCountrySelected } from '@/services/analytics';
 import { t } from '@/services/i18n';
-import { saveToStorage, setTheme } from '@/utils';
+import { saveToStorage, setThemePreference } from '@/utils';
 import { withTimeout } from '@/utils/with-timeout';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { PositionSample } from '@/services/aviation';
@@ -216,7 +216,9 @@ export class SearchManager implements AppModule {
       suppressNextAgentPanelView,
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
       saveToStorage,
-      setTheme,
+      // Persist the explicit choice so 'auto' can never be clobbered by its
+      // resolved value (theme-manager splits persist from apply).
+      setTheme: (theme: 'dark' | 'light') => setThemePreference(theme),
       // Must stay wrapped, not passed bare: the dispatcher invokes these as
       // `this.bindings.setTimeout(...)` / `this.bindings.clearTimeout(...)`,
       // a method call. The native functions require the receiver to be the

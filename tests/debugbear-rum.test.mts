@@ -139,15 +139,18 @@ describe('DebugBear RUM loader', () => {
       assert.ok(h.listeners.has('error'), 'window error listener missing');
       assert.ok(h.listeners.has('unhandledrejection'), 'window unhandledrejection listener missing');
 
-      const errorEvent = { type: 'error' } as Event;
-      const rejectionEvent = { type: 'unhandledrejection' } as Event;
+      const errorEvent = { type: 'error', message: 'boom', filename: 'a.js', lineno: 1, colno: 2 } as unknown as Event;
+      const rejectionEvent = { type: 'unhandledrejection', reason: new Error('rejected') } as unknown as Event;
       h.listeners.get('error')!(errorEvent);
       h.listeners.get('unhandledrejection')!(rejectionEvent);
+      // #8369: the queue holds primitive snapshots, never live Event objects
+      // (unbounded retention), so assert the snapshot shape, not identity.
       assert.deepEqual(h.win.dbbRum, [
         ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE],
-        ['error', errorEvent],
-        ['unhandledrejection', rejectionEvent],
+        ['error', { type: 'error', message: 'boom', filename: 'a.js', lineno: 1, colno: 2, reason: '' }],
+        ['unhandledrejection', { type: 'unhandledrejection', message: '', filename: '', lineno: 0, colno: 0, reason: 'rejected' }],
       ]);
+      assert.ok(!(h.win.dbbRum?.[1]?.[1] instanceof Event));
     } finally {
       h.restore();
     }
