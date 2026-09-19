@@ -58,6 +58,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         email: 'pro@example.com',
         name: 'Existing Pro',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -95,6 +96,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_pending_payment',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -128,6 +130,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_retryable_failure',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -159,6 +162,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_relay_network_failure',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -194,6 +198,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_rate_limited',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -214,6 +219,7 @@ it('forwards invalid checkout product as HTTP 400 without a transport retry sign
   const relayFetch = mock.fn(async () => Response.json({ error: 'INVALID_CHECKOUT_PRODUCT' }, { status: 400 }));
   mod.__setCreateCheckoutDepsForTests({
     validateBearerToken: async () => ({ valid: true, userId: 'user_product_admission' }),
+    checkRateLimit: async () => null,
     fetch: relayFetch,
   });
   const response = await mod.default(makeCheckoutRequest());
