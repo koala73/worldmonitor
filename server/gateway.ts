@@ -1,3 +1,4 @@
+import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 /**
  * Shared gateway logic for per-domain Vercel edge functions.
  *
@@ -56,7 +57,7 @@ import {
 import { EMBED_KEY_RPC_PATHS } from '../shared/embed-panels';
 import { hasEmbedAccess } from '../shared/embed-access';
 import { checkProMcpAccess } from './_shared/pro-mcp-gate';
-import { resolveClerkSession } from './_shared/auth-session';
+import { resolveClerkSession, sessionVerificationUnavailableResponse } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
@@ -1428,6 +1429,10 @@ export function createDomainGateway(
     let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
+      if (session && 'reason' in session) {
+        emitRequest(503, 'billing_verification_503', null);
+        return sessionVerificationUnavailableResponse(corsHeaders);
+      }
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
       usage.sessionUserId = sessionUserId;
@@ -1684,7 +1689,7 @@ export function createDomainGateway(
       recordUsageEntitlement(userKeyEntitlement);
       const apiAccessCovered = !!userKeyEntitlement &&
         userKeyEntitlement.features.apiAccess &&
-        (userKeyEntitlement.validUntil ?? 0) >= Date.now();
+        hasCurrentEntitlementCoverage(userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
@@ -1713,7 +1718,7 @@ export function createDomainGateway(
         );
       } else if (
         !userKeyEntitlement.features.apiAccess ||
-        (userKeyEntitlement.validUntil ?? 0) < Date.now()
+        !hasCurrentEntitlementCoverage(userKeyEntitlement)
       ) {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
@@ -1745,7 +1750,7 @@ export function createDomainGateway(
       hasProFreshCacheAccess =
         !!ent &&
         ent.features.tier >= 1 &&
-        ent.validUntil >= Date.now();
+        hasCurrentEntitlementCoverage(ent);
       if (hasProFreshCacheAccess) {
         rateLimitPrincipalUserId = sessionUserId;
       }
@@ -1791,14 +1796,14 @@ export function createDomainGateway(
             recordUsageEntitlement(ent);
             const proCovered = !!ent &&
               ent.features.tier >= 1 &&
-              ent.validUntil >= Date.now();
+              hasCurrentEntitlementCoverage(ent);
             const billingDenial = denyForBillingVerification(
               ent,
               corsHeaders,
               proCovered,
             );
             if (billingDenial) return billingDenial;
-            allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
+            allowed = !!ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent);
           }
           if (!allowed) {
             emitRequest(403, 'tier_403', null);
@@ -1905,7 +1910,7 @@ export function createDomainGateway(
         );
         quotaEntitlements = ent;
         recordUsageEntitlement(ent);
-        if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
+        if (ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent)) {
           rateLimitPrincipalUserId = sessionUserId;
         }
       }

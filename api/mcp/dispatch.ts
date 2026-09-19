@@ -18,7 +18,7 @@ import { applyJmespath } from './jmespath';
 import { isSharedRestCounter, reserveQuota, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
-import { isQuotaExemptMetadataTool, toolWeight, TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import { buildStructuredContent } from './structured-content';
@@ -314,7 +314,9 @@ export async function dispatchToolsCall(
   // limiter (60/min) still applies as the abuse guard.
   const isMetadataTool = isQuotaExemptMetadataTool(tool);
 
-  // #6716 F1: the free-account allowance covers CACHE-BACKED tools only.
+  // The free-account allowance covers only eligible cache-backed tools.
+  // Explicit subscription tools (including sanctions cache reads) use the
+  // same classifier as the advertised catalog and are denied before metering.
   // A tool with `_execute` fans out to server/gateway.ts, which runs its own
   // checkProMcpAccess re-check that this feature deliberately does not relax
   // (see api/mcp/types.ts's `freeAccountAllowance` note). Admitting one would
@@ -326,7 +328,7 @@ export async function dispatchToolsCall(
   // from metering below: `describe_tool` has an `_execute`, but it is a purely
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
-  if (freeAccountAllowance && tool._execute && !isMetadataTool && tool._freeTier !== true) {
+  if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
     return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
   }
 
