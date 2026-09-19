@@ -1,3 +1,4 @@
+import { IMF_DATASETS, parseImfDataset } from './_imf-dataset.js';
 import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
@@ -567,7 +568,7 @@ export default async function handler(req, ctx) {
       && !cached.has(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
       ? canadaAlertsCutoverFallbackValue(cached)
       : cached.get(keys[i]);
-    if (val !== undefined) {
+    if (val !== undefined && (!Object.hasOwn(IMF_DATASETS, names[i]) || parseImfDataset(names[i], val))) {
       data[names[i]] = sanitizeBootstrapValue(names[i], val);
     } else {
       missing.push(names[i]);

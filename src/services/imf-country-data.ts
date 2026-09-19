@@ -1,14 +1,14 @@
+import { parseImfDataset } from '../../shared/imf-dataset.js';
+
 /**
  * IMF WEO per-country data — fetches the four IMF SDMX-3.0 seeded keys
  * (macro, growth, labor, external) via /api/bootstrap and returns the
  * subset for one country. Used by CountryDeepDivePanel Economic
  * Indicators + Country Facts cards (issue #3027).
  *
- * Network policy: single bootstrap GET with comma-separated keys; result
- * is memoised for ~10 min since WEO is a monthly release.
+ * Network policy: public single-key bootstrap reads; validated themes are
+ * cached independently for ten minutes, while unavailable themes can retry.
  */
-
-import { toApiUrl } from '@/services/runtime';
 
 export interface ImfMacroEntry {
   inflationPct: number | null;
@@ -56,45 +56,45 @@ export interface ImfCountryBundle {
   growth: ImfGrowthEntry | null;
   labor: ImfLaborEntry | null;
   external: ImfExternalEntry | null;
+  /** Oldest known seeder timestamp across returned themes; zero means unknown. */
   fetchedAt: number;
+  datasetStatus: Record<ImfTheme, 'available' | 'missing' | 'unavailable'>;
 }
 
-interface ImfBootstrapPayload {
-  data?: {
-    imfMacro?: { countries?: Record<string, ImfMacroEntry> };
-    imfGrowth?: { countries?: Record<string, ImfGrowthEntry> };
-    imfLabor?: { countries?: Record<string, ImfLaborEntry> };
-    imfExternal?: { countries?: Record<string, ImfExternalEntry> };
-  };
-}
-
+type ImfEntries = { macro: ImfMacroEntry; growth: ImfGrowthEntry; labor: ImfLaborEntry; external: ImfExternalEntry };
+type ImfTheme = keyof ImfEntries;
+type ImfDataset<K extends ImfTheme> = { countries: Record<string, ImfEntries[K]>; seededAt: number };
+const THEMES = { macro: 'imfMacro', growth: 'imfGrowth', labor: 'imfLabor', external: 'imfExternal' } as const;
 const CACHE_TTL_MS = 10 * 60 * 1000;
-let cachedBundle: { fetchedAt: number; payload: ImfBootstrapPayload['data'] } | null = null;
-let inFlight: Promise<ImfBootstrapPayload['data']> | null = null;
+const cached = new Map<ImfTheme, { acceptedAt: number; data: ImfDataset<ImfTheme> }>();
+const pending = new Map<ImfTheme, Promise<ImfDataset<ImfTheme> | undefined>>();
 
-async function fetchBundle(): Promise<ImfBootstrapPayload['data']> {
-  if (cachedBundle && Date.now() - cachedBundle.fetchedAt < CACHE_TTL_MS) {
-    return cachedBundle.payload;
-  }
-  if (inFlight) return inFlight;
-
-  inFlight = (async () => {
+async function fetchDataset<K extends ImfTheme>(theme: K): Promise<ImfDataset<K> | undefined> {
+  const previous = cached.get(theme);
+  if (previous && Date.now() - previous.acceptedAt < CACHE_TTL_MS) return previous.data as ImfDataset<K>;
+  const existing = pending.get(theme);
+  if (existing) return existing as Promise<ImfDataset<K> | undefined>;
+  const request = (async () => {
     try {
-      const resp = await fetch(
-        toApiUrl('/api/bootstrap?keys=imfMacro,imfGrowth,imfLabor,imfExternal'),
-        { signal: AbortSignal.timeout(8_000) },
-      );
-      if (!resp.ok) return undefined;
-      const payload = (await resp.json()) as ImfBootstrapPayload;
-      cachedBundle = { fetchedAt: Date.now(), payload: payload.data };
-      return payload.data;
+      const { ensureHydrated } = await import('@/services/bootstrap');
+      const data = parseImfDataset(THEMES[theme], await ensureHydrated(THEMES[theme])) as ImfDataset<K> | undefined;
+      if (data) cached.set(theme, { acceptedAt: Date.now(), data });
+      return data;
     } catch {
       return undefined;
     } finally {
-      inFlight = null;
+      pending.delete(theme);
     }
   })();
-  return inFlight;
+  pending.set(theme, request);
+  return request;
+}
+
+async function fetchBundle() {
+  const [macro, growth, labor, external] = await Promise.all([
+    fetchDataset('macro'), fetchDataset('growth'), fetchDataset('labor'), fetchDataset('external'),
+  ]);
+  return { macro, growth, labor, external };
 }
 
 /**
@@ -166,8 +166,8 @@ export function buildCountryInflationRows(
  * never throws — returns an empty list when the seeder is offline.
  */
 export async function getAllCountriesInflation(): Promise<CountryInflationRow[]> {
-  const data = await fetchBundle();
-  return buildCountryInflationRows(data?.imfMacro?.countries);
+  const data = await fetchDataset('macro');
+  return buildCountryInflationRows(data?.countries);
 }
 
 /**
@@ -176,14 +176,21 @@ export async function getAllCountriesInflation(): Promise<CountryInflationRow[]>
  * (or whose seeder is offline). Never throws.
  */
 export async function getImfCountryBundle(iso2Code: string): Promise<ImfCountryBundle> {
-  const code = iso2Code.toUpperCase();
+  const code = iso2Code.trim().toUpperCase();
   const data = await fetchBundle();
+  const available = Object.values(data).filter((dataset) => dataset !== undefined);
   return {
-    macro: data?.imfMacro?.countries?.[code] ?? null,
-    growth: data?.imfGrowth?.countries?.[code] ?? null,
-    labor: data?.imfLabor?.countries?.[code] ?? null,
-    external: data?.imfExternal?.countries?.[code] ?? null,
-    fetchedAt: cachedBundle?.fetchedAt ?? Date.now(),
+    macro: data.macro?.countries[code] ?? null,
+    growth: data.growth?.countries[code] ?? null,
+    labor: data.labor?.countries[code] ?? null,
+    external: data.external?.countries[code] ?? null,
+    fetchedAt: available.length ? Math.min(...available.map((dataset) => dataset.seededAt)) : 0,
+    datasetStatus: {
+      macro: !data.macro ? 'unavailable' : data.macro.countries[code] ? 'available' : 'missing',
+      growth: !data.growth ? 'unavailable' : data.growth.countries[code] ? 'available' : 'missing',
+      labor: !data.labor ? 'unavailable' : data.labor.countries[code] ? 'available' : 'missing',
+      external: !data.external ? 'unavailable' : data.external.countries[code] ? 'available' : 'missing',
+    },
   };
 }
 

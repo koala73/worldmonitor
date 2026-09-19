@@ -922,3 +922,22 @@ test('public on-demand URL does not widen into a CDN-amplification vector', asyn
     }
   });
 });
+
+for (const [key, field] of Object.entries({ imfMacro: 'inflationPct', imfGrowth: 'realGdpGrowthPct', imfLabor: 'unemploymentPct', imfExternal: 'exportsUsd' })) {
+  test(`${key} rejects malformed snapshots without caching and serves a repaired seed`, async () => {
+    for (const value of [{}, { countries: {} }, { countries: { UA: { [field]: 'bad' } } }, { countries: { UA: { [field]: 1 } }, fallback: true }]) {
+      await withMockedBootstrapAuth({ entitlement: null, bootstrapPipelineBody: presentOnDemandPipelineBody(value) }, async () => {
+        const response = await handler(makePublicOnDemandRequest(key));
+        assert.deepEqual(await response.json(), { data: {}, missing: [key] });
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+        assertNonSharedCacheHeaders(response);
+      });
+    }
+    const repaired = { countries: { UA: { [field]: 1, year: 2026 } }, seededAt: '2026-09-01T00:00:00Z' };
+    await withMockedBootstrapAuth({ entitlement: null, bootstrapPipelineBody: presentOnDemandPipelineBody(repaired) }, async () => {
+      const response = await handler(makePublicOnDemandRequest(key));
+      assert.deepEqual((await response.json()).data[key], repaired);
+      assertSharedCacheHeaders(response);
+    });
+  });
+}

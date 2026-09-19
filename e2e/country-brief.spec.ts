@@ -590,6 +590,9 @@ test('decision brief clears and stays usable when a selection change aborts a ca
 
 for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true, light: false }, { mobile: false, light: true }, { mobile: true, light: true }]) test(`commodity decision brief ${mobile ? 'mobile' : 'desktop'} ${light ? 'light' : 'dark'} captures selection and actual exports`, async ({ page, countryBrief }, testInfo) => {
   void countryBrief;
+  // Three commodities × capture, dual downloads, export-page asserts, and
+  // screenshots regularly exhaust the 90s suite default under CI worker load.
+  test.setTimeout(180_000);
   if (mobile) await page.setViewportSize({ width: 390, height: 844 });
   await installCommodityBriefData(page);
   await page.addInitScript(theme => localStorage.setItem('worldmonitor-theme', theme), light ? 'light' : 'dark');
@@ -682,6 +685,32 @@ for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true
   }
 });
 
+test('anonymous Country Brief renders IMF indicators from public single-key reads', async ({ page, countryBrief }, testInfo) => {
+  void countryBrief;
+  const keys: string[] = [];
+  const countries = { UA: { inflationPct: 4.2, realGdpGrowthPct: 2.3, unemploymentPct: 7.1, year: 2026 } };
+  await page.route('**/api/bootstrap*', async route => {
+    const url = new URL(route.request().url());
+    const key = url.searchParams.get('keys');
+    if (key?.startsWith('imf')) {
+      expect(key).not.toContain(',');
+      expect(url.searchParams.get('public')).toBe('1');
+      keys.push(key);
+      await route.fulfill({ json: { data: { [key]: { countries, seededAt: '2026-09-01T00:00:00Z' } } } });
+    } else await route.fallback();
+  });
+  await page.goto('/dashboard?country=UA');
+  const panel = page.locator('#country-deep-dive-panel');
+  await expect(panel).toBeVisible();
+  await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Economy & trade', exact: true }).click();
+  await expect(panel.getByText('CPI Inflation', { exact: true })).toBeVisible();
+  await expect(panel.getByText('+4.2%', { exact: true })).toBeVisible();
+  await expect(panel.getByText('+2.3%', { exact: true })).toBeVisible();
+  await expect(panel.getByText('IMF WEO', { exact: true }).first()).toBeVisible();
+  expect(new Set(keys)).toEqual(new Set(['imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal']));
+  await panel.getByText('CPI Inflation', { exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('imf-public-country-brief.png') });
+});
 
 test('country brief excludes global temporal observations from country signals', async ({ page, countryBrief }, testInfo) => {
   countryBrief.temporalCount = 3;
