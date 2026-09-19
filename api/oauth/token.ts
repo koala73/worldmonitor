@@ -805,10 +805,12 @@ async function handleRefreshToken(
 }
 
 function temporaryAuthFailure(): Response {
-  return jsonResp(
+  const response = jsonResp(
     { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
     503,
   );
+  response.headers.set('Retry-After', '5');
+  return response;
 }
 
 function invalidRefreshGrant(): Response {

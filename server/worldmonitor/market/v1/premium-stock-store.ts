@@ -4,6 +4,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJsonBatch, runRedisPipeline, setCachedJson } from '../../../_shared/redis';
 import { sanitizeSymbol } from './_shared';
+import { SeedUnavailableError } from '../../../_shared/required-seed';
 
 const ANALYSIS_HISTORY_LIMIT = 32;
 const ANALYSIS_HISTORY_TTL_SECONDS = 90 * 24 * 60 * 60;
@@ -147,8 +148,30 @@ export async function getStoredStockAnalysisHistory(
   const out: AnalysisHistoryRecord = {};
 
   await Promise.all(normalized.map(async (symbol) => {
-    const ids = await zrevrange(analysisHistoryIndexKey(symbol, includeNews), clampedLimit);
-    out[symbol] = await loadAnalysisRecords(ids, analysisItemKey);
+    const indexKey = analysisHistoryIndexKey(symbol, includeNews);
+    const index = await runRedisPipeline([['ZREVRANGE', indexKey, 0, clampedLimit - 1]]);
+    const ids = index[0]?.result;
+    if (index.length !== 1 || index[0]?.error || !Array.isArray(ids)
+      || !ids.every(id => typeof id === 'string')) throw new SeedUnavailableError(indexKey);
+    if (ids.length === 0) {
+      out[symbol] = [];
+      return;
+    }
+    const records = await runRedisPipeline(ids.map(id => ['GET', analysisItemKey(String(id))]));
+    if (records.length !== ids.length) throw new SeedUnavailableError(indexKey);
+    out[symbol] = records.flatMap(record => {
+      if (record.error) throw new SeedUnavailableError(indexKey);
+      if (record.result === null) return [];
+      if (typeof record.result !== 'string') throw new SeedUnavailableError(indexKey);
+      let snapshot: AnalyzeStockResponse;
+      try {
+        snapshot = JSON.parse(record.result);
+      } catch {
+        throw new SeedUnavailableError(indexKey);
+      }
+      if (!snapshot || typeof snapshot !== 'object') throw new SeedUnavailableError(indexKey);
+      return snapshot.available ? [snapshot] : [];
+    }).sort(compareAnalysisDesc);
   }));
 
   return out;

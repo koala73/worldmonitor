@@ -132,6 +132,8 @@ const emptyFreshness: GetConsumerPriceFreshnessResponse = {
   upstreamUnavailable: true,
 };
 
+const isAvailable = <T extends { upstreamUnavailable: boolean }>(response: T): boolean => !response.upstreamUnavailable;
+
 export async function fetchConsumerPriceOverview(
   marketCode = DEFAULT_MARKET,
   basketSlug = DEFAULT_BASKET,
@@ -154,7 +156,7 @@ export async function fetchConsumerPriceOverview(
     return await overviewBreaker.execute(
       () => client.getConsumerPriceOverview({ marketCode, basketSlug }),
       emptyOverview,
-      { cacheKey: `${marketCode}:${basketSlug}` },
+      { cacheKey: `${marketCode}:${basketSlug}`, shouldCache: isAvailable },
     );
   } catch {
     return emptyOverview;
@@ -170,7 +172,7 @@ export async function fetchConsumerPriceBasketSeries(
     return await seriesBreaker.execute(
       () => client.getConsumerPriceBasketSeries({ marketCode, basketSlug, range }),
       emptySeries,
-      { cacheKey: `${marketCode}:${basketSlug}:${range}` },
+      { cacheKey: `${marketCode}:${basketSlug}:${range}`, shouldCache: isAvailable },
     );
   } catch {
     return { ...emptySeries, range };
@@ -198,7 +200,7 @@ export async function fetchConsumerPriceCategories(
     return await categoriesBreaker.execute(
       () => client.listConsumerPriceCategories({ marketCode, basketSlug, range }),
       emptyCategories,
-      { cacheKey: `${marketCode}:${basketSlug}:${range}` },
+      { cacheKey: `${marketCode}:${basketSlug}:${range}`, shouldCache: isAvailable },
     );
   } catch {
     return emptyCategories;
@@ -226,7 +228,7 @@ export async function fetchConsumerPriceMovers(
     return await moversBreaker.execute(
       () => client.listConsumerPriceMovers({ marketCode, range, categorySlug: categorySlug ?? '', limit: 10 }),
       emptyMovers,
-      { cacheKey: `${marketCode}:${range}:${categorySlug ?? ''}` },
+      { cacheKey: `${marketCode}:${range}:${categorySlug ?? ''}`, shouldCache: isAvailable },
     );
   } catch {
     return emptyMovers;
@@ -253,7 +255,7 @@ export async function fetchRetailerPriceSpreads(
     return await spreadBreaker.execute(
       () => client.listRetailerPriceSpreads({ marketCode, basketSlug }),
       emptySpread,
-      { cacheKey: `${marketCode}:${basketSlug}` },
+      { cacheKey: `${marketCode}:${basketSlug}`, shouldCache: isAvailable },
     );
   } catch {
     return emptySpread;
@@ -267,7 +269,7 @@ export async function fetchConsumerPriceFreshness(
     return await freshnessBreaker.execute(
       () => client.getConsumerPriceFreshness({ marketCode }),
       emptyFreshness,
-      { cacheKey: marketCode },
+      { cacheKey: marketCode, shouldCache: isAvailable },
     );
   } catch {
     return emptyFreshness;
@@ -286,5 +288,6 @@ export async function fetchAllMarketsOverview(): Promise<GetConsumerPriceOvervie
       SINGLE_MARKETS.map((m) => fetchConsumerPriceOverview(m.code, `essentials-${m.code}`)),
     ),
     [],
+    { shouldCache: (responses) => responses.length > 0 && responses.every(isAvailable) },
   );
 }

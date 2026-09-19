@@ -717,6 +717,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 503, 'transient Convex failure → 503');
+    assert.equal(resp.headers.get('Retry-After'), '5');
     const body = await resp.json();
     assert.equal(body.error, 'server_error');
     // F3: refresh token must be restored to Redis with the original payload.

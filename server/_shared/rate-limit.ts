@@ -213,6 +213,7 @@ function rateLimitDegradedResponse(corsHeaders: Record<string, string>): Respons
     status: 503,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...RATE_LIMIT_DEGRADED_HEADERS,
       ...corsHeaders,
     },
@@ -329,6 +330,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // LLM article summarization is Pro-gated, but still needs a scoped,
   // fail-closed budget so Redis degradation cannot silently lift the
   // per-endpoint spend control.
+  '/api/news/v1/list-feed-digest': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
@@ -581,6 +583,7 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',
   },
