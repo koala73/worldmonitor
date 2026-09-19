@@ -4687,6 +4687,15 @@ Key distinction: "critical" requires GEOPOLITICAL scope — events that destabil
 - "Man killed his estranged wife" → domestic crime → info
 - "How to Crack the SAM Database in Kali Linux" → tutorial → info
 
+Do not under-rate "high". The EVENT itself is high even when nobody is hurt and even when the headline reports a vote, an approval or an announcement:
+- a sanctions package or sanctions bill passed, signed or imposed
+- a major arms sale or weapons transfer approved between states
+- a military deployment or force movement ahead of an operation
+- an armed attack, raid or clash with deaths, including one that was repelled
+- many deaths in state custody or by state action
+- a natural disaster that floods, destroys or displaces on a regional scale
+Use medium for analysis of or reaction to such an event, not for the event itself.
+
 Input: numbered lines "index|Title"
 Output: [{"i":0,"l":"high","c":"conflict"}, ...]
 
@@ -4809,7 +4818,14 @@ const CLASSIFY_LLM_PROVIDERS = [
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'deepseek/deepseek-v4-flash',
+    // Classification only — NOT the shared Flash default. Against 413 blind-judged
+    // headlines v4-flash raised 51 false critical/high labels for 42 real ones; v4.1
+    // with the "Do not under-rate high" prompt block raised 15-21 for 41 (three runs).
+    // Both halves are load-bearing: v4.1 without the block misses 7 of 44 real alerts
+    // instead of 3, and the block on v4-flash still raises 56 false ones.
+    // Pinned to that evidence by tests/classify-alert-label-precision.test.mjs;
+    // re-measure with scripts/eval-classify-labels.mjs before changing either.
+    model: 'deepseek/deepseek-v4.1-flash',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
     extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 30000,
