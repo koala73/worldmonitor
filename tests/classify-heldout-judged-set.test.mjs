@@ -16,6 +16,7 @@ import {
   extractRelayPrompt,
   extractRpcOpenRouterModel,
   extractRpcPrompt,
+  isAlertLevel,
   promptSha,
   scoreAlertLabels,
 } from '../scripts/lib/classify-eval.mjs';
@@ -66,7 +67,7 @@ describe('held-out judged set', () => {
   });
 
   it('records what #8341 bought and what it cost, out of sample', () => {
-    const alertLevel = heldout.rows.filter((r) => r.judge === 'critical' || r.judge === 'high').length;
+    const alertLevel = heldout.rows.filter((r) => isAlertLevel(r.judge)).length;
     assert.equal(alertLevel, 41);
     const pick = (s) => ({ missed: s.missed, falseAlerts: s.falseAlerts });
     assert.deepEqual(pick(score('relay-before')), { missed: 2, falseAlerts: 20 });
