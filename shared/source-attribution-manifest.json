@@ -10130,6 +10130,9 @@
           "path": "api/reverse-geocode.js"
         },
         {
+          "path": "api/seed-contract-probe.ts"
+        },
+        {
           "path": "api/story.js"
         },
         {
