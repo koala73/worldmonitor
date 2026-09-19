@@ -13752,6 +13752,12 @@ async function handleWidgetAgentRequest(req, res) {
   }
 
   const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
+  // Prefer the edge-validated spend identity. Behind the Vercel proxy every
+  // browser shares this process's peer address, so an IP bucket is one global
+  // cap (or none, when the header is absent) rather than a per-caller cap.
+  const spendHeader = req.headers['x-wm-widget-spend-id'];
+  const spendId = typeof spendHeader === 'string' ? spendHeader.trim() : '';
+  const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId) ? `id:${spendId}` : clientIp;
 
   // Allow up to 163840 bytes (160KB) for PRO requests (basic is smaller but we parse tier first)
   const rawContentLength = parseInt(req.headers['content-length'] || '0', 10);
@@ -13789,7 +13795,7 @@ async function handleWidgetAgentRequest(req, res) {
   }
 
   // Rate limiting (separate buckets)
-  const rateLimited = isPro ? checkProWidgetRateLimit(clientIp) : checkWidgetRateLimit(clientIp);
+  const rateLimited = isPro ? checkProWidgetRateLimit(rateBucket) : checkWidgetRateLimit(rateBucket);
   if (rateLimited) {
     return safeEnd(res, 429, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Rate limit exceeded' }));
   }
@@ -13818,6 +13824,10 @@ async function handleWidgetAgentRequest(req, res) {
     'X-Accel-Buffering': 'no',
     'Connection': 'keep-alive',
   });
+  // Send the headers before the model turn so the edge proxy can bound connect
+  // time. Without flushHeaders, Node holds writeHead until the first body
+  // write, which only happens after client.messages.create returns.
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
   let cancelled = false;
   req.on('close', () => { cancelled = true; });
