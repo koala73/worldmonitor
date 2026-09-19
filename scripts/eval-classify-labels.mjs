@@ -7,11 +7,12 @@
 //   node --env-file=.env.local scripts/eval-classify-labels.mjs --path rpc --capture rpc-after
 //   ... --model deepseek/deepseek-v4-flash                     # try another OpenRouter model
 //   ... --capture <name> --note "why this run exists"          # --force to replace an existing run
+//   ... --fixture tests/fixtures/classify-judged-headlines-heldout.json   # the HELD-OUT set: score it, never tune on it
 //
 // The prompt and the model are read out of the source files, so a live run measures
 // what production sends. A live run over all 413 titles costs about $0.01 (relay,
 // 50 titles per completion) or $0.03 (rpc, one title per completion).
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -21,7 +22,7 @@ import {
 import { OPENROUTER_PROVIDER_ROUTING } from './_llm-model-timeouts.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const FIXTURE = resolve(root, 'tests/fixtures/classify-judged-headlines.json');
+const DEFAULT_FIXTURE = 'tests/fixtures/classify-judged-headlines.json';
 const LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const CATEGORIES = [
   'conflict', 'protest', 'disaster', 'diplomatic', 'economic', 'terrorism', 'cyber',
@@ -34,7 +35,7 @@ const RPC_CONCURRENCY = 8;
 // must not count as a label here.
 const ATTEMPT_TIMEOUT_MS = { relay: 30_000, rpc: 15_000 };
 
-const VALUE_FLAGS = ['path', 'capture', 'model', 'note'];
+const VALUE_FLAGS = ['path', 'capture', 'model', 'note', 'fixture'];
 const argv = process.argv.slice(2);
 // Every flag but --force takes a value. Checked up front: a live run costs money, and a
 // flag read as another flag's value would otherwise burn one and write nothing (or junk).
@@ -52,6 +53,11 @@ const force = argv.includes('--force');
 if (path && path !== 'relay' && path !== 'rpc') throw new Error('--path must be relay or rpc');
 if (capture && !path) throw new Error('--capture needs --path');
 
+// --fixture picks the judged set: the tuning set by default, or the held-out set
+// (tests/fixtures/classify-judged-headlines-heldout.json), whose titles were judged after
+// the prompt was fixed. Checked before any request, like the other arguments.
+const FIXTURE = resolve(root, arg('fixture') ?? DEFAULT_FIXTURE);
+if (!existsSync(FIXTURE)) throw new Error(`--fixture not found: ${FIXTURE}`);
 const fixture = JSON.parse(readFileSync(FIXTURE, 'utf8'));
 // `relay-before` / `rpc-before` cannot be reproduced from this checkout (the prompt is read
 // from source), so an existing run is never replaced by accident.

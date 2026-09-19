@@ -203,6 +203,7 @@ export async function storeStockBacktestSnapshot(
   await setCachedJson(key, {
     ...snapshot,
     symbol: sanitizeSymbol(snapshot.symbol),
+    name: sanitizeSymbol(snapshot.symbol),
   }, BACKTEST_STORE_TTL_SECONDS);
 }
 
@@ -215,7 +216,10 @@ export async function getStoredStockBacktestSnapshots(
   const cached = await getCachedJsonBatch(keys);
 
   return normalized
-    .map((_, index) => cached.get(keys[index]!) as BacktestStockResponse | undefined)
+    .map((symbol, index) => {
+      const item = cached.get(keys[index]!) as BacktestStockResponse | undefined;
+      return item ? { ...item, symbol, name: symbol } : undefined;
+    })
     .filter((item): item is BacktestStockResponse => !!item?.available)
     .sort((a, b) => (Date.parse(b.generatedAt || '') || 0) - (Date.parse(a.generatedAt || '') || 0));
 }

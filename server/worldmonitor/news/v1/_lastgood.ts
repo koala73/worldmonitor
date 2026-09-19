@@ -27,6 +27,19 @@ export const LASTGOOD_TTL_S = 6 * 60 * 60;
 /** Same contract in ms, enforced on read even if a key's TTL drifted. */
 export const LASTGOOD_MAX_AGE_MS = LASTGOOD_TTL_S * 1000;
 
+/**
+ * Depth floor for replacing a live snapshot: a candidate needs at least this
+ * percentage of the richest item count accepted in the window (see
+ * AcceptedSnapshotMeta.peakItemCount). Healthy builds drift by a few percent
+ * (observed 294 -> 289, 212 -> 210, 173 -> 171); the collapse this gate exists
+ * to stop is an order of magnitude (one item per category). A strict `<` here
+ * froze the live `full` digest for ~6h on 2026-09-19: every fresh 289-item build
+ * lost to a 294-item incumbent. MIRRORED as a literal in
+ * shared/digest-lastgood-publish-script.mjs and docker/redis-rest-proxy.mjs;
+ * tests/digest-lastgood.test.mts pins all three to this value.
+ */
+export const LASTGOOD_MIN_ITEM_PCT = 80;
+
 /** Redis TTL for the latest-attempt metadata (outlives the snapshot on
  *  purpose so an operator can still see the last failure after the
  *  snapshot expired). */
@@ -109,6 +122,16 @@ export interface AcceptedSnapshotMeta {
    * the same categories and hundreds of items.
    */
   itemCount: number;
+  /**
+   * Richest item count accepted inside the current six-hour window, and the
+   * content clock of the body that set it. The depth floor is anchored here
+   * rather than to `itemCount`: anchored to the last accepted body, successive
+   * 20% steps compound (100 -> 80 -> 64 -> ...) and consume the very snapshot
+   * that exists to survive a degradation. Absent on rows written before this
+   * field existed; the row's own count then stands in.
+   */
+  peakItemCount?: number;
+  peakAt?: number;
 }
 
 /**
@@ -135,7 +158,13 @@ export function parseAcceptedMeta(value: unknown): AcceptedSnapshotMeta | null {
   // itemCount is newer than the first shipped shape; treat a missing value as
   // 0 so an older row is always replaceable rather than permanently richer.
   const itemCount = typeof v.itemCount === 'number' && Number.isFinite(v.itemCount) ? v.itemCount : 0;
-  return { acceptedAt: v.acceptedAt, categoryCount: v.categoryCount, itemCount };
+  const meta: AcceptedSnapshotMeta = { acceptedAt: v.acceptedAt, categoryCount: v.categoryCount, itemCount };
+  if (typeof v.peakItemCount === 'number' && Number.isFinite(v.peakItemCount)
+    && typeof v.peakAt === 'number' && Number.isFinite(v.peakAt)) {
+    meta.peakItemCount = v.peakItemCount;
+    meta.peakAt = v.peakAt;
+  }
+  return meta;
 }
 
 /** Parse a full snapshot (metadata + body) read back from Redis. */
@@ -149,16 +178,64 @@ export function parseAcceptedSnapshot<T extends DigestLike = DigestLike>(
   return { ...meta, data: data as T };
 }
 
+function isInsideWindow(clockMs: number, nowMs: number): boolean {
+  const ageMs = nowMs - clockMs;
+  return ageMs >= 0 && ageMs <= LASTGOOD_MAX_AGE_MS;
+}
+
+/**
+ * The item count the depth floor is measured against, and the clock of the
+ * body that set it. `measuredItems` is the incumbent re-measured under the
+ * CURRENT revocation set. A stored peak only counts while it is inside the
+ * window AND the incumbent still measures what it measured at publication:
+ * once revocations shrank it, a publication-time peak would veto its repair.
+ */
+function livePeak(
+  current: AcceptedSnapshotMeta,
+  measuredItems: number,
+  nowMs: number,
+): { peakItemCount: number; peakAt: number } {
+  const { peakItemCount, peakAt } = current;
+  if (peakItemCount !== undefined && peakAt !== undefined
+    && isInsideWindow(peakAt, nowMs)
+    && current.itemCount === measuredItems
+    && peakItemCount > measuredItems) {
+    return { peakItemCount, peakAt };
+  }
+  return { peakItemCount: measuredItems, peakAt: current.acceptedAt };
+}
+
+/** The peak to store with an ACCEPTED candidate. Mirror of the Lua's carriedPeak. */
+export function nextPeak(
+  current: AcceptedSnapshotMeta | null,
+  candidateItems: number,
+  candidateAcceptedAt: number,
+  nowMs: number,
+  measuredCurrentItems?: number,
+): { peakItemCount: number; peakAt: number } {
+  if (current && isInsideWindow(current.acceptedAt, nowMs)) {
+    const peak = livePeak(current, measuredCurrentItems ?? current.itemCount, nowMs);
+    if (peak.peakItemCount > candidateItems) return peak;
+  }
+  return { peakItemCount: candidateItems, peakAt: candidateAcceptedAt };
+}
+
 /**
  * Replacement policy. A candidate ALWAYS serves the request that built it,
  * but it may only replace a still-live accepted snapshot when it is not
- * materially narrower (fewer categories). An expired snapshot can never
- * veto a valid candidate.
+ * materially narrower: no fewer categories, and at least
+ * LASTGOOD_MIN_ITEM_PCT of the richest item count accepted in the window.
+ * An expired snapshot can never veto a valid candidate.
+ *
+ * `measuredCurrentItems` is the incumbent BODY re-measured under the current
+ * revocation set, which is what the Lua twin compares. Omit it only when there
+ * is no body to measure (the canonical comparison passes fresh counts already).
  */
 export function shouldReplaceAccepted(
   current: AcceptedSnapshotMeta | null,
   candidate: { categoryCount: number; itemCount: number },
   nowMs: number,
+  measuredCurrentItems?: number,
 ): { replace: boolean; reason: string } {
   if (!current) return { replace: true, reason: 'no-accepted-snapshot' };
   const ageMs = nowMs - current.acceptedAt;
@@ -171,11 +248,15 @@ export function shouldReplaceAccepted(
   // "Materially narrower" is two-dimensional: a candidate must not regress on
   // breadth (categories) OR depth (items). Comparing categories alone let a
   // digest with one item per category replace a live one holding hundreds.
+  // Breadth is strict: losing a whole category is never drift. Depth has a
+  // floor (LASTGOOD_MIN_ITEM_PCT), in integer arithmetic so the Lua twin
+  // decides identically.
   if (candidate.categoryCount < current.categoryCount) {
     return { replace: false, reason: `narrower-categories:${candidate.categoryCount}<${current.categoryCount}` };
   }
-  if (candidate.itemCount < current.itemCount) {
-    return { replace: false, reason: `narrower-items:${candidate.itemCount}<${current.itemCount}` };
+  const anchor = livePeak(current, measuredCurrentItems ?? current.itemCount, nowMs).peakItemCount;
+  if (candidate.itemCount * 100 < anchor * LASTGOOD_MIN_ITEM_PCT) {
+    return { replace: false, reason: `narrower-items:${candidate.itemCount}<${LASTGOOD_MIN_ITEM_PCT}%of${anchor}` };
   }
   return { replace: true, reason: 'not-narrower' };
 }

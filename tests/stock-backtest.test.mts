@@ -291,6 +291,14 @@ describe('server-backed stored stock backtests', () => {
 
     assert.equal(stored.items.length, 1);
     assert.equal(stored.items[0]?.symbol, 'AAPL');
+    assert.equal(response.name, 'Apple');
+    assert.equal(stored.items[0]?.name, 'AAPL');
+    const snapshotKey = [...redisFetch.redis.keys()].find(key => key.includes('stock-backtest-store:'))!;
+    const snapshot = JSON.parse(redisFetch.redis.get(snapshotKey)!);
+    assert.equal(snapshot.name, 'AAPL');
+    redisFetch.redis.set(snapshotKey, JSON.stringify({ ...snapshot, name: '<img src=x>' }));
+    const legacy = await listStoredStockBacktests({} as never, { symbols: ['AAPL'], evalWindowDays: 10 });
+    assert.equal(legacy.items[0]?.name, 'AAPL');
     assert.equal(stored.items[0]?.latestSignal, response.latestSignal);
     assert.equal(stored.items[0]?.ratingBasis, 'technical_only');
     assert.equal(stored.items[0]?.engineVersion, 'v3-technical-only');

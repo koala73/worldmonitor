@@ -7,6 +7,8 @@ import { build } from 'esbuild';
 import {
   ATTEMPT_META_TTL_S,
   LASTGOOD_MAX_AGE_MS,
+  LASTGOOD_MIN_ITEM_PCT,
+  nextPeak,
   LASTGOOD_TTL_S,
   REVOKED_URLS_KEY,
   attemptMetaKey,
@@ -108,8 +110,60 @@ describe('durable last-good policy (#7084)', () => {
     // one item per category could evict a live snapshot holding hundreds.
     assert.deepEqual(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 4 }, NOW), {
       replace: false,
-      reason: 'narrower-items:4<400',
+      reason: 'narrower-items:4<80%of400',
     });
+  });
+
+  it('ordinary drift in item count replaces -- a strict comparison froze the live digest', () => {
+    // Production, 2026-09-19: `full` served a 03:58 UTC body for ~6h. Fresh builds came
+    // back in 5s with 17 categories / 289 items and were each rejected against the
+    // 17 / 294 incumbent, which also parked a 120s rebuild cooldown every time.
+    const live = { acceptedAt: NOW - 4 * 60 * 60 * 1000, categoryCount: 17, itemCount: 294 };
+    assert.deepEqual(shouldReplaceAccepted(live, { categoryCount: 17, itemCount: 289 }, NOW), {
+      replace: true,
+      reason: 'not-narrower',
+    });
+  });
+
+  it('draws the depth line at LASTGOOD_MIN_ITEM_PCT of the incumbent, inclusive', () => {
+    assert.equal(LASTGOOD_MIN_ITEM_PCT, 80);
+    const live = { acceptedAt: NOW - 60_000, categoryCount: 4, itemCount: 100 };
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 80 }, NOW).replace, true);
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 79 }, NOW).replace, false);
+    // Breadth stays strict: losing a whole category is never "drift".
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 3, itemCount: 100 }, NOW).replace, false);
+  });
+
+  it('anchors the depth floor to the six-hour peak so 20% steps cannot compound', () => {
+    const live = { acceptedAt: NOW - 60_000, categoryCount: 4, itemCount: 80, peakItemCount: 100, peakAt: NOW - 120_000 };
+    assert.deepEqual(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 64 }, NOW), {
+      replace: false,
+      reason: 'narrower-items:64<80%of100',
+    });
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 80 }, NOW).replace, true);
+    // An expired peak cannot veto: 64 is 80% of the live incumbent.
+    const stalePeak = { ...live, peakAt: NOW - LASTGOOD_MAX_AGE_MS - 1 };
+    assert.equal(shouldReplaceAccepted(stalePeak, { categoryCount: 4, itemCount: 64 }, NOW).replace, true);
+    // Revocations shrank the incumbent after publication: the stored peak was
+    // measured on items that no longer count, so only the re-measured body anchors.
+    assert.equal(shouldReplaceAccepted(live, { categoryCount: 4, itemCount: 50 }, NOW, 50).replace, true);
+  });
+
+  it('carries the richer of peak and candidate into the next row', () => {
+    const live = { acceptedAt: NOW - 60_000, categoryCount: 4, itemCount: 100 };
+    assert.deepEqual(nextPeak(live, 80, NOW, NOW), { peakItemCount: 100, peakAt: NOW - 60_000 });
+    assert.deepEqual(nextPeak(live, 120, NOW, NOW), { peakItemCount: 120, peakAt: NOW });
+    assert.deepEqual(nextPeak(null, 80, NOW, NOW), { peakItemCount: 80, peakAt: NOW });
+    const expired = { ...live, acceptedAt: NOW - LASTGOOD_MAX_AGE_MS - 1 };
+    assert.deepEqual(nextPeak(expired, 80, NOW, NOW), { peakItemCount: 80, peakAt: NOW });
+  });
+
+  it('the Redis script and the sidecar gate share one threshold', async () => {
+    const { DIGEST_LASTGOOD_PUBLISH_SCRIPT } = await import('../shared/digest-lastgood-publish-script.mjs');
+    assert.match(
+      DIGEST_LASTGOOD_PUBLISH_SCRIPT,
+      new RegExp(`nextData\\.items \\* 100 < currentData\\.items \\* ${LASTGOOD_MIN_ITEM_PCT}\\b`),
+    );
   });
 
   it('a malformed stored snapshot reads as "no snapshot", never as an unreplaceable one', () => {
@@ -203,6 +257,9 @@ describe('durable last-good wiring (#7084)', () => {
     // read — the two were conflated and blanked the endpoint on preview
     // deploys and local dev runs.
     redisConfigured: true,
+    // Every captureSilentError call. Without a DSN the real reporter is a no-op, so
+    // "did this reach Sentry" is only observable through a stub.
+    captures: [] as Array<{ message: string; opts: any }>,
   };
   let mod: any;
 
@@ -254,6 +311,15 @@ describe('durable last-good wiring (#7084)', () => {
               : undefined;
           });
           b.onLoad({ filter: /.*/, namespace: 'redisstub' }, () => ({ contents: shim, loader: 'js' }));
+          b.onResolve({ filter: /_sentry-edge(\.js)?$/ }, () => ({ path: 'sentry-stub', namespace: 'sentrystub' }));
+          b.onLoad({ filter: /.*/, namespace: 'sentrystub' }, () => ({
+            contents: [
+              'const s = globalThis.__digestRedisStub;',
+              'export function captureSilentError(err, opts) { s.captures.push({ message: String(err?.message ?? err), opts }); return Promise.resolve(); }',
+              'export function captureEdgeException() { return Promise.resolve(); }',
+            ].join('\n'),
+            loader: 'js',
+          }));
           b.onResolve({ filter: /response-headers$/ }, () => ({ path: 'headers-stub', namespace: 'headerstub' }));
           b.onLoad({ filter: /.*/, namespace: 'headerstub' }, () => ({
             contents: [
@@ -284,10 +350,12 @@ describe('durable last-good wiring (#7084)', () => {
     stub.fetchKeys.length = 0;
     stub.redisConfigured = true;
     stub.noCache.length = 0;
+    stub.captures.length = 0;
     mod.__testing__.fallbackDigestCache.clear();
     mod.__testing__.lastGoodStoreTesting.activeAttempts.clear();
     mod.__testing__.lastGoodStoreTesting.recentFailedAttempts.clear();
     mod.__testing__.lastGoodStoreTesting.failureCooldowns.clear();
+    mod.__testing__.lastGoodStoreTesting.gateRejectionReports.clear();
   };
 
   /** Minimal ServerContext — listFeedDigest only touches ctx.request headers. */
@@ -385,6 +453,45 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0);
   });
 
+  it('reports a sustained gate rejection once per scope per cooldown, not once per rebuild', async () => {
+    // The 120s rejection sentinel is the only backoff, so a frozen variant
+    // rebuilds ~30x/hour per region. The condition is sustained; one event says it.
+    reset();
+    stub.pipeline = async () => [{ result: 0 }];
+    const data = body(['https://a/1'], COVERAGE, new Date().toISOString());
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', data, 'news:digest:v1:full:en');
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', data, 'news:digest:v1:full:en');
+    assert.equal(stub.captures.length, 1, 'a second rejection inside the cooldown is not re-reported');
+    await mod.__testing__.publishAcceptedSnapshot('tech', 'en', data, 'news:digest:v1:tech:en');
+    assert.equal(stub.captures.length, 2, 'another variant has its own cooldown');
+  });
+
+  it('a gate rejection reaches Sentry as a warning; a fully-revoked candidate does not', async () => {
+    // The 2026-09-19 freeze ran ~6h with nothing alerting: the rejection was a
+    // console.log, and the relay relabelled the stale replay as `build-error`.
+    // With the depth floor a rejection now means a genuinely degraded build.
+    reset();
+    stub.pipeline = async () => [{ result: 0 }];
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(stub.captures.length, 1);
+    assert.match(stub.captures[0]!.message, /rejected by the last-good acceptance gate/);
+    assert.equal(stub.captures[0]!.opts.level, 'warning');
+    assert.deepEqual(stub.captures[0]!.opts.fingerprint, ['digest-lastgood', 'publish-gate-rejected', 'full']);
+    assert.deepEqual(stub.captures[0]!.opts.tags, {
+      surface: 'news', component: 'digest-lastgood', stage: 'publish-gate', variant: 'full', lang: 'en',
+    });
+
+    reset();
+    stub.pipeline = async () => [{ result: -1 }];
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(stub.captures.length, 0, 'an operator revocation is intended, not a degraded build');
+
+    reset();
+    stub.pipeline = async () => [{ result: 1 }];
+    await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
+    assert.equal(stub.captures.length, 0);
+  });
+
   it('reports distinct guarded-publication outcomes', async () => {
     reset();
     const logs: string[] = [];
@@ -452,6 +559,31 @@ describe('durable last-good wiring (#7084)', () => {
       await mod.__testing__.publishAcceptedSnapshot('full', 'en', valid, canonicalKey);
       assert.deepEqual(stub.writes.map((write) => write.key), [lastGoodKey('full', 'en'), canonicalKey]);
       assert.deepEqual(stub.writes[1]?.value, valid);
+    } finally {
+      if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
+      else process.env.LOCAL_API_MODE = originalMode;
+    }
+  });
+
+  it('sidecar mode measures the incumbent BODY, like the Lua gate, not its stored count', async () => {
+    // The Lua gate never trusts the row's itemCount; it counts the body. The
+    // sidecar has no revocations (readRevokedUrlSet is empty there), so the two
+    // only differ when a row's count disagrees with its body. Same answer then.
+    reset();
+    const originalMode = process.env.LOCAL_API_MODE;
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const generatedAt = new Date().toISOString();
+    const incumbent = body(Array.from({ length: 6 }, (_, i) => `https://old/${i}`), COVERAGE, generatedAt);
+    const candidate = body(Array.from({ length: 7 }, (_, i) => `https://new/${i}`), COVERAGE, generatedAt);
+    try {
+      stub.reads.set(lastGoodKey('full', 'en'), {
+        status: 'hit',
+        value: { acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 10, data: incumbent },
+      });
+      assert.equal(await mod.__testing__.publishAcceptedSnapshot('full', 'en', candidate), 'accepted');
+      const written = stub.writes[0]?.value as any;
+      assert.equal(written.itemCount, 7);
+      assert.equal(written.peakItemCount, 7, 'the incumbent body measures 6, so the candidate is the peak');
     } finally {
       if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
       else process.env.LOCAL_API_MODE = originalMode;

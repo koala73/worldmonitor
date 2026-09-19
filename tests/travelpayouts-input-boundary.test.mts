@@ -122,7 +122,10 @@ describe('Travelpayouts input boundary', () => {
       const results = await response.json();
       for (let i = 0; i < commands.length; i++) {
         if (String(commands[i][0]).toUpperCase() === 'EVALSHA') {
-          const key = String(commands[i][3]);
+          // Upstash's sliding-window key is `<identifier>:<windowIndex>`, and
+          // the index is floor(now / 60s). Counting per raw key reset the quota
+          // when a run crossed a wall-clock minute, and request 31 got 200.
+          const key = String(commands[i][3]).replace(/:\d+$/, '');
           const count = (usage.get(key) ?? 0) + 1;
           usage.set(key, count);
           // Model quota storage replies; the SDK and limiter execute normally.

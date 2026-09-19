@@ -187,3 +187,13 @@ describe('WorldClockPanel 1 Hz tick', () => {
     expect(timeTexts()).toEqual(before);
   });
 });
+
+it('keeps markets closed on a weekend with a non-English locale', async () => {
+  const { default: i18next } = await import('i18next');
+  await i18next.changeLanguage('fr');
+  vi.setSystemTime(new Date('2026-08-08T14:30:00.000Z'));
+  vi.advanceTimersByTime(1000);
+  expect(content().querySelector('.wc-status.open')).toBeNull();
+  expect(content().textContent).not.toContain('OPEN');
+  await i18next.changeLanguage('en');
+});
