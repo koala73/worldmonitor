@@ -16,6 +16,7 @@ import {
   STOCK_BACKTEST_ENGINE_VERSION,
   STOCK_BACKTEST_RATING_BASIS,
 } from '../server/worldmonitor/market/v1/backtest-stock.ts';
+import { getMissingOrStaleStoredStockBacktests, hasFreshStoredStockBacktests } from '../src/services/stock-backtest.ts';
 import { listStoredStockBacktests } from '../server/worldmonitor/market/v1/list-stored-stock-backtests.ts';
 import { ApiError } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
@@ -294,6 +295,21 @@ describe('server-backed stored stock backtests', () => {
     assert.equal(stored.items[0]?.latestSignal, response.latestSignal);
     assert.equal(stored.items[0]?.ratingBasis, 'technical_only');
     assert.equal(stored.items[0]?.engineVersion, 'v3-technical-only');
+    for (const count of [12, 50, 51]) {
+      const symbols = Array.from({ length: count }, (_, i) => `SYM${i}`);
+      for (const symbol of symbols) {
+        redisFetch.redis.set(`market:stock-backtest-store:v3:${symbol}:10`, JSON.stringify({ ...response, symbol }));
+      }
+      const batch = await listStoredStockBacktests({} as never, {
+        symbols: symbols.map(s => s.toLowerCase()), evalWindowDays: 10,
+      });
+      assert.deepEqual(batch.items.map(item => item.symbol).sort(), symbols.slice(0, 50).sort());
+    }
+    assert.equal(hasFreshStoredStockBacktests([response], ['aApL']), true);
+    assert.deepEqual(getMissingOrStaleStoredStockBacktests([response], ['aapl', 'msft']), ['msft']);
+    assert.deepEqual(getMissingOrStaleStoredStockBacktests([
+      { ...response, generatedAt: '2020-01-01T00:00:00Z' },
+    ], ['aapl']), ['aapl']);
     assert.equal(redisFetch.llmQuotaKeyCount(), 0);
     assert.equal(
       redisFetch.redis.get(backtestStockProviderQuotaKey('user_pro')),

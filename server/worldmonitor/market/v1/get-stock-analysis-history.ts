@@ -13,7 +13,7 @@ export const getStockAnalysisHistory: MarketServiceHandler['getStockAnalysisHist
   _ctx,
   req: GetStockAnalysisHistoryRequest,
 ): Promise<GetStockAnalysisHistoryResponse> => {
-  const symbols = parseStringArray(req.symbols).slice(0, 8);
+  const symbols = parseStringArray(req.symbols).slice(0, 50);
   const limitPerSymbol = Math.max(1, Math.min(MAX_LIMIT_PER_SYMBOL, req.limitPerSymbol || DEFAULT_LIMIT_PER_SYMBOL));
   const history = await getStoredStockAnalysisHistory(symbols, !!req.includeNews, limitPerSymbol);
 

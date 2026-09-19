@@ -20,6 +20,7 @@ import {
   getStockAnalysisRatingSummary,
   getStockAnalysisRatingWhyNow,
 } from '../src/services/stock-analysis-rating.ts';
+import { storeStockAnalysisSnapshot } from '../server/worldmonitor/market/v1/premium-stock-store.ts';
 import { analyzeStock } from '../server/worldmonitor/market/v1/analyze-stock.ts';
 import { getStockAnalysisHistory } from '../server/worldmonitor/market/v1/get-stock-analysis-history.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
@@ -340,8 +341,8 @@ describe('stock analysis history helpers', () => {
       })],
     };
 
-    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), true);
-    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), []);
+    assert.equal(hasFreshStockAnalysisHistory(history, ['aapl']), true);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['aApL', 'msft']), ['msft']);
   });
 
   it('treats a time-fresh snapshot without the additive rating signal as stale', () => {
@@ -460,6 +461,22 @@ describe('stock analysis rating presentation', () => {
 });
 
 describe('server-backed stock analysis history', () => {
+  for (const count of [12, 50, 51]) {
+    it(`serves ${count} requested symbols within the 50-symbol bound`, async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+      globalThis.fetch = createRedisAwareFetch().fetch;
+      const symbols = Array.from({ length: count }, (_, i) => `SYM${i}`);
+      for (const symbol of symbols) {
+        await storeStockAnalysisSnapshot(makeSnapshot(symbol, new Date().toISOString(), 70), true);
+      }
+      const result = await getStockAnalysisHistory({} as never, {
+        symbols: symbols.map(s => s.toLowerCase()), limitPerSymbol: 4, includeNews: true,
+      });
+      assert.deepEqual(result.items.map(item => item.symbol).sort(), symbols.slice(0, 50).sort());
+    });
+  }
+
   it('stores fresh analysis snapshots in Redis and serves them back in batch', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
