@@ -41,8 +41,9 @@ test('handler ignores the request host and authenticates before making requests'
   delete process.env.WORLDMONITOR_PUBLIC_BASE_URL;
   const urls = [];
   globalThis.fetch = async (url) => {
-    urls.push(String(url));
-    return String(url).startsWith('https://redis.test')
+    const parsed = new URL(url);
+    urls.push(parsed);
+    return parsed.origin === 'https://redis.test'
       ? new Response(JSON.stringify({ result: null }))
       : new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
   };
@@ -51,12 +52,12 @@ test('handler ignores the request host and authenticates before making requests'
     assert.equal(denied.status, 401);
     assert.equal(urls.length, 0);
     await handler(new Request('https://evil.example/api/seed-contract-probe', { headers: { 'x-probe-secret': 'test-secret', Host: 'evil.example' } }));
-    assert.ok(urls.includes('https://www.worldmonitor.app/api/bootstrap'));
-    assert.ok(urls.every(url => url.startsWith('https://redis.test/') || url.startsWith('https://www.worldmonitor.app/')));
+    assert.ok(urls.some(url => url.origin === 'https://www.worldmonitor.app' && url.pathname === '/api/bootstrap'));
+    assert.ok(urls.every(url => url.origin === 'https://redis.test' || url.origin === 'https://www.worldmonitor.app'));
     urls.length = 0;
     process.env.WORLDMONITOR_PUBLIC_BASE_URL = 'https://api.worldmonitor.app/';
     await handler(new Request('https://evil.example/api/seed-contract-probe', { headers: { 'x-probe-secret': 'test-secret' } }));
-    assert.ok(urls.includes('https://api.worldmonitor.app/api/bootstrap'));
+    assert.ok(urls.some(url => url.origin === 'https://api.worldmonitor.app' && url.pathname === '/api/bootstrap'));
   } finally {
     if (originalBase === undefined) delete process.env.WORLDMONITOR_PUBLIC_BASE_URL;
     else process.env.WORLDMONITOR_PUBLIC_BASE_URL = originalBase;
