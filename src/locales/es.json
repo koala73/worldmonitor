@@ -1853,6 +1853,7 @@
       "etfs": "ETFs",
       "netInflow": "ENTRADA NETA",
       "netOutflow": "SALIDA NETA",
+      "netNeutral": "NEUTRO NETO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emisor",
@@ -2181,7 +2182,7 @@
       "infoTooltip": "<strong>Calendario económico</strong> Publicaciones macroeconómicas programadas: CPI, NFP, GDP, PMI y decisiones de bancos centrales. Muestra pronóstico vs. real vs. anterior. Eventos de alto impacto resaltados. Fuente: proveedores de datos económicos."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Índice de estrés financiero del Fed de Kansas City (KCFSI): mide el estrés en los mercados financieros de EE.UU. usando 11 indicadores que incluyen diferenciales de rendimiento, volatilidad y correlaciones cruzadas. Valores positivos indican estrés superior al promedio. Fuente: Banco de la Reserva Federal de Kansas City.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Indicador de Estrés Financiero",
       "usFsiValue": "VALOR FSI DE EE.UU.",
       "cissTitle": "EU CISS (Estrés Sistémico del Área Euro)",

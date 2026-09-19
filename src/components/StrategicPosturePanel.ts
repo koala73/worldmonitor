@@ -17,6 +17,8 @@ export class StrategicPosturePanel extends Panel {
   private onLocationClick?: (lat: number, lon: number) => void;
   private lastTimestamp: string = '';
   private isStale: boolean = false;
+  private staleRetryPending = false;
+  private staleRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private getLatestNews?: () => NewsItem[]) {
     super({
@@ -141,7 +143,9 @@ export class StrategicPosturePanel extends Panel {
     try {
       // Fetch aircraft data from server
       this.showLoadingStage('aircraft');
-      const data = await fetchCachedTheaterPosture(this.signal);
+      const forceRefresh = this.staleRetryPending;
+      this.staleRetryPending = false;
+      const data = await fetchCachedTheaterPosture(this.signal, { forceRefresh });
       if (!this.element?.isConnected) return;
       if (!data || !data.postures?.length) {
         this.showNoData();
@@ -166,8 +170,11 @@ export class StrategicPosturePanel extends Panel {
       this.render();
 
       // If we rendered stale localStorage data, re-fetch fresh after a short delay
-      if (this.isStale) {
-        setTimeout(() => {
+      if (this.isStale && !forceRefresh) {
+        this.staleRetryPending = true;
+        if (this.staleRetryTimer !== null) clearTimeout(this.staleRetryTimer);
+        this.staleRetryTimer = setTimeout(() => {
+          this.staleRetryTimer = null;
           void this.fetchAndRender();
         }, 3000);
       }
@@ -596,6 +603,10 @@ export class StrategicPosturePanel extends Panel {
 
   public destroy(): void {
     this.stopLoadingTimer();
+    if (this.staleRetryTimer !== null) {
+      clearTimeout(this.staleRetryTimer);
+      this.staleRetryTimer = null;
+    }
     this.vesselTimeouts.forEach(t => clearTimeout(t));
     this.vesselTimeouts = [];
     super.destroy();

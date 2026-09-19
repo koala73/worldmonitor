@@ -724,6 +724,14 @@ export class ChatAnalystPanel extends Panel {
     }
   }
 
+  public override clearSensitiveContent(): void {
+    this.history = [];
+    this.streamAbort?.abort();
+    this.streamAbort = null;
+    this.isStreaming = false;
+    super.clearSensitiveContent();
+  }
+
   override destroy(): void {
     this.streamAbort?.abort();
     this.streamAbort = null;
