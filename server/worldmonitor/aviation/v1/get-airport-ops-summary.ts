@@ -185,6 +185,7 @@ export async function getAirportOpsSummary(
             : markNoStoreFallbackResponse(ctx.request, response);
     } catch (err) {
         console.warn(`[Aviation] GetAirportOpsSummary failed: ${err instanceof Error ? err.message : err}`);
+        void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'response' } });
         return markNoStoreFallbackResponse(ctx.request, { summaries: [], cacheHit: false });
     }
 }
