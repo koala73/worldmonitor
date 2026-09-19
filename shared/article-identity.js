@@ -95,15 +95,20 @@ export function normalizeArticleUrl(value) {
   // Sort so two orderings of the same surviving params agree.
   url.searchParams.sort();
 
+  // One trailing slash on a path is the same document. Strip it from the
+  // PATH, not from the serialized string: with a query present the string
+  // ends in the query, so 'a/?id=1' kept its slash while 'a/' lost it and one
+  // document normalized two ways. The root path is a single '/' and is not a
+  // segment to strip, which `length > 1` expresses directly — the previous
+  // `new URL(...).pathname !== ''` guard was dead code, since WHATWG always
+  // reports at least '/'.
+  if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
+    url.pathname = url.pathname.slice(0, -1);
+  }
+
   let normalized = url.toString();
   // A bare trailing '?' survives deleting every param.
   if (normalized.endsWith('?')) normalized = normalized.slice(0, -1);
-  // One trailing slash on a path is the same document; '/' itself is not a
-  // path segment to strip.
-  if (normalized.endsWith('/') && !normalized.endsWith('://')) {
-    const withoutSlash = normalized.slice(0, -1);
-    if (new URL(withoutSlash).pathname !== '') normalized = withoutSlash;
-  }
   return normalized;
 }
 

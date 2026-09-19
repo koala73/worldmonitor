@@ -2027,6 +2027,26 @@ describe('strip headline article identity (#8339)', () => {
     );
   });
 
+  it('strips a trailing path slash whether or not a query follows it', () => {
+    // Stripping it off the serialized string only works when there is no
+    // query: 'a/?id=1' does not end in '/', so the same document normalized
+    // two ways as soon as a content parameter was present.
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a/'),
+      normalizeArticleUrl('https://example.com/a'),
+    );
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a/?id=1'),
+      normalizeArticleUrl('https://example.com/a?id=1'),
+    );
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a/b/?id=1&utm_source=x'),
+      normalizeArticleUrl('https://example.com/a/b?id=1'),
+    );
+    // The root path is a single '/' and is not a segment to strip.
+    assert.equal(normalizeArticleUrl('https://example.com/'), normalizeArticleUrl('https://example.com'));
+  });
+
   it('never merges rows whose URL cannot be compared', () => {
     const rows = [{ url: 'not a url' }, { url: 'not a url' }, { url: '' }];
     assert.equal(dedupeByArticleUrl(rows, (row) => row.url).length, 3);
