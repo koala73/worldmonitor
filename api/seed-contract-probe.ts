@@ -220,6 +220,9 @@ export async function checkPublicBoundary(
   if (!isHostedAppOrigin(origin)) {
     return BOUNDARY_CHECKS.map(({ endpoint }) => ({ endpoint, pass: false, reason: 'untrusted-origin' }));
   }
+  // The apex redirects to www in production. Select that known destination
+  // before attaching credentials; arbitrary redirects remain forbidden.
+  if (origin === 'https://worldmonitor.app') origin = 'https://www.worldmonitor.app';
   // Endpoints behind validateApiKey() (e.g. /api/bootstrap) used to accept the
   // trusted-browser-origin path without a key. PR #3557 closed that bypass: the
   // ONLY no-Pro path now is a wms_-prefixed HMAC-signed session token. Mint one
@@ -304,7 +307,7 @@ export default async function handler(req: Request): Promise<Response> {
     // timeout, cold-start, mid-rewrite key) doesn't flap the probe to 503.
     const [checks, boundary] = await Promise.all([
       Promise.all(DEFAULT_PROBES.map((spec) => withRetry(() => checkProbe(spec)))),
-      checkPublicBoundary((process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://worldmonitor.app').replace(/\/+$/, '')),
+      checkPublicBoundary((process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://www.worldmonitor.app').replace(/\/+$/, '')),
     ]);
 
     const passedKeys = checks.filter(c => c.pass).length;

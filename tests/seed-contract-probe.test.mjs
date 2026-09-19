@@ -20,8 +20,9 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 
 test('boundary requests reject untrusted origins before fetching and forbid redirects', async () => {
   let calls = 0;
-  globalThis.fetch = async (_url, options) => {
+  globalThis.fetch = async (url, options) => {
     calls++;
+    assert.equal(new URL(url).origin, 'https://www.worldmonitor.app');
     assert.equal(options.redirect, 'error');
     return new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
   };
@@ -50,8 +51,8 @@ test('handler ignores the request host and authenticates before making requests'
     assert.equal(denied.status, 401);
     assert.equal(urls.length, 0);
     await handler(new Request('https://evil.example/api/seed-contract-probe', { headers: { 'x-probe-secret': 'test-secret', Host: 'evil.example' } }));
-    assert.ok(urls.includes('https://worldmonitor.app/api/bootstrap'));
-    assert.ok(urls.every(url => url.startsWith('https://redis.test/') || url.startsWith('https://worldmonitor.app/')));
+    assert.ok(urls.includes('https://www.worldmonitor.app/api/bootstrap'));
+    assert.ok(urls.every(url => url.startsWith('https://redis.test/') || url.startsWith('https://www.worldmonitor.app/')));
     urls.length = 0;
     process.env.WORLDMONITOR_PUBLIC_BASE_URL = 'https://api.worldmonitor.app/';
     await handler(new Request('https://evil.example/api/seed-contract-probe', { headers: { 'x-probe-secret': 'test-secret' } }));
