@@ -1897,21 +1897,21 @@ describe('generateStoryDescription — sanitisation + prefix bump (U5)', () => {
   });
 });
 
-// ── generateWhyMatters — v10 endpoint-cache cross-read (#4914) ─────────────
+// ── generateWhyMatters — v11 endpoint-cache cross-read (#4914) ─────────────
 //
 // The analyst endpoint (api/internal/brief-why-matters.ts) caches its
-// envelope at brief:llm:whymatters:v10:{hashBriefStory} — the SAME story
+// envelope at brief:llm:whymatters:v11:{hashBriefStory} — the SAME story
 // identity as the cron's legacy v6 namespace. When the endpoint CALL fails
 // transiently, the envelope may still be sitting in Redis; the fallback
 // must read it before paying a direct-Gemini generation.
 
-describe('generateWhyMatters — v10 endpoint-cache cross-read (#4914)', () => {
-  const V10_PROSE = 'Closure of the Strait of Hormuz would freeze a fifth of seaborne crude and force allied navies to respond.';
+describe('generateWhyMatters — v11 endpoint-cache cross-read (#4914)', () => {
+  const V11_PROSE = 'Closure of the Strait of Hormuz would freeze a fifth of seaborne crude and force allied navies to respond.';
 
-  it('pins the endpoint cache to v10 and its shadow cohort to v7', async () => {
+  it('pins the endpoint cache to v11 and its shadow cohort to v7', async () => {
     const { readFile } = await import('node:fs/promises');
     const src = await readFile(new URL('../api/internal/brief-why-matters.ts', import.meta.url), 'utf8');
-    assert.match(src, /const cacheKey = `brief:llm:whymatters:v10:\$\{hash\}`;/);
+    assert.match(src, /const cacheKey = `brief:llm:whymatters:v11:\$\{hash\}`;/);
     assert.match(src, /const shadowKey = `brief:llm:whymatters:shadow:v7:\$\{hash\}`;/);
     assert.doesNotMatch(src, /const cacheKey = `brief:llm:whymatters:v9:/);
     assert.doesNotMatch(src, /const shadowKey = `brief:llm:whymatters:shadow:v6:/);
@@ -1919,43 +1919,43 @@ describe('generateWhyMatters — v10 endpoint-cache cross-read (#4914)', () => {
 
   async function seedV10(cache, s, envelopeOverrides = {}) {
     const hash = await hashBriefStory(s);
-    cache.store.set(`brief:llm:whymatters:v10:${hash}`, {
-      whyMatters: V10_PROSE,
+    cache.store.set(`brief:llm:whymatters:v11:${hash}`, {
+      whyMatters: V11_PROSE,
       producedBy: 'analyst',
       ...envelopeOverrides,
     });
     return hash;
   }
 
-  it('reuses the v10 envelope when the analyst endpoint call fails — no paid LLM call', async () => {
+  it('reuses the v11 envelope when the analyst endpoint call fails — no paid LLM call', async () => {
     const cache = makeCache();
     const s = story();
     await seedV10(cache, s);
-    const llm = makeLLM(() => { throw new Error('must not pay direct-Gemini when v10 is warm'); });
+    const llm = makeLLM(() => { throw new Error('must not pay direct-Gemini when v11 is warm'); });
     const out = await generateWhyMatters(s, {
       ...cache,
       callLLM: llm.callLLM,
       callAnalystWhyMatters: async () => { throw new Error('endpoint down'); },
     });
-    assert.equal(out, V10_PROSE);
-    assert.equal(llm.calls.length, 0, 'v10 hit must short-circuit the legacy chain');
+    assert.equal(out, V11_PROSE);
+    assert.equal(llm.calls.length, 0, 'v11 hit must short-circuit the legacy chain');
   });
 
-  it('reuses the v10 envelope when no analyst endpoint is configured at all', async () => {
+  it('reuses the v11 envelope when no analyst endpoint is configured at all', async () => {
     const cache = makeCache();
     const s = story();
     await seedV10(cache, s);
     const llm = makeLLM(() => { throw new Error('must not pay'); });
     const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
-    assert.equal(out, V10_PROSE);
+    assert.equal(out, V11_PROSE);
     assert.equal(llm.calls.length, 0);
   });
 
-  it('ignores a pre-completion-signal v9 envelope and falls through to the legacy chain', async () => {
+  for (const oldVersion of ['v9', 'v10']) it(`ignores an old ${oldVersion} envelope and falls through to the legacy chain`, async () => {
     const cache = makeCache();
     const s = story();
     const hash = await hashBriefStory(s);
-    cache.store.set(`brief:llm:whymatters:v9:${hash}`, {
+    cache.store.set(`brief:llm:whymatters:${oldVersion}:${hash}`, {
       whyMatters: 'The response looks complete because the clipped fragment happens to end with an abbreviation such as the U.S.',
       producedBy: 'analyst',
     });
@@ -1963,21 +1963,21 @@ describe('generateWhyMatters — v10 endpoint-cache cross-read (#4914)', () => {
     const llm = makeLLM(fresh);
     const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
     assert.equal(out, fresh);
-    assert.equal(llm.calls.length, 1, 'v9 must not short-circuit the completion-signal generation chain');
+    assert.equal(llm.calls.length, 1, 'old namespaces must not short-circuit generation');
   });
 
-  it('malformed v10 envelope falls through to the legacy chain', async () => {
+  it('malformed v11 envelope falls through to the legacy chain', async () => {
     const cache = makeCache();
     const s = story();
     const hash = await hashBriefStory(s);
-    cache.store.set(`brief:llm:whymatters:v10:${hash}`, { whyMatters: 'too short' });
+    cache.store.set(`brief:llm:whymatters:v11:${hash}`, { whyMatters: 'too short' });
     const llm = makeLLM('Closure of the Strait of Hormuz would spike oil prices globally.');
     const out = await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
     assert.equal(out, 'Closure of the Strait of Hormuz would spike oil prices globally.');
-    assert.equal(llm.calls.length, 1, 'invalid v10 payload must not be served — legacy chain pays once');
+    assert.equal(llm.calls.length, 1, 'invalid v11 payload must not be served — legacy chain pays once');
   });
 
-  it('v10 sensitivity-stub prose is rejected, not served', async () => {
+  it('v11 sensitivity-stub prose is rejected, not served', async () => {
     const cache = makeCache();
     const s = story();
     await seedV10(cache, s, { whyMatters: 'Story flagged by your sensitivity settings. Open for context and details.' });
@@ -1987,7 +1987,7 @@ describe('generateWhyMatters — v10 endpoint-cache cross-read (#4914)', () => {
     assert.equal(llm.calls.length, 1);
   });
 
-  it('v10 max-token clips are rejected, not served', async () => {
+  it('v11 max-token clips are rejected, not served', async () => {
     const cache = makeCache();
     const s = story();
     await seedV10(cache, s, {
@@ -2000,12 +2000,12 @@ describe('generateWhyMatters — v10 endpoint-cache cross-read (#4914)', () => {
     assert.equal(llm.calls.length, 1);
   });
 
-  it('v10 read is read-only — the legacy path must not copy into or overwrite the v10 namespace', async () => {
+  it('v11 read is read-only — the legacy path must not copy into or overwrite the v11 namespace', async () => {
     const cache = makeCache();
     const s = story();
     const llm = makeLLM('Closure of the Strait of Hormuz would spike oil prices globally.');
     await generateWhyMatters(s, { ...cache, callLLM: llm.callLLM });
-    const v10Keys = [...cache.store.keys()].filter((k) => k.startsWith('brief:llm:whymatters:v10:'));
-    assert.equal(v10Keys.length, 0, 'legacy fallback output must stay in the v6 namespace');
+    const v11Keys = [...cache.store.keys()].filter((k) => k.startsWith('brief:llm:whymatters:v11:'));
+    assert.equal(v11Keys.length, 0, 'legacy fallback output must stay in the v6 namespace');
   });
 });
