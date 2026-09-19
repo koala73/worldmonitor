@@ -4922,6 +4922,16 @@ async function classifyFetchLlm(titles, maxTextChars = 200) {
   return null;
 }
 
+// Jev shadow (scripts/lib/jev-classify-relay.cjs): observes the labels the LLM
+// chain already cached, and records disagreements. It decides nothing, and is
+// inert without TYPESAFE_API_KEY.
+const jevShadow = require('./lib/jev-classify-relay.cjs');
+const JEV_SHADOW_PUSH_SCRIPT = "redis.call('LPUSH', KEYS[1], ARGV[1]) redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]) - 1) redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3])) return 1";
+const observeJevShadow = jevShadow.createShadowObserver({
+  fetchJevLabel: (title, maxTextChars) => jevShadow.fetchJevLabel(title, maxTextChars, { apiKey: jevShadow.jevApiKey() }),
+  record: (row) => upstashEval(JEV_SHADOW_PUSH_SCRIPT, [jevShadow.SHADOW_LOG_KEY], [JSON.stringify(row), jevShadow.SHADOW_LOG_MAX, jevShadow.SHADOW_LOG_TTL_S]),
+});
+
 let classifyInFlight = false;
 
 async function seedClassifyForVariant(variant, seenTitles) {
@@ -5029,6 +5039,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
 
   let classified = 0;
   let skipped = 0;
+  const shadow = { asked: 0, answered: 0, agreed: 0, alertFlips: 0 };
 
   for (let b = 0; b < misses.length; b += CLASSIFY_BATCH_SIZE) {
     const chunk = misses.slice(b, b + CLASSIFY_BATCH_SIZE);
@@ -5043,6 +5054,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     }
 
     const classifiedSet = new Set();
+    const labelled = [];
     for (const entry of llmResult) {
       const idx = entry?.i;
       if (typeof idx !== 'number' || idx < 0 || idx >= chunk.length) continue;
@@ -5053,6 +5065,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
       classifiedSet.add(idx);
       await upstashSet(classifyCacheKey(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
       classified++;
+      labelled.push({ title: chunk[idx], level });
       // Attribute newly classified title to country stats (global dedup via seenTitles)
       if (!seenTitles.has(chunk[idx])) {
         seenTitles.add(chunk[idx]);
@@ -5121,8 +5134,17 @@ async function seedClassifyForVariant(variant, seenTitles) {
         skipped++;
       }
     }
+
+    // Last, and read-only: every label above is already cached and published.
+    const observed = await observeJevShadow(variant, labelled).catch(() => null);
+    if (observed) {
+      for (const k of Object.keys(shadow)) shadow[k] += observed[k];
+    }
   }
 
+  if (shadow.asked > 0) {
+    console.log(`[Classify] Jev shadow ${variant}: asked ${shadow.asked}, answered ${shadow.answered}, agreed ${shadow.agreed}, alert flips ${shadow.alertFlips}`);
+  }
   return { total: titleArr.length, classified, skipped, byCountry };
 }
 
