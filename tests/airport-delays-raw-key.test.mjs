@@ -41,7 +41,9 @@ globalThis.fetch = async (input, init) => {
   writes.push(command);
   return Response.json({ result: 'OK' });
 };
-const response = await listAirportDelays({}, {});
+const response = await listAirportDelays({
+  request: new Request('https://worldmonitor.app/api/aviation/v1/list-airport-delays'),
+}, {});
 assert.ok(reads.includes(intlKey), 'must read the bare key written by the seeder; saw ' + reads.join(', '));
 assert.ok(reads.includes('aviation:delays:faa:v1'));
 assert.ok(reads.every(key => !key.startsWith('preview:') && !key.startsWith('development:')));
