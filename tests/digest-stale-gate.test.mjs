@@ -15,6 +15,7 @@ const {
 describe('relay digest stale gate (#7084)', () => {
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
+    assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);
   });
 
   it('runs the pass for fresh, partial, and coverage-less digests', () => {

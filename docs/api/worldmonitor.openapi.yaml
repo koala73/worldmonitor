@@ -51081,7 +51081,7 @@ components:
                          state=unavailable rather than serving older content.
                 staleReason:
                     type: string
-                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
+                    description: 'Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).'
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);

@@ -72,7 +72,7 @@ message DigestCoverage {
   // Bounded at 21600 (six hours): past that window the service reports
   // state=unavailable rather than serving older content.
   int32 stale_age_seconds = 15;
-  // Closed stale reason: empty-rebuild | build-error (empty when fresh).
+  // Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).
   string stale_reason = 16;
 }
 
