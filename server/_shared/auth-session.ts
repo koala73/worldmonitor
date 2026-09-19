@@ -58,6 +58,7 @@ export async function resolveClerkSession(request: Request): Promise<ClerkSessio
       role: session.role ?? 'free',
     };
   } catch (err) {
+    // sentry-coverage-ok Verification failures become retryable 503 responses; no credential failure is inferred.
     console.warn(
       '[auth-session] JWT verification failed:',
       err instanceof Error ? err.message : String(err),
