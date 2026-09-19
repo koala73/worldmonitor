@@ -6813,6 +6813,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/eval-classify-labels.mjs"
+        },
+        {
           "path": "scripts/lib/brief-dedup-consts.mjs"
         },
         {
@@ -10149,6 +10152,9 @@
         },
         {
           "path": "scripts/cross-strait-activity/adapters.mjs"
+        },
+        {
+          "path": "scripts/eval-classify-labels.mjs"
         },
         {
           "path": "scripts/lib/brief-embedding.mjs"
