@@ -558,7 +558,12 @@ const CABLE_HEALTH_REPAIR_SCRIPT = [
 const WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT = [
   "if redis.call('EXISTS', KEYS[2]) == 0 then return redis.call('SREM', KEYS[1], ARGV[1]) else return 0 end",
 ].join('\n');
+// Pinned to compareAndDeleteRedisKey in server/_shared/redis.ts.
+const COMPARE_AND_DELETE_SCRIPT = [
+  "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
+  COMPARE_AND_DELETE_SCRIPT,
   CABLE_HEALTH_REPAIR_SCRIPT,
   WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT,
   SOURCE_RETRY_CLAIM_SCRIPT,
