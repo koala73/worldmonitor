@@ -1,16 +1,4 @@
-/**
- * Pinned regression tests for shared/brief-llm-core.js.
- *
- * The module replaces the pre-extract sync `hashBriefStory` (which used
- * `node:crypto.createHash`) with a Web Crypto `crypto.subtle.digest`
- * implementation. A drift in either the hash algorithm, the joining
- * delimiter ('||'), or the field ordering would silently invalidate
- * every cached `brief:llm:whymatters:*` entry at deploy time.
- *
- * These fixtures were captured from the pre-extract implementation and
- * pinned here so any future refactor must ship a cache-version bump
- * alongside.
- */
+/** Story cache identity and shared editorial behavior contracts. */
 
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,19 +19,16 @@ import {
   parseWhyMatters,
 } from '../shared/brief-llm-core.js';
 
-// Mirror impl (sync `node:crypto`) — kept inline so a drift between
-// the Web Crypto implementation and this sentinel fails the parity
-// test here first. Must include `description` to match v5 semantics.
-function legacyHashBriefStory(story) {
-  const material = [
+function nodeHashBriefStory(story) {
+  const material = JSON.stringify([
     story.headline ?? '',
     story.source ?? '',
     story.threatLevel ?? '',
     story.category ?? '',
     story.country ?? '',
     story.description ?? '',
-  ].join('||');
-  return createHash('sha256').update(material).digest('hex').slice(0, 16);
+  ]);
+  return createHash('sha256').update(material).digest('hex');
 }
 
 const FIXTURE = {
@@ -96,17 +81,17 @@ describe('whyMatters character bounds — shared parser contracts', () => {
   });
 });
 
-describe('hashBriefStory — Web Crypto parity with legacy node:crypto', () => {
-  it('returns the exact hash the pre-extract implementation emitted', async () => {
-    const expected = legacyHashBriefStory(FIXTURE);
+describe('hashBriefStory — Web Crypto parity with node:crypto', () => {
+  it('matches the full SHA-256 digest of the ordered JSON tuple', async () => {
+    const expected = nodeHashBriefStory(FIXTURE);
     const actual = await hashBriefStory(FIXTURE);
     assert.equal(actual, expected);
   });
 
-  it('is 16 hex chars, case-insensitive match', async () => {
+  it('is 64 lowercase hex characters', async () => {
     const h = await hashBriefStory(FIXTURE);
-    assert.equal(h.length, 16);
-    assert.match(h, /^[0-9a-f]{16}$/);
+    assert.equal(h.length, 64);
+    assert.match(h, /^[0-9a-f]{64}$/);
   });
 
   it('is stable across multiple invocations', async () => {
@@ -152,7 +137,7 @@ describe('hashBriefStory — Web Crypto parity with legacy node:crypto', () => {
 
   it('treats missing fields as empty strings (backcompat)', async () => {
     const partial = { headline: FIXTURE.headline };
-    const expected = legacyHashBriefStory(partial);
+    const expected = nodeHashBriefStory(partial);
     const actual = await hashBriefStory(partial);
     assert.equal(actual, expected);
   });

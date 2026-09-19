@@ -173,7 +173,7 @@ export async function fetchGdeltArticles(
   maxrecords = 10,
   timespan = '24h'
 ): Promise<GdeltArticle[]> {
-  const cacheKey = `${query}:${maxrecords}:${timespan}`;
+  const cacheKey = JSON.stringify([query, maxrecords, timespan, '', '']);
   const cached = articleCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -188,7 +188,7 @@ export async function fetchGdeltArticles(
       toneFilter: '',
       sort: '',
     });
-  }, emptyGdeltFallback);
+  }, emptyGdeltFallback, { cacheKey, shouldCache: (response) => !response.error });
 
   if (resp.error) {
     if (resp.error === 'seed-unavailable') {
@@ -298,7 +298,7 @@ export async function fetchPositiveGdeltArticles(
   maxrecords = 15,
   timespan = '72h',
 ): Promise<GdeltArticle[]> {
-  const cacheKey = `positive:${query}:${toneFilter}:${sort}:${maxrecords}:${timespan}`;
+  const cacheKey = JSON.stringify([query, maxrecords, timespan, toneFilter, sort]);
   const cached = articleCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.articles;
@@ -312,7 +312,7 @@ export async function fetchPositiveGdeltArticles(
       toneFilter,
       sort,
     });
-  }, emptyGdeltFallback);
+  }, emptyGdeltFallback, { cacheKey, shouldCache: (response) => !response.error });
 
   if (resp.error) {
     console.warn(`[GDELT-Intel] Positive RPC error: ${resp.error}`);
