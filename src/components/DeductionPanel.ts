@@ -305,10 +305,11 @@ export class DeductionPanel extends Panel {
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
-            if (generation !== this.deductionGeneration) return;
-            this.isSubmitting = false;
-            if (this.element?.isConnected) {
-                setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            if (generation === this.deductionGeneration) {
+                this.isSubmitting = false;
+                if (this.element?.isConnected) {
+                    setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+                }
             }
         }
     }

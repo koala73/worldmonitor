@@ -86,8 +86,8 @@ export class ServiceStatusPanel extends Panel {
       return;
     }
 
-    if (this.error || this.services.length === 0) {
-      this.showError(this.error || t('common.failedToLoad'), () => { this.loading = true; this.render(); void this.fetchStatus(); });
+    if (this.error) {
+      this.showError(this.error, () => { this.loading = true; this.render(); void this.fetchStatus(); });
       return;
     }
 
