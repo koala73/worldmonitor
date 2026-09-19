@@ -12,7 +12,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from '../../_rate-limit.js';
 import { validateBearerToken } from '../../../server/auth-session';
@@ -27,7 +27,7 @@ export default async function handler(req: Request, ctx?: { waitUntil: (p: Promi
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: { 'Content-Type': 'application/json', ...getOriginDeniedCorsHeaders(req, 'POST, OPTIONS') } });
   }
 
   if (req.method === 'OPTIONS') {

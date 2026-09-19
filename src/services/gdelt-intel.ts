@@ -133,7 +133,7 @@ const getClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBas
 const gdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Intelligence', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const positiveGdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>({ name: 'GDELT Positive', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
-const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: '' };
+const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: 'request-unavailable' };
 
 const CACHE_TTL = 5 * 60 * 1000;
 const STALE_MAX = 60 * 60 * 1000; // 1h ceiling — never serve cache older than this

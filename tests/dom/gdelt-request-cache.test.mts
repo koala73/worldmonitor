@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { search } = vi.hoisted(() => ({ search: vi.fn() }));
 vi.mock('@/services/generated-rpc-clients', () => ({
@@ -24,6 +24,8 @@ beforeEach(() => {
     query: request.query, error: '',
   }));
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('GDELT request cache identity through the real breaker', () => {
   it('separates query, limit and timespan and reuses identical requests', async () => {
@@ -57,6 +59,23 @@ describe('GDELT request cache identity through the real breaker', () => {
     expect(await fetch('military')).toEqual([]);
     expect(await fetch('military')).toHaveLength(1);
     expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['normal', 'positive'])('does not retain rejected requests or cooldown fallbacks for %s queries', async (kind) => {
+    vi.useFakeTimers();
+    const service = await import('@/services/gdelt-intel');
+    const fetch = kind === 'normal' ? service.fetchGdeltArticles : service.fetchPositiveGdeltArticles;
+    search.mockRejectedValueOnce(new Error('offline'));
+    expect(await fetch('retry')).toEqual([]);
+    expect(await fetch('retry')).toHaveLength(1);
+    search.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'));
+    await fetch('failure-one');
+    await fetch('failure-two');
+    vi.setSystemTime(Date.now() + 4 * 60 * 1000);
+    expect(await fetch('cooldown-query')).toEqual([]);
+    vi.setSystemTime(Date.now() + 61 * 1000);
+    expect(await fetch('cooldown-query')).toHaveLength(1);
+    expect(search).toHaveBeenCalledTimes(5);
   });
 
   it('preserves valid empty results as cacheable domain values', async () => {

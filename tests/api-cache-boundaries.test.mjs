@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import oref from '../api/oref-alerts.js';
 import { checkRateLimit } from '../api/_rate-limit.js';
-import { getCorsHeaders, isDisallowedOrigin } from '../api/_cors.js';
+import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin } from '../api/_cors.js';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -42,7 +42,7 @@ function slack({ admission = null, pipeline = [{ result: 'OK' }], token = 'redis
     exports, process: { env: { SLACK_CLIENT_ID: 'client', SLACK_REDIRECT_URI: 'https://worldmonitor.app/api/slack/oauth/callback', UPSTASH_REDIS_REST_URL: 'https://redis.example', UPSTASH_REDIS_REST_TOKEN: token } },
     Request, Response, URL, AbortSignal, crypto, Uint8Array, btoa,
     require: name => {
-      if (name.endsWith('_cors.js')) return { getCorsHeaders, isDisallowedOrigin };
+      if (name.endsWith('_cors.js')) return { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin };
       if (name.endsWith('_rate-limit.js')) return { checkRateLimit: async (...args) => { calls.limit.push(args); return realAdmission ? checkRateLimit(...args) : admission; } };
       if (name.endsWith('auth-session')) return { validateBearerToken: async () => { calls.auth++; return { valid: true, userId: 'user-1' }; } };
       if (name.endsWith('pro-entitlement')) return { checkTierProEntitlement: async () => ({ allowed: true }) };
@@ -50,12 +50,16 @@ function slack({ admission = null, pipeline = [{ result: 'OK' }], token = 'redis
     },
     fetch: async (_url, init) => { calls.writes.push(JSON.parse(init.body)); assert.equal(init.headers['User-Agent'], 'worldmonitor-edge/1.0'); return typeof pipeline === 'string' ? new Response(pipeline) : Response.json(pipeline); },
   });
-  return { calls, request: origin => exports.default(new Request('https://worldmonitor.app/api/slack/oauth/start', { method: 'POST', headers: { Authorization: 'Bearer token', ...(origin ? { Origin: origin } : {}) } })) };
+  return { calls, request: (origin, method = 'POST') => exports.default(new Request('https://worldmonitor.app/api/slack/oauth/start', { method, headers: { Authorization: 'Bearer token', ...(origin ? { Origin: origin } : {}) } })) };
 }
 
 test('Slack rejects foreign Origin before authentication and requires Redis token', async () => {
   const app = slack();
-  assert.equal((await app.request('https://evil.example')).status, 403);
+  for (const method of ['POST', 'OPTIONS']) {
+    const denied = await app.request('https://evil.example', method);
+    assert.equal(denied.status, 403);
+    assert.equal(denied.headers.get('Access-Control-Allow-Origin'), 'https://evil.example');
+  }
   assert.equal(app.calls.auth, 0);
   const missing = slack({ token: '' });
   assert.equal((await missing.request()).status, 503);
