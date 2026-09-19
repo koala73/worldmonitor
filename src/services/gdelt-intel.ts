@@ -188,7 +188,7 @@ export async function fetchGdeltArticles(
       toneFilter: '',
       sort: '',
     });
-  }, emptyGdeltFallback);
+  }, emptyGdeltFallback, { cacheKey });
 
   if (resp.error) {
     if (resp.error === 'seed-unavailable') {
@@ -210,9 +210,25 @@ export async function fetchGdeltArticles(
   return articles;
 }
 
+const HOTSPOT_TOPIC_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\b(?:cyber|ransomware|hack(?:ing|ed)?|apt)\b/i, 'cyber'],
+  [/\b(?:nuclear|uranium|iaea|plutonium)\b/i, 'nuclear'],
+  [/\b(?:sanction|embargo|tariff)\b/i, 'sanctions'],
+  [/\b(?:espionage|spy|covert|surveillance)\b/i, 'intelligence'],
+  [/\b(?:piracy|naval|maritime|hormuz|warship|blockade|shipping|red sea)\b/i, 'maritime'],
+];
+
+/** Seeded topic id the Edge handler matches. Keyword DOC queries no longer resolve. */
+export function hotspotSeededTopicId(hotspot: Pick<Hotspot, 'keywords'>): string {
+  const text = hotspot.keywords.join(' ');
+  for (const [pattern, topicId] of HOTSPOT_TOPIC_RULES) {
+    if (pattern.test(text)) return topicId;
+  }
+  return 'military';
+}
+
 export async function fetchHotspotContext(hotspot: Hotspot): Promise<GdeltArticle[]> {
-  const query = hotspot.keywords.slice(0, 5).join(' OR ');
-  return fetchGdeltArticles(query, 8, '48h');
+  return fetchGdeltArticles(hotspotSeededTopicId(hotspot), 8, '48h');
 }
 
 let _bootstrapConsumed = false;
@@ -238,7 +254,7 @@ export async function fetchTopicIntelligence(topic: IntelTopic): Promise<TopicIn
     _bootstrapData.delete(topic.id);
     return bootstrapped;
   }
-  const articles = await fetchGdeltArticles(topic.query, 10, '24h');
+  const articles = await fetchGdeltArticles(topic.id, 10, '24h');
   return {
     topic,
     articles,
@@ -312,7 +328,7 @@ export async function fetchPositiveGdeltArticles(
       toneFilter,
       sort,
     });
-  }, emptyGdeltFallback);
+  }, emptyGdeltFallback, { cacheKey });
 
   if (resp.error) {
     console.warn(`[GDELT-Intel] Positive RPC error: ${resp.error}`);
@@ -325,7 +341,7 @@ export async function fetchPositiveGdeltArticles(
 }
 
 export async function fetchPositiveTopicIntelligence(topic: IntelTopic): Promise<TopicIntelligence> {
-  const articles = await fetchPositiveGdeltArticles(topic.query);
+  const articles = await fetchPositiveGdeltArticles(topic.id);
   return { topic, articles, fetchedAt: new Date() };
 }
 

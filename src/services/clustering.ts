@@ -8,7 +8,8 @@ import type { NewsItem, ClusteredEvent } from '@/types';
 import { getSourceTier } from '@/config';
 import { countPublisherFamilies } from '../../shared/publisher-families.js';
 import { analysisWorker } from './analysis-worker';
-import { clusterNewsCore } from './analysis-core';
+import { clusterNewsCore, aggregateThreats } from './analysis-core';
+import { calculateVelocity } from './velocity';
 import { mlWorker } from './ml-worker';
 import { ML_THRESHOLDS } from '@/config/ml-config';
 
@@ -182,6 +183,11 @@ function mergeSemanticallySimilarClusters(
     const allDates = allItems.map(i => i.pubDate.getTime());
     const firstSeen = new Date(allDates.reduce((min, d) => d < min ? d : min));
     const lastUpdated = new Date(allDates.reduce((max, d) => d > max ? d : max));
+    const geo = majorityGeo(allItems) ?? (
+      primary.lat != null && primary.lon != null
+        ? { lat: primary.lat, lon: primary.lon }
+        : undefined
+    );
 
     const mergedCluster: ClusteredEvent = {
       id: primary.id,
@@ -198,10 +204,13 @@ function mergeSemanticallySimilarClusters(
       firstSeen,
       lastUpdated,
       isAlert: allItems.some(i => i.isAlert),
-      monitorColor: primary.monitorColor,
-      velocity: primary.velocity,
-      threat: primary.threat,
+      monitorColor: allItems.find(i => i.monitorColor)?.monitorColor,
+      threat: aggregateThreats(allItems),
+      ...(primary.lang ? { lang: primary.lang } : {}),
+      ...(Number.isFinite(primary.credibilityScore) ? { credibilityScore: primary.credibilityScore } : {}),
+      ...(geo ? { lat: geo.lat, lon: geo.lon } : {}),
     };
+    mergedCluster.velocity = calculateVelocity(mergedCluster);
     merged.push(mergedCluster);
   }
 
@@ -216,4 +225,22 @@ function mergeSemanticallySimilarClusters(
   merged.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
 
   return merged;
+}
+
+/** Most common coordinates on the merged articles, matching clusterNewsCore. */
+function majorityGeo(items: NewsItem[]): { lat: number; lon: number } | undefined {
+  const locItems = items.filter((item) => item.lat != null && item.lon != null);
+  if (locItems.length === 0) return undefined;
+  const locCounts = new Map<string, { lat: number; lon: number; count: number }>();
+  for (const item of locItems) {
+    const lat = item.lat;
+    const lon = item.lon;
+    if (lat == null || lon == null) continue;
+    const key = `${lat},${lon}`;
+    const entry = locCounts.get(key) ?? { lat, lon, count: 0 };
+    entry.count += 1;
+    locCounts.set(key, entry);
+  }
+  const best = [...locCounts.values()].sort((a, b) => b.count - a.count)[0];
+  return best ? { lat: best.lat, lon: best.lon } : undefined;
 }

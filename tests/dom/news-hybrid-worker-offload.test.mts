@@ -179,4 +179,65 @@ describe('hybrid clustering initial worker stage (#7782)', () => {
     expect(result).toEqual(expected);
     expect(result[0]?.primarySource).toBe('Reuters');
   });
+
+  it('keeps geo, language, credibility, and max threat across a semantic merge', async () => {
+    const mildItem = item(1, 'Reuters', 'Shared border story');
+    mildItem.lat = 10;
+    mildItem.lon = 10;
+    mildItem.lang = 'en';
+    mildItem.credibilityScore = 81;
+    mildItem.threat = { level: 'low', category: 'general', confidence: 0.2, source: 'keyword' };
+
+    const severeItem = item(2, 'Unknown fixture publisher', 'Shared border story continues');
+    severeItem.lat = 32.1;
+    severeItem.lon = 44.2;
+    severeItem.lang = 'ar';
+    severeItem.monitorColor = '#c00';
+    severeItem.threat = { level: 'critical', category: 'conflict', confidence: 0.9, source: 'keyword' };
+    const corroborating = {
+      ...severeItem,
+      source: 'AP',
+      link: 'https://fixture.test/ap',
+    };
+
+    const mild = cluster(1, {
+      primarySource: 'Reuters',
+      primaryTitle: mildItem.title,
+      primaryLink: mildItem.link,
+      lang: 'en',
+      credibilityScore: 81,
+      lat: 10,
+      lon: 10,
+      threat: mildItem.threat,
+      monitorColor: '#stale',
+      velocity: { sourcesPerHour: 99, level: 'spike', trend: 'rising', sentiment: 'negative', sentimentScore: -5 },
+      allItems: [mildItem],
+      topSources: [{ name: 'Reuters', tier: 1, url: mildItem.link }],
+    });
+    const severe = cluster(2, {
+      primarySource: 'Unknown fixture publisher',
+      threat: severeItem.threat,
+      allItems: [severeItem, corroborating],
+      topSources: [{ name: 'Unknown fixture publisher', tier: 4, url: severeItem.link }],
+    });
+    const others = [cluster(3), cluster(4), cluster(5)];
+    workerMocks.clusterNews.mockResolvedValue([mild, severe, ...others]);
+    mlMocks.available = true;
+    mlMocks.clusterBySemanticSimilarity.mockResolvedValue([
+      [mild.id, severe.id],
+      ...others.map(({ id }) => [id]),
+    ]);
+
+    const mergedResult = await clusterNewsHybrid(Array.from({ length: 5 }, (_, index) => item(index)));
+    const merged = mergedResult.find((entry) => entry.allItems.length === 3);
+
+    expect(merged?.primarySource).toBe('Reuters');
+    expect(merged?.lat).toBe(32.1);
+    expect(merged?.lon).toBe(44.2);
+    expect(merged?.lang).toBe('en');
+    expect(merged?.credibilityScore).toBe(81);
+    expect(merged?.threat?.level).toBe('critical');
+    expect(merged?.monitorColor).toBe('#c00');
+    expect(merged?.velocity?.sourcesPerHour).not.toBe(99);
+  });
 });

@@ -6,6 +6,45 @@ export interface AcledDedupEvent {
   longitude: string | number;
   event_date: string;
   fatalities: string | number;
+  /** Producer id. GDELT unrest is not an ACLED conflict duplicate. */
+  source?: string;
+  /** ACLED conflict type. Protest/unrest rows are not comparison events. */
+  eventType?: string;
+}
+
+const ACLED_CONFLICT_EVENT_TYPES = new Set([
+  'battle',
+  'explosion',
+  'remote_violence',
+  'violence_against_civilians',
+]);
+
+/** True for ACLED conflict rows. Missing source/type stays eligible so legacy fixtures still match. */
+export function isAcledConflictComparison(event: AcledDedupEvent): boolean {
+  const source = (event.source ?? '').toLowerCase();
+  if (source.includes('gdelt')) return false;
+  if (event.eventType && !ACLED_CONFLICT_EVENT_TYPES.has(event.eventType)) return false;
+  return true;
+}
+
+export function toUcdpAcledComparisons(events: ReadonlyArray<{
+  lat: number;
+  lon: number;
+  time: Date;
+  fatalities: number;
+  source?: string;
+  eventType?: string;
+}>): AcledDedupEvent[] {
+  return events
+    .map((event) => ({
+      latitude: event.lat,
+      longitude: event.lon,
+      event_date: event.time.toISOString(),
+      fatalities: event.fatalities,
+      source: event.source,
+      eventType: event.eventType,
+    }))
+    .filter(isAcledConflictComparison);
 }
 
 export interface UcdpDedupCandidate {
@@ -31,26 +70,28 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function isDuplicatedByAcled(ucdp: UcdpDedupCandidate, acledEvents: AcledDedupEvent[]): boolean {
-  for (const acled of acledEvents) {
-    const aLat = Number(acled.latitude);
-    const aLon = Number(acled.longitude);
-    const aDate = new Date(acled.event_date).getTime();
-    const aDeaths = Number(acled.fatalities) || 0;
+function acledMatchesUcdp(ucdp: UcdpDedupCandidate, acled: AcledDedupEvent): boolean {
+  const aLat = Number(acled.latitude);
+  const aLon = Number(acled.longitude);
+  const aDate = new Date(acled.event_date).getTime();
+  const aDeaths = Number(acled.fatalities) || 0;
 
-    const dayDiff = Math.abs(ucdp.dateMs - aDate) / (1000 * 60 * 60 * 24);
-    if (dayDiff > 7) continue;
+  const dayDiff = Math.abs(ucdp.dateMs - aDate) / (1000 * 60 * 60 * 24);
+  if (dayDiff > 7) return false;
 
-    const dist = haversineKm(ucdp.latitude, ucdp.longitude, aLat, aLon);
-    if (dist > 50) continue;
+  const dist = haversineKm(ucdp.latitude, ucdp.longitude, aLat, aLon);
+  if (dist > 50) return false;
 
-    if (ucdp.deathsBest === 0 && aDeaths === 0) return true;
-    if (ucdp.deathsBest > 0 && aDeaths > 0) {
-      const ratio = ucdp.deathsBest / aDeaths;
-      if (ratio >= 0.5 && ratio <= 2.0) return true;
-    }
+  if (ucdp.deathsBest === 0 && aDeaths === 0) return true;
+  if (ucdp.deathsBest > 0 && aDeaths > 0) {
+    const ratio = ucdp.deathsBest / aDeaths;
+    return ratio >= 0.5 && ratio <= 2.0;
   }
   return false;
+}
+
+export function isDuplicatedByAcled(ucdp: UcdpDedupCandidate, acledEvents: AcledDedupEvent[]): boolean {
+  return acledEvents.some((acled) => isAcledConflictComparison(acled) && acledMatchesUcdp(ucdp, acled));
 }
 
 /** Reconcile full-set projection totals with the existing dynamic ACLED de-duplication. */

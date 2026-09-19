@@ -255,6 +255,18 @@ export class GeoConvergenceEngine {
   }
 
   /**
+   * Replace one domain's counts with a fresh snapshot. Full-feed refreshes
+   * call this so a second ingest does not add the same events again.
+   */
+  replaceEvents(events: readonly GeoEventInput[], type: GeoEventType): void {
+    for (const [cellId, cell] of this.cells) {
+      cell.events.delete(type);
+      if (cell.events.size === 0) this.cells.delete(cellId);
+    }
+    this.ingestEvents(events, type);
+  }
+
+  /**
    * Emit one alert per cell that has reached the domain threshold, skipping any
    * cell id already in `seenAlerts`. Newly alerted ids are added to that set.
    */

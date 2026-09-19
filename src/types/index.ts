@@ -191,6 +191,11 @@ export interface ClusteredEvent {
   lat?: number;
   lon?: number;
   lang?: string;
+  /**
+   * Credibility of the primary article. Present on clusters produced by
+   * `clusterNewsCore`; semantic merges must keep it.
+   */
+  credibilityScore?: number;
 }
 
 export type AssetType = 'pipeline' | 'cable' | 'datacenter' | 'base' | 'nuclear';

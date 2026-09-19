@@ -42,33 +42,37 @@ export function ingestGeoEvent(
   engine.ingest(lat, lon, type, timestamp.getTime());
 }
 
+function snapshotInputs<T extends { lat: number; lon: number }>(
+  rows: readonly T[],
+  time: (row: T) => number | undefined,
+): Array<{ lat: number; lon: number; time?: number }> {
+  return rows.map((row) => {
+    const stamp = time(row);
+    return stamp == null ? { lat: row.lat, lon: row.lon } : { lat: row.lat, lon: row.lon, time: stamp };
+  });
+}
+
 export function ingestProtests(events: SocialUnrestEvent[]): void {
-  for (const e of events) {
-    engine.ingest(e.lat, e.lon, 'protest', toEpochMs(e.time));
-  }
+  engine.replaceEvents(snapshotInputs(events, (event) => toEpochMs(event.time)), 'protest');
 }
 
 export function ingestFlights(flights: MilitaryFlight[]): void {
-  for (const f of flights) {
-    engine.ingest(f.lat, f.lon, 'military_flight', toEpochMs(f.lastSeen));
-  }
+  engine.replaceEvents(snapshotInputs(flights, (flight) => toEpochMs(flight.lastSeen)), 'military_flight');
 }
 
 export function ingestVessels(vessels: MilitaryVessel[]): void {
-  for (const v of vessels) {
-    engine.ingest(v.lat, v.lon, 'military_vessel', toEpochMs(v.lastAisUpdate));
-  }
+  engine.replaceEvents(snapshotInputs(vessels, (vessel) => toEpochMs(vessel.lastAisUpdate)), 'military_vessel');
 }
 
 export function ingestEarthquakes(quakes: Earthquake[]): void {
-  for (const q of quakes) {
-    engine.ingest(
-      q.location?.latitude ?? 0,
-      q.location?.longitude ?? 0,
-      'earthquake',
-      new Date(q.occurredAt).getTime()
-    );
-  }
+  engine.replaceEvents(
+    quakes.map((quake) => ({
+      lat: quake.location?.latitude ?? 0,
+      lon: quake.location?.longitude ?? 0,
+      time: new Date(quake.occurredAt).getTime(),
+    })),
+    'earthquake',
+  );
 }
 
 export function detectGeoConvergence(seenAlerts: Set<string>): GeoConvergenceAlert[] {

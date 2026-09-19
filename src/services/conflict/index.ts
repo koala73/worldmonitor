@@ -7,7 +7,7 @@ import { toApiUrl } from '@/services/runtime';
 import { ConflictServiceClient } from '@/services/generated-rpc-clients';
 import { isDuplicatedByAcled } from './ucdp-dedupe';
 import type { AcledDedupEvent, UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
-export { deduplicateUcdpProjectionAggregates } from './ucdp-dedupe';
+export { deduplicateUcdpProjectionAggregates, toUcdpAcledComparisons } from './ucdp-dedupe';
 export type { UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
 
 // ---- Client + Circuit Breakers ----

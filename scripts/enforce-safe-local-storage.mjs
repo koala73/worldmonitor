@@ -315,7 +315,6 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/services/telegram-watchlist.ts :: localStorage.<member> x2',
   'src/services/trending-keywords.ts :: <global>.localStorage x1',
   'src/services/trending-keywords.ts :: localStorage.<member> x2',
-  'src/services/webcams/pinned-store.ts :: localStorage.<member> x2',
   'src/services/widget-store.ts :: localStorage.<member> x4',
   'src/utils/followed-only-chip.ts :: localStorage.<member> x7',
   'src/utils/index.ts :: localStorage.<member> x2',

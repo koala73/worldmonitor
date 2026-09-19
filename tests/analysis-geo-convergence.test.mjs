@@ -360,6 +360,23 @@ describe('geo convergence signal projection', () => {
   });
 });
 
+describe('snapshot replacement', () => {
+  it('replaces one domain without doubling counts or clearing the others', () => {
+    const { engine } = makeEngine();
+    engine.ingest(32.4, 44.9, 'military_flight');
+    engine.replaceEvents([{ lat: 32.4, lon: 44.9 }], 'protest');
+    engine.replaceEvents([{ lat: 32.4, lon: 44.9 }, { lat: 32.2, lon: 44.2 }], 'protest');
+    const [cell] = engine.snapshot();
+    const counts = Object.fromEntries(cell.events.map((event) => [event.type, event.count]));
+    assert.equal(counts.protest, 2);
+    assert.equal(counts.military_flight, 1);
+
+    engine.replaceEvents([], 'protest');
+    const [remaining] = engine.snapshot();
+    assert.deepEqual(remaining.events.map((event) => event.type), ['military_flight']);
+  });
+});
+
 describe('client shim stays pinned to the shared core', () => {
   it('publishes the same convergence threshold the docs guard reads', () => {
     // tests/docs-signal-alignment.test.mts asserts this literal in the client shim

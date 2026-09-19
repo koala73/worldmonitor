@@ -291,8 +291,11 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   }
 }
 
-export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): void {
-  updateCallbacks.push(cb);
+export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): () => void {
+  if (!updateCallbacks.includes(cb)) updateCallbacks.push(cb);
+  return () => {
+    updateCallbacks = updateCallbacks.filter((listener) => listener !== cb);
+  };
 }
 
 export function startOrefPolling(): void {
