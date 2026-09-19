@@ -2528,6 +2528,7 @@ export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Re
       './_shared': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
       '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
       '../../../_shared/rate-limit': rateStub,
     });
@@ -2845,7 +2846,7 @@ export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Re
       const raw = String(url);
       if (raw.includes('/wingbits/track') && raw.includes('lamin=')) {
         wingbitsCalls += 1;
-        return jsonResponse({ positions: [{ icao24: 'abc', lat: 20.5, lon: 10.5 }], source: 'wingbits' }, true);
+        return jsonResponse({ positions: [{ icao24: 'abc', lat: 10, lon: 10.5 }], source: 'wingbits' }, true);
       }
       return jsonResponse({}, false);
     };
