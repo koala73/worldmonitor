@@ -1,8 +1,6 @@
 import { unwrapEnvelope } from './seed-envelope';
 import { getRpcNoStoreReasonFromPayload } from './cache-contract';
 import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
-// @ts-expect-error JS module has no declaration file.
-import { captureSilentError } from '../../api/_sentry-edge.js';
 
 // Default Upstash REST timeouts are tuned for production (Vercel ↔ Upstash
 // same-datacenter latency is sub-50ms, 1.5s leaves >20× headroom). They
@@ -1195,8 +1193,7 @@ export async function geoSearchByBox(...args: Parameters<typeof geoSearchByBoxSt
   try {
     return await geoSearchByBoxStrict(...args);
   } catch (error) {
-    console.warn('[redis] geoSearchByBox failed:', errMsg(error));
-    void captureSilentError(error, { tags: { module: 'redis', operation: 'geoSearchByBox' } });
+    logCacheReadError(args[0], error);
     return [];
   }
 }
@@ -1205,8 +1202,7 @@ export async function getHashFieldsBatch(...args: Parameters<typeof getHashField
   try {
     return await getHashFieldsBatchStrict(...args);
   } catch (error) {
-    console.warn('[redis] getHashFieldsBatch failed:', errMsg(error));
-    void captureSilentError(error, { tags: { module: 'redis', operation: 'getHashFieldsBatch' } });
+    logCacheReadError(args[0], error);
     return new Map();
   }
 }

@@ -32,7 +32,7 @@ const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
 const FAA_AIRPORT_SET = new Set(FAA_AIRPORTS);
 const INTL_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
 
-const ALLOWED_QUERY_PARAMS = new Set(['page_size', 'cursor', 'region', 'min_severity', 'jmespath', '_debug']);
+const ALLOWED_QUERY_PARAMS = new Set(['page_size', 'cursor', 'region', 'min_severity', 'jmespath', '_debug', 'rpc']);
 
 export async function listAirportDelays(
   ctx: ServerContext,
@@ -44,6 +44,7 @@ export async function listAirportDelays(
     if (seenParams.has(key)) throw new ApiError(400, `Duplicate airport delay parameter: ${key}`, '');
     seenParams.add(key);
     if (key === 'page_size' && value !== '0') throw new ApiError(400, 'Airport delay page_size must be 0', '');
+    if (key === 'rpc' && value !== 'list-airport-delays') throw new ApiError(400, 'Invalid airport delay route', '');
   }
   if ((req.pageSize ?? 0) !== 0 || req.cursor
     || (req.region && req.region !== 'AIRPORT_REGION_UNSPECIFIED')
