@@ -241,6 +241,18 @@ describe('consumer-prices unsupported range fallback', () => {
 
 
 describe('consumer price seeded selection boundary', () => {
+  it('accepts the published basket-series request example', async () => {
+    const spec = JSON.parse(readSource('docs/api/ConsumerPricesService.openapi.json'));
+    const parameters = spec.paths['/api/consumer-prices/v1/get-consumer-price-basket-series'].get.parameters;
+    const examples = Object.fromEntries(parameters.map((parameter: { name: string; example: string }) => [parameter.name, parameter.example]));
+    const response = await getConsumerPriceBasketSeries({}, {
+      marketCode: examples.market_code, basketSlug: examples.basket_slug, range: examples.range,
+    });
+    assert.equal(response.marketCode, examples.market_code.toLowerCase());
+    assert.equal(response.basketSlug, examples.basket_slug);
+    assert.deepEqual(requestedKeys, [`consumer-prices:basket-series:${response.marketCode}:${response.basketSlug}:${examples.range}`]);
+  });
+
   it('accepts every configured basket, normalizes market case and defaults its basket', async () => {
     for (const file of readdirSync(resolve(root, 'consumer-prices-core/configs/baskets'))) {
       const config = readSource(`consumer-prices-core/configs/baskets/${file}`);

@@ -5397,7 +5397,7 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "US"
+                  example: "ae"
                   schema:
                     type: string
                     pattern: '^([A-Za-z]{2})?$'
@@ -5432,11 +5432,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "essentials-ae"
-                                "currencyCode": "USD"
+                                "currencyCode": "AED"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
                                       "index": 1.5
-                                "marketCode": "US"
+                                "marketCode": "ae"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_consumer_prices_v1_GetConsumerPriceBasketSeriesResponse'
                 "400":
