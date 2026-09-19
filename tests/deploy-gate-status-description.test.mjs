@@ -103,11 +103,11 @@ function recoverPlan(discovery, artifacts) {
 describe('deploy gate phase results', () => {
   const stale = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const pending = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
-  const plan = { kind: 'sweep', stale: [stale], pending: [pending], missing: [] };
+  const plan = { kind: 'sweep', stale: [stale], retry: [pending], missing: [] };
   const artifact = `deploy-gate-invalidate-1-${stale}`;
 
   it('emits a real empty matrix after an empty invalidation phase', () => {
-    assert.deepEqual(recoverPlan({ kind: 'sweep', stale: [], pending: [], missing: [] }, {}), {
+    assert.deepEqual(recoverPlan({ kind: 'sweep', stale: [], retry: [], missing: [] }, {}), {
       matrix: { include: [] }, count: 0, invalidation_failed: false, protocol_failed: false,
     });
   });
@@ -156,6 +156,7 @@ function runGate(conclusions, {
   failedRunSha = SHA,
   graphQlFailures = 0,
   graphQlFailureKind = 'generic',
+  firstConclusions,
   previousConclusions,
   previousStatus,
   repetitions = 1,
@@ -174,6 +175,7 @@ function runGate(conclusions, {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
   const runsFile = join(tempDir, 'check-runs.json');
+  const firstRunsFile = join(tempDir, 'first-check-runs.json');
   const failuresFile = join(tempDir, 'graphql-failures');
   const restFailuresFile = join(tempDir, 'rest-failures');
   const restRunsFile = join(tempDir, 'rest-check-runs.json');
@@ -260,6 +262,12 @@ function runGate(conclusions, {
         },
       }]),
     );
+    if (firstConclusions) {
+      const firstPages = JSON.parse(readFileSync(runsFile, 'utf8'));
+      firstPages[1].data.repository.object.statusCheckRollup.contexts.nodes =
+        runsFor(firstConclusions, '2026-08-10T04:00:00Z', 1000);
+      writeFileSync(firstRunsFile, JSON.stringify(firstPages));
+    }
     const toRestRun = (run) => ({
       name: run.name,
       conclusion: run.conclusion,
@@ -370,6 +378,10 @@ function runGate(conclusions, {
         '      exit 1',
         '    fi',
         '    body=$(cat "$FAKE_CHECK_RUNS")',
+        '    if [ -f "$FAKE_FIRST_CHECK_RUNS" ]; then',
+        '      body=$(cat "$FAKE_FIRST_CHECK_RUNS")',
+        '      rm "$FAKE_FIRST_CHECK_RUNS"',
+        '    fi',
         '    if [ "$paginate" = "1" ]; then',
         '      echo "graphql-check-page" >> "$FAKE_CALLS"',
         '      [ "$slurp" = "1" ] || exit 96',
@@ -503,6 +515,7 @@ function runGate(conclusions, {
           FAKE_MALFORMED_STATUS: malformedStatusResponse ? '1' : '0',
           FAKE_EXHAUSTED_SHA: exhaustedSha,
           FAKE_CHECK_RUNS: runsFile,
+          FAKE_FIRST_CHECK_RUNS: firstRunsFile,
           FAKE_CUTOFF_ISO: '2026-08-11T12:30:00Z',
           FAKE_FAILED_RUN_CREATED_AT: failedRunCreatedAt,
           FAKE_FAILED_RUN_SHA: failedRunSha,
@@ -617,25 +630,57 @@ describe('deploy gate commit-status description', () => {
     assert.match(result.summary, /Update the branch/);
   });
 
-  it('recovers only pending statuses newer than the 24-hour cutoff', () => {
-    const shas = ['a', 'b', 'c'].map((letter) => letter.repeat(40));
-    const publications = ['2026-08-11T12:29:59Z', '2026-08-11T12:30:00Z', '2026-08-11T12:30:01Z'];
+  for (const state of ['PENDING', 'FAILURE', 'ERROR']) {
+    it(`recovers only ${state} statuses newer than the 24-hour cutoff`, () => {
+      const shas = ['a', 'b', 'c'].map((letter) => letter.repeat(40));
+      const publications = ['2026-08-11T12:29:59Z', '2026-08-11T12:30:00Z', '2026-08-11T12:30:01Z'];
+      const result = runGate(conclusionsFor('success'), {
+        sweepStatuses: shas.map((sha, index) => ({
+          sha,
+          status: {
+            state,
+            createdAt: publications[index],
+            description: stamped('Waiting for checks'),
+          },
+        })),
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.postTargets, [shas[2]]);
+      assert.match(result.summary, new RegExp(shas[0]));
+      assert.match(result.summary, new RegExp(shas[1]));
+      assert.doesNotMatch(result.summary, new RegExp(shas[2]));
+    });
+  }
+
+  it('recovers a recent failed gate after the successful rerun event saw stale checks', () => {
     const result = runGate(conclusionsFor('success'), {
-      sweepStatuses: shas.map((sha, index) => ({
-        sha,
-        status: {
-          state: 'PENDING',
-          createdAt: publications[index],
-          description: stamped('Waiting for checks'),
-        },
-      })),
+      sweepStatus: { state: 'FAILURE', description: stamped('Required PR gates did not pass (1): unit') },
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.postTargets, [shas[2]]);
-    assert.match(result.summary, new RegExp(shas[0]));
-    assert.match(result.summary, new RegExp(shas[1]));
-    assert.doesNotMatch(result.summary, new RegExp(shas[2]));
+    assert.deepEqual(result.posted, [{ state: 'success', description: stamped('All required PR gates passed') }]);
   });
+
+  it('keeps an unchanged failed gate blocked without repeated status writes', () => {
+    const result = runGate({ ...conclusionsFor('success'), unit: 'failure' }, {
+      sweepStatus: { state: 'FAILURE', description: stamped('Required PR gates did not pass (1): unit') },
+      repetitions: 2,
+    });
+    assert.deepEqual(result.exitCodes, [0, 0], result.stderr);
+    assert.ok(result.calls.includes('graphql-check-page'), 'the failed gate must be re-evaluated');
+    assert.deepEqual(result.posted, []);
+  });
+
+  for (const conclusion of ['success', 'pending', 'failure']) {
+    it(`rechecks a stale failed result before publishing ${conclusion}`, () => {
+      const result = runGate({ ...conclusionsFor('success'), unit: conclusion }, {
+        firstConclusions: { ...conclusionsFor('success'), unit: 'failure' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.posted.map(({ state }) => state), [conclusion]);
+      assert.equal(result.calls.filter((call) => call === 'sleep:60').length, 1);
+      assert.equal(result.calls.filter((call) => call === 'graphql-check-page').length, 4);
+    });
+  }
 
   it('allows an exact-SHA evaluation after scheduled recovery expires', () => {
     const result = runGate(conclusionsFor('success'), {
@@ -649,11 +694,11 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.posted.at(-1).state, 'success');
   });
 
-  it('does not reopen failed gates when the required contract changes', () => {
+  it('does not reopen expired failed gates when the required contract changes', () => {
     const result = runGate(conclusionsFor('success'), {
       sweepStatuses: ['FAILURE', 'ERROR'].map((state, index) => ({
         sha: String(index + 1).repeat(40),
-        status: { state, description: 'Blocked under an older contract' },
+        status: { state, createdAt: '2026-08-10T12:30:00Z', description: 'Blocked under an older contract' },
       })),
     });
     assert.equal(result.status, 0, result.stderr);
