@@ -31,8 +31,8 @@ describe('GDELT request cache identity through the real breaker', () => {
   it('separates query, limit and timespan and reuses identical requests', async () => {
     const { fetchGdeltArticles } = await import('@/services/gdelt-intel');
     const first = await fetchGdeltArticles('military', 10, '24h');
-    for (const args of [['cyber', 10, '24h'], ['military', 20, '24h'], ['military', 10, '48h']] as const) {
-      expect(await fetchGdeltArticles(...args)).not.toEqual(first);
+    for (const [query, limit, timespan] of [['cyber', 10, '24h'], ['military', 20, '24h'], ['military', 10, '48h']] as const) {
+      expect(await fetchGdeltArticles(query, limit, timespan)).not.toEqual(first);
     }
     expect(await fetchGdeltArticles('military', 10, '24h')).toEqual(first);
     expect(search).toHaveBeenCalledTimes(4);
@@ -46,7 +46,7 @@ describe('GDELT request cache identity through the real breaker', () => {
       ['a:b', 'c', 'ToneDesc', 15, '24h'],
     ] as const;
     const titles = [];
-    for (const tuple of tuples) titles.push((await fetch(...tuple))[0]?.title);
+    for (const [query, tone, sort, limit, timespan] of tuples) titles.push((await fetch(query, tone, sort, limit, timespan))[0]?.title);
     expect(new Set(titles).size).toBe(tuples.length);
     expect((await fetch(...tuples[0]))[0]?.title).toBe(titles[0]);
     expect(search).toHaveBeenCalledTimes(tuples.length);
