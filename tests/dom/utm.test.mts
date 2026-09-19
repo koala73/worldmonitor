@@ -23,7 +23,7 @@ describe('outbound attribution', () => {
   it('attributes a plain web link without modifying the anchor or leaking panel IDs', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     expect(click('https://example.com/article')).toBe('https://example.com/article');
-    expect(open).toHaveBeenCalledWith('https://example.com/article?utm_source=worldmonitor&utm_medium=referral&utm_campaign=custom-widget', '_blank', 'noopener');
+    expect(open).toHaveBeenCalledWith('https://example.com/article?utm_source=worldmonitor&utm_medium=referral&utm_campaign=custom-widget', '_blank', 'noopener,noreferrer');
   });
   it('keeps native modifier, download, and custom referrer navigation', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);

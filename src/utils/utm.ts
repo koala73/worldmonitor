@@ -54,6 +54,6 @@ export function installUtmInterceptor(): void {
     const destination = appendUtmParams(href, campaign);
     if (destination === href) return;
     e.preventDefault();
-    window.open(destination, '_blank', anchor.relList.contains('noreferrer') ? 'noopener,noreferrer' : 'noopener');
+    window.open(destination, '_blank', 'noopener,noreferrer');
   });
 }
