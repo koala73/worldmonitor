@@ -116,6 +116,7 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     }, emptyOutageFallback);
   }
 
+  if (outageBreaker.getDataState().mode !== 'unavailable') outagesConfigured = true;
   if (resp.outages.length === 0) {
     return [];
   }

@@ -113,6 +113,42 @@ describe('browser service cache failure contracts (#8348)', () => {
     await settlePersistence();
     assert.deepEqual(await h.fetchInternetOutages(), []); assert.equal(h.isOutagesConfigured(), true);
     runtime.__clientFeatureAvailable = false; assert.deepEqual(await h.fetchInternetOutages(), []); assert.equal(h.isOutagesConfigured(), false);
+    runtime.__clientFeatureAvailable = true; assert.deepEqual(await h.fetchInternetOutages(), []); assert.equal(h.isOutagesConfigured(), true, 'cached healthy empty recovers configuration after re-enabling');
+  });
+
+  it('consumer hydration preserves healthy empty lists and rejects unavailable nonempty lists', async () => {
+    const empty = {
+      consumerPricesCategories: { categories: [], upstreamUnavailable: false },
+      consumerPricesMovers: { risers: [], fallers: [], upstreamUnavailable: false },
+      consumerPricesSpread: { retailers: [], upstreamUnavailable: false },
+    };
+    type ConsumerHarness = {
+      fetchConsumerPriceCategories(): Promise<{ upstreamUnavailable: boolean }>;
+      fetchConsumerPriceMovers(): Promise<{ upstreamUnavailable: boolean }>;
+      fetchRetailerPriceSpreads(): Promise<{ upstreamUnavailable: boolean }>;
+    };
+    const exports = ["export { fetchConsumerPriceCategories, fetchConsumerPriceMovers, fetchRetailerPriceSpreads } from './src/services/consumer-prices/index.ts';"];
+    setup({ consumerCategories: [new Error('503')], consumerMovers: [new Error('503')], consumerSpreads: [new Error('503')] }, empty);
+    const healthy = await loadHarness<ConsumerHarness>(exports);
+    for (const fetchData of [healthy.fetchConsumerPriceCategories, healthy.fetchConsumerPriceMovers, healthy.fetchRetailerPriceSpreads]) {
+      assert.equal((await fetchData()).upstreamUnavailable, false);
+    }
+    runtime.__clientHydrated = {};
+    for (const fetchData of [healthy.fetchConsumerPriceCategories, healthy.fetchConsumerPriceMovers, healthy.fetchRetailerPriceSpreads]) {
+      assert.equal((await fetchData()).upstreamUnavailable, false, 'healthy empty hydration warms the exact default cache key');
+    }
+    setup({ consumerCategories: [new Error('503')], consumerMovers: [new Error('503')], consumerSpreads: [new Error('503')] }, {
+      consumerPricesCategories: { categories: [{}], upstreamUnavailable: true },
+      consumerPricesMovers: { risers: [{}], fallers: [], upstreamUnavailable: true },
+      consumerPricesSpread: { retailers: [{}], upstreamUnavailable: true },
+    });
+    const unavailable = await loadHarness<ConsumerHarness>(exports);
+    for (const fetchData of [unavailable.fetchConsumerPriceCategories, unavailable.fetchConsumerPriceMovers, unavailable.fetchRetailerPriceSpreads]) {
+      assert.equal((await fetchData()).upstreamUnavailable, true);
+    }
+    await settlePersistence();
+    assert.equal(runtime.__clientPersistent?.size, 0, 'unavailable hydration must not persist through recordSuccess');
+    assert.ok(Object.values(runtime.__clientRpcQueues!).every(queue => queue.length === 0), 'unavailable hydration falls through to RPC');
   });
 
   it('advisories and satellites keep last-good data when refresh rejects', async () => {
@@ -123,6 +159,22 @@ describe('browser service cache failure contracts (#8348)', () => {
     now += 16 * 60 * 1000;
     const advisoryFailure = await h.loadAdvisoriesFromServer(); const satelliteFailure = await h.fetchSatelliteTLEs();
     assert.equal(advisoryFailure.ok, false); assert.equal(advisoryFailure.advisories[0]?.title, 'A'); assert.equal(satelliteFailure?.[0]?.name, 'S'); assert.equal(h.getSatelliteStatus(), 'degraded'); assert.equal(runtime.__clientFreshnessErrors?.length, 1);
+  });
+
+  it('IMF exposes healthy themes on a cold partial load and retries the missing theme', async () => {
+    const macro = { countries: { AE: { inflationPct: 2, year: 2026 } } };
+    setup({}, { imfMacro: macro, imfGrowth: { countries: [] } });
+    const h = await loadHarness<{
+      getImfCountryBundle(code: string): Promise<{ macro: { inflationPct: number } | null; growth: unknown; labor: unknown }>;
+      getAllCountriesInflation(): Promise<Array<{ iso2: string; inflationPct: number }>>;
+    }>(["export { getImfCountryBundle, getAllCountriesInflation } from './src/services/imf-country-data.ts';"]);
+    const partial = await h.getImfCountryBundle('AE');
+    assert.equal(partial.macro?.inflationPct, 2);
+    assert.equal(partial.growth, null);
+    assert.equal(partial.labor, null);
+    assert.equal((await h.getAllCountriesInflation())[0]?.inflationPct, 2);
+    runtime.__clientHydrated = { imfMacro: macro, imfGrowth: { countries: {} }, imfLabor: { countries: { AE: { unemploymentPct: 4 } } }, imfExternal: { countries: {} } };
+    assert.deepEqual((await h.getImfCountryBundle('AE')).labor, { unemploymentPct: 4 });
   });
 
   it('IMF validates four public keys and retains last-good across incomplete refresh', async () => {

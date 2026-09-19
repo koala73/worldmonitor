@@ -186,7 +186,7 @@ export async function fetchConsumerPriceCategories(
 ): Promise<ListConsumerPriceCategoriesResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesCategories') as ListConsumerPriceCategoriesResponse | undefined;
-    if (hydrated?.categories?.length) {
+    if (hydrated && Array.isArray(hydrated.categories) && isAvailable(hydrated)) {
       // Warm the breaker only under the default snapshot's exact later cache
       // key (default market/basket at the default range) (#7048).
       if (basketSlug === DEFAULT_BASKET && range === '30d') {
@@ -214,7 +214,7 @@ export async function fetchConsumerPriceMovers(
 ): Promise<ListConsumerPriceMoversResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesMovers') as ListConsumerPriceMoversResponse | undefined;
-    if (hydrated?.risers?.length || hydrated?.fallers?.length) {
+    if (hydrated && Array.isArray(hydrated.risers) && Array.isArray(hydrated.fallers) && isAvailable(hydrated)) {
       // Warm the breaker only under the default snapshot's exact later cache
       // key (default market/range, unfiltered) (#7048).
       if (range === '30d' && !categorySlug) {
@@ -241,7 +241,7 @@ export async function fetchRetailerPriceSpreads(
 ): Promise<ListRetailerPriceSpreadsResponse> {
   if (marketCode === DEFAULT_MARKET) {
     const hydrated = getHydratedData('consumerPricesSpread') as ListRetailerPriceSpreadsResponse | undefined;
-    if (hydrated?.retailers?.length) {
+    if (hydrated && Array.isArray(hydrated.retailers) && isAvailable(hydrated)) {
       // Warm the breaker only under the default snapshot's exact later cache
       // key (default market/basket) (#7048).
       if (basketSlug === DEFAULT_BASKET) {

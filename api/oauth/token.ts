@@ -849,10 +849,7 @@ async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Prom
   try {
     client = await deps.redisGet(`oauth:client:${clientId}`);
   } catch {
-    return jsonResp(
-      { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-      503,
-    );
+    return temporaryAuthFailure();
   }
   if (!client) {
     return jsonResp(

@@ -68,7 +68,7 @@ interface ImfBootstrapData {
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedBundle: { fetchedAt: number; payload: ImfBootstrapData } | null = null;
-let inFlight: Promise<ImfBootstrapData | undefined> | null = null;
+let inFlight: Promise<Partial<ImfBootstrapData> | undefined> | null = null;
 
 function hasCountries(value: unknown): value is { countries: Record<string, never> } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -76,7 +76,7 @@ function hasCountries(value: unknown): value is { countries: Record<string, neve
   return Boolean(countries && typeof countries === 'object' && !Array.isArray(countries));
 }
 
-async function fetchBundle(): Promise<ImfBootstrapData | undefined> {
+async function fetchBundle(): Promise<Partial<ImfBootstrapData> | undefined> {
   if (cachedBundle && Date.now() - cachedBundle.fetchedAt < CACHE_TTL_MS) {
     return cachedBundle.payload;
   }
@@ -90,7 +90,14 @@ async function fetchBundle(): Promise<ImfBootstrapData | undefined> {
         ensureHydrated('imfLabor'),
         ensureHydrated('imfExternal'),
       ]);
-      if (![imfMacro, imfGrowth, imfLabor, imfExternal].every(hasCountries)) return cachedBundle?.payload;
+      if (![imfMacro, imfGrowth, imfLabor, imfExternal].every(hasCountries)) {
+        return cachedBundle?.payload ?? {
+          ...(hasCountries(imfMacro) ? { imfMacro } : {}),
+          ...(hasCountries(imfGrowth) ? { imfGrowth } : {}),
+          ...(hasCountries(imfLabor) ? { imfLabor } : {}),
+          ...(hasCountries(imfExternal) ? { imfExternal } : {}),
+        };
+      }
       const payload = { imfMacro, imfGrowth, imfLabor, imfExternal } as ImfBootstrapData;
       cachedBundle = { fetchedAt: Date.now(), payload };
       return payload;
