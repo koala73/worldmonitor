@@ -2379,7 +2379,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Ütemezett makrogazdasági közlemények: CPI, NFP, GDP, PMI és jegybanki döntések. Előrejelzést, tényleges értéket és előző értéket mutatja. A nagy hatású eseményeket kiemelve. Forrás: gazdasági adatszolgáltatók."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): az amerikai pénzügyi piacok stresszét méri 11 mutató felhasználásával, beleértve a hozamszpreadeket, a volatilitást és a keresztkorreláció-kat. A pozitív értékek az átlagosnál magasabb stresszre utalnak. Forrás: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI ÉRTÉK",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",

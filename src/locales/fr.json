@@ -2181,7 +2181,7 @@
       "infoTooltip": "<strong>Calendrier économique</strong> Publications macroéconomiques programmées : CPI, NFP, GDP, PMI et décisions des banques centrales. Affiche prévision vs réalisé vs précédent. Événements à fort impact mis en évidence. Source : fournisseurs de données économiques."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicateur de stress financier</strong> Indice de stress financier de la Fed de Kansas City (KCFSI) : mesure le stress sur les marchés financiers américains à l'aide de 11 indicateurs incluant les écarts de rendement, la volatilité et les corrélations croisées. Les valeurs positives indiquent un stress supérieur à la moyenne. Source : Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Indicateur de stress financier",
       "usFsiValue": "VALEUR FSI US",
       "cissTitle": "CISS UE (Stress systémique de la zone euro)",

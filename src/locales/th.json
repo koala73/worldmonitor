@@ -2163,7 +2163,7 @@
       "infoTooltip": "<strong>ปฏิทินเศรษฐกิจ</strong> การเผยแพร่ข้อมูลเศรษฐกิจมหภาคตามกำหนด: CPI, NFP, GDP, PMI และการตัดสินใจของธนาคารกลาง แสดงคาดการณ์ เทียบกับจริง เทียบกับก่อนหน้า เหตุการณ์ที่มีผลกระทบสูงถูกเน้น แหล่งข้อมูล: ผู้ให้บริการข้อมูลเศรษฐกิจ"
     },
     "fsi": {
-      "infoTooltip": "<strong>ตัวบ่งชี้ความเครียดทางการเงิน</strong> ดัชนีความเครียดทางการเงินของ Fed แคนซัสซิตี (KCFSI): วัดความเครียดในตลาดการเงินสหรัฐฯ โดยใช้ตัวบ่งชี้ 11 ตัว รวมถึงสเปรดผลตอบแทน ความผันผวน และสหสัมพันธ์ข้าม ค่าบวกบ่งชี้ความเครียดเหนือค่าเฉลี่ย แหล่งข้อมูล: Federal Reserve Bank of Kansas City",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "ตัวชี้วัดความเครียดทางการเงิน",
       "usFsiValue": "ค่า FSI ของสหรัฐฯ",
       "cissTitle": "EU CISS (ความเครียดระบบในพื้นที่ยูโร)",

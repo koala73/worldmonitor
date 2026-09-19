@@ -2172,7 +2172,7 @@
       "infoTooltip": "<strong>Икономически календар</strong> Планирани макроикономически публикации: CPI, NFP, GDP, PMI и решения на централни банки. Показва прогноза срещу реално срещу предходно. Събития с висок импакт са маркирани. Източник: доставчици на икономически данни."
     },
     "fsi": {
-      "infoTooltip": "<strong>Индикатор за финансов стрес</strong> Индекс на финансовия стрес на Федералния резерв на Канзас Сити (KCFSI): измерва стреса на финансовите пазари в САЩ чрез 11 индикатора, включващи спредове на доходността, волатилност и кръстосани корелации. Положителни стойности означават стрес над средното. Източник: Федерална резервна банка на Канзас Сити.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
       "title": "Индикатор на финансовия стрес",
       "usFsiValue": "US FSI СТОЙНОСТ",
       "cissTitle": "EU CISS (евро зона системен стрес)",

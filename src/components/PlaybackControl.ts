@@ -1,6 +1,7 @@
 import { getSnapshotTimestamps, getSnapshotAt, type DashboardSnapshot } from '@/services/storage';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 
 export class PlaybackControl {
@@ -9,6 +10,7 @@ export class PlaybackControl {
   private timestamps: number[] = [];
   private currentIndex = 0;
   private onSnapshotChange: ((snapshot: DashboardSnapshot | null) => void) | null = null;
+  private snapshotGuard = new LatestRequestGuard();
 
   constructor() {
     this.element = document.createElement('div');
@@ -96,11 +98,12 @@ export class PlaybackControl {
       return;
     }
 
+    const requestId = this.snapshotGuard.begin();
     this.isPlaybackMode = true;
     this.updateTimeDisplay();
 
     const snapshot = await getSnapshotAt(timestamp);
-    if (!this.element?.isConnected) return;
+    if (!this.snapshotGuard.isCurrent(requestId) || !this.isPlaybackMode || !this.element?.isConnected) return;
     this.onSnapshotChange?.(snapshot);
 
     document.body.classList.add('playback-mode');
@@ -108,6 +111,7 @@ export class PlaybackControl {
   }
 
   private goLive(): void {
+    this.snapshotGuard.begin();
     this.isPlaybackMode = false;
     this.currentIndex = this.timestamps.length - 1;
 
