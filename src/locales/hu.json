@@ -2043,6 +2043,7 @@
       "etfs": "ETF-ek",
       "netInflow": "NETTÓ BEÁRAMLÁS",
       "netOutflow": "NETTÓ KIÁRAMLÁS",
+      "netNeutral": "NETTÓ SEMLEGES",
       "table": {
         "ticker": "Ticker",
         "issuer": "Kibocsátó",

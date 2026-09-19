@@ -1898,6 +1898,7 @@
       "etfs": "ETF",
       "netInflow": "순유입",
       "netOutflow": "순유출",
+      "netNeutral": "순중립",
       "table": {
         "ticker": "티커",
         "issuer": "발행사",

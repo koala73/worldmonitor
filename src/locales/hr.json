@@ -2054,6 +2054,7 @@
       "etfs": "ETF-ovi",
       "netInflow": "NETO PRILIV",
       "netOutflow": "NETO ODLIV",
+      "netNeutral": "NETO NEUTRALNO",
       "table": {
         "ticker": "Oznaka",
         "issuer": "Izdavač",

@@ -1902,6 +1902,7 @@
       "etfs": "ETFs",
       "netInflow": "NET GIRIS",
       "netOutflow": "NET CIKIS",
+      "netNeutral": "NET NÖTR",
       "table": {
         "ticker": "Sembol",
         "issuer": "Ihraccci",

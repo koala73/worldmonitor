@@ -2043,6 +2043,7 @@
       "etfs": "ETF",
       "netInflow": "नेट इनफ्लो",
       "netOutflow": "नेट आउटफ्लो",
+      "netNeutral": "नेट तटस्थ",
       "table": {
         "ticker": "टिकर",
         "issuer": "इश्युअर",

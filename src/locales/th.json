@@ -1898,6 +1898,7 @@
       "etfs": "ETF",
       "netInflow": "กระแสเข้าสุทธิ",
       "netOutflow": "กระแสออกสุทธิ",
+      "netNeutral": "กระแสสุทธิเป็นกลาง",
       "table": {
         "ticker": "สัญลักษณ์",
         "issuer": "ผู้ออก",

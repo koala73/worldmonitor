@@ -2046,6 +2046,7 @@
       "etfs": "ETFs",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "خالص خنثی",
       "table": {
         "ticker": "Ticker",
         "issuer": "Issuer",

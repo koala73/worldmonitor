@@ -1910,6 +1910,7 @@
       "etfs": "ETF",
       "netInflow": "ЧИСТЫЙ ПРИТОК",
       "netOutflow": "ЧИСТЫЙ ОТТОК",
+      "netNeutral": "ЧИСТЫЙ НЕЙТРАЛ",
       "table": {
         "ticker": "Тикер",
         "issuer": "Эмитент",

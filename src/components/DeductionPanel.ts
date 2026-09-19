@@ -125,7 +125,7 @@ export class DeductionPanel extends Panel {
         super.unlockPanel();
         if (!this.content.contains(this.contentRoot)) {
             this.resultContainer.replaceChildren();
-            replaceChildren(this.content, this.contentRoot);
+            this.setContentNodes(this.contentRoot);
         }
     }
 

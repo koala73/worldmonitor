@@ -1898,6 +1898,7 @@
       "etfs": "ETF",
       "netInflow": "DÒNG VÀO RÒNG",
       "netOutflow": "DÒNG RA RÒNG",
+      "netNeutral": "DÒNG TRUNG LẬP",
       "table": {
         "ticker": "Mã",
         "issuer": "Tổ chức Phát hành",

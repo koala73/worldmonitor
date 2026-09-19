@@ -1647,6 +1647,7 @@
       "etfs": "ETFs",
       "netInflow": "FLUX NET ENTRANT",
       "netOutflow": "FLUX NET SORTANT",
+      "netNeutral": "FLUX NET NEUTRE",
       "table": {
         "ticker": "Ticker",
         "issuer": "Émetteur",

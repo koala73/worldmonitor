@@ -2046,6 +2046,7 @@
       "etfs": "ETFs",
       "netInflow": "NET",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "MTIRIRIKO SAWA",
       "table": {
         "ticker": "Ticker",
         "issuer": "Mtoaji",

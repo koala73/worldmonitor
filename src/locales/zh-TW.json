@@ -1898,6 +1898,7 @@
       "etfs": "ETFs",
       "netInflow": "淨流入",
       "netOutflow": "淨流出",
+      "netNeutral": "淨中性",
       "table": {
         "ticker": "程式碼",
         "issuer": "發行方",

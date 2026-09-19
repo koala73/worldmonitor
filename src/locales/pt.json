@@ -1378,6 +1378,7 @@
       "etfs": "ETFs",
       "netInflow": "ENTRADA LÍQUIDA",
       "netOutflow": "SAÍDA LÍQUIDA",
+      "netNeutral": "LÍQUIDO NEUTRO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emissor",

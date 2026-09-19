@@ -1902,6 +1902,7 @@
       "etfs": "ETFs",
       "netInflow": "НЕТЕН ПРИЛИВАНЕ",
       "netOutflow": "НЕТЕН ОТЛИВАНЕ",
+      "netNeutral": "НЕТО НЕУТРАЛНО",
       "table": {
         "ticker": "Тикер",
         "issuer": "Издател",

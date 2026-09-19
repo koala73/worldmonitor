@@ -1853,6 +1853,7 @@
       "etfs": "ETF",
       "netInflow": "AFFLUSSO NETTO",
       "netOutflow": "DEFLUSSO NETTO",
+      "netNeutral": "NETTO NEUTRO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emittente",

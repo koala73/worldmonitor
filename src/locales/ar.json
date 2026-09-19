@@ -1773,6 +1773,7 @@
       "etfs": "ETFs",
       "netInflow": "صافي تدفق داخل",
       "netOutflow": "صافي تدفق خارج",
+      "netNeutral": "صافي محايد",
       "table": {
         "ticker": "الرمز",
         "issuer": "الجهة المصدرة",
