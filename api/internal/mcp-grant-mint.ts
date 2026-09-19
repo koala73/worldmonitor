@@ -73,7 +73,7 @@ import {
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
 // @ts-expect-error — JS module, no declaration file
-import { isAllowedRedirectUri } from '../oauth/register.js';
+import { isAllowedRedirectUri } from '../oauth/_redirect-uri.js';
 import { GrantConfigError, signGrant } from '../_mcp-grant-hmac';
 
 // Fixed return URL — NOT user-controllable (anti-phishing).

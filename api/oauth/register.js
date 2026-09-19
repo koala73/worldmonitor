@@ -6,29 +6,14 @@ import { getClientIp } from '../_rate-limit.js';
 import { jsonResponse } from '../_json-response.js';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { isAllowedRedirectUri } from './_redirect-uri.js';
 
 export const config = { runtime: 'edge' };
 
 const CLIENT_TTL_SECONDS = 90 * 24 * 3600; // 90 days sliding
-
-// Allowlisted redirect URI prefixes — DCR is not open to arbitrary HTTPS URIs
-const ALLOWED_REDIRECT_PREFIXES = [
-  'https://claude.ai/api/mcp/auth_callback',
-  'https://claude.com/api/mcp/auth_callback',
-];
-
-// Exported so `api/internal/mcp-grant-mint.ts` (U3) can re-validate the
-// registered client's redirect URIs as a defense-in-depth check before
-// minting a Pro-MCP grant. Re-uses the SAME allowlist that DCR enforces
-// at registration time — no parallel implementation drift.
-export function isAllowedRedirectUri(uri) {
-  if (ALLOWED_REDIRECT_PREFIXES.includes(uri)) return true;
-  // localhost / 127.0.0.1 any port (Claude Code, MCP inspector)
-  try {
-    const u = new URL(uri);
-    return (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.protocol === 'http:';
-  } catch { return false; }
-}
+// VS Code registers 4 redirect URIs at once. Every entry must still pass the
+// allowlist, so this only bounds the stored record.
+const MAX_REDIRECT_URIS = 8;
 
 function jsonResp(body, status = 200) {
   return jsonResponse(body, status, getPublicCorsHeaders('POST, OPTIONS'));
@@ -100,14 +85,14 @@ export default async function handler(req) {
   if (!Array.isArray(redirect_uris) || redirect_uris.length === 0) {
     return jsonResp({ error: 'invalid_request', error_description: 'redirect_uris is required' }, 400);
   }
-  if (redirect_uris.length > 3) {
-    return jsonResp({ error: 'invalid_request', error_description: 'Maximum 3 redirect_uris allowed' }, 400);
+  if (redirect_uris.length > MAX_REDIRECT_URIS) {
+    return jsonResp({ error: 'invalid_request', error_description: `Maximum ${MAX_REDIRECT_URIS} redirect_uris allowed` }, 400);
   }
   for (const uri of redirect_uris) {
     if (typeof uri !== 'string' || !isAllowedRedirectUri(uri)) {
       return jsonResp({
         error: 'invalid_redirect_uri',
-        error_description: `Redirect URI not allowed: ${uri}. Allowed: claude.ai/claude.com callbacks and localhost.`,
+        error_description: `Redirect URI not allowed: ${uri}. Allowed: http loopback and the MCP client callbacks listed at https://www.worldmonitor.app/docs/mcp-overview#redirect-uri-allowlist`,
       }, 400);
     }
   }

@@ -680,7 +680,7 @@ domain-specific markup.
 | **Purpose** | Embedded YouTube live-stream player with channel switching. |
 | **DOM** | YouTube IFrame player, channel switcher bar, mute/live buttons. |
 | **Services** | `fetchLiveVideoId`, `isDesktopRuntime`, `getRemoteApiBaseUrl` |
-| **Variant channels** | `tech` → `TECH_LIVE_CHANNELS` (Bloomberg, Yahoo Finance, CNBC, NASA TV). `world` / `full` → `FULL_LIVE_CHANNELS` (Bloomberg, Sky, Euronews, DW, CNBC, France24, Al Arabiya, Al Jazeera). |
+| **Variant channels** | `tech` → `TECH_LIVE_CHANNELS` (Bloomberg, Yahoo Finance, NASA TV). `world` / `full` → `FULL_LIVE_CHANNELS` (Bloomberg, Sky, Euronews, DW, France24, Al Arabiya, Al Jazeera). |
 | **Notes** | Idle pause after 5 minutes of inactivity. |
 
 #### PredictionPanel
@@ -1045,15 +1045,6 @@ small UI affordances.
 | **Exported** | `maybeShowDownloadBanner()` |
 | **Platform detection** | `macos-arm64`, `macos-x64`, `windows`, `linux` |
 
-### CommunityWidget
-
-| Field | Detail |
-|---|---|
-| **File** | `src/components/CommunityWidget.ts` |
-| **Purpose** | Small floating widget linking to GitHub Discussions. |
-| **Exported** | `mountCommunityWidget()` |
-| **Notes** | Dismissible via `localStorage`. |
-
 ### PizzIntIndicator
 
 | Field | Detail |
@@ -1135,7 +1126,6 @@ small UI affordances.
 | StoryModal | ✅ | ✅ | ✅ |
 | MobileWarningModal | ✅ | ✅ | ✅ |
 | DownloadBanner | ✅ | ✅ | ✅ |
-| CommunityWidget | ✅ | ✅ | ✅ |
 | PizzIntIndicator | ✅ | — | — |
 | IntelligenceFindingsBadge | ✅ | — | — |
 | VerificationChecklist | ✅ | ✅ | — |

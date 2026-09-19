@@ -144,10 +144,20 @@ describe('redis-rest-proxy command gate', () => {
     // without the pinned-script branch runCommand enforces.
     assert.match(proxySrc, /client\.sendCommand\(commandForExecution\(args\)\)/,
       'runCommand must delegate to the shared command gate');
-    assert.match(proxySrc, /multi\.sendCommand\(commandForExecution\(cmd\)\)/,
+    assert.match(proxySrc, /queuedCommand = commandForExecution\(cmd\)/,
       'the /multi-exec handler must delegate to the shared command gate');
+    assert.match(proxySrc, /multi\.addCommand\(queuedCommand\)/,
+      'the /multi-exec handler must queue the command the gate authorized, not the caller\'s array');
     assert.doesNotMatch(proxySrc, /if \(!ALLOWED_COMMANDS\.has\(cmdName\)\)/,
       '/multi-exec must not re-implement the allowlist check');
+    // #8265: this assertion used to pin `multi.sendCommand(...)` — a method that
+    // does not exist on node-redis v4's transaction chain — so the source scrape
+    // certified the call site that made every /multi-exec answer 403. A scrape
+    // can only prove the gate is wired in; whether the queued command actually
+    // reaches Redis is behavioral, and redis-rest-proxy-multi-exec.test.mjs
+    // proves that against a chain stub built from the real v4 surface.
+    assert.doesNotMatch(proxySrc, /multi\.sendCommand\(/,
+      'sendCommand is a node-redis CLIENT method; the v4 multi chain queues with addCommand');
   });
 
   it('accepts every Redis command the platform actually sends', () => {

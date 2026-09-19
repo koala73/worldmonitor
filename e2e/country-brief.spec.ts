@@ -43,6 +43,33 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
+test('country shortcut keeps the dashboard canonical and shares a working dashboard URL', async ({ page, context, countryBrief }, testInfo) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/dashboard?c=UA');
+  const countryName = page.locator('#country-deep-dive-panel .cdp-country-name');
+  await expect(countryName).toHaveText('Ukraine');
+  await expect(countryName).toBeVisible();
+  await page.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Economy & trade', exact: true }).click();
+  await expectMarkets(page);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
+  await page.locator('#country-deep-dive-panel .cdp-share-btn').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(new URL('/dashboard?c=UA', page.url()).href);
+  const sharedUrl = await page.evaluate(() => navigator.clipboard.readText());
+  expect(countryBrief.requests.length).toBeGreaterThan(0);
+  for (const [name, width, height] of [['desktop', 1280, 720], ['mobile', 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.locator('#country-deep-dive-panel .cdp-country-name').scrollIntoViewIfNeeded();
+    const path = testInfo.outputPath(`country-shortcut-${name}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach(`country-shortcut-${name}`, { path, contentType: 'image/png' });
+  }
+  await page.goto(sharedUrl);
+  await expect(countryName).toHaveText('Ukraine');
+  await expect(countryName).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe('/dashboard');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
+});
+
 test('country brief renders exact RPC records and preserves the country after reload', async ({ page, countryBrief }, testInfo) => {
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
@@ -632,8 +659,7 @@ for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true
     }
     expect(JSON.parse(files.JSON!)).toEqual(snapshot);
     const exported = await page.context().newPage();
-    await exported.route('http://commodity-export.test/', route => route.fulfill({ body: files.HTML!, contentType: 'text/html' }));
-    await exported.goto('http://commodity-export.test/');
+    await exported.setContent(files.HTML!, { waitUntil: 'domcontentloaded' });
     expect(JSON.parse(await exported.locator('#commodity-brief-snapshot').textContent() ?? 'null')).toEqual(snapshot);
     await expect(exported.locator('.cdp-decision-action')).toHaveText(snapshot.action.text);
     await expect(exported.locator('body')).toContainText(snapshot.action.constraint);

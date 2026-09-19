@@ -20,7 +20,7 @@ const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
-const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
+const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers', 'c', 'country', 'chokepoint'] as const;
 const UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
@@ -143,6 +143,8 @@ const INDEX_NOISE_QUERY_KEYS = new Set([
  *    `redirects` before middleware, and the variant hosts have their own
  *    `/` -> `/dashboard` host redirect, so on those hosts robots.variant.txt
  *    is what keeps a crawler off the space (probed against production).
+ * Bounded root entity links also move to `/dashboard`, retaining their state
+ * in the same hop as attribution cleanup.
  *
  * Humans are deliberately excluded from the second collapse — the params are
  * what makes a shared or bookmarked legacy link open the view it encodes, and
@@ -167,9 +169,12 @@ function crawlerCanonicalUrl(url: URL): URL | null {
   }
   if (next.pathname === '/' && hasUnboundedDashboardRootState(next.searchParams)) {
     next.pathname = '/dashboard';
-    for (const key of LEGACY_DASHBOARD_ROOT_QUERY_KEYS) {
+    for (const key of [...LEGACY_DASHBOARD_ROOT_QUERY_KEYS, 'expanded', 't', 'ts']) {
       next.searchParams.delete(key);
     }
+    changed = true;
+  } else if (next.pathname === '/' && hasLegacyDashboardRootState(next.searchParams)) {
+    next.pathname = '/dashboard';
     changed = true;
   }
   return changed ? next : null;
@@ -222,10 +227,9 @@ export default function middleware(request: Request) {
     }
   }
 
-  // Human path for the same legacy root deep links. Crawlers never reach here
-  // — crawlerCanonicalUrl() above already sent them to the param-free
-  // /dashboard — so this branch keeps the query string, which is the whole
-  // point of a shared or bookmarked map link.
+  // Preserve the complete state and attribution in a person's legacy link.
+  // Crawlers have already reached /dashboard through crawlerCanonicalUrl(),
+  // retaining bounded entity state but collapsing coordinate combinations.
   //
   // Built by hand rather than via Response.redirect() so it can carry Vary. The
   // same request URL now yields two different Locations depending on the

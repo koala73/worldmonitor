@@ -29,10 +29,14 @@ import { isTrustedReturnUrlOrigin } from "./returnUrlOrigin";
 import {
   CHECKOUT_RATE_LIMITED,
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
+  isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
 } from "./checkoutRateLimit";
-import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
+import {
+  recordTerminalCheckoutRateLimit,
+  recordTerminalCheckoutTimeout,
+} from "./checkoutRateLimitAlarm";
 
 // MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
 // second copy of this normalisation is exactly the drift that produced the
@@ -374,10 +378,17 @@ async function _createCheckoutSession(
         attemptTimeoutMs: CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
         onRetry: (delayMs) =>
           console.warn(
-            `[checkout] Dodo 429 for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
+            `[checkout] Dodo checkout failed for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
           ),
       },
     );
+    if (isCheckoutTimedOutOutcome(result)) {
+      await recordTerminalCheckoutTimeout(ctx, {
+        userId: user.userId,
+        productId: args.productId,
+      });
+      return result;
+    }
     if (isCheckoutRateLimitedOutcome(result)) {
       console.warn(
         `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId} after bounded retry (<=${CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS} attempts); retry after ${result.retryAfterSeconds}s`,
@@ -458,6 +469,12 @@ export const createCheckout = action({
       email: identity?.email,
       name: customerName,
     });
+    if (isCheckoutTimedOutOutcome(result)) {
+      throw new ConvexError({
+        code: result.code,
+        message: "Checkout timed out. Please try again.",
+      });
+    }
     // The public Convex action historically rejects provider failures. Keep
     // that error-channel contract: only the trusted internal relay consumes
     // the typed outcome and translates it into HTTP 429 + Retry-After.

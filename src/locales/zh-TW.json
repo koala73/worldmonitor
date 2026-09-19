@@ -1175,9 +1175,6 @@
       "base": "基地",
       "nuclear": "核設施"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "危急",
       "high": "高",

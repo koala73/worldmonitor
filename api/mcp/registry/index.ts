@@ -1,5 +1,6 @@
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
+import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
@@ -142,7 +143,10 @@ export function buildPublicTool(
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.
-    outputSchema: structuredClone(tool.outputSchema),
+    // Advertised as `anyOf [documented shape, projection / soft-envelope
+    // shapes]` so the `structuredContent` every call returns validates in a
+    // strict client whatever the response kind (api/mcp/structured-content.ts).
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema)),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
