@@ -52,17 +52,20 @@ export function extractHighBoundaryBlock(prompt) {
 
 export const promptSha = (prompt) => createHash('sha256').update(prompt).digest('hex').slice(0, 16);
 
-// rows: [{ title, judge, borderline }]; labels: { [title]: level }. Unlabelled titles
-// are excluded from every count and reported, never silently treated as "not an alert".
+// rows: [{ title, judge, borderline }]; labels: { [title]: level }. A title the model
+// returned no valid label for is skipped by production, so nobody is alerted: a real
+// alert among them is a MISS, and is also reported on its own as `unlabelledAlerts`.
+// Exact-level accuracy is over labelled titles only.
 export function scoreAlertLabels(rows, labels) {
   const scored = rows.filter((r) => typeof labels[r.title] === 'string');
-  const truth = scored.filter((r) => isAlertLevel(r.judge));
+  const truth = rows.filter((r) => isAlertLevel(r.judge));
   const flagged = scored.filter((r) => isAlertLevel(labels[r.title]));
   const caught = flagged.filter((r) => isAlertLevel(r.judge)).length;
   const exact = scored.filter((r) => labels[r.title] === r.judge).length;
   return {
     titles: scored.length,
     unlabelled: rows.length - scored.length,
+    unlabelledAlerts: truth.filter((r) => typeof labels[r.title] !== 'string').length,
     alertLevel: truth.length,
     missed: truth.length - caught,
     falseAlerts: flagged.length - caught,

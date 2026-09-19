@@ -48,11 +48,15 @@ describe('scoreAlertLabels', () => {
     );
   });
 
-  it('reports an unlabelled title instead of scoring it as "not an alert"', () => {
+  it('counts an unlabelled real alert as missed: production skips it, so nobody is alerted', () => {
     const s = scoreAlertLabels(rows, { b: 'high', c: 'low', d: 'info' });
     assert.equal(s.unlabelled, 1);
-    assert.equal(s.alertLevel, 1, 'the unlabelled critical title is not counted as a miss');
-    assert.equal(s.missed, 0);
+    assert.equal(s.unlabelledAlerts, 1);
+    assert.equal(s.alertLevel, 2);
+    assert.equal(s.missed, 1);
+    assert.equal(s.recallPct, 50);
+    assert.equal(s.precisionPct, 100, 'precision is over what was flagged, so it is unaffected');
+    assert.equal(s.exactLevelPct, +(100 * 2 / 3).toFixed(1), 'exact level is over labelled titles only');
   });
 });
 
