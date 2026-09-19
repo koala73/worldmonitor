@@ -9,8 +9,9 @@
 // cache row or an alert. With TYPESAFE_API_KEY unset the observer returns null
 // without a request.
 //
-// TYPESAFE_API_KEY belongs on the `ais-relay` Railway service, the only process
-// that runs this file. Look for `[Classify] Jev shadow <variant>: asked ...` in
+// In a deployment TYPESAFE_API_KEY belongs on the `ais-relay` Railway service,
+// the only deployed process that runs this file (the local eval script reads
+// the same variable for its own live calls). Look for `[Classify] Jev shadow <variant>: asked ...` in
 // its logs to confirm it is on.
 //
 // Why shadow and not labeller: on 413 blind-judged headlines Jev-as-labeller
