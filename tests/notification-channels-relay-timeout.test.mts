@@ -58,6 +58,23 @@ function makeSetWebPushRequest(): Request {
 
 type RedisCommand = string[];
 
+// AbortSignal.timeout timers are unref'ed: on their own they do not keep the
+// event loop alive. Under the parallel suite (tsx --test --test-concurrency=16)
+// the loop can drain while this stub is still awaiting the relay's abort, and
+// node:test then cancels the pending test with the spurious "Promise resolution
+// is still pending but the event loop has already resolved"
+// (cancelledByParent), taking the rest of the file with it. A ref'ed keep-alive
+// timer, cleared on abort, closes that window without changing what the stub
+// proves.
+function hangUntilAbort(signal: AbortSignal): Promise<never> {
+  const keepAlive = setTimeout(() => {}, 10_000);
+  if (signal.aborted) clearTimeout(keepAlive);
+  else signal.addEventListener('abort', () => clearTimeout(keepAlive), { once: true });
+  return new Promise<never>((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError')), { once: true });
+  });
+}
+
 function installInMemoryUpstash() {
   const store = new Map<string, string>();
   const batches: RedisCommand[][] = [];
@@ -121,11 +138,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
       relaySignals.push(signal);
       assert.equal(body.scheduleWelcome, true);
       if (mutationAttempt === 1) {
-        return await new Promise<Response>((_resolve, reject) => {
-          const rejectForAbort = () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError'));
-          if (signal.aborted) rejectForAbort();
-          else signal.addEventListener('abort', rejectForAbort, { once: true });
-        });
+        return hangUntilAbort(signal);
       }
       return Response.json({
         ok: true,
