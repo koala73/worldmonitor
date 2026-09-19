@@ -26,6 +26,7 @@ import {
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { hashKeySync } from '../../server/_shared/usage-identity';
 import {
   checkFailClosedScopedIpRateLimit,
   RATE_LIMIT_DEGRADED_HEADERS,
@@ -831,7 +832,10 @@ export async function applyPerMinuteLimit(
     if (!rl) return null;
     let denied = false;
     try {
-      const { success } = await rl.limit(`key:${context.apiKey}`);
+      // Hash the operator key. The raw WORLDMONITOR_VALID_KEYS value must not
+      // sit in Redis under rl:mcp — telemetry and SSE replay already use
+      // hashKeySync for the same reason.
+      const { success } = await rl.limit(`key:${hashKeySync(context.apiKey)}`);
       if (!success) {
         // Operator env keys are ungated and carry no entitlement row, so this
         // branch keeps the fixed legacy threshold rather than a plan's.

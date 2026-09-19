@@ -76,7 +76,8 @@ const RENDER = `
       var keys = Object.keys(summaries);
       for (var i = 0; i < keys.length && count < 20; i++) {
         var s = summaries[keys[i]];
-        if (!s || typeof s !== "object" || s.dataAvailable === false) continue;
+        if (!s || typeof s !== "object") continue;
+        var historyMissing = s.dataAvailable === false;
         var row = el("div", "crow");
         var head = el("div", "crow-head");
         head.appendChild(el("span", "cname", prettyName(keys[i])));
@@ -91,13 +92,14 @@ const RENDER = `
         var stats = el("div", "cstats");
         var total = num(s.todayTotal);
         stats.appendChild(stat("Transits today", total == null ? "—" : String(Math.round(total))));
-        var wow = num(s.wowChangePct);
+        var wow = historyMissing ? null : num(s.wowChangePct);
         var wowColor = wow == null ? null : (wow >= 0 ? cssVar("--up") : cssVar("--down"));
         stats.appendChild(stat("Week over week", pctText(wow), wowColor));
         var tanker = num(s.todayTanker);
         if (tanker != null) stats.appendChild(stat("Tanker", String(Math.round(tanker))));
         row.appendChild(stats);
 
+        if (historyMissing) row.appendChild(el("div", "csum", "PortWatch history unavailable"));
         if (s.riskSummary) row.appendChild(el("div", "csum", collapseWs(s.riskSummary)));
         host.appendChild(row);
         count++;

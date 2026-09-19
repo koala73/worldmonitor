@@ -103,11 +103,11 @@ message ScenarioCoverage {
 
 // GetScenarioStatusRequest polls the worker result for an enqueued job id.
 message GetScenarioStatusRequest {
-  // Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
-  // guarded by JOB_ID_RE in the handler.
+  // Job id of the form `scenario:{epoch_ms}:{32-hex}` (128-bit). The legacy
+  // 8-character suffix remains valid. Path-traversal guarded by JOB_ID_RE.
   string job_id = 1 [
     (buf.validate.field).required = true,
-    (buf.validate.field).string.pattern = "^scenario:[0-9]{13}:[a-z0-9]{8}$",
+    (buf.validate.field).string.pattern = "^scenario:[0-9]{13}:([a-f0-9]{32}|[a-z0-9]{8})$",
     (sebuf.http.query) = {name: "jobId"}
   ];
 }

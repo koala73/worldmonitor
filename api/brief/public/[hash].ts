@@ -34,10 +34,6 @@ import {
 
 const HTML_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
-  // Short edge cache — a shared brief rarely changes within the same
-  // day and we want CDN absorption for viral traffic, but not so long
-  // that a composer re-write (unusual) gets stuck.
-  'Cache-Control': 'public, max-age=0, s-maxage=300, must-revalidate',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   // Critical: keep shared briefs out of public indexes. A per-user
@@ -45,6 +41,14 @@ const HTML_HEADERS = {
   // regression (shared ≠ public forever) and a UX embarrassment.
   'X-Robots-Tag': 'noindex, nofollow',
 };
+
+// CDN absorption is only safe for a rendered brief. A 503 (Upstash blip)
+// or 404 (missing/expired pointer) must not be stored: Vercel caches
+// public responses by URL, and s-maxage=300 would replay the outage page
+// after Redis recovers. Error pages use private, no-store so a transient
+// failure cannot pin an unavailable brief at the edge.
+const SUCCESS_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, must-revalidate';
+const ERROR_CACHE_CONTROL = 'private, no-store';
 
 function htmlResponse(
   req: Request,
@@ -55,7 +59,11 @@ function htmlResponse(
   const isHead = req.method === 'HEAD';
   return new Response(isHead ? null : body, {
     status,
-    headers: { ...HTML_HEADERS, ...extraHeaders },
+    headers: {
+      ...HTML_HEADERS,
+      'Cache-Control': status === 200 ? SUCCESS_CACHE_CONTROL : ERROR_CACHE_CONTROL,
+      ...extraHeaders,
+    },
   });
 }
 

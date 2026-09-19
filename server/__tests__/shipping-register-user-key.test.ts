@@ -32,18 +32,27 @@ vi.mock('../_shared/api-key-rate-limit', () => ({
 const records = new Map<string, Record<string, unknown>>();
 const getCachedJson = vi.fn(async (key: string) => records.get(key) ?? null);
 const setCachedJson = vi.fn(async (key: string, value: Record<string, unknown>, _ttl: number) => { records.set(key, value); });
-const runRedisPipeline = vi.fn(async (commands: string[][]) => commands.map(command => {
-  if (command[0] === 'GET') {
-    const value = records.get(command[1]);
-    return { result: value == null ? null : typeof value === 'string' ? value : JSON.stringify(value) };
-  }
-  if (command[0] === 'SSCAN') return { result: ['0', []] };
-  if (command[0] === 'SET') {
-    records.set(command[1], JSON.parse(command[2]));
-    return { result: 'OK' };
-  }
-  return { result: 1 };
-}));
+function pipelineResult(commands: string[][]) {
+  return commands.map(command => {
+    if (command[0] === 'GET') {
+      const value = records.get(command[1]);
+      return { result: value == null ? null : typeof value === 'string' ? value : JSON.stringify(value) };
+    }
+    if (command[0] === 'SSCAN') return { result: ['0', []] };
+    if (command[0] === 'SET') {
+      records.set(command[1], JSON.parse(command[2]));
+      return { result: 'OK' };
+    }
+    if (command[0] === 'SADD') {
+      const members = (records.get(command[1]) as { members?: string[] } | undefined)?.members ?? [];
+      if (!members.includes(command[2])) members.push(command[2]);
+      records.set(command[1], { members });
+      return { result: 1 };
+    }
+    return { result: 1 };
+  });
+}
+const runRedisPipeline = vi.fn(async (commands: string[][]) => pipelineResult(commands));
 const registrationCommands = () => {
   const call = runRedisPipeline.mock.calls.find(([commands]) => (
     commands[0]?.[0] === 'SET' && String(commands[0][1]).startsWith('webhook:sub:')
@@ -74,6 +83,8 @@ const request = (key?: string, extra: Record<string, string> = {}, body = payloa
 const context = { waitUntil: () => {} };
 beforeEach(() => {
   apiAccess = true; records.clear(); vi.clearAllMocks();
+  runRedisPipeline.mockReset();
+  runRedisPipeline.mockImplementation(async (commands: string[][]) => pipelineResult(commands));
   vi.mocked(checkFailClosedScopedIpRateLimit).mockResolvedValue(null);
   validateUserApiKey.mockReset().mockImplementation(async (key: string) => key === keyA ? { userId: 'owner-a' } : key === keyB ? { userId: 'owner-b' } : null);
   vi.stubEnv('WORLDMONITOR_VALID_KEYS', 'enterprise-test');
@@ -171,7 +182,8 @@ test('gateway registrations support owner-only status, rotation and reactivation
     expect((await manage(own.subscriberId, 'reactivate', owner)).status).toBe(200);
     expect(records.get(storageKey)).toMatchObject({ active: true, secret: body.secret, ownerTag: hash(owner) });
     expect(await (await manage(own.subscriberId, '', owner)).json()).not.toHaveProperty('secret');
-    expect(setCachedJson.mock.calls.at(-1)?.[2]).toBe(86400 * 30);
+    const persist = runRedisPipeline.mock.calls.at(-1)?.[0] as string[][];
+    expect(persist?.[0]?.slice(3)).toEqual(['EX', String(86400 * 30)]);
   }
 });
 
@@ -219,3 +231,42 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
     expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.ownerTag).toBe(hash('enterprise-test'));
   });
 }
+
+test('management preflight allows POST', async () => {
+  const res = await actionHandler(new Request('https://www.worldmonitor.app/api/v2/shipping/webhooks/wh_test/rotate-secret', {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://worldmonitor.app' },
+  }));
+  expect(res.status).toBe(204);
+  expect(res.headers.get('Access-Control-Allow-Methods')).toBe('POST, OPTIONS');
+});
+
+test('rotate-secret does not echo a secret the store did not confirm', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  runRedisPipeline.mockImplementationOnce(async () => []);
+  const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
+  expect(rotated.status).toBe(503);
+  const text = await rotated.text();
+  expect(text).not.toMatch(/[a-f0-9]{64}/);
+  expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.secret).toBe(own.secret);
+});
+
+test('reactivate does not report active when the store write failed', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  records.set(`webhook:sub:${own.subscriberId}:v1`, { ...records.get(`webhook:sub:${own.subscriberId}:v1`), active: false });
+  runRedisPipeline.mockImplementationOnce(async () => []);
+  const revived = await manage(own.subscriberId, 'reactivate', keyA);
+  expect(revived.status).toBe(503);
+  expect(await revived.json()).not.toMatchObject({ active: true });
+  expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.active).toBe(false);
+});
+
+test('rotate-secret refreshes the owner index with the record TTL', async () => {
+  const own = await (await gateway(request(keyA), context)).json();
+  runRedisPipeline.mockClear();
+  const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
+  expect(rotated.status).toBe(200);
+  const commands = runRedisPipeline.mock.calls.at(-1)?.[0] as string[][];
+  expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(keyA)}:v1`, own.subscriberId]);
+  expect(commands[2]).toEqual(['EXPIRE', `webhook:owner:${hash(keyA)}:v1`, String(86400 * 30)]);
+});

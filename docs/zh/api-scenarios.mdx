@@ -107,7 +107,7 @@ The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之�
 返回 worker 写入的作业当前状态，或在作业仍在队列中时返回合成的 `pending` 桩。
 
 - **鉴权**：同 `/run-scenario`
-- **jobId 格式**：`scenario:{unix-ms}:{8-char-suffix}` — 严格校验以防路径遍历
+- **jobId 格式**：`scenario:{unix-ms}:{32-hex}`（128 位）。旧的 `scenario:{unix-ms}:{8-char}` 仍然有效。轮询 URL 不是能力凭证：任务绑定到入队的调用方，其他主体收到 404。
 
 **状态生命周期**：
 

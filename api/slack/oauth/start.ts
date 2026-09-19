@@ -35,7 +35,7 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
-  if (!SLACK_CLIENT_ID || !SLACK_REDIRECT_URI || !UPSTASH_URL) {
+  if (!SLACK_CLIENT_ID || !SLACK_REDIRECT_URI || !UPSTASH_URL || !UPSTASH_TOKEN) {
     return new Response(JSON.stringify({ error: 'Slack OAuth not configured' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
@@ -75,6 +75,10 @@ export default async function handler(req: Request): Promise<Response> {
   }).catch(() => null);
 
   if (!pipelineRes?.ok) {
+    return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+  const pipelineBody = await pipelineRes.json().catch(() => null);
+  if (!Array.isArray(pipelineBody) || pipelineBody[0]?.result !== 'OK') {
     return new Response(JSON.stringify({ error: 'Failed to create OAuth state' }), { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
