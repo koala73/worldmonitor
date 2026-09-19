@@ -728,9 +728,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.118 across 180 scored forecasts, against 0.25 for answering 0.5 to everything.
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.114 across 199 scored forecasts, against 0.25 for answering 0.5 to everything.
 
-Captured 2026-09-10.
+Captured 2026-09-19.
 
 This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
 
