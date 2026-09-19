@@ -4,6 +4,7 @@ import { jsonResponse } from './_json-response.js';
 export const config = { runtime: 'edge' };
 
 export default createRelayHandler({
+  publicCors: true,
   buildRelayPath: (_req, url) => {
     const endpoint = url.searchParams.get('endpoint');
     return endpoint === 'history' ? '/oref/history' : '/oref/alerts';
