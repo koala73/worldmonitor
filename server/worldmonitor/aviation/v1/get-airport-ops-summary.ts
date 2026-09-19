@@ -6,6 +6,7 @@ import type {
     AirportDelayAlert,
     FlightDelaySeverity,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { MONITORED_AIRPORTS, AVIATIONSTACK_AIRPORTS } from '../../../../src/config/airports';
 import { getCachedJson } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
@@ -16,9 +17,12 @@ import {
     parseStringArray,
     DEFAULT_WATCHED_AIRPORTS,
     loadNotamClosures,
+    IATA_RE,
 } from './_shared';
 
 const SEED_CACHE_KEY = 'aviation:delays:intl:v3';
+const MAX_OPS_AIRPORTS = 20; // get_airport_ops_summary.proto repeated.max_items
+const MAX_AIRPORT_INPUT_LENGTH = 1024;
 const AVIATIONSTACK_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
 type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
 
@@ -26,9 +30,23 @@ export async function getAirportOpsSummary(
     _ctx: ServerContext,
     req: GetAirportOpsSummaryRequest,
 ): Promise<GetAirportOpsSummaryResponse> {
-    const rawAirports = parseStringArray(req.airports);
-    const requested = rawAirports.length > 0
-        ? rawAirports.map(a => a.toUpperCase())
+    const raw: unknown = req.airports;
+    if (raw != null && !(typeof raw === 'string'
+        ? raw.length <= MAX_AIRPORT_INPUT_LENGTH
+        : Array.isArray(raw) && raw.length <= MAX_OPS_AIRPORTS
+            && raw.every(code => typeof code === 'string' && code.length <= MAX_AIRPORT_INPUT_LENGTH))) {
+        throw new ApiError(400, 'Expected at most 20 IATA airport codes', '');
+    }
+    const rawAirports = parseStringArray(raw);
+    if (rawAirports.length > MAX_OPS_AIRPORTS) {
+        throw new ApiError(400, 'Expected at most 20 IATA airport codes', '');
+    }
+    const normalized = rawAirports.map(code => code.trim().toUpperCase());
+    if (normalized.some(code => !IATA_RE.test(code))) {
+        throw new ApiError(400, 'Expected three-letter IATA airport codes', '');
+    }
+    const requested = normalized.length > 0
+        ? [...new Set(normalized)]
         : DEFAULT_WATCHED_AIRPORTS;
 
     const now = Date.now();

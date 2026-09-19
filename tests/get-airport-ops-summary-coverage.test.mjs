@@ -232,3 +232,32 @@ describe('getAirportOpsSummary — coverage gating (#7106)', () => {
     assert.equal(saw.source, 'unknown');
   });
 });
+
+describe('airport ops input admission', () => {
+  for (const airports of [
+    Array(21).fill('LHR'), Array(21).fill('LHR').join(','),
+    'LHR,INVALID', '12A', 'LHR'.repeat(1000),
+    ['LHR', 123], ['LHR', {}], { airport: 'LHR' },
+  ]) it(`rejects invalid airport input before I/O: ${JSON.stringify(airports).slice(0, 70)}`, async () => {
+    const fetchImpl = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async (...args) => { calls++; return fetchImpl(...args); };
+    try {
+      await assert.rejects(getAirportOpsSummary({}, { airports }), error => error.statusCode === 400);
+      assert.equal(calls, 0);
+    } finally { globalThis.fetch = fetchImpl; }
+  });
+
+  it('accepts twenty valid codes and bounds unknown rows', async () => {
+    const airports = Array.from({ length: 20 }, (_, i) => `AA${String.fromCharCode(65 + i)}`);
+    const response = await getAirportOpsSummary({}, { airports });
+    assert.equal(response.summaries.length, 20);
+    assert.deepEqual(new Set(response.summaries.map(row => row.iata)), new Set(airports));
+  });
+
+  it('normalizes and deduplicates while preserving valid unknown-airport rows', async () => {
+    const response = await getAirportOpsSummary({}, { airports: ' lhr ,LHR,ncl,NCL' });
+    assert.deepEqual(response.summaries.map(row => row.iata), ['LHR', 'NCL']);
+    assert.equal(summaryFor(response, 'NCL').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+  });
+});
