@@ -56,7 +56,12 @@ jobs:
       - name: Reconcile the weekly review branch
         id: reconcile
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Prefer a user or app token when one is configured. A PR opened
+          # with github.token needs the repository setting that lets Actions
+          # create pull requests (the block that ended every refresh run,
+          # #8417) and triggers no CI, which the required checks on main then
+          # block. With REVIEW_PR_TOKEN unset this falls back to github.token.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
         run: |
           # ISO year-week, not year-month: the branch key is what makes the
           # run idempotent, so a month-keyed name under a weekly cron would
@@ -173,7 +178,8 @@ jobs:
       - name: Open the weekly pulse PR
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Same preference as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
