@@ -132,6 +132,26 @@ async function hasValidWorldMonitorKey(key: string): Promise<boolean> {
   return timingSafeIncludes(key, WORLDMONITOR_VALID_KEYS);
 }
 
+/**
+ * The enterprise credential that authenticates this request, or '' if none does.
+ *
+ * An explicit `X-WorldMonitor-Key` / `X-Api-Key` header never falls back to an
+ * ambient cookie. Without one, each protected cookie is validated on its own so
+ * a rotated Pro key cannot mask a still-valid Widget key.
+ */
+async function resolveEnterpriseKey(
+  explicitKey: string,
+  proCookie: string,
+  widgetCookie: string,
+): Promise<string> {
+  if (explicitKey) {
+    return (await hasValidWorldMonitorKey(explicitKey)) ? explicitKey : '';
+  }
+  if (await hasValidWorldMonitorKey(proCookie)) return proCookie;
+  if (await hasValidWorldMonitorKey(widgetCookie)) return widgetCookie;
+  return '';
+}
+
 function getCookie(req: Request, name: string): string {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
   if (!raw) return '';
@@ -285,12 +305,18 @@ async function proxyWidgetAgent(
   const widgetCookie = getCookie(req, '__Host-wm-widget-key');
   // Explicit enterprise credentials must not fall back to ambient cookies.
   // Otherwise validate each cookie: a rotated Pro key must not mask Widget.
-  const hasEnterpriseKey = explicitWorldMonitorKey
-    ? await hasValidWorldMonitorKey(explicitWorldMonitorKey)
-    : (await hasValidWorldMonitorKey(proCookie)) || (await hasValidWorldMonitorKey(widgetCookie));
-  if (hasEnterpriseKey) {
+  //
+  // Keep the credential that actually validated, not just a boolean: the spend
+  // bucket below is keyed on its digest, so hashing anything else would merge
+  // two distinct enterprise keys into one meter.
+  const enterpriseKey = await resolveEnterpriseKey(
+    explicitWorldMonitorKey,
+    proCookie,
+    widgetCookie,
+  );
+  if (enterpriseKey) {
     isPro = true;
-    spendId = `wm:${await spendToken(worldMonitorKey)}`;
+    spendId = `wm:${await spendToken(enterpriseKey)}`;
     quotaUserId = spendId;
     directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
   } else {

@@ -3,7 +3,7 @@ import { after, describe, it } from 'node:test';
 
 process.env.WIDGET_AGENT_KEY = 'server-widget-key';
 process.env.PRO_WIDGET_KEY = 'server-pro-key';
-process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key';
+process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key,second-enterprise-key';
 process.env.RELAY_SHARED_SECRET = 'server-only-relay-secret';
 
 const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
@@ -191,6 +191,45 @@ describe('widget-agent spend guard', () => {
     assert.equal(res.status, 200);
     assert.equal(relayFetches, 1);
     assert.match(lastSpendId, /^wm:[0-9a-f]{32}$/);
+  });
+
+  it('keys the spend bucket on the credential that actually validated', async () => {
+    // #8376 added this digest; #8269 later replaced the credential it read with
+    // a boolean. Both merged cleanly with no textual conflict, so no merge check
+    // caught it. Pin the material itself: a boolean-only auth result hashes the
+    // same string for every enterprise key and merges tenants into one meter.
+    relayFetches = 0;
+    allowRelay();
+    __setWidgetAgentSpendDepsForTests({
+      checkRateLimit: async () => null,
+      runRedisPipeline: async () => [{ result: 1 }, { result: 1 }],
+    });
+
+    assert.equal((await handler(postRequest())).status, 200);
+    const firstSpendId = lastSpendId;
+    assert.match(firstSpendId, /^wm:[0-9a-f]{32}$/);
+
+    assert.equal(
+      (await handler(postRequest({ 'X-WorldMonitor-Key': 'second-enterprise-key' }))).status,
+      200,
+    );
+    const secondSpendId = lastSpendId;
+    assert.notEqual(secondSpendId, firstSpendId);
+
+    // The same credential arriving by protected cookie shares the header's bucket.
+    const viaCookie = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://www.worldmonitor.app',
+        'Content-Type': 'application/json',
+        Cookie: '__Host-wm-pro-key=second-enterprise-key',
+      },
+      body: '{"prompt":"Build a widget"}',
+    }));
+
+    assert.equal(viaCookie.status, 200);
+    assert.equal(lastSpendId, secondSpendId);
+    assert.equal(relayFetches, 3);
   });
 
   it('does not reserve quota for the health check', async () => {
