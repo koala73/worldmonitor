@@ -11,7 +11,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { SeedUnavailableError } from '../../../_shared/required-seed';
 import ISO3_TO_ISO2 from '../../../../shared/iso3-to-iso2.json';
 
 // Do not reuse v1 entries where explicit "all" and curated defaults collided.
@@ -67,10 +68,12 @@ async function fetchWorldBankIndicators(
       signal: AbortSignal.timeout(15000),
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) throw new SeedUnavailableError(REDIS_CACHE_KEY);
 
     const data = await response.json();
-    if (!data || !Array.isArray(data) || data.length < 2 || !data[1]) return [];
+    if (!Array.isArray(data) || data.length < 2) throw new SeedUnavailableError(REDIS_CACHE_KEY);
+    if (data[1] === null && (data[0]?.total === 0 || data[0]?.total === '0')) return [];
+    if (!Array.isArray(data[1])) throw new SeedUnavailableError(REDIS_CACHE_KEY);
 
     const records: any[] = data[1];
     const indicatorName = records[0]?.indicator?.value || indicator;
@@ -86,7 +89,7 @@ async function fetchWorldBankIndicators(
         value: r.value,
       }));
   } catch {
-    return [];
+    throw new SeedUnavailableError(REDIS_CACHE_KEY);
   }
 }
 
@@ -106,12 +109,13 @@ export async function listWorldBankIndicators(
     const years = req.year > 0 ? Math.min(req.year, 30) : 5;
     const currentYear = new Date().getFullYear();
     const cacheKey = `${REDIS_CACHE_KEY}:${req.indicatorCode}:${country || '__default__'}:${years}:${currentYear}`;
-    const result = await cachedFetchJson<ListWorldBankIndicatorsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+    const result = await cachedFetchJsonWithMeta<ListWorldBankIndicatorsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const data = await fetchWorldBankIndicators(req.indicatorCode, country || TECH_COUNTRIES.join(';'), years, currentYear);
-      return data.length > 0 ? { data, pagination: undefined } : null;
-    });
-    return result || { data: [], pagination: undefined };
+      return { data, pagination: undefined };
+    }, 120, { cacheFailures: false });
+    if (!result.data || !Array.isArray(result.data.data)) throw new SeedUnavailableError(cacheKey);
+    return result.data;
   } catch {
-    return { data: [], pagination: undefined };
+    throw new SeedUnavailableError(REDIS_CACHE_KEY);
   }
 }

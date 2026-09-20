@@ -123,7 +123,7 @@ export function parseWhyMatters(text) {
 }
 
 /**
- * Deterministic 16-char hex hash of the SIX story fields that flow
+ * Deterministic SHA-256 hex digest of the SIX story fields that flow
  * into the whyMatters prompt (5 core + description). Also consumed by
  * server/worldmonitor/intelligence/v1/get-country-intel-brief.ts
  * (citation verification + grounding telemetry, #4921). Cache identity
@@ -155,7 +155,7 @@ export function parseWhyMatters(text) {
  * @returns {Promise<string>}
  */
 export async function hashBriefStory(story) {
-  const material = [
+  const material = JSON.stringify([
     story.headline ?? '',
     story.source ?? '',
     story.threatLevel ?? '',
@@ -166,7 +166,7 @@ export async function hashBriefStory(story) {
     // empty string → deterministic; same-story-same-description pairs
     // still collide on purpose, different descriptions don't.
     story.description ?? '',
-  ].join('||');
+  ]);
   const bytes = new TextEncoder().encode(material);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   let hex = '';
@@ -174,7 +174,7 @@ export async function hashBriefStory(story) {
   for (let i = 0; i < view.length; i++) {
     hex += view[i].toString(16).padStart(2, '0');
   }
-  return hex.slice(0, 16);
+  return hex;
 }
 
 // ── Analyst-path prompt v2 (multi-sentence, grounded) ──────────────────────

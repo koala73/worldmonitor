@@ -84,6 +84,7 @@
       "src/locales/*.json",
       "src/services/data-freshness.ts",
       "shared/ai-tokens.json",
+      "shared/ais-watchdog.js",
       "shared/ais-vessel-type.js",
       "shared/chokepoint-threat-levels.js",
       "shared/chokepoint-traffic-anomaly.js",

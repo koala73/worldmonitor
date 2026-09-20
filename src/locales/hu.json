@@ -2043,6 +2043,7 @@
       "etfs": "ETF-ek",
       "netInflow": "NETTÓ BEÁRAMLÁS",
       "netOutflow": "NETTÓ KIÁRAMLÁS",
+      "netNeutral": "NETTÓ SEMLEGES",
       "table": {
         "ticker": "Ticker",
         "issuer": "Kibocsátó",
@@ -2379,7 +2380,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Ütemezett makrogazdasági közlemények: CPI, NFP, GDP, PMI és jegybanki döntések. Előrejelzést, tényleges értéket és előző értéket mutatja. A nagy hatású eseményeket kiemelve. Forrás: gazdasági adatszolgáltatók."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): az amerikai pénzügyi piacok stresszét méri 11 mutató felhasználásával, beleértve a hozamszpreadeket, a volatilitást és a keresztkorreláció-kat. A pozitív értékek az átlagosnál magasabb stresszre utalnak. Forrás: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Pénzügyi stresszmutató</strong> A WorldMonitor magas hozamú hitel és hosszú lejáratú amerikai államkötvények közötti aránya, részvénypiaci volatilitással és magas hozamú felárral korrigálva: (HYG / TLT) / (VIX × HY spread / 100). Ez nem a Kansas City-i Fed pénzügyi stresszindexe. Az 1.5 vagy magasabb érték alacsony stresszt jelent; 0.3 alatt magas stresszt.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI ÉRTÉK",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",

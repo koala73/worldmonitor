@@ -56,6 +56,7 @@ env:
     server/_shared/deprecation-policy.ts
     server/_shared/direct-llm-quota.ts
     server/_shared/entitlement-check.ts
+    server/_shared/entitlement-coverage.ts
     server/_shared/idempotency.ts
     server/_shared/internal-auth.ts
     server/_shared/mcp-internal-hmac.ts
@@ -75,6 +76,7 @@ env:
     server/request-validator.ts
     server/router.ts
     server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
+    server/worldmonitor/consumer-prices/v1/_selection.ts
     server/worldmonitor/supply-chain/v1/scenario-templates.ts
     shared/attribution-rider.ts
     shared/china-corridor-control-towers.ts

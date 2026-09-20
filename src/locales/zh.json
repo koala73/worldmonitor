@@ -1898,6 +1898,7 @@
       "etfs": "ETFs",
       "netInflow": "净流入",
       "netOutflow": "净流出",
+      "netNeutral": "净中性",
       "table": {
         "ticker": "代码",
         "issuer": "发行方",
@@ -2163,7 +2164,7 @@
       "infoTooltip": "<strong>经济日历</strong> 预定的宏观经济数据发布：CPI、NFP、GDP、PMI和央行决议。显示预测值、实际值和前值。高影响事件突出显示。来源：经济数据提供商。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融压力指标</strong> 堪萨斯城联储金融压力指数（KCFSI）：使用11个指标衡量美国金融市场压力，包括收益率利差、波动率和交叉相关性。正值表示高于平均水平的压力。来源：堪萨斯城联邦储备银行。",
+      "infoTooltip": "<strong>金融压力指标</strong> WorldMonitor 对高收益信贷与长期美国国债的比率，并根据股票波动率和高收益利差进行调整：(HYG / TLT) / (VIX × HY spread / 100)。这不是堪萨斯城联邦储备银行金融压力指数。读数为 1.5 或更高表示压力较低；低于 0.3 表示压力较高。",
       "title": "金融压力指标",
       "usFsiValue": "美国FSI值",
       "cissTitle": "欧盟CISS（欧元区系统性压力）",

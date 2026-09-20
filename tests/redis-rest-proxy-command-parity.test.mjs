@@ -92,6 +92,15 @@ const accepts = (gate, args) => {
   }
 };
 
+it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
+  const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
+  const script = source.slice(source.indexOf('export async function compareAndDeleteRedisKey')).match(/const script = "([^"]+)";/)?.[1];
+  assert.ok(script);
+  const gate = buildGate();
+  assert.equal(accepts(gate, ['EVAL', script, '1', 'lock', 'token']), true);
+  assert.equal(accepts(gate, ['EVAL', `${script} `, '1', 'lock', 'token']), false);
+});
+
 // A Redis command array is [CMD, <key expression>, ...]. A label/enum/country
 // tuple is [ 'AAA', 'BBB', ... ] — every element a quoted literal. Requiring
 // the second element to be something other than a quoted string separates the
@@ -113,6 +122,11 @@ function proxyFacingFiles() {
   const out = execFileSync(
     'grep',
     ['-rl', '-e', 'runRedisPipeline', '-e', 'runRedisTransaction', '-e', '/pipeline', '-e', '/multi-exec',
+      // Vendido no instala deps aquí, pero un checkout de desarrollo sí
+      // (scripts/node_modules). Sin esto el scan lee sourcemaps de terceros
+      // (p.ej. convex cli.bundle.cjs.map) y "descubre" tokens que no son
+      // comandos Redis -- verde en CI (sin node_modules), rojo en local.
+      '--exclude-dir=node_modules',
       'server', 'scripts', 'shared', 'api'],
     { cwd: repoRoot, encoding: 'utf8' },
   );

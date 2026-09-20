@@ -2613,7 +2613,7 @@ export class App {
     let _prevUserId: string | null = null;
     let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
-    // ONCE on a false→true transition (user signs in / purchase lands mid-session).
+    // on a false→true transition or an account change while still premium.
     // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
     // loadTradePolicy) would sit empty until the next scheduled refresh — for
     // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
@@ -2625,16 +2625,16 @@ export class App {
     // for a Pro Monthly subscriber because the original listener only
     // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
     // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
-    const firePremiumLoaders = (): void => {
+    const firePremiumLoaders = (accountTransition = false): void => {
       // Account sign-in replaces anonymous/local preferences asynchronously.
       // Entitlement callbacks may arrive first; defer every ownership mutation
       // until cloud prefs signals success or error for this same account.
       this.reconcileTierOwnedPreferences();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
-      if (nowPremium && !hadPremium) {
-        // Entitlement just resolved → fire PRO-gated initial loads that were
-        // skipped at boot. Each loader early-returns if the panel isn't
+      if (nowPremium && (!hadPremium || accountTransition)) {
+        // Load panels skipped at boot or cleared for an account change.
+        // Each loader early-returns if the panel isn't
         // mounted and re-checks hasPremiumAccess() internally, so these
         // calls are safe and idempotent. Without this, panels would sit empty
         // until the next scheduled refresh (10+ min for trade-policy; FOREVER
@@ -2842,7 +2842,7 @@ export class App {
       _prevUserId = userId;
       // Run after account handoff/reset so this pass cannot enforce the
       // previous user's entitlement against the new user's panels.
-      firePremiumLoaders();
+      firePremiumLoaders(accountTransition);
     });
 
 

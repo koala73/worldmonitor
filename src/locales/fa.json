@@ -2046,6 +2046,7 @@
       "etfs": "ETFs",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "خالص خنثی",
       "table": {
         "ticker": "Ticker",
         "issuer": "Issuer",
@@ -2382,7 +2383,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>شاخص تنش مالی</strong> نسبت WorldMonitor از اعتبار پربازده به اوراق خزانه‌داری بلندمدت آمریکا، تعدیل‌شده با نوسان سهام و اختلاف بازده اوراق پربازده: (HYG / TLT) / (VIX × HY spread / 100). این شاخص تنش مالی فدرال رزرو کانزاس‌سیتی نیست. مقدار 1.5 یا بالاتر نشان‌دهنده تنش کم است؛ کمتر از 0.3 نشان‌دهنده تنش زیاد است.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",

@@ -183,6 +183,12 @@ export class Panel {
   // holds the actual DOM nodes; reattaching preserves any listeners and
   // any subclass references like `this.inputEl`.
   private _savedContent: ChildNode[] | null = null;
+  // User id bound by updatePanelGating. unlock compares this to snapshotPrincipal.
+  private contentPrincipal: string | null = null;
+  // Principal that owned the panel when the snapshot was taken. null means
+  // unowned constructor chrome (safe to restore). A non-null id must match
+  // the current principal or unlock refuses the snapshot.
+  private snapshotPrincipal: string | null = null;
   private _collapsed = false;
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
@@ -1241,12 +1247,25 @@ export class Panel {
     // and fixes constructor-only subclasses (DeductionPanel,
     // ChatAnalystPanel, …) that would otherwise end up with an empty body.
     // Fall back to the legacy empty-content behaviour if nothing was saved.
-    if (this._savedContent !== null) {
-      this.replaceContent(...this._savedContent);
-      this._savedContent = null;
+    const saved = this._savedContent;
+    const ownedBySomeoneElse = this.snapshotPrincipal !== null
+      && this.snapshotPrincipal !== this.contentPrincipal;
+    this._savedContent = null;
+    this.snapshotPrincipal = null;
+    if (saved !== null && !ownedBySomeoneElse) {
+      this.replaceContent(...saved);
     } else {
       this.replaceContent();
     }
+  }
+
+  /**
+   * Record which authenticated user owns the content about to be snapshotted
+   * or restored. updatePanelGating calls this before lock/unlock so a later
+   * account cannot receive the previous principal's DOM.
+   */
+  public bindContentPrincipal(userId: string | null): void {
+    this.contentPrincipal = userId;
   }
 
   /**
@@ -1255,10 +1274,15 @@ export class Panel {
    * downgrade so unlockPanel() cannot resurrect data captured before the
    * entitlement changed.
    */
-  protected clearSensitiveContent(): void {
-    this._savedContent = null;
-    this.cancelPendingContentWrite();
+  public clearSensitiveContent(): void {
+    this.dropContentSnapshot();
     if (!this._locked) this.replaceContent();
+  }
+
+  protected dropContentSnapshot(): void {
+    this._savedContent = null;
+    this.snapshotPrincipal = null;
+    this.cancelPendingContentWrite();
   }
 
   /**
@@ -1285,6 +1309,7 @@ export class Panel {
   private _snapshotContentForRestore(): void {
     if (this._savedContent !== null) return;
     this._savedContent = Array.from(this.content.childNodes);
+    this.snapshotPrincipal = this.contentPrincipal;
   }
 
   public showRetrying(message?: string, countdownSeconds?: number): void {
