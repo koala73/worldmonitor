@@ -5,6 +5,7 @@ import { jsonResponse } from './_json-response.js';
 export const config = { runtime: 'edge' };
 
 const relayOref = createRelayHandler({
+  publicCors: true,
   requireRateLimit: true,
   buildRelayPath: (_req, url) => {
     const endpoint = url.searchParams.get('endpoint');

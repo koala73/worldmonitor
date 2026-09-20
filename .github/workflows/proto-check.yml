@@ -56,6 +56,7 @@ env:
     server/_shared/deprecation-policy.ts
     server/_shared/direct-llm-quota.ts
     server/_shared/entitlement-check.ts
+    server/_shared/entitlement-coverage.ts
     server/_shared/idempotency.ts
     server/_shared/internal-auth.ts
     server/_shared/mcp-internal-hmac.ts
