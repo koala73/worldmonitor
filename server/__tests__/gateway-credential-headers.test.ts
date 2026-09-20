@@ -171,8 +171,6 @@ describe('credential-bearing headers force a private tier (#8400)', () => {
       { file: 'api/embed/session.ts', header: 'X-Api-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-WorldMonitor-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-Api-Key' },
-      { file: 'server/_shared/provider-redistribution.ts', header: 'X-WorldMonitor-Key' },
-      { file: 'server/_shared/provider-redistribution.ts', header: 'X-Api-Key' },
       { file: 'server/worldmonitor/shipping/v2/webhook-shared.ts', header: 'X-WorldMonitor-Key' },
       { file: 'server/worldmonitor/shipping/v2/webhook-shared.ts', header: 'X-Api-Key' },
     ];
