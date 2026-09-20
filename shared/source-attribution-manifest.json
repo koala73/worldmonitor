@@ -1002,7 +1002,7 @@
     },
     {
       "host": "api.publisher.jodidata.org",
-      "provider": "api.publisher.jodidata.org",
+      "provider": "www.jodidata.org",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
