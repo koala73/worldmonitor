@@ -994,11 +994,11 @@ function formatMessage(event) {
 }
 
 function formatEventTitle(event, finalFallback = 'alert') {
-  const rawTitle = event.payload?.title ?? event.eventType;
-  if (event.userId) return sanitizeCommunityNotificationTitle(rawTitle);
-  return sanitizeNotificationTitle(rawTitle)
+  const title = sanitizeNotificationTitle(event.payload?.title)
     || sanitizeNotificationTitle(event.eventType)
-    || finalFallback;
+    || sanitizeNotificationTitle(finalFallback)
+    || 'alert';
+  return event.userId ? sanitizeCommunityNotificationTitle(title) : title;
 }
 
 /**

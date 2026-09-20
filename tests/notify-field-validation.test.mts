@@ -214,6 +214,26 @@ describe('/api/notify field validation (pentest PoC)', () => {
     assert.equal(event.payload.url, 'https://worldmonitor.app/');
     assert.equal(event.payload.description, description);
   });
+
+  it('falls back to the event type when a caller title sanitises to empty', async () => {
+    installDeps();
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
+    let queued = '';
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      queued = decodeURIComponent(String(url).split('/lpush/wm:events:queue/')[1] ?? '');
+      return { ok: true };
+    }) as typeof fetch;
+
+    const res = await handler(makePost({
+      eventType: 'market_alert',
+      payload: { title: '\u200b\u0000' },
+    }));
+
+    assert.equal(res.status, 200);
+    const event = JSON.parse(queued);
+    assert.equal(event.payload.title, 'Community alert: market_alert');
+  });
 });
 
 describe('formatMessage defence in depth (relay-originated events)', () => {
@@ -277,6 +297,13 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     );
     assert.equal(
       formatEventTitle({ eventType: 'rss\nalert', userId: TEST_USER_ID, payload: {} }, 'WorldMonitor'),
+      'Community alert: rss alert',
+    );
+    assert.equal(
+      formatEventTitle(
+        { eventType: 'rss\nalert', userId: TEST_USER_ID, payload: { title: '\u200b\u0000' } },
+        'WorldMonitor',
+      ),
       'Community alert: rss alert',
     );
   });

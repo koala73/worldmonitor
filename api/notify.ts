@@ -24,6 +24,7 @@ import { checkTierProEntitlement } from '../server/_shared/pro-entitlement';
 import {
   sanitizeCommunityNotificationTitle,
   sanitizeNotificationDescription,
+  sanitizeNotificationTitle,
   sanitizeUserNotificationLinkUrl,
   sanitizeUserNotificationSource,
 } from '../server/_shared/notify-fields';
@@ -230,7 +231,8 @@ export default async function handler(req: Request): Promise<Response> {
   // server-authored community provenance, and external links collapse to the
   // dashboard. Trusted relay-originated RSS events use the separate relay
   // path and keep their article links.
-  payload.title = sanitizeCommunityNotificationTitle(payload.title ?? eventType);
+  const title = sanitizeNotificationTitle(payload.title) || sanitizeNotificationTitle(eventType);
+  payload.title = sanitizeCommunityNotificationTitle(title);
   if ('source' in payload) {
     payload.source = sanitizeUserNotificationSource(payload.source);
     if (!payload.source) delete payload.source;
