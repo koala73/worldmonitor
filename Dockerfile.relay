@@ -80,6 +80,11 @@ COPY scripts/shared/iso2-to-region.json ./scripts/shared/iso2-to-region.json
 # (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
 # relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.cjs
+# notify-fields.cjs mirrors server/_shared/notify-fields.ts for the relay
+# (no TS loader under scripts/package.json); required by notification-relay.cjs.
+# Guarded by tests/dockerfile-relay-imports.test.mjs (transitive BFS) +
+# tests/notify-fields-parity.test.mjs (behaviour parity).
+COPY scripts/shared/notify-fields.cjs ./scripts/shared/notify-fields.cjs
 # market-hours.cjs gates the equity portion of the relay market seed loop on
 # the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
 COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs

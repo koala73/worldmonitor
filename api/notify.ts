@@ -22,6 +22,13 @@ import {
 import { validateBearerToken } from '../server/auth-session';
 import { checkTierProEntitlement } from '../server/_shared/pro-entitlement';
 import {
+  NOTIFY_DASHBOARD_URL,
+  classifyNotificationLink,
+  isImpersonatingSource,
+  sanitizeNotificationSource,
+  sanitizeNotificationTitle,
+} from '../server/_shared/notify-fields';
+import {
   RATE_LIMIT_DEGRADED_HEADERS,
   checkScopedRateLimit,
   scopedTooManyRequestsResponse,
@@ -214,6 +221,38 @@ export default async function handler(req: Request): Promise<Response> {
   const payload = { ...(body.payload as Record<string, unknown>) };
   delete payload.importanceScore;
   delete payload.corroborationCount;
+
+  // Validate title/source/link at the boundary (issue #8397): these fields
+  // reach every delivery channel (email subject/body, Telegram/Slack/Discord
+  // text, web-push click URL) and PR #8384 closed only the push path. A
+  // hostile event produced a real email from alerts@worldmonitor.app with a
+  // forged subject, a forged `Source:` line, and an off-origin link verbatim.
+  // Neutralise per-field so legitimate RSS punctuation/unicode/long-tail
+  // publisher domains keep flowing; every downstream channel inherits the
+  // guarantee instead of re-implementing it.
+  if ('title' in payload) {
+    payload.title = sanitizeNotificationTitle(payload.title);
+  }
+  if ('source' in payload) {
+    payload.source = sanitizeNotificationSource(payload.source);
+  }
+  if (payload.link !== undefined) {
+    const classified = classifyNotificationLink(payload.link);
+    if (classified.kind === 'absent') {
+      delete payload.link;
+    } else if (classified.kind === 'dashboard') {
+      // Dangerous scheme, credentials, or unparseable: collapse to the
+      // dashboard rather than delivering attacker-controlled navigation.
+      payload.link = NOTIFY_DASHBOARD_URL;
+    } else {
+      payload.link = classified.url;
+    }
+  }
+  // An impersonating source is the phishing primitive on its own (genuine
+  // sending identity + forged attribution), even with an empty title/link.
+  if (isImpersonatingSource((body.payload as Record<string, unknown>).source)) {
+    payload.source = sanitizeNotificationSource((body.payload as Record<string, unknown>).source);
+  }
 
   const rawSeverity = typeof body.severity === 'string' ? body.severity : 'high';
   const severity = VALID_SEVERITIES.has(rawSeverity) ? rawSeverity : 'high';

@@ -16,6 +16,11 @@ const {
   classifySetNxResult,
   recordDedupOutcome,
 } = require('./shared/notification-dedup.cjs');
+const {
+  renderNotificationLinkForText,
+  sanitizeNotificationSource,
+  sanitizeNotificationTitle,
+} = require('./shared/notify-fields.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -925,13 +930,33 @@ function truncateForDisplay(str, maxLen) {
 }
 
 function formatMessage(event) {
-  const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${event.payload?.title ?? event.eventType}`];
+  // Defence in depth for relay-originated events that never pass through
+  // /api/notify (ais-relay, seed-aviation, alert-emitter,
+  // seed-digest-notifications): apply the same title/source/link shaping the
+  // edge boundary enforces, so every text sink (Telegram/Slack/Discord/email
+  // body) inherits the guarantee. Issue #8397: raw interpolation delivered
+  // attacker-controlled text and links from the platform's own identity.
+  const title = sanitizeNotificationTitle(event.payload?.title ?? event.eventType);
+  const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${title || event.eventType}`];
   if (NOTIFY_RELAY_INCLUDE_SNIPPET && typeof event.payload?.description === 'string' && event.payload.description.length > 0) {
     parts.push(`> ${truncateForDisplay(event.payload.description, SNIPPET_TELEGRAM_MAX)}`);
   }
-  if (event.payload?.source) parts.push(`Source: ${event.payload.source}`);
-  if (event.payload?.link) parts.push(event.payload.link);
+  const source = sanitizeNotificationSource(event.payload?.source);
+  if (source) parts.push(`Source: ${source}`);
+  const link = renderNotificationLinkForText(event.payload?.link);
+  if (link) parts.push(link);
   return parts.join('\n');
+}
+
+/**
+ * Email subject for an event. Shaped with the same title boundary as
+ * formatMessage — the subject carried the forged phishing title verbatim in
+ * the #8397 PoC (`WorldMonitor Alert: Security notice: verify your
+ * WorldMonitor account immediately`).
+ */
+function formatSubject(event) {
+  const title = sanitizeNotificationTitle(event.payload?.title ?? event.eventType);
+  return `WorldMonitor Alert: ${title || event.eventType}`;
 }
 
 async function processWelcome(event) {
@@ -1184,7 +1209,7 @@ async function processEvent(event) {
   if (skippedCount > 0) console.log(`[relay] Skipping ${skippedCount} non-PRO user(s)`);
 
   const text = formatMessage(event);
-  const subject = `WorldMonitor Alert: ${event.payload?.title ?? event.eventType}`;
+  const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
 
   for (const rule of matching) {
@@ -1383,6 +1408,11 @@ module.exports = {
   // the real ones change.
   eventMatchesTickerScope,
   ruleMatchesEventType,
+  // Exported for the same reason as eventMatchesCountryScope: the
+  // notify-field-validation tests must exercise the real formatter, not a
+  // hand-copied mirror that cannot fail when the real one changes.
+  formatMessage,
+  formatSubject,
   processWelcome,
   popNextEvent,
 };
