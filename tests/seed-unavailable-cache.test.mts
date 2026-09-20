@@ -265,6 +265,31 @@ it('get-bls-series treats a known series missing from a valid canonical seed as 
     (err: unknown) => err instanceof Error && /bls:series:v1 series USPRIV/.test(err.message),
   );
 });
+// A malformed entry is unavailable, not servable. The seeder's validate()
+// refuses to publish a series without observations, and every entry it does
+// publish carries seriesId/title/units, so anything narrower than that shape
+// is a broken seed — serving it would answer 200 with a response missing
+// fields the proto marks required.
+const blsMalformedEntries: Array<readonly [string, Record<string, unknown>]> = [
+  ['missing title and units', { seriesId: 'USPRIV', observations: [6].map(blsObservation) }],
+  ['a non-string title', { seriesId: 'USPRIV', title: 42, units: 'Thousands of Persons', observations: [6].map(blsObservation) }],
+  ['a non-string units', { seriesId: 'USPRIV', title: 'Total Private Nonfarm Payrolls', units: null, observations: [6].map(blsObservation) }],
+  ['zero observations', { seriesId: 'USPRIV', title: 'Total Private Nonfarm Payrolls', units: 'Thousands of Persons', observations: [] }],
+];
+for (const [label, entry] of blsMalformedEntries) {
+  it(`get-bls-series treats a known series with ${label} as unavailable`, async () => {
+    mode = 'hit';
+    const seed = blsSeed();
+    cache.set(BLS_CANONICAL_KEY, { ...seed, series: [entry, ...seed.series.filter(s => s.seriesId !== 'USPRIV')] });
+    const failed = await request('economic/v1/get-bls-series?series_id=USPRIV');
+    assert.equal(failed.status, 503);
+    assert.equal(failed.headers.get('Cache-Control'), 'no-store');
+    // The sibling series in the same envelope still serves.
+    const sibling = await request('economic/v1/get-bls-series?series_id=ECIALLCIV');
+    assert.equal(sibling.status, 200);
+    assert.equal((await sibling.json()).series.seriesId, 'ECIALLCIV');
+  });
+}
 itRejectsRequiredSeedFailures(
   'economic/v1/get-bls-series?series_id=USPRIV',
   BLS_CANONICAL_KEY,

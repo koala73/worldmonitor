@@ -29,6 +29,21 @@ function normalizeLimit(limit: number): number {
   return limit > 0 ? Math.min(limit, 500) : 60;
 }
 
+/**
+ * Mirrors what the seeder's `validate()` refuses to publish: every series it
+ * writes carries `seriesId`/`title`/`units` and at least 1 observation. An
+ * entry narrower than that is a broken seed, not servable data — serving it
+ * would answer 200 with a body missing fields the proto marks required.
+ */
+function isServableSeries(value: unknown): value is BlsSeries {
+  const series = value as Partial<BlsSeries> | null;
+  return typeof series?.seriesId === 'string'
+    && typeof series.title === 'string'
+    && typeof series.units === 'string'
+    && Array.isArray(series.observations)
+    && series.observations.length > 0;
+}
+
 export async function getBlsSeries(
   _ctx: ServerContext,
   req: GetBlsSeriesRequest,
@@ -38,18 +53,20 @@ export async function getBlsSeries(
 
   const seeded = await readRequiredSeed(BLS_CANONICAL_KEY, value => {
     const data = value as { series?: unknown } | null;
-    return Array.isArray(data?.series) ? (data.series as Array<Partial<BlsSeries> | null>) : undefined;
+    return Array.isArray(data?.series) ? (data.series as unknown[]) : undefined;
   });
 
-  // A known series absent from a valid seed is unavailable, not empty: the
-  // seeder refuses a partial cohort, so this only fires on drift between the
-  // published ids and the contract. Name the series so the 503 log does not
-  // blame the healthy canonical key.
-  const match = seeded.find(s => s?.seriesId === req.seriesId);
-  if (!match || !Array.isArray(match.observations)) {
+  // A known series absent from — or malformed within — a valid seed is
+  // unavailable, not empty: the seeder refuses a partial cohort, so this only
+  // fires on drift between the published ids and the contract, or on a
+  // corrupted envelope. Name the series so the 503 log does not blame the
+  // healthy canonical key.
+  const series = seeded.find(
+    (entry): entry is BlsSeries => isServableSeries(entry) && entry.seriesId === req.seriesId,
+  );
+  if (!series) {
     throw new SeedUnavailableError(`${BLS_CANONICAL_KEY} series ${req.seriesId}`);
   }
-  const series = match as BlsSeries;
 
   const limit = normalizeLimit(req.limit);
   const obs = series.observations;
