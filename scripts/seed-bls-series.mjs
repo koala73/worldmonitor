@@ -34,6 +34,9 @@ const FRED_SERIES = [
   { id: 'ECIALLCIV', title: 'Employment Cost Index - All Civilian Workers', units: 'Index (Dec 2005=100)', fredId: 'ECIALLCIV' },
 ];
 
+/** The ids the RPC may ask for; must stay equal to economicBlsSeriesIds in shared/openapi-filter-param-contracts.json. */
+export const BLS_SERIES_IDS = FRED_SERIES.map((def) => def.id);
+
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 /** Convert a FRED date string ("2024-12-01") to BLS-style observation fields. */
@@ -102,8 +105,17 @@ async function fetchAllSeries() {
   return { series: all, fetchedAt: new Date().toISOString() };
 }
 
-function validate(data) {
-  return Array.isArray(data?.series) && data.series.length > 0;
+// A partial cohort is not a publishable seed. The RPC answers a known series
+// that is absent from a valid envelope with 503, and runSeed writes fresh
+// seed-meta for whatever this accepts, so publishing a 1-of-2 fetch would
+// serve a 503 for the dropped series all day while health reads OK. Refusing
+// it takes runSeed's validation-skip path instead: the last-good envelope
+// keeps serving both series and STALE_SEED fires if the outage persists.
+export function validate(data) {
+  if (!Array.isArray(data?.series)) return false;
+  return FRED_SERIES.every((def) =>
+    data.series.some((s) => s?.seriesId === def.id && Array.isArray(s.observations) && s.observations.length > 0),
+  );
 }
 
 export function declareRecords(data) {

@@ -15,7 +15,7 @@ import type {
   BlsSeries,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
-import { readRequiredSeed } from '../../../_shared/required-seed';
+import { SeedUnavailableError, readRequiredSeed } from '../../../_shared/required-seed';
 
 const BLS_CANONICAL_KEY = 'bls:series:v1';
 
@@ -36,14 +36,20 @@ export async function getBlsSeries(
   if (!req.seriesId) return { series: undefined };
   if (!KNOWN_SERIES_IDS.has(req.seriesId)) return { series: undefined };
 
-  // A known series absent from a valid seed is unavailable, not empty: the
-  // seeder only omits a series when its upstream fetch failed.
-  const series = await readRequiredSeed(BLS_CANONICAL_KEY, value => {
+  const seeded = await readRequiredSeed(BLS_CANONICAL_KEY, value => {
     const data = value as { series?: unknown } | null;
-    if (!Array.isArray(data?.series)) return undefined;
-    const match = (data.series as Array<Partial<BlsSeries> | null>).find(s => s?.seriesId === req.seriesId);
-    return match && Array.isArray(match.observations) ? (match as BlsSeries) : undefined;
+    return Array.isArray(data?.series) ? (data.series as Array<Partial<BlsSeries> | null>) : undefined;
   });
+
+  // A known series absent from a valid seed is unavailable, not empty: the
+  // seeder refuses a partial cohort, so this only fires on drift between the
+  // published ids and the contract. Name the series so the 503 log does not
+  // blame the healthy canonical key.
+  const match = seeded.find(s => s?.seriesId === req.seriesId);
+  if (!match || !Array.isArray(match.observations)) {
+    throw new SeedUnavailableError(`${BLS_CANONICAL_KEY} series ${req.seriesId}`);
+  }
+  const series = match as BlsSeries;
 
   const limit = normalizeLimit(req.limit);
   const obs = series.observations;

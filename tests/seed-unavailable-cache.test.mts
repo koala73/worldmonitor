@@ -259,6 +259,11 @@ it('get-bls-series treats a known series missing from a valid canonical seed as 
   const failed = await request('economic/v1/get-bls-series?series_id=USPRIV');
   assert.equal(failed.status, 503);
   assert.equal(failed.headers.get('Cache-Control'), 'no-store');
+  // The 503 names the missing series, not the healthy canonical key.
+  await assert.rejects(
+    getBlsSeries({} as never, { seriesId: 'USPRIV', limit: 0 }),
+    (err: unknown) => err instanceof Error && /bls:series:v1 series USPRIV/.test(err.message),
+  );
 });
 itRejectsRequiredSeedFailures(
   'economic/v1/get-bls-series?series_id=USPRIV',

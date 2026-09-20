@@ -25,6 +25,7 @@ const {
   writeExtraKeyWithMetaAtomically,
   writeSeedMeta,
   resolveSeedMetaKey,
+  runSeed,
 } = await import('../scripts/_seed-utils.mjs');
 
 const originalFetch = globalThis.fetch;
@@ -111,4 +112,40 @@ test('resolveSeedMetaKey: derives when absent, accepts the namespace, rejects ev
   assert.throws(() => resolveSeedMetaKey('bls:series:USPRIV', 'bls:series:USPRIV'), /seed-meta/);
   assert.throws(() => resolveSeedMetaKey('bls:series:USPRIV', 'bls:series:meta'), /seed-meta/);
   assert.throws(() => resolveSeedMetaKey('bls:series:USPRIV', 42), /seed-meta/);
+  // The only input that exercises the distinct-from-data-key clause on its own:
+  // every other rejection above also fails the namespace check.
+  assert.throws(() => resolveSeedMetaKey('seed-meta:economic:bls-series', 'seed-meta:economic:bls-series'), /distinct/);
+});
+
+test('runSeed: a colliding extraKeys metaKey exits 1 at config time, before the provider is called', async () => {
+  const originalExit = process.exit;
+  const originalError = console.error;
+  const errors = [];
+  let fetchCalls = 0;
+  let exitCode = null;
+  process.exit = (code) => {
+    const err = new Error(`__test_exit__:${code}`);
+    err.exitCode = code;
+    throw err;
+  };
+  console.error = (...args) => { errors.push(args.join(' ')); };
+  try {
+    await runSeed(
+      'test',
+      'meta-key-guard',
+      'test:meta-key-guard:v1',
+      async () => { fetchCalls += 1; return { items: [1] }; },
+      { ttlSeconds: 600, extraKeys: [{ key: 'test:meta-key-guard:extra:v1', metaKey: 'test:meta-key-guard:extra:v1', transform: () => ({}) }] },
+    );
+  } catch (err) {
+    if (!String(err.message).startsWith('__test_exit__:')) throw err;
+    exitCode = err.exitCode;
+  } finally {
+    process.exit = originalExit;
+    console.error = originalError;
+  }
+  assert.equal(exitCode, 1);
+  assert.equal(fetchCalls, 0, 'the run must fail before the provider is called');
+  assert.equal(sets.length, 0, 'nothing is written');
+  assert.match(errors.join('\n'), /CONTRACT VIOLATION.*seed-meta/);
 });
