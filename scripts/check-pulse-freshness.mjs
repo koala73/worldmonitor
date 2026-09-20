@@ -209,7 +209,8 @@ export function renderRecovery(verdict, { runUrl = '' } = {}) {
     'The crawlable live-pulse snapshot is healthy again.',
     '',
     ...statusLines(verdict),
-    runUrl ? `Closed by [this monitor run](${runUrl}).` : null,
+    // Posted before the close request, so it must not claim the close happened.
+    runUrl ? `Recovery detected by [this monitor run](${runUrl}).` : null,
   ].filter((line) => line !== null).join('\n');
 }
 
