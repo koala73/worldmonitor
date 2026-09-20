@@ -223,11 +223,11 @@ emit_matrix() {
 }
 
 discover() {
-  local discovery matrix pending_states recovery_cutoff
+  local discovery matrix retry_states recovery_cutoff
   if [ -n "$SHA" ]; then
     SHA=$(printf '%s' "$SHA" | tr 'A-F' 'a-f')
     validate_sha
-    discovery=$(jq -nc --arg sha "$SHA" '{kind:"direct",sha:$sha,stale:[],pending:[],missing:[]}')
+    discovery=$(jq -nc --arg sha "$SHA" '{kind:"direct",sha:$sha,stale:[],retry:[],missing:[]}')
   else
     pr_gate_states=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
       -f owner="$repo_owner" \
@@ -261,37 +261,38 @@ discover() {
         .headRefOid
       ' |
       awk '!seen[$0]++')
-    # Only recover recent pending publications. An unchanged blocked commit
-    # cannot gain missing CI jobs through polling. workflow_run and exact-SHA
-    # dispatch still evaluate it regardless of age when work resumes.
+    # A stale check read can leave a failed gate after a successful rerun.
+    # Recover every recent blocked status, but keep the 24-hour bound for
+    # unchanged heads. workflow_run and exact-SHA dispatch bypass this bound.
     recovery_cutoff=$(($(date +%s) - 86400))
-    pending_states=$(printf '%s\n' "$pr_gate_states" |
+    retry_states=$(printf '%s\n' "$pr_gate_states" |
       jq -c --argjson cutoff "$recovery_cutoff" '[
         .[].data.repository.pullRequests.nodes[] |
-        select(.commits.nodes[0].commit.status.context.state == "PENDING") |
+        .commits.nodes[0].commit.status.context as $gate |
+        select($gate.state == "PENDING" or $gate.state == "FAILURE" or $gate.state == "ERROR") |
         {sha: .headRefOid, expired: ((.commits.nodes[0].commit.status.context.createdAt | fromdateiso8601) <= $cutoff)}
       ]')
-    pending_shas=$(printf '%s\n' "$pending_states" | jq -r '.[] | select(.expired | not) | .sha')
-    deferred_shas=$(printf '%s\n' "$pending_states" | jq -r '.[] | select(.expired) | .sha')
+    retry_shas=$(printf '%s\n' "$retry_states" | jq -r '.[] | select(.expired | not) | .sha')
+    deferred_shas=$(printf '%s\n' "$retry_states" | jq -r '.[] | select(.expired) | .sha')
     missing_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
       .[].data.repository.pullRequests.nodes[] |
       select(.commits.nodes[0].commit.status.context == null) |
       .headRefOid
     ')
 
-    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg pending "$pending_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
+    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
       def shas: split("\n") | map(select(length > 0)) | reduce .[] as $sha ([]; if index($sha) then . else . + [$sha] end);
-      {kind:"sweep", stale:($stale|shas), pending:($pending|shas), missing:($missing|shas), deferred:($deferred|shas)}')
+      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas), deferred:($deferred|shas)}')
   fi
   printf '%s\n' "$discovery" | jq -e '
-    [.stale[], .pending[], .missing[], .deferred[]?] as $shas |
+    [.stale[], .retry[], .missing[], .deferred[]?] as $shas |
     all($shas[]; test("^[0-9a-f]{40}$")) and ($shas|length) == ($shas|unique|length)
   ' >/dev/null
   matrix=$(printf '%s\n' "$discovery" | jq -c '{include:[.stale[]|{sha:.}]}')
   emit_matrix "$matrix"
   emit_output discovery "$discovery"
   printf '%s\n' "$discovery" | jq -r '.deferred[]?' | while read -r deferred_sha; do
-    report_blocked_head "$deferred_sha remains blocked: pending status unchanged for at least 24 hours; scheduled recovery stopped. Update the branch or dispatch Deploy Gate with this exact SHA after resolving its checks."
+    report_blocked_head "$deferred_sha remains blocked: gate status unchanged for at least 24 hours; scheduled recovery stopped. Update the branch or dispatch Deploy Gate with this exact SHA after resolving its checks."
   done
 }
 
@@ -400,7 +401,7 @@ print(json.dumps({
     {include: (if $discovery.kind == "direct"
       then [{sha:$discovery.sha,check_attempts:2}]
       else ([$plan.stale[]|{sha:.,check_attempts:1}] +
-        [$discovery.pending[]|{sha:.,check_attempts:2}] +
+        [$discovery.retry[]|{sha:.,check_attempts:2}] +
         [$recovered|split("\n")[]|select(length>0)|{sha:.,check_attempts:2}])
       end | reduce .[] as $row ([]; if any(.[]; .sha == $row.sha) then . else . + [$row] end))}')
   emit_matrix "$matrix"
@@ -416,9 +417,9 @@ active_sha="$SHA"
 # and workflow_run fires a bounded number of times per SHA — when the
 # LAST event's single poll got a stale read, the posted "pending"
 # status was never refreshed and the PR stayed stuck until a manual
-# re-run (PRs #5476/#5475/#5481). When jobs still read as pending,
-# re-poll once after a longer delay before concluding pending. The
-# all-complete case breaks on the first pass. GraphQL has a separate
+# re-run (PRs #5476/#5475/#5481). A successful rerun can also still read
+# as failed. Re-poll any non-passing result once before publishing it.
+# Only the all-passing case breaks on the first pass. GraphQL has a separate
 # installation budget from REST core and returns the current rollup in
 # two pages (115 contexts measured on 2026-08-12). Publication reads
 # the combined status once and writes only when the result changes.
@@ -458,7 +459,7 @@ print('failed=' + ','.join(name for name in required if latest[name] not in ('su
   pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
   failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
 
-  if [ -z "$pending" ]; then
+  if [ -z "$failed" ]; then
     break
   fi
   if [ "$attempt" -ge "$max_attempts" ]; then

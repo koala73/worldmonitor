@@ -806,6 +806,7 @@ test.describe('dashboard news request budget (#5376)', () => {
 });
 
 const STABLECOIN_GLOB = '**/api/market/v1/list-stablecoin-markets*';
+const SLOW_TIER_GATE_HOLD_MS = 4_000;
 const SCROLL_HYDRATION_PANEL_ORDER = [
   'live-news',
   'intel',
@@ -1054,11 +1055,16 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
   await page.route(/\/api\/bootstrap\?tier=slow(?:&|$)/, async (route) => {
     markRequested();
     await released;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: {}, missing: [] }),
-    });
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: {}, missing: [] }),
+      });
+    } catch {
+      // The held slow-tier request can outlive the page. Fulfill then throws
+      // `Object with guid response@… was not bound in the connection`.
+    }
   });
   return {
     release,
@@ -1067,6 +1073,15 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 }
 
 test.describe('dashboard container scroll hydration (#5876)', () => {
+  // Drop routes before Playwright tears the page down. An in-flight
+  // `route.fulfill` against a closed page surfaces as
+  // `Object with guid response@… was not bound in the connection`
+  // (playwright.config.ts retries). That is a harness race on teardown, not
+  // #6501 (browser gone during the first `page.goto`).
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+  });
+
   test('scroll during initial fan-out hydrates an already-mounted panel without another gesture', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     const first = [
@@ -1229,6 +1244,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         const target = document.querySelector('[data-panel="stablecoins"]');
         return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
       });
+      await page.waitForTimeout(SLOW_TIER_GATE_HOLD_MS);
       expect(
         await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
         'the App viewport handler must stay dormant while the slow tier is pending',

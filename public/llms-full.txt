@@ -290,8 +290,8 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 
 - **RSS feeds** across categories: World/Geopolitical (BBC, Reuters, AP, Guardian), Middle East (Al Jazeera, Al Arabiya, Times of Israel), Africa (BBC Africa, News24), Latin America, Asia-Pacific (SCMP), Energy & Resources, Technology (Hacker News, Ars Technica), AI/ML (ArXiv, VentureBeat), Finance (CNBC, MarketWatch, FT), Government (White House, Pentagon, Treasury, Fed, SEC, UN, CISA), Intel Feed (Defense One, Breaking Defense, Bellingcat, Krebs, Janes), Think Tanks (Foreign Policy, Atlantic Council, CSIS, RAND, Brookings, Carnegie), Crisis Watch (ICG, IAEA, WHO, UNHCR), Regional (Xinhua, TASS, Kyiv Independent)
 - **Source tiering**: Tier 1 (wire services, government), Tier 2 (major outlets), Tier 3 (specialized), Tier 4 (aggregators/blogs) — with propaganda risk ratings and state affiliation flags
-- **Live video streams**: Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection scraping YouTube channel pages every 5 minutes
-- **Live webcams**: Geopolitical hotspots across regions — Middle East (Jerusalem, Tehran, Tel Aviv, Mecca), Europe (Kyiv, Odessa, Paris, London), Americas (Washington DC, New York, LA, Miami), Asia-Pacific (Taipei, Shanghai, Tokyo, Seoul, Sydney)
+- **Live video streams**: Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNN, Al Arabiya — official HLS streams where broadcasters publish them, otherwise curated YouTube live streams checked with the official YouTube player
+- **Live webcams**: Geopolitical hotspots across regions — Middle East (Jerusalem, a multi-city Middle East feed, Mecca, Istanbul, Medina), Europe (Ukraine, Paris, St. Petersburg, London), Americas (Washington DC, New York, LA, Miami), Asia-Pacific (Taipei, Shanghai, Tokyo, Seoul, Sydney), and ISS Earth views
 - **Custom keyword monitors**: User-defined keyword alerts with word-boundary matching, auto color-coding, and multi-keyword support
 - **Entity extraction**: Auto-links countries, leaders, organizations across headlines
 - **Virtual scrolling**: Custom virtual list renderer with DOM pooling for panels with 15+ items
@@ -728,9 +728,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.118 across 180 scored forecasts, against 0.25 for answering 0.5 to everything.
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.114 across 199 scored forecasts, against 0.25 for answering 0.5 to everything.
 
-Captured 2026-09-10.
+Captured 2026-09-19.
 
 This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
 
@@ -1717,7 +1717,7 @@ historical continuity.
 
 For the full construct rationale and the rejected alternatives (program-
 weight categorization, transit-hub exclusion lists), see
-[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions--tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
+[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions-%E2%86%92-tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -2674,7 +2674,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **Acceptance gates.** Spearman must be at least 0.85, at least 60% of countries must move by less than 3 overall points, and no non-sanctions country may move by more than 12 points. Headline-eligibility changes and finance source-failure rows remain explicit in the artifact.
 - **Issue state.** #6461 is already closed by #6515, which landed the residual absence-as-strength fix. No issue reprioritization mutation is required.
 
-See [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
+See [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
 
 <a id="corpus-editorial-notes"></a>
 ### Editorial notes

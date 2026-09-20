@@ -1,3 +1,4 @@
+import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 /**
  * Shared gateway logic for per-domain Vercel edge functions.
  *
@@ -56,7 +57,7 @@ import {
 import { EMBED_KEY_RPC_PATHS } from '../shared/embed-panels';
 import { hasEmbedAccess } from '../shared/embed-access';
 import { checkProMcpAccess } from './_shared/pro-mcp-gate';
-import { resolveClerkSession } from './_shared/auth-session';
+import { resolveClerkSession, sessionVerificationUnavailableResponse } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
@@ -1428,6 +1429,10 @@ export function createDomainGateway(
     let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
+      if (session && 'reason' in session) {
+        emitRequest(503, 'billing_verification_503', null);
+        return sessionVerificationUnavailableResponse(corsHeaders);
+      }
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
       usage.sessionUserId = sessionUserId;
@@ -1684,7 +1689,7 @@ export function createDomainGateway(
       recordUsageEntitlement(userKeyEntitlement);
       const apiAccessCovered = !!userKeyEntitlement &&
         userKeyEntitlement.features.apiAccess &&
-        (userKeyEntitlement.validUntil ?? 0) >= Date.now();
+        hasCurrentEntitlementCoverage(userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
@@ -1713,7 +1718,7 @@ export function createDomainGateway(
         );
       } else if (
         !userKeyEntitlement.features.apiAccess ||
-        (userKeyEntitlement.validUntil ?? 0) < Date.now()
+        !hasCurrentEntitlementCoverage(userKeyEntitlement)
       ) {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
@@ -1745,7 +1750,7 @@ export function createDomainGateway(
       hasProFreshCacheAccess =
         !!ent &&
         ent.features.tier >= 1 &&
-        ent.validUntil >= Date.now();
+        hasCurrentEntitlementCoverage(ent);
       if (hasProFreshCacheAccess) {
         rateLimitPrincipalUserId = sessionUserId;
       }
@@ -1791,14 +1796,14 @@ export function createDomainGateway(
             recordUsageEntitlement(ent);
             const proCovered = !!ent &&
               ent.features.tier >= 1 &&
-              ent.validUntil >= Date.now();
+              hasCurrentEntitlementCoverage(ent);
             const billingDenial = denyForBillingVerification(
               ent,
               corsHeaders,
               proCovered,
             );
             if (billingDenial) return billingDenial;
-            allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
+            allowed = !!ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent);
           }
           if (!allowed) {
             emitRequest(403, 'tier_403', null);
@@ -1905,7 +1910,7 @@ export function createDomainGateway(
         );
         quotaEntitlements = ent;
         recordUsageEntitlement(ent);
-        if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
+        if (ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent)) {
           rateLimitPrincipalUserId = sessionUserId;
         }
       }
@@ -2066,13 +2071,14 @@ export function createDomainGateway(
       // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
       // env key — are governed by a per-account burst + daily meter (enforced
       // at the sold allowance, #4635) instead of the global fallback. In ENFORCE
-      // they bypass that fallback below; in SHADOW they only record telemetry
+      // confirmed burst admission bypasses that fallback; in SHADOW they record telemetry
       // and still fall through to it. Validated user keys use their trusted
       // principal there, while enterprise keys retain IP attribution.
       // Limits are NOT in scope here (checkEntitlement discards `features`), so
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
+      let rollbackDailyMeter: (() => Promise<void>) | undefined;
       if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
         const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
@@ -2127,7 +2133,7 @@ export function createDomainGateway(
             planKey && planKey !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
           // 1. Per-minute burst (hard limit).
           const burst = await checkBurst(perMinute, identity);
-          if (!burst.ok) {
+          if (burst.ok === false) {
             if (enforce) {
               const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
               emitRequest(429, 'rl_min_429', null);
@@ -2157,6 +2163,7 @@ export function createDomainGateway(
               allowance,
               pipeline: (cmds) => runRedisPipeline(cmds),
             });
+            if (meter.metered) rollbackDailyMeter = meter.rollback;
             if (meter.overLimit) {
               if (enforce) {
                 await meter.rollback();
@@ -2188,11 +2195,11 @@ export function createDomainGateway(
               pendingShadowReason = 'rl_ceiling_shadow';
             }
           }
-          // Eligible + enforce + not rejected ⇒ the per-account layer governs
-          // this request and skips the global fallback. In shadow, keep that
+          // Confirmed burst admission + enforce ⇒ the per-account layer governs
+          // this request and skips the global fallback. If unavailable or in shadow, keep that
           // fallback active: validated user keys use their trusted principal,
           // while enterprise keys retain IP attribution.
-          if (enforce) governedByApiKeyLayer = true;
+          if (enforce && burst.ok === true) governedByApiKeyLayer = true;
         }
       }
 
@@ -2209,6 +2216,7 @@ export function createDomainGateway(
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
+          await rollbackDailyMeter?.();
           const reason = getRateLimitTelemetryReason(
             rateLimitResponse,
             'rate_limit_429_global',

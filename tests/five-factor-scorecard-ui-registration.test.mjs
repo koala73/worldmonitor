@@ -174,6 +174,15 @@ describe('five-factor scorecard country UI registration (#6441)', () => {
       panel.show('Germany', 'DE', null, {});
       await waitFor(() => harness.getSentryExceptions().length === 1);
       assert.match(harness.getPanelRoot().textContent, /countryBrief\.fiveFactorScorecard\.unavailable/);
+      // A real deadline rejects with a zero-frame `signal timed out` reason,
+      // which the dashboard's beforeSend drops as extension noise unless a
+      // first-party report claims it with a `kind` tag. Without the tag this
+      // capture was discarded on every engine.
+      assert.deepEqual(harness.getSentryExceptions()[0].context.tags, {
+        kind: 'country_deep_dive_load_failed',
+        surface: 'country-deep-dive',
+        widget: 'five-factor-scorecard',
+      });
       panel.close();
     } finally {
       harness.cleanup();

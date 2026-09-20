@@ -62,6 +62,9 @@ COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
+# Jev shadow observer required by ais-relay.cjs; its shared/jev-classify.js
+# half ships with the `COPY shared/` below.
+COPY scripts/lib/jev-classify-relay.cjs ./scripts/lib/jev-classify-relay.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
 # country-names.json backs the full name→ISO2 map (#5359 uniform country
 # scoping); required by country-name-to-iso2.cjs at startup.

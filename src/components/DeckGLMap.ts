@@ -217,6 +217,12 @@ interface DeckMapState {
 
 interface DeckGLMapOptions {
   chrome?: boolean;
+  /**
+   * Fired when MapLibre cannot be (re)constructed after the initial ready
+   * handshake — e.g. WebGL2 lost mid-session while recreating the fallback
+   * basemap. MapContainer uses this to degrade to the SVG renderer.
+   */
+  onFatalError?: (error: unknown) => void;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -805,6 +811,7 @@ export class DeckGLMap {
   private destroyed = false;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
+  private readonly onFatalError: ((error: unknown) => void) | null;
   private initPromise: Promise<void> = Promise.resolve();
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private tileMonitorGeneration = 0;
@@ -883,6 +890,7 @@ export class DeckGLMap {
   constructor(container: HTMLElement, initialState: DeckMapState, options: DeckGLMapOptions = {}) {
     this.container = container;
     this.chrome = options.chrome ?? true;
+    this.onFatalError = options.onFatalError ?? null;
     this.state = {
       ...initialState,
       pan: { ...initialState.pan },
@@ -1129,35 +1137,83 @@ export class DeckGLMap {
         : {}),
     });
 
+    const reportFatalBasemapFailure = (error: unknown, center = this.getCenter()): void => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[DeckGLMap] Basemap fallback unavailable — handing off to SVG:', message);
+      this.pendingCenter = center;
+      // Defer so we never destroy() while still inside MapLibre construction /
+      // a style-load timer callback (Sentry WORLDMONITOR-133).
+      queueMicrotask(() => {
+        if (this.destroyed) return;
+        try {
+          this.onFatalError?.(error);
+        } catch (callbackError) {
+          console.warn('[DeckGLMap] Fatal-error callback failed:', callbackError);
+        }
+      });
+    };
+
     const recreateWithFallback = () => {
-      if (this.usedFallbackStyle) return;
+      if (this.usedFallbackStyle || this.destroyed) return;
+      const center = this.getCenter();
+      this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
+      // Style-load timeout still fires after webglcontextlost. Rebuilding
+      // MapLibre without WebGL2 throws GPUInitializationError as an uncaught
+      // window.onerror (Sentry WORLDMONITOR-133). Skip recreate and degrade.
+      if (this.webglLost) {
+        this.usedFallbackStyle = true;
+        if (this.styleLoadTimeoutId) {
+          clearTimeout(this.styleLoadTimeoutId);
+          this.styleLoadTimeoutId = null;
+        }
+        reportFatalBasemapFailure(
+          new Error('WebGL context lost during primary basemap fallback recreate'),
+        );
+        return;
+      }
       this.usedFallbackStyle = true;
       const fallback = isLightMapTheme(initialMapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
       console.warn(`[DeckGLMap] Primary basemap failed, recreating with fallback: ${fallback}`);
       const attr = this.container.querySelector('.map-attribution');
       if (attr) setTrustedHtml(attr, trustedHtml('© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', "legacy direct innerHTML migration"));
       this.detachMapLibreInteractionHandlers();
-      this.maplibreMap?.remove();
+      try {
+        this.maplibreMap?.remove();
+      } catch (error) {
+        console.warn('[DeckGLMap] Failed to remove primary basemap before fallback:', error instanceof Error ? error.message : error);
+      }
+      this.maplibreMap = null;
       const fallbackEl = document.getElementById('deckgl-basemap');
-      if (!fallbackEl) return;
-      this.maplibreMap = new DeckCompatibleMap({
-        container: fallbackEl,
-        style: fallback,
-        center: [preset.longitude, preset.latitude],
-        zoom: preset.zoom,
-        renderWorldCopies: false,
-        attributionControl: false,
-        interactive: true,
-        canvasContextAttributes: { powerPreference: 'high-performance' },
-        ...(MAP_INTERACTION_MODE === 'flat'
-          ? {
-            maxPitch: 0,
-            pitchWithRotate: false,
-            dragRotate: false,
-            touchPitch: false,
-          }
-          : {}),
-      });
+      if (!fallbackEl) {
+        reportFatalBasemapFailure(new Error('Missing #deckgl-basemap during fallback recreate'), center);
+        return;
+      }
+      try {
+        this.maplibreMap = new DeckCompatibleMap({
+          container: fallbackEl,
+          style: fallback,
+          center: center ? [center.lon, center.lat] : [preset.longitude, preset.latitude],
+          zoom: this.state.zoom,
+          renderWorldCopies: false,
+          attributionControl: false,
+          interactive: true,
+          canvasContextAttributes: { powerPreference: 'high-performance' },
+          ...(MAP_INTERACTION_MODE === 'flat'
+            ? {
+              maxPitch: 0,
+              pitchWithRotate: false,
+              dragRotate: false,
+              touchPitch: false,
+            }
+            : {}),
+        });
+      } catch (error) {
+        // MapLibre throws GPUInitializationError synchronously when WebGL2 is
+        // gone (lost context, software renderer revoked, etc.). Catch it so it
+        // never reaches window.onerror; MapContainer falls back to SVG.
+        reportFatalBasemapFailure(error, center);
+        return;
+      }
       this.maplibreMap.on('load', () => {
         this.attachMapLibreInteractionHandlers();
         localizeMapLabels(this.maplibreMap);
@@ -4880,19 +4936,24 @@ export class DeckGLMap {
     const obj = info.object as any;
     const text = (value: unknown): string => escapeHtml(String(value ?? ''));
 
+    const numericLabel = (value: unknown, digits?: number): string => {
+      const number = value == null || value === '' ? NaN : Number(value);
+      return Number.isFinite(number) ? text(digits == null ? number.toLocaleString() : number.toFixed(digits)) : '—';
+    };
+
     switch (layerId) {
       case 'hotspots-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.subtext)}</div>` };
       case 'earthquakes-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>M${(obj.magnitude || 0).toFixed(1)} ${t('components.deckgl.tooltip.earthquake')}</strong><br/>${text(obj.place)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>M${numericLabel(obj.magnitude, 1)} ${t('components.deckgl.tooltip.earthquake')}</strong><br/>${text(obj.place)}</div>` };
       case 'military-vessels-layer':
         return { html: renderMilitaryVesselTooltipHtml(obj, t) };
       case 'military-flights-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.registration || t('components.deckgl.tooltip.militaryAircraft'))}</strong><br/>${text(obj.type)}</div>` };
       case 'military-vessel-clusters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.vesselCluster'))}</strong><br/>${obj.vesselCount || 0} ${t('components.deckgl.tooltip.vessels')}<br/>${text(obj.activityType)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.vesselCluster'))}</strong><br/>${numericLabel(obj.vesselCount)} ${t('components.deckgl.tooltip.vessels')}<br/>${text(obj.activityType)}</div>` };
       case 'military-flight-clusters-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.flightCluster'))}</strong><br/>${obj.flightCount || 0} ${t('components.deckgl.tooltip.aircraft')}<br/>${text(obj.activityType)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.flightCluster'))}</strong><br/>${numericLabel(obj.flightCount)} ${t('components.deckgl.tooltip.aircraft')}<br/>${text(obj.activityType)}</div>` };
       case 'protests-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.country)}</div>` };
       case 'protest-clusters-layer':
@@ -4900,29 +4961,29 @@ export class DeckGLMap {
           const item = obj.items?.[0];
           return { html: `<div class="deckgl-tooltip"><strong>${text(item?.title || t('components.deckgl.tooltip.protest'))}</strong><br/>${text(item?.city || item?.country || '')}</div>` };
         }
-        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.protestsCount', { count: String(obj.count) })}</strong><br/>${text(obj.country)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(t('components.deckgl.tooltip.protestsCount', { count: numericLabel(obj.count) }))}</strong><br/>${text(obj.country)}</div>` };
       case 'tech-hq-clusters-layer':
         if (obj.count === 1) {
           const hq = obj.items?.[0];
           return { html: `<div class="deckgl-tooltip"><strong>${text(hq?.company || '')}</strong><br/>${text(hq?.city || '')}</div>` };
         }
-        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.techHQsCount', { count: String(obj.count) })}</strong><br/>${text(obj.city)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(t('components.deckgl.tooltip.techHQsCount', { count: numericLabel(obj.count) }))}</strong><br/>${text(obj.city)}</div>` };
       case 'tech-event-clusters-layer':
         if (obj.count === 1) {
           const ev = obj.items?.[0];
           return { html: `<div class="deckgl-tooltip"><strong>${text(ev?.title || '')}</strong><br/>${text(ev?.location || '')}</div>` };
         }
-        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.techEventsCount', { count: String(obj.count) })}</strong><br/>${text(obj.location)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(t('components.deckgl.tooltip.techEventsCount', { count: numericLabel(obj.count) }))}</strong><br/>${text(obj.location)}</div>` };
       case 'datacenter-clusters-layer':
         if (obj.count === 1) {
           const dc = obj.items?.[0];
           return { html: `<div class="deckgl-tooltip"><strong>${text(dc?.name || '')}</strong><br/>${text(dc?.owner || '')}</div>` };
         }
-        return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.tooltip.dataCentersCount', { count: String(obj.count) })}</strong><br/>${text(obj.country)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(t('components.deckgl.tooltip.dataCentersCount', { count: numericLabel(obj.count) }))}</strong><br/>${text(obj.country)}</div>` };
       case 'bases-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}${obj.kind ? ` · ${text(obj.kind)}` : ''}</div>` };
       case 'bases-cluster-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${obj.count} bases</strong></div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${numericLabel(obj.count)} bases</strong></div>` };
       case 'nuclear-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)}</div>` };
       case 'datacenters-layer':
@@ -4970,11 +5031,11 @@ export class DeckGLMap {
       case 'natural-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || t('components.deckgl.tooltip.naturalEvent'))}</div>` };
       case 'storm-centers-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || obj.title)}</strong><br/>${text(obj.classification || '')} ${obj.windKt ? obj.windKt + ` kt${obj.windAveragingPeriodMinutes ? ` (${obj.windAveragingPeriodMinutes}-minute mean)` : ''}` : ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || obj.title)}</strong><br/>${text(obj.classification || '')} ${obj.windKt ? numericLabel(obj.windKt) + ` kt${obj.windAveragingPeriodMinutes ? ` (${numericLabel(obj.windAveragingPeriodMinutes)}-minute mean)` : ''}` : ''}</div>` };
       case 'storm-forecast-track-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>${t('popups.naturalEvent.classification')}: Forecast Track</div>` };
       case 'storm-past-track-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${obj.windKt} kt)</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${numericLabel(obj.windKt)} kt)</div>` };
       case 'storm-cone-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast cone of uncertainty<br/><small>Not an observed storm footprint</small></div>` };
       case 'storm-imd-wind-radii-layer':
@@ -5033,7 +5094,7 @@ export class DeckGLMap {
       case 'notam-overlay-layer':
         return { html: `<div class="deckgl-tooltip"><strong style="color:#ff2828;">&#9888; NOTAM CLOSURE</strong><br/>${text(obj.name)} (${text(obj.iata)})<br/><span style="opacity:.7">${text((obj.reason || '').slice(0, 100))}</span></div>` };
       case 'aircraft-positions-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${obj.altitudeFt?.toLocaleString() ?? 0} ft · ${obj.groundSpeedKts ?? 0} kts · ${Math.round(obj.trackDeg ?? 0)}°</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.icao24)}</strong><br/>${numericLabel(obj.altitudeFt)} ft · ${numericLabel(obj.groundSpeedKts)} kts · ${numericLabel(obj.trackDeg, 0)}°</div>` };
       case 'apt-groups-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.aka)}<br/>${t('popups.sponsor')}: ${text(obj.sponsor)}</div>` };
       case 'minerals-layer':
@@ -5057,7 +5118,7 @@ export class DeckGLMap {
       case 'ais-disruptions-layer':
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'gps-jamming-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} · aircraft affected: ${Number(obj.pct).toFixed(1)}%<br/>H3: ${text(obj.h3)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} · aircraft affected: ${numericLabel(obj.pct, 1)}%<br/>H3: ${text(obj.h3)}</div>` };
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
         return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.advisory'))}<br/>${text(obj.description)}</div>` };
@@ -5097,7 +5158,7 @@ export class DeckGLMap {
       case 'traffic-anomalies-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.type || 'Traffic Anomaly')}</strong><br/>${text(obj.locationName || obj.asnName || '')}</div>` };
       case 'ddos-locations-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>DDoS: ${text(obj.countryName)}</strong><br/>${text(obj.percentage ? obj.percentage.toFixed(1) + '%' : '')}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>DDoS: ${text(obj.countryName)}</strong><br/>${text(obj.percentage ? numericLabel(obj.percentage, 1) + '%' : '')}</div>` };
       case 'cyber-threats-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
       case 'iran-events-layer':
@@ -5106,7 +5167,7 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
       case 'positive-events-layer': {
         const catLabel = obj.category ? obj.category.replace(/-/g, ' & ') : 'Positive Event';
-        const countInfo = obj.count > 1 ? `<br/><span style="opacity:.7">${obj.count} sources reporting</span>` : '';
+        const countInfo = obj.count > 1 ? `<br/><span style="opacity:.7">${numericLabel(obj.count)} sources reporting</span>` : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/><span style="text-transform:capitalize">${text(catLabel)}</span>${countInfo}</div>` };
       }
       case 'kindness-layer':
@@ -5115,8 +5176,8 @@ export class DeckGLMap {
         const hcName = obj.properties?.name ?? 'Unknown';
         const hcCode = obj.properties?.['ISO3166-1-Alpha-2'];
         const hcScore = hcCode ? this.happinessScores.get(hcCode as string) : undefined;
-        const hcScoreStr = hcScore != null ? hcScore.toFixed(1) : 'No data';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(hcName)}</strong><br/>Happiness: ${hcScoreStr}/10${hcScore != null ? `<br/><span style="opacity:.7">${text(this.happinessSource)} (${this.happinessYear})</span>` : ''}</div>` };
+        const hcScoreStr = hcScore != null ? numericLabel(hcScore, 1) : 'No data';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(hcName)}</strong><br/>Happiness: ${hcScoreStr}/10${hcScore != null ? `<br/><span style="opacity:.7">${text(this.happinessSource)} (${numericLabel(this.happinessYear, 0)})</span>` : ''}</div>` };
       }
       case 'cii-choropleth-layer': {
         const ciiName = obj.properties?.name ?? 'Unknown';
@@ -5124,7 +5185,7 @@ export class DeckGLMap {
         const ciiEntry = ciiCode ? this.ciiScoresMap.get(ciiCode as string) : undefined;
         if (!ciiEntry) return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/><span style="opacity:.7">No CII data</span></div>` };
         const levelColor = DeckGLMap.CII_LEVEL_HEX[ciiEntry.level] ?? '#888';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/>CII: <span style="color:${levelColor};font-weight:600">${ciiEntry.score}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(ciiEntry.level)}</span></div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/>CII: <span style="color:${levelColor};font-weight:600">${numericLabel(ciiEntry.score)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(ciiEntry.level)}</span></div>` };
       }
       case 'resilience-choropleth-layer': {
         const resilienceName = obj.properties?.name ?? 'Unknown';
@@ -5146,7 +5207,7 @@ export class DeckGLMap {
             ? '<br/><span style="opacity:.7">Outside headline ranking</span>'
             : '';
         return {
-          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${resilienceEntry.overallScore.toFixed(1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">Visual band: ${text(visualBand)}</span><br/><span style="text-transform:capitalize;opacity:.7">API level: ${text(serverLevel)}</span>${confidenceNote}</div>`,
+          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${numericLabel(resilienceEntry.overallScore, 1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">Visual band: ${text(visualBand)}</span><br/><span style="text-transform:capitalize;opacity:.7">API level: ${text(serverLevel)}</span>${confidenceNote}</div>`,
         };
       }
       case 'species-recovery-layer': {
@@ -5154,13 +5215,13 @@ export class DeckGLMap {
       }
       case 'renewable-installations-layer': {
         const riTypeLabel = obj.type ? String(obj.type).charAt(0).toUpperCase() + String(obj.type).slice(1) : 'Renewable';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${riTypeLabel} &middot; ${obj.capacityMW?.toLocaleString() ?? '?'} MW<br/><span style="opacity:.7">${text(obj.country)} &middot; ${obj.year}</span></div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(riTypeLabel)} &middot; ${numericLabel(obj.capacityMW)} MW<br/><span style="opacity:.7">${text(obj.country)} &middot; ${numericLabel(obj.year, 0)}</span></div>` };
       }
       case 'gulf-investments-layer': {
         const inv = obj as GulfInvestment;
         const flag = inv.investingCountry === 'SA' ? '🇸🇦' : '🇦🇪';
         const usd = inv.investmentUSD != null
-          ? (inv.investmentUSD >= 1000 ? `$${(inv.investmentUSD / 1000).toFixed(1)}B` : `$${inv.investmentUSD}M`)
+          ? (inv.investmentUSD >= 1000 ? `$${(inv.investmentUSD / 1000).toFixed(1)}B` : `$${numericLabel(inv.investmentUSD)}M`)
           : t('components.deckgl.tooltip.undisclosed');
         const stake = inv.stakePercent != null ? `<br/>${text(String(inv.stakePercent))}% ${t('components.deckgl.tooltip.stake')}` : '';
         return {
@@ -5174,7 +5235,7 @@ export class DeckGLMap {
         };
       }
       case 'satellite-imagery-layer': {
-        let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
+        let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${numericLabel(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
         if (isAllowedPreviewUrl(obj.previewUrl)) {
           const safeHref = escapeHtml(new URL(obj.previewUrl).href);
           imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview" alt="">`;
@@ -5184,7 +5245,7 @@ export class DeckGLMap {
       }
       case 'webcam-layer': {
         const label = 'count' in obj
-          ? `${obj.count} webcams`
+          ? `${numericLabel(obj.count)} webcams`
           : (obj.title || obj.name || 'Webcam');
         return { html: `<div class="deckgl-tooltip"><strong>${text(label)}</strong></div>` };
       }

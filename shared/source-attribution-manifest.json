@@ -51,7 +51,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -155,7 +155,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -169,7 +169,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -353,7 +353,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -367,7 +367,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -997,6 +997,20 @@
       "references": [
         {
           "path": "server/worldmonitor/military/v1/get-wingbits-live-flight.ts"
+        }
+      ]
+    },
+    {
+      "host": "api.publisher.jodidata.org",
+      "provider": "www.jodidata.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api.publisher.jodidata.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-jodi-gas.mjs"
         }
       ]
     },
@@ -1733,7 +1747,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -1843,7 +1857,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -1956,10 +1970,10 @@
           "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/config/feeds.ts"
         },
         {
-          "path": "src/config/feeds.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -2105,7 +2119,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -2133,7 +2147,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -2155,15 +2169,10 @@
       "host": "cdn-ca2-na.lncnetworks.host",
       "provider": "cdn-ca2-na.lncnetworks.host",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
       "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "src/components/LiveNewsPanel.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "cdn.debugbear.com",
@@ -2206,7 +2215,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -2741,7 +2750,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -2772,7 +2781,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -3134,15 +3143,10 @@
       "host": "discord.gg",
       "provider": "discord.gg",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "src/components/CommunityWidget.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "discordstatus.com",
@@ -3241,7 +3245,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -3255,7 +3259,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -3715,7 +3719,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5081,7 +5085,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5411,7 +5415,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5598,7 +5602,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5626,7 +5630,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5640,7 +5644,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5654,7 +5658,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5668,7 +5672,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5682,7 +5686,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5696,7 +5700,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5710,7 +5714,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5741,7 +5745,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -5749,15 +5753,10 @@
       "host": "livenewschat.eu",
       "provider": "livenewschat.eu",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
       "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "src/components/LiveNewsPanel.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "lnc-abc-news.tubi.video",
@@ -5769,7 +5768,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -6306,7 +6305,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -6320,7 +6319,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -6546,7 +6545,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -6619,7 +6618,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -6828,6 +6827,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/eval-classify-labels.mjs"
+        },
+        {
           "path": "scripts/lib/brief-dedup-consts.mjs"
         },
         {
@@ -6885,7 +6887,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7040,7 +7042,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7532,7 +7534,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7674,7 +7676,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7849,7 +7851,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7863,7 +7865,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7877,7 +7879,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -7936,7 +7938,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -8712,7 +8714,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -8726,7 +8728,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -8757,7 +8759,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -8814,7 +8816,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -9552,15 +9554,10 @@
       "host": "turnerlive.warnermediacdn.com",
       "provider": "turnerlive.warnermediacdn.com",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
       "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "src/components/LiveNewsPanel.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "tv-trtworld.medya.trt.com.tr",
@@ -9572,7 +9569,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -9894,7 +9891,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },
@@ -10147,6 +10144,9 @@
           "path": "api/reverse-geocode.js"
         },
         {
+          "path": "api/seed-contract-probe.ts"
+        },
+        {
           "path": "api/story.js"
         },
         {
@@ -10169,6 +10169,9 @@
         },
         {
           "path": "scripts/cross-strait-activity/adapters.mjs"
+        },
+        {
+          "path": "scripts/eval-classify-labels.mjs"
         },
         {
           "path": "scripts/lib/brief-embedding.mjs"
@@ -14258,6 +14261,9 @@
           "path": "api/not-found.ts"
         },
         {
+          "path": "api/story.js"
+        },
+        {
           "path": "scripts/build-accuracy-page.mjs"
         },
         {
@@ -14283,6 +14289,9 @@
         },
         {
           "path": "scripts/capture-resilience-energy-v2-acceptance.mjs"
+        },
+        {
+          "path": "scripts/check-live-video-sources.mjs"
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"
@@ -14431,6 +14440,9 @@
         },
         {
           "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "scripts/check-live-video-sources.mjs"
         },
         {
           "path": "server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts"
@@ -14662,7 +14674,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/LiveNewsPanel.ts"
+          "path": "src/services/live-channels.ts"
         }
       ]
     },

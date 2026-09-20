@@ -116,6 +116,7 @@ import {
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+const DIGEST_LANGUAGES = new Set(['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
 const COUNTRY_ITEMS_PER_FEED = 20;
@@ -1887,7 +1888,7 @@ export async function listFeedDigest(
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
   const lang = req.lang === undefined || req.lang === '' ? 'en' : req.lang;
-  if (typeof lang !== 'string' || lang.length !== 2 || !/^[a-z]{2}$/.test(lang)) {
+  if (typeof lang !== 'string' || !DIGEST_LANGUAGES.has(lang)) {
     throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
   }
 
@@ -3141,7 +3142,7 @@ async function buildDigest(
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
     // spraying arbitrary values cannot inflate the keyspace.
-    if (VARIANT_FEEDS[variant] && /^[a-z]{2}$/.test(lang)) {
+    if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
       await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>

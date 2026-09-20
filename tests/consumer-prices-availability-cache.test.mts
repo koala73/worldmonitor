@@ -9,7 +9,12 @@ before(async () => {
     format: 'esm', platform: 'node', define: { 'import.meta.env': '{"DEV":false}' },
     plugins: [{ name: 'hydration-fixture', setup(b) {
       b.onLoad({filter: /src\/services\/bootstrap\.ts$/}, () => ({
-        contents: 'export function getHydratedData(){return undefined}', loader: 'ts',
+        contents: `export function getHydratedData(key) {
+          const cache = globalThis.__consumerPriceHydration;
+          const value = cache?.get(key);
+          cache?.delete(key);
+          return value;
+        }`, loader: 'ts',
       }));
     } }], logLevel: 'silent',
   });
@@ -61,5 +66,51 @@ for (const method of methods) {
     await read();
     await new Promise(r => setImmediate(r));
     assert.ok(unwrap(await read()).every((r: any) => r.asOf === '2'));
+  });
+}
+
+const hydrationCases = [
+  { method: 'fetchConsumerPriceCategories', key: 'consumerPricesCategories', data: { categories: [] },
+    mismatches: [['all', 'essentials-ae', '90d'], ['all', 'value-ae', '30d']] },
+  { method: 'fetchConsumerPriceMovers', key: 'consumerPricesMovers', data: { risers: [], fallers: [] },
+    mismatches: [['all', '90d'], ['all', '30d', 'food']] },
+  { method: 'fetchRetailerPriceSpreads', key: 'consumerPricesSpread', data: { retailers: [] },
+    mismatches: [['all', 'value-ae']] },
+];
+const fixture = globalThis as typeof globalThis & { __consumerPriceHydration?: Map<string, unknown> };
+for (const scenario of hydrationCases) {
+  for (const args of scenario.mismatches) {
+    test(`${scenario.method} preserves empty hydration for its matching request after ${args.join(':')}`, async (t) => {
+      const client = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${scenario.method}-${args.join(':')}`);
+      const hydrated = { ...scenario.data, upstreamUnavailable: false, asOf: '1', range: '30d', basketSlug: 'essentials-ae' };
+      fixture.__consumerPriceHydration = new Map([[scenario.key, hydrated]]);
+      t.after(() => { delete fixture.__consumerPriceHydration; });
+      let requests = 0;
+      t.mock.method(globalThis, 'fetch', async () => {
+        requests++;
+        return Response.json({ ...scenario.data, upstreamUnavailable: false, asOf: '2' });
+      });
+      assert.equal((await client[scenario.method](...args)).asOf, '2', 'non-default request must use RPC');
+      assert.equal(requests, 1);
+      assert.equal(fixture.__consumerPriceHydration.get(scenario.key), hydrated, 'mismatched request must not consume bootstrap data');
+      assert.deepEqual(await client[scenario.method](), hydrated);
+      assert.equal(fixture.__consumerPriceHydration.size, 0, 'matching request consumes hydration');
+      assert.deepEqual(await client[scenario.method](), hydrated, 'matching empty snapshot warms the cache');
+      assert.equal(requests, 1);
+    });
+  }
+  test(`${scenario.method} rejects unavailable bootstrap data`, async (t) => {
+    const client = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${scenario.method}-unavailable-hydration`);
+    fixture.__consumerPriceHydration = new Map([[scenario.key, { ...scenario.data, upstreamUnavailable: true }]]);
+    t.after(() => { delete fixture.__consumerPriceHydration; });
+    let requests = 0;
+    t.mock.method(globalThis, 'fetch', async () => {
+      requests++;
+      return Response.json({ ...scenario.data, upstreamUnavailable: false, asOf: '2' });
+    });
+    assert.equal((await client[scenario.method]()).asOf, '2');
+    assert.equal(requests, 1);
+    assert.equal((await client[scenario.method]()).asOf, '2');
+    assert.equal(requests, 1, 'healthy replacement is cached');
   });
 }

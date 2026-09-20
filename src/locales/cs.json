@@ -1172,9 +1172,6 @@
       "base": "Základna",
       "nuclear": "Jaderné zařízení"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "VYS",
@@ -1892,6 +1889,7 @@
       "etfs": "ETF",
       "netInflow": "ČISTÝ PŘÍLIV",
       "netOutflow": "ČISTÝ ODLIV",
+      "netNeutral": "ČISTĚ NEUTRÁLNÍ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Vydavatel",
@@ -2193,7 +2191,7 @@
       "infoTooltip": "<strong>Ekonomický kalendář</strong> Plánované makroekonomické publikace: CPI, NFP, GDP, PMI a rozhodnutí centrálních bank. Zobrazuje prognózu vs. skutečnost vs. předchozí. Události s vysokým dopadem jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
     },
     "fsi": {
-      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Index finančního stresu Federální rezervní banky Kansas City (KCFSI): měří stres na finančních trzích USA pomocí 11 ukazatelů včetně výnosových spreadů, volatility a křížových korelací. Kladné hodnoty indikují nadprůměrný stres. Zdroj: Federální rezervní banka Kansas City.",
+      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Poměr WorldMonitoru mezi vysokovýnosovým úvěrem a dlouhodobými americkými státními dluhopisy, upravený o volatilitu akcií a rozpětí vysokovýnosových dluhopisů: (HYG / TLT) / (VIX × HY spread / 100). Nejde o Index finančního stresu Federální rezervní banky v Kansas City. Hodnota 1.5 nebo vyšší znamená nízký stres; hodnota pod 0.3 znamená vysoký stres.",
       "title": "Indikátor finanční stability",
       "usFsiValue": "HODNOTA US FSI",
       "cissTitle": "EU CISS (Systemické napětí eurozóny)",

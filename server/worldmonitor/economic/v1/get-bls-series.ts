@@ -8,7 +8,7 @@ import type {
   GetBlsSeriesResponse,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 
 const BLS_KEY_PREFIX = 'bls:series';
 
@@ -28,17 +28,15 @@ export async function getBlsSeries(
   if (!req.seriesId) return { series: undefined };
   if (!KNOWN_SERIES_IDS.has(req.seriesId)) return { series: undefined };
 
-  try {
-    const seedKey = `${BLS_KEY_PREFIX}:${req.seriesId}`;
-    const result = await getCachedJson(seedKey, true) as GetBlsSeriesResponse | null;
-    if (!result?.series) return { series: undefined };
+  const seedKey = `${BLS_KEY_PREFIX}:${req.seriesId}`;
+  const series = await readRequiredSeed(seedKey, value => {
+    const data = value as GetBlsSeriesResponse | null;
+    return data?.series && Array.isArray(data.series.observations) ? data.series : undefined;
+  });
 
-    const limit = normalizeLimit(req.limit);
-    const obs = result.series.observations;
-    const sliced = obs.length > limit ? obs.slice(-limit) : obs;
+  const limit = normalizeLimit(req.limit);
+  const obs = series.observations;
+  const sliced = obs.length > limit ? obs.slice(-limit) : obs;
 
-    return { series: { ...result.series, observations: sliced } };
-  } catch {
-    return { series: undefined };
-  }
+  return { series: { ...series, observations: sliced } };
 }
