@@ -75,8 +75,9 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     assert.equal(sends.length, proof === 'verified' ? 1 : 0);
     if (proof === 'verified') {
       assert.equal(sends[0].to, 'owner@example.com');
-      assert.match(sends[0].subject, /Synthetic market alert/);
-      assert.match(sends[0].text, /https:\/\/example.com\/alert/);
+      assert.equal(sends[0].subject, 'Community alert: Synthetic market alert');
+      assert.match(sends[0].text, /https:\/\/worldmonitor\.app\//);
+      assert.doesNotMatch(sends[0].text, /example\.com/);
     }
     await relay.processWelcome({ userId: 'owner', channelType: 'email', welcomeId: 'channel' });
     assert.equal(sends.length, proof === 'verified' ? 2 : 0);
