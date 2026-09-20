@@ -46,6 +46,8 @@ const VECTORS = {
   stripNotificationControlChars: [
     ['a\nb\rc\td'],
     ['line para sep'],
+    ['World\u200bMonitor'],
+    ['a\u202db\u202cc'],
     ['clean headline — with unicode ✓'],
     [''],
   ],
@@ -63,6 +65,12 @@ const VECTORS = {
     ['WORLDMONITOR ALERTS'],
     ['World Monitor Team'],
     ['WM Security'],
+    // Invisible-format bypass shapes (review finding): zero-width, bidi,
+    // LRM/RLM, soft hyphen — all must still match the markers.
+    ['World\u200bMonitor Security'],
+    ['World\u200cMonitor Security'],
+    ['World\u200eMonitor Security'],
+    ['World\u00adMonitor Security'],
     ['Reuters'],
     ['Tzeva Adom / Pikud HaOref'],
     [''],
@@ -79,6 +87,7 @@ const VECTORS = {
   ],
   sanitizeNotificationSource: [
     ['WorldMonitor Security'],
+    ['World\u200bMonitor Security'],
     ['worldmonitor'],
     ['Reuters'],
     ['Equity Market'],

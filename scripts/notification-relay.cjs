@@ -18,6 +18,7 @@ const {
 } = require('./shared/notification-dedup.cjs');
 const {
   renderNotificationLinkForText,
+  sanitizeNotificationLinkUrl,
   sanitizeNotificationSource,
   sanitizeNotificationTitle,
 } = require('./shared/notify-fields.cjs');
@@ -243,7 +244,13 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
 
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, ''];
   for (const ev of events) {
-    lines.push(`[${(ev.severity ?? 'high').toUpperCase()}] ${ev.payload?.title ?? ev.eventType}`);
+    // Shape held titles with the same boundary as formatMessage: held events
+    // include relay-originated ones that never passed /api/notify, so raw
+    // titles here would bypass the field guarantee (issue #8397).
+    const heldTitle = sanitizeNotificationTitle(ev.payload?.title ?? ev.eventType)
+      || sanitizeNotificationTitle(ev.eventType)
+      || 'alert';
+    lines.push(`[${(ev.severity ?? 'high').toUpperCase()}] ${heldTitle}`);
   }
   lines.push('', 'View full dashboard → worldmonitor.app');
   const text = lines.join('\n');
@@ -283,7 +290,13 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         payload: {
           title: subject,
           alertCount: events.length,
-          alerts: events.map(ev => ({ eventType: ev.eventType, severity: ev.severity ?? 'high', title: ev.payload?.title ?? ev.eventType })),
+          alerts: events.map(ev => ({
+            eventType: ev.eventType,
+            severity: ev.severity ?? 'high',
+            title: sanitizeNotificationTitle(ev.payload?.title ?? ev.eventType)
+              || sanitizeNotificationTitle(ev.eventType)
+              || 'alert',
+          })),
         },
       });
       else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
@@ -936,14 +949,20 @@ function formatMessage(event) {
   // edge boundary enforces, so every text sink (Telegram/Slack/Discord/email
   // body) inherits the guarantee. Issue #8397: raw interpolation delivered
   // attacker-controlled text and links from the platform's own identity.
+  //
+  // eventType is the fallback when the title sanitises to empty — shape it
+  // too, since the edge validates its type/length but not control characters,
+  // and a bare fallback would reintroduce newlines into subject and body.
+  const fallback = sanitizeNotificationTitle(event.eventType);
   const title = sanitizeNotificationTitle(event.payload?.title ?? event.eventType);
-  const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${title || event.eventType}`];
+  const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${title || fallback || 'alert'}`];
   if (NOTIFY_RELAY_INCLUDE_SNIPPET && typeof event.payload?.description === 'string' && event.payload.description.length > 0) {
-    parts.push(`> ${truncateForDisplay(event.payload.description, SNIPPET_TELEGRAM_MAX)}`);
+    const snippet = sanitizeNotificationTitle(event.payload.description);
+    if (snippet) parts.push(`> ${truncateForDisplay(snippet, SNIPPET_TELEGRAM_MAX)}`);
   }
   const source = sanitizeNotificationSource(event.payload?.source);
   if (source) parts.push(`Source: ${source}`);
-  const link = renderNotificationLinkForText(event.payload?.link);
+  const link = renderNotificationLinkForText(event.payload?.link ?? event.payload?.url);
   if (link) parts.push(link);
   return parts.join('\n');
 }
@@ -955,8 +974,9 @@ function formatMessage(event) {
  * WorldMonitor account immediately`).
  */
 function formatSubject(event) {
+  const fallback = sanitizeNotificationTitle(event.eventType);
   const title = sanitizeNotificationTitle(event.payload?.title ?? event.eventType);
-  return `WorldMonitor Alert: ${title || event.eventType}`;
+  return `WorldMonitor Alert: ${title || fallback || 'alert'}`;
 }
 
 async function processWelcome(event) {
@@ -1309,12 +1329,18 @@ async function processEvent(event) {
           // auto-truncates longer ones anyway). Use title + first line
           // of the formatted text as the body; the click URL points
           // at the event's link if present, else the dashboard.
+          // Shaped with the same field boundary as every other sink
+          // (review finding: raw title/link bypassed the new sanitizers;
+          // `payload.url` is a second, edge-unvalidated link field, so the
+          // link wins and url is only a fallback before classification).
           const firstLine = (deliveryText || '').split('\n')[1] || '';
-          const eventUrl = event.payload?.link || event.payload?.url || 'https://worldmonitor.app/';
+          const eventUrl = sanitizeNotificationLinkUrl(
+            event.payload?.link ?? event.payload?.url,
+          );
           await sendWebPush(rule.userId, ch, {
-            title: event.payload?.title || event.eventType || 'WorldMonitor',
+            title: sanitizeNotificationTitle(event.payload?.title) || event.eventType || 'WorldMonitor',
             body: firstLine,
-            url: eventUrl,
+            url: eventUrl || 'https://worldmonitor.app/',
             tag: `${event.eventType}:${rule.userId}`,
             eventType: event.eventType,
           });

@@ -15,7 +15,7 @@
  *   3. Legitimate traffic still flows: RSS headlines/links, domain-producer
  *      titles/sources without links, and subject rendering for all channels.
  *
- * Run: node --test tests/notify-field-validation.test.mts
+ * Run: node --import tsx --test tests/notify-field-validation.test.mts
  */
 
 import { afterEach, describe, it } from 'node:test';
@@ -188,6 +188,38 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
       `must not render off-origin link verbatim: ${text}`,
     );
     assert.ok(text.includes('(source: example.com)'), `must disclose the destination host: ${text}`);
+  });
+
+  it('defeats invisible-character impersonation (zero-width source still neutralised)', () => {
+    const zwsp = String.fromCharCode(0x200b);
+    const text = formatMessage({
+      eventType: 'rss_alert',
+      severity: 'critical',
+      payload: {
+        title: 'Security notice',
+        source: `World${zwsp}Monitor Security`,
+        link: 'https://example.com/wm-verify-account',
+      },
+    });
+    assert.ok(!text.includes(`World${zwsp}Monitor Security`), `must not render lookalike source: ${text}`);
+    assert.ok(text.includes('Community alert'), `lookalike source must collapse to the neutral label: ${text}`);
+  });
+
+  it('routes the web-push sink through the same boundary (no raw title/link/url)', () => {
+    const { readFileSync } = require('node:fs');
+    const src = readFileSync(require.resolve('../scripts/notification-relay.cjs'), 'utf-8');
+    const marker = "} else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {";
+    const start = src.indexOf(marker);
+    assert.ok(start !== -1, 'realtime web_push delivery block must exist');
+    // The realtime block ends at the first `});` after the marker (the
+    // drainHeldForUser quiet_hours_batch block is a separate static push).
+    const end = src.indexOf('});', start);
+    assert.ok(end !== -1, 'realtime web_push block must terminate');
+    const fn = src.slice(start, end);
+    assert.ok(!fn.includes('event.payload?.title ||'), 'push title must be sanitised, not raw');
+    assert.ok(!fn.includes('event.payload?.link ||'), 'push link must be classified, not raw');
+    assert.match(fn, /sanitizeNotificationTitle\(event\.payload\?\.title\)/, 'push title uses the shared boundary');
+    assert.match(fn, /sanitizeNotificationLinkUrl\(\s*event\.payload\?\.link \?\? event\.payload\?\.url/, 'push link classifies link then url');
   });
 
   it('shapes the email subject with the same title boundary (no header injection)', () => {

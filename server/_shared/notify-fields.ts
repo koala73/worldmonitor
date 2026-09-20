@@ -53,13 +53,28 @@ const FIRST_PARTY_SOURCE_MARKERS = ['worldmonitor', 'world monitor', 'wm securit
 export const NOTIFY_NEUTRAL_SOURCE = 'Community alert';
 
 /**
- * Strip ASCII control characters (including \r\n), DEL, and the common
- * unicode line/paragraph separators, collapsing runs to a single space.
+ * Invisible format characters that defeat substring impersonation matching
+ * while rendering as nothing in every email/chat client: zero-width spaces
+ * and joiners, bidi overrides, LRM/RLM marks, soft hyphen, Mongolian vowel
+ * separator. Stripped BEFORE the first-party marker match (review finding:
+ * 'World\u200bMonitor Security' otherwise renders exactly like the forged
+ * `Source:` line). Also stripped from titles so lookalike text cannot hide
+ * in any rendered channel.
+ */
+const INVISIBLE_FORMAT_CHARS_PATTERN = /[\u200B-\u200F\u202A-\u202E\u00AD\u180E]+/g;
+
+/**
+ * Strip ASCII control characters (including \r\n), DEL, C1 controls, the
+ * common unicode line/paragraph separators, and invisible format characters
+ * (zero-width, bidi, soft hyphen), collapsing runs to a single space.
  * Newlines in title/source enable header and body injection in the email
- * path; control characters have no legitimate rendering in any channel.
+ * path; control and invisible-format characters have no legitimate rendering
+ * in any channel.
  */
 export function stripNotificationControlChars(value: string): string {
-  return value.replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
+  return value
+    .replace(INVISIBLE_FORMAT_CHARS_PATTERN, ' ')
+    .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
 }
 
 function collapseWhitespace(value: string): string {

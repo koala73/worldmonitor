@@ -24,7 +24,6 @@ import { checkTierProEntitlement } from '../server/_shared/pro-entitlement';
 import {
   NOTIFY_DASHBOARD_URL,
   classifyNotificationLink,
-  isImpersonatingSource,
   sanitizeNotificationSource,
   sanitizeNotificationTitle,
 } from '../server/_shared/notify-fields';
@@ -222,14 +221,14 @@ export default async function handler(req: Request): Promise<Response> {
   delete payload.importanceScore;
   delete payload.corroborationCount;
 
-  // Validate title/source/link at the boundary (issue #8397): these fields
-  // reach every delivery channel (email subject/body, Telegram/Slack/Discord
-  // text, web-push click URL) and PR #8384 closed only the push path. A
-  // hostile event produced a real email from alerts@worldmonitor.app with a
-  // forged subject, a forged `Source:` line, and an off-origin link verbatim.
-  // Neutralise per-field so legitimate RSS punctuation/unicode/long-tail
-  // publisher domains keep flowing; every downstream channel inherits the
-  // guarantee instead of re-implementing it.
+  // Validate title/source/link/url/description at the boundary (issue
+  // #8397): these fields reach every delivery channel (email subject/body,
+  // Telegram/Slack/Discord text, web-push click URL) and PR #8384 closed only
+  // the push path. A hostile event produced a real email from
+  // alerts@worldmonitor.app with a forged subject, a forged `Source:` line,
+  // and an off-origin link verbatim. Neutralise per-field so legitimate RSS
+  // punctuation/unicode/long-tail publisher domains keep flowing; every
+  // downstream channel inherits the guarantee instead of re-implementing it.
   if ('title' in payload) {
     payload.title = sanitizeNotificationTitle(payload.title);
   }
@@ -248,10 +247,25 @@ export default async function handler(req: Request): Promise<Response> {
       payload.link = classified.url;
     }
   }
-  // An impersonating source is the phishing primitive on its own (genuine
-  // sending identity + forged attribution), even with an empty title/link.
-  if (isImpersonatingSource((body.payload as Record<string, unknown>).source)) {
-    payload.source = sanitizeNotificationSource((body.payload as Record<string, unknown>).source);
+  // `payload.url` is a second link field the relay's web-push path reads
+  // (`event.payload?.link ?? event.payload?.url`). Classify it the same way
+  // so it cannot smuggle an unvalidated click target past this boundary.
+  if (payload.url !== undefined) {
+    const classified = classifyNotificationLink(payload.url);
+    if (classified.kind === 'absent') {
+      delete payload.url;
+    } else if (classified.kind === 'dashboard') {
+      payload.url = NOTIFY_DASHBOARD_URL;
+    } else {
+      payload.url = classified.url;
+    }
+  }
+  // `payload.description` renders as a context line in chat/email bodies.
+  // Shape it as plain single-line text so header/body injection via embedded
+  // newlines or control characters cannot ride along with a snippet.
+  if (payload.description !== undefined) {
+    payload.description = sanitizeNotificationTitle(payload.description);
+    if (!payload.description) delete payload.description;
   }
 
   const rawSeverity = typeof body.severity === 'string' ? body.severity : 'high';

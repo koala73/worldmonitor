@@ -23,8 +23,12 @@ const FIRST_PARTY_SOURCE_MARKERS = ['worldmonitor', 'world monitor', 'wm securit
 
 const NOTIFY_NEUTRAL_SOURCE = 'Community alert';
 
+const INVISIBLE_FORMAT_CHARS_PATTERN = /[\u200B-\u200F\u202A-\u202E\u00AD\u180E]+/g;
+
 function stripNotificationControlChars(value) {
-  return value.replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
+  return value
+    .replace(INVISIBLE_FORMAT_CHARS_PATTERN, ' ')
+    .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
 }
 
 function collapseWhitespace(value) {
