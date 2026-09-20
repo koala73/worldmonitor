@@ -16,12 +16,32 @@ const CACHE_TTL = 5400; // 90min — 1h buffer over 30min cron cadence (was 60mi
 
 const ALL_IDS = [...new Set([...defiConfig.ids, ...aiConfig.ids, ...otherConfig.ids])];
 const COINPAPRIKA_ID_MAP = { ...defiConfig.coinpaprika, ...aiConfig.coinpaprika, ...otherConfig.coinpaprika };
+const COINPAPRIKA_IDS = ALL_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
 
-async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
+export const REQUEST_TIMEOUT_MS = 15_000;
+const COINGECKO_MAX_ATTEMPTS = 5;
+const coingeckoBackoffMs = (attempt) => Math.min(10_000 * (attempt + 1), 60_000);
+// Worst-case wall time of the CoinGecko phase: every attempt runs to its
+// request timeout and is followed by its backoff sleep. Derived from the
+// ladder rather than declared so it cannot drift from the loop below;
+// tests/token-panels-fetch-budget.test.mjs checks it against the bundle
+// section timeout that SIGTERMs this seeder.
+export const COINGECKO_RETRY_BUDGET_MS = Array.from(
+  { length: COINGECKO_MAX_ATTEMPTS },
+  (_, attempt) => REQUEST_TIMEOUT_MS + coingeckoBackoffMs(attempt),
+).reduce((sum, ms) => sum + ms, 0);
+// The fallback runs COINPAPRIKA_IDS in rounds of COINPAPRIKA_CONCURRENCY, each
+// round bounded by one request timeout. Both values are passed to the helper
+// explicitly so this derivation describes the call as made, and mapping a new
+// token widens the budget instead of silently breaking the invariant.
+const COINPAPRIKA_CONCURRENCY = 4;
+export const COINPAPRIKA_WORST_CASE_MS = Math.ceil(COINPAPRIKA_IDS.length / COINPAPRIKA_CONCURRENCY) * REQUEST_TIMEOUT_MS;
+
+async function fetchWithRateLimitRetry(url, maxAttempts = COINGECKO_MAX_ATTEMPTS, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
   for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (resp.status === 429) {
-      const wait = Math.min(10_000 * (i + 1), 60_000);
+      const wait = coingeckoBackoffMs(i);
       console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
       await sleep(wait);
       continue;
@@ -36,7 +56,7 @@ async function fetchFromCoinGecko() {
   const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ALL_IDS.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
 
-  const resp = await fetchWithRateLimitRetry(url, 5, headers);
+  const resp = await fetchWithRateLimitRetry(url, COINGECKO_MAX_ATTEMPTS, headers);
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
   return data;
@@ -44,8 +64,10 @@ async function fetchFromCoinGecko() {
 
 async function fetchFromCoinPaprika() {
   console.log('  [CoinPaprika] Falling back to CoinPaprika...');
-  const paprikaIds = ALL_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
-  const tickers = await fetchCoinPaprikaTickersById(paprikaIds);
+  const tickers = await fetchCoinPaprikaTickersById(COINPAPRIKA_IDS, {
+    concurrency: COINPAPRIKA_CONCURRENCY,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+  });
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
   return tickers
     .map((t) => ({
@@ -75,7 +97,7 @@ function mapTokens(ids, meta, byId) {
   return tokens;
 }
 
-async function fetchTokenPanels() {
+export async function fetchTokenPanels() {
   let raw;
   try {
     raw = await fetchFromCoinGecko();
