@@ -30,10 +30,12 @@ function normalizeLimit(limit: number): number {
 }
 
 /**
- * Mirrors what the seeder's `validate()` refuses to publish: every series it
- * writes carries `seriesId`/`title`/`units` and at least 1 observation. An
- * entry narrower than that is a broken seed, not servable data — serving it
- * would answer 200 with a body missing fields the proto marks required.
+ * Kept deliberately identical to `isPublishableSeries` in
+ * `scripts/seed-bls-series.mjs`, which gates what the seeder may publish. An
+ * entry narrower than this is a broken seed, not servable data — serving it
+ * would answer 200 with a body missing fields the proto marks required. Keep
+ * the two in lockstep: a reader stricter than its producer 503s a seed the
+ * producer was allowed to write.
  */
 function isServableSeries(value: unknown): value is BlsSeries {
   const series = value as Partial<BlsSeries> | null;

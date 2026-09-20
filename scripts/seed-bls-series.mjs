@@ -105,16 +105,30 @@ async function fetchAllSeries() {
   return { series: all, fetchedAt: new Date().toISOString() };
 }
 
-// A partial cohort is not a publishable seed. The RPC answers a known series
-// that is absent from a valid envelope with 503, and runSeed writes fresh
-// seed-meta for whatever this accepts, so publishing a 1-of-2 fetch would
-// serve a 503 for the dropped series all day while health reads OK. Refusing
-// it takes runSeed's validation-skip path instead: the last-good envelope
-// keeps serving both series and STALE_SEED fires if the outage persists.
+// The shape the RPC will serve, kept deliberately identical to
+// isServableSeries in server/worldmonitor/economic/v1/get-bls-series.ts. The
+// reader refuses an entry narrower than this, so the producer must refuse to
+// publish one: otherwise the seed passes validation, health reads fresh, and
+// every request for that series 503s until the next run.
+function isPublishableSeries(s) {
+  return typeof s?.seriesId === 'string'
+    && typeof s.title === 'string'
+    && typeof s.units === 'string'
+    && Array.isArray(s.observations)
+    && s.observations.length > 0;
+}
+
+// A partial cohort is not a publishable seed either. The RPC answers a known
+// series that is absent from a valid envelope with 503, and runSeed writes
+// fresh seed-meta for whatever this accepts, so publishing a 1-of-2 fetch
+// would serve a 503 for the dropped series all day while health reads OK.
+// Refusing it takes runSeed's validation-skip path instead: the last-good
+// envelope keeps serving both series and STALE_SEED fires if the outage
+// persists.
 export function validate(data) {
   if (!Array.isArray(data?.series)) return false;
   return FRED_SERIES.every((def) =>
-    data.series.some((s) => s?.seriesId === def.id && Array.isArray(s.observations) && s.observations.length > 0),
+    data.series.some((s) => isPublishableSeries(s) && s.seriesId === def.id),
   );
 }
 

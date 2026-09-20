@@ -80,7 +80,7 @@ if (!series) {
 
 `readCachedJsonInternal` (`server/_shared/redis.ts:75-111`) unwraps the `runSeed` contract envelope (`unwrapEnvelope(parsed).data`), so this reads the same `{series: [...]}` shape whether or not the writer is in envelope mode. A known series id absent from an otherwise valid envelope throws `SeedUnavailableError` naming the series (`server/_shared/required-seed.ts`), instead of a message that blames the healthy canonical key.
 
-`isServableSeries` mirrors what the seeder's `validate()` refuses to publish — `seriesId`, `title` and `units` present as strings, and at least 1 observation. Without it the decoder would cast whatever the envelope held and serve a 200 whose body is missing fields the proto marks required, which is the same empty-success failure this whole incident is about, one layer down. The check is per entry, so a malformed series does not take its healthy siblings in the same envelope down with it.
+`isServableSeries` is the same predicate the seeder's `validate()` applies before publishing — `seriesId`, `title` and `units` present as strings, and at least 1 observation. The two are written to be identical on purpose: a reader stricter than its producer turns a publishable seed into a 503, and a producer stricter than its reader wastes a cycle refusing data the reader would have served. Without it the decoder would cast whatever the envelope held and serve a 200 whose body is missing fields the proto marks required, which is the same empty-success failure this whole incident is about, one layer down. The check is per entry, so a malformed series does not take its healthy siblings in the same envelope down with it.
 
 **2. `scripts/seed-bls-series.mjs`** drops the per-series extra-key machinery entirely. `perKeySeries`, `publishTransform` and `afterPublish` are gone; the canonical `bls:series:v1` envelope is the seeder's only write:
 
@@ -94,13 +94,22 @@ if (!series) {
 + all.push({ seriesId: def.id, title: def.title, units: def.units, observations: result.observations });
 ```
 
-`validate()` was `Array.isArray(data?.series) && data.series.length > 0`, which accepted a 1-of-2 fetch. It now requires every configured `FRED_SERIES` id to be present with at least 1 observation:
+`validate()` was `Array.isArray(data?.series) && data.series.length > 0`, which accepted a 1-of-2 fetch. It now requires every configured `FRED_SERIES` id to be present in the shape the reader will serve:
 
 ```js
+// Deliberately identical to isServableSeries in the RPC handler.
+function isPublishableSeries(s) {
+  return typeof s?.seriesId === 'string'
+    && typeof s.title === 'string'
+    && typeof s.units === 'string'
+    && Array.isArray(s.observations)
+    && s.observations.length > 0;
+}
+
 export function validate(data) {
   if (!Array.isArray(data?.series)) return false;
   return FRED_SERIES.every((def) =>
-    data.series.some((s) => s?.seriesId === def.id && Array.isArray(s.observations) && s.observations.length > 0),
+    data.series.some((s) => isPublishableSeries(s) && s.seriesId === def.id),
   );
 }
 ```
@@ -164,7 +173,7 @@ Separately, `validate()` moving from "at least 1 series present" to "every confi
 - **The guard invariant, stated once and enforced everywhere.** A seed-meta key is either omitted (derived) or a distinct string in the `seed-meta:` namespace, never the data key it annotates. Any function that accepts a `metaKey` or `metaKeyOverride` parameter routes it through `resolveSeedMetaKey` before doing anything with it, including config-time validation in `runSeed`'s `extraKeys` loop, not just the write-time call sites.
 - **When a "healthy" seed's RPC serves empty or wrong data, peek the exact key the reader reads, not the key health watches.** A canonical key and a per-item key drift independently; the health freshness table (`SEED_META` in `api/health.js`) is a curated subset, and a per-item key added to a seeder is not automatically added to it. `EXISTS` / `TYPE` / `TTL` / `GET` on the actual read path is the fastest way to see the real shape.
 - **A TTL mismatch is a strong tell of a meta-on-data collision.** If a key's TTL does not match its owning seeder's declared data TTL, something else with a different TTL policy (here the 7-day seed-meta floor) wrote to it last. (session history) The seed-meta TTL rule is `max(floor, dataTtl)` in `resolveSeedMetaTtl`, not the floor itself, so check the relationship against that function rather than restating it from memory.
-- **A required-seed reader accepts only what its producer is allowed to publish.** Decoding an envelope with a cast rather than a shape check reintroduces the empty-success failure one layer down: the read succeeds, the entry is short a required field, and the endpoint answers 200 with a body that does not satisfy its own schema. Write the reader's predicate against the producer's validation rule so the two move together, and check per item so a single malformed entry does not fail its healthy siblings.
+- **A required-seed reader accepts only what its producer is allowed to publish, and the two predicates are one contract.** Decoding an envelope with a cast rather than a shape check reintroduces the empty-success failure one layer down: the read succeeds, the entry is short a required field, and the endpoint answers 200 with a body that does not satisfy its own schema. Write the reader's predicate and the producer's validation as the same rule and say so in both comments, because they fail in opposite directions — a reader stricter than its producer 503s a seed that was legitimately published, and a producer stricter than its reader burns a cycle refusing data the reader would have served. Check per item, so a single malformed entry does not fail its healthy siblings.
 - **Health must watch the same key the RPC reads, or it proves nothing about that RPC.** Adding a per-item extra key to a seeder comes with either folding that data into the canonical envelope the RPC and health both trust (the approach taken here) or adding the new key to health's watch list explicitly. The canonical key's freshness never implies a sibling extra key's freshness.
 - **Sentry event counts understate origin volume; get the denominator from the raw request log.** Count actual requests and responses for the affected route in Axiom before sizing an incident. `res_bytes` on prior `200`s is a cheap secondary signal: a long run of `res_bytes = 2` on a "successful" endpoint is evidence the bug predates whatever change first surfaced it as an error.
 - **Test shape for this class of bug.** (1) A writer-refuses-collision test that reproduces the exact shipped call shape and asserts the write is refused and that 0 write calls were made, not just that the call threw; a test that only checks "it throws" passes even if the data write happened before the throw. (2) A `runSeed`-exits-1-before-fetch test for the config-time path, asserting the provider function's call count is 0 and no `SET` was issued. (3) An RPC-level regression test that seeds the cache with the exact clobbered shape production held (the heartbeat under the per-item key) and asserts the RPC does not read it. (4) Where a guard has several OR'd clauses, at least 1 input that fails only the clause carrying the headline invariant (an override that is namespaced yet equals the data key), per `docs/solutions/conventions/assert-what-a-branch-produces-not-what-a-lenient-classifier-concludes-from-it.md`.

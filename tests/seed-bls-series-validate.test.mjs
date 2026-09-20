@@ -36,6 +36,27 @@ test('validate refuses a series that arrived without observations', () => {
   assert.equal(validate({ series: [series(first, 0), ...rest.map((id) => series(id))] }), false);
 });
 
+// The RPC refuses to serve an entry missing seriesId/title/units, so the
+// producer must refuse to publish one: otherwise the seed passes validation,
+// health reads fresh, and every request for that series 503s until the next
+// run. The two predicates are one contract and have to move together.
+test('validate refuses a series missing title or units', () => {
+  const [first, ...rest] = BLS_SERIES_IDS;
+  const others = rest.map((id) => series(id));
+  for (const missing of ['title', 'units']) {
+    const broken = series(first);
+    delete broken[missing];
+    assert.equal(validate({ series: [broken, ...others] }), false, `a series without ${missing} is not publishable`);
+  }
+});
+
+test('validate refuses a series whose title or units is not a string', () => {
+  const [first, ...rest] = BLS_SERIES_IDS;
+  const others = rest.map((id) => series(id));
+  assert.equal(validate({ series: [{ ...series(first), title: 42 }, ...others] }), false);
+  assert.equal(validate({ series: [{ ...series(first), units: null }, ...others] }), false);
+});
+
 test('validate refuses the empty and malformed shapes', () => {
   assert.equal(validate({ series: [] }), false);
   assert.equal(validate({}), false);
