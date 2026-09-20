@@ -49,7 +49,7 @@ function runGuardProbe(expectBuiltOutput) {
     if (expectBuiltOutput) env.WM_EXPECT_BUILT_OUTPUT = '1';
     else delete env.WM_EXPECT_BUILT_OUTPUT;
 
-    const result = spawnSync(process.execPath, ['--test', probePath], {
+    const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', probePath], {
       cwd: repoRoot,
       encoding: 'utf8',
       env,
@@ -240,13 +240,9 @@ describe('built-output guard contract', () => {
   it('fails the built-output suite when CI expects output but it is missing', () => {
     const result = runGuardProbe(true);
 
-    // node v22 quirk (observed on v22.23.2): when a `describe` body throws,
-    // the runner prints the suite as `not ok` in the TAP stream but keeps the
-    // counters at `# tests 0 / # fail 0`, so the child process still exits 0.
-    // Assert on the TAP failure line and the guard's error text -- both
-    // deterministic across runner versions -- instead of the exit code. If a
-    // future runner propagates suite-body throws to the exit code, this can
-    // be tightened back to assert.notEqual(result.status, 0).
+    // CI uses Node 24: a guard failure must fail the process as well as the
+    // suite. The probe selects TAP explicitly because Node 24 defaults to spec.
+    assert.notEqual(result.status, 0, result.output);
     assert.match(
       result.output,
       /^not ok 1 - built-output guard probe$/m,
