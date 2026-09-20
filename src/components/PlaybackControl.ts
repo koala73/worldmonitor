@@ -11,6 +11,7 @@ export class PlaybackControl {
   private currentIndex = 0;
   private onSnapshotChange: ((snapshot: DashboardSnapshot | null) => void) | null = null;
   private snapshotGuard = new LatestRequestGuard();
+  private timestampGuard = new LatestRequestGuard();
 
   constructor() {
     this.element = document.createElement('div');
@@ -51,10 +52,13 @@ export class PlaybackControl {
       panel.classList.toggle('hidden');
       if (!panel.classList.contains('hidden')) {
         await this.loadTimestamps();
+      } else {
+        this.timestampGuard.begin();
       }
     });
 
     closeBtn.addEventListener('click', () => {
+      this.timestampGuard.begin();
       panel.classList.add('hidden');
       this.goLive();
     });
@@ -74,8 +78,10 @@ export class PlaybackControl {
   }
 
   private async loadTimestamps(): Promise<void> {
-    this.timestamps = await getSnapshotTimestamps();
-    if (!this.element?.isConnected) return;
+    const requestId = this.timestampGuard.begin();
+    const timestamps = await getSnapshotTimestamps();
+    if (!this.timestampGuard.isCurrent(requestId) || !this.element?.isConnected) return;
+    this.timestamps = timestamps;
     this.timestamps.sort((a, b) => a - b);
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;

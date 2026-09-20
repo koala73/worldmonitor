@@ -52,7 +52,7 @@ import type { StoryData } from '@/services/story-data';
 import { fetchServiceStatuses } from '@/services/infrastructure';
 import { getDefaultLiveChannels, loadChannelsFromStorage } from '@/services/live-channels';
 import { renderStoryToCanvas } from '@/services/story-renderer';
-import { getSnapshotAt } from '@/services/storage';
+import { getSnapshotAt, getSnapshotTimestamps } from '@/services/storage';
 import en from '@/locales/en.json';
 
 beforeAll(async () => {
@@ -172,6 +172,30 @@ describe('EnergyCrisisPanel filter binding', () => {
 });
 
 describe('PlaybackControl stale snapshots', () => {
+  it('keeps the newest timestamp list when an earlier open resolves last', async () => {
+    const older = deferred<number[]>();
+    const newer = deferred<number[]>();
+    vi.mocked(getSnapshotTimestamps).mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    const control = new PlaybackControl();
+    document.body.appendChild(control.getElement());
+    const toggle = control.getElement().querySelector<HTMLButtonElement>('.playback-toggle')!;
+    toggle.click();
+    toggle.click();
+    toggle.click();
+    newer.resolve([3_000, 1_000, 2_000]);
+    await Promise.resolve();
+    older.resolve([1_000]);
+    await Promise.resolve();
+    const slider = control.getElement().querySelector<HTMLInputElement>('.playback-slider')!;
+    expect(slider.max).toBe('2');
+    expect(slider.value).toBe('2');
+    vi.mocked(getSnapshotAt).mockResolvedValueOnce(null);
+    slider.value = '2';
+    slider.dispatchEvent(new Event('input'));
+    expect(getSnapshotAt).toHaveBeenLastCalledWith(3_000);
+    control.exitPlayback();
+  });
+
   it('ignores a snapshot that resolves after Live', async () => {
     const pending = deferred<{ clusters: [] }>();
     vi.mocked(getSnapshotAt).mockReturnValueOnce(pending.promise as never);
