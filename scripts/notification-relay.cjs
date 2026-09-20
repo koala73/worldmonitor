@@ -1121,8 +1121,12 @@ async function generateEventImpact(event, rule) {
   } catch { /* miss */ }
 
   const profile = formatUserProfile(ctx, variant);
-  const safeTitle = String(event.payload?.title ?? event.eventType).replace(/[\r\n]/g, ' ').slice(0, 300);
-  const safeSource = event.payload?.source ? String(event.payload.source).replace(/[\r\n]/g, ' ').slice(0, 100) : '';
+  // Shape prompt inputs with the shared field boundary (issue #8397): raw
+  // titles/sources would let a hostile event steer the impact text that is
+  // appended to deliveries. AI_IMPACT_ENABLED is default-off; this keeps the
+  // prompt path under the same guarantee when enabled.
+  const safeTitle = sanitizeNotificationTitle(event.payload?.title ?? event.eventType).slice(0, 300) || 'alert';
+  const safeSource = sanitizeNotificationSource(event.payload?.source).slice(0, 100);
   const systemPrompt = `Assess how this event impacts a specific investor/analyst.
 Return 1-2 sentences: (1) direct impact on their assets/regions, (2) action implication.
 If no clear impact: "Low direct impact on your portfolio."
