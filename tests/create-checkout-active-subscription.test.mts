@@ -241,9 +241,8 @@ it('replays a completed account-scoped checkout without reaching admission at th
   mock.method(globalThis, 'fetch', async (url, init) => {
     assert.equal(String(url), 'https://upstash.test/pipeline');
     const commands = JSON.parse(String(init?.body));
-    assert.ok(commands.every((command: string[]) => command[1] === expectedKey));
+    assert.deepEqual(commands, [['GET', expectedKey]]);
     return Response.json([
-      { result: null },
       { result: JSON.stringify({ state: 'completed', status: 200, contentType: 'application/json', reqHash, body: JSON.stringify({ checkout_url: 'https://checkout.example/original' }) }) },
     ]);
   });
