@@ -750,6 +750,39 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('keeps a capture whose verification failed as a draft PR instead of a lost run (#8417)', () => {
+    const pulseWorkflow = read(resolve(workflowsDir, 'crawlable-pulse-refresh.yml'));
+    const buildStep = workflowStepBlock(pulseWorkflow, 'Rebuild published artifacts');
+    assert.match(buildStep, /^\s+id: build$/m);
+    assert.match(buildStep, /npm run build:crawlable-corpus/, 'the coverage floor that rejects a capture lives in the build step');
+    const verifyStep = workflowStepBlock(pulseWorkflow, 'Verify published artifacts');
+    assert.match(verifyStep, /^\s+id: verify$/m);
+    assert.match(verifyStep, /node --import tsx --test/);
+    assert.doesNotMatch(
+      verifyStep,
+      /continue-on-error/,
+      'a failed verification must still fail the job so the freshness monitor reports it',
+    );
+    for (const stepName of ['Prune superseded pulse snapshots', 'Open the weekly pulse PR']) {
+      assert.match(
+        workflowStepBlock(pulseWorkflow, stepName),
+        /^\s+if: \$\{\{ !cancelled\(\) && steps\.build\.outcome == 'success' \}\}$/m,
+        `${stepName} must run after a failed verification but never after a rejected build`,
+      );
+    }
+    const openPrStep = workflowStepBlock(pulseWorkflow, 'Open the weekly pulse PR');
+    assert.match(openPrStep, /VERIFY_OUTCOME: \$\{\{ steps\.verify\.outcome \}\}/);
+    assert.match(openPrStep, /if \[ "\$VERIFY_OUTCOME" != "success" \]; then\n\s+draft=\(--draft\)/);
+    assert.match(openPrStep, /gh pr create[\s\S]*"\$\{draft\[@\]\}"/);
+    for (const stepName of ['Reconcile the weekly review branch', 'Open the weekly pulse PR']) {
+      assert.match(
+        workflowStepBlock(pulseWorkflow, stepName),
+        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \|\| github\.token \}\}/,
+        `${stepName} must open the PR with a user or app token when one is configured, so the PR gets CI`,
+      );
+    }
+  });
+
   it('runs the proto breaking check against the full main history (#6114)', () => {
     const breakingJob = workflowJobBlock(protoCheckWorkflow, 'proto-breaking');
     assert.match(breakingJob, /^\s+needs: changes\s*$/m);

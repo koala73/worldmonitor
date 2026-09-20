@@ -10012,7 +10012,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "src/components/PinnedWebcamsPanel.ts"
+          "path": "shared/pinned-webcams.ts"
         }
       ]
     },

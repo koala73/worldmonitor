@@ -18,7 +18,11 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 ### Seed-Owned Key
 
-A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. On the read side, seed-owned keys must bypass the deployment key prefix (`raw = true`), because the owning seeder writes bare keys — and the `seed-meta:` name prefix is not the ownership test, since a `seed-meta:`-named key can still be route-stamped and app-owned. See also: Bootstrap Tier, On-Demand Key, Read Outcome, Deployment Key Prefix.
+A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss. What a reader answers on a miss is the reader's own choice — a short-TTL computed fallback where one is derivable, or an explicit unavailable where the key is required and a fabricated empty would be read as data — but no reader repopulates the key; only the owning seeder's next cycle restores it. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. On the read side, seed-owned keys must bypass the deployment key prefix (`raw = true`), because the owning seeder writes bare keys — and the `seed-meta:` name prefix is not the ownership test, since a `seed-meta:`-named key can still be route-stamped and app-owned. See also: Bootstrap Tier, On-Demand Key, Read Outcome, Deployment Key Prefix, Seed-Meta Record.
+
+### Seed-Meta Record
+
+The small freshness record a seeder writes beside a data key after each publish — when it ran and how many records it published — under a namespace of its own, so that health can grade staleness without reading the payload. It vouches only for the key it was written for: a canonical key's record says nothing about a sibling per-item key, and a reader whose key has no record in the health table is unmonitored however fresh the canonical one is. The record and the payload it describes must live at distinct keys; if a producer names the data key as the record's location, the record overwrites the payload on every run while every consumer of the record still reports fresh — the payload is erased, not stale, and no freshness alarm can fire. See also: Seed-Owned Key, Content-Age Contract, Activation Marker.
 
 ### Deployment Key Prefix
 
@@ -30,7 +34,7 @@ The freshness clock a seeder declares over the *observation dates inside* the pa
 
 Two rules follow from what the contract reduces to. It reports a single newest timestamp, so a payload assembled from *several independently-failing sources* must derive one clock per source and report the **oldest** of them; reducing all their dates together takes the newest, and the still-living source then hides the dead one indefinitely — an alarm that can only fire when every source dies at once. And an undatable payload must report nothing rather than a default, because "we cannot date this" and "this is stale" warrant the same response, while a fabricated recent date warrants none.
 
-Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock.
+Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock, Superseded Failure.
 
 ### Activation Marker
 
@@ -526,6 +530,20 @@ The day-0 post-checkout flow shown to a new Pro subscriber once the payment-to-e
 ### Activation Step State
 
 The disposition of one step in the Activation Interstitial, in two layers: a declared state the step opens with — confirmable, already-done, blocked (the platform will refuse), or unavailable (the device cannot do it) — and a transient overlay for the step the user is currently on, in-flight while a confirm runs and failed when it did not work. The load-bearing distinction is terminal versus retryable, because the failed state is what puts a "Try again" button on screen: a refusal no retry can clear — a denied browser notification permission, which browsers never re-prompt for — must resolve to blocked and show the platform's own out-of-app remedy instead. A step that ends blocked resolves as skipped rather than failed, so the summary never claims a failure that was never attempted; the cost is that a platform refusal is otherwise indistinguishable from disinterest and needs its own event to stay countable. See also: Activation Interstitial, Billing UX State.
+
+## Scheduled Publication
+
+### Period Branch
+
+The branch a scheduled publication workflow names after its period, one per week or month, which is what makes the run idempotent. A run that finds the period's pull request, in any state, does nothing; a run that finds the branch with no pull request opens one and stops; only a period with neither captures anew.
+
+After a failed run the branch is the period's only publication vehicle. A test fix, a generator fix and a hand re-capture all land there, and a re-dispatch never re-captures a period whose branch already exists, so a capture that failed verification is kept on the branch as a draft rather than discarded. See also: Superseded Failure, Content-Age Contract.
+
+### Superseded Failure
+
+A failed scheduled run that the artifact it maintains has since overtaken, because a later capture, by hand or by a later run, carries a newer timestamp than the failure. An alarm keyed on the last run's conclusion must treat such a failure as remedied, or it re-alerts on a fixed problem every day until the next scheduled run.
+
+A run with no timestamp is never superseded, so the alarm fails closed. The alarm's other half, the artifact's own age, is what catches a schedule that never fires at all, which a conclusion alone cannot see. See also: Content-Age Contract, Period Branch.
 
 ## Shipping Gate
 

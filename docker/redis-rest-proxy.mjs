@@ -69,7 +69,7 @@ function checkAuth(req) {
 // Command safety: allowlist of expected Redis commands.
 // Blocks dangerous operations like FLUSHALL, CONFIG SET, EVAL, DEBUG, SLAVEOF.
 const ALLOWED_COMMANDS = new Set([
-  'GET', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
+  'GET', 'GETDEL', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
   'TTL', 'EXPIRE', 'PEXPIRE', 'EXISTS', 'TYPE',
   'HGET', 'HSET', 'HSETNX', 'HINCRBY', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',
   'LPUSH', 'RPUSH', 'LPOP', 'RPOP', 'LRANGE', 'LLEN', 'LTRIM', 'LREM',
@@ -560,6 +560,65 @@ const CABLE_HEALTH_REPAIR_SCRIPT = [
 const WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT = [
   "if redis.call('EXISTS', KEYS[2]) == 0 then return redis.call('SREM', KEYS[1], ARGV[1]) else return 0 end",
 ].join('\n');
+// PINNED COPY of shared/free-account-allowance-scripts.mjs
+// RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT. Regenerate this block from the source
+// array literal; do not hand-edit it.
+const RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT = [
+  'local function non_negative_integer(raw)',
+  '  if raw == false or raw == nil then return 0 end',
+  '  local value = tonumber(raw)',
+  '  if value == nil or value < 0 or value ~= math.floor(value) then return nil end',
+  '  return value',
+  'end',
+  '',
+  "local calls_raw = redis.call('GET', KEYS[1])",
+  "local requests_raw = redis.call('GET', KEYS[2])",
+  "local last_raw = redis.call('GET', KEYS[3])",
+  'local calls = non_negative_integer(calls_raw)',
+  'local requests = non_negative_integer(requests_raw)',
+  'local last = nil',
+  'if last_raw ~= false and last_raw ~= nil then',
+  '  last = non_negative_integer(last_raw)',
+  'end',
+  'local calls_missing = calls_raw == false or calls_raw == nil',
+  'local requests_missing = requests_raw == false or requests_raw == nil',
+  'local last_present = last_raw ~= false and last_raw ~= nil',
+  'if calls == nil or requests == nil or (last_present and last == nil) then',
+  '  return {-1}',
+  'end',
+  'if calls_missing ~= requests_missing or requests > calls or (last_present and calls == 0) then',
+  '  return {-1}',
+  'end',
+  '',
+  'local now_ms = tonumber(ARGV[1])',
+  'local idle_gap_ms = tonumber(ARGV[2])',
+  'local calls_limit = tonumber(ARGV[3])',
+  'local requests_limit = tonumber(ARGV[4])',
+  'local opens_window = last == nil or now_ms - last >= idle_gap_ms',
+  'local activity_value = ARGV[1]',
+  'if last ~= nil and last > now_ms then activity_value = last_raw end',
+  '',
+  'if calls >= calls_limit then return {0} end',
+  'if opens_window and requests >= requests_limit then return {0} end',
+  '',
+  'calls = calls + 1',
+  'if opens_window then requests = requests + 1 end',
+  "redis.call('SET', KEYS[1], tostring(calls), 'EX', ARGV[5])",
+  'if opens_window then',
+  "  redis.call('SET', KEYS[2], tostring(requests), 'EX', ARGV[5])",
+  'end',
+  "redis.call('SET', KEYS[3], activity_value, 'PX', ARGV[2])",
+  'return {1}',
+].join('\n');
+// PINNED COPY of shared/free-account-allowance-scripts.mjs
+// READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT. Read-only GET/PTTL snapshot; same pin
+// contract as the reserve script above.
+const READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT = [
+  "local calls = redis.call('GET', KEYS[1])",
+  "local requests = redis.call('GET', KEYS[2])",
+  "local activityPttl = redis.call('PTTL', KEYS[3])",
+  'return {calls or false, requests or false, activityPttl}',
+].join('\n');
 // Pinned to compareAndDeleteRedisKey in server/_shared/redis.ts.
 const COMPARE_AND_DELETE_SCRIPT = [
   "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
@@ -572,6 +631,8 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
+  RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
+  READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
   X_POST_BUDGET_RESERVE_SCRIPT,
   X_POST_BUDGET_SETTLE_SCRIPT,
   X_POST_BUDGET_ACK_RECEIPTS_SCRIPT,

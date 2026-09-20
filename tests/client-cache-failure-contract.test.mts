@@ -68,7 +68,11 @@ async function settlePersistence(): Promise<void> { await new Promise<void>((res
 describe('browser service cache failure contracts (#8348)', () => {
   it('cyber and unrest replace stale non-empty observations with confirmed healthy empty snapshots', async () => {
     let now = 1_000_000; Date.now = () => now;
-    const threat = { id: 'c1', type: '', source: '', indicator: 'x', indicatorType: '', severity: '', tags: [] };
+    const threat = {
+      id: 'c1', type: 'CYBER_THREAT_TYPE_C2_SERVER', source: 'CYBER_THREAT_SOURCE_FEODO',
+      indicator: '192.0.2.1', indicatorType: 'CYBER_THREAT_INDICATOR_TYPE_IP',
+      severity: 'CRITICALITY_LEVEL_HIGH', tags: [], firstSeenAt: 0, lastSeenAt: 0,
+    };
     const event = { id: 'u1', title: 'event', country: 'AE', severity: '', sourceType: '', sources: [], sourceUrls: [], tags: [], actors: [], occurredAt: 1 };
     setup({ cyber: [{ threats: [threat] }, { threats: [] }], unrest: [{ events: [event] }, { events: [] }] });
     const h = await loadHarness<{ fetchCyberThreats(): Promise<unknown[]>; fetchProtestEvents(): Promise<{ events: unknown[] }> }>(["export { fetchCyberThreats } from './src/services/cyber/index.ts';", "export { fetchProtestEvents } from './src/services/unrest/index.ts';"]);

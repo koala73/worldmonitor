@@ -5147,7 +5147,11 @@ describe('allowlisted Redis transactions', { concurrency: 1 }, () => {
       ]);
       const proxy = readFileSync(resolve(root, 'docker/redis-rest-proxy.mjs'), 'utf8');
       assert.match(proxy, /req\.url === '\/multi-exec'/);
-      assert.match(proxy, /'GET', 'SET', 'DEL'/);
+      const allowlist = proxy.match(/const ALLOWED_COMMANDS = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? '';
+      const commands = new Set([...allowlist.matchAll(/'([A-Z]+)'/g)].map((match) => match[1]));
+      for (const command of ['GET', 'GETDEL', 'SET', 'DEL']) {
+        assert.ok(commands.has(command), `${command} must be allowed by the Redis proxy`);
+      }
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();

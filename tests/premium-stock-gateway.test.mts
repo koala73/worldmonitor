@@ -802,6 +802,65 @@ describe('premium gateway bearer token auth', () => {
       .sign(opts?.key ?? privateKey);
   }
 
+  it('keeps a paid bearer endpoint limit when its batch paid only an IP bucket', async () => {
+    const { createExecuteBatch } = await import('../server/worldmonitor/batch/v1/execute-batch.ts');
+    const { __resetRateLimitForTest } = await import('../server/_shared/rate-limit.ts');
+    const token = await signToken({ sub: 'user_batch_bearer_review', plan: 'pro' });
+    const savedFetch = globalThis.fetch;
+    const site = process.env.CONVEX_SITE_URL;
+    const secret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    process.env.CONVEX_SITE_URL = 'https://bearer-batch.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    const path = '/api/market/v1/list-market-quotes';
+    const origin = 'https://worldmonitor.app';
+    const redis = createRedisFetch({});
+    let chargedPrincipal = false;
+    __resetRateLimitForTest();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith(`${origin}${path}`)) return handler(new Request(url, init));
+      if (url.includes('/api/internal-entitlements')) return Response.json({
+        planKey: 'pro', validUntil: Date.now() + 86_400_000, features: { tier: 1 },
+      });
+      if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL!)) {
+        const response = await redis.fetchImpl(input, init);
+        const commands = JSON.parse(String(init?.body ?? '[]'));
+        if (!Array.isArray(commands[0])) return response;
+        const results = await response.json();
+        for (let i = 0; i < commands.length; i++) {
+          if (String(commands[i][0]).toUpperCase() === 'EVALSHA'
+            && JSON.stringify(commands[i]).includes(`rl:ep:${path}:user:user_batch_bearer_review:`)) {
+            chargedPrincipal = true;
+            results[i] = { result: [-1, Date.now() + 60_000] };
+          }
+        }
+        return Response.json(results);
+      }
+      return savedFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const { serverOptions } = await import('../server/gateway.ts');
+      const generated = await import('../src/generated/server/worldmonitor/batch/v1/service_server.ts');
+      const outer = createDomainGateway(generated.createBatchServiceRoutes({ executeBatch: createExecuteBatch() }, serverOptions));
+      const response = await outer(new Request(`${origin}/api/batch/v1/execute`, {
+        method: 'POST', headers: {
+          'Content-Type': 'application/json', 'X-WorldMonitor-Key': SESSION_TOKEN,
+          Authorization: `Bearer ${token}`, 'x-real-ip': '203.0.113.19',
+        },
+        body: JSON.stringify({ operations: [{ id: 'a', path }] }),
+      }));
+      assert.equal(response.status, 200, await response.clone().text());
+      const result = await response.json();
+      assert.equal(result.results[0].status, 429);
+      assert.equal(chargedPrincipal, true, 'the resolved bearer budget must still be checked');
+    } finally {
+      globalThis.fetch = savedFetch;
+      if (site === undefined) delete process.env.CONVEX_SITE_URL; else process.env.CONVEX_SITE_URL = site;
+      if (secret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET; else process.env.CONVEX_SERVER_SHARED_SECRET = secret;
+      __resetRateLimitForTest();
+    }
+  });
+
   it('valid Pro bearer token unlocks tier-1 entitlement-gated endpoints without a Convex row', async () => {
     // Clerk role='pro' remains a supported Pro signal for complimentary,
     // tester, and legacy grants that do not have a Convex entitlement row.

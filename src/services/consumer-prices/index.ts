@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { GetConsumerPriceOverviewResponse, GetConsumerPriceBasketSeriesResponse, ListConsumerPriceCategoriesResponse, ListConsumerPriceMoversResponse, ListRetailerPriceSpreadsResponse, GetConsumerPriceFreshnessResponse, CategorySnapshot, PriceMover, RetailerSpread, BasketPoint, RetailerFreshnessInfo } from '@/generated/client/worldmonitor/consumer_prices/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { ConsumerPricesServiceClient } from '@/services/generated-rpc-clients';
 
@@ -184,14 +184,10 @@ export async function fetchConsumerPriceCategories(
   basketSlug = DEFAULT_BASKET,
   range = '30d',
 ): Promise<ListConsumerPriceCategoriesResponse> {
-  if (marketCode === DEFAULT_MARKET) {
+  if (marketCode === DEFAULT_MARKET && basketSlug === DEFAULT_BASKET && range === '30d') {
     const hydrated = getHydratedData('consumerPricesCategories') as ListConsumerPriceCategoriesResponse | undefined;
     if (hydrated && Array.isArray(hydrated.categories) && isAvailable(hydrated)) {
-      // Warm the breaker only under the default snapshot's exact later cache
-      // key (default market/basket at the default range) (#7048).
-      if (basketSlug === DEFAULT_BASKET && range === '30d') {
-        categoriesBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}:30d`);
-      }
+      categoriesBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}:30d`);
       return hydrated;
     }
   }
@@ -212,14 +208,10 @@ export async function fetchConsumerPriceMovers(
   range = '30d',
   categorySlug?: string,
 ): Promise<ListConsumerPriceMoversResponse> {
-  if (marketCode === DEFAULT_MARKET) {
+  if (marketCode === DEFAULT_MARKET && range === '30d' && !categorySlug) {
     const hydrated = getHydratedData('consumerPricesMovers') as ListConsumerPriceMoversResponse | undefined;
     if (hydrated && Array.isArray(hydrated.risers) && Array.isArray(hydrated.fallers) && isAvailable(hydrated)) {
-      // Warm the breaker only under the default snapshot's exact later cache
-      // key (default market/range, unfiltered) (#7048).
-      if (range === '30d' && !categorySlug) {
-        moversBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:30d:`);
-      }
+      moversBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:30d:`);
       return hydrated;
     }
   }
@@ -239,14 +231,10 @@ export async function fetchRetailerPriceSpreads(
   marketCode = DEFAULT_MARKET,
   basketSlug = DEFAULT_BASKET,
 ): Promise<ListRetailerPriceSpreadsResponse> {
-  if (marketCode === DEFAULT_MARKET) {
+  if (marketCode === DEFAULT_MARKET && basketSlug === DEFAULT_BASKET) {
     const hydrated = getHydratedData('consumerPricesSpread') as ListRetailerPriceSpreadsResponse | undefined;
     if (hydrated && Array.isArray(hydrated.retailers) && isAvailable(hydrated)) {
-      // Warm the breaker only under the default snapshot's exact later cache
-      // key (default market/basket) (#7048).
-      if (basketSlug === DEFAULT_BASKET) {
-        spreadBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}`);
-      }
+      spreadBreaker.recordSuccess(hydrated, `${DEFAULT_MARKET}:${DEFAULT_BASKET}`);
       return hydrated;
     }
   }

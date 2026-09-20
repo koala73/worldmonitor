@@ -100,7 +100,8 @@ export class ServiceStatusPanel extends Panel {
       h('div', { className: 'service-status-list' },
         ...this.buildServiceItems(filtered),
       ),
-      issues.length === 0 ? h('div', { className: 'all-operational' }, t('components.serviceStatus.allOperational')) : false,
+      filtered.length === 0 ? h('div', { className: 'panel-empty' }, t('common.noDataAvailable')) : false,
+      filtered.length > 0 && issues.length === 0 ? h('div', { className: 'all-operational' }, t('components.serviceStatus.allOperational')) : false,
     );
   }
 

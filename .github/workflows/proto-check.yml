@@ -67,6 +67,8 @@ env:
     server/_shared/response-headers.ts
     server/_shared/response-projection.ts
     server/_shared/seed-envelope.ts
+    server/_shared/server-sub-request-dispatch.ts
+    server/_shared/sub-request-admission.ts
     server/_shared/usage-identity.ts
     server/_shared/usage.ts
     server/auth-session.ts

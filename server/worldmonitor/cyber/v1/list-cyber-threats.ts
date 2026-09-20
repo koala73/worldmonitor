@@ -10,6 +10,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/cyber/v1/service_server';
 
 import { readRequiredSeed } from '../../../_shared/required-seed';
+import { isCyberThreatSnapshot } from '../../../../shared/cyber-threat-snapshot';
 import {
   DEFAULT_LIMIT,
   MAX_LIMIT,
@@ -53,10 +54,7 @@ export async function listCyberThreats(
   const pageSize = req.pageSize <= 0 ? DEFAULT_LIMIT : clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const offset = parseCursor(req.cursor);
 
-  const seedData = await readRequiredSeed(SEED_CACHE_KEY, value => {
-    const data = value as Pick<ListCyberThreatsResponse, 'threats'> | null;
-    return data && Array.isArray(data.threats) ? data : undefined;
-  });
+  const seedData = await readRequiredSeed(SEED_CACHE_KEY, value => isCyberThreatSnapshot(value) ? value : undefined);
 
   const allThreats = filterSeededThreats(seedData.threats, req);
   if (offset >= allThreats.length) return empty;
