@@ -25,6 +25,21 @@ function snapshot(ageDays, filename = 'crawlable-live-pulse-2026-09-09.json') {
   return { filename, capturedAt: '2026-09-09', ageDays };
 }
 
+// The 2026-09-19 hand-made refresh (#8340) that landed five days after the
+// 2026-09-14 scheduled failure, exactly the state the monitor's first run
+// reported as a finding (#8417).
+const HAND_REFRESHED = {
+  filename: 'crawlable-live-pulse-2026-09-19.json',
+  capturedAt: '2026-09-19',
+  capturedAtMs: Date.parse('2026-09-19T05:24:34.912Z'),
+  ageDays: 1,
+};
+const FAILED_BEFORE_REFRESH = {
+  conclusion: 'failure',
+  createdAt: '2026-09-14T04:50:09Z',
+  url: 'https://github.com/koala73/worldmonitor/actions/runs/34807475235',
+};
+
 describe('pulse freshness thresholds', () => {
   // The warning line, the refresh cadence and the build ceiling are one
   // contract. Below the cadence the alarm fires every healthy week and gets
@@ -83,6 +98,37 @@ describe('pulse freshness verdict', () => {
     const verdict = evaluatePulseFreshness(snapshot(1), { conclusion: 'failure', createdAt: '2026-09-14' });
     assert.equal(verdict.alert, true);
     assert.deepEqual(verdict.reasons.map((r) => r.kind), ['refresh-failed']);
+  });
+
+  it('does not report a failed refresh that a newer snapshot has already superseded', () => {
+    // A hand refresh merged after the failure is the remedy the issue body asks
+    // for. Re-reporting the failure the next morning reopened the same issue a
+    // day after it was fixed (#8417).
+    const verdict = evaluatePulseFreshness(HAND_REFRESHED, FAILED_BEFORE_REFRESH);
+    assert.equal(verdict.alert, false);
+    assert.deepEqual(verdict.reasons, []);
+    assert.equal(verdict.lastRun.superseded, true);
+    assert.match(renderBody(verdict), /Last refresh run: `failure`.*superseded/);
+  });
+
+  it('still reports a failed refresh that postdates the newest snapshot by hours', () => {
+    // capturedAtMs, not the date-only capturedAt, decides: a dispatch that
+    // failed later the same day is the newest signal and must not hide behind
+    // the morning's snapshot.
+    const laterSameDay = { ...FAILED_BEFORE_REFRESH, createdAt: '2026-09-19T09:00:00Z' };
+    const verdict = evaluatePulseFreshness(HAND_REFRESHED, laterSameDay);
+    assert.deepEqual(verdict.reasons.map((r) => r.kind), ['refresh-failed']);
+    assert.equal(verdict.lastRun.superseded, false);
+  });
+
+  it('fails closed on a snapshot without capturedAtMs: only a later day supersedes', () => {
+    const dateOnly = { filename: 'crawlable-live-pulse-2026-09-14.json', capturedAt: '2026-09-14', ageDays: 1 };
+    assert.deepEqual(
+      evaluatePulseFreshness(dateOnly, FAILED_BEFORE_REFRESH).reasons.map((r) => r.kind),
+      ['refresh-failed'],
+    );
+    const nextDay = { ...dateOnly, filename: 'crawlable-live-pulse-2026-09-15.json', capturedAt: '2026-09-15' };
+    assert.deepEqual(evaluatePulseFreshness(nextDay, FAILED_BEFORE_REFRESH).reasons, []);
   });
 
   it('warns once the snapshot passes the warning line', () => {
@@ -164,12 +210,34 @@ describe('pulse freshness reporting', () => {
     assert.ok(calls[0].args.includes('POST'), 'a PR is not an issue to update');
   });
 
-  it('writes nothing when the pulse is healthy', () => {
+  it('closes the open issue once the pulse is healthy, with a comment that notifies', () => {
+    // An issue left open is updated silently (a body PATCH sends no
+    // notification), so the next real finding would reach nobody. Closing on
+    // recovery makes the next finding a fresh issue.
+    const calls = [];
+    const verdict = evaluatePulseFreshness(HAND_REFRESHED, FAILED_BEFORE_REFRESH);
+    const result = publishPulseFreshness(verdict, {
+      repository: 'koala73/worldmonitor',
+      gh: () => [[{ number: 8417, title: ISSUE_TITLE }]],
+      ghPost: (args, payload) => { calls.push({ args, payload }); return {}; },
+    });
+
+    assert.deepEqual(result, { alert: false, action: 'closed' });
+    const [comment, close] = calls;
+    assert.ok(comment.args.some((arg) => arg.endsWith('/issues/8417/comments')));
+    assert.match(comment.payload.body, /crawlable-live-pulse-2026-09-19\.json/);
+    assert.ok(close.args.includes('PATCH'));
+    assert.ok(close.args.some((arg) => arg.endsWith('/issues/8417')));
+    assert.equal(close.payload.state, 'closed');
+    assert.equal(calls.length, 2, 'nothing is created while healthy');
+  });
+
+  it('writes nothing when the pulse is healthy and no issue is open', () => {
     let posted = false;
     const verdict = evaluatePulseFreshness(snapshot(1), { conclusion: 'success' });
     const result = publishPulseFreshness(verdict, {
       repository: 'koala73/worldmonitor',
-      gh: () => { throw new Error('must not query issues when healthy'); },
+      gh: () => [[{ number: 1, title: 'something else' }]],
       ghPost: () => { posted = true; return {}; },
     });
     assert.deepEqual(result, { alert: false });
