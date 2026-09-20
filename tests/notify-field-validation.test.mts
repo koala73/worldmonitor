@@ -130,9 +130,14 @@ describe('/api/notify field validation (pentest PoC)', () => {
       `queued payload must not carry the forged source: ${queuedText}`,
     );
     const delivered = formatMessage(event);
+    // Delivered text discloses the destination host inline
+    // (`<url> (source: <host>)`), so assert the disclosure form rather than
+    // substring-matching the URL — CodeQL's incomplete-url-sanitization query
+    // flags `.includes(fullUrl)` as insufficient because a hostile host can
+    // hide before/after the match.
     assert.ok(
-      !delivered.includes('https://example.com/wm-verify-account') || delivered.includes('(source: example.com)'),
-      `delivered text must not carry the off-origin link verbatim: ${delivered}`,
+      delivered.includes('https://example.com/wm-verify-account (source: example.com)'),
+      `delivered text must disclose the off-origin host inline: ${delivered}`,
     );
     assert.ok(
       !delivered.includes('WorldMonitor Security'),
@@ -182,10 +187,11 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     assert.ok(!text.includes('WorldMonitor Security'), `must not render forged source: ${text}`);
     // Reachable https article links stay deliverable (the point of rss_alert)
     // but must disclose the destination host inline, so platform branding can
-    // never mask the target: the bare off-origin URL must not appear alone.
+    // never mask the target. Assert the disclosure form rather than
+    // substring-matching the URL (CodeQL incomplete-url-sanitization).
     assert.ok(
-      !text.includes('https://example.com/wm-verify-account') || text.includes('(source: example.com)'),
-      `must not render off-origin link verbatim: ${text}`,
+      text.includes('https://example.com/wm-verify-account (source: example.com)'),
+      `must disclose the off-origin host inline: ${text}`,
     );
     assert.ok(text.includes('(source: example.com)'), `must disclose the destination host: ${text}`);
   });
@@ -245,6 +251,8 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     });
     assert.ok(text.includes('Markets rally on rate outlook'), text);
     assert.ok(text.includes('Reuters'), text);
-    assert.ok(text.includes('reuters.com'), text);
+    // Disclosure form, not a bare-host substring (CodeQL
+    // incomplete-url-sanitization flags `.includes(host)` matches).
+    assert.ok(text.includes('https://reuters.com/world/story (source: reuters.com)'), text);
   });
 });
