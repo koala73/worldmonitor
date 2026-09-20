@@ -1042,7 +1042,7 @@ components:
                            feed and the build did not hit the global deadline.
                          partial: content exists, but a category had no completed feed or the
                            build hit the global deadline.
-                         stale: accepted older content is served after a failed latest attempt
+                         stale: accepted older content is served after a failed or gate-held attempt
                            (durable last-good serving, #7084).
                          unavailable: no eligible content could be served.
                 attemptedAt:
@@ -1098,8 +1098,8 @@ components:
                     type: boolean
                     description: |-
                         Durable last-good serving (#7084): true exactly when accepted older
-                         content is replayed after a failed latest attempt. The content counts
-                         above still describe the served body; attempted_at names the FAILED
+                         content is replayed after a failed or gate-held attempt. The content counts
+                         above still describe the served body; attempted_at names that latest
                          attempt, so it and generated_at diverge on a replay.
                 staleAgeSeconds:
                     type: integer
@@ -1110,12 +1110,12 @@ components:
                          state=unavailable rather than serving older content.
                 staleReason:
                     type: string
-                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
+                    description: 'Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).'
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);
                  attempted_at keeps the latest BUILD identity — the two diverge when
-                 stale content is served after a failed attempt (#7084).
+                 stale content is served after a failed or gate-held attempt (#7084).
         CategoryStatesEntry:
             type: object
             properties:
