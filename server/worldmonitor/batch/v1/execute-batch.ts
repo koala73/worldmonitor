@@ -1,4 +1,3 @@
-import { issueSubRequestAdmission } from '../../../_shared/sub-request-admission';
 /**
  * RPC: executeBatch -- Runs up to 20 documented GET operations in one request.
  *
@@ -11,9 +10,8 @@ import { issueSubRequestAdmission } from '../../../_shared/sub-request-admission
  * control the re-dispatch cannot inherit — the gateway would key them to the
  * platform's egress IP — so each operation is charged to the CALLER's own
  * budget here, before dispatch, via the shared server-sub-request dispatch
- * path (`resolveServerSubRequestCharge` /
- * `chargeServerSubRequestOperation` in `server/_shared/rate-limit.ts` — see
- * chargeCaller).
+ * path (`dispatchServerSubRequest` in
+ * `server/_shared/server-sub-request-dispatch.ts`).
  */
 
 import type {
@@ -30,12 +28,12 @@ import {
   ValidationError,
 } from '../../../../src/generated/server/worldmonitor/batch/v1/service_server';
 import {
-  chargeServerSubRequestOperation,
-  formatTrustedRateLimitPrincipal,
-  resolveServerSubRequestCharge,
   SUB_REQUEST_MARKER_HEADER,
-  type ServerSubRequestCharge,
 } from '../../../_shared/rate-limit';
+import {
+  dispatchServerSubRequest,
+  type ServerSubRequestFetch,
+} from '../../../_shared/server-sub-request-dispatch';
 
 export const MAX_BATCH_OPERATIONS = 20;
 export const MAX_OPERATION_ID_LENGTH = 64;
@@ -63,7 +61,7 @@ const V2_PATH_RE = /^\/api\/v2\/[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
 const DEFAULT_SUB_REQUEST_USER_AGENT =
   'WorldMonitor-Batch/1.0 (+https://www.worldmonitor.app/openapi.json)';
 
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export type FetchLike = ServerSubRequestFetch;
 
 type ValidatedOperation = {
   id: string;
@@ -145,39 +143,11 @@ function buildSubRequestHeaders(inbound: Headers): Headers {
   return headers;
 }
 
-/**
- * Charges one sub-operation against the batch caller's own budget BEFORE it is
- * dispatched, via the shared server-sub-request dispatch path
- * (`chargeServerSubRequestOperation`). Sub-requests are re-dispatched as
- * same-origin GETs, so the gateway re-derives their identity from the
- * platform's fetch egress IP — a bucket the caller does not own. Without this
- * pre-charge a single batch buys up to MAX_BATCH_OPERATIONS endpoint
- * admissions that never touch the caller's per-IP/per-principal budget, which
- * is exactly the "each operation is rate-limited as if sent directly"
- * contract this endpoint publishes.
- *
- * Refusals are returned as the sub-result the caller would have received had
- * the operation been sent directly (429, 429 `unattributed-sub-request` when
- * no initiating principal exists, or 503 when the limiter itself is
- * unavailable and the endpoint policy fails closed), and the operation is not
- * dispatched.
- */
-async function chargeCaller(
-  op: ValidatedOperation,
-  inbound: Request,
-  charge: ServerSubRequestCharge,
-): Promise<BatchOperationResult | null> {
-  if (!op.target) return null;
-  const refused = await chargeServerSubRequestOperation(inbound, op.target.pathname, charge);
-  if (!refused) return null;
-  return { id: op.id, status: refused.status, body: refused.body as BatchOperationBody, error: '' };
-}
-
 async function runOperation(
   op: ValidatedOperation,
+  inbound: Request,
   headers: Headers,
   fetchImpl: FetchLike,
-  charge: ServerSubRequestCharge,
 ): Promise<BatchOperationResult> {
   if (!op.target) {
     return { id: op.id, status: 0, error: op.error ?? 'invalid_path' };
@@ -185,22 +155,23 @@ async function runOperation(
 
   let response: Response;
   try {
-    const operationHeaders = new Headers(headers);
-    const admission = await issueSubRequestAdmission(new Request(op.target.toString(), {
-      method: 'GET', headers: operationHeaders,
-    }), charge.opts.principalUserId
-      ? formatTrustedRateLimitPrincipal(charge.opts.principalUserId, charge.opts.principalScope ?? 'session')
-      : null);
-    if (!admission) {
-      return { id: op.id, status: 503, body: { error: 'Rate-limit service temporarily unavailable' }, error: '' };
-    }
-    operationHeaders.set(SUB_REQUEST_MARKER_HEADER, admission);
-    response = await fetchImpl(op.target.toString(), {
-      method: 'GET',
-      headers: operationHeaders,
+    const dispatched = await dispatchServerSubRequest({
+      inbound,
+      target: op.target,
+      headers,
+      fetchImpl,
       redirect: 'manual',
       signal: AbortSignal.timeout(SUB_REQUEST_TIMEOUT_MS),
     });
+    if (dispatched.kind === 'refused') {
+      return {
+        id: op.id,
+        status: dispatched.status,
+        body: dispatched.body as BatchOperationBody,
+        error: '',
+      };
+    }
+    response = dispatched.response;
   } catch (err) {
     const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
     return { id: op.id, status: 0, error: isTimeout ? 'timeout' : 'fetch_failed' };
@@ -264,17 +235,8 @@ export function createExecuteBatch(
     }
 
     const headers = buildSubRequestHeaders(ctx.request.headers);
-    // Identity comes from the shared dispatch path, never from the caller's
-    // raw credential headers: an unvalidated `wm_` prefix would let a session
-    // caller pick the separate api_key bucket and split its traffic across
-    // two budgets. No principal stamped and no usable caller IP ⇒ the shared
-    // path refuses the sub-request instead of keying on the egress IP.
-    const charge = resolveServerSubRequestCharge(ctx.request);
     const results = await Promise.all(
-      validated.map(async (op) => {
-        const refused = await chargeCaller(op, ctx.request, charge);
-        return refused ?? runOperation(op, headers, fetchImpl, charge);
-      }),
+      validated.map((op) => runOperation(op, ctx.request, headers, fetchImpl)),
     );
 
     const succeeded = results.filter((r) => r.status >= 200 && r.status < 300 && !r.error).length;

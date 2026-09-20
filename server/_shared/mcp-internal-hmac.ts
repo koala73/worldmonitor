@@ -158,8 +158,11 @@ export function canonicalGatewayQueryString(input: URL): string {
   const pathSegments = url.pathname.split('/').filter(Boolean);
   const lastSegment = pathSegments[pathSegments.length - 1] ?? '';
   const rpcParams = url.searchParams.getAll('rpc');
-  if (rpcParams.length > 0 && rpcParams.every((value) => value === lastSegment)) {
+  if (rpcParams.some((value) => value === lastSegment)) {
     url.searchParams.delete('rpc');
+    for (const value of rpcParams) {
+      if (value !== lastSegment) url.searchParams.append('rpc', value);
+    }
   }
   return canonicalQueryString(url);
 }

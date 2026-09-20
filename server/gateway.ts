@@ -28,6 +28,7 @@ import {
   checkFailClosedScopedIpRateLimit,
   formatTrustedRateLimitPrincipal,
   hasEndpointRatePolicy,
+  RATE_LIMIT_DEGRADED_HEADERS,
   TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
 } from './_shared/rate-limit';
 import {
@@ -2067,9 +2068,23 @@ export function createDomainGateway(
     //
     // Only a single-use admission for this exact request waives the prepaid
     // endpoint/global limit. Account meters and auth still run for every call.
-    const isServerSubRequest = await consumeSubRequestAdmission(request, rateLimitPrincipalUserId
+    const subRequestAdmission = await consumeSubRequestAdmission(request, rateLimitPrincipalUserId
       ? formatTrustedRateLimitPrincipal(rateLimitPrincipalUserId, isUserApiKey ? 'api_key' : 'session')
       : null);
+    if (subRequestAdmission === 'unavailable') {
+      const response = new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          ...RATE_LIMIT_DEGRADED_HEADERS,
+          ...corsHeaders,
+        },
+      });
+      emitRequest(503, 'rate_limit_degraded', null);
+      return response;
+    }
+    const isServerSubRequest = subRequestAdmission === 'admitted';
     // Google searches need their tighter upstream budget even after MCP admission.
     if (!isServerSubRequest && internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
       || pathname === '/api/aviation/v1/search-google-dates')) {

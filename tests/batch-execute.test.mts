@@ -609,6 +609,66 @@ describe('batch gateway access', () => {
     }
   });
 
+  it('accepts a principal-bound admission on a public inner route without charging egress', async () => {
+    const [{ createDomainGateway }] = await Promise.all([
+      import('../server/gateway.ts'),
+    ]);
+    const path = '/api/intelligence/v1/get-china-decision-signals';
+    const redis = installRedis({});
+    __resetRateLimitForTest();
+    const keys: string[] = [];
+    const base = redis.fetchImpl;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      for (const match of body.matchAll(/"(rl:[^"]+)"/g)) keys.push(match[1]!);
+      return base(input, init);
+    }) as typeof fetch;
+    const gateway = createDomainGateway([{
+      method: 'GET',
+      path,
+      handler: async () => Response.json({ ok: true }),
+    }]);
+    const headers = new Headers({ Origin: ORIGIN, 'x-real-ip': '66.249.1.1' });
+    const admission = await issueSubRequestAdmission(
+      new Request(`${ORIGIN}${path}`, { headers }),
+      'api_key:user_stamped',
+    );
+    assert.ok(admission);
+    headers.set(SUB_REQUEST_MARKER_HEADER, admission);
+
+    const response = await gateway(new Request(`${ORIGIN}${path}`, { headers }));
+    await response.text();
+
+    assert.equal(response.status, 200);
+    assert.equal(keys.length, 0, 'the public inner route must not charge the platform egress IP');
+  });
+
+  it('fails closed when a marked admission cannot be verified', async () => {
+    const [{ createDomainGateway }] = await Promise.all([
+      import('../server/gateway.ts'),
+    ]);
+    const path = '/api/intelligence/v1/get-china-decision-signals';
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    __resetRateLimitForTest();
+    const gateway = createDomainGateway([{
+      method: 'GET',
+      path,
+      handler: async () => Response.json({ ok: true }),
+    }]);
+    const response = await gateway(new Request(`${ORIGIN}${path}`, {
+      headers: {
+        Origin: ORIGIN,
+        'x-real-ip': '66.249.1.1',
+        [SUB_REQUEST_MARKER_HEADER]: crypto.randomUUID(),
+      },
+    }));
+
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(response.headers.get('Retry-After'), '5');
+  });
+
   it('charges one endpoint admission and one account meter per real batch operation', async () => {
     const [{ createDomainGateway, serverOptions }, generated] = await Promise.all([
       import('../server/gateway.ts'),

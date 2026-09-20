@@ -3,10 +3,9 @@
  *
  * The batch endpoint (`tests/batch-execute.test.mts`) proves ONE fan-out
  * charges the caller's budget. This file proves the CLASS: the shared
- * dispatch path in `server/_shared/rate-limit.ts`
- * (`resolveServerSubRequestCharge` / `chargeServerSubRequestOperation` /
- * `isUnattributedSubRequestIdentity`) that every fan-out inherits, so a new
- * fan-out endpoint cannot opt out by omission.
+ * dispatch path in `server/_shared/server-sub-request-dispatch.ts` owns the
+ * charge, admission, marker, and fetch that every fan-out inherits, so a new
+ * fan-out endpoint cannot omit one of those steps.
  *
  * Invariants pinned here, independently of `/api/batch/v1/execute`:
  *   1. a stamped gateway principal resolves to that principal's own bucket
@@ -35,6 +34,8 @@ import {
   resolveServerSubRequestCharge,
   TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
 } from '../server/_shared/rate-limit.ts';
+import { dispatchServerSubRequest } from '../server/_shared/server-sub-request-dispatch.ts';
+import { SUB_REQUEST_MARKER_HEADER } from '../server/_shared/sub-request-admission.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 const POLICY_PATH = '/api/market/v1/list-market-quotes';
@@ -228,5 +229,55 @@ describe('server-initiated sub-request dispatch path (#8399)', () => {
       status: 503,
       body: { error: 'Rate-limit service temporarily unavailable' },
     });
+  });
+
+  it('owns charge, admission, marker attachment, and fetch as one dispatch operation', async () => {
+    const redis = installRedis({});
+    const { keys } = collectLimiterKeys(redis.fetchImpl);
+    const calls: Array<{ url: string; headers: Headers }> = [];
+    const result = await dispatchServerSubRequest({
+      inbound: inboundRequest(),
+      target: new URL(`https://www.worldmonitor.app${POLICY_PATH}?symbols=AAPL`),
+      headers: { accept: 'application/json' },
+      fetchImpl: async (url, init) => {
+        calls.push({ url, headers: new Headers(init?.headers) });
+        return Response.json({ ok: true });
+      },
+    });
+
+    assert.equal(result.kind, 'dispatched');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, `https://www.worldmonitor.app${POLICY_PATH}?symbols=AAPL`);
+    assert.match(calls[0]!.headers.get(SUB_REQUEST_MARKER_HEADER) ?? '', /^[0-9a-f-]{36}$/);
+    assert.ok(keys.length > 0, 'dispatch must charge the caller before it fetches');
+  });
+
+  it('refuses unsafe or unattributed dispatches before fetch', async () => {
+    let fetches = 0;
+    const fetchImpl = async () => {
+      fetches += 1;
+      return Response.json({ ok: true });
+    };
+    const crossOrigin = await dispatchServerSubRequest({
+      inbound: inboundRequest(),
+      target: new URL(`https://example.com${POLICY_PATH}`),
+      headers: {},
+      fetchImpl,
+    });
+    const unattributed = await dispatchServerSubRequest({
+      inbound: inboundRequest({ 'x-real-ip': '' }),
+      target: new URL(`https://www.worldmonitor.app${POLICY_PATH}`),
+      headers: {},
+      fetchImpl,
+    });
+
+    assert.deepEqual(crossOrigin, {
+      kind: 'refused',
+      status: 400,
+      body: { error: 'Cross-origin sub-requests are not allowed' },
+    });
+    assert.equal(unattributed.kind, 'refused');
+    assert.equal(unattributed.status, 429);
+    assert.equal(fetches, 0);
   });
 });
