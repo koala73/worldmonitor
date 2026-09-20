@@ -5,8 +5,7 @@ import type {
 
 import { getCachedJson } from '../../../_shared/redis';
 
-const DEFAULT_MARKET = 'ae';
-const DEFAULT_BASKET = 'essentials-ae';
+import { resolveConsumerPriceSelection } from './_selection';
 const DEFAULT_RANGE = '30d';
 
 const VALID_RANGES = new Set(['7d', '30d', '90d']);
@@ -15,8 +14,7 @@ export async function getConsumerPriceBasketSeries(
   _ctx: unknown,
   req: GetConsumerPriceBasketSeriesRequest,
 ): Promise<GetConsumerPriceBasketSeriesResponse> {
-  const market = req.marketCode || DEFAULT_MARKET;
-  const basket = req.basketSlug || DEFAULT_BASKET;
+  const { market, basket } = resolveConsumerPriceSelection(req.marketCode, req.basketSlug);
   const range = VALID_RANGES.has(req.range ?? '') ? req.range! : DEFAULT_RANGE;
 
   const key = `consumer-prices:basket-series:${market}:${basket}:${range}`;

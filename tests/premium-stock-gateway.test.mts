@@ -43,6 +43,7 @@ function installRateLimitRedisFake(): void {
 }
 
 const ISSUE_4609_GATED_ROUTES = [
+  { method: 'GET', path: '/api/market/v1/get-insider-transactions' },
   { method: 'POST', path: '/api/forecast/v1/trigger-simulation' },
   { method: 'GET', path: '/api/sanctions/v1/list-sanctions-pressure' },
   { method: 'POST', path: '/api/scenario/v1/run-scenario' },
@@ -178,10 +179,10 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(publicAllowed.status, 200);
 
-    const insiderTransactionsAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL', {
+    const insiderTransactionsDenied = await handler(new Request('https://worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL', {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
-    assert.equal(insiderTransactionsAllowed.status, 200);
+    assert.equal(insiderTransactionsDenied.status, 401);
   });
 
   it('standardizes issue #4609 Pro RPCs behind the entitlement 403 gate', async () => {

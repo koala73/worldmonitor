@@ -470,6 +470,8 @@ export class PanelLayoutManager implements AppModule {
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
+  private gatingPrincipal: string | null | undefined = undefined;
+  private premiumPanelsUnlocked = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
@@ -967,17 +969,31 @@ export class PanelLayoutManager implements AppModule {
       // resubscribe) so we never push a paying user toward duplicate checkout.
       if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
 
+      const gatedPanel = panel as Panel;
+      const principal = state.user?.id ?? null;
+      const principalChanged = this.gatingPrincipal !== undefined && this.gatingPrincipal !== principal;
+      const hadUnlockedPayload = isPremium && this.premiumPanelsUnlocked.has(key);
+      if (hadUnlockedPayload && (principalChanged || reason !== PanelGateReason.NONE)) {
+        gatedPanel.clearSensitiveContent();
+      }
+
       if (reason === PanelGateReason.NONE) {
-        // User has access -- unlock if previously locked
-        (panel as Panel).unlockPanel();
+        // Bind before unlock so a snapshot taken under another user is refused.
+        gatedPanel.bindContentPrincipal(principal);
+        gatedPanel.unlockPanel();
+        if (isPremium) this.premiumPanelsUnlocked.add(key);
       } else {
-        // User does NOT have access -- show appropriate CTA
+        // Snapshot while the previous principal is still bound, then record
+        // the user who is now locked out.
         const onAction = resolveGateAction(reason, {
           openAuthModal: () => this.ctx.authModal?.open(),
         });
-        (panel as Panel).showGatedCta(reason, onAction);
+        gatedPanel.showGatedCta(reason, onAction);
+        gatedPanel.bindContentPrincipal(principal);
+        this.premiumPanelsUnlocked.delete(key);
       }
     }
+    this.gatingPrincipal = state.user?.id ?? null;
 
     // KTD8: the tab cap rides the SAME pass, so it re-evaluates on both
     // subscribeAuthState and onEntitlementChange (plus onSubscriptionChange).
@@ -1292,7 +1308,6 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://www.worldmonitor.app/docs/documentation" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
           ${this.ctx.isDesktopApp ? '' : `<span id="footerDownloadMount"></span>`}
         </nav>
@@ -3063,7 +3078,11 @@ export class PanelLayoutManager implements AppModule {
         'events',
         () => import('@/components/TechEventsPanel'),
         'TechEventsPanel',
-        (TechEventsPanel) => new TechEventsPanel('events', () => this.ctx.allNews),
+        (TechEventsPanel) => {
+          const panel = new TechEventsPanel('events', () => this.ctx.allNews);
+          panel.setMapNavigateHandler((lat, lng) => { this.ctx.map?.setCenter(lat, lng, 10); });
+          return panel;
+        },
       ),
     );
     this.lazyDefaultPanel('internet-disruptions', () => import('@/components/InternetDisruptionsPanel'), 'InternetDisruptionsPanel');

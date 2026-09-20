@@ -58,6 +58,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         email: 'pro@example.com',
         name: 'Existing Pro',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -95,6 +96,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_pending_payment',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -116,7 +118,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     const relayFetch = mock.fn(async () =>
       Response.json(
         {
-          error: 'Checkout failed: Request timed out.',
+          error: 'CHECKOUT_TIMED_OUT',
           message: 'Dodo checkout request exceeded its provider timeout',
         },
         { status: 500 },
@@ -128,6 +130,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_retryable_failure',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -135,13 +138,13 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
 
     assert.equal(res.status, 500);
     assert.deepEqual(await res.json(), {
-      error: 'Checkout failed: Request timed out.',
+      error: 'CHECKOUT_TIMED_OUT',
     });
     assert.equal(consoleError.mock.calls.length, 1);
     assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay error:');
     assert.equal(consoleError.mock.calls[0].arguments[1], 500);
     assert.deepEqual(consoleError.mock.calls[0].arguments[2], {
-      error: 'Checkout failed: Request timed out.',
+      error: 'CHECKOUT_TIMED_OUT',
       message: 'Dodo checkout request exceeded its provider timeout',
     });
     assert.equal(relayFetch.mock.calls.length, 1, 'one logical relay create call');
@@ -159,6 +162,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_relay_network_failure',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -194,6 +198,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_rate_limited',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -214,6 +219,7 @@ it('forwards invalid checkout product as HTTP 400 without a transport retry sign
   const relayFetch = mock.fn(async () => Response.json({ error: 'INVALID_CHECKOUT_PRODUCT' }, { status: 400 }));
   mod.__setCreateCheckoutDepsForTests({
     validateBearerToken: async () => ({ valid: true, userId: 'user_product_admission' }),
+    checkRateLimit: async () => null,
     fetch: relayFetch,
   });
   const response = await mod.default(makeCheckoutRequest());

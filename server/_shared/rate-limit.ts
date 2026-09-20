@@ -213,6 +213,7 @@ function rateLimitDegradedResponse(corsHeaders: Record<string, string>): Respons
     status: 503,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
       ...RATE_LIMIT_DEGRADED_HEADERS,
       ...corsHeaders,
     },
@@ -329,6 +330,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // LLM article summarization is Pro-gated, but still needs a scoped,
   // fail-closed budget so Redis degradation cannot silently lift the
   // per-endpoint spend control.
+  '/api/news/v1/list-feed-digest': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article': { limit: 30, window: '60 s' },
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
@@ -571,6 +573,16 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // its account owner so every display for one partner shares the same budget.
   // The CDN absorbs most canonical public requests before this policy runs.
   '/api/embed/map-frame': { limit: 120, window: '60 s' },
+  // Widget agent is a top-level edge proxy (api/widget-agent.ts) that spends a
+  // frontier-model call on every POST. It does not flow through the gateway, so
+  // the handler enforces this budget in-process, keyed on the validated
+  // user/key identity rather than the edge egress IP. 20/hour matches the
+  // relay's pro bucket; basic callers are still capped tighter on the relay.
+  '/api/widget-agent': { limit: 20, window: '1 h' },
+  // Checkout session creation (api/create-checkout.ts) relays to Dodo. Same
+  // per-user 5/min fail-closed budget as the customer portal, enforced
+  // in-handler after JWT validation. A Redis outage must not lift it.
+  '/api/create-checkout': { limit: 5, window: '60 s' },
 };
 
 interface RateLimitPolicyDecision {
@@ -581,6 +593,7 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',
   },
@@ -717,6 +730,12 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/embed/map-frame': {
     reason: 'The keyless map frame is fully anonymous and fans out across four seed reads. Fail closed rather than inherit the availability-first global fallback: those reads come from the same Redis that would be degraded, so a fail-open origin would serve empty layers at unbounded volume while the CDN copy keeps real data on screen for the stale-while-revalidate window.',
+  },
+  '/api/widget-agent': {
+    reason: 'Each POST proxies a frontier-model widget generation. The edge must keep a per-identity cap when Redis is down instead of spending uncapped.',
+  },
+  '/api/create-checkout': {
+    reason: 'Checkout session creation relays to the paid Dodo provider. A Redis outage must not lift the per-user cap.',
   },
 };
 

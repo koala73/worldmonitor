@@ -15,6 +15,7 @@
 
 import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { drainResponseHeaders } from '../server/_shared/response-headers.ts';
 
 let getAirportOpsSummary;
 let defaultWatchedAirports;
@@ -188,11 +189,35 @@ describe('getAirportOpsSummary — coverage gating (#7106)', () => {
   });
 
   it('total delay-cache miss reports degraded UNKNOWN', async () => {
-    const response = await getAirportOpsSummary({}, { airports: 'LHR' });
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary?airports=LHR');
+    const response = await getAirportOpsSummary({ request }, { airports: 'LHR' });
     const lhr = summaryFor(response, 'LHR');
     assert.equal(lhr.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
     assert.equal(lhr.source, 'degraded');
+    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1',
+      'an unavailable required delay seed must not become a cacheable UNKNOWN response');
   });
+
+  it('marks malformed required delay seeds as non-cacheable while preserving UNKNOWN coverage', async () => {
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary?airports=LHR');
+    cacheStore.set(DELAYS_KEY, { alerts: 'not-an-array' });
+
+    const response = await getAirportOpsSummary({ request }, { airports: 'LHR' });
+    const lhr = summaryFor(response, 'LHR');
+    assert.equal(lhr.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+  });
+
+  for (const payload of [{ alerts: [null] }, { alerts: [], coverage: [null] }]) {
+    it('marks malformed nested delay rows as non-cacheable', async () => {
+      const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary?airports=LHR');
+      cacheStore.set(DELAYS_KEY, payload);
+
+      const response = await getAirportOpsSummary({ request }, { airports: 'LHR' });
+      assert.equal(summaryFor(response, 'LHR').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+      assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+    });
+  }
 
   it('an ordinary UI-reachable unmonitored IATA reports UNKNOWN', async () => {
     cacheStore.set(DELAYS_KEY, { alerts: [], coverage: [] });

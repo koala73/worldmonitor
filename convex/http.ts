@@ -5,6 +5,7 @@ import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/n
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
+  isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
 } from "./payments/checkoutRateLimit";
 import { webhookHandler } from "./payments/webhookHandlers";
@@ -1684,6 +1685,10 @@ http.route({
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
+      if (isCheckoutTimedOutOutcome(result)) {
+        // Keep provider failures at 500; 502 triggers another browser retry.
+        return Response.json({ error: result.code }, { status: 500 });
+      }
       if (isCheckoutRateLimitedOutcome(result)) {
         return new Response(
           JSON.stringify({
@@ -1728,8 +1733,8 @@ http.route({
       if (extractConvexErrorCode(err) === "INVALID_CHECKOUT_PRODUCT") {
         return Response.json({ error: "INVALID_CHECKOUT_PRODUCT" }, { status: 400 });
       }
-      const msg = err instanceof Error ? err.message : "Checkout creation failed";
-      return new Response(JSON.stringify({ error: msg }), {
+      console.error("[create-checkout] Operation failed", err);
+      return new Response(JSON.stringify({ error: "Operation failed" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
@@ -1772,10 +1777,12 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Customer portal creation failed";
-      const status = msg === "No Dodo customer found for this user" ? 404 : 500;
-      return new Response(JSON.stringify({ error: msg }), {
-        status,
+      if (extractConvexErrorCode(err) === "NO_CUSTOMER") {
+        return Response.json({ error: "NO_CUSTOMER" }, { status: 404 });
+      }
+      console.error("[customer-portal] Operation failed", err);
+      return new Response(JSON.stringify({ error: "Operation failed" }), {
+        status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }

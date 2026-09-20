@@ -12,6 +12,58 @@ import {
 
 const modules = import.meta.glob("../**/*.ts");
 
+const webcamKey = 'wm-pinned-webcams';
+const webcam = { webcamId: '123', title: 'Camera', lat: 25, lng: 55, category: 'city', country: 'AE', playerUrl: 'javascript:canary', active: true, pinnedAt: 1 };
+const safeWebcam = { ...webcam, playerUrl: 'https://webcams.windy.com/webcams/public/embed/player/123/day' };
+
+describe('pinned webcam preference boundaries', () => {
+  test('normalizes direct authenticated writes and keeps account isolation', async () => {
+    const t = convexTest(schema, modules);
+    const data = { [webcamKey]: JSON.stringify([null, webcam]), theme: 'dark', 'wm-font-scale': '1.2' };
+    await t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, { variant: 'full', data, expectedSyncVersion: 0 });
+    const row = await t.run(ctx => ctx.db.query('userPreferences').unique());
+    expect(row?.data).toEqual({ ...data, [webcamKey]: JSON.stringify([safeWebcam]) });
+    expect(await t.withIdentity(USER_B).query(api.userPreferences.getPreferences, { variant: 'full' })).toBeNull();
+    await expect(t.mutation(api.userPreferences.setPreferences, { variant: 'full', data, expectedSyncVersion: 1 })).rejects.toThrow();
+  });
+
+  test('projects legacy rows safely and repairs them through the normal versioned write', async () => {
+    const t = convexTest(schema, modules);
+    await t.run(ctx => ctx.db.insert('userPreferences', {
+      userId: USER_A.subject, variant: 'full', data: { [webcamKey]: JSON.stringify([webcam]), theme: 'dark' },
+      schemaVersion: 1, syncVersion: 4, updatedAt: 1,
+    }));
+    const client = t.withIdentity(USER_A);
+    const row = await client.query(api.userPreferences.getPreferences, { variant: 'full' });
+    expect(row?.data).toEqual({ [webcamKey]: JSON.stringify([safeWebcam]), theme: 'dark' });
+    const internalRow = await t.query(internal.userPreferences.getPreferencesByUserId, { userId: USER_A.subject, variant: 'full' });
+    expect(internalRow?.data).toEqual(row?.data);
+    expect(await client.mutation(api.userPreferences.setPreferences, { variant: 'full', data: row!.data, expectedSyncVersion: 3 })).toEqual({ ok: false, reason: 'CONFLICT', actualSyncVersion: 4 });
+    expect(await client.mutation(api.userPreferences.setPreferences, { variant: 'full', data: row!.data, expectedSyncVersion: 4 })).toEqual({ ok: true, syncVersion: 5 });
+    const persisted = await t.run(ctx => ctx.db.query('userPreferences').unique());
+    expect(persisted?.data).toEqual(row?.data);
+  });
+
+  test('enforces the envelope limit after fallback URLs expand the webcam blob', async () => {
+    const t = convexTest(schema, modules);
+    const data = { [webcamKey]: JSON.stringify([webcam]), other: '' };
+    data.other = 'x'.repeat(MAX_PREFS_BLOB_SIZE - JSON.stringify(data).length);
+    expect(JSON.stringify(data).length).toBe(MAX_PREFS_BLOB_SIZE);
+    const result = await t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, { variant: 'full', data, expectedSyncVersion: 0 });
+    expect(result).toMatchObject({ ok: false, reason: 'BLOB_TOO_LARGE', max: MAX_PREFS_BLOB_SIZE });
+    expect(await t.run(ctx => ctx.db.query('userPreferences').unique())).toBeNull();
+  });
+
+  test.each([null, 4, {}, [], 'null', '{}', '[', ' '.repeat(16385)].map((value, index) => ({ value, index })))('normalizes malformed webcam value $index without changing other keys', async ({ value }) => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+      variant: 'full', data: { [webcamKey]: value, theme: 'dark' }, expectedSyncVersion: 0,
+    });
+    const row = await t.run(ctx => ctx.db.query('userPreferences').unique());
+    expect(row?.data).toEqual({ [webcamKey]: '[]', theme: 'dark' });
+  });
+});
+
 const TEST_NOW = 1_700_000_000_000;
 const TEST_WINDOW_START = Math.floor(TEST_NOW / USER_PREFS_WRITE_RATE_WINDOW_MS) * USER_PREFS_WRITE_RATE_WINDOW_MS;
 const TEST_RESET = TEST_WINDOW_START + USER_PREFS_WRITE_RATE_WINDOW_MS;

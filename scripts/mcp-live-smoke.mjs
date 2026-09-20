@@ -13,9 +13,24 @@
 //           converted to GET, and died with 405. No in-process test can see a
 //           CDN redirect rule.
 //
+// WHERE THE ANONYMOUS WALK RUNS: the transport at /mcp challenges an
+// unauthenticated `initialize` — hosted connectors (Cursor's agent backend,
+// grok-connectors-manager) read a 200 on that handshake as "connected, nothing
+// to authenticate" and could then never sign in. A strict client opens with
+// `initialize`, so its anonymous walk lives on the machine-discovery alias
+// /.well-known/mcp (same handler). Step 0 asserts the connect-time challenge
+// on /mcp itself, plus the stateless keyless calls the published CLI and SDKs
+// make there, which must keep answering.
+//
 // This script does what a strict anonymous MCP client does, against LIVE
 // production, on BOTH hosts (the apex serves /mcp too, and apex-vs-www split
 // is exactly where #4938 lived):
+//   0. the connect-time challenge — an unauthenticated initialize on /mcp must
+//      answer 401 with a WWW-Authenticate challenge naming the /mcp
+//      protected-resource document, and echo the JSON-RPC id so an SDK
+//      transport can correlate the refusal (an id:null 401 hangs it, #4937);
+//      and a keyless `tools/list` with no prior initialize must still answer
+//      200 — that is exactly what `worldmonitor-cli` sends
 //   1. initialize → notifications/initialized → ping (the connect sequence)
 //   2. a capability walk DERIVED from the initialize response — every
 //      advertised capability's methods must answer 200 with the id echoed
@@ -49,21 +64,28 @@
 // AbortSignal aborts the body stream too, so the timer is held until the
 // text is fully read).
 //
-// Request budget: the anonymous /mcp limiter is 60/min shared per client IP
-// and both hosts see the same runner IP, so the walk caps its fan-out
+// Request budget: the anonymous discovery limiter is 60/min shared per client
+// IP and both hosts see the same runner IP, so the walk caps its fan-out
 // (MAX_PROMPT_GETS / MAX_RESOURCE_READS) and reuses each catalog listing
-// instead of re-fetching it per sub-walk. Current shape: ≤16 /mcp POSTs per
+// instead of re-fetching it per sub-walk. Current shape: ≤16 alias POSTs per
 // host (≤32 total) + 3 non-/mcp OAuth probes per host + 2 non-/mcp
 // /api/mcp-proxy probes per host (1 on the apex, which 301s) — headroom
 // under the bucket even as the prompt/resource catalogs grow. The discovery
 // probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
 // the discovery branch and the transport 405 return ahead of
-// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). The variant
-// probes (6) add one limiter-counted ping plus four GET/HEADs per variant host;
-// redirect, stream-open, and unauthenticated replay all stop before a limiter.
+// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). Step 0 adds
+// one challenged initialize (stops before a limiter) and one limiter-counted
+// keyless tools/list per host, plus two keyless `get_sources` calls per host
+// for the structuredContent probe: those count against the free tool's own
+// 10/min/IP ceiling, not the discovery bucket (4 per run, both hosts sharing
+// the runner IP; a 429 there is reported as a skip). The variant probes (6) add one limiter-counted
+// ping plus four GET/HEADs per variant host; redirect, stream-open, and
+// unauthenticated replay all stop before a limiter.
 //
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
+
+import { isDeepStrictEqual } from 'node:util';
 
 import {
   collectRequiredCapabilityFailures,
@@ -74,6 +96,10 @@ import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
   .split(',').map((h) => h.trim()).filter(Boolean);
 const TIMEOUT_MS = 15_000;
+// The transport challenges an unauthenticated `initialize`; a full anonymous
+// handshake is served on the machine-discovery alias (same handler).
+const TRANSPORT_PATH = '/mcp';
+const ANON_DISCOVERY_PATH = '/.well-known/mcp';
 const USER_AGENT = 'WorldMonitor-MCP-Smoke/1.0 (+https://worldmonitor.app; github-actions)';
 // Fan-out caps: keep the walk inside the shared anon 60/min/IP bucket as the
 // catalogs grow. 6 covers today's full prompt registry and concrete resource
@@ -140,7 +166,7 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
   if (id !== undefined) payload.id = id;
   let res, text, ms;
   try {
-    ({ res, text, ms } = await timedFetch(`${host}/mcp`, {
+    ({ res, text, ms } = await timedFetch(`${host}${ANON_DISCOVERY_PATH}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
@@ -181,10 +207,138 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
   return body.result ?? body;
 }
 
+// 0. Connect-time challenge on the transport. A connector that gets a 200 here
+//    records the server as needing no sign-in and can never authenticate later,
+//    so an unauthenticated initialize MUST be refused — with the challenge that
+//    names this path's protected-resource document, and with the request id
+//    echoed (the header is checked first: a CDN-fabricated 401 lacks it).
+async function probeConnectChallenge(host) {
+  const check = `initialize on ${TRANSPORT_PATH} (anon → 401 challenge)`;
+  checks += 1;
+  const id = nextId++;
+  let res, text, ms;
+  try {
+    ({ res, text, ms } = await timedFetch(`${host}${TRANSPORT_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id, method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'wm-mcp-live-smoke', version: '1.0' } },
+      }),
+    }));
+  } catch (err) {
+    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+    return;
+  }
+  if (res.status !== 401) {
+    fail(host, check, `expected HTTP 401, got ${res.status} — a connector that is not challenged at connect time records "no sign-in needed" and its Authorize control can never obtain an authentication URL`);
+    return;
+  }
+  const challenge = res.headers.get('www-authenticate') ?? '';
+  const expectedDocument = `${host}/.well-known/oauth-protected-resource${TRANSPORT_PATH}`;
+  if (!challenge.includes(`resource_metadata="${expectedDocument}"`)) {
+    fail(host, check, `challenge does not name ${expectedDocument} (got "${challenge}")`);
+    return;
+  }
+  let body;
+  try { body = JSON.parse(text); } catch { body = null; }
+  if (body?.id !== id) {
+    fail(host, check, `401 body id ${JSON.stringify(body?.id)} does not echo request id ${id} — uncorrelatable, strict SDK clients hang (#4937)`);
+    return;
+  }
+  ok(host, check, `${ms}ms`);
+}
+
+// 0b. The published `worldmonitor` CLI and the SDKs never send `initialize`:
+//     they POST `tools/list` (and `tools/call get_sources`) straight to the
+//     transport with no key. Installed versions cannot be updated, so the
+//     connect-time challenge must never widen to catch this.
+async function probeStatelessKeylessList(host) {
+  const check = `tools/list on ${TRANSPORT_PATH} (keyless, no initialize → 200)`;
+  checks += 1;
+  const id = nextId++;
+  try {
+    const { res, text, ms } = await timedFetch(`${host}${TRANSPORT_PATH}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list' }),
+    });
+    if (res.status !== 200) {
+      fail(host, check, `expected HTTP 200, got ${res.status} — this breaks every installed worldmonitor CLI/SDK, which lists tools without a key`);
+      return;
+    }
+    let body;
+    try { body = JSON.parse(text); } catch { body = null; }
+    if (!(Array.isArray(body?.result?.tools) && body.result.tools.length > 0)) {
+      fail(host, check, 'HTTP 200 but no tool catalog in the body');
+      return;
+    }
+    ok(host, check, `${ms}ms, ${body.result.tools.length} tools`);
+  } catch (err) {
+    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+  }
+}
+
+// 0c. Every tool advertises an `outputSchema`, so a strict MCP client (the
+//     official SDK, Grok Bot's host) throws -32600 on any `tools/call` result
+//     that carries no `structuredContent`, before the model sees it (#8328).
+//     `get_sources` is the one tool callable without a key, so it stands in for
+//     the shared dispatch path: a plain call must return the payload as an
+//     object equal to the text, and a projection must come back wrapped as
+//     `{ projection }`, because the field has to be a JSON object.
+async function probeStructuredContent(host) {
+  for (const [label, args, matches] of [
+    ['plain', {}, (sc, parsed) => isDeepStrictEqual(sc, parsed)],
+    ['projection', { jmespath: 'view' }, (sc, parsed) => isDeepStrictEqual(sc, { projection: parsed })],
+  ]) {
+    const check = `tools/call get_sources on ${TRANSPORT_PATH} returns structuredContent (${label})`;
+    checks += 1;
+    const id = nextId++;
+    try {
+      const { res, text, ms } = await timedFetch(`${host}${TRANSPORT_PATH}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'get_sources', arguments: args } }),
+      });
+      if (res.status === 429) {
+        // The free tool has its own 10/min/IP ceiling, and a shared CI egress
+        // IP can legitimately hit it. That is not a missing-field regression.
+        ok(host, check, `skipped: the anonymous get_sources ceiling answered 429 in ${ms}ms`);
+        continue;
+      }
+      let body;
+      try { body = JSON.parse(text); } catch { body = null; }
+      const result = body?.result;
+      if (res.status !== 200 || !result) {
+        fail(host, check, `expected HTTP 200 with a result, got ${res.status}`);
+        continue;
+      }
+      const sc = result.structuredContent;
+      if (sc === null || typeof sc !== 'object' || Array.isArray(sc)) {
+        fail(host, check, 'result has no structuredContent object — every strict MCP client rejects the call with -32600 "has an output schema but did not return structured content"');
+        continue;
+      }
+      let parsed;
+      try { parsed = JSON.parse(result.content?.[0]?.text); } catch { parsed = undefined; }
+      if (parsed === undefined || !matches(sc, parsed)) {
+        fail(host, check, 'structuredContent does not correspond to content[0].text');
+        continue;
+      }
+      ok(host, check, `${ms}ms`);
+    } catch (err) {
+      fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+    }
+  }
+}
+
 async function walkHost(host) {
   console.log(`\n── ${host} ──`);
 
-  // 1. Connect sequence.
+  await probeConnectChallenge(host);
+  await probeStatelessKeylessList(host);
+  await probeStructuredContent(host);
+
+  // 1. Connect sequence (anonymous, on the discovery alias).
   const init = await rpc(host, 'initialize', {
     protocolVersion: '2025-03-26',
     capabilities: {},

@@ -537,3 +537,29 @@ describe('MarketServiceClient getStockAnalysisHistory', () => {
     assert.match(requestedUrl, /include_news=true/);
   });
 });
+
+for (const failure of ['http', 'command', 'malformed', 'item-http']) {
+  it(`does not report empty stock history after ${failure} failure`, async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://history-redis.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    globalThis.fetch = async (_input, init) => {
+      const commands = JSON.parse(String(init?.body));
+      if (failure === 'item-http' && commands[0][0] === 'ZREVRANGE') return Response.json([{ result: ['item'] }]);
+      if (failure === 'command') return Response.json([{ error: 'fixture' }]);
+      if (failure === 'malformed') return Response.json([{}]);
+      return new Response('', { status: 503 });
+    };
+    await assert.rejects(() => getStockAnalysisHistory({ request: new Request('https://worldmonitor.app'), headers: {}, pathParams: {} }, {
+      symbols: ['AAPL'], includeNews: false, limitPerSymbol: 4,
+    }), (error: any) => error.statusCode === 503);
+  });
+}
+
+it('keeps a confirmed empty stock history successful', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://history-redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  globalThis.fetch = async () => Response.json([{ result: [] }]);
+  assert.deepEqual(await getStockAnalysisHistory({ request: new Request('https://worldmonitor.app'), headers: {}, pathParams: {} }, {
+    symbols: ['AAPL'], includeNews: false, limitPerSymbol: 4,
+  }), { items: [] });
+});

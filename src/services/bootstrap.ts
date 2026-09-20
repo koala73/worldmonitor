@@ -471,6 +471,14 @@ function scheduleAfterNextPaint(fn: () => void): () => void {
   };
 }
 
+function shouldAbortSlowTierOnTimeout(): boolean {
+  try {
+    return import.meta.env.VITE_E2E !== '1';
+  } catch {
+    return true;
+  }
+}
+
 function scheduleSlowTierFetch(generation: number, onSlowSettled?: () => void): Promise<void> {
   const desktop = isDesktopRuntime();
   const isCurrentGeneration = (): boolean => generation === bootstrapGeneration;
@@ -484,10 +492,13 @@ function scheduleSlowTierFetch(generation: number, onSlowSettled?: () => void): 
 
       const slowCtrl = new AbortController();
       activeSlowCtrl = slowCtrl;
-      const slowTimeout = setTimeout(
-        () => slowCtrl.abort(),
-        desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.slow : BOOTSTRAP_TIER_TIMEOUT_MS.web.slow,
-      );
+      const abortSlowTier = shouldAbortSlowTierOnTimeout();
+      const slowTimeout = abortSlowTier
+        ? setTimeout(
+          () => slowCtrl.abort(),
+          desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.slow : BOOTSTRAP_TIER_TIMEOUT_MS.web.slow,
+        )
+        : null;
 
       void fetchTier('slow', slowCtrl.signal, isCurrentGeneration)
         .then((slowState) => {
@@ -501,7 +512,7 @@ function scheduleSlowTierFetch(generation: number, onSlowSettled?: () => void): 
           // Background failure: leave the slow keys un-hydrated; consumers refetch on demand.
         })
         .finally(() => {
-          clearTimeout(slowTimeout);
+          if (slowTimeout !== null) clearTimeout(slowTimeout);
           if (activeSlowCtrl === slowCtrl) activeSlowCtrl = null;
           if (isCurrentGeneration()) onSlowSettled?.();
           resolve();
