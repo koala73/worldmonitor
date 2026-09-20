@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById, coingeckoEndpoint } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, runSeed, fetchCoinPaprikaTickersById, coingeckoEndpoint, fetchCoinGeckoWithRetryBudget } from './_seed-utils.mjs';
 
 const defiConfig = loadSharedConfig('defi-tokens.json');
 const aiConfig = loadSharedConfig('ai-tokens.json');
@@ -32,32 +32,15 @@ export const COINGECKO_RETRY_BUDGET_MS = 45_000;
 const COINPAPRIKA_CONCURRENCY = 4;
 export const COINPAPRIKA_WORST_CASE_MS = Math.ceil(COINPAPRIKA_IDS.length / COINPAPRIKA_CONCURRENCY) * REQUEST_TIMEOUT_MS;
 
-async function fetchWithRateLimitRetry(url, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
-  const startedAt = Date.now();
-  for (let attempt = 1; ; attempt++) {
-    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    if (resp.status === 429) {
-      const elapsed = Date.now() - startedAt;
-      const wait = Math.min(5_000 * 2 ** (attempt - 1), 60_000);
-      // The next attempt is charged its full request timeout up front, so the
-      // budget caps the whole phase rather than when the last retry may start.
-      if (elapsed + wait + REQUEST_TIMEOUT_MS > COINGECKO_RETRY_BUDGET_MS) {
-        throw new Error(`CoinGecko rate limit exceeded after ${attempt} attempt(s) in ${Math.round(elapsed / 1000)}s (${COINGECKO_RETRY_BUDGET_MS / 1000}s retry budget)`);
-      }
-      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${attempt}, ${Math.round(elapsed / 1000)}s of ${COINGECKO_RETRY_BUDGET_MS / 1000}s budget)`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
-    return resp;
-  }
-}
-
 async function fetchFromCoinGecko() {
   const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ALL_IDS.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
 
-  const resp = await fetchWithRateLimitRetry(url, headers);
+  const resp = await fetchCoinGeckoWithRetryBudget(url, {
+    headers,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
+    budgetMs: COINGECKO_RETRY_BUDGET_MS,
+  });
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
   return data;

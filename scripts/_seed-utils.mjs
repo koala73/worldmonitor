@@ -69,6 +69,53 @@ export function coingeckoEndpoint(extraHeaders = {}) {
 }
 
 /**
+ * Fetch a CoinGecko URL, retrying 429s only while the whole phase still fits
+ * `budgetMs`.
+ *
+ * The budget is a ceiling on the phase, in-flight request included: before
+ * each backoff sleep the next attempt's full request timeout is charged
+ * alongside the sleep, and the loop gives up when they would not fit. A seeder
+ * run as a bundle section can therefore size `budgetMs` so its CoinPaprika
+ * fallback still fits the section's timeoutMs (tests/seed-fetch-budget.test.mjs
+ * gates that arithmetic). Retrying by attempt count instead let identical
+ * copies of this loop sleep 150s into a 120s section (2026-04-14, 2026-09-20).
+ *
+ * @param {string} url
+ * @param {{ headers?: Record<string, string>, requestTimeoutMs: number, budgetMs: number, fetchFn?: typeof fetch, sleepFn?: (ms: number) => Promise<void>, now?: () => number }} options
+ * @returns {Promise<Response>} the first OK response; any non-429 error status throws
+ */
+export async function fetchCoinGeckoWithRetryBudget(url, {
+  headers = { Accept: 'application/json', 'User-Agent': CHROME_UA },
+  requestTimeoutMs,
+  budgetMs,
+  fetchFn = fetch,
+  sleepFn = sleep,
+  now = Date.now,
+}) {
+  // An undefined budget would compare NaN and retry forever, which is the
+  // failure this helper exists to rule out.
+  for (const [name, value] of Object.entries({ requestTimeoutMs, budgetMs })) {
+    if (!Number.isFinite(value) || value <= 0) throw new TypeError(`fetchCoinGeckoWithRetryBudget: ${name} must be a positive number, got ${value}`);
+  }
+  const startedAt = now();
+  for (let attempt = 1; ; attempt++) {
+    const resp = await fetchFn(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
+    if (resp.status === 429) {
+      const elapsed = now() - startedAt;
+      const wait = Math.min(5_000 * 2 ** (attempt - 1), 60_000);
+      if (elapsed + wait + requestTimeoutMs > budgetMs) {
+        throw new Error(`CoinGecko rate limit exceeded after ${attempt} attempt(s) in ${Math.round(elapsed / 1000)}s (${budgetMs / 1000}s retry budget)`);
+      }
+      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${attempt}, ${Math.round(elapsed / 1000)}s of ${budgetMs / 1000}s budget)`);
+      await sleepFn(wait);
+      continue;
+    }
+    if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
+    return resp;
+  }
+}
+
+/**
  * Unwrap fetch / network errors so log lines surface the actual cause
  * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
  * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
