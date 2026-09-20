@@ -31,6 +31,7 @@ export const LNG_VULNERABILITY_KEY = 'energy:lng-vulnerability:v1';
 export const GAS_TTL = 70 * 24 * 3600; // 70d keeps last-good through the 40d STALE_SEED window and several 15d bundle intervals (#7273)
 
 const CATALOG_URL = 'https://api.publisher.jodidata.org/web/files/gas';
+const ARCHIVE_ROOT = 'https://www.jodidata.org/jodi-publisher/gas';
 const CSV_FILENAME = 'STAGING_world_NewFormat.csv';
 const UNIT_FILTER = 'TJ';
 export const MIN_COUNTRIES = 50;
@@ -269,7 +270,7 @@ function resolveGasArchiveUrl(catalog) {
   if (csvFiles.length !== 1 || csvFiles[0].filename !== 'GAS_world_NewFormat.zip') {
     throw new Error('JODI Gas catalog must contain one supported CSV archive');
   }
-  return `https://www.jodidata.org/jodi-publisher/gas/${catalog.publicationId}/${csvFiles[0].filename}`;
+  return `${ARCHIVE_ROOT}/${catalog.publicationId}/${csvFiles[0].filename}`;
 }
 
 async function fetchAndParseCsv() {
