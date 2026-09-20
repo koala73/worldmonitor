@@ -94,5 +94,5 @@ it('limits checkout sessions per authenticated user before the relay', async () 
   assert.equal(replayDuringOutage.status, 200);
   assert.equal(replayDuringOutage.headers.get('Idempotent-Replayed'), 'true');
   assert.equal(relayCalls, 6);
-  assert.ok([429, 503].includes(unavailable.status), `fail closed, got ${unavailable.status}`);
+  assert.equal(unavailable.status, 503);
 });

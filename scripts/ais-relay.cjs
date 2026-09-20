@@ -13904,7 +13904,10 @@ async function handleWidgetAgentRequest(req, res) {
   // cap (or none, when the header is absent) rather than a per-caller cap.
   const spendHeader = req.headers['x-wm-widget-spend-id'];
   const spendId = typeof spendHeader === 'string' ? spendHeader.trim() : '';
-  const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId) ? `id:${spendId}` : clientIp;
+  // Widget keys also belong to legacy callers. Only the separate server relay
+  // credential can attest to an identity that passed the edge spend checks.
+  const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId)
+    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : clientIp;
 
   // Rate limiting (separate buckets)
   const rateLimited = isPro ? checkProWidgetRateLimit(rateBucket) : checkWidgetRateLimit(rateBucket);

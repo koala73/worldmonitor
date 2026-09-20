@@ -29,6 +29,8 @@ import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from './_rate-limit.js';
+// @ts-expect-error — JS module, no declaration file
+import { getRelayHeaders } from './_relay.js';
 import { ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
 import {
@@ -89,15 +91,36 @@ function timeoutFromEnv(raw: string | undefined, fallback: number): number {
 const WIDGET_AGENT_HEALTH_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_HEALTH_TIMEOUT_MS, 10_000);
 const WIDGET_AGENT_CONNECT_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_CONNECT_TIMEOUT_MS, 15_000);
 
+class WidgetBodyTooLargeError extends Error {}
+
 async function readRequestBody(req: Request): Promise<string> {
-  // Adversarial DoS guard: a POST body stream that never ends must not hold the
-  // edge function open forever. Race text() against a tight budget.
-  return Promise.race([
-    req.text(),
-    new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('widget-agent body read timeout')), WIDGET_AGENT_BODY_TIMEOUT_MS),
-    ),
-  ]);
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        const decoder = new TextDecoder();
+        let total = 0;
+        let text = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return text + decoder.decode();
+          total += value.byteLength;
+          if (total > WIDGET_AGENT_MAX_BODY_BYTES) throw new WidgetBodyTooLargeError();
+          text += decoder.decode(value, { stream: true });
+        }
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('widget-agent body read timeout')), WIDGET_AGENT_BODY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    // Do not let a stalled producer's cancellation hold the response open.
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 async function hasValidWorldMonitorKey(key: string): Promise<boolean> {
@@ -369,11 +392,11 @@ async function proxyWidgetAgent(
   }
 
   // ── Build relay headers (server-side keys, never exposed to browser) ──────
-  const relayHeaders: Record<string, string> = {
+  const relayHeaders: Record<string, string> = getRelayHeaders({
     'Content-Type': 'application/json',
     'User-Agent': 'worldmonitor-widget-edge/1.0',
     ...(WIDGET_AGENT_KEY ? { 'X-Widget-Key': WIDGET_AGENT_KEY } : {}),
-  };
+  });
   if (isPro && PRO_WIDGET_KEY) {
     relayHeaders['X-Pro-Key'] = PRO_WIDGET_KEY;
   }
@@ -424,12 +447,11 @@ async function proxyWidgetAgent(
   let rawBody: string;
   try {
     rawBody = await readRequestBody(req);
-  } catch {
+  } catch (err) {
+    if (err instanceof WidgetBodyTooLargeError) {
+      return json({ error: 'Request body too large' }, 413, corsHeaders);
+    }
     return json({ error: 'Request body read timeout' }, 408, corsHeaders);
-  }
-
-  if (new TextEncoder().encode(rawBody).byteLength > WIDGET_AGENT_MAX_BODY_BYTES) {
-    return json({ error: 'Request body too large' }, 413, corsHeaders);
   }
 
   // Normalise tier in body to match the server-validated isPro flag.

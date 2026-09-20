@@ -4,6 +4,7 @@ import { after, describe, it } from 'node:test';
 process.env.WIDGET_AGENT_KEY = 'server-widget-key';
 process.env.PRO_WIDGET_KEY = 'server-pro-key';
 process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key';
+process.env.RELAY_SHARED_SECRET = 'server-only-relay-secret';
 
 const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
 
@@ -20,6 +21,7 @@ function allowRelay(): void {
     }
     assert.equal(url, 'https://proxy.worldmonitor.app/widget-agent');
     relayFetches += 1;
+    assert.equal(new Headers(init?.headers).get('x-relay-key'), 'server-only-relay-secret');
     lastSpendId = new Headers(init?.headers).get('X-WM-Widget-Spend-Id') ?? '';
     return new Response('data: {"type":"done"}\n\n', {
       status: 200,
@@ -131,6 +133,49 @@ describe('widget-agent spend guard', () => {
     const body = await res.json() as { error?: string };
     assert.equal(body.error, 'Direct LLM quota unavailable');
     assert.equal(relayFetches, 0);
+  });
+
+  it('cancels an oversized stream without waiting for EOF or trusting content-length', async () => {
+    let cancelled = false;
+    __setWidgetAgentSpendDepsForTests({
+      checkRateLimit: async () => null,
+      runRedisPipeline: async () => { throw new Error('must not reserve'); },
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(163_841)); },
+      cancel() { cancelled = true; },
+    });
+    const req = new Request(postRequest({ 'content-length': '1' }), {
+      body, duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+    const res = await handler(req);
+    assert.equal(res.status, 413);
+    assert.equal(cancelled, true);
+  });
+
+  it('accepts the exact byte limit and preserves split UTF-8 characters', async () => {
+    const raw = JSON.stringify({ prompt: 'é' + 'x'.repeat(163_825) });
+    const bytes = new TextEncoder().encode(raw);
+    assert.equal(bytes.byteLength, 163_840);
+    __setWidgetAgentSpendDepsForTests({
+      checkRateLimit: async () => null,
+      runRedisPipeline: async () => [{ result: 1 }, { result: 1 }],
+    });
+    globalThis.fetch = async (_input, init) => {
+      assert.equal(JSON.parse(String(init?.body)).prompt, JSON.parse(raw).prompt);
+      return new Response('done');
+    };
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, 12));
+        controller.enqueue(bytes.slice(12));
+        controller.close();
+      },
+    });
+    const res = await handler(new Request(postRequest(), {
+      body, duplex: 'half',
+    } as RequestInit & { duplex: 'half' }));
+    assert.equal(res.status, 200);
   });
 
   it('forwards a successful reservation with the validated spend identity', async () => {
