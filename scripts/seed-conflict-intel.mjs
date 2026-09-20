@@ -753,6 +753,10 @@ function hapiFailureReason(status, providerMessage = '') {
   return Number.isInteger(Number(status)) ? `HTTP_${Number(status)}` : 'HAPI_FETCH_FAILED';
 }
 
+function isHapiTerminalRejection(error) {
+  return error?.status === 403 || error?.status === 429 || error?.reasonCode === 'HAPI_BOT_BLOCK';
+}
+
 async function hapiResponseError(resp) {
   let providerMessage = '';
   try {
@@ -1099,6 +1103,7 @@ export async function fetchAllHumanitarianSummaries({
     let fallbackFailure = sweepFailure;
     let fallbackRows = 0;
     for (let i = 0; i < missingCountries.length; i += 1) {
+      if (isHapiTerminalRejection(fallbackFailure)) break;
       const countryCode = missingCountries[i];
       // Snapshot-backed iterations issue no network request — they filter rows
       // already in memory — so they are not what this budget bounds, and gating
@@ -1130,7 +1135,7 @@ export async function fetchAllHumanitarianSummaries({
       } catch (error) {
         fallbackFailure = error;
         console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
-        if (error.status === 429 || error.status === 403) break;
+        if (isHapiTerminalRejection(error)) break;
       }
       if (i < missingCountries.length - 1 && sourceChannel !== HAPI_SNAPSHOT_CHANNEL) {
         await pace(HAPI_REQUEST_DELAY_MS);

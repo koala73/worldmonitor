@@ -376,7 +376,7 @@ describe('durable last-good wiring (#7084)', () => {
   });
 
   it('rejects malformed language scopes before any cache or feed work', async () => {
-    for (const lang of ['english', 'en-US', 'EN', 'en\n', ' en', 'a', 'a'.repeat(10_000), '../en', 'en:other', 1, null, {}, false]) {
+    for (const lang of ['xx', 'zz', 'english', 'en-US', 'EN', 'en\n', ' en', 'a', 'a'.repeat(10_000), '../en', 'en:other', 1, null, {}, false]) {
       reset();
       stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
       await assert.rejects(mod.listFeedDigest(ctx(), { variant: 'full', lang }), {
@@ -406,7 +406,7 @@ describe('durable last-good wiring (#7084)', () => {
   });
 
   it('preserves default English and two-letter language cache scopes', async () => {
-    for (const lang of [undefined, '', 'en', 'ar', 'fr', 'zh', 'ja', 'sw', 'xx']) {
+    for (const lang of [undefined, '', 'en', 'ar', 'fr', 'zh', 'ja', 'sw']) {
       reset();
       const data = body(['https://a/1'], COVERAGE);
       stub.fetchMeta = { data, source: 'cache', leader: false };

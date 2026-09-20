@@ -453,7 +453,8 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
   //
   // v6 history (kept for reference): category-gated context + prompt-level
   // RELEVANCE RULE (2026-04-22) — those changes remain in v8.
-  const cacheKey = `brief:llm:whymatters:v10:${hash}`;
+  // v11 uses an unambiguous story tuple and the full SHA-256 digest.
+  const cacheKey = `brief:llm:whymatters:v11:${hash}`;
   // Shadow v6→v7 for the same reason: a pre-policy v6 record would mix
   // retired and current analyst outputs in the seven-day evaluation cohort.
   const shadowKey = `brief:llm:whymatters:shadow:v7:${hash}`;

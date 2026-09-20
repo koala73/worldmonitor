@@ -30,7 +30,7 @@ import {
   checkEndpointRateLimit,
   type EndpointRateLimitOptions,
 } from '../../server/_shared/rate-limit';
-import { getCachedJson } from '../../server/_shared/redis';
+import { readRequiredSeed } from '../../server/_shared/required-seed';
 import { drainResponseHeaders, markNoCacheResponse } from '../../server/_shared/response-headers';
 import { BOOTSTRAP_CACHE_KEYS } from '../../shared/bootstrap-tier-keys.js';
 import {
@@ -100,8 +100,11 @@ function buildSources(req: Request): EmbedMapFrameSources {
         swLon: 0,
       })).events,
     listWeatherAlerts: async () => {
-      const cached = await getCachedJson(WEATHER_CACHE_KEY, true) as { alerts?: unknown[] } | null;
-      return cached?.alerts ?? [];
+      const cached = await readRequiredSeed(WEATHER_CACHE_KEY, value => {
+        const data = value as { alerts?: unknown[] } | null;
+        return data && Array.isArray(data.alerts) ? data.alerts : undefined;
+      });
+      return cached;
     },
   };
 }
@@ -184,7 +187,8 @@ export async function handleEmbedMapFrame(
     'Content-Type': 'application/json',
     'Cache-Control': cacheControlForEmbedFrame(sharedLayers !== null),
   };
-  if (drainResponseHeaders(req)?.['X-No-Cache']) {
+  if (drainResponseHeaders(req)?.['X-No-Cache']
+    || Object.values(frame.layers).some(state => state === 'partial' || state === 'unavailable')) {
     headers['Cache-Control'] = cacheControlForEmbedFrame(false);
   }
   // Only the uncacheable branch reads the grant header, and only there can the

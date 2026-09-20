@@ -1001,6 +1001,20 @@
       ]
     },
     {
+      "host": "api.publisher.jodidata.org",
+      "provider": "www.jodidata.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit api.publisher.jodidata.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-jodi-gas.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.rainviewer.com",
       "provider": "api.rainviewer.com",
       "kind": "structured",
