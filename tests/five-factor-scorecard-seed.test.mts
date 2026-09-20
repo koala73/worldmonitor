@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { readFileSync } from 'node:fs';
 
 import {
@@ -31,20 +32,6 @@ import {
   stageScorecardReadModel,
 } from '../scripts/seed-five-factor-scorecard.mjs';
 
-// AbortSignal.timeout timers are unref'ed: on their own they do not keep the
-// event loop alive. Under the parallel suite the loop can drain while this
-// stub is still awaiting the Redis deadline's abort, and node:test then
-// cancels the pending test ("Promise resolution is still pending...") with a
-// cancelledByParent cascade. A ref'ed keep-alive, cleared on abort, closes
-// that window without changing what the stub proves.
-function hangUntilAbort(signal: AbortSignal): Promise<never> {
-  const keepAlive = setTimeout(() => {}, 10_000);
-  if (signal.aborted) clearTimeout(keepAlive);
-  else signal.addEventListener('abort', () => clearTimeout(keepAlive), { once: true });
-  return new Promise<never>((_resolve, reject) => {
-    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-  });
-}
 
 const sources = {
   population: { countries: { AA: { populationMillions: 10, year: 2024 } } },
