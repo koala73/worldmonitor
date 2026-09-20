@@ -91,7 +91,12 @@ function timeoutFromEnv(raw: string | undefined, fallback: number): number {
 const WIDGET_AGENT_HEALTH_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_HEALTH_TIMEOUT_MS, 10_000);
 const WIDGET_AGENT_CONNECT_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_CONNECT_TIMEOUT_MS, 15_000);
 
-class WidgetBodyTooLargeError extends Error {}
+class WidgetBodyTooLargeError extends Error {
+  constructor() {
+    super('Request body too large');
+    this.name = 'WidgetBodyTooLargeError';
+  }
+}
 
 async function readRequestBody(req: Request): Promise<string> {
   if (!req.body) return '';
