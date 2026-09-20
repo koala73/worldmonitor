@@ -21,9 +21,9 @@ const COINPAPRIKA_IDS = ALL_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boole
 export const REQUEST_TIMEOUT_MS = 15_000;
 // Ceiling on the whole CoinGecko phase, in-flight request included. Sized so
 // that this plus COINPAPRIKA_WORST_CASE_MS fits the bundle section timeout
-// that SIGTERMs this seeder; tests/token-panels-fetch-budget.test.mjs gates
-// that arithmetic against the manifest, so when it trips lower this rather
-// than raise timeoutMs.
+// that SIGTERMs this seeder; tests/seed-fetch-budget.test.mjs gates that
+// arithmetic against the manifest, so when it trips lower this rather than
+// raise timeoutMs.
 export const COINGECKO_RETRY_BUDGET_MS = 45_000;
 // The fallback runs COINPAPRIKA_IDS in rounds of COINPAPRIKA_CONCURRENCY, each
 // round bounded by one request timeout. Both values are passed to the helper

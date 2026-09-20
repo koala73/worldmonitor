@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById, coingeckoEndpoint } from './_seed-utils.mjs';
 // scripts/shared/ mirror (NOT ../shared/): this seeder deploys via Railway
 // rootDirectory=scripts, where the repo-root shared/ folder does not exist.
@@ -14,15 +15,36 @@ const CANONICAL_KEY = 'market:stablecoins:v1';
 const CACHE_TTL = 5400; // 90min — 1h buffer over 10min cron cadence (was 60min = 50min buffer)
 
 const STABLECOIN_IDS = stablecoinConfig.ids.join(',');
+const COINPAPRIKA_ID_MAP = stablecoinConfig.coinpaprika;
+const COINPAPRIKA_IDS = stablecoinConfig.ids.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
 
-async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
+export const REQUEST_TIMEOUT_MS = 15_000;
+const COINGECKO_MAX_ATTEMPTS = 5;
+const coingeckoBackoffMs = (attempt) => Math.min(10_000 * (attempt + 1), 60_000);
+// Worst-case wall time of the CoinGecko phase: every attempt runs to its
+// request timeout and is followed by its backoff sleep. Derived from the
+// ladder rather than declared so it cannot drift from the loop below;
+// tests/seed-fetch-budget.test.mjs checks it against the bundle section
+// timeout that SIGTERMs this seeder.
+export const COINGECKO_RETRY_BUDGET_MS = Array.from(
+  { length: COINGECKO_MAX_ATTEMPTS },
+  (_, attempt) => REQUEST_TIMEOUT_MS + coingeckoBackoffMs(attempt),
+).reduce((sum, ms) => sum + ms, 0);
+// The fallback runs COINPAPRIKA_IDS in rounds of COINPAPRIKA_CONCURRENCY, each
+// round bounded by one request timeout. Both values are passed to the helper
+// explicitly so this derivation describes the call as made, and mapping a new
+// stablecoin widens the budget instead of silently breaking the invariant.
+const COINPAPRIKA_CONCURRENCY = 4;
+export const COINPAPRIKA_WORST_CASE_MS = Math.ceil(COINPAPRIKA_IDS.length / COINPAPRIKA_CONCURRENCY) * REQUEST_TIMEOUT_MS;
+
+async function fetchWithRateLimitRetry(url, maxAttempts = COINGECKO_MAX_ATTEMPTS, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
   for (let i = 0; i < maxAttempts; i++) {
     const resp = await fetch(url, {
       headers,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (resp.status === 429) {
-      const wait = Math.min(10_000 * (i + 1), 60_000);
+      const wait = coingeckoBackoffMs(i);
       console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
       await sleep(wait);
       continue;
@@ -33,13 +55,11 @@ async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept:
   throw new Error('CoinGecko rate limit exceeded after retries');
 }
 
-const COINPAPRIKA_ID_MAP = stablecoinConfig.coinpaprika;
-
 async function fetchFromCoinGecko() {
   const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${STABLECOIN_IDS}&order=market_cap_desc&sparkline=false&price_change_percentage=7d`;
 
-  const resp = await fetchWithRateLimitRetry(url, 5, headers);
+  const resp = await fetchWithRateLimitRetry(url, COINGECKO_MAX_ATTEMPTS, headers);
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error('CoinGecko returned no stablecoin data');
@@ -49,11 +69,12 @@ async function fetchFromCoinGecko() {
 
 async function fetchFromCoinPaprika() {
   console.log('  [CoinPaprika] Falling back to CoinPaprika...');
-  const ids = STABLECOIN_IDS.split(',');
-  const paprikaIds = ids.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
-  if (paprikaIds.length === 0) throw new Error('No CoinPaprika ID mapping for stablecoins');
+  if (COINPAPRIKA_IDS.length === 0) throw new Error('No CoinPaprika ID mapping for stablecoins');
 
-  const tickers = await fetchCoinPaprikaTickersById(paprikaIds);
+  const tickers = await fetchCoinPaprikaTickersById(COINPAPRIKA_IDS, {
+    concurrency: COINPAPRIKA_CONCURRENCY,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+  });
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
   return tickers
     .map((t) => ({
@@ -69,7 +90,7 @@ async function fetchFromCoinPaprika() {
     }));
 }
 
-async function fetchStablecoinMarkets() {
+export async function fetchStablecoinMarkets() {
   let data;
   try {
     data = await fetchFromCoinGecko();
@@ -113,7 +134,10 @@ export function declareRecords(data) {
   return Array.isArray(data?.stablecoins) ? data.stablecoins.length : 0;
 }
 
-runSeed('market', 'stablecoins', CANONICAL_KEY, fetchStablecoinMarkets, {
+// isMain guard — required so tests can `import` the budget exports without
+// firing runSeed on module load (which would touch Redis and process.exit).
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) runSeed('market', 'stablecoins', CANONICAL_KEY, fetchStablecoinMarkets, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-stablecoins',
