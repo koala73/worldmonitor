@@ -184,7 +184,7 @@ const requiredCases = [
   ['climate/v1/list-climate-anomalies', 'climate:anomalies:v2', { anomalies: [] }, 'anomalies'],
   ['infrastructure/v1/list-internet-outages', 'infra:outages:v1', { outages: [] }, 'outages'],
 ] as const;
-for (const [path, key, payload, field] of requiredCases) {
+function itRejectsRequiredSeedFailures(path: string, key: string, payload: unknown, assertRecovered: (body: unknown) => void) {
   for (const failure of ['miss', 'http-error', 'timeout', 'malformed', 'command-error', 'shape'] as const) {
     it(`${path} required seed rejects ${failure} and recovers with a healthy observation`, async () => {
       mode = failure === 'shape' ? 'hit' : failure;
@@ -199,9 +199,12 @@ for (const [path, key, payload, field] of requiredCases) {
       const recovered = await request(path);
       assert.equal(recovered.status, 200);
       assert.notEqual(recovered.headers.get('Cache-Control'), 'no-store');
-      assert.deepEqual((await recovered.json())[field], payload[field]);
+      assertRecovered(await recovered.json());
     });
   }
+}
+for (const [path, key, payload, field] of requiredCases) {
+  itRejectsRequiredSeedFailures(path, key, payload, body => assert.deepEqual((body as Record<string, unknown>)[field], payload[field]));
 }
 
 // #8424: get-bls-series reads the canonical key api/health.js vouches for. The
@@ -257,23 +260,12 @@ it('get-bls-series treats a known series missing from a valid canonical seed as 
   assert.equal(failed.status, 503);
   assert.equal(failed.headers.get('Cache-Control'), 'no-store');
 });
-for (const failure of ['miss', 'http-error', 'timeout', 'malformed', 'command-error', 'shape'] as const) {
-  it(`get-bls-series required seed rejects ${failure} and recovers with a healthy observation`, async () => {
-    mode = failure === 'shape' ? 'hit' : failure;
-    if (failure === 'shape') cache.set(BLS_CANONICAL_KEY, {});
-    const failed = await request('economic/v1/get-bls-series?series_id=USPRIV');
-    assert.equal(failed.status, 503);
-    assert.equal(failed.headers.get('Cache-Control'), 'no-store');
-    assert.equal(failed.headers.get('CDN-Cache-Control'), null);
-    assert.equal(failed.headers.get('Vercel-CDN-Cache-Control'), null);
-    mode = 'hit';
-    cache.set(BLS_CANONICAL_KEY, blsSeed());
-    const recovered = await request('economic/v1/get-bls-series?series_id=USPRIV');
-    assert.equal(recovered.status, 200);
-    assert.notEqual(recovered.headers.get('Cache-Control'), 'no-store');
-    assert.equal((await recovered.json()).series.seriesId, 'USPRIV');
-  });
-}
+itRejectsRequiredSeedFailures(
+  'economic/v1/get-bls-series?series_id=USPRIV',
+  BLS_CANONICAL_KEY,
+  blsSeed(),
+  body => assert.equal((body as { series?: { seriesId?: string } }).series?.seriesId, 'USPRIV'),
+);
 it('cyber proto default page size returns the default page, not one threat', async () => {
   mode = 'hit';
   cache.set('cyber:threats:v2', { threats: Array.from({ length: 3 }, (_, i) => ({
