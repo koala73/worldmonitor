@@ -30,7 +30,7 @@ The freshness clock a seeder declares over the *observation dates inside* the pa
 
 Two rules follow from what the contract reduces to. It reports a single newest timestamp, so a payload assembled from *several independently-failing sources* must derive one clock per source and report the **oldest** of them; reducing all their dates together takes the newest, and the still-living source then hides the dead one indefinitely — an alarm that can only fire when every source dies at once. And an undatable payload must report nothing rather than a default, because "we cannot date this" and "this is stale" warrant the same response, while a fabricated recent date warrants none.
 
-Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock.
+Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock, Superseded Failure.
 
 ### Activation Marker
 
@@ -526,6 +526,20 @@ The day-0 post-checkout flow shown to a new Pro subscriber once the payment-to-e
 ### Activation Step State
 
 The disposition of one step in the Activation Interstitial, in two layers: a declared state the step opens with — confirmable, already-done, blocked (the platform will refuse), or unavailable (the device cannot do it) — and a transient overlay for the step the user is currently on, in-flight while a confirm runs and failed when it did not work. The load-bearing distinction is terminal versus retryable, because the failed state is what puts a "Try again" button on screen: a refusal no retry can clear — a denied browser notification permission, which browsers never re-prompt for — must resolve to blocked and show the platform's own out-of-app remedy instead. A step that ends blocked resolves as skipped rather than failed, so the summary never claims a failure that was never attempted; the cost is that a platform refusal is otherwise indistinguishable from disinterest and needs its own event to stay countable. See also: Activation Interstitial, Billing UX State.
+
+## Scheduled Publication
+
+### Period Branch
+
+The branch a scheduled publication workflow names after its period, one per week or month, which is what makes the run idempotent. A run that finds the period's pull request, in any state, does nothing; a run that finds the branch with no pull request opens one and stops; only a period with neither captures anew.
+
+After a failed run the branch is the period's only publication vehicle. A test fix, a generator fix and a hand re-capture all land there, and a re-dispatch never re-captures a period whose branch already exists, so a capture that failed verification is kept on the branch as a draft rather than discarded. See also: Superseded Failure, Content-Age Contract.
+
+### Superseded Failure
+
+A failed scheduled run that the artifact it maintains has since overtaken, because a later capture, by hand or by a later run, carries a newer timestamp than the failure. An alarm keyed on the last run's conclusion must treat such a failure as remedied, or it re-alerts on a fixed problem every day until the next scheduled run.
+
+A run with no timestamp is never superseded, so the alarm fails closed. The alarm's other half, the artifact's own age, is what catches a schedule that never fires at all, which a conclusion alone cannot see. See also: Content-Age Contract, Period Branch.
 
 ## Shipping Gate
 
