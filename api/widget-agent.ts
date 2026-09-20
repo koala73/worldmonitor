@@ -285,10 +285,19 @@ async function proxyWidgetAgent(
   const widgetCookie = getCookie(req, '__Host-wm-widget-key');
   // Explicit enterprise credentials must not fall back to ambient cookies.
   // Otherwise validate each cookie: a rotated Pro key must not mask Widget.
-  const hasEnterpriseKey = explicitWorldMonitorKey
-    ? await hasValidWorldMonitorKey(explicitWorldMonitorKey)
-    : (await hasValidWorldMonitorKey(proCookie)) || (await hasValidWorldMonitorKey(widgetCookie));
-  if (hasEnterpriseKey) {
+  // Prefer the Pro cookie when both cookies validate so spendToken hashes the
+  // same material that authenticated the request.
+  let worldMonitorKey = '';
+  if (explicitWorldMonitorKey) {
+    if (await hasValidWorldMonitorKey(explicitWorldMonitorKey)) {
+      worldMonitorKey = explicitWorldMonitorKey;
+    }
+  } else if (await hasValidWorldMonitorKey(proCookie)) {
+    worldMonitorKey = proCookie;
+  } else if (await hasValidWorldMonitorKey(widgetCookie)) {
+    worldMonitorKey = widgetCookie;
+  }
+  if (worldMonitorKey) {
     isPro = true;
     spendId = `wm:${await spendToken(worldMonitorKey)}`;
     quotaUserId = spendId;
