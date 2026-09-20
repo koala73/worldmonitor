@@ -29,13 +29,30 @@
 // filter and out of the browser's own `.map`.
 //
 // KEYS[1] = durable snapshot body key, KEYS[2] = revoked URL set,
-// KEYS[3] = optional canonical digest key.
+// KEYS[3] = attempt identity key, KEYS[4] = optional canonical digest key.
 // ARGV: 1=nowMs 2=maxAgeMs 3=candidateAcceptedAt 4=durableTtlSeconds
 //       5=candidateDataJson (the digest body alone, verbatim)
 //       6=optional canonicalTtlSeconds 7=canonicalMinGeneratedAtIso
-//       8=canonicalMaxGeneratedAtIso 9=canonicalNegativeTtlSeconds.
+//       8=canonicalMaxGeneratedAtIso 9=canonicalNegativeTtlSeconds 10=attemptTtlSeconds.
 // Returns 1 when written, 0 when the live snapshot was kept, -1 when the
 // candidate has no servable items.
+//
+// isNarrower: breadth is strict, depth has a floor. The `80` is
+// LASTGOOD_MIN_ITEM_PCT from _lastgood.ts, written as a literal because the
+// docker proxy allowlists this exact text; tests/digest-lastgood.test.mts pins
+// the literal to the constant. Integer arithmetic (`* 100 < * 80`), so the
+// comparison itself cannot differ between Lua's doubles and JS. A strict
+// `items <` froze the live digest for ~6h on 2026-09-19 (a 289-item build kept
+// losing to a 294-item incumbent).
+//
+// The durable floor is anchored to the PEAK: the richest item count accepted
+// inside the six-hour window, carried in the row as peakItemCount/peakAt.
+// Anchored to the incumbent instead, 20% steps compound (100 -> 80 -> 64 ...)
+// and consume the recovery snapshot. A stored peak counts only while it is in
+// the window and the incumbent still measures its stored itemCount; once
+// revocations shrank it, a publication-time peak would veto its repair. Rows
+// written before the field existed fall back to the incumbent's own count.
+// Mirror: livePeak/nextPeak in _lastgood.ts.
 export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   'local revoked = {}',
   "for _, url in ipairs(redis.call('SMEMBERS', KEYS[2])) do revoked[url] = true end",
@@ -59,13 +76,15 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   'if okCandidate then candidate = countData(candidateData) end',
   'if not candidate or candidate.categories < 1 or candidate.items < 1 then return -1 end',
   'local canonicalRaw = nil',
-  "if KEYS[3] then canonicalRaw = redis.call('GET', KEYS[3]) end",
+  "if KEYS[4] then canonicalRaw = redis.call('GET', KEYS[4]) end",
   'local function rejectNarrower()',
-  "  if KEYS[3] and not canonicalRaw then redis.call('SET', KEYS[3], '\"__WM_NEG__\"', 'EX', ARGV[9]) end",
+  `  local attempt = '{"ts":' .. ARGV[1] .. ',"outcome":"gate-held"}'`,
+  "  redis.call('SET', KEYS[3], attempt, 'EX', ARGV[10])",
+  "  if KEYS[4] and not canonicalRaw then redis.call('SET', KEYS[4], '\"__WM_NEG__\"', 'EX', ARGV[9]) end",
   '  return 0',
   'end',
   'local function isNarrower(nextData, currentData)',
-  '  return nextData.categories < currentData.categories or nextData.items < currentData.items',
+  '  return nextData.categories < currentData.categories or nextData.items * 100 < currentData.items * 80',
   'end',
   'local function isLiveCanonicalClock(value)',
   "  if type(value) ~= 'string' then return false end",
@@ -79,6 +98,7 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '  if day < 1 or day > monthDays[month] then return false end',
   '  return value >= ARGV[7] and value <= ARGV[8]',
   'end',
+  'local carriedPeak, carriedPeakAt = nil, nil',
   "local currentRaw = redis.call('GET', KEYS[1])",
   'if currentRaw then',
   '  local okCurrent, snapshot = pcall(cjson.decode, currentRaw)',
@@ -87,11 +107,21 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '    if current then',
   '      local delta = tonumber(ARGV[1]) - (tonumber(snapshot.acceptedAt) or 0)',
   '      local live = delta >= 0 and delta <= tonumber(ARGV[2])',
-  '      if live and isNarrower(candidate, current) then return rejectNarrower() end',
+  '      if live then',
+  '        local peak, peakAt = current.items, tonumber(snapshot.acceptedAt) or 0',
+  '        local storedPeak, storedPeakAt = tonumber(snapshot.peakItemCount), tonumber(snapshot.peakAt) or 0',
+  '        local peakDelta = tonumber(ARGV[1]) - storedPeakAt',
+  '        local peakLive = storedPeak and peakDelta >= 0 and peakDelta <= tonumber(ARGV[2])',
+  '        if peakLive and tonumber(snapshot.itemCount) == current.items and storedPeak > peak then',
+  '          peak, peakAt = storedPeak, storedPeakAt',
+  '        end',
+  '        if isNarrower(candidate, { categories = current.categories, items = peak }) then return rejectNarrower() end',
+  '        if peak > candidate.items then carriedPeak, carriedPeakAt = peak, peakAt end',
+  '      end',
   '    end',
   '  end',
   'end',
-  'if KEYS[3] then',
+  'if KEYS[4] then',
   '  if canonicalRaw then',
   '    local okCanonical, canonicalData = pcall(cjson.decode, canonicalRaw)',
   "    if okCanonical and type(canonicalData) == 'table' then",
@@ -110,8 +140,10 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "local stored = '{\"acceptedAt\":' .. string.format('%.0f', tonumber(ARGV[3]) or 0)",
   "  .. ',\"categoryCount\":' .. string.format('%.0f', candidate.categories)",
   "  .. ',\"itemCount\":' .. string.format('%.0f', candidate.items)",
+  "  .. ',\"peakItemCount\":' .. string.format('%.0f', carriedPeak or candidate.items)",
+  "  .. ',\"peakAt\":' .. string.format('%.0f', carriedPeakAt or tonumber(ARGV[3]) or 0)",
   '  .. \',"data":\' .. ARGV[5] .. \'}\'',
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
-  "if KEYS[3] then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6]) end",
+  "if KEYS[4] then redis.call('SET', KEYS[4], ARGV[5], 'EX', ARGV[6]) end",
   'return 1',
 ].join('\n');

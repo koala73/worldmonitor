@@ -6,15 +6,19 @@ vi.mock('@/services/infrastructure', () => ({ fetchServiceStatuses: vi.fn() }));
 beforeAll(initTestI18n);
 let panel: ServiceStatusPanel;
 afterEach(() => { panel?.destroy(); document.body.replaceChildren(); });
-it('shows unavailable, then observed operational status, then neutral empty category', async () => {
+it('shows unavailable, then observed operational status, retains last-good, then neutral empty category', async () => {
   panel = new ServiceStatusPanel(); document.body.append(panel.getElement());
-  vi.mocked(fetchServiceStatuses).mockResolvedValue({success:false,timestamp:'',summary:{operational:0,degraded:0,outage:0,unknown:0},services:[]});
+  vi.mocked(fetchServiceStatuses).mockResolvedValue({success:true,timestamp:'',summary:{operational:0,degraded:0,outage:0,unknown:0},services:[]});
   await panel.fetchStatus();
   expect(document.body.textContent).toContain(tt('common.failedToLoad'));
   expect(document.querySelector('.all-operational')).toBeNull();
   vi.mocked(fetchServiceStatuses).mockResolvedValue({success:true,timestamp:'',summary:{operational:1,degraded:0,outage:0,unknown:0},services:[{id:'aws',name:'AWS',category:'cloud',status:'operational',description:''}]});
   await panel.fetchStatus();
   expect(document.querySelector('.all-operational')).not.toBeNull();
+  vi.mocked(fetchServiceStatuses).mockResolvedValue({success:true,timestamp:'',summary:{operational:0,degraded:0,outage:0,unknown:0},services:[]});
+  await panel.fetchStatus();
+  expect(document.querySelector('.all-operational')).not.toBeNull();
+  expect(document.body.textContent).toContain('AWS');
   (document.querySelector('[data-filter="ai"]') as HTMLButtonElement).click();
   expect(document.querySelector('.all-operational')).toBeNull();
   expect(document.body.textContent).toContain(tt('common.noDataAvailable'));

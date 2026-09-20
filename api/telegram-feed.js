@@ -333,7 +333,7 @@ export default async function handler(req) {
         ? entitlement.features.apiDailyAllowance : -1;
       const plan = entitlement.planKey;
       const upgrade_url = plan && plan !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
-      if (!burst.ok) {
+      if (burst.ok === false) {
         if (enforce) {
           const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
           return jsonResponse({

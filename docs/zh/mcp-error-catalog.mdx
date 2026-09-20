@@ -36,7 +36,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 - **JSON-RPC `error.code`** 是应用层的回答。共使用九个代码：`-32001`、`-32002`、`-32003`、`-32004`、`-32029`、`-32600`、`-32601`、`-32602`、`-32603`。handler 不会发出其他代码 —— 如果你看到了其他代码，请将其视为协议 bug 并提交 issue。
 - **软行为信封**是高频失败模式。`tools/call` 在 JSON-RPC 层成功（HTTP 200，无 `error` 字段），但位于 `result.content[0].text` 中的 JSON 携带了一个 `_budget_exceeded` 或 `_jmespath_error` 判别字段。只检查 JSON-RPC 信封的客户端会默默地把这些当作成功 —— 请解析 `result.content[0].text`，并在将该负载作为数据消费前检查是否存在前导下划线 `_` 键。
 - **已执行的调用仍计费。** `_budget_exceeded`、`_jmespath_error` 和工具执行错误（`-32603`）都发生在工具已运行之后，因此它们会消耗 Pro 每日配额槽位。只有预分发失败（如每日上限拒绝或配额预留服务失败）才不消耗槽位。
-- **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向 `/.well-known/oauth-protected-resource` 的 `resource_metadata` 指针。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。
+- **两条 401 路径都设置了 `WWW-Authenticate`**，包含 `realm="worldmonitor"` 以及指向所调用路由的受保护资源文档的 `resource_metadata` 指针：`/mcp` 对应 `/.well-known/oauth-protected-resource/mcp`，`/api/mcp` 对应 `/.well-known/oauth-protected-resource/api/mcp`。支持 RFC 9728 的客户端（Claude Desktop、MCP Inspector）会凭此头自动跳转 OAuth 流程，无需进一步干预。
 
 ## JSON-RPC 错误代码
 
@@ -46,7 +46,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 | `-32002`  | 终止性权益拒绝 —— 执行中的 Pro 调用才可能遇到失效订阅，或所调工具超出当前套餐 | **403**（下文所述的账户额度资源读取为 **200**） | 对已发出的拒绝不要重新鉴权；已在预检查中确认失效的账户改走受限免费账户路径 |
 | `-32003`  | 必需数据输入不可用 —— 工具无法读取上游种子数据 | **200** | 可重试；`error.data` 会列出不可用或失败的输入 |
 | `-32004`  | 找不到 SSE 重放光标 —— 恢复的流已过期或落在另一个实例 | **404** | 重新发出原始 POST，而不是继续恢复 |
-| `-32029`  | 被限流 —— 每分钟节流或按套餐解析的每日配额上限        | **200**（每分钟）/ **429**（每日） | 遵循 `Retry-After`；对于 200/每分钟，退避约 1 秒                    |
+| `-32029`  | 被限流 —— 每分钟节流、按套餐解析的每日配额上限、免费账户额度，或匿名免费层上限 | **200**（每分钟）/ **429**（每日、额度、匿名上限、下游） | 遵循 `Retry-After`；对于 200/每分钟，退避约 1 秒                    |
 | `-32600`  | 格式错误的 JSON-RPC 请求信封                                    | **200**                   | 修正请求编码器；这是客户端 bug                         |
 | `-32601`  | 方法未找到                                                       | **200**                   | 使用 initialize 结果中 `capabilities` 所宣告的方法     |
 | `-32602`  | 参数无效 —— 缺失/未知的工具、提示或资源 URI         | **200**                   | 修正参数；查阅 `tools/list`、`prompts/list` 或 `resources/list` |
@@ -58,7 +58,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 
 由 `api/mcp/auth.ts` 的鉴权解析路径触发，总是配对 HTTP **401** 和 `WWW-Authenticate` 头。用户可见的触发点按客户端命中顺序如下：
 
-1. **既无 `Authorization` bearer 也无 `X-WorldMonitor-Key`** —— 客户端在调用 `/mcp` 时未携带任何凭证。
+1. **既无 `Authorization` bearer 也无 `X-WorldMonitor-Key`** —— 客户端在 `/mcp` 上调用受限方法时未携带任何凭证。传输端点上未认证的 `initialize` 即属此类：它是交互式 MCP 客户端收到的第一个响应，其 `WWW-Authenticate` 质询正是触发 OAuth 登录的信号。
 2. **`Authorization: Bearer <token>` 但 `<token>` 无效或已过期** —— 令牌无法解析到上下文（被撤销 / TTL 过期 / 从未由 `/api/oauth/token` 签发）。
 3. **`X-WorldMonitor-Key: <key>` 但 `<key>` 不在有效集合中** —— API key 错误。
 4. **OAuth 令牌可解析但 Pro MCP 令牌行缺失或跨绑定** —— `mcpTokenId` 不再映射到该 userId。通常是 Settings → Connected MCP clients 中的撤销操作所致。
@@ -80,7 +80,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource/mcp"
 Content-Type: application/json
 ```
 
@@ -146,7 +146,7 @@ Content-Type: application/json
 
 每分钟与每日上限触发条件共用此代码；由 HTTP 状态码区分。
 
-**每分钟节流 —— HTTP 200。** 滑动窗口限流器按旧版运营方（`env_`）密钥、按用户（该用户的 OAuth 令牌与控制面板签发的 `wm_…` key 合计为一份额度，不可叠加）或按 IP（用于匿名公开发现）键控。按用户的阈值由 `planLimits.mcpBurstRequestsPerMinute` 按套餐解析：Pro、Pro Business 与 API Starter 为 **60 次 / 分钟**，API Business 为 **300**，Enterprise 为 **1,000**；当该值缺失、或不是大于等于 1 的有限数时一律回退为 60，即宁可落在更低的上限上。元数据方法与免费层方法是付费调用方拿不到套餐速率的唯一情形：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估（`api/mcp/handler.ts` 中的公开方法分支调用 `applyPerMinuteLimit` 时不传上限）。两者用的是同一个按用户的池，因此在 API Business 上，`tools/list` 的突发会在 60 处被拒，而 `tools/call` 仍可跑到 300。运营方密钥限流器和匿名发现限流器保持固定的 **60 次 / 分钟**。已鉴权请求在鉴权之后受限。无凭证的公开发现方法（`initialize`、`notifications/initialized`、`ping`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`）与匿名公开资源读取无需鉴权即可服务，但仍会经过匿名发现限流器。无凭证的数据 / 配额方法，或该公开集合之外的元数据方法，**不**使用匿名发现 —— 它们以 `-32001` / HTTP 401 故障关闭。以 HTTP 200 内的 JSON-RPC 错误返回，并回显被拒绝请求的 `id`。在 Upstash 瞬时错误时**故障开放** —— 限流器后端的偶发延迟尖峰不会拖垮整个 API。
+**每分钟节流 —— HTTP 200。** 滑动窗口限流器按旧版运营方（`env_`）密钥、按用户（该用户的 OAuth 令牌与控制面板签发的 `wm_…` key 合计为一份额度，不可叠加）或按 IP（用于匿名公开发现）键控。按用户的阈值由 `planLimits.mcpBurstRequestsPerMinute` 按套餐解析：Pro、Pro Business 与 API Starter 为 **60 次 / 分钟**，API Business 为 **300**，Enterprise 为 **1,000**；当该值缺失、或不是大于等于 1 的有限数时一律回退为 60，即宁可落在更低的上限上。元数据方法与免费层方法是付费调用方拿不到套餐速率的唯一情形：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估（`api/mcp/handler.ts` 中的公开方法分支调用 `applyPerMinuteLimit` 时不传上限）。两者用的是同一个按用户的池，因此在 API Business 上，`tools/list` 的突发会在 60 处被拒，而 `tools/call` 仍可跑到 300。运营方密钥限流器和匿名发现限流器保持固定的 **60 次 / 分钟**。已鉴权请求在鉴权之后受限。无凭证的公开发现方法（`initialize` 仅限机器发现别名 `/.well-known/mcp` 与 `/.well-known/mcp.json`——在传输端点上它会在任何限流器之前被 `-32001` 质询；以及在所有路径上的 `notifications/initialized`、`ping`、`tools/list`、`prompts/list`、`prompts/get`、`skills/list`、`skills/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`）与匿名公开资源读取无需鉴权即可服务，但仍会经过匿名发现限流器。无凭证的数据 / 配额方法，或该公开集合之外的元数据方法，**不**使用匿名发现 —— 它们以 `-32001` / HTTP 401 故障关闭。唯一的例外是无需凭证的 `get_sources` 工具：它可匿名调用，但受独立的、故障关闭的**每 IP 每分钟 10 次**上限约束，超限时返回 `-32029` / HTTP 429。以 HTTP 200 内的 JSON-RPC 错误返回，并回显被拒绝请求的 `id`。在 Upstash 瞬时错误时**故障开放** —— 限流器后端的偶发延迟尖峰不会拖垮整个 API。
 
 当每分钟限流器拒绝时，handler 会发出一条持久的 `mcp.rate_limit_hit` 遥测事件，其身份形态经过允许列表过滤。套餐限制扫描器用该事件做持续突发通知；它不会从原始 Upstash 限流器内部推断面向客户的 MCP 突发通知。
 
@@ -227,7 +227,7 @@ Content-Type: application/json
 
 ### `-32601` —— 方法未找到
 
-`method` 字段是字符串但未匹配到任何 handler。本服务器支持的方法：`initialize`、`notifications/initialized`、`ping`、`tools/list`、`tools/call`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`resources/read`、`logging/setLevel`。
+`method` 字段是字符串但未匹配到任何 handler。本服务器支持的方法：`initialize`、`notifications/initialized`、`ping`、`tools/list`、`tools/call`、`prompts/list`、`prompts/get`、`skills/list`、`skills/get`、`resources/list`、`resources/templates/list`、`resources/read`、`logging/setLevel`。
 
 ```json
 {

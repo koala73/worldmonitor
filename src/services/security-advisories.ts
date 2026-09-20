@@ -67,9 +67,10 @@ export async function loadAdvisoriesFromServer(): Promise<SecurityAdvisoriesFetc
     return { ok: true, advisories };
   } catch (e) {
     console.warn('[SecurityAdvisories] RPC failed:', e);
+    dataFreshness.recordError('security_advisories', e instanceof Error ? e.message : 'Fetch failed');
   }
 
-  return { ok: true, advisories: [] };
+  return { ok: false, advisories: cachedResult ?? [] };
 }
 
 /** @deprecated Use loadAdvisoriesFromServer() instead */

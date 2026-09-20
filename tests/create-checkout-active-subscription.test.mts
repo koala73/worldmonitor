@@ -116,7 +116,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     const relayFetch = mock.fn(async () =>
       Response.json(
         {
-          error: 'Checkout failed: Request timed out.',
+          error: 'CHECKOUT_TIMED_OUT',
           message: 'Dodo checkout request exceeded its provider timeout',
         },
         { status: 500 },
@@ -135,13 +135,13 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
 
     assert.equal(res.status, 500);
     assert.deepEqual(await res.json(), {
-      error: 'Checkout failed: Request timed out.',
+      error: 'CHECKOUT_TIMED_OUT',
     });
     assert.equal(consoleError.mock.calls.length, 1);
     assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay error:');
     assert.equal(consoleError.mock.calls[0].arguments[1], 500);
     assert.deepEqual(consoleError.mock.calls[0].arguments[2], {
-      error: 'Checkout failed: Request timed out.',
+      error: 'CHECKOUT_TIMED_OUT',
       message: 'Dodo checkout request exceeded its provider timeout',
     });
     assert.equal(relayFetch.mock.calls.length, 1, 'one logical relay create call');
