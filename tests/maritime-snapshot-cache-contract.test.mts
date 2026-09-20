@@ -32,7 +32,7 @@ type SnapshotResponse = {
 };
 
 type RuntimeGlobals = typeof globalThis & {
-  __maritimeQueue?: SnapshotResponse[];
+  __maritimeQueue?: Array<SnapshotResponse | Promise<SnapshotResponse>>;
   __maritimeRequests?: boolean[];
   __maritimePersistent?: Map<string, { data: unknown; updatedAt: number }>;
 };
@@ -156,7 +156,7 @@ afterEach(() => {
   delete runtime.__maritimePersistent;
 });
 
-function setup(queue: SnapshotResponse[]): void {
+function setup(queue: Array<SnapshotResponse | Promise<SnapshotResponse>>): void {
   runtime.__maritimeQueue = [...queue];
   runtime.__maritimeRequests = [];
   runtime.__maritimePersistent = new Map();
@@ -195,6 +195,58 @@ test('a density sequence does not suppress the first candidate snapshot', async 
   assert.deepEqual(runtime.__maritimeRequests, [false, true]);
   assert.deepEqual(delivered, ['123456789']);
   harness.unregisterAisCallback(callback);
+  harness.disconnectAisStream();
+});
+
+test('a candidate response does not advance the watermark after its callback is removed', async () => {
+  let releaseResponse!: (value: SnapshotResponse) => void;
+  const pendingResponse = new Promise<SnapshotResponse>((resolveResponse) => {
+    releaseResponse = resolveResponse;
+  });
+  setup([pendingResponse]);
+  const harness = await loadHarness();
+
+  const firstDelivered: string[] = [];
+  const firstCallback = (data: { mmsi: string }) => firstDelivered.push(data.mmsi);
+  harness.registerAisCallback(firstCallback);
+  await settleBackgroundWork();
+  harness.unregisterAisCallback(firstCallback);
+  releaseResponse(response(9, true));
+  await settleBackgroundWork();
+
+  const secondDelivered: string[] = [];
+  const secondCallback = (data: { mmsi: string }) => secondDelivered.push(data.mmsi);
+  harness.registerAisCallback(secondCallback);
+  await harness.pollSnapshot(true);
+
+  assert.deepEqual(firstDelivered, []);
+  assert.deepEqual(secondDelivered, ['123456789']);
+  assert.deepEqual(runtime.__maritimeRequests, [true]);
+  harness.unregisterAisCallback(secondCallback);
+  harness.disconnectAisStream();
+});
+
+test('a callback that unregisters during delivery resets the candidate watermark', async () => {
+  setup([response(10, true)]);
+  const harness = await loadHarness();
+
+  const firstDelivered: string[] = [];
+  const firstCallback = (data: { mmsi: string }) => {
+    firstDelivered.push(data.mmsi);
+    harness.unregisterAisCallback(firstCallback);
+  };
+  harness.registerAisCallback(firstCallback);
+  await settleBackgroundWork();
+
+  const secondDelivered: string[] = [];
+  const secondCallback = (data: { mmsi: string }) => secondDelivered.push(data.mmsi);
+  harness.registerAisCallback(secondCallback);
+  await harness.pollSnapshot(true);
+
+  assert.deepEqual(firstDelivered, ['123456789']);
+  assert.deepEqual(secondDelivered, ['123456789']);
+  assert.deepEqual(runtime.__maritimeRequests, [true]);
+  harness.unregisterAisCallback(secondCallback);
   harness.disconnectAisStream();
 });
 

@@ -266,9 +266,13 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
     latestStatus = snapshot.status;
     lastPollAt = Date.now();
 
-    if (includeCandidates && (lastCandidateSequence === 0 || snapshot.sequence > lastCandidateSequence)) {
-      emitCandidateReports(snapshot.candidateReports);
+    if (
+      includeCandidates
+      && positionCallbacks.size > 0
+      && (lastCandidateSequence === 0 || snapshot.sequence > lastCandidateSequence)
+    ) {
       lastCandidateSequence = snapshot.sequence;
+      emitCandidateReports(snapshot.candidateReports);
     }
 
     const itemCount = latestDisruptions.length + latestDensity.length;
