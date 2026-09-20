@@ -275,13 +275,15 @@ describe('airport ops input admission', () => {
 
   it('accepts twenty valid codes and bounds unknown rows', async () => {
     const airports = Array.from({ length: 20 }, (_, i) => `AA${String.fromCharCode(65 + i)}`);
-    const response = await getAirportOpsSummary({}, { airports });
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary');
+    const response = await getAirportOpsSummary({ request }, { airports });
     assert.equal(response.summaries.length, 20);
     assert.deepEqual(new Set(response.summaries.map(row => row.iata)), new Set(airports));
   });
 
   it('normalizes and deduplicates while preserving valid unknown-airport rows', async () => {
-    const response = await getAirportOpsSummary({}, { airports: ' lhr ,LHR,ncl,NCL' });
+    const request = new Request('https://worldmonitor.app/api/aviation/v1/get-airport-ops-summary');
+    const response = await getAirportOpsSummary({ request }, { airports: ' lhr ,LHR,ncl,NCL' });
     assert.deepEqual(response.summaries.map(row => row.iata), ['LHR', 'NCL']);
     assert.equal(summaryFor(response, 'NCL').severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
   });
