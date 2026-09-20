@@ -1204,3 +1204,81 @@ test('a silent stream is reported stale before it is recycled', async (t) => {
   }, 'the hard recycle at the freshness budget', 12_000);
   assert.equal(recycled.terminalFailuresSinceBoot, 1);
 });
+
+for (const rejection of ['error frame', 'close reason', 'generic policy close', 'throttled close']) {
+  test(`classifies a subscription rejection from ${rejection} after upgrade`, async (t) => {
+    let upstreamAttempts = 0;
+    const upstreamSockets = [];
+    const upstream = http.createServer();
+    const upstreamWss = new WebSocketServer({ server: upstream });
+    upstreamWss.on('connection', (socket) => {
+      upstreamAttempts++;
+      upstreamSockets.push(socket);
+      socket.once('message', (raw) => {
+        assert.equal(JSON.parse(raw.toString()).APIKey, 'revoked-key');
+        if (rejection === 'error frame') {
+          // No provider close: the relay must recycle the refused subscription.
+          socket.send(JSON.stringify({ error: 'Api Key Is Not Valid' }));
+        } else {
+          socket.close(1008, rejection === 'close reason'
+            ? 'Api Key Is Not Valid'
+            : rejection === 'throttled close' ? 'rate limit exceeded' : 'Invalid bounding box');
+        }
+      });
+    });
+    const upstreamPort = await listen(upstream);
+    const child = spawn(process.execPath, [relayScript], {
+      env: {
+        ...process.env,
+        AISSTREAM_API_KEY: 'revoked-key',
+        AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+        RELAY_SHARED_SECRET: 'relay-secret',
+        RELAY_TEST_MODE: 'true',
+        NODE_ENV: 'test',
+        PORT: '0',
+        AIS_RECONNECT_BASE_MS: '1000',
+        AIS_RECONNECT_MAX_MS: '1000',
+        AIS_AUTH_PROBE_MS: '60000',
+        AIS_THROTTLE_ESCALATE_AFTER: '2',
+        AIS_THROTTLE_RECONNECT_MAX_MS: '2000',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    t.after(async () => {
+      await stopChild(child);
+      for (const socket of upstreamSockets) socket.terminate();
+      await new Promise(resolve => upstreamWss.close(resolve));
+      await new Promise(resolve => upstream.close(resolve));
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk.toString('utf8'); });
+    child.stderr.on('data', chunk => { output += chunk.toString('utf8'); });
+    await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+    const relayPort = Number(output.match(/WebSocket relay on port (\d+)/)[1]);
+    await getJson(relayPort, '/ais/snapshot', { 'x-relay-key': 'relay-secret' });
+    const authFailure = rejection === 'error frame' || rejection === 'close reason';
+    const throttled = rejection === 'throttled close';
+    const failure = await waitForAsync(async () => {
+      const health = (await getJson(relayPort, '/health')).ingestion.aisSnapshot.upstream;
+      return health.lastFailure === (authFailure ? 'auth_rejected' : throttled ? 'http_429' : 'closed_without_data')
+        && health.reconnectCooldownRemainingMs > 0 ? health : null;
+    }, 'the subscription rejection to schedule a retry');
+    assert.equal(failure.terminalFailuresSinceBoot, throttled ? 0 : 1, 'error plus close must count only once');
+    assert.equal(failure.throttlesSinceBoot, throttled ? 1 : 0);
+    assert.equal(failure.connected, false);
+    if (authFailure) {
+      assert.ok(failure.reconnectCooldownRemainingMs > 30_000);
+      await new Promise(resolve => setTimeout(resolve, 1_500));
+      assert.equal(upstreamAttempts, 1, 'subscription auth must not use the fast ladder');
+    } else {
+      assert.ok(failure.reconnectCooldownRemainingMs <= 1_000);
+      await waitFor(() => upstreamAttempts >= 2, 'ordinary retry after a non-auth policy close');
+      if (throttled) {
+        await waitForAsync(async () => {
+          const health = (await getJson(relayPort, '/health')).ingestion.aisSnapshot.upstream;
+          return health.throttleEscalated && health.consecutiveThrottles >= 2;
+        }, 'close reasons to preserve consecutive throttles');
+      }
+    }
+  });
+}

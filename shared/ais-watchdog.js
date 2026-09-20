@@ -79,7 +79,7 @@ export function classifyAisFailure(detail = {}) {
   if (
     status === 401 || status === 403
     || /\b(401|403)\b/.test(message)
-    || /unauthoriz|forbidden|invalid[\s_-]*(api[\s_-]*)?key|api[\s_-]*key[\s_-]*invalid|authentication failed/.test(message)
+    || /unauthoriz|forbidden|invalid[\s_-]*(api[\s_-]*)?key|api[\s_-]*key[\s_-]*(?:is[\s_-]*)?(?:invalid|not[\s_-]*valid)|authentication failed/.test(message)
   ) {
     return { kind: 'auth', label: 'auth_rejected', retryAfterMs: null };
   }

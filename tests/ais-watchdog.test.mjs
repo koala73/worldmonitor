@@ -42,6 +42,8 @@ test('classifyAisFailure separates throttles, auth rejections and transport faul
   assert.equal(classifyAisFailure({ statusCode: 401 }).kind, 'auth');
   assert.equal(classifyAisFailure({ statusCode: 403 }).kind, 'auth');
   assert.equal(classifyAisFailure({ message: 'invalid api key' }).kind, 'auth');
+  assert.equal(classifyAisFailure({ message: 'Api Key Is Not Valid' }).kind, 'auth');
+  assert.equal(classifyAisFailure({ message: 'Invalid bounding box' }).kind, 'transport');
   assert.equal(classifyAisFailure({ message: 'Unauthorized' }).kind, 'auth');
   assert.equal(classifyAisFailure({ message: 'authentication failed' }).kind, 'auth');
   assert.equal(

@@ -9220,7 +9220,7 @@ function updateVesselChokepoints(mmsi, lat, lon) {
   else vesselChokepoints.set(mmsi, next);
 }
 
-function processRawUpstreamMessage(raw) {
+function processRawUpstreamMessage(raw, onSubscriptionError) {
   messageCount++;
   if (messageCount % 5000 === 0) {
     const mem = process.memoryUsage();
@@ -9230,6 +9230,10 @@ function processRawUpstreamMessage(raw) {
   let acceptedType = null;
   try {
     const parsed = JSON.parse(raw);
+    if (typeof parsed?.error === 'string' && parsed.error.trim()) {
+      onSubscriptionError(parsed.error);
+      return null;
+    }
     if (parsed?.MessageType === 'PositionReport') {
       if (processPositionReportForSnapshot(parsed)) acceptedType = 'position';
     } else if (parsed?.MessageType === 'ShipStaticData') {
@@ -14519,6 +14523,13 @@ function connectUpstream() {
     setImmediate(drainUpstreamQueue);
   };
 
+  const onSubscriptionError = (message) => {
+    recordUpstreamOutcome({ message });
+    // The key is sent after upgrade, so subscription errors arrive as data.
+    // The close handler releases the socket and schedules the classified delay.
+    socket.terminate();
+  };
+
   const drainUpstreamQueue = () => {
     if (upstreamSocket !== socket) {
       clearUpstreamQueue();
@@ -14535,7 +14546,8 @@ function connectUpstream() {
            Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
       const raw = dequeueUpstreamMessage();
       if (!raw) break;
-      const acceptedType = processRawUpstreamMessage(raw);
+      const acceptedType = processRawUpstreamMessage(raw, onSubscriptionError);
+      if (socketFailureRecorded) return;
       if (acceptedType) {
         // A successful WebSocket upgrade or arbitrary JSON frame is not AIS
         // recovery. Only a validated frame accepted into relay state resets
@@ -14622,12 +14634,15 @@ function connectUpstream() {
     scheduleUpstreamDrain();
   });
 
-  socket.on('close', () => {
+  socket.on('close', (_code, reason) => {
     if (upstreamSocket === socket) {
       if (!relayShuttingDown && !socketFailureRecorded) {
-        // A close with no recorded error is by definition not a throttle.
-        aisReconnectPolicy.onCleanClose();
+        const message = reason.toString();
+        const failure = classifyAisFailure({ message });
+        if (failure.kind !== 'rate-limit') aisReconnectPolicy.onCleanClose();
         recordUpstreamOutcome({
+          // A generic policy close can mean a malformed subscription, not auth.
+          message: failure.kind === 'transport' ? '' : message,
           servedData: socketServedData,
           positionTimedOut: socketPositionTimedOut,
         });
