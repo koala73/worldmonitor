@@ -238,14 +238,15 @@ it('replays a completed account-scoped checkout without reaching admission at th
   const sha = async (value: string) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
   const reqHash = await sha(body);
   const expectedKey = `idem:v1:${await sha('user:user_existing_pro\n/api/create-checkout\ncompleted-checkout')}`;
+  const stored = JSON.stringify({ state: 'completed', status: 200, contentType: 'application/json', reqHash, body: JSON.stringify({ checkout_url: 'https://checkout.example/original' }) });
   mock.method(globalThis, 'fetch', async (url, init) => {
     assert.equal(String(url), 'https://upstash.test/pipeline');
     const commands = JSON.parse(String(init?.body));
     assert.ok(commands.every((command: string[]) => command[1] === expectedKey));
-    return Response.json([
-      { result: null },
-      { result: JSON.stringify({ state: 'completed', status: 200, contentType: 'application/json', reqHash, body: JSON.stringify({ checkout_url: 'https://checkout.example/original' }) }) },
-    ]);
+    // One reply per command, so the peek's single GET and the begin pipeline's
+    // SET NX + GET both read the slot they actually sent. A completed record
+    // already holds the key, so SET NX takes no lock.
+    return Response.json(commands.map((command: string[]) => (command[0] === 'GET' ? { result: stored } : { result: null })));
   });
   const relay = mock.fn(async () => { throw new Error('Replay must not invoke relay admission'); });
   mod.__setCreateCheckoutDepsForTests({
