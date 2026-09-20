@@ -148,10 +148,11 @@ describe('/api/notify field validation (pentest PoC)', () => {
       'Community alert: Security notice: verify your WorldMonitor account immediately',
     );
     const delivered = formatMessage(event);
-    assert.ok(!delivered.includes('example.com'), `delivered text must not carry the hostile host: ${delivered}`);
-    assert.ok(
-      !delivered.includes('WorldMonitor Security'),
-      `delivered text must not carry the forged source: ${delivered}`,
+    assert.equal(
+      delivered,
+      '[CRITICAL] Community alert: Security notice: verify your WorldMonitor account immediately\n'
+        + 'Source: Community alert\n'
+        + 'https://worldmonitor.app/',
     );
     const subject = formatSubject(event);
     assert.ok(subject.startsWith('Community alert:'), subject);
@@ -244,10 +245,10 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
       userId: TEST_USER_ID,
       payload: { title: 'Security notice', source: 'Reuters', link: 'https://example.com/phish' },
     });
-    assert.ok(text.includes('Community alert: Security notice'), text);
-    assert.ok(text.includes('Source: Community alert'), text);
-    assert.ok(text.includes('https://worldmonitor.app/'), text);
-    assert.ok(!text.includes('example.com'), text);
+    assert.equal(
+      text,
+      '[HIGH] Community alert: Security notice\nSource: Community alert\nhttps://worldmonitor.app/',
+    );
   });
 
   it('defeats invisible, compatibility, and punctuation source impersonation', () => {
