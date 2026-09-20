@@ -2182,7 +2182,7 @@
       "infoTooltip": "<strong>Calendar economic</strong> Publicări macroeconomice programate: CPI, NFP, GDP, PMI și decizii ale băncilor centrale. Afișează prognoză vs. real vs. anterior. Evenimentele cu impact ridicat sunt evidențiate. Sursă: furnizori de date economice."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Indicator de stres financiar</strong> Raportul WorldMonitor dintre creditul cu randament ridicat și titlurile de Trezorerie americane pe termen lung, ajustat pentru volatilitatea acțiunilor și diferențialul de randament ridicat: (HYG / TLT) / (VIX × HY spread / 100). Acesta nu este Indicele de stres financiar al Rezervei Federale din Kansas City. O valoare de 1.5 sau mai mare indică stres redus; sub 0.3 indică stres ridicat.",
       "title": "Indicatorul de Stres Financiar",
       "usFsiValue": "VALOARE FSI SUA",
       "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",

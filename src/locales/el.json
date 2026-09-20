@@ -1902,7 +1902,7 @@
       "etfs": "ETFs",
       "netInflow": "ΚΑΘΑΡΗ ΕΙΣΡΟΗ",
       "netOutflow": "ΚΑΘΑΡΗ ΕΚΡΟΗ",
-      "netNeutral": "ΚΑΘΑΡΑ ΟΥΔΕΤΕΡΟ",
+      "netNeutral": "ΚΑΘΑΡΗ ΟΥΔΕΤΕΡΟΤΗΤΑ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Εκδότης",
@@ -2173,7 +2173,7 @@
       "infoTooltip": "<strong>Οικονομικό Ημερολόγιο</strong> Προγραμματισμένες μακροοικονομικές δημοσιεύσεις: CPI, NFP, GDP, PMI και αποφάσεις κεντρικών τραπεζών. Εμφανίζει πρόβλεψη έναντι πραγματικής έναντι προηγούμενης τιμής. Γεγονότα υψηλού αντίκτυπου επισημαίνονται. Πηγή: πάροχοι οικονομικών δεδομένων."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Δείκτης χρηματοοικονομικού στρες</strong> Ο λόγος του WorldMonitor για πίστωση υψηλής απόδοσης προς μακροπρόθεσμα αμερικανικά ομόλογα, προσαρμοσμένος για τη μεταβλητότητα των μετοχών και το spread υψηλής απόδοσης: (HYG / TLT) / (VIX × HY spread / 100). Δεν είναι ο Δείκτης Χρηματοοικονομικού Στρες της Ομοσπονδιακής Τράπεζας του Κάνσας Σίτι. Τιμή 1.5 ή υψηλότερη σημαίνει χαμηλό στρες· κάτω από 0.3 σημαίνει υψηλό στρες.",
       "title": "Δείκτης Χρηματοοικονομικού Στρες",
       "usFsiValue": "ΤΙΜΗ US FSI",
       "cissTitle": "EU CISS (Συστημικό Στρες Ευρωζώνης)",

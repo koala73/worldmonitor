@@ -2191,7 +2191,7 @@
       "infoTooltip": "<strong>Ekonomický kalendář</strong> Plánované makroekonomické publikace: CPI, NFP, GDP, PMI a rozhodnutí centrálních bank. Zobrazuje prognózu vs. skutečnost vs. předchozí. Události s vysokým dopadem jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Poměr WorldMonitoru mezi vysokovýnosovým úvěrem a dlouhodobými americkými státními dluhopisy, upravený o volatilitu akcií a rozpětí vysokovýnosových dluhopisů: (HYG / TLT) / (VIX × HY spread / 100). Nejde o Index finančního stresu Federální rezervní banky v Kansas City. Hodnota 1.5 nebo vyšší znamená nízký stres; hodnota pod 0.3 znamená vysoký stres.",
       "title": "Indikátor finanční stability",
       "usFsiValue": "HODNOTA US FSI",
       "cissTitle": "EU CISS (Systemické napětí eurozóny)",

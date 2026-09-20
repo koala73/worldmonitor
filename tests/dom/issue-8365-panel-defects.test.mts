@@ -32,9 +32,16 @@ vi.mock('@/services/story-renderer', () => ({
   renderStoryToCanvas: vi.fn(),
 }));
 
+const { deductSituation } = vi.hoisted(() => ({ deductSituation: vi.fn() }));
+vi.mock('@/services/generated-rpc-clients', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/generated-rpc-clients')>(),
+  IntelligenceServiceClient: class { deductSituation = deductSituation; },
+}));
+
 import { etfNetFlowLabel } from '@/components/ETFFlowsPanel';
 import { fsiLabelDisplay } from '@/components/FSIPanel';
 import { EnergyCrisisPanel } from '@/components/EnergyCrisisPanel';
+import { DeductionPanel } from '@/components/DeductionPanel';
 import { LiveNewsPanel } from '@/components/LiveNewsPanel';
 import { PlaybackControl } from '@/components/PlaybackControl';
 import { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
@@ -76,6 +83,30 @@ describe('issue 8365 panel labels', () => {
     expect(tooltip).toMatch(/TLT/);
     expect(tooltip).toMatch(/not the Kansas City Fed/);
     expect(tooltip).not.toMatch(/KCFSI/);
+  });
+});
+
+describe('DeductionPanel principal reset', () => {
+  it('discards an old analysis and restores an empty usable form', async () => {
+    const pending = deferred<{ analysis: string }>();
+    deductSituation.mockReturnValueOnce(pending.promise);
+    const panel = new DeductionPanel();
+    document.body.append(panel.getElement());
+    const view = panel as unknown as { handleSubmit: (event: Event) => Promise<void> };
+    const input = panel.getElement().querySelector<HTMLTextAreaElement>('.deduction-input')!;
+    const geo = panel.getElement().querySelector<HTMLInputElement>('.deduction-geo-input')!;
+    input.value = 'Private question';
+    geo.value = 'Private context';
+    const request = view.handleSubmit(new Event('submit'));
+    panel.clearSensitiveContent();
+    panel.unlockPanel();
+    pending.resolve({ analysis: 'Private answer' });
+    await request;
+    expect(input.value).toBe('');
+    expect(geo.value).toBe('');
+    expect(panel.getElement().textContent).not.toContain('Private answer');
+    expect(panel.getElement().querySelector<HTMLButtonElement>('.deduction-submit-btn')!.disabled).toBe(false);
+    panel.destroy();
   });
 });
 

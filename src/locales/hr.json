@@ -2396,7 +2396,7 @@
       "infoTooltip": "<strong>Ekonomski kalendar</strong> Planirana makroekonomska objavljivanja: CPI, NFP, GDP, PMI i odluke središnjih banaka. Prikazuje prognozu naspram stvarnih vrijednosti naspram prethodnih. Događaji visokog utjecaja su označeni. Izvor: davatelji ekonomskih podataka."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Pokazatelj financijskog stresa</strong> Omjer WorldMonitora između visokoprinosnih kredita i dugoročnih američkih državnih obveznica, prilagođen za volatilnost dionica i visokoprinosni raspon: (HYG / TLT) / (VIX × HY spread / 100). Ovo nije Indeks financijskog stresa Federalne rezerve Kansas Cityja. Očitavanje od 1.5 ili više znači nizak stres; ispod 0.3 znači visok stres.",
       "title": "Indikator financijskog stresa",
       "usFsiValue": "VRIJEDNOST US FSI",
       "cissTitle": "EU CISS (Sustavni stres evrske zone)",

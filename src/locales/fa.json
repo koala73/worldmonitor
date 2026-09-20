@@ -2383,7 +2383,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>شاخص تنش مالی</strong> نسبت WorldMonitor از اعتبار پربازده به اوراق خزانه‌داری بلندمدت آمریکا، تعدیل‌شده با نوسان سهام و اختلاف بازده اوراق پربازده: (HYG / TLT) / (VIX × HY spread / 100). این شاخص تنش مالی فدرال رزرو کانزاس‌سیتی نیست. مقدار 1.5 یا بالاتر نشان‌دهنده تنش کم است؛ کمتر از 0.3 نشان‌دهنده تنش زیاد است.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",

@@ -2173,7 +2173,7 @@
       "infoTooltip": "<strong>Ekonomik Takvim</strong> Planlanmış makroekonomik yayınlar: CPI, NFP, GDP, PMI ve merkez bankası kararları. Tahmin, gerçek ve önceki değeri gösterir. Yüksek etkili olaylar vurgulanır. Kaynak: ekonomik veri sağlayıcıları."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Finansal stres göstergesi</strong> Hisse senedi oynaklığı ve yüksek getirili spread için ayarlanmış, yüksek getirili kredi ile uzun vadeli ABD Hazine tahvilleri arasındaki WorldMonitor oranı: (HYG / TLT) / (VIX × HY spread / 100). Bu, Kansas City Federal Rezerv Bankası Finansal Stres Endeksi değildir. 1.5 veya üzeri bir değer düşük stres; 0.3 altı yüksek stres anlamına gelir.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD FSI DEĞERİ",
       "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",

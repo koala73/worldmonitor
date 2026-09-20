@@ -1792,7 +1792,7 @@
       "infoTooltip": "<strong>Ekonomisk kalender</strong> Schemalagda makroekonomiska publiceringar: CPI, NFP, GDP, PMI och centralbanksbeslut. Visar prognos vs. faktisk vs. föregående. Händelser med hög påverkan markerade. Källa: ekonomiska dataleverantörer."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Finansiell stressindikator</strong> WorldMonitors kvot mellan högavkastande krediter och långfristiga amerikanska statsobligationer, justerad för aktievolatilitet och högavkastningsspreaden: (HYG / TLT) / (VIX × HY spread / 100). Detta är inte Federal Reserve Bank of Kansas Citys Financial Stress Index. Ett värde på 1.5 eller högre betyder låg stress; under 0.3 betyder hög stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI-VÄRDE",
       "cissTitle": "EU CISS (euroområdets systemriskövervakning)",

@@ -2164,7 +2164,7 @@
       "infoTooltip": "<strong>经济日历</strong> 预定的宏观经济数据发布：CPI、NFP、GDP、PMI和央行决议。显示预测值、实际值和前值。高影响事件突出显示。来源：经济数据提供商。"
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>金融压力指标</strong> WorldMonitor 对高收益信贷与长期美国国债的比率，并根据股票波动率和高收益利差进行调整：(HYG / TLT) / (VIX × HY spread / 100)。这不是堪萨斯城联邦储备银行金融压力指数。读数为 1.5 或更高表示压力较低；低于 0.3 表示压力较高。",
       "title": "金融压力指标",
       "usFsiValue": "美国FSI值",
       "cissTitle": "欧盟CISS（欧元区系统性压力）",

@@ -2380,7 +2380,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Ütemezett makrogazdasági közlemények: CPI, NFP, GDP, PMI és jegybanki döntések. Előrejelzést, tényleges értéket és előző értéket mutatja. A nagy hatású eseményeket kiemelve. Forrás: gazdasági adatszolgáltatók."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Pénzügyi stresszmutató</strong> A WorldMonitor magas hozamú hitel és hosszú lejáratú amerikai államkötvények közötti aránya, részvénypiaci volatilitással és magas hozamú felárral korrigálva: (HYG / TLT) / (VIX × HY spread / 100). Ez nem a Kansas City-i Fed pénzügyi stresszindexe. Az 1.5 vagy magasabb érték alacsony stresszt jelent; 0.3 alatt magas stresszt.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI ÉRTÉK",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",

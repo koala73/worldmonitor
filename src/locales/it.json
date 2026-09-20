@@ -2182,7 +2182,7 @@
       "infoTooltip": "<strong>Calendario economico</strong> Pubblicazioni macroeconomiche programmate: CPI, NFP, GDP, PMI e decisioni delle banche centrali. Mostra previsione vs. effettivo vs. precedente. Eventi ad alto impatto evidenziati. Fonte: fornitori di dati economici."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> WorldMonitor ratio of high-yield credit to long Treasuries, adjusted for equity volatility and the high-yield spread: (HYG / TLT) / (VIX × HY spread / 100). This is not the Kansas City Fed Financial Stress Index. A reading of 1.5 or higher is low stress; below 0.3 is high stress.",
+      "infoTooltip": "<strong>Indicatore di stress finanziario</strong> Rapporto WorldMonitor tra credito ad alto rendimento e Treasury USA a lungo termine, corretto per la volatilità azionaria e lo spread ad alto rendimento: (HYG / TLT) / (VIX × HY spread / 100). Non è il Financial Stress Index della Federal Reserve di Kansas City. Un valore di 1.5 o superiore indica stress basso; sotto 0.3 indica stress alto.",
       "title": "Indicatore di Stress Finanziario",
       "usFsiValue": "VALORE FSI USA",
       "cissTitle": "EU CISS (Stress Sistemico dell'Area Euro)",
