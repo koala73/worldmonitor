@@ -26,8 +26,13 @@ const FNS = [
   'sanitizeNotificationText',
   'isImpersonatingSource',
   'sanitizeNotificationTitle',
+  'sanitizeCommunityNotificationTitle',
+  'sanitizeNotificationDescription',
   'sanitizeNotificationSource',
+  'sanitizeUserNotificationSource',
   'classifyNotificationLink',
+  'isFirstPartyNotificationHost',
+  'sanitizeUserNotificationLinkUrl',
   'sanitizeNotificationLinkUrl',
   'renderNotificationLinkForText',
 ];
@@ -35,7 +40,9 @@ const FNS = [
 const CONSTANTS = [
   'NOTIFY_TITLE_MAX_LENGTH',
   'NOTIFY_SOURCE_MAX_LENGTH',
+  'NOTIFY_DESCRIPTION_MAX_LENGTH',
   'NOTIFY_DASHBOARD_URL',
+  'NOTIFY_COMMUNITY_TITLE_PREFIX',
   'NOTIFY_NEUTRAL_SOURCE',
 ];
 
@@ -47,6 +54,9 @@ const VECTORS = {
     ['a\nb\rc\td'],
     ['line para sep'],
     ['World\u200bMonitor'],
+    ['World\u2060Monitor'],
+    ['World\u2066Monitor\u2069'],
+    ['ＷｏｒｌｄＭｏｎｉｔｏｒ'],
     ['a\u202db\u202cc'],
     ['clean headline — with unicode ✓'],
     [''],
@@ -71,6 +81,10 @@ const VECTORS = {
     ['World\u200cMonitor Security'],
     ['World\u200eMonitor Security'],
     ['World\u00adMonitor Security'],
+    ['World\u2060Monitor Security'],
+    ['World-Monitor Security'],
+    ['World.Monitor Security'],
+    ['ＷｏｒｌｄＭｏｎｉｔｏｒ Security'],
     ['Reuters'],
     ['Tzeva Adom / Pikud HaOref'],
     [''],
@@ -85,6 +99,18 @@ const VECTORS = {
     [null],
     [123],
   ],
+  sanitizeCommunityNotificationTitle: [
+    ['Security notice'],
+    ['Community alert: Existing prefix'],
+    ['Hi\r\nBcc: evil@x.com'],
+    [null],
+  ],
+  sanitizeNotificationDescription: [
+    ['x'.repeat(350)],
+    ['x'.repeat(500)],
+    ['line\nwith control'],
+    [null],
+  ],
   sanitizeNotificationSource: [
     ['WorldMonitor Security'],
     ['World\u200bMonitor Security'],
@@ -93,6 +119,12 @@ const VECTORS = {
     ['Equity Market'],
     ['Source\nwith newline'],
     ['x'.repeat(500)],
+    [null],
+  ],
+  sanitizeUserNotificationSource: [
+    ['WorldMonitor Security'],
+    ['Reuters'],
+    [''],
     [null],
   ],
   classifyNotificationLink: [
@@ -110,6 +142,21 @@ const VECTORS = {
     [undefined],
     [123],
     [{ toString: () => 'https://example.com' }],
+  ],
+  isFirstPartyNotificationHost: [
+    ['worldmonitor.app'],
+    ['www.worldmonitor.app'],
+    ['tech.worldmonitor.app'],
+    ['evilworldmonitor.app'],
+    ['worldmonitor.app.evil.test'],
+  ],
+  sanitizeUserNotificationLinkUrl: [
+    ['https://worldmonitor.app/world/story'],
+    ['https://tech.worldmonitor.app/'],
+    ['https://example.com/wm-verify-account'],
+    ['javascript:alert(1)'],
+    [''],
+    [null],
   ],
   sanitizeNotificationLinkUrl: [
     ['https://example.com/wm-verify-account'],
@@ -166,6 +213,24 @@ describe('notify-fields TS/CJS parity', () => {
       assert.equal(
         mod.sanitizeNotificationSource('WorldMonitor Security'),
         mod.NOTIFY_NEUTRAL_SOURCE,
+      );
+    }
+  });
+
+  it('enforces expected unsafe-link outcomes, not only mirror agreement', () => {
+    for (const mod of [cjs, ts]) {
+      assert.deepEqual(mod.classifyNotificationLink('javascript:alert(1)'), { kind: 'dashboard' });
+      assert.deepEqual(mod.classifyNotificationLink('http://example.com/'), { kind: 'dashboard' });
+      assert.deepEqual(mod.classifyNotificationLink('https://worldmonitor.app@example.com/'), { kind: 'dashboard' });
+      assert.equal(mod.sanitizeNotificationLinkUrl('javascript:alert(1)'), mod.NOTIFY_DASHBOARD_URL);
+      assert.equal(mod.renderNotificationLinkForText('javascript:alert(1)'), mod.NOTIFY_DASHBOARD_URL);
+      assert.equal(
+        mod.sanitizeUserNotificationLinkUrl('https://example.com/wm-verify-account'),
+        mod.NOTIFY_DASHBOARD_URL,
+      );
+      assert.equal(
+        mod.sanitizeUserNotificationLinkUrl('https://worldmonitor.app/world/story'),
+        'https://worldmonitor.app/world/story',
       );
     }
   });

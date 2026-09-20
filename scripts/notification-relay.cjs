@@ -18,9 +18,13 @@ const {
 } = require('./shared/notification-dedup.cjs');
 const {
   renderNotificationLinkForText,
+  sanitizeCommunityNotificationTitle,
+  sanitizeNotificationDescription,
   sanitizeNotificationLinkUrl,
   sanitizeNotificationSource,
   sanitizeNotificationTitle,
+  sanitizeUserNotificationLinkUrl,
+  sanitizeUserNotificationSource,
 } = require('./shared/notify-fields.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -247,9 +251,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     // Shape held titles with the same boundary as formatMessage: held events
     // include relay-originated ones that never passed /api/notify, so raw
     // titles here would bypass the field guarantee (issue #8397).
-    const heldTitle = sanitizeNotificationTitle(ev.payload?.title ?? ev.eventType)
-      || sanitizeNotificationTitle(ev.eventType)
-      || 'alert';
+    const heldTitle = formatEventTitle(ev);
     lines.push(`[${(ev.severity ?? 'high').toUpperCase()}] ${heldTitle}`);
   }
   lines.push('', 'View full dashboard → worldmonitor.app');
@@ -445,7 +447,7 @@ async function sendSlack(userId, webhookEnvelope, text) {
   try {
     res = await postJsonWithPinnedAddress(
       safeUrl,
-      JSON.stringify({ text, unfurl_links: false }),
+      JSON.stringify(buildSlackMessagePayload(text)),
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
       resolvedAddresses,
     );
@@ -468,6 +470,29 @@ async function sendSlack(userId, webhookEnvelope, text) {
 
 const DISCORD_MAX_CONTENT = 2000;
 
+function escapeSlackText(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeDiscordText(text) {
+  // Every Discord masked link starts with `[`. Escaping only backslashes and
+  // opening brackets prevents `[trusted](https://evil)` while preserving bare
+  // article URLs, including underscores and parentheses.
+  return text.replace(/\\/g, '\\\\').replace(/\[/g, '\\[');
+}
+
+function buildSlackMessagePayload(text) {
+  return { text: escapeSlackText(text), unfurl_links: false };
+}
+
+function buildDiscordMessagePayload(text) {
+  const escapedText = escapeDiscordText(text);
+  const content = escapedText.length > DISCORD_MAX_CONTENT
+    ? escapedText.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
+    : escapedText;
+  return { content, allowed_mentions: { parse: [] } };
+}
+
 async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
   let webhookUrl;
   try {
@@ -488,14 +513,11 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
     console.warn(`[relay] Discord URL rejected for ${userId}:`, err.message);
     return false;
   }
-  const content = text.length > DISCORD_MAX_CONTENT
-    ? text.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
-    : text;
   let res;
   try {
     res = await postJsonWithPinnedAddress(
       safeUrl,
-      JSON.stringify({ content }),
+      JSON.stringify(buildDiscordMessagePayload(text)),
       { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
       resolvedAddresses,
     );
@@ -953,18 +975,30 @@ function formatMessage(event) {
   // eventType is the fallback when the title sanitises to empty — shape it
   // too, since the edge validates its type/length but not control characters,
   // and a bare fallback would reintroduce newlines into subject and body.
-  const fallback = sanitizeNotificationTitle(event.eventType);
-  const title = sanitizeNotificationTitle(event.payload?.title ?? event.eventType);
-  const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${title || fallback || 'alert'}`];
+  const title = formatEventTitle(event);
+  const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${title}`];
   if (NOTIFY_RELAY_INCLUDE_SNIPPET && typeof event.payload?.description === 'string' && event.payload.description.length > 0) {
-    const snippet = sanitizeNotificationTitle(event.payload.description);
+    const snippet = sanitizeNotificationDescription(event.payload.description);
     if (snippet) parts.push(`> ${truncateForDisplay(snippet, SNIPPET_TELEGRAM_MAX)}`);
   }
-  const source = sanitizeNotificationSource(event.payload?.source);
+  const source = event.userId
+    ? sanitizeUserNotificationSource(event.payload?.source)
+    : sanitizeNotificationSource(event.payload?.source);
   if (source) parts.push(`Source: ${source}`);
-  const link = renderNotificationLinkForText(event.payload?.link ?? event.payload?.url);
+  const linkValue = event.payload?.link ?? event.payload?.url;
+  const link = event.userId
+    ? sanitizeUserNotificationLinkUrl(linkValue)
+    : renderNotificationLinkForText(linkValue);
   if (link) parts.push(link);
   return parts.join('\n');
+}
+
+function formatEventTitle(event, finalFallback = 'alert') {
+  const rawTitle = event.payload?.title ?? event.eventType;
+  if (event.userId) return sanitizeCommunityNotificationTitle(rawTitle);
+  return sanitizeNotificationTitle(rawTitle)
+    || sanitizeNotificationTitle(event.eventType)
+    || finalFallback;
 }
 
 /**
@@ -974,9 +1008,8 @@ function formatMessage(event) {
  * WorldMonitor account immediately`).
  */
 function formatSubject(event) {
-  const fallback = sanitizeNotificationTitle(event.eventType);
-  const title = sanitizeNotificationTitle(event.payload?.title ?? event.eventType);
-  return `WorldMonitor Alert: ${title || fallback || 'alert'}`;
+  const title = formatEventTitle(event);
+  return event.userId ? title : `WorldMonitor Alert: ${title}`;
 }
 
 async function processWelcome(event) {
@@ -1125,8 +1158,10 @@ async function generateEventImpact(event, rule) {
   // titles/sources would let a hostile event steer the impact text that is
   // appended to deliveries. AI_IMPACT_ENABLED is default-off; this keeps the
   // prompt path under the same guarantee when enabled.
-  const safeTitle = sanitizeNotificationTitle(event.payload?.title ?? event.eventType).slice(0, 300) || 'alert';
-  const safeSource = sanitizeNotificationSource(event.payload?.source).slice(0, 100);
+  const safeTitle = formatEventTitle(event).slice(0, 300);
+  const safeSource = (event.userId
+    ? sanitizeUserNotificationSource(event.payload?.source)
+    : sanitizeNotificationSource(event.payload?.source)).slice(0, 100);
   const systemPrompt = `Assess how this event impacts a specific investor/analyst.
 Return 1-2 sentences: (1) direct impact on their assets/regions, (2) action implication.
 If no clear impact: "Low direct impact on your portfolio."
@@ -1338,11 +1373,12 @@ async function processEvent(event) {
           // `payload.url` is a second, edge-unvalidated link field, so the
           // link wins and url is only a fallback before classification).
           const firstLine = (deliveryText || '').split('\n')[1] || '';
-          const eventUrl = sanitizeNotificationLinkUrl(
-            event.payload?.link ?? event.payload?.url,
-          );
+          const linkValue = event.payload?.link ?? event.payload?.url;
+          const eventUrl = event.userId
+            ? sanitizeUserNotificationLinkUrl(linkValue)
+            : sanitizeNotificationLinkUrl(linkValue);
           await sendWebPush(rule.userId, ch, {
-            title: sanitizeNotificationTitle(event.payload?.title) || event.eventType || 'WorldMonitor',
+            title: formatEventTitle(event, 'WorldMonitor'),
             body: firstLine,
             url: eventUrl || 'https://worldmonitor.app/',
             tag: `${event.eventType}:${rule.userId}`,
@@ -1443,6 +1479,11 @@ module.exports = {
   // hand-copied mirror that cannot fail when the real one changes.
   formatMessage,
   formatSubject,
+  formatEventTitle,
+  escapeSlackText,
+  escapeDiscordText,
+  buildSlackMessagePayload,
+  buildDiscordMessagePayload,
   processWelcome,
   popNextEvent,
 };

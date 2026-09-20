@@ -22,10 +22,10 @@ import {
 import { validateBearerToken } from '../server/auth-session';
 import { checkTierProEntitlement } from '../server/_shared/pro-entitlement';
 import {
-  NOTIFY_DASHBOARD_URL,
-  classifyNotificationLink,
-  sanitizeNotificationSource,
-  sanitizeNotificationTitle,
+  sanitizeCommunityNotificationTitle,
+  sanitizeNotificationDescription,
+  sanitizeUserNotificationLinkUrl,
+  sanitizeUserNotificationSource,
 } from '../server/_shared/notify-fields';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
@@ -226,45 +226,33 @@ export default async function handler(req: Request): Promise<Response> {
   // Telegram/Slack/Discord text, web-push click URL) and PR #8384 closed only
   // the push path. A hostile event produced a real email from
   // alerts@worldmonitor.app with a forged subject, a forged `Source:` line,
-  // and an off-origin link verbatim. Neutralise per-field so legitimate RSS
-  // punctuation/unicode/long-tail publisher domains keep flowing; every
-  // downstream channel inherits the guarantee instead of re-implementing it.
-  if ('title' in payload) {
-    payload.title = sanitizeNotificationTitle(payload.title);
-  }
+  // and an off-origin link verbatim. User-submitted titles and sources carry
+  // server-authored community provenance, and external links collapse to the
+  // dashboard. Trusted relay-originated RSS events use the separate relay
+  // path and keep their article links.
+  payload.title = sanitizeCommunityNotificationTitle(payload.title ?? eventType);
   if ('source' in payload) {
-    payload.source = sanitizeNotificationSource(payload.source);
+    payload.source = sanitizeUserNotificationSource(payload.source);
+    if (!payload.source) delete payload.source;
   }
   if (payload.link !== undefined) {
-    const classified = classifyNotificationLink(payload.link);
-    if (classified.kind === 'absent') {
-      delete payload.link;
-    } else if (classified.kind === 'dashboard') {
-      // Dangerous scheme, credentials, or unparseable: collapse to the
-      // dashboard rather than delivering attacker-controlled navigation.
-      payload.link = NOTIFY_DASHBOARD_URL;
-    } else {
-      payload.link = classified.url;
-    }
+    const link = sanitizeUserNotificationLinkUrl(payload.link);
+    if (link) payload.link = link;
+    else delete payload.link;
   }
   // `payload.url` is a second link field the relay's web-push path reads
   // (`event.payload?.link ?? event.payload?.url`). Classify it the same way
   // so it cannot smuggle an unvalidated click target past this boundary.
   if (payload.url !== undefined) {
-    const classified = classifyNotificationLink(payload.url);
-    if (classified.kind === 'absent') {
-      delete payload.url;
-    } else if (classified.kind === 'dashboard') {
-      payload.url = NOTIFY_DASHBOARD_URL;
-    } else {
-      payload.url = classified.url;
-    }
+    const url = sanitizeUserNotificationLinkUrl(payload.url);
+    if (url) payload.url = url;
+    else delete payload.url;
   }
   // `payload.description` renders as a context line in chat/email bodies.
   // Shape it as plain single-line text so header/body injection via embedded
   // newlines or control characters cannot ride along with a snippet.
   if (payload.description !== undefined) {
-    payload.description = sanitizeNotificationTitle(payload.description);
+    payload.description = sanitizeNotificationDescription(payload.description);
     if (!payload.description) delete payload.description;
   }
 

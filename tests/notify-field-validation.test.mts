@@ -45,9 +45,22 @@ Module._load = function patchedLoad(request, parent, ...rest) {
   return originalLoad.call(this, request, parent, ...rest);
 };
 
-const { formatMessage: relayFormatMessage, formatSubject: relayFormatSubject } = require('../scripts/notification-relay.cjs');
+const {
+  buildDiscordMessagePayload: relayBuildDiscordMessagePayload,
+  buildSlackMessagePayload: relayBuildSlackMessagePayload,
+  escapeDiscordText: relayEscapeDiscordText,
+  escapeSlackText: relayEscapeSlackText,
+  formatEventTitle: relayFormatEventTitle,
+  formatMessage: relayFormatMessage,
+  formatSubject: relayFormatSubject,
+} = require('../scripts/notification-relay.cjs');
 const formatMessage: (event: unknown) => string = relayFormatMessage;
 const formatSubject: (event: unknown) => string = relayFormatSubject;
+const formatEventTitle: (event: unknown, fallback?: string) => string = relayFormatEventTitle;
+const escapeSlackText: (text: string) => string = relayEscapeSlackText;
+const escapeDiscordText: (text: string) => string = relayEscapeDiscordText;
+const buildSlackMessagePayload: (text: string) => Record<string, unknown> = relayBuildSlackMessagePayload;
+const buildDiscordMessagePayload: (text: string) => Record<string, unknown> = relayBuildDiscordMessagePayload;
 
 Module._load = originalLoad;
 
@@ -113,14 +126,13 @@ describe('/api/notify field validation (pentest PoC)', () => {
 
     if (res.status !== 200) {
       // Rejected outright: nothing may reach the shared queue.
+      assert.ok(res.status >= 400 && res.status < 500, `rejection must be a client error, got ${res.status}`);
       assert.equal(queued, null, 'rejected event must not be queued');
       return;
     }
     // Accepted: the queued payload must carry sanitised values. The email
     // subject is built from the queued title and the chat/email body from
-    // the queued source/link, so assert on the DELIVERED rendering, not the
-    // stored URL: the forged source must be gone, and the off-origin link
-    // must never appear verbatim (formatMessage discloses the host inline).
+    // the queued source/link, so assert both queue and delivery values.
     assert.ok(queued, 'accepted event must queue a payload');
     const event = JSON.parse(queued as string);
     const queuedPayload = event.payload as Record<string, unknown>;
@@ -129,23 +141,24 @@ describe('/api/notify field validation (pentest PoC)', () => {
       !queuedText.includes('WorldMonitor Security'),
       `queued payload must not carry the forged source: ${queuedText}`,
     );
-    const delivered = formatMessage(event);
-    // Delivered text discloses the destination host inline
-    // (`<url> (source: <host>)`), so assert the disclosure form rather than
-    // substring-matching the URL — CodeQL's incomplete-url-sanitization query
-    // flags `.includes(fullUrl)` as insufficient because a hostile host can
-    // hide before/after the match.
-    assert.ok(
-      delivered.includes('https://example.com/wm-verify-account (source: example.com)'),
-      `delivered text must disclose the off-origin host inline: ${delivered}`,
+    assert.equal(queuedPayload.source, 'Community alert');
+    assert.equal(queuedPayload.link, 'https://worldmonitor.app/');
+    assert.equal(
+      queuedPayload.title,
+      'Community alert: Security notice: verify your WorldMonitor account immediately',
     );
+    const delivered = formatMessage(event);
+    assert.ok(!delivered.includes('example.com'), `delivered text must not carry the hostile host: ${delivered}`);
     assert.ok(
       !delivered.includes('WorldMonitor Security'),
       `delivered text must not carry the forged source: ${delivered}`,
     );
+    const subject = formatSubject(event);
+    assert.ok(subject.startsWith('Community alert:'), subject);
+    assert.ok(!subject.startsWith('WorldMonitor Alert:'), subject);
   });
 
-  it('keeps legitimate RSS + domain-producer traffic flowing', async () => {
+  it('keeps legitimate caller titles and first-party links flowing', async () => {
     installDeps();
     process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
@@ -155,11 +168,11 @@ describe('/api/notify field validation (pentest PoC)', () => {
       return { ok: true };
     }) as typeof fetch;
 
-    // RSS-origin: headline + publisher source + article link (the point of rss_alert).
+    // Caller-origin: title plus a first-party article link.
     const rss = await handler(makePost({
       eventType: 'rss_alert',
       severity: 'high',
-      payload: { title: 'Markets rally on rate outlook', source: 'Reuters', link: 'https://reuters.com/world/story' },
+      payload: { title: 'Markets rally on rate outlook', source: 'Reuters', link: 'https://worldmonitor.app/world/story' },
     }));
     assert.equal(rss.status, 200);
     // Domain-origin: structured title/source, no link.
@@ -170,11 +183,40 @@ describe('/api/notify field validation (pentest PoC)', () => {
     }));
     assert.equal(domain.status, 200);
     assert.equal(queued.length, 2);
+    const rssEvent = JSON.parse(queued[0]);
+    assert.equal(rssEvent.payload.title, 'Community alert: Markets rally on rate outlook');
+    assert.equal(rssEvent.payload.source, 'Community alert');
+    assert.equal(rssEvent.payload.link, 'https://worldmonitor.app/world/story');
+    const domainEvent = JSON.parse(queued[1]);
+    assert.equal(domainEvent.payload.title, 'Community alert: WTI: +6% surge');
+    assert.equal(domainEvent.payload.source, 'Community alert');
+  });
+
+  it('normalises url-only targets and preserves the 400-character description budget', async () => {
+    installDeps();
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
+    let queued = '';
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      queued = decodeURIComponent(String(url).split('/lpush/wm:events:queue/')[1] ?? '');
+      return { ok: true };
+    }) as typeof fetch;
+
+    const description = 'x'.repeat(350);
+    const res = await handler(makePost({
+      eventType: 'rss_alert',
+      payload: { title: 'URL fallback', url: 'https://example.com/phish', description },
+    }));
+
+    assert.equal(res.status, 200);
+    const event = JSON.parse(queued);
+    assert.equal(event.payload.url, 'https://worldmonitor.app/');
+    assert.equal(event.payload.description, description);
   });
 });
 
 describe('formatMessage defence in depth (relay-originated events)', () => {
-  it('renders neither the forged source nor the off-origin link verbatim', () => {
+  it('neutralises a forged source while disclosing trusted relay article links', () => {
     const text = formatMessage({
       eventType: 'rss_alert',
       severity: 'critical',
@@ -196,44 +238,57 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     assert.ok(text.includes('(source: example.com)'), `must disclose the destination host: ${text}`);
   });
 
-  it('defeats invisible-character impersonation (zero-width source still neutralised)', () => {
-    const zwsp = String.fromCharCode(0x200b);
+  it('collapses off-origin links for caller-submitted events', () => {
     const text = formatMessage({
       eventType: 'rss_alert',
-      severity: 'critical',
-      payload: {
-        title: 'Security notice',
-        source: `World${zwsp}Monitor Security`,
-        link: 'https://example.com/wm-verify-account',
-      },
+      userId: TEST_USER_ID,
+      payload: { title: 'Security notice', source: 'Reuters', link: 'https://example.com/phish' },
     });
-    assert.ok(!text.includes(`World${zwsp}Monitor Security`), `must not render lookalike source: ${text}`);
-    assert.ok(text.includes('Community alert'), `lookalike source must collapse to the neutral label: ${text}`);
+    assert.ok(text.includes('Community alert: Security notice'), text);
+    assert.ok(text.includes('Source: Community alert'), text);
+    assert.ok(text.includes('https://worldmonitor.app/'), text);
+    assert.ok(!text.includes('example.com'), text);
   });
 
-  it('routes the web-push sink through the same boundary (no raw title/link/url)', () => {
-    const { readFileSync } = require('node:fs');
-    const src = readFileSync(require.resolve('../scripts/notification-relay.cjs'), 'utf-8');
-    const marker = "} else if (ch.channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {";
-    const start = src.indexOf(marker);
-    assert.ok(start !== -1, 'realtime web_push delivery block must exist');
-    // The realtime block ends at the first `});` after the marker (the
-    // drainHeldForUser quiet_hours_batch block is a separate static push).
-    const end = src.indexOf('});', start);
-    assert.ok(end !== -1, 'realtime web_push block must terminate');
-    const fn = src.slice(start, end);
-    assert.ok(!fn.includes('event.payload?.title ||'), 'push title must be sanitised, not raw');
-    assert.ok(!fn.includes('event.payload?.link ||'), 'push link must be classified, not raw');
-    assert.match(fn, /sanitizeNotificationTitle\(event\.payload\?\.title\)/, 'push title uses the shared boundary');
-    assert.match(fn, /sanitizeNotificationLinkUrl\(\s*event\.payload\?\.link \?\? event\.payload\?\.url/, 'push link classifies link then url');
+  it('defeats invisible, compatibility, and punctuation source impersonation', () => {
+    for (const source of [
+      'World\u200bMonitor Security',
+      'World\u2060Monitor Security',
+      'World\u2066Monitor\u2069 Security',
+      'ＷｏｒｌｄＭｏｎｉｔｏｒ Security',
+      'World-Monitor Security',
+      'World.Monitor Security',
+    ]) {
+      const text = formatMessage({
+        eventType: 'rss_alert',
+        severity: 'critical',
+        payload: { title: 'Security notice', source },
+      });
+      assert.ok(!text.includes(source), `must not render lookalike source: ${text}`);
+      assert.ok(text.includes('Community alert'), `lookalike source must collapse to the neutral label: ${text}`);
+    }
+  });
+
+  it('shapes the title-less web-push fallback through the shared formatter', () => {
+    assert.equal(
+      formatEventTitle({ eventType: 'rss\nalert', payload: {} }, 'WorldMonitor'),
+      'rss alert',
+    );
+    assert.equal(
+      formatEventTitle({ eventType: 'rss\nalert', userId: TEST_USER_ID, payload: {} }, 'WorldMonitor'),
+      'Community alert: rss alert',
+    );
   });
 
   it('shapes the email subject with the same title boundary (no header injection)', () => {
     const hostile = formatSubject({
       eventType: 'rss_alert',
+      userId: TEST_USER_ID,
       severity: 'critical',
       payload: { title: 'Security notice: verify your WorldMonitor account immediately' },
     });
+    assert.equal(hostile, 'Community alert: Security notice: verify your WorldMonitor account immediately');
+    assert.ok(!hostile.startsWith('WorldMonitor Alert:'), hostile);
     assert.ok(!hostile.includes('\r') && !hostile.includes('\n'), `subject must be single-line: ${hostile}`);
     const injected = formatSubject({
       eventType: 'rss_alert',
@@ -241,6 +296,29 @@ describe('formatMessage defence in depth (relay-originated events)', () => {
     });
     assert.ok(!injected.includes('\r') && !injected.includes('\n'), `subject must strip newlines: ${injected}`);
     assert.ok(injected.includes('Hi Bcc:'), `newline collapses to space, content preserved: ${injected}`);
+  });
+
+  it('neutralises Slack and Discord channel markup at their sink boundaries', () => {
+    assert.equal(
+      escapeSlackText('<!channel> <https://evil.test|WorldMonitor> & more'),
+      '&lt;!channel&gt; &lt;https://evil.test|WorldMonitor&gt; &amp; more',
+    );
+    assert.equal(
+      escapeDiscordText('@everyone [WorldMonitor](https://evil.test)'),
+      '@everyone \\[WorldMonitor](https://evil.test)',
+    );
+    assert.equal(
+      escapeDiscordText('https://reuters.com/a_story_(update)'),
+      'https://reuters.com/a_story_(update)',
+    );
+    assert.deepEqual(buildSlackMessagePayload('<!channel>'), {
+      text: '&lt;!channel&gt;',
+      unfurl_links: false,
+    });
+    assert.deepEqual(buildDiscordMessagePayload('@everyone [WorldMonitor](https://evil.test)'), {
+      content: '@everyone \\[WorldMonitor](https://evil.test)',
+      allowed_mentions: { parse: [] },
+    });
   });
 
   it('still renders legitimate titles, sources and article links', () => {

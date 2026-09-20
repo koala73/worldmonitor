@@ -22,15 +22,18 @@
  * headlines carry punctuation, unicode and long-tail publisher domains):
  *   - `title`/`source`: single-line plain text. Control characters and
  *     newlines are stripped (they enable header/body injection in the email
- *     path), over-long values are truncated, and a `source` that impersonates
- *     a first-party identity is replaced with a neutral label.
+ *     path), compatibility forms are normalized, over-long values are
+ *     truncated, and a `source` that impersonates a first-party identity is
+ *     replaced with a neutral label. Caller-submitted titles and sources use
+ *     explicit community provenance.
  *   - `link`: https-only, no credentials — the same scheme/credential
  *     discipline PR #8384's `safePushClickUrl` enforces for web push, so the
  *     two sinks cannot drift. Dangerous schemes collapse to the dashboard
  *     URL. Reachable off-origin https article links are KEPT (they are the
  *     point of an rss_alert, and legitimate RSS publishers span a long tail
  *     outside any allowlist) but rendered with their destination host
- *     disclosed inline, so WorldMonitor branding can never mask the target.
+ *     disclosed inline. Caller-submitted external links collapse to the
+ *     dashboard; only trusted relay producers keep external article links.
  *
  * Edge-safe: no Node imports, no JSON imports — `api/notify.ts` bundles with
  * esbuild for Vercel Edge (see scripts/check-edge-function-bundles.mjs).
@@ -38,7 +41,9 @@
 
 export const NOTIFY_TITLE_MAX_LENGTH = 200;
 export const NOTIFY_SOURCE_MAX_LENGTH = 120;
+export const NOTIFY_DESCRIPTION_MAX_LENGTH = 400;
 export const NOTIFY_DASHBOARD_URL = 'https://worldmonitor.app/';
+export const NOTIFY_COMMUNITY_TITLE_PREFIX = 'Community alert: ';
 
 /**
  * First-party identity markers a `source` value must not impersonate. An
@@ -47,21 +52,21 @@ export const NOTIFY_DASHBOARD_URL = 'https://worldmonitor.app/';
  * the link is the payload, not the lure — so matching is deliberately broad:
  * case-insensitive substring on the compacted value.
  */
-const FIRST_PARTY_SOURCE_MARKERS = ['worldmonitor', 'world monitor', 'wm security'];
+const FIRST_PARTY_SOURCE_MARKERS = ['worldmonitor', 'wmsecurity'];
 
-/** Neutral label substituted for an impersonating or empty source. */
+/** Neutral label substituted for an impersonating or caller-supplied source. */
 export const NOTIFY_NEUTRAL_SOURCE = 'Community alert';
 
 /**
- * Invisible format characters that defeat substring impersonation matching
- * while rendering as nothing in every email/chat client: zero-width spaces
- * and joiners, bidi overrides, LRM/RLM marks, soft hyphen, Mongolian vowel
- * separator. Stripped BEFORE the first-party marker match (review finding:
+ * Unicode format characters that defeat substring impersonation matching
+ * while rendering as nothing in email/chat clients: zero-width characters,
+ * bidi controls, soft hyphen, and related Cf values. Stripped BEFORE the
+ * first-party marker match (review finding:
  * 'World\u200bMonitor Security' otherwise renders exactly like the forged
  * `Source:` line). Also stripped from titles so lookalike text cannot hide
  * in any rendered channel.
  */
-const INVISIBLE_FORMAT_CHARS_PATTERN = /[\u200B-\u200F\u202A-\u202E\u00AD\u180E]+/g;
+const INVISIBLE_FORMAT_CHARS_PATTERN = /\p{Cf}+/gu;
 
 /**
  * Strip ASCII control characters (including \r\n), DEL, C1 controls, the
@@ -73,6 +78,7 @@ const INVISIBLE_FORMAT_CHARS_PATTERN = /[\u200B-\u200F\u202A-\u202E\u00AD\u180E]
  */
 export function stripNotificationControlChars(value: string): string {
   return value
+    .normalize('NFKC')
     .replace(INVISIBLE_FORMAT_CHARS_PATTERN, ' ')
     .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
 }
@@ -94,9 +100,11 @@ export function sanitizeNotificationText(value: unknown, maxLength: number): str
 /** True when the source value impersonates a first-party identity. */
 export function isImpersonatingSource(value: unknown): boolean {
   if (typeof value !== 'string') return false;
-  const compacted = collapseWhitespace(stripNotificationControlChars(value)).toLowerCase();
-  if (!compacted) return false;
-  return FIRST_PARTY_SOURCE_MARKERS.some((marker) => compacted.includes(marker));
+  const identity = collapseWhitespace(stripNotificationControlChars(value))
+    .toLowerCase()
+    .replace(/[\p{P}\p{Z}\p{C}]+/gu, '');
+  if (!identity) return false;
+  return FIRST_PARTY_SOURCE_MARKERS.some((marker) => identity.includes(marker));
 }
 
 /**
@@ -108,6 +116,21 @@ export function sanitizeNotificationTitle(value: unknown): string {
   return sanitizeNotificationText(value, NOTIFY_TITLE_MAX_LENGTH);
 }
 
+/** Mark caller-submitted titles as community content, not WorldMonitor copy. */
+export function sanitizeCommunityNotificationTitle(value: unknown): string {
+  const title = sanitizeNotificationTitle(value);
+  if (!title) return NOTIFY_COMMUNITY_TITLE_PREFIX.trimEnd();
+  if (title === NOTIFY_COMMUNITY_TITLE_PREFIX.trimEnd() || title.startsWith(NOTIFY_COMMUNITY_TITLE_PREFIX)) {
+    return title;
+  }
+  return sanitizeNotificationTitle(`${NOTIFY_COMMUNITY_TITLE_PREFIX}${title}`);
+}
+
+/** Preserve the established 400-character notification snippet budget. */
+export function sanitizeNotificationDescription(value: unknown): string {
+  return sanitizeNotificationText(value, NOTIFY_DESCRIPTION_MAX_LENGTH);
+}
+
 /**
  * Sanitise a notification source. Like the title, plus first-party
  * impersonation is replaced with a neutral server-side label — a
@@ -117,6 +140,11 @@ export function sanitizeNotificationTitle(value: unknown): string {
 export function sanitizeNotificationSource(value: unknown): string {
   if (isImpersonatingSource(value)) return NOTIFY_NEUTRAL_SOURCE;
   return sanitizeNotificationText(value, NOTIFY_SOURCE_MAX_LENGTH);
+}
+
+/** Caller-supplied source identity is never authoritative. */
+export function sanitizeUserNotificationSource(value: unknown): string {
+  return sanitizeNotificationSource(value) ? NOTIFY_NEUTRAL_SOURCE : '';
 }
 
 export type SanitizedNotificationLink =
@@ -149,6 +177,26 @@ export function classifyNotificationLink(value: unknown): SanitizedNotificationL
   const host = parsed.hostname.toLowerCase();
   if (!host) return { kind: 'dashboard' };
   return { kind: 'article', url: parsed.href, host };
+}
+
+/** True for the dashboard apex and its owned variant subdomains. */
+export function isFirstPartyNotificationHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return normalized === 'worldmonitor.app' || normalized.endsWith('.worldmonitor.app');
+}
+
+/**
+ * Link policy for authenticated caller-submitted events. External article
+ * links are not authoritative and collapse to the dashboard; trusted relay
+ * producers can continue to use classifyNotificationLink directly.
+ */
+export function sanitizeUserNotificationLinkUrl(value: unknown): string {
+  const classified = classifyNotificationLink(value);
+  if (classified.kind === 'absent') return '';
+  if (classified.kind === 'dashboard') return NOTIFY_DASHBOARD_URL;
+  return isFirstPartyNotificationHost(classified.host)
+    ? classified.url
+    : NOTIFY_DASHBOARD_URL;
 }
 
 /**
