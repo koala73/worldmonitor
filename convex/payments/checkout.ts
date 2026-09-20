@@ -33,6 +33,7 @@ import {
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
   type CheckoutRateLimitedOutcome,
+  type CheckoutTimedOutOutcome,
 } from "./checkoutRateLimit";
 import {
   recordTerminalCheckoutRateLimit,
@@ -269,7 +270,11 @@ async function _createCheckoutSession(
   ctx: ActionCtx,
   args: CheckoutArgs,
   user: UserInfo,
-): Promise<(Awaited<ReturnType<typeof createDodoCheckoutSession>> & { anonymous_claim_token?: string }) | CheckoutRateLimitedOutcome> {
+): Promise<
+  | (Awaited<ReturnType<typeof createDodoCheckoutSession>> & { anonymous_claim_token?: string })
+  | CheckoutRateLimitedOutcome
+  | CheckoutTimedOutOutcome
+> {
   // Validate returnUrl to prevent open-redirect attacks.
   const siteUrl = process.env.SITE_URL ?? "https://worldmonitor.app";
   let returnUrl = siteUrl;

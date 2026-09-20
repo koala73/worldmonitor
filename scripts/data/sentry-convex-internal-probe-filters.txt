@@ -193,6 +193,7 @@
 *Could not find public function for 'payments/cacheActions:invalidateUserApiKeyCaches'*
 *Could not find public function for 'payments/cacheActions:resyncEntitlementCacheFromDb'*
 *Could not find public function for 'payments/cacheActions:syncEntitlementCache'*
+*Could not find public function for 'payments/checkout:admitCheckout'*
 *Could not find public function for 'payments/checkout:internalCreateCheckout'*
 *Could not find public function for 'payments/checkoutRateLimitAlarm:recordCheckoutRateLimited'*
 *Could not find public function for 'payments/checkoutRateLimitAlarm:recordCheckoutTimedOut'*
