@@ -23,7 +23,7 @@ test('boundary requests reject untrusted origins before fetching and forbid redi
   globalThis.fetch = async (url, options) => {
     calls++;
     assert.equal(new URL(url).origin, 'https://www.worldmonitor.app');
-    assert.equal(options.redirect, 'error');
+    assert.equal(options.redirect, 'manual');
     return new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
   };
   for (const origin of ['https://evil.example', 'http://worldmonitor.app', 'https://clerk.worldmonitor.app', 'javascript:alert(1)', 'data:text/plain,hello']) {
@@ -33,6 +33,36 @@ test('boundary requests reject untrusted origins before fetching and forbid redi
   assert.equal(calls, 0);
   assert.ok((await checkPublicBoundary('https://worldmonitor.app', 0)).every(result => result.pass));
   assert.equal(calls, 2);
+});
+
+test('boundary fetch uses a redirect mode the edge runtime accepts', async () => {
+  // Vercel's edge runtime rejects `redirect: 'error'` with a TypeError before
+  // the request leaves the function ("won't be implemented since it does not
+  // make sense at the edge"). A stub that happily accepted 'error' let PR #8374
+  // ship a probe that 503'd on every poll in production while CI stayed green,
+  // so model the runtime's allowlist here.
+  const EDGE_REDIRECT_MODES = new Set(['follow', 'manual']);
+  globalThis.fetch = async (url, options) => {
+    if (!EDGE_REDIRECT_MODES.has(options.redirect)) {
+      throw new TypeError(`Invalid redirect value, must be one of "follow" or "manual" ("${options.redirect}" won't be implemented since it does not make sense at the edge; use "manual" and check the response status code).`);
+    }
+    return new Response('{}', { headers: { 'x-product-catalog-source': 'cache' } });
+  };
+  const results = await checkPublicBoundary('https://www.worldmonitor.app', 0);
+  assert.deepEqual(results.filter(result => !result.pass), []);
+});
+
+test('boundary refuses a redirected response instead of following it', async () => {
+  // 'manual' must not weaken the guarantee 'error' was reaching for: a 3xx is
+  // still a hard fail, so credentials never chase a Location header.
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(null, { status: 308, headers: { location: 'https://evil.example/api/bootstrap' } });
+  };
+  const results = await checkPublicBoundary('https://www.worldmonitor.app', 0);
+  assert.ok(results.every(result => !result.pass && result.reason === 'redirect'));
+  assert.equal(calls, 4); // 2 endpoints x 1 retry each — never a followed hop
 });
 
 test('handler ignores the request host and authenticates before making requests', async () => {

@@ -257,10 +257,20 @@ async function probeBoundaryOnce(
 ): Promise<BoundaryResult> {
   try {
     const r = await fetch(`${origin}${endpoint}`, {
-      redirect: 'error',
+      // The edge runtime refuses `redirect: 'error'` outright — fetch throws a
+      // TypeError before the request leaves the function, which fails BOTH
+      // boundary checks and 503s the probe on every poll. 'manual' is the
+      // supported way to not follow a redirect; we enforce the same guarantee
+      // by rejecting any 3xx ourselves, so credentials never chase a Location.
+      redirect: 'manual',
       signal: AbortSignal.timeout(5_000),
       headers,
     });
+    // An opaque-redirect response reports status 0 and a null body, so check
+    // this before reading text().
+    if (r.type === 'opaqueredirect' || (r.status >= 300 && r.status < 400)) {
+      return { endpoint, pass: false, status: r.status, reason: 'redirect' };
+    }
     const text = await r.text();
     // Detect any envelope leak in the response body. A substring match on
     // the literal `"_seed":` is sufficient because `_seed` only appears on
