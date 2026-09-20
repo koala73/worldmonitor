@@ -113,6 +113,11 @@ function proxyFacingFiles() {
   const out = execFileSync(
     'grep',
     ['-rl', '-e', 'runRedisPipeline', '-e', 'runRedisTransaction', '-e', '/pipeline', '-e', '/multi-exec',
+      // Vendido no instala deps aquí, pero un checkout de desarrollo sí
+      // (scripts/node_modules). Sin esto el scan lee sourcemaps de terceros
+      // (p.ej. convex cli.bundle.cjs.map) y "descubre" tokens que no son
+      // comandos Redis -- verde en CI (sin node_modules), rojo en local.
+      '--exclude-dir=node_modules',
       'server', 'scripts', 'shared', 'api'],
     { cwd: repoRoot, encoding: 'utf8' },
   );

@@ -121,6 +121,9 @@
                   "methodology/country-resilience-index",
                   "methodology/resilience-indicators",
                   "methodology/resilience-indicator-licensing",
+                  "methodology/known-limitations",
+                  "methodology/financial-system-exposure",
+                  "methodology/swf-classification-rubric",
                   "methodology/five-factor-scorecard",
                   "methodology/demographics-capability",
                   "methodology/food-stocks",
@@ -579,6 +582,7 @@
                   "zh/features",
                   "zh/pro-intelligence-suite",
                   "zh/data-sources",
+                  "zh/global-procurement-intelligence",
                   "zh/hotspots"
                 ]
               },
