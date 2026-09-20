@@ -208,6 +208,17 @@ const NO_STORE_JSON: Record<string, string> = {
   'Cache-Control': 'no-store',
 };
 
+/** Preserve the consent page's retryable error vocabulary for session outages. */
+export function grantSessionVerificationUnavailableResponse(): Response {
+  const denial = unverifiableEntitlementDenial();
+  return jsonError(
+    'SERVICE_UNAVAILABLE',
+    'Session verification is temporarily unavailable. Please try again in a moment.',
+    503,
+    { 'Retry-After': String(denial.retryAfterSeconds) },
+  );
+}
+
 /**
  * Renders a gate denial in the grant handshake's `{error, error_description}`
  * vocabulary. Shared so `mcp-grant-mint.ts` and `mcp-grant-context.ts` cannot

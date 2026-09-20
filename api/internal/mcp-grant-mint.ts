@@ -69,6 +69,7 @@ import {
 } from '../../server/_shared/entitlement-check';
 import {
   checkProMcpAccess,
+  grantSessionVerificationUnavailableResponse,
   proMcpGateDenialResponse,
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
@@ -209,7 +210,7 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   }
 
   const userId = await deps.resolveUserId(req);
-  if (userId instanceof Response) return userId;
+  if (userId instanceof Response) return grantSessionVerificationUnavailableResponse();
   if (!userId) {
     return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
   }

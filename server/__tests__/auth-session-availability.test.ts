@@ -9,6 +9,7 @@ import context from '../../api/internal/mcp-grant-context';
 import mint from '../../api/internal/mcp-grant-mint';
 import passkey from '../../api/user/passkey-offer';
 import { createDomainGateway } from '../gateway';
+import { classifyGrantDenial } from '../../src/services/mcp-grant-denial';
 
 afterEach(() => vi.resetAllMocks());
 describe('session verification availability', () => {
@@ -49,6 +50,11 @@ describe('session verification availability', () => {
       }));
       expect(response.status).toBe(503);
       expect(Number(response.headers.get('Retry-After'))).toBeGreaterThan(0);
+      if (name === 'context' || name === 'mint') {
+        const body = await response.json();
+        expect(classifyGrantDenial(response.status, body.error).action).toBe('retryable');
+        expect(body.error_description).toContain('Session verification');
+      }
     });
   }
 });
