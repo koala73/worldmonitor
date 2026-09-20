@@ -94,9 +94,12 @@ describe('TradePolicyPanel principal reset', () => {
     document.body.append(panel.getElement());
     const fields = ['restrictionsData', 'tariffsData', 'flowsData', 'barriersData', 'revenueData', 'comtradeData'];
     const view = panel as unknown as Record<string, unknown>;
+    const oldLoad = panel.beginDataLoad();
     for (const field of fields) view[field] = { owner: 'previous-account' };
     panel.clearSensitiveContent();
     panel.unlockPanel();
+    expect(panel.acceptsDataLoad(oldLoad)).toBe(false);
+    expect(panel.acceptsDataLoad(panel.beginDataLoad())).toBe(true);
     await vi.advanceTimersByTimeAsync(200);
     for (const field of fields) expect(view[field]).toBeNull();
     expect(panel.getElement().querySelector('.panel-tab[data-tab="restrictions"]')).not.toBeNull();
