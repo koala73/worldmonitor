@@ -611,6 +611,7 @@
       "infoTooltip": "<strong>Escalation Monitor</strong> Detects converging geopolitical signals:<ul><li>Correlates military movements, conflict events, and news spikes</li><li>Scores convergence zones by severity (critical/high/medium/low)</li><li>Tracks escalation or de-escalation trends over time</li></ul>Click a card to zoom to the region on the map."
     },
     "etfFlows": {
+      "netNeutral": "NET NEUTRAL",
       "infoTooltip": "<strong>BTC ETF Tracker</strong> Tracks daily estimated fund flows for US spot Bitcoin ETFs:<ul><li>Inflow/outflow direction and magnitude</li><li>Volume and price change per fund</li><li>Net aggregate flow across all tracked ETFs</li></ul>"
     },
     "faoFoodPriceIndex": {

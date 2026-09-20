@@ -46,6 +46,7 @@ import { LiveNewsPanel } from '@/components/LiveNewsPanel';
 import { PlaybackControl } from '@/components/PlaybackControl';
 import { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import { TechEventsPanel } from '@/components/TechEventsPanel';
+import { TradePolicyPanel } from '@/components/TradePolicyPanel';
 import { closeStoryModal, openStoryModal } from '@/components/StoryModal';
 import type { StoryData } from '@/services/story-data';
 import { fetchServiceStatuses } from '@/services/infrastructure';
@@ -83,6 +84,24 @@ describe('issue 8365 panel labels', () => {
     expect(tooltip).toMatch(/TLT/);
     expect(tooltip).toMatch(/not the Kansas City Fed/);
     expect(tooltip).not.toMatch(/KCFSI/);
+  });
+});
+
+describe('TradePolicyPanel principal reset', () => {
+  it('drops cached responses and rebuilds controls after an unlocked account switch', async () => {
+    vi.useFakeTimers();
+    const panel = new TradePolicyPanel();
+    document.body.append(panel.getElement());
+    const fields = ['restrictionsData', 'tariffsData', 'flowsData', 'barriersData', 'revenueData', 'comtradeData'];
+    const view = panel as unknown as Record<string, unknown>;
+    for (const field of fields) view[field] = { owner: 'previous-account' };
+    panel.clearSensitiveContent();
+    panel.unlockPanel();
+    await vi.advanceTimersByTimeAsync(200);
+    for (const field of fields) expect(view[field]).toBeNull();
+    expect(panel.getElement().querySelector('.panel-tab[data-tab="restrictions"]')).not.toBeNull();
+    expect(panel.getElement().textContent).not.toContain('previous-account');
+    panel.destroy();
   });
 });
 

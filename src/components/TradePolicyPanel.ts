@@ -38,6 +38,21 @@ export class TradePolicyPanel extends Panel {
     });
   }
 
+  public override clearSensitiveContent(): void {
+    this.restrictionsData = null;
+    this.tariffsData = null;
+    this.flowsData = null;
+    this.barriersData = null;
+    this.revenueData = null;
+    this.comtradeData = null;
+    super.clearSensitiveContent();
+  }
+
+  public override unlockPanel(): void {
+    super.unlockPanel();
+    if (!this.content.hasChildNodes()) this.render();
+  }
+
   public updateRestrictions(data: GetTradeRestrictionsResponse): void {
     this.restrictionsData = data;
     this.render();
