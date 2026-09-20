@@ -171,13 +171,31 @@ describe('credential-bearing headers force a private tier (#8400)', () => {
       { file: 'api/embed/session.ts', header: 'X-Api-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-WorldMonitor-Key' },
       { file: 'server/_shared/premium-check.ts', header: 'X-Api-Key' },
-      { file: 'server/_shared/provider-redistribution.ts', header: 'X-WorldMonitor-Key' },
-      { file: 'server/_shared/provider-redistribution.ts', header: 'X-Api-Key' },
       { file: 'server/worldmonitor/shipping/v2/webhook-shared.ts', header: 'X-WorldMonitor-Key' },
       { file: 'server/worldmonitor/shipping/v2/webhook-shared.ts', header: 'X-Api-Key' },
     ];
 
+    // Auth paths that resolve the same credentials through the shared
+    // `api/_api-key.js` reader instead of their own `headers.get`. #8316 moved
+    // provider-redistribution onto the helper; the headers stay covered by the
+    // `api/_api-key.js` rows above, and this fails if the delegation is
+    // dropped or a raw read is inlined back in alongside it.
+    const credentialDelegates = ['server/_shared/provider-redistribution.ts'];
+
     const shared = new Set<string>(CREDENTIAL_BEARING_HEADERS);
+    for (const file of credentialDelegates) {
+      const src = read(file);
+      expect(
+        src.includes("from '../../api/_api-key.js'") && src.includes('getHeaderApiKey(request)'),
+        `${file} no longer resolves credentials via getHeaderApiKey — re-list its headers in credentialReads`,
+      ).toBe(true);
+      for (const header of ['X-WorldMonitor-Key', 'X-Api-Key']) {
+        expect(
+          src.includes(`headers.get('${header}')`) || src.includes(`headers.get("${header}")`),
+          `${file} inlines a raw ${header} read again — add it back to credentialReads`,
+        ).toBe(false);
+      }
+    }
     for (const { file, header } of credentialReads) {
       const src = read(file);
       expect(
