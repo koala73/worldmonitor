@@ -19,17 +19,12 @@ const COINPAPRIKA_ID_MAP = { ...defiConfig.coinpaprika, ...aiConfig.coinpaprika,
 const COINPAPRIKA_IDS = ALL_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
 
 export const REQUEST_TIMEOUT_MS = 15_000;
-const COINGECKO_MAX_ATTEMPTS = 5;
-const coingeckoBackoffMs = (attempt) => Math.min(10_000 * (attempt + 1), 60_000);
-// Worst-case wall time of the CoinGecko phase: every attempt runs to its
-// request timeout and is followed by its backoff sleep. Derived from the
-// ladder rather than declared so it cannot drift from the loop below;
-// tests/token-panels-fetch-budget.test.mjs checks it against the bundle
-// section timeout that SIGTERMs this seeder.
-export const COINGECKO_RETRY_BUDGET_MS = Array.from(
-  { length: COINGECKO_MAX_ATTEMPTS },
-  (_, attempt) => REQUEST_TIMEOUT_MS + coingeckoBackoffMs(attempt),
-).reduce((sum, ms) => sum + ms, 0);
+// Ceiling on the whole CoinGecko phase, in-flight request included. Sized so
+// that this plus COINPAPRIKA_WORST_CASE_MS fits the bundle section timeout
+// that SIGTERMs this seeder; tests/token-panels-fetch-budget.test.mjs gates
+// that arithmetic against the manifest, so when it trips lower this rather
+// than raise timeoutMs.
+export const COINGECKO_RETRY_BUDGET_MS = 45_000;
 // The fallback runs COINPAPRIKA_IDS in rounds of COINPAPRIKA_CONCURRENCY, each
 // round bounded by one request timeout. Both values are passed to the helper
 // explicitly so this derivation describes the call as made, and mapping a new
@@ -37,26 +32,32 @@ export const COINGECKO_RETRY_BUDGET_MS = Array.from(
 const COINPAPRIKA_CONCURRENCY = 4;
 export const COINPAPRIKA_WORST_CASE_MS = Math.ceil(COINPAPRIKA_IDS.length / COINPAPRIKA_CONCURRENCY) * REQUEST_TIMEOUT_MS;
 
-async function fetchWithRateLimitRetry(url, maxAttempts = COINGECKO_MAX_ATTEMPTS, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
-  for (let i = 0; i < maxAttempts; i++) {
+async function fetchWithRateLimitRetry(url, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
+  const startedAt = Date.now();
+  for (let attempt = 1; ; attempt++) {
     const resp = await fetch(url, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (resp.status === 429) {
-      const wait = coingeckoBackoffMs(i);
-      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
+      const elapsed = Date.now() - startedAt;
+      const wait = Math.min(5_000 * 2 ** (attempt - 1), 60_000);
+      // The next attempt is charged its full request timeout up front, so the
+      // budget caps the whole phase rather than when the last retry may start.
+      if (elapsed + wait + REQUEST_TIMEOUT_MS > COINGECKO_RETRY_BUDGET_MS) {
+        throw new Error(`CoinGecko rate limit exceeded after ${attempt} attempt(s) in ${Math.round(elapsed / 1000)}s (${COINGECKO_RETRY_BUDGET_MS / 1000}s retry budget)`);
+      }
+      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${attempt}, ${Math.round(elapsed / 1000)}s of ${COINGECKO_RETRY_BUDGET_MS / 1000}s budget)`);
       await sleep(wait);
       continue;
     }
     if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
     return resp;
   }
-  throw new Error('CoinGecko rate limit exceeded after retries');
 }
 
 async function fetchFromCoinGecko() {
   const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ALL_IDS.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
 
-  const resp = await fetchWithRateLimitRetry(url, COINGECKO_MAX_ATTEMPTS, headers);
+  const resp = await fetchWithRateLimitRetry(url, headers);
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
   return data;
