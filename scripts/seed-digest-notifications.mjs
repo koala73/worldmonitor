@@ -1182,7 +1182,6 @@ function formatDigestHtml(stories, nowMs) {
       <div style="margin-bottom: 12px;">
         <a href="https://x.com/worldmonitorapp" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">X / Twitter</a>
         <a href="https://github.com/koala73/worldmonitor" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">GitHub</a>
-        <a href="https://discord.gg/re63kWKxaz" style="color: #555; text-decoration: none; font-size: 11px; margin: 0 10px;">Discord</a>
       </div>
       <p style="font-size: 10px; color: #444; margin: 0; line-height: 1.5;">
         <a href="https://worldmonitor.app" style="color: #4ade80; text-decoration: none;">worldmonitor.app</a>

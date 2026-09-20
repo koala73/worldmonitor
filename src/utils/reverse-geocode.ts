@@ -15,6 +15,12 @@ export function __resetReverseGeocodeCacheForTests(): void {
 
 const TIMEOUT_MS = 8000;
 
+function shouldMemoizeHttpMiss(status: number): boolean {
+  // 408/425/429 and every 5xx are retryable. Caching them in a page-lifetime
+  // map turns a transient failure into "no country here" until reload.
+  return status !== 408 && status !== 425 && status !== 429 && status < 500;
+}
+
 export async function reverseGeocode(lat: number, lon: number, signal?: AbortSignal): Promise<GeoResult | null> {
   const key = geocodeCacheCell(lat, lon);
   if (cache.has(key)) return cache.get(key) ?? null;
@@ -30,12 +36,7 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
       signal: controller.signal,
     });
     if (!res.ok) {
-      // Never memoize a retryable status. `cache` has no TTL and is consulted
-      // before every fetch, so caching a 429 (the route is rate-limited since
-      // #6234) or a 503 would mark this 0.001-degree cell "no country here" for
-      // the rest of the page session — a transient throttle turned permanent.
-      // Genuine negative results still cache exactly as before. (#6412 review)
-      if (res.status !== 429 && res.status !== 503) cache.set(key, null);
+      if (shouldMemoizeHttpMiss(res.status)) cache.set(key, null);
       return null;
     }
 
@@ -49,9 +50,6 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
     cache.set(key, result);
     return result;
   } catch {
-    if (!controller.signal.aborted) {
-      cache.set(key, null);
-    }
     return null;
   } finally {
     clearTimeout(timeout);

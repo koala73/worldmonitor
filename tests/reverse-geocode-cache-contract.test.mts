@@ -417,4 +417,35 @@ describe('browser reverse-geocode memoization', () => {
     });
     assert.equal(urls.length, 2, 'each side of the border must miss the in-memory cell cache');
   });
+
+  it('does not memoize retryable HTTP failures or thrown fetches', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response('bad gateway', { status: 502 });
+      if (calls === 2) throw new Error('network down');
+      return json({ country: 'Canada', code: 'CA', displayName: 'Canada' });
+    }) as typeof fetch;
+
+    assert.equal(await reverseGeocodeBrowser(10.123, 20.456), null);
+    assert.equal(await reverseGeocodeBrowser(10.123, 20.456), null);
+    assert.deepEqual(await reverseGeocodeBrowser(10.123, 20.456), {
+      country: 'Canada',
+      code: 'CA',
+      displayName: 'Canada',
+    });
+    assert.equal(calls, 3);
+  });
+
+  it('still memoizes a genuine 200 with no country', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return json({ country: '', code: '' });
+    }) as typeof fetch;
+
+    assert.equal(await reverseGeocodeBrowser(1.234, 2.345), null);
+    assert.equal(await reverseGeocodeBrowser(1.234, 2.345), null);
+    assert.equal(calls, 1);
+  });
 });

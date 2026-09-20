@@ -245,7 +245,10 @@ test('session usage telemetry records verified Cloudflare client attribution and
   forged.headers.set('x-real-ip', '192.0.2.5');
   forged.headers.set('x-vercel-ip-country', 'ZA');
   const forgedCtx = makeWaitUntilCtx();
-  assert.equal((await handler(forged, forgedCtx.ctx)).status, 200);
+  // IP-scoped session minting fails closed on unproven cf-connecting-ip (#8402).
+  const forgedResp = await handler(forged, forgedCtx.ctx);
+  assert.equal(forgedResp.status, 403);
+  assert.equal(forgedResp.headers.get('X-RateLimit-Mode'), 'edge-proof');
   await forgedCtx.settle();
 
   const tor = makeReq('POST', { origin: 'https://worldmonitor.app' });

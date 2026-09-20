@@ -118,6 +118,19 @@ export function isStaleContentGraceProblem(problem, now = Date.now()) {
   );
 }
 
+// Mirrors RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS in api/health.js, plus the
+// same clock-skew slack the other bounded deadlines carry. A first
+// RELAY_GATE_UNREACHABLE sighting (one relay timeout or 5xx) is pending, not
+// operational, until the publisher's deadline passes; a stall that outlives
+// it pages as usual.
+export const RELAY_GATE_TRANSPORT_GRACE_SKEW_SLACK_MS = 5 * 60 * 1000;
+export const MAX_RELAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1000 + RELAY_GATE_TRANSPORT_GRACE_SKEW_SLACK_MS;
+
+export function isRelayGateGraceProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'RELAY_GATE_UNREACHABLE') return false;
+  return hasActiveBoundedDeadline(problem.transportGraceUntil, now, MAX_RELAY_GATE_TRANSPORT_GRACE_MS);
+}
+
 export function isChinaCoveragePendingProblem(problem, now = Date.now()) {
   if (!['COVERAGE_PARTIAL', 'CHINA_DEGRADED'].includes(problem?.status)) return false;
   return hasActiveBoundedDeadline(
@@ -141,12 +154,32 @@ export function isSourceFailurePendingProblem(problem, now = Date.now()) {
     && hasActiveBoundedDeadline(problem.sourceFailurePendingUntil, now, (earthquake ? 15 : 215) * 60_000);
 }
 
+function isWorkerControlPendingProblem(name, problem, now) {
+  const control = problem?.workerControl;
+  const failure = control?.subsystems?.scan?.claimFailure;
+  return name === 'companyMonitoringWorker' && problem?.status === 'SEED_ERROR'
+    && Number.isFinite(problem.records) && problem.records > 0 && problem.maxStaleMin === 5
+    && control?.status === 'error' && control.outcome === 'claim_error'
+    && control.subsystems?.scan?.status === 'error' && control.subsystems.scan.outcome === 'claim_error'
+    && control.subsystems.admission?.status === 'ok'
+    && ['disabled', 'idle', 'admission_recorded', 'admission_replayed'].includes(control.subsystems.admission.outcome)
+    && Number.isInteger(failure?.consecutiveFailures) && failure.consecutiveFailures >= 1 && failure.consecutiveFailures < 3
+    && ((['timeout', 'network'].includes(failure.kind) && failure.httpStatus === null)
+      || (failure.kind === 'http_transient' && [408, 429, 500, 502, 503, 504].includes(failure.httpStatus)))
+    && Number.isSafeInteger(failure.lastHealthyAt) && failure.lastHealthyAt > 0 && failure.lastHealthyAt <= now
+    && typeof problem.workerControlPendingUntil === 'string'
+    && Date.parse(problem.workerControlPendingUntil) === failure.lastHealthyAt + 300_000
+    && hasActiveBoundedDeadline(problem.workerControlPendingUntil, now, 300_000);
+}
+
 export function findPendingDiagnostics(payload, now = Date.now()) {
   return compactHealthEntries(payload)
-    .filter(([, problem]) => (
+    .filter(([name, problem]) => (
       isStaleContentGraceProblem(problem, now)
       || isSourceFailurePendingProblem(problem, now)
       || isChinaCoveragePendingProblem(problem, now)
+      || isRelayGateGraceProblem(problem, now)
+      || isWorkerControlPendingProblem(name, problem, now)
     ))
     .map(([name, problem]) => ({
       name,
@@ -154,6 +187,8 @@ export function findPendingDiagnostics(payload, now = Date.now()) {
       graceUntil: problem?.staleContentGraceUntil
         ?? problem?.sourceFailurePendingUntil
         ?? problem?.chinaCoveragePendingUntil
+        ?? problem?.transportGraceUntil
+        ?? problem?.workerControlPendingUntil
         ?? null,
     }));
 }
@@ -165,12 +200,14 @@ function compactHealthEntries(payload) {
 
 export function findOperationalProblems(payload, now = Date.now()) {
   return compactHealthEntries(payload)
-    .filter(([, problem]) => (
+    .filter(([name, problem]) => (
       !isOnDemandProblem(problem)
       && !isRolloutPendingProblem(problem, now)
       && !isStaleContentGraceProblem(problem, now)
       && !isSourceFailurePendingProblem(problem, now)
       && !isChinaCoveragePendingProblem(problem, now)
+      && !isRelayGateGraceProblem(problem, now)
+      && !isWorkerControlPendingProblem(name, problem, now)
     ))
     .map(([name, problem]) => ({
       name,

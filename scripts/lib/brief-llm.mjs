@@ -150,8 +150,8 @@ function normalizeAnalystWhyMatters(value) {
  *
  * Four-layer graceful degradation:
  *   1. `deps.callAnalystWhyMatters(story)` — the analyst-context edge
- *      endpoint (brief:llm:whymatters:v10 cache lives there). Preferred.
- *   2. Direct read of the endpoint's v10 envelope cache (#4914) — the
+ *      endpoint (brief:llm:whymatters:v11 cache lives there). Preferred.
+ *   2. Direct read of the endpoint's v11 envelope cache (#4914) — the
  *      endpoint CALL can fail while its cached envelope is still valid;
  *      reusing it avoids a paid duplicate generation.
  *   3. Legacy direct-Gemini chain: cacheGet (v6) → callLLM → cacheSet.
@@ -201,7 +201,7 @@ export async function generateWhyMatters(story, deps) {
 
   // #4914: before paying a direct-Gemini generation, check the analyst
   // endpoint's OWN cache namespace. api/internal/brief-why-matters.ts
-  // stores its envelope at brief:llm:whymatters:v10:{hash} under the same
+  // stores its envelope at brief:llm:whymatters:v11:{hash} under the same
   // hashBriefStory identity — when the endpoint CALL failed transiently
   // (or no endpoint is configured), the story may already have a paid,
   // validated envelope sitting in Redis. Read-only: this fallback's own
@@ -209,9 +209,9 @@ export async function generateWhyMatters(story, deps) {
   // two prompt contracts never cross-contaminate in the write direction.
   const storyHash = await hashBriefStory(story);
   try {
-    const v10 = await deps.cacheGet(`brief:llm:whymatters:v10:${storyHash}`);
-    if (v10 && typeof v10 === 'object') {
-      const normalized = normalizeAnalystWhyMatters(v10.whyMatters);
+    const v11 = await deps.cacheGet(`brief:llm:whymatters:v11:${storyHash}`);
+    if (v11 && typeof v11 === 'object') {
+      const normalized = normalizeAnalystWhyMatters(v11.whyMatters);
       if (normalized) return normalized;
     }
   } catch { /* treat as miss */ }

@@ -10,7 +10,7 @@
  */
 
 import { v, ConvexError } from "convex/values";
-import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { action, internalAction, internalMutation, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
   CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
@@ -29,10 +29,15 @@ import { isTrustedReturnUrlOrigin } from "./returnUrlOrigin";
 import {
   CHECKOUT_RATE_LIMITED,
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
+  isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
+  type CheckoutRateLimitedOutcome,
 } from "./checkoutRateLimit";
-import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
+import {
+  recordTerminalCheckoutRateLimit,
+  recordTerminalCheckoutTimeout,
+} from "./checkoutRateLimitAlarm";
 
 // MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
 // second copy of this normalisation is exactly the drift that produced the
@@ -44,6 +49,35 @@ import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
+
+const CHECKOUT_ADMISSION_LIMIT = 5;
+const CHECKOUT_ADMISSION_WINDOW_MS = 10 * 60 * 1000;
+
+// One durable row per account. Mutation serialization makes the read/increment
+// atomic even when direct and relayed actions arrive together.
+export const admitCheckout = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }): Promise<CheckoutRateLimitedOutcome | null> => {
+    const now = Date.now();
+    const row = await ctx.db.query("checkoutAdmissions")
+      .withIndex("by_user", (q) => q.eq("userId", userId)).unique();
+    if (row && now < row.windowStart + CHECKOUT_ADMISSION_WINDOW_MS) {
+      if (row.count >= CHECKOUT_ADMISSION_LIMIT) {
+        return {
+          checkoutFailed: true,
+          code: CHECKOUT_RATE_LIMITED,
+          retryAfterSeconds: Math.max(1, Math.ceil((row.windowStart + CHECKOUT_ADMISSION_WINDOW_MS - now) / 1000)),
+        };
+      }
+      await ctx.db.patch(row._id, { count: row.count + 1 });
+    } else if (row) {
+      await ctx.db.patch(row._id, { windowStart: now, count: 1 });
+    } else {
+      await ctx.db.insert("checkoutAdmissions", { userId, windowStart: now, count: 1 });
+    }
+    return null;
+  },
+});
 
 function requireCheckoutProduct(productId: string): void {
   const allowed = Object.values(PRODUCT_CATALOG).some(
@@ -235,7 +269,7 @@ async function _createCheckoutSession(
   ctx: ActionCtx,
   args: CheckoutArgs,
   user: UserInfo,
-) {
+): Promise<(Awaited<ReturnType<typeof createDodoCheckoutSession>> & { anonymous_claim_token?: string }) | CheckoutRateLimitedOutcome> {
   // Validate returnUrl to prevent open-redirect attacks.
   const siteUrl = process.env.SITE_URL ?? "https://worldmonitor.app";
   let returnUrl = siteUrl;
@@ -254,6 +288,14 @@ async function _createCheckoutSession(
     }
     returnUrl = parsedReturnUrl.toString();
   }
+
+  // Completed edge idempotency replays return before reaching this boundary.
+  // Consume once per creation, outside the provider retry ladder. A failed
+  // admission mutation must propagate: unknown capacity cannot authorize work.
+  const denied: CheckoutRateLimitedOutcome | null = await ctx.runMutation(
+    internal.payments.checkout.admitCheckout, { userId: user.userId },
+  );
+  if (denied) return denied;
 
   // Record Terms assent (#6976). Both checkout paths — the /pro pricing page
   // and every dashboard CTA — funnel through here, so one call covers them all
@@ -374,10 +416,17 @@ async function _createCheckoutSession(
         attemptTimeoutMs: CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
         onRetry: (delayMs) =>
           console.warn(
-            `[checkout] Dodo 429 for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
+            `[checkout] Dodo checkout failed for user=${user.userId} product=${args.productId}; retrying in ${delayMs}ms`,
           ),
       },
     );
+    if (isCheckoutTimedOutOutcome(result)) {
+      await recordTerminalCheckoutTimeout(ctx, {
+        userId: user.userId,
+        productId: args.productId,
+      });
+      return result;
+    }
     if (isCheckoutRateLimitedOutcome(result)) {
       console.warn(
         `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId} after bounded retry (<=${CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS} attempts); retry after ${result.retryAfterSeconds}s`,
@@ -458,6 +507,12 @@ export const createCheckout = action({
       email: identity?.email,
       name: customerName,
     });
+    if (isCheckoutTimedOutOutcome(result)) {
+      throw new ConvexError({
+        code: result.code,
+        message: "Checkout timed out. Please try again.",
+      });
+    }
     // The public Convex action historically rejects provider failures. Keep
     // that error-channel contract: only the trusted internal relay consumes
     // the typed outcome and translates it into HTTP 429 + Retry-After.

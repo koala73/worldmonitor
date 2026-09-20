@@ -5,6 +5,7 @@ import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/n
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
+  isCheckoutTimedOutOutcome,
   isCheckoutRateLimitedOutcome,
 } from "./payments/checkoutRateLimit";
 import { webhookHandler } from "./payments/webhookHandlers";
@@ -17,10 +18,13 @@ import {
   INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
 } from "./intelHistory";
 
-const TRUSTED = [
-  "https://worldmonitor.app",
-  "*.worldmonitor.app",
-  "http://localhost:3000",
+// App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
+const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const TRUSTED_ORIGINS = [
+  APP_ORIGIN,
+  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
+  /^https?:\/\/(?:[a-z0-9-]+\.)?tauri\.localhost(?::\d+)?$/,
+  /^(?:tauri|asset):\/\/localhost$/,
 ];
 
 const EXPOSED_HEADERS = [
@@ -30,21 +34,30 @@ const EXPOSED_HEADERS = [
   "X-RateLimit-Reset",
 ].join(", ");
 
-function matchOrigin(origin: string, pattern: string): boolean {
-  if (pattern.startsWith("*.")) {
-    return origin.endsWith(pattern.slice(1));
-  }
-  return origin === pattern;
-}
-
-function allowedOrigin(origin: string | null, trusted: string[]): string | null {
+function allowedOrigin(origin: string | null): string | null {
   if (!origin) return null;
-  return trusted.some((p) => matchOrigin(origin, p)) ? origin : null;
+  try {
+    const url = new URL(origin);
+    // An Origin is a scheme/host/port, never a URL with credentials or a path.
+    if (url.username || url.password || `${url.protocol}//${url.host}` !== origin) return null;
+    url.hostname = url.hostname.replace(/\.+$/, "");
+    const candidate = `${url.protocol}//${url.host}`;
+    if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
+    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
+      const encoded = url.hostname.slice(0, -".translate.goog".length);
+      const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");
+      if (!encoded.includes(".") && APP_ORIGIN.test(`https://${decoded}`)) return origin;
+    }
+  } catch {
+    // Malformed origins receive no CORS grant.
+  }
+  return null;
 }
 
 function corsHeaders(origin: string | null): Headers {
-  const headers = new Headers();
-  const allowed = allowedOrigin(origin, TRUSTED);
+  const headers = new Headers({ Vary: "Origin" });
+  const allowed = allowedOrigin(origin);
   if (allowed) {
     headers.set("Access-Control-Allow-Origin", allowed);
     headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -1698,6 +1711,10 @@ http.route({
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );
+      if (isCheckoutTimedOutOutcome(result)) {
+        // Keep provider failures at 500; 502 triggers another browser retry.
+        return Response.json({ error: result.code }, { status: 500 });
+      }
       if (isCheckoutRateLimitedOutcome(result)) {
         return new Response(
           JSON.stringify({
@@ -1742,8 +1759,8 @@ http.route({
       if (extractConvexErrorCode(err) === "INVALID_CHECKOUT_PRODUCT") {
         return Response.json({ error: "INVALID_CHECKOUT_PRODUCT" }, { status: 400 });
       }
-      const msg = err instanceof Error ? err.message : "Checkout creation failed";
-      return new Response(JSON.stringify({ error: msg }), {
+      console.error("[create-checkout] Operation failed", err);
+      return new Response(JSON.stringify({ error: "Operation failed" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
@@ -1786,10 +1803,12 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Customer portal creation failed";
-      const status = msg === "No Dodo customer found for this user" ? 404 : 500;
-      return new Response(JSON.stringify({ error: msg }), {
-        status,
+      if (extractConvexErrorCode(err) === "NO_CUSTOMER") {
+        return Response.json({ error: "NO_CUSTOMER" }, { status: 404 });
+      }
+      console.error("[customer-portal] Operation failed", err);
+      return new Response(JSON.stringify({ error: "Operation failed" }), {
+        status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }

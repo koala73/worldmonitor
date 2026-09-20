@@ -802,9 +802,7 @@ test('maps a relay-only host to 502 when the relay is unavailable', async () => 
 });
 
 test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
-  // The timeout is only observable through the AbortSignal that
-  // fetchWithTimeout arms, and it is cleared as soon as fetch settles — so the
-  // fetch is held pending while the fake clock is advanced across each
+  // Hold fetch pending while the fake clock is advanced across each
   // boundary. Fake timers keep this deterministic (no real waiting).
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
@@ -824,8 +822,13 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
       // Yield until the handler has entered fetch and armed the signal — BOUNDED
       // so a regression that stops the handler from reaching fetch fails fast
       // with a clear message instead of spinning until the runner's timeout.
-      // (setImmediate is unfaked here; only setTimeout is mocked.)
-      for (let i = 0; !signal && i < 1000; i += 1) {
+      // (setImmediate and performance.now are unfaked here; only setTimeout is
+      // mocked.) The bound is wall-clock, not a turn count: the API-key check
+      // awaits crypto.subtle.digest, which completes on the libuv threadpool,
+      // and on a contended CI runner that took longer than 1000 turns, so the
+      // handler reached fetch after the assertion and leaked into the next test.
+      const armDeadline = performance.now() + 2_000;
+      while (!signal && performance.now() < armDeadline) {
         await new Promise((resolve) => setImmediate(resolve));
       }
       assert.ok(signal, `${label} feed: handler never reached fetch (signal never armed)`);
@@ -842,7 +845,6 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
     mock.timers.reset();
   }
 });
-
 
 // ---------------------------------------------------------------------------
 // Browser User-Agent on the RSS proxy (#6624)

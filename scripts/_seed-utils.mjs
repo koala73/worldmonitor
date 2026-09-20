@@ -1090,6 +1090,32 @@ export function resolveSeedMetaTtl(metaTtlSeconds, dataTtlSeconds) {
   return metaTtlSeconds ?? Math.max(SEED_META_MIN_TTL_SECONDS, dataTtlSeconds || 0);
 }
 
+export const SEED_META_KEY_PREFIX = 'seed-meta:';
+
+/**
+ * Resolve the seed-meta key for a data key. With no override the meta key is
+ * derived (`seed-meta:<dataKey minus :vN>`); an override must be a DISTINCT key
+ * inside the `seed-meta:` namespace.
+ *
+ * #8424: seed-bls-series passed its own data key as the override, so every run
+ * overwrote the series it had just written with the 44-byte heartbeat, on the
+ * 7-day meta TTL, while health — watching the canonical key — read OK for six
+ * months. A wrong override now fails the run before any byte is written
+ * instead of silently erasing the payload it describes.
+ */
+export function resolveSeedMetaKey(dataKey, metaKeyOverride) {
+  if (metaKeyOverride === undefined || metaKeyOverride === null || metaKeyOverride === '') {
+    return `${SEED_META_KEY_PREFIX}${dataKey.replace(/:v\d+$/, '')}`;
+  }
+  if (typeof metaKeyOverride !== 'string' || !metaKeyOverride.startsWith(SEED_META_KEY_PREFIX) || metaKeyOverride === dataKey) {
+    throw new Error(
+      `seed-meta key for ${dataKey} must be a distinct ${SEED_META_KEY_PREFIX}* key, got ${String(metaKeyOverride)} `
+      + '(a colliding override overwrites the data it describes, #8424)',
+    );
+  }
+  return metaKeyOverride;
+}
+
 function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
   const meta = { fetchedAt, recordCount: recordCount ?? 0 };
   if (coverage) meta.coverage = coverage;
@@ -1108,7 +1134,7 @@ function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
 
 export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
   const { url, token } = getRedisCredentials();
-  const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
+  const metaKey = resolveSeedMetaKey(dataKey, metaKeyOverride);
   const meta = buildSeedMeta(recordCount, coverage, extra);
   // No data TTL is in scope here — callers that know one resolve it through
   // `resolveSeedMetaTtl` before calling. Bare floor otherwise.
@@ -1131,6 +1157,9 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
 }
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
+  // Resolve (and reject) the meta key BEFORE the data write: a colliding pair
+  // must fail the run with the previous value intact, not after erasing it.
+  const metaKey = resolveSeedMetaKey(key, metaKeyOverride);
   await writeExtraKey(key, data, ttl);
   // The data TTL is right here, so the meta never has to be the shorter of the
   // two. seed-economy's four EIA weekly keys (21d data, 14d health budget) rode
@@ -1138,7 +1167,7 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
   // `extra` carries the same optional producer diagnostics writeSeedMeta accepts
   // directly (see its contract note) — provenance a caller needs on the meta
   // record, not just inside the data payload.
-  return writeSeedMeta(key, recordCount, metaKeyOverride, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage, extra);
+  return writeSeedMeta(key, recordCount, metaKey, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage, extra);
 }
 
 // Some aggregate keys are both the data pointer and the provenance source for
@@ -1165,7 +1194,7 @@ export async function writeExtraKeyWithMetaAtomically({
     throw new Error('Atomic seed-meta publish requires a positive integer TTL');
   }
 
-  const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
+  const metaKey = resolveSeedMetaKey(key, metaKeyOverride);
   const commands = [
     ['SET', key, JSON.stringify(data), 'EX', dataTtl],
     ['SET', metaKey, JSON.stringify(buildSeedMeta(recordCount, coverage, extra, fetchedAt)), 'EX', metaTtl],
@@ -2329,6 +2358,18 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   if (extraKeys && !Array.isArray(extraKeys)) {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} extraKeys must be an array`);
     process.exit(1);
+  }
+  // A colliding or un-namespaced extraKey meta key would be caught by
+  // writeSeedMeta, but only after the provider fetches and the data write.
+  // Refuse it at config time instead, before any upstream call is spent.
+  for (const ek of Array.isArray(extraKeys) ? extraKeys : []) {
+    if (ek?.metaKey === undefined || ek?.metaKey === null) continue;
+    try {
+      resolveSeedMetaKey(ek.key, ek.metaKey);
+    } catch (err) {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} ${err.message}`);
+      process.exit(1);
+    }
   }
   if (afterPublish && typeof afterPublish !== 'function') {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterPublish must be a function`);

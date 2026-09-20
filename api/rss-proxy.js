@@ -1,7 +1,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
-import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
+import { getRelayBaseUrl, getRelayHeaders } from './_relay.js';
 import { isAllowedDomain, hostMatchForms } from './_rss-allowed-domain-match.js';
 import { RSS_BROWSER_UA, rssFetchHeadersForHost } from './_rss-fetch-headers.js';
 import { jsonResponse } from './_json-response.js';
@@ -35,6 +35,59 @@ const RELAY_ONLY_DOMAINS = new Set([
 const DIRECT_FETCH_HEADERS = rssFetchHeadersForHost('');
 const DIRECT_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_DIRECT_REDIRECTS = 3;
+const MAX_FEED_BYTES = 5 * 1024 * 1024;
+
+// Own the deadline through body consumption, without changing other relay callers.
+async function fetchRssResponse(url, options, timeoutMs) {
+  const controller = new AbortController();
+  let reader;
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new DOMException('Feed timeout', 'AbortError'));
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([deadline, (async () => {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      // A late fetch must not leave a body alive after the deadline won.
+      if (controller.signal.aborted) {
+        void response.body?.cancel().catch(() => {});
+        controller.signal.throwIfAborted();
+      }
+      const result = { status: response.status, ok: response.ok, headers: response.headers, data: '' };
+      if (options.redirect === 'manual' && DIRECT_REDIRECT_STATUSES.has(response.status)
+        && response.headers.get('location')) {
+        void response.body?.cancel().catch(() => {});
+        return result;
+      }
+      if (!response.body) return result;
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let bytes = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        controller.signal.throwIfAborted();
+        if (done) break;
+        // Fetch exposes decoded bytes; Content-Length may describe compressed data.
+        bytes += value.byteLength;
+        if (bytes > MAX_FEED_BYTES) throw new Error('Feed body too large');
+        result.data += decoder.decode(value, { stream: true });
+      }
+      result.data += decoder.decode();
+      return result;
+    })()]);
+  } catch (error) {
+    controller.abort();
+    // Cancellation can itself stall. Request it, but never extend the deadline.
+    void reader?.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    reader?.releaseLock();
+  }
+}
 
 class RssProxyPolicyError extends Error {
   constructor(message, status = 403) {
@@ -48,7 +101,7 @@ async function fetchViaRailway(feedUrl, timeoutMs) {
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) return null;
   const relayUrl = `${relayBaseUrl}/rss?url=${encodeURIComponent(feedUrl)}`;
-  return fetchWithTimeout(relayUrl, {
+  return fetchRssResponse(relayUrl, {
     headers: getRelayHeaders({
       'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       'User-Agent': 'WorldMonitor-RSS-Proxy/1.0',
@@ -149,7 +202,7 @@ export default async function handler(req, ctx) {
       let currentUrl = parsedUrl;
 
       for (let redirectCount = 0; redirectCount <= MAX_DIRECT_REDIRECTS; redirectCount += 1) {
-        const response = await fetchWithTimeout(currentUrl.href, {
+        const response = await fetchRssResponse(currentUrl.href, {
           headers: rssFetchHeadersForHost(currentUrl.hostname),
           redirect: 'manual',
         }, timeout);
@@ -227,7 +280,7 @@ export default async function handler(req, ctx) {
       }
     }
 
-    const data = await response.text();
+    const data = response.data;
     const relayCacheState = usedRelay ? response.headers.get('x-cache') : null;
     const relayStaleMarker = usedRelay ? response.headers.get('x-relay-stale') : null;
     return new Response(data, {

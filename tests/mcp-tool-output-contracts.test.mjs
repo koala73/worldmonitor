@@ -24,6 +24,8 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
+import Ajv2020 from 'ajv/dist/2020.js';
+
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
@@ -82,6 +84,34 @@ function minimalShape(schema) {
   if (types.includes('boolean')) return false;
   if (types.includes('null')) return null;
   return null;
+}
+
+// `minimalShape` reads only `type` / `properties` / `required` / `items` /
+// `enum`. A schema that constrains its root with `oneOf` + `const` needs a
+// hand-written payload, or the stub is not a valid instance of the very schema
+// it was derived from — which the Ajv check below would (rightly) reject.
+const STUB_FIXTURES = {
+  get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
+  list_five_factor_scorecards: {
+    methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',
+  },
+};
+
+// What a strict MCP client does: validate `structuredContent` against the
+// schema `tools/list` ADVERTISED, with a full JSON Schema validator. The mini
+// validator above skips `oneOf`, `const`, `pattern` and numeric bounds, all of
+// which the registry uses, so equality with the text alone would let a response
+// violate its published schema and still pass. Same Ajv options as
+// tests/mcp-output-schema-coverage.test.mjs.
+const ajv = new Ajv2020({
+  allErrors: true, allowUnionTypes: true, strict: true, strictRequired: false, validateFormats: false,
+});
+const advertisedValidators = new Map();
+function advertisedValidator(publicTool) {
+  if (!advertisedValidators.has(publicTool.name)) {
+    advertisedValidators.set(publicTool.name, ajv.compile(publicTool.outputSchema));
+  }
+  return advertisedValidators.get(publicTool.name);
 }
 
 describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry tools)', () => {
@@ -146,7 +176,7 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       // is restored in `afterEach`.
       if (!isCacheTool) {
         originalExecutes.set(tool, tool._execute);
-        const stubReturn = minimalShape(tool.outputSchema);
+        const stubReturn = STUB_FIXTURES[name] ?? minimalShape(tool.outputSchema);
         tool._execute = async () => stubReturn;
       }
 
@@ -176,6 +206,23 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       assert.deepEqual(
         errors, [],
         `${name}: response fails outputSchema:\n  ${errors.join('\n  ')}`,
+      );
+
+      // A strict client reads `structuredContent`, not the text, and rejects
+      // the call when it is missing (#8328). For an unprojected call it is the
+      // same document the text serializes, so the validation above covers it.
+      assert.deepEqual(
+        body.result.structuredContent, parsed,
+        `${name}: structuredContent must be the document content[0].text serializes`,
+      );
+
+      const publicTool = mod.TOOL_LIST_RESPONSE.find((t) => t.name === name);
+      assert.ok(publicTool, `${name} missing from tools/list`);
+      const validateAdvertised = advertisedValidator(publicTool);
+      assert.ok(
+        validateAdvertised(body.result.structuredContent),
+        `${name}: structuredContent fails the ADVERTISED outputSchema (a strict client throws -32602):\n  ${
+          (validateAdvertised.errors ?? []).slice(0, 5).map((e) => `${e.instancePath || '/'} ${e.message}`).join('\n  ')}`,
       );
     });
   }
