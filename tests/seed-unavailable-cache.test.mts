@@ -172,7 +172,6 @@ it('keeps an oil mapping exception out of HTTP caches without a fresh timestamp'
 });
 
 const requiredCases = [
-  ['economic/v1/get-bls-series?series_id=USPRIV', 'bls:series:USPRIV', { series: { observations: [] } }, 'series'],
   ['conflict/v1/get-humanitarian-summary?country_code=US', 'conflict:humanitarian:v1:US', { summary: { countryCode: 'US' } }, 'summary'],
   ['intelligence/v1/get-social-velocity', 'intelligence:social:reddit:v1', { posts: [], fetchedAt: 123 }, 'posts'],
   ['intelligence/v1/list-cross-source-signals', 'intelligence:cross-source-signals:v1', { signals: [] }, 'signals'],
@@ -185,7 +184,7 @@ const requiredCases = [
   ['climate/v1/list-climate-anomalies', 'climate:anomalies:v2', { anomalies: [] }, 'anomalies'],
   ['infrastructure/v1/list-internet-outages', 'infra:outages:v1', { outages: [] }, 'outages'],
 ] as const;
-for (const [path, key, payload, field] of requiredCases) {
+function itRejectsRequiredSeedFailures(path: string, key: string, payload: unknown, assertRecovered: (body: unknown) => void) {
   for (const failure of ['miss', 'http-error', 'timeout', 'malformed', 'command-error', 'shape'] as const) {
     it(`${path} required seed rejects ${failure} and recovers with a healthy observation`, async () => {
       mode = failure === 'shape' ? 'hit' : failure;
@@ -200,10 +199,103 @@ for (const [path, key, payload, field] of requiredCases) {
       const recovered = await request(path);
       assert.equal(recovered.status, 200);
       assert.notEqual(recovered.headers.get('Cache-Control'), 'no-store');
-      assert.deepEqual((await recovered.json())[field], payload[field]);
+      assertRecovered(await recovered.json());
     });
   }
 }
+for (const [path, key, payload, field] of requiredCases) {
+  itRejectsRequiredSeedFailures(path, key, payload, body => assert.deepEqual((body as Record<string, unknown>)[field], payload[field]));
+}
+
+// #8424: get-bls-series reads the canonical key api/health.js vouches for. The
+// per-series keys it used to read were overwritten by their own seed-meta record
+// on every run from 2026-03-23, and health never looked at them.
+const BLS_CANONICAL_KEY = 'bls:series:v1';
+function blsObservation(month: number) {
+  return { year: '2026', period: `M${String(month).padStart(2, '0')}`, periodName: `month-${month}`, value: String(month) };
+}
+function blsSeed() {
+  return {
+    series: [
+      { seriesId: 'USPRIV', title: 'Total Private Nonfarm Payrolls', units: 'Thousands of Persons', observations: [6, 7, 8].map(blsObservation) },
+      { seriesId: 'ECIALLCIV', title: 'Employment Cost Index - All Civilian Workers', units: 'Index (Dec 2005=100)', observations: [6].map(blsObservation) },
+    ],
+    fetchedAt: '2026-09-20T08:00:00.000Z',
+  };
+}
+it('get-bls-series serves the requested series from the canonical seed, sliced to limit', async () => {
+  mode = 'hit';
+  cache.set(BLS_CANONICAL_KEY, blsSeed());
+  const response = await request('economic/v1/get-bls-series?series_id=USPRIV&limit=2');
+  assert.equal(response.status, 200);
+  assert.notEqual(response.headers.get('Cache-Control'), 'no-store');
+  const body = await response.json();
+  assert.equal(body.series.seriesId, 'USPRIV');
+  assert.equal(body.series.title, 'Total Private Nonfarm Payrolls');
+  assert.deepEqual(body.series.observations, [7, 8].map(blsObservation));
+});
+it('get-bls-series unwraps the runSeed contract envelope the seeder writes', async () => {
+  mode = 'hit';
+  cache.set(BLS_CANONICAL_KEY, { _seed: { fetchedAt: 1, recordCount: 2, sourceVersion: 'fred-v1', schemaVersion: 1, state: 'ok' }, data: blsSeed() });
+  const response = await request('economic/v1/get-bls-series?series_id=ECIALLCIV');
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).series.seriesId, 'ECIALLCIV');
+});
+it('get-bls-series never consults the legacy per-series key', async () => {
+  mode = 'hit';
+  // What production Redis held under bls:series:USPRIV until #8424: the heartbeat, not the series.
+  cache.set('bls:series:USPRIV', { fetchedAt: 1, recordCount: 1 });
+  const failed = await request('economic/v1/get-bls-series?series_id=USPRIV');
+  assert.equal(failed.status, 503);
+  assert.equal(failed.headers.get('Cache-Control'), 'no-store');
+  // A healthy legacy key is not a fallback either: one key, the one health watches.
+  cache.set('bls:series:USPRIV', { series: blsSeed().series[0] });
+  assert.equal((await request('economic/v1/get-bls-series?series_id=USPRIV')).status, 503);
+});
+it('get-bls-series treats a known series missing from a valid canonical seed as unavailable', async () => {
+  mode = 'hit';
+  const seed = blsSeed();
+  cache.set(BLS_CANONICAL_KEY, { ...seed, series: seed.series.filter(s => s.seriesId === 'ECIALLCIV') });
+  const failed = await request('economic/v1/get-bls-series?series_id=USPRIV');
+  assert.equal(failed.status, 503);
+  assert.equal(failed.headers.get('Cache-Control'), 'no-store');
+  // The 503 names the missing series, not the healthy canonical key.
+  await assert.rejects(
+    getBlsSeries({} as never, { seriesId: 'USPRIV', limit: 0 }),
+    (err: unknown) => err instanceof Error && /bls:series:v1 series USPRIV/.test(err.message),
+  );
+});
+// A malformed entry is unavailable, not servable. The seeder's validate()
+// refuses to publish a series without observations, and every entry it does
+// publish carries seriesId/title/units, so anything narrower than that shape
+// is a broken seed — serving it would answer 200 with a response missing
+// fields the proto marks required.
+const blsMalformedEntries: Array<readonly [string, Record<string, unknown>]> = [
+  ['missing title and units', { seriesId: 'USPRIV', observations: [6].map(blsObservation) }],
+  ['a non-string title', { seriesId: 'USPRIV', title: 42, units: 'Thousands of Persons', observations: [6].map(blsObservation) }],
+  ['a non-string units', { seriesId: 'USPRIV', title: 'Total Private Nonfarm Payrolls', units: null, observations: [6].map(blsObservation) }],
+  ['zero observations', { seriesId: 'USPRIV', title: 'Total Private Nonfarm Payrolls', units: 'Thousands of Persons', observations: [] }],
+];
+for (const [label, entry] of blsMalformedEntries) {
+  it(`get-bls-series treats a known series with ${label} as unavailable`, async () => {
+    mode = 'hit';
+    const seed = blsSeed();
+    cache.set(BLS_CANONICAL_KEY, { ...seed, series: [entry, ...seed.series.filter(s => s.seriesId !== 'USPRIV')] });
+    const failed = await request('economic/v1/get-bls-series?series_id=USPRIV');
+    assert.equal(failed.status, 503);
+    assert.equal(failed.headers.get('Cache-Control'), 'no-store');
+    // The sibling series in the same envelope still serves.
+    const sibling = await request('economic/v1/get-bls-series?series_id=ECIALLCIV');
+    assert.equal(sibling.status, 200);
+    assert.equal((await sibling.json()).series.seriesId, 'ECIALLCIV');
+  });
+}
+itRejectsRequiredSeedFailures(
+  'economic/v1/get-bls-series?series_id=USPRIV',
+  BLS_CANONICAL_KEY,
+  blsSeed(),
+  body => assert.equal((body as { series?: { seriesId?: string } }).series?.seriesId, 'USPRIV'),
+);
 it('cyber proto default page size returns the default page, not one threat', async () => {
   mode = 'hit';
   cache.set('cyber:threats:v2', { threats: Array.from({ length: 3 }, (_, i) => ({

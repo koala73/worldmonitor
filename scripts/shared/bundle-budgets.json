@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 440495
+    "raw": 441071
   },
   "chunks": {
     "clerk": {
@@ -47,11 +47,11 @@
       "files": 1
     },
     "i18n": {
-      "raw": 124750,
+      "raw": 124816,
       "files": 2
     },
     "main": {
-      "raw": 126019,
+      "raw": 126521,
       "files": 1
     },
     "runtime-config": {
@@ -63,7 +63,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 45184,
+      "raw": 45192,
       "files": 1
     },
     "theme-manager": {
@@ -73,11 +73,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1368916
+      "raw": 1375671
     },
     "chunks": {
       "App": {
-        "raw": 897874,
+        "raw": 902135,
         "files": 1
       },
       "base": {
@@ -89,7 +89,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 13166,
+        "raw": 13203,
         "files": 1
       },
       "continuous": {
@@ -105,7 +105,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 118099,
+        "raw": 118416,
         "files": 1
       },
       "index": {
@@ -128,8 +128,12 @@
         "raw": 3735,
         "files": 1
       },
+      "pinned-webcams": {
+        "raw": 2073,
+        "files": 1
+      },
       "sanitize": {
-        "raw": 1146,
+        "raw": 1176,
         "files": 1
       },
       "source-provenance": {
@@ -145,7 +149,7 @@
         "files": 1
       },
       "sync-keys": {
-        "raw": 1036,
+        "raw": 1073,
         "files": 1
       },
       "user-location": {

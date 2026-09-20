@@ -14,16 +14,18 @@ import {
   USER_PREFS_WRITE_RATE_WINDOW_MS,
 } from "./constants";
 import { ROLLING_DEPLOYMENT_PREFERENCE_KEYS } from "../shared/cloud-preferences-contract";
+import { normalizeWebcamPreferences } from "../shared/pinned-webcams";
 
 export const getPreferencesByUserId = internalQuery({
   args: { userId: v.string(), variant: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const prefs = await ctx.db
       .query("userPreferences")
       .withIndex("by_user_variant", (q) =>
         q.eq("userId", args.userId).eq("variant", args.variant),
       )
       .unique();
+    return prefs ? { ...prefs, data: normalizeWebcamPreferences(prefs.data) } : null;
   },
 });
 
@@ -33,12 +35,13 @@ export const getPreferences = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
     const userId = identity.subject;
-    return await ctx.db
+    const prefs = await ctx.db
       .query("userPreferences")
       .withIndex("by_user_variant", (q) =>
         q.eq("userId", userId).eq("variant", args.variant),
       )
       .unique();
+    return prefs ? { ...prefs, data: normalizeWebcamPreferences(prefs.data) } : null;
   },
 });
 
@@ -253,8 +256,9 @@ export const setPreferences = mutation({
       )
       .unique();
 
-    const data = preserveOmittedRollingDeploymentFields(existing?.data, args.data);
-    const blobSize = JSON.stringify(data).length;
+    const mergedData = preserveOmittedRollingDeploymentFields(existing?.data, args.data);
+    const data = normalizeWebcamPreferences(mergedData);
+    const blobSize = Math.max(JSON.stringify(mergedData).length, JSON.stringify(data).length);
     if (blobSize > MAX_PREFS_BLOB_SIZE) {
       return {
         ok: false,
