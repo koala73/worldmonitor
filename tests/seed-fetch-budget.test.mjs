@@ -42,6 +42,12 @@ import { extractBundleSections, listBundleFiles, resolveExpr } from './helpers/b
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(resolve(__dirname, '..'), 'scripts');
 
+// `coingeckoEndpoint` returns api.coingecko.com or pro-api.coingecko.com
+// depending on the key tier, so the stub matches the registrable domain and
+// its subdomains. A bare `endsWith('coingecko.com')` would also accept
+// evilcoingecko.com, which CodeQL flags and which would misattribute a request.
+const isCoinGeckoHost = (hostname) => hostname === 'coingecko.com' || hostname.endsWith('.coingecko.com');
+
 /**
  * Each entry names the seeder script as the bundle manifest spells it and the
  * module that exports REQUEST_TIMEOUT_MS, COINGECKO_RETRY_BUDGET_MS,
@@ -139,7 +145,7 @@ async function assertFallbackReachedBeforeDeadline(t, { script, module, fetchExp
   // full timeout before it answers.
   globalThis.fetch = async (url) => {
     const { hostname } = new URL(url);
-    if (hostname.endsWith('coingecko.com')) t.mock.timers.tick(REQUEST_TIMEOUT_MS);
+    if (isCoinGeckoHost(hostname)) t.mock.timers.tick(REQUEST_TIMEOUT_MS);
     requests.push({ hostname, atMs: Date.now() });
     return new Response(null, { status: 429 });
   };
@@ -152,7 +158,7 @@ async function assertFallbackReachedBeforeDeadline(t, { script, module, fetchExp
   }
   assert.equal(outcome.status, 'rejected', 'with every upstream answering 429 the seeder must fail rather than publish');
 
-  const coingecko = requests.filter((r) => r.hostname.endsWith('coingecko.com'));
+  const coingecko = requests.filter((r) => isCoinGeckoHost(r.hostname));
   const paprika = requests.filter((r) => r.hostname === 'api.coinpaprika.com');
   assert.ok(coingecko.length > 0, 'the stub saw no CoinGecko request, so the retry ladder was never exercised');
   assert.ok(
