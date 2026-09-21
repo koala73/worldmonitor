@@ -44,6 +44,7 @@ export type McpPhase =
   // body-size rejections; the HTTP status on the same event separates them.
   | 'malformed'
   | 'transport'  // method/SSE-transport level (405, replay 4xx)
+  | 'migration'  // a product-host alias was refused before auth or dispatch
   | 'ok';        // served (JSON-RPC-level errors still ride HTTP 200 → ok)
 
 /** Registry name lookup — cardinality bound for tool_name (#8403). */
@@ -175,6 +176,8 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       return 'malformed_request';
     case 'transport':
       return status === 405 ? 'method_not_allowed' : 'malformed_request';
+    case 'migration':
+      return 'canonical_endpoint_required';
     default:
       return 'ok';
   }

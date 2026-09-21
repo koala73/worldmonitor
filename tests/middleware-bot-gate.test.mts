@@ -79,6 +79,37 @@ describe('middleware variant root user agents', () => {
   });
 });
 
+describe('middleware MCP host policy', () => {
+  it('passes all alias MCP methods to the handler before generic routing', () => {
+    for (const host of [
+      'www.worldmonitor.app',
+      'api.worldmonitor.app',
+      'tech.worldmonitor.app',
+      'finance.worldmonitor.app',
+      'commodity.worldmonitor.app',
+      'happy.worldmonitor.app',
+      'energy.worldmonitor.app',
+    ]) {
+      for (const [method, headers] of [
+        ['GET', { Accept: 'text/html' }],
+        ['GET', { Accept: 'text/event-stream' }],
+        ['POST', { 'Content-Type': 'application/json' }],
+        ['OPTIONS', {}],
+      ] as const) {
+        const res = middleware(new Request(`https://${host}/api/mcp?source=client`, {
+          method,
+          headers: { 'user-agent': GENERIC_CURL_UA, ...headers },
+        }));
+        assert.equal(res, undefined, `${host} ${method} must reach the MCP handler`);
+      }
+    }
+  });
+
+  it('does not apply the alias bypass to the canonical endpoint', () => {
+    assert.equal(call('https://worldmonitor.app/mcp', CHROME_UA), undefined);
+  });
+});
+
 describe('middleware bot gate / keyed API clients', () => {
   const KEYED_API_PATH = '/api/forecast/v1/get-forecast-scorecard';
   const USER_API_KEY = `wm_${'a'.repeat(40)}`;
@@ -373,39 +404,31 @@ describe('middleware /api/product-catalog — agents reach the public pricing ca
   });
 });
 
-// ── /mcp variant-subdomain canonicalization ──────────────────────────────────
+// ── /mcp product-host canonicalization ───────────────────────────────────────
 // The MCP endpoint's canonical URL is apex (`https://worldmonitor.app/mcp`).
-// GET/HEAD requests from variant subdomains are redirected there so discovery
-// signals don't fragment across tech/finance/etc. POST/OPTIONS continue to the
-// /api/mcp rewrite unchanged so MCP clients configured against a variant host
-// still handshake correctly.
+// Middleware sends every product-alias MCP request to the handler. It owns the
+// protocol-shaped 308/410 response and emits one migration telemetry event.
 
-describe('middleware /mcp — variant subdomains redirect to apex, POST stays', () => {
-  it('redirects GET /mcp from tech.worldmonitor.app to apex', () => {
+describe('middleware /mcp — product aliases reach the host-policy handler', () => {
+  it('passes GET /mcp from tech.worldmonitor.app to the handler', () => {
     const res = call('https://tech.worldmonitor.app/mcp', CHROME_UA);
-    assert.ok(res instanceof Response);
-    assert.equal(res.status, 308);
-    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+    assert.equal(res, undefined);
   });
 
-  it('redirects HEAD /mcp from finance.worldmonitor.app to apex', () => {
+  it('passes HEAD /mcp from finance.worldmonitor.app to the handler', () => {
     const req = new Request('https://finance.worldmonitor.app/mcp', { method: 'HEAD' });
     const res = middleware(req) as Response | void;
-    assert.ok(res instanceof Response);
-    assert.equal(res.status, 308);
-    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+    assert.equal(res, undefined);
   });
 
-  it('redirects /mcp from every variant subdomain', () => {
+  it('passes /mcp from every variant subdomain', () => {
     for (const host of ['tech', 'finance', 'commodity', 'happy', 'energy']) {
       const res = call(`https://${host}.worldmonitor.app/mcp`, CHROME_UA);
-      assert.ok(res instanceof Response, `${host} must redirect`);
-      assert.equal(res.status, 308, `${host} redirect status`);
-      assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp', `${host} redirect location`);
+      assert.equal(res, undefined, `${host} must reach the handler`);
     }
   });
 
-  it('does NOT redirect GET /mcp from apex or www', () => {
+  it('passes GET /mcp from apex and www', () => {
     assert.equal(call('https://worldmonitor.app/mcp', CHROME_UA), undefined);
     assert.equal(call('https://www.worldmonitor.app/mcp', CHROME_UA), undefined);
   });
@@ -441,14 +464,12 @@ describe('middleware /mcp — variant subdomains redirect to apex, POST stays', 
     assert.equal(middleware(replay), undefined, 'Last-Event-ID replay must stay on the session host');
   });
 
-  it('redirects when SSE is explicitly unacceptable', () => {
+  it('passes when SSE is explicitly unacceptable', () => {
     const req = new Request('https://tech.worldmonitor.app/mcp', {
       headers: { Accept: 'text/event-stream;q=0, text/html' },
     });
     const res = middleware(req) as Response | void;
-    assert.ok(res instanceof Response);
-    assert.equal(res.status, 308);
-    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+    assert.equal(res, undefined);
   });
 });
 

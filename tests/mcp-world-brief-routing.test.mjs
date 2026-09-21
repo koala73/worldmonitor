@@ -25,15 +25,8 @@ const SECRET_COOKIE = 'SECRET_COOKIE_SENTINEL_5514';
 const SECRET_GEO_CONTEXT = 'SECRET_GEO_CONTEXT_SENTINEL_5514';
 const SECRET_RESPONSE_DETAIL = 'SECRET_RESPONSE_DETAIL_SENTINEL_5514';
 
-const HOSTS = [
+const CANONICAL_HOSTS = [
   { url: 'https://worldmonitor.app/mcp', hostClass: 'apex' },
-  { url: 'https://www.worldmonitor.app/mcp', hostClass: 'www' },
-  { url: 'https://api.worldmonitor.app/api/mcp', hostClass: 'canonical_api' },
-  { url: 'https://tech.worldmonitor.app/mcp', hostClass: 'variant' },
-  { url: 'https://finance.worldmonitor.app/mcp', hostClass: 'variant' },
-  { url: 'https://commodity.worldmonitor.app/mcp', hostClass: 'variant' },
-  { url: 'https://happy.worldmonitor.app/mcp', hostClass: 'variant' },
-  { url: 'https://energy.worldmonitor.app/mcp', hostClass: 'variant' },
 ];
 
 const AUTH_CASES = [
@@ -214,7 +207,7 @@ describe('get_world_brief seeded brief routing', () => {
     }
   });
 
-  it('uses the canonical API origin for every supported production host and auth kind', async () => {
+  it('uses the canonical API origin for the canonical MCP host and every auth kind', async () => {
     const captured = [];
     const fetchCalls = [];
     console.log = (line) => captured.push(line);
@@ -234,7 +227,7 @@ describe('get_world_brief seeded brief routing', () => {
 
     const deps = makeDeps();
     let id = 100;
-    for (const host of HOSTS) {
+    for (const host of CANONICAL_HOSTS) {
       for (const auth of AUTH_CASES) {
         const beforeFetch = fetchCalls.length;
         const beforeTelemetry = downstreamEvents(captured).length;
@@ -351,7 +344,7 @@ describe('get_world_brief seeded brief routing', () => {
       };
 
       const response = await mcpHandler(
-        requestFor('https://api.worldmonitor.app/api/mcp', AUTH_CASES[0].headers, id++),
+        requestFor('https://worldmonitor.app/mcp', AUTH_CASES[0].headers, id++),
         deps,
       );
       assert.equal(response.status, 200, `${scenario.name}: transport status`);
@@ -396,7 +389,7 @@ describe('get_world_brief seeded brief routing', () => {
     };
 
     const response = await mcpHandler(
-      requestFor('https://api.worldmonitor.app/api/mcp', AUTH_CASES[0].headers, 760),
+      requestFor('https://worldmonitor.app/mcp', AUTH_CASES[0].headers, 760),
       deps,
     );
     assert.equal(response.status, 200, 'transport status');
@@ -471,7 +464,7 @@ describe('get_world_brief seeded brief routing', () => {
       };
 
       const response = await mcpHandler(
-        requestFor('https://tech.worldmonitor.app/mcp', scenario.auth.headers, 200 + index),
+        requestFor('https://worldmonitor.app/mcp', scenario.auth.headers, 200 + index),
         makeDeps(),
       );
       assert.equal(response.status, 200, `${scenario.name}: JSON-RPC tool failure status`);
@@ -483,7 +476,7 @@ describe('get_world_brief seeded brief routing', () => {
       );
       assert.ok(event, `${scenario.name}: bootstrap telemetry`);
       assert.equal(event.auth_kind, scenario.auth.kind);
-      assert.equal(event.inbound_host_class, 'variant');
+      assert.equal(event.inbound_host_class, 'apex');
       assert.equal(event.downstream_origin, CANONICAL_API_ORIGIN);
       assert.equal(event.status, scenario.status);
       assert.equal(event.ok, false);
@@ -521,7 +514,7 @@ describe('get_world_brief seeded brief routing', () => {
     };
 
     const response = await mcpHandler(
-      requestFor('https://www.worldmonitor.app/mcp', AUTH_CASES[1].headers, 300),
+      requestFor('https://worldmonitor.app/mcp', AUTH_CASES[1].headers, 300),
       makeDeps(),
     );
     assert.equal(response.status, 503);
