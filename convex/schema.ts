@@ -990,6 +990,46 @@ export default defineSchema({
     .index("by_normalizedEmail", ["normalizedEmail"])
     .index("by_localePrimary", ["localePrimary"]),
 
+  // Durable DSAR tombstone for a Clerk subject. Personal Convex rows are
+  // deleted or anonymized by `convex/accountDeletion`; Company Monitoring
+  // still uses `markOwnerDeleted` / `advanceAccountPurge` for its own fence.
+  // `verifiedEmail` is captured for waitlist/contact deletes and cleared
+  // when status becomes complete so the tombstone is not a second email index.
+  accountDeletions: defineTable({
+    userId: v.string(),
+    userIdHash: v.string(),
+    source: v.union(
+      v.literal("self"),
+      v.literal("support"),
+      v.literal("clerk_webhook"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("complete"),
+    ),
+    personalTableIndex: v.optional(v.number()),
+    verifiedEmail: v.optional(v.string()),
+    dodoSubscriptionIds: v.optional(v.array(v.string())),
+    subscriptionDocIds: v.optional(v.array(v.id("subscriptions"))),
+    fenceAppliedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userIdHash", ["userIdHash"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
+
   webhookEvents: defineTable({
     webhookId: v.string(),
     eventType: v.string(),
