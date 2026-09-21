@@ -32,6 +32,7 @@ How to reach World Monitor, by concern. Human-readable version: https://www.worl
 - API key rotation or limit increases: see https://www.worldmonitor.app/docs/usage-auth and https://www.worldmonitor.app/docs/usage-rate-limits, or email support@worldmonitor.app.
 - Pricing and plans: https://www.worldmonitor.app/pricing.md (markdown) or `GET https://www.worldmonitor.app/api/product-catalog` (JSON, public).
 - Billing portal (invoices, cancel/renew): sign in at https://www.worldmonitor.app/pro and open the customer portal.
+- Delete a signed-in account: Avatar → Plan & billing → Delete account, then type DELETE. Cancelling a subscription is not account deletion. If you cannot sign in, email support@worldmonitor.app from the account address so support can confirm the Clerk user id. Anonymous use has no server account; clear local site data. Export remains a support request.
 - Security reports: see https://www.worldmonitor.app/.well-known/security.txt
 
 ## Machine-Readable Summary
