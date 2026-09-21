@@ -3,6 +3,13 @@
 # Each line is a Sentry filters:error_messages glob for case-1 Convex probe noise.
 # Public function names are intentionally absent — deploy-skew must still report.
 #
+*Could not find public function for 'accountDeletion/batches:advanceErase'*
+*Could not find public function for 'accountDeletion/erase:eraseConfirmedUser'*
+*Could not find public function for 'accountDeletion/erase:getExternalEraseSnapshot'*
+*Could not find public function for 'accountDeletion/erase:ingestClerkUserDeleted'*
+*Could not find public function for 'accountDeletion/erase:markExternalComplete'*
+*Could not find public function for 'accountDeletion/erase:recordExternalProgress'*
+*Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
 *Could not find public function for 'alertRules:getByEnabled'*
 *Could not find public function for 'alertRules:getDigestRules'*
