@@ -724,6 +724,63 @@ function repairLeadStatusQualifiers(lead, ground) {
   return { lead: repaired, dropped: whole.hallucinated };
 }
 
+const DIGEST_FENCE_START = /^```(?:json)?\s*/i;
+const DIGEST_FENCE_END = /\s*```$/;
+const DIGEST_GREETING_LINE = /^(?:good\s+(?:morning|afternoon|evening|night)|hello|hi)(?:[.!])?$/i;
+
+function stripDigestFences(text) {
+  return text.replace(DIGEST_FENCE_START, '').replace(DIGEST_FENCE_END, '').trim();
+}
+
+/**
+ * True for a short time-of-day greeting the prompt injects via
+ * `Open the lead with: "${greeting}."`. Locale phrases that still
+ * hash into greetingBucket (morning/afternoon/evening) also count,
+ * so a "Good night." variant is recovered without treating an
+ * editorial preamble ("Here is the digest:") as a greeting.
+ *
+ * @param {string} line
+ */
+function isDigestGreetingLine(line) {
+  if (typeof line !== 'string') return false;
+  const s = line.trim();
+  if (!s || s.length > 48 || s.includes('{')) return false;
+  if (DIGEST_GREETING_LINE.test(s)) return true;
+  return greetingBucket(s) !== '' && /^[\p{L}\p{M}\s]+[.!]?$/u.test(s);
+}
+
+function normalizeGreetingPrefix(line) {
+  return `${line.trim().replace(/[.!]+$/u, '')}.`;
+}
+
+function leadAlreadyOpensWithGreeting(lead, greeting) {
+  const core = greeting.trim().replace(/[.!]+$/u, '');
+  if (!core) return false;
+  const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}(?:[.!]|\\s|$)`, 'i').test(lead.trim());
+}
+
+/**
+ * gemini-2.5-flash sometimes writes the requested greeting on its own
+ * line and then the JSON object (#8439). Peel that line so JSON.parse
+ * can run; the caller prepends it back onto `lead`.
+ *
+ * @param {string} text
+ * @returns {{ json: string; greeting: string }}
+ */
+function peelLeadingDigestGreeting(text) {
+  const s = stripDigestFences(text.trim());
+  if (!s || s.startsWith('{')) return { json: s, greeting: '' };
+  const match = s.match(/^([^\r\n]+)\r?\n+([\s\S]*)$/);
+  if (!match) return { json: s, greeting: '' };
+  const firstLine = match[1].trim();
+  const rest = stripDigestFences(match[2].trim());
+  if (!isDigestGreetingLine(firstLine) || !rest.startsWith('{')) {
+    return { json: s, greeting: '' };
+  }
+  return { json: rest, greeting: firstLine };
+}
+
 /**
  * @param {unknown} text
  * @param {Array<{ headline?: string }>} [stories]  forwarded to
@@ -733,18 +790,27 @@ function repairLeadStatusQualifiers(lead, ground) {
  */
 export function parseDigestProse(text, stories) {
   if (typeof text !== 'string') return null;
-  let s = text.trim();
-  if (!s) return null;
-  // Defensive: strip common wrappings the model sometimes inserts
-  // despite the explicit system instruction.
-  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  if (!text.trim()) return null;
+  // Defensive: strip code fences, then a leading greeting line the
+  // model emits despite "produce EXACTLY this JSON and nothing else"
+  // (#8439). The greeting is prepended back onto the validated lead
+  // so the reader still sees the requested open.
+  const { json, greeting } = peelLeadingDigestGreeting(text);
+  if (!json) return null;
   let obj;
   try {
-    obj = JSON.parse(s);
+    obj = JSON.parse(json);
   } catch {
     return null;
   }
-  return validateDigestProseShape(obj, stories);
+  const validated = validateDigestProseShape(obj, stories);
+  if (!validated) return null;
+  if (!greeting || leadAlreadyOpensWithGreeting(validated.lead, greeting)) {
+    return validated;
+  }
+  const prefixed = `${normalizeGreetingPrefix(greeting)} ${validated.lead}`;
+  if (prefixed.length > 1500) return validated;
+  return { ...validated, lead: prefixed };
 }
 
 /**

@@ -560,6 +560,52 @@ describe('parseDigestProse', () => {
     assert.match(out.lead, /Strait of Hormuz/);
   });
 
+  // #8439: gemini-2.5-flash obeys `Open the lead with: "Good morning."`
+  // by writing that sentence on its own line, then the JSON object.
+  // The system prompt also says "produce EXACTLY this JSON and nothing
+  // else", so JSON.parse of the whole string threw and the cron fell
+  // through to L2/L3. 8 of 24 production samples on the 2026-09-20
+  // pool were lost this way. Strip the greeting line, parse, prepend.
+  it('REGRESSION (#8439): leading "Good morning." line is stripped, parsed, and prepended to lead', () => {
+    const wrapped = `Good morning.\n${good}`;
+    const out = parseDigestProse(wrapped);
+    assert.ok(out, 'greeting-prefixed JSON must parse, not fall through to L2');
+    assert.match(out.lead, /^Good morning\./);
+    assert.match(out.lead, /Strait of Hormuz/);
+    assert.equal(out.threads.length, 2);
+  });
+
+  it('REGRESSION (#8439): Good afternoon / Good evening prefixes recover the same way', () => {
+    for (const greeting of ['Good afternoon.', 'Good evening.', 'Good morning']) {
+      const out = parseDigestProse(`${greeting}\n\n${good}`);
+      assert.ok(out, `must recover ${JSON.stringify(greeting)} prefix`);
+      assert.match(out.lead, /^Good (morning|afternoon|evening)\./);
+      assert.match(out.lead, /Strait of Hormuz/);
+    }
+  });
+
+  it('REGRESSION (#8439): greeting then fenced JSON still parses', () => {
+    const wrapped = 'Good morning.\n```json\n' + good + '\n```';
+    const out = parseDigestProse(wrapped);
+    assert.ok(out);
+    assert.match(out.lead, /^Good morning\./);
+    assert.match(out.lead, /Strait of Hormuz/);
+  });
+
+  it('REGRESSION (#8439): does not double-prepend when lead already opens with the greeting', () => {
+    const obj = JSON.parse(good);
+    obj.lead = `Good morning. ${obj.lead}`;
+    const out = parseDigestProse(`Good morning.\n${JSON.stringify(obj)}`);
+    assert.ok(out);
+    assert.equal(out.lead.match(/Good morning/gi)?.length, 1, 'greeting must appear once');
+    assert.match(out.lead, /^Good morning\./);
+  });
+
+  it('REGRESSION (#8439): a non-greeting preamble still fails closed', () => {
+    assert.equal(parseDigestProse(`Here is the digest:\n${good}`), null);
+    assert.equal(parseDigestProse(`Sure.\n${good}`), null);
+  });
+
   it('returns null on malformed JSON', () => {
     assert.equal(parseDigestProse('not json {'), null);
     assert.equal(parseDigestProse('[]'), null);
@@ -645,6 +691,19 @@ describe('generateDigestProse', () => {
     const out = await generateDigestProse('user_abc', stories, 'all', { ...cache, callLLM: llm.callLLM });
     assert.equal(out, null);
     assert.equal(cache.store.size, 0);
+  });
+
+  it('REGRESSION (#8439): greeting-prefixed LLM JSON is adopted, not treated as a parse miss', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(`Good morning.\n${validJson}`);
+    const out = await generateDigestProse('user_abc', stories, 'critical', {
+      ...cache,
+      callLLM: llm.callLLM,
+    }, { greeting: 'Good morning' });
+    assert.ok(out, 'L1 must keep the lead instead of falling through to L2');
+    assert.match(out.lead, /^Good morning\./);
+    assert.match(out.lead, /Hormuz/);
+    assert.equal(cache.store.size, 1, 'recovered parse must still cache');
   });
 
   it('different users do NOT share the digest cache even when the story pool is identical', async () => {
