@@ -842,8 +842,16 @@ jobs:
                 echo "SIGTRAP exits: ${CRASHES}"
                 echo ""
                 echo '```'
-                grep -an "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" | head -10 || true
+                # Bounded because GITHUB_STEP_SUMMARY caps at 1 MiB and an
+                # oversized write is dropped whole, which would lose the count
+                # above too. Say so when it bites: a silent cut reads as if
+                # these were all of them.
+                grep -an "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" | head -50 || true
                 echo '```'
+                if [ "${CRASHES:-0}" -gt 50 ]; then
+                  echo ""
+                  echo "Showing the first 50. The other $((CRASHES - 50)) are in the browser-loss artifact."
+                fi
               } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
             fi
             return "$SMOKE_STATUS"
