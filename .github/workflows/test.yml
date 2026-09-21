@@ -821,12 +821,6 @@ jobs:
           sample_memory > "$DIAGNOSTICS_DIR/memory-samples.log"
           ( while sleep 5; do sample_memory; done ) >> "$DIAGNOSTICS_DIR/memory-samples.log" 2>&1 &
           MEM_SAMPLER_PID=$!
-          # Chromium minidumps. playwright.config.ts drops the --disable-breakpad
-          # default when this is set, so a SIGTRAP leaves something to read
-          # instead of only the signal (#8447). Best effort: the trap that kills
-          # these browsers prints no message, so the dump is the only lead.
-          export WM_CRASH_DUMPS_DIR="$DIAGNOSTICS_DIR/crash-dumps"
-          mkdir -p "$WM_CRASH_DUMPS_DIR"
           collect_diagnostics() {
             SMOKE_STATUS=$?
             kill "$MEM_SAMPLER_PID" 2>/dev/null || true
@@ -834,9 +828,6 @@ jobs:
             sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
             mkdir -p test-results/browser-loss
             cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
-            if [ -n "$(ls -A "$WM_CRASH_DUMPS_DIR" 2>/dev/null)" ]; then
-              cp -R "$WM_CRASH_DUMPS_DIR" test-results/browser-loss/crash-dumps || true
-            fi
             # A browser crash is not a flake. With retries at 1 a single crash
             # is absorbed and the job reports `flaky`, which is how these went
             # unnoticed from #5685 until #8447. Report every crash whatever the

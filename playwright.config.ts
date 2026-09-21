@@ -10,14 +10,6 @@ const webMcpChromeExecutablePath = process.env.WM_WEBMCP_CHROME_EXECUTABLE_PATH?
 const validWebMcpDeployedSha = Boolean(
   webMcpDeployedSha && /^[0-9a-f]{40}$/i.test(webMcpDeployedSha),
 );
-// Absolute directory for Chromium minidumps, set only by the CI smoke step.
-// Opt-in because it is not free: it reverses Playwright's `--disable-breakpad`
-// default, so the crash handler runs on every launch. Local runs leave it unset
-// and behave exactly as before.
-const crashDumpsDir = process.env.WM_CRASH_DUMPS_DIR?.trim();
-if (crashDumpsDir && !crashDumpsDir.startsWith('/')) {
-  throw new Error('WM_CRASH_DUMPS_DIR must be an absolute path; Chromium resolves it against its own cwd.');
-}
 
 if (webMcpProduction) {
   if (!requireWebMcp) {
@@ -114,17 +106,20 @@ export default defineConfig({
         ...(requireWebMcp && !webMcpChromeExecutablePath ? { channel: webMcpChromeChannel } : {}),
         launchOptions: {
           ...(webMcpChromeExecutablePath ? { executablePath: webMcpChromeExecutablePath } : {}),
-          // Playwright launches with `--disable-breakpad`, which is why a
-          // browser that dies with SIGTRAP leaves nothing behind but the signal
-          // (#8447). Dropping that default is the whole point: without it
-          // Chromium writes no minidump and an IMMEDIATE_CRASH trap prints no
-          // message, so the crash reaches the reporter only as the client-side
-          // `Object with guid response@<id> was not bound in the connection`.
-          ...(crashDumpsDir ? { ignoreDefaultArgs: ['--disable-breakpad'] } : {}),
+          // Do NOT drop `--disable-breakpad` to chase the SIGTRAP crashes in
+          // #8447. CI runs chromium_headless_shell, and that bundle ships no
+          // `chrome_crashpad_handler` binary, so enabling breakpad aborts the
+          // browser at launch rather than producing a minidump:
+          //   FATAL:third_party/crashpad/.../spawn_subprocess.cc:237
+          //   posix_spawn .../chrome_crashpad_handler
+          // Every test then fails in single-digit milliseconds with
+          // `browserType.launch: Target page, context or browser has been
+          // closed` (run 35570837267). Only the full `chromium-<rev>` build
+          // carries the handler, so minidumps need a different browser, not a
+          // different flag.
           args: [
             '--use-angle=swiftshader',
             '--use-gl=swiftshader',
-            ...(crashDumpsDir ? [`--crash-dumps-dir=${crashDumpsDir}`, '--enable-crash-reporter'] : []),
             ...(requireWebMcp && !webMcpProduction ? ['--enable-features=WebMCPTesting'] : []),
           ],
         },
