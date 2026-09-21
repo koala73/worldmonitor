@@ -29,6 +29,9 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
       credentials: 'omit',
       signal: controller.signal,
     });
+    // Never memoize HTTP failures: the page-lifetime map has no TTL, so a
+    // transient 4xx/5xx must stay retryable. Only a validated country or a
+    // definitive empty response may be cached below.
     if (!res.ok) return null;
 
     const data = await res.json();

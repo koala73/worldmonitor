@@ -88,6 +88,8 @@ export interface BaseToolDef {
   // throws rather than signing. In practice that means `_apiPaths: []` and a
   // committed-registry or cache read. Enforced by test, not by convention.
   _freeTier?: true;
+  // Cache-backed tools can require the same paid access as their REST route.
+  _subscriptionOnly?: true;
   // Budget units this tool charges, overriding the class default in
   // `registry/index.ts::toolWeight`. Set it only when the tool's downstream
   // maximum downstream fan-out differs from its class. A tool that adds a
@@ -303,8 +305,13 @@ export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 
 // emit in `content[0].text`. `failed` is set only on a soft-failure path,
 // and its value is the same enum string used as the `_jmespath_error`
 // envelope prefix (no drift).
+//
+// `value` is the document `text` serializes — the projected value, the
+// unprojected payload on the identity path, or the soft-fail envelope — so the
+// dispatcher can build `structuredContent` without parsing `text` back.
 export interface ApplyJmespathResult {
   text: string;
+  value: unknown;
   failed?: JmespathFailKind;
 }
 

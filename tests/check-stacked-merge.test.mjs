@@ -520,6 +520,146 @@ describe('checkStackedMerge orchestrator', () => {
   });
 });
 
+describe('squashed parent integration with real git history', () => {
+  const cases = [
+    ['preserved child paths', true],
+    ['missing child edit', false],
+    ['missing child deletion', false],
+    ['missing child rename', false],
+    ['missing literal path', false],
+    ['parent does not contain child', false],
+    ['parent merge is not on main', false],
+    ['missing parent merge SHA', false],
+    ['rebased child preserved', true],
+    ['rebased child loses earlier edit', false],
+    ['incomplete file list', false],
+    ['git diff fails', null],
+  ];
+  for (const [scenario, integrated] of cases) {
+    it(scenario, () => {
+      const dir = mkdtempSync(join(tmpdir(), 'stacked-squash-'));
+      const env = { ...process.env };
+      for (const key of Object.keys(env)) {
+        if (key.startsWith('GIT_')) delete env[key];
+      }
+      const git = (args) => execFileSync('git', args, {
+        cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const commit = (message) => {
+        git(['add', '--all']);
+        git(['commit', '-m', message]);
+        return git(['rev-parse', 'HEAD']).trim();
+      };
+      const write = (path, value) => writeFileSync(join(dir, path), value);
+      try {
+        git(['init', '-b', 'main']);
+        git(['config', 'user.name', 'Detector test']);
+        git(['config', 'user.email', 'detector@example.invalid']);
+        git(['config', 'commit.gpgsign', 'false']);
+        git(['config', 'core.hooksPath', '/dev/null']);
+        git(['remote', 'add', 'origin', dir]);
+        write('target', 'before\n');
+        write('removed', 'old\n');
+        write('old name', 'rename me\n');
+        commit('main');
+        git(['checkout', '-b', 'parent']);
+        write('parent-only', 'parent\n');
+        const beforeChild = commit('parent change');
+        git(['checkout', '-b', 'child']);
+        write('early-only', 'first child commit\n');
+        commit('first child change');
+        write('target', 'child\n');
+        write(':(glob)*', 'literal path\n');
+        git(['rm', 'removed']);
+        git(['mv', 'old name', 'new\nname']);
+        commit('child change');
+        git(['checkout', 'parent']);
+        git(['merge', scenario.startsWith('rebased child') ? '--ff-only' : '--no-ff', 'child', '-m', 'merge child']);
+        const childMerge = git(['rev-parse', 'HEAD']).trim();
+        write('target', 'child with parent follow-up\n');
+        const parentHead = commit('parent follow-up');
+        git(['checkout', 'main']);
+        write('unrelated', 'concurrent main change\n');
+        commit('main advances');
+        if (scenario === 'parent merge is not on main') git(['checkout', '-b', 'unlanded']);
+        git(['merge', '--squash', 'parent']);
+        if (scenario === 'missing child edit') write('target', 'before\n');
+        if (scenario === 'missing child deletion') write('removed', 'old\n');
+        if (scenario === 'missing child rename') write('old name', 'rename me\n');
+        if (scenario === 'missing literal path') rmSync(join(dir, ':(glob)*'));
+        if (scenario === 'rebased child loses earlier edit') rmSync(join(dir, 'early-only'));
+        const parentMerge = commit('squash parent');
+        const parent = {
+          number: 8455, state: 'closed', merged: true,
+          merge_commit_sha: scenario === 'missing parent merge SHA' ? null : parentMerge,
+          head: { ref: 'parent', sha: scenario === 'parent does not contain child' ? beforeChild : parentHead },
+          base: { ref: 'main' },
+        };
+        const child = {
+          number: 8465, state: 'closed', merged: true, merge_commit_sha: childMerge,
+          base: { ref: 'parent' }, changed_files: 5,
+        };
+        const alarm = { number: 8471, state: 'open', title: `${ISSUE_TITLE_PREFIX} #8465 on main` };
+        let closes = 0;
+        let mutations = 0;
+        const run = () => checkStackedMerge({
+          mode: 'post-merge', event: pullEvent(child, { action: 'closed' }),
+          gh: (args) => {
+            const route = args.at(-1);
+            if (route.endsWith('/pulls/8465')) return JSON.stringify(child);
+            if (route.includes('/pulls/8465/files')) {
+              const files = [
+                { filename: 'early-only' }, { filename: 'target' }, { filename: 'removed' },
+                { filename: 'new\nname', previous_filename: 'old name' }, { filename: ':(glob)*' },
+              ];
+              return JSON.stringify(scenario === 'incomplete file list' ? files.slice(1) : files);
+            }
+            return JSON.stringify([parent]);
+          },
+          git: (args) => {
+            if (scenario === 'git diff fails' && args.includes('diff') && args.includes('--quiet')) {
+              throw Object.assign(new Error('diff failed'), { status: 128 });
+            }
+            return git(args);
+          },
+          issues: {
+            search: (title) => title === alarm.title ? [alarm] : [],
+            create: () => assert.fail('must not duplicate the alarm'),
+            comment: () => assert.fail('must not duplicate the comment'),
+            update: (_number, fields) => { mutations++; Object.assign(alarm, fields); },
+            close: (number, body) => {
+              assert.equal(number, 8471);
+              closes++;
+              mutations++;
+              Object.assign(alarm, { state: 'closed', body });
+            },
+          },
+        });
+        if (integrated === null) {
+          assert.throws(run, /diff failed/);
+          assert.equal(mutations, 0, 'Git errors must not mutate issue state');
+          return;
+        }
+        const result = run();
+        assert.equal(result.ok, integrated);
+        assert.equal(result.reason, integrated ? 'content-on-default' : 'integration-unproven');
+        assert.equal(alarm.state, integrated ? 'closed' : 'open');
+        if (integrated) {
+          assert.equal(result.integratedParent.number, 8455);
+          assert.match(alarm.body, /content.*confirmed/);
+          assert.ok(alarm.body.includes(parentHead));
+          assert.ok(alarm.body.includes(parentMerge));
+          assert.doesNotMatch(alarm.body, /Merge commit .* is an ancestor/);
+          run();
+          assert.equal(closes, 1, 'rechecking must not close or comment twice');
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 describe('CLI replay of the recorded tombstone', () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const script = join(root, 'scripts/check-stacked-merge.mjs');

@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { sanitizeUrl } from '@/utils/sanitize';
+import { validateUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { h, replaceChildren, safeHtml } from '@/utils/dom-utils';
 import {
@@ -512,7 +512,7 @@ export class TelegramIntelPanel extends Panel {
           if (isVideo) {
             return h('video', {
               className: 'telegram-intel-video',
-              src: sanitizeUrl(url),
+              src: validateUrl(url),
               controls: true,
               preload: 'metadata',
               playsinline: true,
@@ -520,15 +520,15 @@ export class TelegramIntelPanel extends Panel {
           }
           return h('img', {
             className: 'telegram-intel-image',
-            src: sanitizeUrl(url),
+            src: validateUrl(url),
             loading: 'lazy',
-            onClick: () => window.open(sanitizeUrl(url), '_blank', 'noopener,noreferrer'),
+            onClick: () => window.open(validateUrl(url), '_blank', 'noopener,noreferrer'),
           });
         })
       ) : null,
       h('div', { className: 'telegram-intel-item-actions' },
         h('a', {
-          href: sanitizeUrl(item.url),
+          href: validateUrl(item.url),
           target: '_blank',
           rel: 'noopener noreferrer',
           className: 'telegram-follow-btn',

@@ -197,3 +197,25 @@ floor and silently disable every retry.
 - `src/services/checkout-errors.ts` — the buyer-facing `rate_limited` mapping
 - `tests/checkout-rate-limit-alarm.test.mts`,
   `convex/__tests__/checkoutRateLimit.test.ts` — threshold and end-to-end coverage
+
+## Session-creation timeouts
+
+The same ladder permits one immediate retry for the SDK's typed attempt timeout,
+within its existing 8s budget and three-attempt total cap. Each provider attempt
+still has a 3.5s timeout and SDK retries remain disabled. This is safe only for
+checkout-session creation: a duplicate creates an unopened URL, not a charge.
+There is no documented provider idempotency guarantee for this request.
+
+A terminal timeout returns `CHECKOUT_TIMED_OUT` (relay and edge HTTP 500; public
+Convex action error). HTTP 500 prevents the browser's extra 502 retry. Both entry
+points record one row in `checkoutTimeoutEvents`, indexed by `occurredAt`.
+Recovered timeouts write no row. Count rows in the last 24h or 7d to measure
+buyers who still could not start checkout; these rows do not feed the 429 alarm.
+Inserts prune up to 50 rows older than 8 days, using the existing retention bounds.
+A failed write leaves the buyer's outcome unchanged and emits
+`[checkout-timeout] failed to record terminal CHECKOUT_TIMED_OUT` to Convex/Sentry.
+
+Owner: `@koala73`. After deployment, watch these counts and checkout success for
+24h. Investigate any recorder error or rise in terminal timeouts. If the retry
+increases provider failures, revert the retry change; retain recorded events for
+incident analysis. No timeout paging threshold is introduced by this change.

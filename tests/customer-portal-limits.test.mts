@@ -33,7 +33,11 @@ it('limits portal sessions per authenticated user before the relay, across token
           stored.set(storageKey, String(command[2]));
           return { result: 'OK' };
         }
-        const key = String(command[3]);
+        // Upstash's sliding-window key is `<identifier>:<windowIndex>`, and the
+        // index is floor(now / 60s). Counting per raw key reset the quota when a
+        // run crossed a wall-clock minute, and request six got 200. Count per
+        // identifier: this fake models one window, whatever the clock does.
+        const key = String(command[3]).replace(/:\d+$/, '');
         const count = (buckets.get(key) ?? 0) + 1;
         buckets.set(key, count);
         return { result: [5 - count, 5] };

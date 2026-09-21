@@ -628,9 +628,10 @@ describe('Safari module fetch failure with a first-party await site (WORLDMONITO
 //
 // AbortSignal.timeout() rejections and DOMException(NotSupportedError) bubble
 // up via onunhandledrejection without first-party frames captured (browser
-// fires them from internal infra at the timer boundary). Both phrases are
-// runtime-emitted only — our shipped code cannot synthesize them
-// (WORLDMONITOR-66 / WORLDMONITOR-62).
+// fires them from internal infra at the timer boundary). Our own timeout
+// reasons are frameless too (insights-loader stamps the native header-only
+// stack), so first-party failures surface only through a `kind`-tagged report
+// (WORLDMONITOR-66 / WORLDMONITOR-62 / WORLDMONITOR-125).
 
 describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DOM-walker / wrapper-injected timeout)', () => {
   for (const dispatch of ['direct', 'queued']) {
@@ -658,11 +659,12 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
   // from extension noise, exactly as it had for panel dispatch before #7552.
   //
   // The escape hatch is the PRESENCE of a `kind` tag, not another message name.
-  // Only first-party capture call sites set `kind` (six across src/ at the time
-  // of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
+  // Only first-party capture call sites set `kind` (seven across src/ at the
+  // time of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
   // `variant_theme_load_failed`, app/pending-panel-data.ts
   // `panel_call_rejected`, services/wm-session.ts `wm_session_dead` and
-  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`),
+  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`,
+  // components/CountryDeepDivePanel.ts `country_deep_dive_load_failed`),
   // and a browser- or extension-originated rejection cannot carry one.
   //
   // The cases below are parameterised over a value that appears NOWHERE in
@@ -677,10 +679,11 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     'csp_violation',
     'variant_theme_load_failed',
     'wm_session_dead',
+    'country_deep_dive_load_failed',
     // Belongs to no call site. A name-list gate fails here and only here.
     'kind_presence_probe',
     // A truthiness gate reads this as absent and suppresses the report. No
-    // call site can emit it today — all six are string literals — but
+    // call site can emit it today — all seven are string literals — but
     // `kind: someVar` is one refactor away, and the failure would be silent.
     '',
   ]) {
@@ -2608,5 +2611,66 @@ describe('beforeSend — MapLibre 6 Object.hasOwn on pre-15.4 WebKit / old Chrom
     };
     for (const root of roots) walk(root);
     assert.deepEqual(offenders, [], 'first-party code now calls Object.hasOwn — re-derive the WORLDMONITOR-12V rule');
+  });
+});
+
+// ─── WORLDMONITOR-134: explicit `Error` from a script injected into the page ─
+//
+// Google app (GSA 437) on iOS 26.5, `Error: Ka\`prod` via onunhandledrejection.
+// Every non-native frame is the `/dashboard` document itself, at line:col
+// positions that do not exist in the served HTML (e.g. 462:1094 on a 444-char
+// line) — the host app's main-world script, which WebKit attributes to the
+// document URL. The document-frame gate already covered this shape for
+// TypeError (WORLDMONITOR-V8); a plain `Error` is only ever an explicit
+// `throw new Error(...)`/`reject(new Error(...))`, and no inline script in our
+// HTML entries does either (pinned below), so the same frames prove it foreign.
+describe('document-URL-only explicit Error (WORLDMONITOR-134)', () => {
+  const MSG = 'Ka`prod';
+  const documentFrames = [
+    { filename: '/dashboard', lineno: 464, colno: 54, function: null },
+    { filename: '/dashboard', lineno: 194, colno: 41, function: 'Vi' },
+    { filename: '[native code]', function: 'Promise' },
+    { filename: '/dashboard', lineno: 196, colno: 97, function: 'Yi' },
+    { filename: 'https://www.worldmonitor.app/dashboard', lineno: 462, colno: 1094, function: 'cv' },
+  ];
+
+  it('suppresses an Error whose only source frames are the page document', () => {
+    assert.equal(beforeSend(makeEvent(MSG, 'Error', documentFrames), IOS_NAVIGATOR), null);
+  });
+
+  it('keeps the same Error when a first-party frame is on the stack', () => {
+    const event = makeEvent(MSG, 'Error', [...documentFrames, firstPartyFrame()]);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null);
+  });
+
+  it('keeps the same Error with an empty stack', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', []), IOS_NAVIGATOR) !== null);
+  });
+
+  it('keeps an Error whose single document frame is the SDK onerror synthesis', () => {
+    // globalHandlersIntegration pushes exactly one `{filename: location.href,
+    // function: '?'}` frame onto a stackless onerror event, which our own
+    // bundle can raise (Firefox `uncaught exception: [object Object]`).
+    const synthesized = { filename: 'https://www.worldmonitor.app/dashboard', lineno: 0, colno: 0, function: '?' };
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', [synthesized]), IOS_NAVIGATOR) !== null);
+  });
+
+  it('keeps an Error thrown from an external .js script URL', () => {
+    const event = makeEvent(MSG, 'Error', [{ filename: 'https://cdn.example.com/widget.js', lineno: 1, function: 'x' }]);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null);
+  });
+
+  it('pins the licence: no inline script in an HTML entry throws or rejects', () => {
+    const root = resolve(__dirname, '..');
+    const offenders = readdirSync(root)
+      .filter((name) => name.endsWith('.html'))
+      .flatMap((name) => {
+        const html = readFileSync(join(root, name), 'utf-8');
+        return [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+          .filter(([, body]) => /\bthrow\b|\breject\s*\(|Promise\.reject\b/.test(body))
+          .map(() => name);
+      });
+    assert.deepEqual(offenders, [],
+      'an inline HTML script now throws — a document-attributed Error may be ours; re-derive the WORLDMONITOR-134 gate');
   });
 });
