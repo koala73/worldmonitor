@@ -15,12 +15,13 @@
 //     through to the original stub — the brief must always ship.
 //
 // Cache semantics:
-//   - brief:llm:whymatters:v6:{storyHash} — 24h, shared across users
+//   - brief:llm:whymatters:v7:{storyHash} — 24h, shared across users
 //     for the same story. v4 bumped from v3 alongside the F6
 //     date-grounding line: every v3 row was produced from a prompt
 //     with no notion of "today" and may state a fabricated year, so
 //     v3 rows must not survive the deploy. v2 rows were lead-blind.
-//   - brief:llm:digest:v8:{userId|public}:{sensitivity}:{poolHash}
+//     v7 bumped from v6 with the gemini-3.5-flash-lite move.
+//   - brief:llm:digest:v9:{userId|public}:{sensitivity}:{poolHash}
 //     — 4h. The canonical synthesis is now ALWAYS produced through
 //     this path (formerly split with `generateAISummary` in the
 //     digest cron). Material includes profile-SHA, greeting bucket,
@@ -32,7 +33,8 @@
 //     the public cache key. v6 bumped from v5 for the F6
 //     date-grounding line (same reason as whymatters v4); v5 landed
 //     the grounding validator after the May 12 hallucination — see
-//     generateDigestProse header comment.
+//     generateDigestProse header comment. v9 bumped from v8 with the
+//     gemini-3.5-flash-lite move.
 
 import { createHash } from 'node:crypto';
 
@@ -123,11 +125,20 @@ const DIGEST_PROSE_TTL_SEC = 4 * 60 * 60;
 const STORY_DESCRIPTION_TTL_SEC = 24 * 60 * 60;
 const WHY_MATTERS_CONCURRENCY = 5;
 
-// Pin to openrouter (google/gemini-2.5-flash until the #4944 U4 brief-voice
-// cutover, which is gated on the U3 shadow evaluation). Ollama isn't deployed
-// in Railway, and pinning keeps the brief's editorial voice on one model
-// across environments instead of drifting to the groq fallback.
+// Pin to openrouter. Ollama isn't deployed in Railway, and pinning keeps the
+// brief's editorial voice on one model across environments instead of drifting
+// to the groq fallback.
 const BRIEF_LLM_ALLOWED_PROVIDERS = ['openrouter'];
+
+// The brief names its own model rather than inheriting the llm-chain default
+// (still google/gemini-2.5-flash for every other consumer). The #4944 bakeoff
+// on the production prompts had gemini-2.5-flash fabricate "former President
+// Trump" 6/6 on both calls, while gemini-3.5-flash-lite was 0/24 at the same
+// price class. BRIEF_LLM_OPENROUTER_MODEL overrides it without a deploy; the
+// #4944 U4 brief-voice cutover moves the brief to DeepSeek by editing this
+// constant. Any change here bumps all three model-fed cache generations below.
+const BRIEF_LLM_OPENROUTER_MODEL = process.env.BRIEF_LLM_OPENROUTER_MODEL || 'google/gemini-3.5-flash-lite';
+const BRIEF_LLM_MODEL_OVERRIDES = { openrouter: BRIEF_LLM_OPENROUTER_MODEL };
 
 // ── whyMatters (per story) ─────────────────────────────────────────────────
 // The pure helpers (`WHY_MATTERS_SYSTEM`, `buildWhyMattersUserPrompt` (aliased
@@ -237,7 +248,12 @@ export async function generateWhyMatters(story, deps) {
   // provider chain rejected finish_reason=length, so an abbreviation-ending
   // token clip could be cached as an apparently complete sentence. The old
   // rows carry no completion metadata and cannot be distinguished safely.
-  const key = `brief:llm:whymatters:v6:${storyHash}`;
+  //
+  // v6→v7: 2026-09-21 issue #4944. The brief's prose model moved from
+  // google/gemini-2.5-flash to google/gemini-3.5-flash-lite. Every v6 row
+  // holds the old model's prose, fabricated actor names included, and would
+  // keep shipping it for the full 24h TTL.
+  const key = `brief:llm:whymatters:v7:${storyHash}`;
   try {
     const hit = await deps.cacheGet(key);
     const parsedHit = parseWhyMatters(hit);
@@ -254,6 +270,7 @@ export async function generateWhyMatters(story, deps) {
       temperature: 0.4,
       timeoutMs: 10_000,
       allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
+      modelOverrides: BRIEF_LLM_MODEL_OVERRIDES,
       stage: 'brief-whymatters-cron',
     });
   } catch {
@@ -375,7 +392,7 @@ export function parseStoryDescription(text, headline, groundText) {
  */
 export async function generateStoryDescription(story, deps) {
   // Shares hashBriefStory() with whyMatters — the key prefix
-  // (`brief:llm:description:v3:`) is what separates the two cache
+  // (`brief:llm:description:v4:`) is what separates the two cache
   // namespaces; the material is the six fields including description.
   // Bumped v1→v2 on 2026-04-24 alongside the RSS-description fix so
   // cached pre-grounding output (hallucinated named actors from
@@ -387,7 +404,11 @@ export async function generateStoryDescription(story, deps) {
   // into the hash material — same story-shape change as whymatters
   // v4→v5. Pre-PR every category was 'General'; post-PR carries the
   // per-story Title-Cased EventCategory. Bump invalidates v2 entries.
-  const key = `brief:llm:description:v3:${await hashBriefStory(story)}`;
+  //
+  // v3→v4: 2026-09-21 issue #4944. The brief's prose model moved from
+  // google/gemini-2.5-flash to google/gemini-3.5-flash-lite. Every v3 row
+  // holds the old model's prose and would serve it for the full 24h TTL.
+  const key = `brief:llm:description:v4:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string') {
@@ -409,6 +430,7 @@ export async function generateStoryDescription(story, deps) {
       temperature: 0.4,
       timeoutMs: 10_000,
       allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
+      modelOverrides: BRIEF_LLM_MODEL_OVERRIDES,
       stage: 'brief-description-cron',
     });
   } catch {
@@ -840,7 +862,12 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // model to lead with ONE primary story when two top stories aren't
   // substantively linked. v7 cache rows would otherwise serve stitched
   // leads for the full 4h TTL. Prompt content change → cache invalidation.
-  const key = `brief:llm:digest:v8:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
+  //
+  // v9 (2026-09-21): bumped from v8 when the brief's prose model moved from
+  // google/gemini-2.5-flash to google/gemini-3.5-flash-lite (#4944 bakeoff).
+  // v8 rows hold the old model's prose — including the fabricated-actor leads
+  // the move is meant to end — and would serve it for the full 4h TTL.
+  const key = `brief:llm:digest:v9:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape+grounding validator on cache hits.
@@ -863,6 +890,7 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
       temperature: 0.4,
       timeoutMs: 15_000,
       allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
+      modelOverrides: BRIEF_LLM_MODEL_OVERRIDES,
       stage: 'brief-digest-cron',
     });
   } catch (err) {

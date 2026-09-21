@@ -1919,3 +1919,89 @@ describe('CI workflow coverage', () => {
     );
   });
 });
+
+// Until #8443 these four workflows declared no concurrency group, so a new
+// push never evicted the run it superseded. Across the last 300 runs of each,
+// 177 (59%) ran to completion on a SHA that was already dead, 0 were
+// cancelled. Those slots are not free. In the 06:20-07:40 window on
+// 2026-09-20 the repo peaked at 43 concurrent jobs and live commits waited
+// 200-327 s for a runner, turning a 7-minute check wall into 19-27 minutes.
+//
+// Eviction is safe here precisely because it is unsafe in mcp-live-smoke.yml
+// (see 'applies concurrency only after the deployment-status gate' above).
+// There an evicted run reads as neither pass nor fail and the detection net
+// loses a probe. A superseded PR run has no verdict anyone will read.
+// Branch protection and deploy-gate.sh both evaluate the head SHA only.
+//
+// Cancellation is scoped to pull_request. A push to main feeds the deploy
+// gate, and the lint/audit crons are standalone detection nets, so both keep
+// a per-run group that nothing can evict.
+describe('gated workflows evict superseded PR runs (#8443)', () => {
+  const prScopedCancellers = [
+    ['test.yml', 'test'],
+    ['typecheck.yml', 'typecheck'],
+    ['lint-code.yml', 'lint-code'],
+    ['security-audit.yml', 'security-audit'],
+  ] as const;
+
+  for (const [file, group] of prScopedCancellers) {
+    it(`${file} cancels a superseded pull_request run and nothing else`, () => {
+      const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
+        concurrency?: { group?: string; 'cancel-in-progress'?: string };
+      };
+      assert.ok(workflow.concurrency, `${file} must declare workflow-level concurrency`);
+      assert.equal(
+        workflow.concurrency.group,
+        `${group}-\${{ github.event.pull_request.number || github.run_id }}`,
+        `${file} must group by PR number, and fall back to a per-run id so a push or cron run is never evicted`,
+      );
+      assert.equal(
+        workflow.concurrency['cancel-in-progress'],
+        "${{ github.event_name == 'pull_request' }}",
+        `${file} must cancel only pull_request runs — a superseded main push still owes the deploy gate a verdict`,
+      );
+    });
+  }
+
+  // The gate's own trigger list is the definition of "blocks a merge". A new
+  // workflow added there without cancellation reintroduces the dead-SHA burn
+  // silently, because nothing about a wasted runner is ever red.
+  it('leaves no gate-triggering workflow without cancellation', () => {
+    const gateWorkflows = (YAML.parse(deployGateWorkflow) as {
+      on: { workflow_run: { workflows: string[] } };
+    }).on.workflow_run.workflows;
+    assert.ok(gateWorkflows.length > 0, 'deploy-gate.yml must trigger on the gated workflows');
+
+    const byName = new Map<string, string>();
+    for (const entry of readdirSync(workflowsDir)) {
+      if (!entry.endsWith('.yml')) continue;
+      const source = read(resolve(workflowsDir, entry));
+      const name = (YAML.parse(source) as { name?: string }).name;
+      if (name) byName.set(name, source);
+    }
+
+    // Text-matching `cancel-in-progress:` would accept a literal `false`, and
+    // a job-level group evicts only its own job while the rest of the
+    // superseded run keeps burning. A gated workflow has several jobs feeding
+    // the gate by definition, so only a workflow-level group with cancellation
+    // actually enabled retires the whole run.
+    const uncancelled = gateWorkflows.filter((name) => {
+      const source = byName.get(name);
+      assert.ok(source, `deploy-gate.yml triggers on "${name}", which no workflow file defines`);
+      const concurrency = (YAML.parse(source) as { concurrency?: unknown }).concurrency;
+      if (typeof concurrency !== 'object' || concurrency === null) return true;
+      const { group, 'cancel-in-progress': cancel } = concurrency as {
+        group?: unknown;
+        'cancel-in-progress'?: unknown;
+      };
+      if (typeof group !== 'string' || group.length === 0) return true;
+      return !(cancel === true || (typeof cancel === 'string' && cancel.includes('${{')));
+    });
+
+    assert.deepEqual(
+      uncancelled,
+      [],
+      `every workflow feeding the deploy gate must evict superseded runs: ${uncancelled.join(', ')}`,
+    );
+  });
+});
