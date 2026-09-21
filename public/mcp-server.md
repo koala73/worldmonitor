@@ -18,6 +18,8 @@ This persistent hosted server is distinct from [WorldMonitor WebMCP](https://www
 - **Server card:** https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — a second, public (no-auth) MCP server with search-and-retrieval tools over the documentation. Route "how do I…" questions there; route live-data calls to the product server above.
 
+Use the apex server URL for all product MCP clients. Product-host aliases return a canonical migration response; they do not provide a second MCP transport.
+
 ## Tools
 
 The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.

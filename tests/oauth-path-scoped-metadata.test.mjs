@@ -159,15 +159,21 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
-  // The advertised resource must cover the URL the client actually called, or
-  // the MCP SDK rejects it (requested path must start with the configured one).
-  it('the deployed /api/mcp route points at its own document, not /mcp', async () => {
+  it('a retired /api/mcp transport request gets the migration error before auth', async () => {
     const res = await call('https://api.worldmonitor.app/api/mcp', 'api.worldmonitor.app');
-    assert.equal(res.status, 401);
-    assert.match(
-      res.headers.get('www-authenticate'),
-      /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
-    );
+    assert.equal(res.status, 410);
+    assert.deepEqual(await res.json(), {
+      jsonrpc: '2.0',
+      id: 1,
+      error: {
+        code: -32000,
+        message: 'Use https://worldmonitor.app/mcp',
+        data: {
+          reason: 'canonical_endpoint_required',
+          endpoint: 'https://worldmonitor.app/mcp',
+        },
+      },
+    });
   });
 
   // The well-known aliases are the same transport under a different URL
@@ -185,16 +191,10 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     });
   }
 
-  // The rewrite destination must not be a client-settable signal: a caller who
-  // appends the rewrite's own query to /api/mcp would otherwise be handed the
-  // /mcp document, which does not cover the URL they called.
-  it('a query parameter cannot talk the handler out of the /api/mcp document', async () => {
+  it('a query parameter cannot bypass the /api/mcp migration response', async () => {
     const res = await call('https://api.worldmonitor.app/api/mcp?transport=mcp', 'api.worldmonitor.app');
-    assert.equal(res.status, 401);
-    assert.match(
-      res.headers.get('www-authenticate'),
-      /resource_metadata="https:\/\/api\.worldmonitor\.app\/\.well-known\/oauth-protected-resource\/api\/mcp"/,
-    );
+    assert.equal(res.status, 410);
+    assert.equal((await res.json()).error?.data?.reason, 'canonical_endpoint_required');
   });
 
   // The edge function observes the original path: production serves markdown at

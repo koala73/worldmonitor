@@ -46,6 +46,7 @@ import { emitTelemetry, principalIdForLog } from './telemetry';
 import { hashKeySync } from '../../server/_shared/usage-identity';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
 import { safeJsonRpcId, utf8ByteLength } from './utils';
+import { isMcpAliasRequest, MCP_CANONICAL_ENDPOINT, MCP_CANONICAL_LINK, mcpCanonicalLocation } from '../../shared/mcp-host-policy';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 import type { McpBudget } from './quota';
 
@@ -541,6 +542,36 @@ async function handleAuthenticatedSseReplay(
 // unchanged.
 const WELL_KNOWN_MCP_PATHS = new Set(['/.well-known/mcp', '/.well-known/mcp.json']);
 const MCP_TRANSPORT_PATH = '/mcp';
+const MCP_ALLOW = 'POST, GET, HEAD, OPTIONS';
+
+function mcpMigrationHeaders(corsHeaders: Record<string, string>): Record<string, string> {
+  return withMcpNoStore({
+    'Content-Type': 'application/json; charset=utf-8',
+    Link: MCP_CANONICAL_LINK,
+    ...corsHeaders,
+  });
+}
+
+function mcpMigrationResponse(corsHeaders: Record<string, string>, headOnly = false): Response {
+  return new Response(
+    headOnly ? null : JSON.stringify({
+      error: 'canonical_endpoint_required',
+      endpoint: MCP_CANONICAL_ENDPOINT,
+    }),
+    { status: 410, headers: mcpMigrationHeaders(corsHeaders) },
+  );
+}
+
+function mcpAliasRpcError(id: unknown, corsHeaders: Record<string, string>): Response {
+  return rpcError(
+    id,
+    -32000,
+    `Use ${MCP_CANONICAL_ENDPOINT}`,
+    mcpMigrationHeaders(corsHeaders),
+    { reason: 'canonical_endpoint_required', endpoint: MCP_CANONICAL_ENDPOINT },
+    410,
+  );
+}
 
 // These URLs content-negotiate on request headers: a plain GET gets a
 // discovery document, an `Accept: text/event-stream` GET gets the transport
@@ -704,7 +735,40 @@ async function mcpHandlerInner(
   // below serve markdown at `/mcp` and the JSON card at `/.well-known/mcp` by
   // reading that pathname. The aliases sit under neither transport path, so
   // they take the origin-wide document, which covers every path on the host.
-  const requestPathname = new URL(req.url).pathname;
+  const requestUrl = new URL(req.url);
+  const requestPathname = requestUrl.pathname;
+  const aliasRequest = isMcpAliasRequest(requestUrl.hostname, requestPathname)
+    || isMcpAliasRequest(req.headers.get('host') ?? '', requestPathname);
+
+  // The middleware catches ordinary browser discovery, but rewritten and
+  // dotted well-known requests can bypass it. Keep the enforcement boundary
+  // here too, before authentication, quota, sessions, Redis, or dispatch.
+  if (aliasRequest && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (!req.headers.get('last-event-id') && !clientAcceptsSse(req)) {
+      usage.phase = 'migration';
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: mcpCanonicalLocation(requestPathname),
+          Link: MCP_CANONICAL_LINK,
+          Vary: DISCOVERY_VARY,
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    usage.phase = 'migration';
+    return mcpMigrationResponse(corsHeaders, req.method === 'HEAD');
+  }
+
+  if (aliasRequest && req.method !== 'POST') {
+    usage.phase = 'migration';
+    return new Response(null, {
+      status: 405,
+      headers: withMcpNoStore({ Allow: MCP_ALLOW, Link: MCP_CANONICAL_LINK, ...corsHeaders }),
+    });
+  }
+
   const transportSuffix = WELL_KNOWN_MCP_PATHS.has(requestPathname)
     ? ''
     : requestPathname.startsWith('/api/mcp') ? '/api/mcp' : '/mcp';
@@ -720,7 +784,7 @@ async function mcpHandlerInner(
       usage.phase = 'transport';
       return new Response(null, {
         status: 405,
-        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+        headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }),
       });
     }
 
@@ -772,7 +836,7 @@ async function mcpHandlerInner(
 
   if (req.method !== 'POST' && req.method !== 'GET') {
     usage.phase = 'transport';
-    return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }) });
+    return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }) });
   }
 
   // GET has three roles on the MCP endpoint:
@@ -796,7 +860,7 @@ async function mcpHandlerInner(
       usage.phase = 'transport';
       return new Response(null, {
         status: 405,
-        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+        headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }),
       });
     }
     return handleAuthenticatedSseReplay(req, deps, resourceMetadataUrl, corsHeaders, usage, ctx);
@@ -855,6 +919,15 @@ async function mcpHandlerInner(
     ? ((body.params as { name?: unknown } | null)?.name)
     : undefined;
   setUsageRpc(usage, method, toolCallName);
+
+  if (aliasRequest) {
+    usage.phase = 'migration';
+    // JSON-RPC notifications deliberately have no response body. Any valid
+    // request id, including 0 and the empty string, is echoed by rpcError.
+    return id === undefined
+      ? new Response(null, { status: 410, headers: mcpMigrationHeaders(corsHeaders) })
+      : mcpAliasRpcError(id, corsHeaders);
+  }
 
   // Connect-time challenge. An unauthenticated `initialize` on the transport is
   // refused with the same structured 401 + `WWW-Authenticate` an unauthenticated

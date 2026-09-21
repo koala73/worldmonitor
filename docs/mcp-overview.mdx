@@ -113,10 +113,10 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
 1. **Add the server URL** in your MCP client. The canonical entrypoint is:
 
    ```
-   https://api.worldmonitor.app/mcp
+   https://worldmonitor.app/mcp
    ```
 
-   (`https://worldmonitor.app/mcp` works too — it proxies the same handler.)
+   This is the only product MCP transport endpoint.
 
 2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
 

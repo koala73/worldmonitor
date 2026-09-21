@@ -34,6 +34,23 @@ function assertNames(file, marker, methods) {
 }
 
 describe('MCP docs method lists match api/mcp/handler.ts', () => {
+  it('publishes only the canonical product transport endpoint', () => {
+    for (const file of [
+      'docs/usage-quickstart.mdx',
+      'docs/mcp-overview.mdx',
+      'docs/zh/usage-quickstart.mdx',
+      'docs/zh/mcp-overview.mdx',
+    ]) {
+      const content = read(file);
+      assert.ok(content.includes('https://worldmonitor.app/mcp'), `${file}: canonical MCP endpoint missing`);
+      assert.doesNotMatch(
+        content,
+        /https:\/\/(?:api|www|tech|finance|commodity|happy|energy)\.worldmonitor\.app\/(?:api\/)?mcp/,
+        `${file}: retired MCP alias published`,
+      );
+    }
+  });
+
   it('reads a plausible method set from the handler', () => {
     assert.ok(PUBLIC_METHODS.includes('tools/list') && PUBLIC_METHODS.includes('initialize'));
     assert.ok(DISPATCHED_METHODS.includes('tools/call') && DISPATCHED_METHODS.length >= PUBLIC_METHODS.length);
