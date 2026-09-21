@@ -115,8 +115,11 @@ permissions: {}
 
 # A generated commit updates the PR head and starts a clean follow-up run. Do
 # not let an older run race a newer head and push stale artifacts afterward.
+# On push to main, github.event.pull_request.number is empty; fall back to
+# github.sha so two close mainline pushes do not share one group and evict
+# each other (#8445). stacked-merge-guard.yml uses the same shape.
 concurrency:
-  group: proto-freshness-${{ github.event.pull_request.number }}
+  group: proto-freshness-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:

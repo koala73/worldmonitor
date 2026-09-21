@@ -223,6 +223,38 @@ function workflowJobBlock(workflow: string, job: string): string {
   return match[0];
 }
 
+// On push, schedule, and workflow_dispatch, github.event.pull_request.number is
+// empty. A group that interpolates only that field collapses to a shared prefix
+// (`proto-freshness-`), and cancel-in-progress: true then evicts sibling
+// mainline runs that still owe the deploy gate a verdict (#8445).
+// The empty-on-non-PR operand must sit immediately before the unique fallback:
+// `github.ref || github.sha` still matches a bare `|| github.sha` and still
+// collapses every push to main onto one group.
+const NON_PR_CONCURRENCY_FALLBACK =
+  /github\.event\.pull_request\.number\s*\|\|\s*github\.(?:sha|run_id)\b/;
+const PR_ONLY_CANCEL_IN_PROGRESS = "${{ github.event_name == 'pull_request' }}";
+
+function workflowLevelConcurrency(source: string): {
+  group?: unknown;
+  'cancel-in-progress'?: unknown;
+} | null {
+  const concurrency = (YAML.parse(source) as { concurrency?: unknown }).concurrency;
+  if (typeof concurrency !== 'object' || concurrency === null) return null;
+  return concurrency as { group?: unknown; 'cancel-in-progress'?: unknown };
+}
+
+function cancelsUnconditionallyWithoutNonPrFallback(source: string): boolean {
+  const concurrency = workflowLevelConcurrency(source);
+  if (!concurrency) return false;
+  const cancel = concurrency['cancel-in-progress'];
+  // Boolean true always evicts. Any other expression does too, unless it is
+  // exactly the #8443 PR-only form. `${{ true }}` used to skip this helper.
+  const isUnconditionalCancel =
+    cancel === true || (typeof cancel === 'string' && cancel !== PR_ONLY_CANCEL_IN_PROGRESS);
+  if (!isUnconditionalCancel) return false;
+  return typeof concurrency.group !== 'string' || !NON_PR_CONCURRENCY_FALLBACK.test(concurrency.group);
+}
+
 function workflowStepBlock(workflow: string, stepName: string): string {
   const marker = `\n      - name: ${stepName}\n`;
   const startIndex = workflow.indexOf(marker);
@@ -469,10 +501,25 @@ describe('MCP live smoke — the production detection net', () => {
     );
   });
 
-  it('runs on pushes that change the mcp-proxy probe helper', () => {
+  it('runs on pushes that change MCP smoke helpers', () => {
     const pushBlock = smokeWorkflow.match(/\n {2}push:\n[\s\S]*?(?=\n {2}[a-z_]+:)/)?.[0];
     assert.ok(pushBlock, 'MCP live smoke workflow must define a push trigger');
     assert.match(pushBlock, /^\s+- 'scripts\/mcp-proxy-live-smoke\.mjs'\s*$/m);
+    assert.match(pushBlock, /^\s+- 'scripts\/mcp-smoke-http\.mjs'\s*$/m);
+  });
+
+  it('writes and uploads a diagnostic report for both passing and failing runs', () => {
+    const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
+    const probe = smokeJob.steps.find((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
+    assert.match(probe?.run ?? '', /--report\s+"\$RUNNER_TEMP\/mcp-live-smoke-report\.json"/);
+
+    const upload = smokeJob.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'));
+    assert.equal(upload?.if, '${{ always() }}');
+    assert.equal(upload?.uses, 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
+    assert.equal(upload?.with?.path, '${{ runner.temp }}/mcp-live-smoke-report.json');
+    assert.equal(upload?.with?.['if-no-files-found'], 'error');
+    assert.equal(upload?.with?.['retention-days'], 14);
+    assert.match(upload?.with?.name ?? '', /github\.run_id.*github\.run_attempt/);
   });
 
   // Workflow-level concurrency lets a pending or in-progress Production event
@@ -1916,6 +1963,202 @@ describe('CI workflow coverage', () => {
       failures,
       [],
       `GitHub Actions uses refs must be 40-character commit SHAs:\n${failures.join('\n')}`,
+    );
+  });
+});
+
+// Until #8443 these four workflows declared no concurrency group, so a new
+// push never evicted the run it superseded. Across the last 300 runs of each,
+// 177 (59%) ran to completion on a SHA that was already dead, 0 were
+// cancelled. Those slots are not free. In the 06:20-07:40 window on
+// 2026-09-20 the repo peaked at 43 concurrent jobs and live commits waited
+// 200-327 s for a runner, turning a 7-minute check wall into 19-27 minutes.
+//
+// Eviction is safe here precisely because it is unsafe in mcp-live-smoke.yml
+// (see 'applies concurrency only after the deployment-status gate' above).
+// There an evicted run reads as neither pass nor fail and the detection net
+// loses a probe. A superseded PR run has no verdict anyone will read.
+// Branch protection and deploy-gate.sh both evaluate the head SHA only.
+//
+// Cancellation is scoped to pull_request. A push to main feeds the deploy
+// gate, and the lint/audit crons are standalone detection nets, so both keep
+// a per-run group that nothing can evict.
+describe('gated workflows evict superseded PR runs (#8443)', () => {
+  const prScopedCancellers = [
+    ['test.yml', 'test'],
+    ['typecheck.yml', 'typecheck'],
+    ['lint-code.yml', 'lint-code'],
+    ['security-audit.yml', 'security-audit'],
+  ] as const;
+
+  for (const [file, group] of prScopedCancellers) {
+    it(`${file} cancels a superseded pull_request run and nothing else`, () => {
+      const workflow = YAML.parse(read(resolve(workflowsDir, file))) as {
+        concurrency?: { group?: string; 'cancel-in-progress'?: string };
+      };
+      assert.ok(workflow.concurrency, `${file} must declare workflow-level concurrency`);
+      assert.equal(
+        workflow.concurrency.group,
+        `${group}-\${{ github.event.pull_request.number || github.run_id }}`,
+        `${file} must group by PR number, and fall back to a per-run id so a push or cron run is never evicted`,
+      );
+      assert.equal(
+        workflow.concurrency['cancel-in-progress'],
+        PR_ONLY_CANCEL_IN_PROGRESS,
+        `${file} must cancel only pull_request runs — a superseded main push still owes the deploy gate a verdict`,
+      );
+    });
+  }
+
+  // The gate's own trigger list is the definition of "blocks a merge". A new
+  // workflow added there without cancellation reintroduces the dead-SHA burn
+  // silently, because nothing about a wasted runner is ever red.
+  it('leaves no gate-triggering workflow without cancellation', () => {
+    const gateWorkflows = (YAML.parse(deployGateWorkflow) as {
+      on: { workflow_run: { workflows: string[] } };
+    }).on.workflow_run.workflows;
+    assert.ok(gateWorkflows.length > 0, 'deploy-gate.yml must trigger on the gated workflows');
+
+    const byName = new Map<string, string>();
+    for (const entry of readdirSync(workflowsDir)) {
+      if (!entry.endsWith('.yml')) continue;
+      const source = read(resolve(workflowsDir, entry));
+      const name = (YAML.parse(source) as { name?: string }).name;
+      if (name) byName.set(name, source);
+    }
+
+    // Text-matching `cancel-in-progress:` would accept a literal `false`, and
+    // a job-level group evicts only its own job while the rest of the
+    // superseded run keeps burning. A gated workflow has several jobs feeding
+    // the gate by definition, so only a workflow-level group with cancellation
+    // actually enabled retires the whole run.
+    const uncancelled = gateWorkflows.filter((name) => {
+      const source = byName.get(name);
+      assert.ok(source, `deploy-gate.yml triggers on "${name}", which no workflow file defines`);
+      const concurrency = workflowLevelConcurrency(source);
+      if (!concurrency) return true;
+      const { group, 'cancel-in-progress': cancel } = concurrency;
+      if (typeof group !== 'string' || group.length === 0) return true;
+      return !(cancel === true || (typeof cancel === 'string' && cancel.includes('${{')));
+    });
+
+    assert.deepEqual(
+      uncancelled,
+      [],
+      `every workflow feeding the deploy gate must evict superseded runs: ${uncancelled.join(', ')}`,
+    );
+  });
+
+  // cancel === true used to pass the test above even when the group had no
+  // fallback, so proto-check.yml's mainline collapse was invisible. Parse the
+  // group: github.event.pull_request.number must sit immediately before
+  // github.sha or github.run_id, the two unique identities the repo already
+  // uses for this (#8444, stacked-merge-guard.yml). A string cancel other than
+  // the #8443 PR-only form is also unconditional.
+  it('requires a non-PR fallback when a gated workflow cancels unconditionally (#8445)', () => {
+    const gateWorkflows = (YAML.parse(deployGateWorkflow) as {
+      on: { workflow_run: { workflows: string[] } };
+    }).on.workflow_run.workflows;
+
+    const byName = new Map<string, string>();
+    for (const entry of readdirSync(workflowsDir)) {
+      if (!entry.endsWith('.yml')) continue;
+      const source = read(resolve(workflowsDir, entry));
+      const name = (YAML.parse(source) as { name?: string }).name;
+      if (name) byName.set(name, source);
+    }
+
+    const collapsed = gateWorkflows.filter((name) => {
+      const source = byName.get(name);
+      assert.ok(source, `deploy-gate.yml triggers on "${name}", which no workflow file defines`);
+      return cancelsUnconditionallyWithoutNonPrFallback(source);
+    });
+    assert.deepEqual(
+      collapsed,
+      [],
+      `unconditional cancel on a gated workflow must keep a unique group off pull_request: ${collapsed.join(', ')}`,
+    );
+  });
+
+  it('fails proto-check.yml when its concurrency group is mutated back to PR-number-only (#8445)', () => {
+    const collapsedProto = protoCheckWorkflow.replace(
+      /group:\s*[^\n]+/,
+      'group: proto-freshness-${{ github.event.pull_request.number }}',
+    );
+    assert.notEqual(collapsedProto, protoCheckWorkflow, 'the collapsed-group mutation must change the live source');
+    assert.match(
+      collapsedProto,
+      /group:\s*proto-freshness-\$\{\{ github\.event\.pull_request\.number \}\}/,
+      'the collapsed-group mutation must apply',
+    );
+    assert.equal(
+      cancelsUnconditionallyWithoutNonPrFallback(collapsedProto),
+      true,
+      'the tightened guard must fail proto-check.yml when the group interpolates only the PR number',
+    );
+
+    const uniqueProto = protoCheckWorkflow.replace(
+      /group:\s*[^\n]+/,
+      'group: proto-freshness-${{ github.event.pull_request.number || github.sha }}',
+    );
+    assert.equal(
+      cancelsUnconditionallyWithoutNonPrFallback(uniqueProto),
+      false,
+      'a SHA fallback must satisfy the tightened guard',
+    );
+
+    const runIdProto = protoCheckWorkflow.replace(
+      /group:\s*[^\n]+/,
+      'group: proto-freshness-${{ github.event.pull_request.number || github.run_id }}',
+    );
+    assert.equal(
+      cancelsUnconditionallyWithoutNonPrFallback(runIdProto),
+      false,
+      'a run_id fallback must also satisfy the tightened guard',
+    );
+
+    for (const collapsingOperand of [
+      'github.ref',
+      'github.event_name',
+      'github.repository',
+      'github.workflow',
+    ] as const) {
+      const collapsingProto = protoCheckWorkflow.replace(
+        /group:\s*[^\n]+/,
+        `group: proto-freshness-\${{ ${collapsingOperand} || github.sha }}`,
+      );
+      assert.notEqual(
+        collapsingProto,
+        protoCheckWorkflow,
+        `${collapsingOperand} mutation must change the live source`,
+      );
+      assert.equal(
+        cancelsUnconditionallyWithoutNonPrFallback(collapsingProto),
+        true,
+        `the guard must reject ${collapsingOperand} || github.sha — that operand is never empty on push`,
+      );
+    }
+
+    const expressionCancelCollapsed = protoCheckWorkflow
+      .replace(
+        /group:\s*[^\n]+/,
+        'group: proto-freshness-${{ github.event.pull_request.number }}',
+      )
+      .replace(/cancel-in-progress:\s*[^\n]+/, 'cancel-in-progress: ${{ true }}');
+    assert.notEqual(
+      expressionCancelCollapsed,
+      protoCheckWorkflow,
+      'the expression-cancel mutation must change the live source',
+    );
+    assert.match(
+      expressionCancelCollapsed,
+      /cancel-in-progress:\s*\$\{\{ true \}\}/,
+      'the expression-cancel mutation must apply',
+    );
+    assert.equal(
+      cancelsUnconditionallyWithoutNonPrFallback(expressionCancelCollapsed),
+      true,
+      'PR-number-only plus ${{ true }} must still fail the helper — expression cancel is unconditional unless it is the PR-only form',
     );
   });
 });

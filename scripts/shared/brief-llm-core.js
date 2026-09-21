@@ -1110,6 +1110,66 @@ export function validateNoHallucinatedFacts(summary, groundText) {
   return { ok: true };
 }
 
+const STATUS_QUALIFIER_CLASSES = [
+  ['former', 'ex', 'erstwhile', 'one-time', 'onetime', 'then-', 'outgoing', 'retired'],
+  ['acting', 'interim', 'caretaker'],
+  ['incoming'],
+  ['late'],
+];
+const STATUS_QUALIFIER_CLASS_OF = new Map(
+  STATUS_QUALIFIER_CLASSES.flatMap((cls) => cls.map((q) => [q.replace(/-$/, ''), cls])),
+);
+const PERSON_TITLE_WORDS =
+  'president|prime minister|vice president|premier|chancellor|minister|secretary|senator|governor|mayor|'
+  + 'chairman|chairwoman|chairperson|chair|chief|ceo|cfo|ambassador|envoy|speaker|king|queen|pope|leader|'
+  + 'commander|general|admiral|director|prosecutor|judge|justice|adviser|advisor|aide|spokesman|spokeswoman|'
+  + 'spokesperson|head|official|lawmaker|congressman|congresswoman|representative|pm';
+// No `i` flag: under `i`, \p{Lu} also matches lowercase, so "Former officials said" reads as a named person.
+const anyCase = (/** @type {string} */ word) => word.replace(/\p{L}/gu, (c) => `[${c.toUpperCase()}${c}]`);
+const STATUS_QUALIFIER_RE = new RegExp(
+  `\\b(${STATUS_QUALIFIER_CLASSES.flat().map((q) => (q.endsWith('-') ? `${anyCase(q.slice(0, -1))}(?=-)` : anyCase(q))).join('|')})[-\\s]+`
+  + `(?:[\\p{L}'’-]+\\s+){0,3}?(?:${PERSON_TITLE_WORDS.split('|').map(anyCase).join('|')})s?\\b[-\\s]+(?:(?:of|the|for|to|and)\\s+)?(\\p{Lu}[\\p{L}'’-]+)`,
+  'gu',
+);
+
+/**
+ * @param {{ text: string; tokens: Set<string> }} ground
+ * @param {string} word
+ */
+function groundHasWord(ground, word) {
+  if (word.includes('-')) return ground.text.includes(word);
+  return ground.tokens.has(word);
+}
+
+/**
+ * Validate that every status qualifier the summary attaches to a titled,
+ * named person is carried by the ground text. `groundText` may be one string
+ * or one string per source story; with an array, the qualifier class and the
+ * name must appear in the SAME story. Malformed inputs accept, matching the
+ * sibling validators.
+ *
+ * @param {unknown} summary
+ * @param {unknown} groundText
+ * @returns {{ ok: boolean, hallucinated?: string[] }}
+ */
+export function validateNoHallucinatedStatusQualifiers(summary, groundText) {
+  if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
+  const grounds = (Array.isArray(groundText) ? groundText : [groundText])
+    .filter((g) => typeof g === 'string' && g.trim().length > 0)
+    .map((g) => normalizeDottedAcronyms(g).toLowerCase())
+    .map((text) => ({ text, tokens: new Set(text.split(/[^\p{L}\p{N}]+/u)) }));
+  if (grounds.length === 0) return { ok: true };
+  const hallucinated = [];
+  for (const match of normalizeDottedAcronyms(summary).matchAll(STATUS_QUALIFIER_RE)) {
+    const qualifier = match[1].toLowerCase();
+    const name = match[2].replace(/['’]s$/i, '').toLowerCase();
+    const cls = STATUS_QUALIFIER_CLASS_OF.get(qualifier) ?? [qualifier];
+    const grounded = grounds.some((g) => cls.some((q) => groundHasWord(g, q)) && groundHasWord(g, name));
+    if (!grounded) hallucinated.push(match[0].trim());
+  }
+  return hallucinated.length === 0 ? { ok: true } : { ok: false, hallucinated };
+}
+
 /**
  * Does `haystack` contain `needle` as a contiguous subsequence?
  * Both are token arrays. Order matters; positions must be adjacent.

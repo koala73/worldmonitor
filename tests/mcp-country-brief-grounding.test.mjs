@@ -14,7 +14,7 @@ import { __testing__, mcpHandler } from '../api/mcp.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
 
 const ENV_KEY = 'operator_test_key_country_brief_grounding';
-const MCP_URL = 'https://api.worldmonitor.app/api/mcp';
+const MCP_URL = 'https://worldmonitor.app/mcp';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };

@@ -220,7 +220,7 @@
     "@biomejs/biome": "^2.4.7",
     "@bufbuild/buf": "^1.66.0",
     "@edge-runtime/vm": "^5.0.0",
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "^1.63.0",
     "@sentry/vite-plugin": "^5.4.0",
     "@tauri-apps/cli": "^2.10.0",
     "@types/canvas-confetti": "^1.9.0",

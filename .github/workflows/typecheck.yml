@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# See test.yml. Cancellation is pull_request-only so a main push keeps its
+# deploy-gate verdict (#8443).
+concurrency:
+  group: typecheck-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

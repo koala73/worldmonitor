@@ -1441,9 +1441,6 @@
           "path": "src/app/desktop-updater.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
-        },
-        {
           "path": "src/mcp-grant-main.ts"
         },
         {
@@ -10186,6 +10183,9 @@
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
+          "path": "scripts/mcp-live-smoke.mjs"
+        },
+        {
           "path": "scripts/mcp-proxy-live-smoke.mjs"
         },
         {
@@ -10225,6 +10225,9 @@
           "path": "scripts/seed-wb-indicators.mjs"
         },
         {
+          "path": "scripts/shared/notify-fields.cjs"
+        },
+        {
           "path": "scripts/validate-seed-migration.mjs"
         },
         {
@@ -10232,6 +10235,9 @@
         },
         {
           "path": "server/_shared/intel-history-embed.ts"
+        },
+        {
+          "path": "server/_shared/notify-fields.ts"
         },
         {
           "path": "server/gateway.ts"
@@ -10244,6 +10250,9 @@
         },
         {
           "path": "src/components/LiveNewsPanel.ts"
+        },
+        {
+          "path": "src/components/UnifiedSettings.ts"
         },
         {
           "path": "src/config/web-origin.ts"

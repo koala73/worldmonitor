@@ -2132,11 +2132,13 @@ body.panel-resize-active iframe {
 }
 
 /* The resize strips are keyboard-focusable separators (arrow keys resize);
-   show where focus is when it lands on one. */
+   show where focus is when it lands on one. Panel content is a tab stop so
+   overflow-y:auto regions stay keyboard-scrollable (#8460). */
 .panel-resize-handle:focus-visible,
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
-.map-width-resize-handle:focus-visible {
+.map-width-resize-handle:focus-visible,
+.panel-content:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
