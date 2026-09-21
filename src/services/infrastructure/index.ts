@@ -86,6 +86,8 @@ function toOutage(proto: ProtoOutage): InternetOutage {
 // ========================================================================
 
 let outagesConfigured: boolean | null = null;
+/** Sticky proof that outage providers have returned real observations. */
+let outagesSeen = false;
 
 export function isOutagesConfigured(): boolean | null {
   return outagesConfigured;
@@ -96,7 +98,6 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     outagesConfigured = false;
     return [];
   }
-  if (outagesConfigured === false) outagesConfigured = null;
 
   const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
   let resp: ListInternetOutagesResponse;
@@ -105,25 +106,27 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     resp = hydrated;
   } else {
     resp = await outageBreaker.execute(async () => {
-      const response = await client.listInternetOutages({
+      return await client.listInternetOutages({
         country: '',
         start: 0,
         end: 0,
         pageSize: 0,
         cursor: '',
       });
-      outagesConfigured = true;
-      return response;
     }, emptyOutageFallback);
   }
 
-  if (outageBreaker.getDataState().mode !== 'unavailable') outagesConfigured = true;
-  if (resp.outages.length === 0) {
-    return [];
+  if (resp.outages.length > 0) {
+    outagesSeen = true;
+    outagesConfigured = true;
+    return resp.outages.map(toOutage);
   }
 
-  outagesConfigured = true;
-  return resp.outages.map(toOutage);
+  // Empty snapshots must not imply missing configuration. Keep unknown until
+  // real observations arrive; once seen, retain/recover configured=true even
+  // across feature disablement so healthy empty cache can re-enable the layer.
+  outagesConfigured = outagesSeen ? true : null;
+  return [];
 }
 
 export function getOutagesStatus(): string {
