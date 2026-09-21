@@ -773,7 +773,9 @@ function leadAlreadyOpensWithGreeting(lead, greeting) {
   const core = greeting.trim().replace(/[.!]+$/u, '');
   if (!core) return false;
   const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^${escaped}(?:[.!]|\\s|$)`, 'i').test(lead.trim());
+  // Match at end of lead or any non-word boundary so "Good morning,"
+  // (comma) and "Good morning." (period) both count as already open.
+  return new RegExp(`^${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(lead.trim());
 }
 
 /**

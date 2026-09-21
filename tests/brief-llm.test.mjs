@@ -602,6 +602,15 @@ describe('parseDigestProse', () => {
     assert.match(out.lead, /^Good morning\./);
   });
 
+  it('REGRESSION (#8439): comma after an existing greeting is still an open, not a second prepend', () => {
+    const obj = JSON.parse(good);
+    obj.lead = `Good morning, ${obj.lead}`;
+    const out = parseDigestProse(`Good morning.\n${JSON.stringify(obj)}`);
+    assert.ok(out);
+    assert.equal(out.lead.match(/Good morning/gi)?.length, 1, 'greeting must appear once');
+    assert.match(out.lead, /^Good morning,/);
+  });
+
   it('REGRESSION (#8439): a non-greeting preamble still fails closed', () => {
     assert.equal(parseDigestProse(`Here is the digest:\n${good}`), null);
     assert.equal(parseDigestProse(`Sure.\n${good}`), null);
