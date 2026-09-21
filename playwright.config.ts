@@ -97,11 +97,17 @@ export default defineConfig({
     // (runs 35579482854 and 35563542710). One ffmpeg per context, spawned and
     // killed alongside the browser.
     //
-    // `on-first-retry` keeps what the failure artifacts are actually for. CI
-    // runs with retries: 1, so a test that genuinely fails is recorded on its
-    // retry. What is lost is the first attempt of a deterministic failure,
-    // whose retry fails too and IS recorded, and the video of a flake that
-    // passed on retry, which `retain-on-failure` discarded anyway.
+    // `on-first-retry` records only the retry attempt. CI runs with
+    // retries: 1, so a deterministic failure still gets video, because its
+    // retry fails too and is recorded.
+    //
+    // The real cost is flaky tests. `preserveVideo` in playwright/lib/index.js
+    // keys on the PER-ATTEMPT status (`testInfo.status !== expectedStatus`), so
+    // `retain-on-failure` keeps the failed first attempt even when the retry
+    // passes; `on-first-retry` records the retry regardless of its outcome. So
+    // for a flake we trade a video of the failure for a video of the pass.
+    // Accepted because the browser crashes in #8447 kill the recording anyway
+    // and are diagnosed from the pw:browser log, which this does not touch.
     video: 'on-first-retry',
   },
   projects: [
