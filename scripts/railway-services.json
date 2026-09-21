@@ -63,6 +63,7 @@
       "scripts/shared/market-quote-refresh.cjs",
       "scripts/shared/market-seed-universe.cjs",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/notify-fields.cjs",
       "scripts/shared/other-tokens.json",
       "scripts/shared/product-catalog.generated.json",
       "scripts/shared/rss-allowed-domains.cjs",
