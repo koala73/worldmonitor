@@ -124,21 +124,14 @@ function findBareCurlyBraces(lines) {
 }
 
 describe('MDX lint covers the whole published tree', () => {
-  it('walks nested directories, not just top-level and navigation pages', () => {
+  it('includes nested public sources and excludes engineering records', () => {
     const names = docFiles.map(f => relative(DOCS_DIR, f).split(sep).join('/'));
-    // A silently-empty walk would make every check below pass vacuously.
-    assert.ok(names.length > 300, `expected the docs tree, got ${names.length} files`);
-    assert.ok(
-      names.some(n => n.includes('/')),
-      'walk found no nested files — it is only reading the top level'
-    );
-    // Regression anchor: this page is nested and absent from docs.json
-    // navigation, so the old top-level+navigation corpus never saw it and
-    // its `<5% GDP` reached Mintlify (deploy failure, 2026-08-12).
-    assert.ok(
-      names.includes('methodology/financial-system-exposure.md'),
-      'nested non-navigation pages are missing from the corpus'
-    );
+    for (const page of ['documentation.mdx', 'methodology/financial-system-exposure.md', 'zh/panels/telegram-intel.mdx']) {
+      assert.ok(names.includes(page), `published source missing from MDX lint: ${page}`);
+    }
+    for (const page of ['local-backend-audit.md', 'methodology/financial-system-exposure-flag-flip-runbook.md']) {
+      assert.ok(!names.includes(page), `excluded source still in MDX lint: ${page}`);
+    }
   });
 
   it('flags the syntax classes that have broken real deploys', () => {

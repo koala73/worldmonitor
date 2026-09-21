@@ -52,9 +52,7 @@ export const test = base.extend<{ countryBrief: CountryBriefFixture }>({
     page.on('requestfailed', request => transportFailures.push({
       path: new URL(request.url()).pathname, error: request.failure()?.errorText ?? null,
     }));
-    await seedAnonymousDashboard(page, 'full', {
-      localStorage: { 'wm-community-dismissed-v2': '1' },
-    });
+    await seedAnonymousDashboard(page, 'full');
     await page.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());

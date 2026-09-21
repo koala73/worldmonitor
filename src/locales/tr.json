@@ -1178,9 +1178,6 @@
       "base": "Us",
       "nuclear": "Nukleer"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "YUKSEK",
@@ -1905,6 +1902,7 @@
       "etfs": "ETFs",
       "netInflow": "NET GIRIS",
       "netOutflow": "NET CIKIS",
+      "netNeutral": "NET NÖTR",
       "table": {
         "ticker": "Sembol",
         "issuer": "Ihraccci",
@@ -2175,7 +2173,7 @@
       "infoTooltip": "<strong>Ekonomik Takvim</strong> Planlanmış makroekonomik yayınlar: CPI, NFP, GDP, PMI ve merkez bankası kararları. Tahmin, gerçek ve önceki değeri gösterir. Yüksek etkili olaylar vurgulanır. Kaynak: ekonomik veri sağlayıcıları."
     },
     "fsi": {
-      "infoTooltip": "<strong>Finansal Stres Göstergesi</strong> Kansas City Fed Finansal Stres Endeksi (KCFSI): getiri farkları, oynaklık ve çapraz korelasyonlar dahil 11 gösterge kullanarak ABD finans piyasalarındaki stresi ölçer. Pozitif değerler ortalamanın üzerinde stresi gösterir. Kaynak: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Finansal stres göstergesi</strong> Hisse senedi oynaklığı ve yüksek getirili spread için ayarlanmış, yüksek getirili kredi ile uzun vadeli ABD Hazine tahvilleri arasındaki WorldMonitor oranı: (HYG / TLT) / (VIX × HY spread / 100). Bu, Kansas City Federal Rezerv Bankası Finansal Stres Endeksi değildir. 1.5 veya üzeri bir değer düşük stres; 0.3 altı yüksek stres anlamına gelir.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD FSI DEĞERİ",
       "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",

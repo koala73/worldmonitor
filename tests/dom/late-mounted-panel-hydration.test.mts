@@ -84,6 +84,7 @@ vi.mock('@/services/military-vessels-lazy', () => ({
 import { enqueuePanelCall, replayPendingCalls } from '@/app/pending-panel-data';
 import { ThreatTimelinePanel } from '@/components/ThreatTimelinePanel';
 import { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import { fetchCachedTheaterPosture, type CachedTheaterPosture } from '@/services/cached-theater-posture';
 import type { ClusteredEvent } from '@/types';
 
 beforeAll(async () => {
@@ -187,5 +188,55 @@ describe('strategic posture mounting after its own fetch resolves', () => {
     expect(element.textContent).toContain('Taiwan Strait');
 
     panel.destroy();
+  });
+});
+
+describe('strategic posture stale recovery', () => {
+  it('forces only one retry and ignores its response after a newer update', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.mocked(fetchCachedTheaterPosture);
+    fetch.mockClear();
+    let resolveRetry!: (data: CachedTheaterPosture) => void;
+    fetch.mockResolvedValueOnce({ ...fixtures.posture, stale: true });
+    fetch.mockImplementationOnce(() => new Promise((resolve) => { resolveRetry = resolve; }));
+    const panel = new StrategicPosturePanel();
+    document.body.append(panel.getElement());
+    panel.notifyConnected();
+    try {
+      await vi.advanceTimersByTimeAsync(3200);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls[1]?.[1]).toEqual({ forceRefresh: true });
+      const fresh = { ...fixtures.posture, timestamp: '2026-09-20T00:00:00.000Z', stale: false };
+      panel.updatePostures(fresh);
+      await vi.advanceTimersByTimeAsync(200);
+      resolveRetry({ ...fixtures.posture, stale: true });
+      await vi.advanceTimersByTimeAsync(4000);
+      const state = panel as unknown as { lastTimestamp: string; isStale: boolean };
+      expect(state.lastTimestamp).toBe(fresh.timestamp);
+      expect(state.isStale).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      panel.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not schedule repeated retries when the forced response is still stale', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.mocked(fetchCachedTheaterPosture);
+    fetch.mockClear();
+    fetch.mockResolvedValue({ ...fixtures.posture, stale: true });
+    const panel = new StrategicPosturePanel();
+    document.body.append(panel.getElement());
+    panel.notifyConnected();
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls[1]?.[1]).toEqual({ forceRefresh: true });
+    } finally {
+      panel.destroy();
+      fetch.mockResolvedValue(fixtures.posture);
+      vi.useRealTimers();
+    }
   });
 });
