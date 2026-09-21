@@ -1441,9 +1441,6 @@
           "path": "src/app/desktop-updater.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
-        },
-        {
           "path": "src/mcp-grant-main.ts"
         },
         {
@@ -10244,6 +10241,9 @@
         },
         {
           "path": "src/components/LiveNewsPanel.ts"
+        },
+        {
+          "path": "src/components/UnifiedSettings.ts"
         },
         {
           "path": "src/config/web-origin.ts"
