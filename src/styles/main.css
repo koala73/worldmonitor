@@ -26387,7 +26387,10 @@ body.map-width-resizing {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 4100;
+  /* Appended to document.body, not nested in #unifiedSettingsModal.
+     Must sit above .modal-overlay (9999) or the type-DELETE dialog is
+     invisible behind Settings. */
+  z-index: 10050;
   padding: 20px;
 }
 

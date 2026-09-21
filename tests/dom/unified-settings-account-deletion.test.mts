@@ -3,6 +3,8 @@
  * subject after typing DELETE. Invitees see the control even without Manage
  * Billing. Anonymous dashboards have no account to delete.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
@@ -287,6 +289,16 @@ describe('UnifiedSettings account deletion', () => {
     expect(signOutMock).not.toHaveBeenCalled();
     expect(document.getElementById('unifiedSettingsModal')?.classList.contains('active')).toBe(true);
     expect(document.querySelector('[data-deletion-confirm]')).toBeNull();
+  });
+
+  it('stacks the type-DELETE dialog above the settings overlay', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/main.css'), 'utf8');
+    const overlayZ = Number(css.match(/\.modal-overlay \{[^}]*z-index:\s*(\d+)/)?.[1]);
+    const dialogZ = Number(
+      css.match(/\.account-deletion-dialog-overlay \{[^}]*z-index:\s*(\d+)/)?.[1],
+    );
+    expect(overlayZ).toBeGreaterThan(0);
+    expect(dialogZ).toBeGreaterThan(overlayZ);
   });
 
   it('shows a retryable error and keeps the session on failure', async () => {
