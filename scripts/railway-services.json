@@ -189,6 +189,10 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.digest-notifications",
     "service": "digest-notifications",
+    "requiredEnv": [
+      "USAGE_TELEMETRY",
+      "AXIOM_API_TOKEN"
+    ],
     "watchPatterns": [
       ".dockerignore",
       "Dockerfile.digest-notifications",
