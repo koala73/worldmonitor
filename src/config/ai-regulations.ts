@@ -443,6 +443,58 @@ export const COUNTRY_REGULATION_PROFILES: CountryRegulationProfile[] = [
   },
 ];
 
+/**
+ * EU member ISO 3166-1 alpha-2 — EU AI Act / GDPR AI provisions apply at member
+ * level. Catalog stores a single `EU` profile; map paint expands to these codes.
+ * Missing member ≠ invent a national profile.
+ */
+export const EU27_ISO2 = [
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
+  'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+  'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+] as const;
+
+/** Implemented legislation vs active policy discussion (cited catalog only). */
+export type AiPolicyStatus = 'implemented' | 'discussion';
+
+export type AiPolicyCountryFill = {
+  iso2: string;
+  country: string;
+  status: AiPolicyStatus;
+  summary: string;
+  stance: CountryRegulationProfile['stance'];
+};
+
+/**
+ * Country fills for AI Footprint Policy.
+ * - implemented: profile has ≥1 activeRegulation id
+ * - discussion: profile has ≥1 proposedRegulation id (and no active)
+ * Profiles with neither (e.g. India, Australia in the current catalog) stay blank.
+ */
+export function listAiPolicyCountryFills(): AiPolicyCountryFill[] {
+  const out: AiPolicyCountryFill[] = [];
+  for (const profile of COUNTRY_REGULATION_PROFILES) {
+    const hasImplemented = profile.activeRegulations.length > 0;
+    const hasDiscussion = profile.proposedRegulations.length > 0;
+    if (!hasImplemented && !hasDiscussion) continue;
+    const status: AiPolicyStatus = hasImplemented ? 'implemented' : 'discussion';
+    const base = {
+      country: profile.country,
+      status,
+      summary: profile.summary,
+      stance: profile.stance,
+    };
+    if (profile.countryCode === 'EU') {
+      for (const iso2 of EU27_ISO2) {
+        out.push({ ...base, iso2 });
+      }
+      continue;
+    }
+    out.push({ ...base, iso2: profile.countryCode });
+  }
+  return out;
+}
+
 // Helper function to get regulation by ID
 export function getRegulationById(id: string): AIRegulation | undefined {
   return AI_REGULATIONS.find(reg => reg.id === id);

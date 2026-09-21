@@ -38,6 +38,22 @@ import { getAuthState } from '@/services/auth-state';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
+import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
+import type { StartupHub, Accelerator, CloudRegion } from '@/config/tech-geo';
+import type { TechHQ } from '@/types';
+import {
+  AI_CONVERSATION_PERIOD_ENDS_MS,
+  aiConversationPointsAt,
+} from '@/config/ai-conversation-growth';
+import {
+  AI_CONVO_LANDMARK_MS,
+  aiConvoHotspotPointsAt,
+  type AiConvoChannel,
+} from '@/config/ai-convo-hotspots';
+import {
+  listAiPolicyCountryFills,
+  type AiPolicyStatus,
+} from '@/config/ai-regulations';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
 import { showLayerWarning } from '@/utils/layer-warning';
@@ -336,6 +352,63 @@ interface DatacenterMarker extends BaseMarker {
   country: string;
   chipType: string;
 }
+interface StartupHubMarker extends BaseMarker {
+  _kind: 'startupHub';
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  tier: StartupHub['tier'];
+  unicorns?: number;
+}
+interface TechHQMarker extends BaseMarker {
+  _kind: 'techHQ';
+  id: string;
+  company: string;
+  city: string;
+  country: string;
+  type: TechHQ['type'];
+}
+interface AcceleratorMarker extends BaseMarker {
+  _kind: 'accelerator';
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  type: Accelerator['type'];
+  founded?: number;
+}
+interface CloudRegionMarker extends BaseMarker {
+  _kind: 'cloudRegion';
+  id: string;
+  provider: CloudRegion['provider'];
+  name: string;
+  city: string;
+  country: string;
+  zones?: number;
+}
+/** AI Usage — country-centroid share from OWID/WildChat waves (empty until joins). */
+interface AiUsageMarker extends BaseMarker {
+  _kind: 'aiUsage';
+  id: string;
+  name: string;
+  iso2: string;
+  sharePct: number;
+  periodLabel: string;
+  source: 'owid' | 'wildchat';
+}
+/** Convo Hotspots — catalog eras + Live AI-keyword news with hub geo. */
+interface AiConvoHotspotMarker extends BaseMarker {
+  _kind: 'aiConvoHotspot';
+  id: string;
+  name: string;
+  channel: AiConvoChannel;
+  weight: number;
+  /** 0–1 vs current frame max weight — drives cylinder size. */
+  intensity: number;
+  detail: string;
+  periodLabel?: string;
+}
 interface WaterwayMarker extends BaseMarker {
   _kind: 'waterway';
   id: string;
@@ -372,6 +445,7 @@ interface NewsLocationMarker extends BaseMarker {
   id: string;
   title: string;
   threatLevel: string;
+  timestamp?: Date;
 }
 interface FlashMarker extends BaseMarker {
   _kind: 'flash';
@@ -449,7 +523,7 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'aiPolicy';
   level?: string;
   score?: number;
 
@@ -462,6 +536,10 @@ interface GlobePolygon {
   resolutionM?: number;
   mode?: string;
   previewUrl?: string;
+
+  aiPolicyStatus?: AiPolicyStatus;
+  aiPolicySummary?: string;
+  aiPolicyStance?: string;
 }
 type GlobeMarker =
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
@@ -469,7 +547,10 @@ type GlobeMarker =
   | CyberMarker | FireMarker | ProtestMarker
   | UcdpMarker | DisplacementMarker | ClimateMarker | GpsJamMarker | TechMarker
   | ConflictZoneMarker | MilBaseMarker | NuclearSiteMarker | IrradiatorSiteMarker | SpaceportSiteMarker
-  | EarthquakeMarker | RadiationMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
+  | EarthquakeMarker | RadiationMarker | EconomicMarker | DatacenterMarker
+  | StartupHubMarker | TechHQMarker | AcceleratorMarker | CloudRegionMarker
+  | AiUsageMarker | AiConvoHotspotMarker
+  | WaterwayMarker | MineralMarker
   | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
   | NewsLocationMarker | FlashMarker | SatelliteMarker | SatFootprintMarker | ImagerySceneMarker
   | WebcamMarkerData | WebcamClusterData;
@@ -559,6 +640,16 @@ export class GlobeMap {
   private radiationMarkers: RadiationMarker[] = [];
   private economicMarkers: EconomicMarker[] = [];
   private datacenterMarkers: DatacenterMarker[] = [];
+  private startupHubMarkers: StartupHubMarker[] = [];
+  private techHQMarkers: TechHQMarker[] = [];
+  private acceleratorMarkers: AcceleratorMarker[] = [];
+  private cloudRegionMarkers: CloudRegionMarker[] = [];
+  private aiUsageMarkers: AiUsageMarker[] = [];
+  private aiConvoHotspotMarkers: AiConvoHotspotMarker[] = [];
+  private startupHubData: Map<string, StartupHub> = new Map();
+  private techHQData: Map<string, TechHQ> = new Map();
+  private acceleratorData: Map<string, Accelerator> = new Map();
+  private cloudRegionData: Map<string, CloudRegion> = new Map();
   private waterwayMarkers: WaterwayMarker[] = [];
   private mineralMarkers: MineralMarker[] = [];
   private flightDelayMarkers: FlightDelayMarker[] = [];
@@ -604,6 +695,8 @@ export class GlobeMap {
   // Current layers state
   private layers: MapLayers;
   private timeRange: TimeRange;
+  /** Playhead for AI Footprint scrub (OWID/WildChat waves, Convo eras). null = Live. */
+  private timeFocusMs: number | null = null;
   private currentView: MapView = 'global';
 
   // Click callbacks
@@ -853,6 +946,14 @@ export class GlobeMap {
         if (m._kind === 'satellite') return (m as SatelliteMarker).alt / 6371;
         if (m._kind === 'flight' || m._kind === 'vessel' || m._kind === 'cluster') return 0.012;
         if (m._kind === 'hotspot') return 0.005;
+        if (m._kind === 'aiUsage') {
+          const share = (m as AiUsageMarker).sharePct;
+          return 0.004 + Math.min(0.04, (Math.max(0, share) / 30) * 0.04);
+        }
+        if (m._kind === 'aiConvoHotspot') {
+          const w = (m as AiConvoHotspotMarker).weight;
+          return 0.004 + Math.min(0.02, Math.max(0, w) * 0.004);
+        }
         return 0.003;
       })
       .htmlElement((d: object) => this.buildMarkerElement(d as GlobeMarker));
@@ -943,6 +1044,50 @@ export class GlobeMap {
       })
       .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
 
+    // Points layer — WebGL cylinders for AI Usage + Convo (match DeckGL columns /
+    // scatter; HTML dots are invisible at globe scale and compete for marker budget).
+    (globe as any)
+      .pointsData([])
+      .pointsTransitionDuration(0)
+      .pointLat((d: AiUsageMarker | AiConvoHotspotMarker) => d._lat)
+      .pointLng((d: AiUsageMarker | AiConvoHotspotMarker) => d._lng)
+      .pointAltitude((d: AiUsageMarker | AiConvoHotspotMarker) => {
+        if (d._kind === 'aiUsage') {
+          // ~0.01–0.12 globe-radius columns; share 30% → full height.
+          return 0.01 + Math.min(0.11, (Math.max(0, d.sharePct) / 30) * 0.11);
+        }
+        return 0.006 + d.intensity * 0.04;
+      })
+      .pointRadius((d: AiUsageMarker | AiConvoHotspotMarker) => {
+        // Angular degrees — Usage ≈ DeckGL 140 km columns (~1.25°).
+        if (d._kind === 'aiUsage') {
+          return 0.55 + Math.min(0.7, (Math.max(0, d.sharePct) / 30) * 0.7);
+        }
+        return 0.35 + d.intensity * 0.55;
+      })
+      .pointColor((d: AiUsageMarker | AiConvoHotspotMarker) => {
+        if (d._kind === 'aiUsage') {
+          const t = Math.min(1, d.sharePct / 30);
+          const b = Math.round(150 + t * 105);
+          const g = Math.round(80 + t * 80);
+          return `rgba(40,${g},${b},0.85)`;
+        }
+        if (d.channel === 'trends') return 'rgba(255,140,0,0.85)';
+        if (d.channel === 'news') return 'rgba(200,40,40,0.85)';
+        if (d.channel === 'social') return 'rgba(120,60,200,0.85)';
+        return 'rgba(180,40,60,0.85)';
+      })
+      .pointLabel((d: AiUsageMarker | AiConvoHotspotMarker) => {
+        if (d._kind === 'aiUsage') {
+          const src = d.source === 'wildchat' ? 'WildChat' : 'OWID';
+          return `<b>${escapeHtml(d.name)}</b><br/>${d.sharePct.toFixed(1)}% · ${escapeHtml(src)}`
+            + (d.periodLabel ? `<br/>${escapeHtml(d.periodLabel)}` : '');
+        }
+        const ch = escapeHtml(d.channel);
+        return `<b>${escapeHtml(d.name.slice(0, 70))}</b><br/>${ch} · weight ${d.weight.toFixed(1)}`
+          + (d.detail ? `<br/>${escapeHtml(d.detail.slice(0, 90))}` : '');
+      });
+
     // Polygon accessors — set once
     (globe as any)
       .polygonGeoJsonGeometry((d: GlobePolygon) => ({ type: 'Polygon', coordinates: d.coords }))
@@ -952,6 +1097,10 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
         if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
+        if (d._kind === 'aiPolicy') {
+          const status = d.aiPolicyStatus === 'implemented' ? 'implemented' : 'discussion';
+          return GlobeMap.AI_POLICY_CAP[status];
+        }
         return 'rgba(255,60,60,0.15)';
       })
       .polygonSideColor((d: GlobePolygon) => {
@@ -960,6 +1109,10 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
         if (d._kind === 'scenario') return 'rgba(0,0,0,0)';
+        if (d._kind === 'aiPolicy') {
+          const status = d.aiPolicyStatus === 'implemented' ? 'implemented' : 'discussion';
+          return GlobeMap.AI_POLICY_SIDE[status];
+        }
         return 'rgba(255,60,60,0.08)';
       })
       .polygonStrokeColor((d: GlobePolygon) => {
@@ -968,11 +1121,19 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return '#00b4ff';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.5)';
         if (d._kind === 'scenario') return 'transparent';
+        if (d._kind === 'aiPolicy') {
+          const status = d.aiPolicyStatus === 'implemented' ? 'implemented' : 'discussion';
+          return GlobeMap.AI_POLICY_STROKE[status];
+        }
         return '#ff4444';
       })
       .polygonAltitude((d: GlobePolygon) => {
         if (d._kind === 'cii') return 0.002;
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_ALT[d.intensity!] ?? GlobeMap.CONFLICT_ALT.low;
+        if (d._kind === 'aiPolicy') {
+          const status = d.aiPolicyStatus === 'implemented' ? 'implemented' : 'discussion';
+          return GlobeMap.AI_POLICY_ALT[status];
+        }
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
@@ -981,6 +1142,12 @@ export class GlobeMap {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
           if (d.casualties) label += `<br/>Casualties: ${escapeHtml(d.casualties)}`;
+          return label;
+        }
+        if (d._kind === 'aiPolicy') {
+          const status = d.aiPolicyStatus === 'implemented' ? 'Implemented' : 'Discussion';
+          let label = `<b>${escapeHtml(d.name)}</b><br/>AI Policy · ${status}`;
+          if (d.aiPolicySummary) label += `<br/>${escapeHtml(d.aiPolicySummary.slice(0, 120))}`;
           return label;
         }
         if (d._kind === 'imageryFootprint') {
@@ -1027,6 +1194,7 @@ export class GlobeMap {
 
     // Flush any data that arrived before init completed
     this.flushMarkers();
+    this.flushPoints();
     this.flushArcs();
     this.flushPaths();
     this.flushPolygons();
@@ -1268,6 +1436,37 @@ export class GlobeMap {
     } else if (d._kind === 'datacenter') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#88aaff;text-shadow:0 0 3px #88aaff88;">🖥</div>`), "legacy direct innerHTML migration"));
       el.title = `${d.name} (${d.owner})`;
+    } else if (d._kind === 'startupHub') {
+      const icon = d.tier === 'mega' ? '🦄' : d.tier === 'major' ? '🚀' : '💡';
+      const c = d.tier === 'mega' ? '#00ff96' : d.tier === 'major' ? '#44cc88' : '#88aa88';
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${c};text-shadow:0 0 3px ${c}88;">${icon}</div>`), "legacy direct innerHTML migration"));
+      el.title = `${d.name} · ${d.city}`;
+    } else if (d._kind === 'techHQ') {
+      const icon = d.type === 'faang' ? '🏛️' : d.type === 'unicorn' ? '🦄' : '🏢';
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#64c8ff;text-shadow:0 0 3px #64c8ff88;">${icon}</div>`), "legacy direct innerHTML migration"));
+      el.title = `${d.company} · ${d.city}`;
+    } else if (d._kind === 'accelerator') {
+      const icon = d.type === 'accelerator' ? '🎯' : d.type === 'incubator' ? '🔬' : '🎨';
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#ffc800;text-shadow:0 0 3px #ffc80088;">${icon}</div>`), "legacy direct innerHTML migration"));
+      el.title = `${d.name} · ${d.city}`;
+    } else if (d._kind === 'cloudRegion') {
+      const icons: Record<string, string> = { aws: '🟠', gcp: '🔵', azure: '🟣', cloudflare: '🟡' };
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));">${icons[d.provider] || '☁️'}</div>`), "legacy direct innerHTML migration"));
+      el.title = `${d.provider.toUpperCase()} ${d.name} · ${d.city}`;
+    } else if (d._kind === 'aiUsage') {
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(
+        `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#64a0ff;text-shadow:0 0 3px #64a0ff88;">📊</div>`,
+      ), "legacy direct innerHTML migration"));
+      el.title = `${d.name} · ${d.sharePct.toFixed(1)}%`;
+    } else if (d._kind === 'aiConvoHotspot') {
+      const c = d.channel === 'trends' ? '#ff8c00'
+        : d.channel === 'news' ? '#c82828'
+        : d.channel === 'social' ? '#783cc8'
+        : '#b4283c';
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(
+        `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${c};text-shadow:0 0 3px ${c}88;">💬</div>`,
+      ), "legacy direct innerHTML migration"));
+      el.title = d.name.slice(0, 80);
     } else if (d._kind === 'waterway') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#44aadd;text-shadow:0 0 3px #44aadd88;">⚓</div>`), "legacy direct innerHTML migration"));
       el.title = d.name;
@@ -1444,6 +1643,43 @@ export class GlobeMap {
       });
       return;
     }
+
+    if (this.popup && (d._kind === 'startupHub' || d._kind === 'techHQ' || d._kind === 'accelerator' || d._kind === 'cloudRegion')) {
+      const aRect = anchor.getBoundingClientRect();
+      const cRect = this.container.getBoundingClientRect();
+      const x = aRect.left - cRect.left + aRect.width / 2;
+      const y = aRect.top - cRect.top;
+      if (d._kind === 'startupHub') {
+        const hub = this.startupHubData.get(d.id);
+        if (hub) {
+          this.hideTooltip();
+          this.popup.show({ type: 'startupHub', data: hub, x, y });
+          return;
+        }
+      } else if (d._kind === 'techHQ') {
+        const hq = this.techHQData.get(d.id);
+        if (hq) {
+          this.hideTooltip();
+          this.popup.show({ type: 'techHQ', data: hq, x, y });
+          return;
+        }
+      } else if (d._kind === 'accelerator') {
+        const acc = this.acceleratorData.get(d.id);
+        if (acc) {
+          this.hideTooltip();
+          this.popup.show({ type: 'accelerator', data: acc, x, y });
+          return;
+        }
+      } else if (d._kind === 'cloudRegion') {
+        const region = this.cloudRegionData.get(d.id);
+        if (region) {
+          this.hideTooltip();
+          this.popup.show({ type: 'cloudRegion', data: region, x, y });
+          return;
+        }
+      }
+    }
+
     this.showMarkerTooltip(d, anchor);
   }
 
@@ -1632,6 +1868,35 @@ export class GlobeMap {
       html = `<span style="color:#88aaff;font-weight:bold;">🖥 ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.owner)} · ${esc(d.country)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.chipType)}</span>`;
+    } else if (d._kind === 'startupHub') {
+      const tc = d.tier === 'mega' ? '#00ff96' : d.tier === 'major' ? '#44cc88' : '#88aa88';
+      html = `<span style="color:${tc};font-weight:bold;">🚀 ${esc(d.name)}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.city)} · ${esc(d.country)} · ${esc(d.tier)}</span>` +
+             (typeof d.unicorns === 'number' ? `<br><span style="opacity:.5;">Unicorns: ${d.unicorns}</span>` : '');
+    } else if (d._kind === 'techHQ') {
+      html = `<span style="color:#64c8ff;font-weight:bold;">🏢 ${esc(d.company)}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.city)} · ${esc(d.country)} · ${esc(d.type)}</span>`;
+    } else if (d._kind === 'accelerator') {
+      html = `<span style="color:#ffc800;font-weight:bold;">🎯 ${esc(d.name)}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.city)} · ${esc(d.country)} · ${esc(d.type)}</span>` +
+             (d.founded ? `<br><span style="opacity:.5;">Founded ${d.founded}</span>` : '');
+    } else if (d._kind === 'cloudRegion') {
+      html = `<span style="color:#9664ff;font-weight:bold;">☁ ${esc(d.provider.toUpperCase())} ${esc(d.name)}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.city)} · ${esc(d.country)}</span>` +
+             (d.zones ? `<br><span style="opacity:.5;">Zones: ${d.zones}</span>` : '');
+    } else if (d._kind === 'aiUsage') {
+      const src = d.source === 'wildchat' ? 'WildChat' : 'OWID';
+      html = `<span style="color:#64a0ff;font-weight:bold;">📊 ${esc(d.name)}</span>` +
+             `<br><span style="opacity:.7;">${d.sharePct.toFixed(1)}% · ${esc(src)}</span>` +
+             (d.periodLabel ? `<br><span style="opacity:.5;">${esc(d.periodLabel)}</span>` : '');
+    } else if (d._kind === 'aiConvoHotspot') {
+      const ch = d.channel === 'trends' ? '#ff8c00'
+        : d.channel === 'news' ? '#ff5050'
+        : d.channel === 'social' ? '#a064ff'
+        : '#e05070';
+      html = `<span style="color:${ch};font-weight:bold;">💬 ${esc(d.name.slice(0, 70))}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.channel)} · weight ${d.weight.toFixed(1)}</span>` +
+             (d.detail ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.detail.slice(0, 90))}</span>` : '');
     } else if (d._kind === 'waterway') {
       html = `<span style="color:#44aadd;font-weight:bold;">⚓ ${esc(d.name)}</span>` +
              (d.description ? `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.description.slice(0, 80))}</span>` : '');
@@ -1864,7 +2129,7 @@ export class GlobeMap {
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
-    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
+    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'startupHub', 'techHQ', 'accelerator', 'cloudRegion', 'aiUsage', 'aiConvoHotspot', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
     this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
 
@@ -2039,6 +2304,9 @@ export class GlobeMap {
         if (layer) {
           const checked = (input as HTMLInputElement).checked;
           this.layers[layer] = checked;
+          // Match enableLayer: rebuild static catalogs before flush (AI Usage /
+          // Convo paint via pointsData — empty arrays otherwise look "broken").
+          if (checked) this.ensureStaticDataForLayer(layer);
           this.flushLayerChannels(layer);
           this.onLayerChangeCb?.(layer, checked, 'user');
           this.enforceLayerLimit();
@@ -2229,6 +2497,23 @@ export class GlobeMap {
     if (this.layers.radiationWatch) add('radiationWatch', this.radiationMarkers);
     if (this.layers.economic) add('economic', this.economicMarkers);
     if (this.layers.datacenters) add('datacenters', this.datacenterMarkers);
+    if (this.layers.startupHubs) {
+      add('startupHubs', this.startupHubMarkers, {
+        rank: m => (m._kind === 'startupHub'
+          ? (m.tier === 'mega' ? 3 : m.tier === 'major' ? 2 : 1)
+          : 0),
+      });
+    }
+    if (this.layers.techHQs) {
+      add('techHQs', this.techHQMarkers, {
+        rank: m => (m._kind === 'techHQ'
+          ? (m.type === 'faang' ? 3 : m.type === 'unicorn' ? 2 : 1)
+          : 0),
+      });
+    }
+    if (this.layers.accelerators) add('accelerators', this.acceleratorMarkers);
+    if (this.layers.cloudRegions) add('cloudRegions', this.cloudRegionMarkers);
+    // aiUsage + convoHotspots paint via pointsData (WebGL cylinders), not HTML.
     if (this.layers.waterways) add('waterways', this.waterwayMarkers);
     if (this.layers.minerals) add('minerals', this.mineralMarkers);
     if (this.layers.flights) {
@@ -2338,6 +2623,26 @@ export class GlobeMap {
   private static readonly CONFLICT_SIDE: Record<string, string> = { high: 'rgba(255,40,40,0.12)', medium: 'rgba(255,120,0,0.08)', low: 'rgba(255,200,0,0.06)' };
   private static readonly CONFLICT_STROKE: Record<string, string> = { high: '#ff3030', medium: '#ff8800', low: '#ffcc00' };
   private static readonly CONFLICT_ALT: Record<string, number> = { high: 0.006, medium: 0.004, low: 0.003 };
+  /** AI Policy — same translucency budget as conflict zones (heavy alpha washes the globe). */
+  private static readonly AI_POLICY_CAP: Record<AiPolicyStatus, string> = {
+    implemented: 'rgba(90,50,180,0.18)',
+    discussion: 'rgba(140,100,210,0.12)',
+  };
+  private static readonly AI_POLICY_SIDE: Record<AiPolicyStatus, string> = {
+    // Choropleth spans many countries (EU27+) — extruded walls wash like a purple shell.
+    // Match CII: flat cap tint only, conflict-level alpha.
+    implemented: 'rgba(0,0,0,0)',
+    discussion: 'rgba(0,0,0,0)',
+  };
+  private static readonly AI_POLICY_STROKE: Record<AiPolicyStatus, string> = {
+    implemented: '#a090e8',
+    discussion: '#c0b0f0',
+  };
+  private static readonly AI_POLICY_ALT: Record<AiPolicyStatus, number> = {
+    // Flat like CII — extruded altitude brightens borders into a glowing shell.
+    implemented: 0.002,
+    discussion: 0.002,
+  };
 
   private getReversedRing(zoneId: string, countryIso: string, ringIdx: number, ring: number[][][]): number[][][] {
     const key = `${zoneId}:${countryIso}:${ringIdx}`;
@@ -2397,6 +2702,31 @@ export class GlobeMap {
       }
     }
 
+    if (this.layers.aiPolicy && this.countriesGeoData) {
+      const fills = listAiPolicyCountryFills();
+      const byIso2 = new Map(fills.map(f => [f.iso2.toUpperCase(), f]));
+      for (const feat of this.countriesGeoData.features) {
+        const code = (feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined)?.toUpperCase();
+        const fill = code ? byIso2.get(code) : undefined;
+        if (!fill || !code) continue;
+        const geom = feat.geometry;
+        if (!geom) continue;
+        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        const name = fill.country || (feat.properties?.name as string) || code;
+        // Same ring-reversal as conflict zones — unreversed country rings paint inside-out and wash the globe.
+        for (let ri = 0; ri < rings.length; ri++) {
+          polys.push({
+            coords: this.getReversedRing(`ai-policy-${fill.status}`, code, ri, rings[ri] as number[][][]),
+            name,
+            _kind: 'aiPolicy',
+            aiPolicyStatus: fill.status,
+            aiPolicySummary: fill.summary,
+            aiPolicyStance: fill.stance,
+          });
+        }
+      }
+    }
+
     if (this.layers.satellites) {
       polys.push(...this.imageryFootprintPolygons);
     }
@@ -2410,6 +2740,19 @@ export class GlobeMap {
     }
 
     (this.globe as any).polygonsData(polys);
+  }
+
+  /**
+   * AI Usage + Convo Hotspots as globe.gl WebGL cylinders (pointsData).
+   * Keeps them off the HTML marker budget and matches DeckGL column/scatter scale.
+   */
+  private flushPoints(): void {
+    if (!this.globe || !this.initialized || this.destroyed || this.webglLost) return;
+    this.wakeGlobe();
+    const pts: Array<AiUsageMarker | AiConvoHotspotMarker> = [];
+    if (this.layers.aiUsage) pts.push(...this.aiUsageMarkers);
+    if (this.layers.convoHotspots) pts.push(...this.aiConvoHotspotMarkers);
+    (this.globe as any).pointsData(pts);
   }
 
   // ─── Public data setters ──────────────────────────────────────────────────
@@ -2557,6 +2900,90 @@ export class GlobeMap {
               chipType: d.chipType,
             }));
         }
+        break;
+      case 'startupHubs':
+        if (!this.startupHubMarkers.length) {
+          this.startupHubData.clear();
+          this.startupHubMarkers = STARTUP_HUBS.map(h => {
+            this.startupHubData.set(h.id, h);
+            return {
+              _kind: 'startupHub' as const,
+              _lat: h.lat,
+              _lng: h.lon,
+              id: h.id,
+              name: h.name,
+              city: h.city,
+              country: h.country,
+              tier: h.tier,
+              unicorns: h.unicorns,
+            };
+          });
+        }
+        break;
+      case 'techHQs':
+        if (!this.techHQMarkers.length) {
+          this.techHQData.clear();
+          this.techHQMarkers = TECH_HQS.map(h => {
+            this.techHQData.set(h.id, h);
+            return {
+              _kind: 'techHQ' as const,
+              _lat: h.lat,
+              _lng: h.lon,
+              id: h.id,
+              company: h.company,
+              city: h.city,
+              country: h.country,
+              type: h.type,
+            };
+          });
+        }
+        break;
+      case 'accelerators':
+        if (!this.acceleratorMarkers.length) {
+          this.acceleratorData.clear();
+          this.acceleratorMarkers = ACCELERATORS.map(a => {
+            this.acceleratorData.set(a.id, a);
+            return {
+              _kind: 'accelerator' as const,
+              _lat: a.lat,
+              _lng: a.lon,
+              id: a.id,
+              name: a.name,
+              city: a.city,
+              country: a.country,
+              type: a.type,
+              founded: a.founded,
+            };
+          });
+        }
+        break;
+      case 'cloudRegions':
+        if (!this.cloudRegionMarkers.length) {
+          this.cloudRegionData.clear();
+          this.cloudRegionMarkers = CLOUD_REGIONS.map(r => {
+            this.cloudRegionData.set(r.id, r);
+            return {
+              _kind: 'cloudRegion' as const,
+              _lat: r.lat,
+              _lng: r.lon,
+              id: r.id,
+              provider: r.provider,
+              name: r.name,
+              city: r.city,
+              country: r.country,
+              zones: r.zones,
+            };
+          });
+        }
+        break;
+      case 'aiUsage':
+        this.rebuildAiUsageMarkers();
+        break;
+      case 'convoHotspots':
+        this.rebuildAiConvoHotspotMarkers();
+        break;
+      case 'aiPolicy':
+        // Country polygons only — GeoJSON loads asynchronously in initGlobe.
         break;
       case 'waterways':
         if (!this.waterwayMarkers.length) {
@@ -2822,16 +3249,19 @@ export class GlobeMap {
 
   // ─── Layer control ────────────────────────────────────────────────────────
 
-  private static readonly LAYER_CHANNELS: Map<string, { markers: boolean; arcs: boolean; paths: boolean; polygons: boolean }> = new Map([
-    ['ciiChoropleth', { markers: false, arcs: false, paths: false, polygons: true }],
-    ['tradeRoutes',   { markers: false, arcs: true,  paths: false, polygons: false }],
-    ['pipelines',     { markers: false, arcs: false, paths: true,  polygons: false }],
-    ['conflicts',     { markers: true,  arcs: false, paths: false, polygons: true }],
-    ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false }],
-    ['satellites',        { markers: true,  arcs: false, paths: true,  polygons: true }],
+  private static readonly LAYER_CHANNELS: Map<string, { markers: boolean; arcs: boolean; paths: boolean; polygons: boolean; points: boolean }> = new Map([
+    ['ciiChoropleth', { markers: false, arcs: false, paths: false, polygons: true,  points: false }],
+    ['aiPolicy',      { markers: false, arcs: false, paths: false, polygons: true,  points: false }],
+    ['aiUsage',       { markers: false, arcs: false, paths: false, polygons: false, points: true }],
+    ['convoHotspots', { markers: false, arcs: false, paths: false, polygons: false, points: true }],
+    ['tradeRoutes',   { markers: false, arcs: true,  paths: false, polygons: false, points: false }],
+    ['pipelines',     { markers: false, arcs: false, paths: true,  polygons: false, points: false }],
+    ['conflicts',     { markers: true,  arcs: false, paths: false, polygons: true,  points: false }],
+    ['cables',        { markers: true,  arcs: false, paths: true,  polygons: false, points: false }],
+    ['satellites',        { markers: true,  arcs: false, paths: true,  polygons: true, points: false }],
 
-    ['natural',           { markers: true,  arcs: false, paths: true,  polygons: true }],
-    ['webcams',           { markers: true,  arcs: false, paths: false, polygons: false }],
+    ['natural',           { markers: true,  arcs: false, paths: true,  polygons: true, points: false }],
+    ['webcams',           { markers: true,  arcs: false, paths: false, polygons: false, points: false }],
   ]);
 
   private flushLayerChannels(layer: keyof MapLayers): void {
@@ -2841,6 +3271,7 @@ export class GlobeMap {
     if (ch.arcs)     this.flushArcs();
     if (ch.paths)    this.flushPaths();
     if (ch.polygons) this.flushPolygons();
+    if (ch.points)   this.flushPoints();
     if (layer === 'satellites' && this.satBeamGroup) {
       this.satBeamGroup.visible = !!this.layers.satellites;
     }
@@ -2849,7 +3280,7 @@ export class GlobeMap {
   public setLayers(layers: MapLayers): void {
     const prev = this.layers;
     this.layers = { ...layers, dayNight: false };
-    let needMarkers = false, needArcs = false, needPaths = false, needPolygons = false;
+    let needMarkers = false, needArcs = false, needPaths = false, needPolygons = false, needPoints = false;
     for (const k of Object.keys(layers) as (keyof MapLayers)[]) {
       if (!prev[k] && layers[k]) this.ensureStaticDataForLayer(k);
       if (prev[k] === layers[k]) continue;
@@ -2859,11 +3290,13 @@ export class GlobeMap {
       if (ch.arcs)     needArcs = true;
       if (ch.paths)    needPaths = true;
       if (ch.polygons) needPolygons = true;
+      if (ch.points)   needPoints = true;
     }
     if (needMarkers)  this.flushMarkers();
     if (needArcs)     this.flushArcs();
     if (needPaths)    this.flushPaths();
     if (needPolygons) this.flushPolygons();
+    if (needPoints)   this.flushPoints();
     if (prev.satellites !== layers.satellites) {
       if (this.satBeamGroup) this.satBeamGroup.visible = !!layers.satellites;
       if (layers.satellites) {
@@ -3124,10 +3557,145 @@ export class GlobeMap {
 
   public setTimeRange(range: TimeRange): void {
     this.timeRange = range;
+    // Live Convo news is windowed by timeRange; rebuild when the window moves.
+    if (this.layers.convoHotspots) {
+      this.rebuildAiConvoHotspotMarkers();
+      this.flushPoints();
+    }
   }
 
   public getTimeRange(): TimeRange {
     return this.timeRange;
+  }
+
+  /** Seek playhead for AI Footprint scrub layers. null = Live end. */
+  public setTimeFocus(ms: number | null): void {
+    this.timeFocusMs = ms != null && Number.isFinite(ms) ? ms : null;
+    let needPoints = false;
+    if (this.layers.aiUsage) {
+      this.rebuildAiUsageMarkers();
+      needPoints = true;
+    }
+    if (this.layers.convoHotspots) {
+      this.rebuildAiConvoHotspotMarkers();
+      needPoints = true;
+    }
+    if (needPoints) this.flushPoints();
+  }
+
+  public getTimeFocus(): number | null {
+    return this.timeFocusMs;
+  }
+
+  private getTimeRangeMs(range: TimeRange = this.timeRange): number {
+    const ranges: Record<TimeRange, number> = {
+      '1h': 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '48h': 48 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      'all': Infinity,
+    };
+    return ranges[range];
+  }
+
+  private rebuildAiUsageMarkers(): void {
+    const focus = this.timeFocusMs;
+    // Match DeckGL onExactOwidWave: Live (null) or scrub parked on a wave end.
+    const onExactOwidWave =
+      focus == null || AI_CONVERSATION_PERIOD_ENDS_MS.some((t) => t === focus);
+    if (!onExactOwidWave) {
+      this.aiUsageMarkers = [];
+      return;
+    }
+    const points = aiConversationPointsAt(focus).filter(
+      p => Number.isFinite(p.lat) && Number.isFinite(p.lon) && p.sharePct > 0,
+    );
+    this.aiUsageMarkers = points.map(p => ({
+      _kind: 'aiUsage' as const,
+      _lat: p.lat,
+      _lng: p.lon,
+      id: `ai-usage-${p.iso2}-${p.periodEndMs}`,
+      name: p.name,
+      iso2: p.iso2,
+      sharePct: p.sharePct,
+      periodLabel: p.periodLabel,
+      source: p.source,
+    }));
+  }
+
+  private rebuildAiConvoHotspotMarkers(): void {
+    const focus = this.timeFocusMs;
+    // Live = latest catalog + live news; scrub only on exact product-era landmark.
+    const onExactConvoEra =
+      focus == null || AI_CONVO_LANDMARK_MS.some((t) => t === focus);
+    if (!onExactConvoEra) {
+      this.aiConvoHotspotMarkers = [];
+      return;
+    }
+    const catalog = aiConvoHotspotPointsAt(focus);
+    const live = focus == null ? this.liveAiNewsConvoPoints() : [];
+    const data = live.length ? [...catalog, ...live] : catalog;
+    const filtered = data.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+    const maxW = Math.max(1, ...filtered.map(p => p.weight));
+    this.aiConvoHotspotMarkers = filtered.map(p => ({
+      _kind: 'aiConvoHotspot' as const,
+      _lat: p.lat,
+      _lng: p.lon,
+      id: p.id,
+      name: p.name,
+      channel: p.channel,
+      weight: p.weight,
+      intensity: Math.min(1, p.weight / maxW),
+      detail: p.detail,
+    }));
+  }
+
+  /**
+   * Live AI news → Convo `news` channel when title matches AI keywords and
+   * hub geo + timestamp exist. Does not invent location for unlocated headlines.
+   */
+  private liveAiNewsConvoPoints(): Array<{
+    id: string;
+    lat: number;
+    lon: number;
+    name: string;
+    channel: AiConvoChannel;
+    weight: number;
+    detail: string;
+  }> {
+    const AI_RE =
+      /\b(chatgpt|openai|anthropic|claude|gpt-?4|gpt-?4o|llm|llama\s*2|generative\s*ai|artificial\s*intelligence|machine\s*learning)\b/i;
+    const now = Date.now();
+    const rangeMs = this.getTimeRangeMs();
+    const windowStart = rangeMs === Infinity ? Number.NEGATIVE_INFINITY : now - rangeMs;
+    const focus = this.timeFocusMs ?? now;
+    const out: Array<{
+      id: string;
+      lat: number;
+      lon: number;
+      name: string;
+      channel: AiConvoChannel;
+      weight: number;
+      detail: string;
+    }> = [];
+    for (const n of this.newsLocationMarkers) {
+      if (!Number.isFinite(n._lat) || !Number.isFinite(n._lng)) continue;
+      if (!AI_RE.test(n.title || '')) continue;
+      const ts = n.timestamp?.getTime?.();
+      if (ts != null && Number.isFinite(ts) && (ts < windowStart || ts > focus)) continue;
+      const stamp = ts ?? now;
+      out.push({
+        id: `convo-news-live-${n._lat.toFixed(2)}-${n._lng.toFixed(2)}-${stamp}`,
+        lat: n._lat,
+        lon: n._lng,
+        name: n.title.slice(0, 80),
+        channel: 'news',
+        weight: 1,
+        detail: `Live AI news · hub-inferred geo · ${n.threatLevel}`,
+      });
+    }
+    return out;
   }
 
   // ─── Callback setters ─────────────────────────────────────────────────────
@@ -3199,6 +3767,7 @@ export class GlobeMap {
     if (!paused && this.pendingFlushWhilePaused) {
       this.pendingFlushWhilePaused = false;
       this.flushMarkers();
+      this.flushPoints();
     }
   }
   public updateHotspotActivity(_news: any[]): void {}
@@ -3535,7 +4104,12 @@ export class GlobeMap {
         id: `news-${i}-${d.title.slice(0, 20)}`,
         title: d.title,
         threatLevel: d.threatLevel ?? 'info',
+        timestamp: d.timestamp,
       }));
+    if (this.layers.convoHotspots && this.timeFocusMs == null) {
+      this.rebuildAiConvoHotspotMarkers();
+      this.flushPoints();
+    }
     this.flushMarkers();
   }
   public setPositiveEvents(_events: any[]): void {}

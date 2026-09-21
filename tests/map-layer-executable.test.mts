@@ -73,6 +73,15 @@ describe('LAYER_REGISTRY — renderer axis', () => {
     assert.deepEqual(LAYER_REGISTRY.pipelines.renderers, ['svg', 'deck', 'globe']);
     assert.deepEqual(LAYER_REGISTRY.conflicts.renderers, ['svg', 'deck', 'globe']);
     assert.deepEqual(LAYER_REGISTRY.cables.renderers, ['svg', 'deck', 'globe']);
+    // AI Footprint point layers (static tech-geo catalogs) paint on all three.
+    assert.deepEqual(LAYER_REGISTRY.startupHubs.renderers, ['svg', 'deck', 'globe']);
+    assert.deepEqual(LAYER_REGISTRY.techHQs.renderers, ['svg', 'deck', 'globe']);
+    assert.deepEqual(LAYER_REGISTRY.accelerators.renderers, ['svg', 'deck', 'globe']);
+    assert.deepEqual(LAYER_REGISTRY.cloudRegions.renderers, ['svg', 'deck', 'globe']);
+    // AI Footprint density / policy: DeckGL hexes+GeoJSON; GlobeMap markers+polygons.
+    assert.deepEqual(LAYER_REGISTRY.convoHotspots.renderers, ['deck', 'globe']);
+    assert.deepEqual(LAYER_REGISTRY.aiUsage.renderers, ['deck', 'globe']);
+    assert.deepEqual(LAYER_REGISTRY.aiPolicy.renderers, ['deck', 'globe']);
     // Flat-surface-only layers (no globe paint path) are svg + deck.
     assert.deepEqual(LAYER_REGISTRY.sanctions.renderers, ['svg', 'deck']);
     assert.deepEqual(LAYER_REGISTRY.dayNight.renderers, ['svg', 'deck']);

@@ -664,6 +664,22 @@ export interface MapLayers {
   cables: boolean;
   pipelines: boolean;
   hotspots: boolean;
+  /**
+   * AI Footprint Convo Hotspots — news/media (+ Trends/social when joined)
+   * around product-era timeline windows. Distinct from geopolitical `hotspots`
+   * and from `aiUsage` (OWID usage share).
+   */
+  convoHotspots?: boolean;
+  /**
+   * AI Footprint AI Usage — OWID generative-AI usage share by country.
+   * Distinct from Convo Hotspots (media/social attention).
+   */
+  aiUsage?: boolean;
+  /**
+   * AI Footprint Policy — country fills for implemented AI legislation and
+   * active policy discussion (from cited ai-regulations catalog). Not cyber IOCs.
+   */
+  aiPolicy?: boolean;
   ais: boolean;
   nuclear: boolean;
   irradiators: boolean;
@@ -754,6 +770,12 @@ export interface AIDataCenter {
   h100Equivalent?: number;
   sector?: string;
   note?: string;
+  /**
+   * Epoch AI "First Operational Date" as UTC ms, when known.
+   * null/undefined = unknown — excluded from historical timeFocus frames
+   * (missing ≠ 0). Planned rows typically omit this until Live.
+   */
+  firstOperationalMs?: number | null;
 }
 
 export interface InternetOutage {

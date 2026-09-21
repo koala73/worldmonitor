@@ -1038,6 +1038,18 @@ export class MapContainer {
     return this.svgMap?.getTimeRange() ?? this.initialState.timeRange;
   }
 
+  /** Playhead for AI Footprint time scrub (OWID/WildChat waves, Convo eras). */
+  public setTimeFocus(ms: number | null): void {
+    if (this.useGlobe) { this.globeMap?.setTimeFocus(ms); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setTimeFocus(ms); }
+  }
+
+  public getTimeFocus(): number | null {
+    if (this.useGlobe) return this.globeMap?.getTimeFocus() ?? null;
+    if (this.useDeckGL) return this.deckGLMap?.getTimeFocus() ?? null;
+    return null;
+  }
+
   public setLayers(layers: MapLayers, options: { bypassEntitlementSanitization?: boolean } = {}): void {
     // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
     // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.

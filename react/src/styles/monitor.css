@@ -1,0 +1,953 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Required by Base UI / shadcn Drawer overlay on iOS Safari */
+body {
+  position: relative;
+}
+
+.wm-react-main {
+  min-height: 0;
+  height: 100%;
+}
+
+.wm-react-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.wm-react-map-layout {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  background: var(--color-background-body, #f1f1f1);
+  position: relative;
+}
+
+.wm-react-map-layout--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--color-background-body, #f1f1f1);
+}
+
+.wm-react-map-body {
+  display: block;
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.wm-react-map-body > * {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+}
+
+.wm-react-map-main {
+  position: relative;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+/* Map viewport — AI Footprint drawer portals here (map vh, not browser vh) */
+.wm-react-map-canvas {
+  --wm-map-toolbar-top: 12px;
+  --wm-map-toolbar-row: 32px;
+  --wm-map-toolbar-gap: 12px;
+  --wm-map-scrubber-height: 156px;
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.wm-react-map-canvas > .wm-react-map {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  /* Stop above the scrubber so Deck overlays never paint through it */
+  height: calc(100% - var(--wm-map-scrubber-height, 156px));
+  width: 100%;
+}
+
+.wm-map-end-controls {
+  /* Chrome-right cluster: 2D / 3D / fullscreen, then Feeds */
+  position: absolute;
+  top: 0;
+  right: 12px;
+  height: 36px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.wm-map-end-controls > * {
+  pointer-events: auto;
+}
+
+.wm-map-end-controls .wm-react-map-chrome-actions {
+  flex: 0 0 auto;
+  position: static;
+  transform: none;
+}
+
+.wm-feed-sidebar-tab {
+  display: flex;
+  align-items: center;
+}
+
+.wm-feed-sidebar-tab button.astryx-button {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: var(--color-text-primary, #111) !important;
+  border: 1px solid var(--color-text-primary, #111) !important;
+  color: #fff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+.wm-feed-sidebar-tab button.astryx-button:hover {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+/* Zoom / recenter — right edge of map canvas, under Feeds */
+.wm-map-nav-controls {
+  position: absolute;
+  top: var(--wm-map-toolbar-top, 12px);
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.wm-map-nav-controls button.astryx-button {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  border: 1px solid var(--color-text-primary, #111) !important;
+  color: var(--color-text-primary, #111) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+.wm-map-nav-controls button.astryx-button:hover {
+  background: var(--color-background-muted, #f1f1f1) !important;
+}
+
+/* Floating map tools: AI Footprint + Missions / Location / Time / Overlays */
+.wm-map-toolbar {
+  position: absolute;
+  top: var(--wm-map-toolbar-top);
+  left: 12px;
+  z-index: 45;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wm-map-toolbar-gap);
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+
+.wm-map-toolbar > * {
+  pointer-events: auto;
+}
+
+.wm-map-toolbar .wm-react-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.wm-map-toolbar button.astryx-button,
+.wm-map-toolbar [data-slot='drawer-trigger'] {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-background-surface, #fff) !important;
+  border: 1px solid var(--color-text-primary, #111) !important;
+  color: var(--color-text-primary, #111) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+.wm-map-toolbar button.astryx-button:hover,
+.wm-map-toolbar button.astryx-button[aria-expanded='true'] {
+  background: var(--color-background-muted, #f1f1f1) !important;
+}
+
+.wm-overlay-sidebar-tab {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+}
+
+.wm-overlay-sidebar-tab button.astryx-button,
+.wm-overlay-sidebar-tab [data-slot='drawer-trigger'] {
+  background: var(--color-background-surface, #fff) !important;
+  border: 1px solid var(--color-text-primary, #111) !important;
+  color: var(--color-text-primary, #111) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* ── shadcn Base Drawer (AI Footprint left) ───────────────────────── */
+/* https://ui.shadcn.com/docs/components/base/drawer */
+
+.wm-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  min-height: 100dvh;
+  background: rgba(0, 0, 0, 0.1);
+  opacity: max(
+    var(--drawer-overlay-min-opacity, 0),
+    calc(1 - var(--drawer-swipe-progress, 0))
+  );
+  transition: opacity 450ms cubic-bezier(0.32, 0.72, 0, 1);
+  user-select: none;
+}
+
+.wm-drawer-overlay[data-starting-style],
+.wm-drawer-overlay[data-ending-style] {
+  opacity: 0;
+}
+
+.wm-drawer-overlay[data-swiping] {
+  transition-duration: 0ms;
+}
+
+.wm-drawer-viewport {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  user-select: none;
+}
+
+.wm-drawer-viewport[data-modal='true'] {
+  pointer-events: auto;
+}
+
+.wm-drawer-popup {
+  pointer-events: auto;
+  position: fixed;
+  z-index: 50;
+  margin: var(--drawer-inset, 0px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-background-surface, #fff);
+  color: var(--color-text-primary, #111);
+  outline: none;
+  will-change: transform;
+  transition:
+    transform 450ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 450ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 450ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translate3d(
+    var(--translate-x, 0px),
+    var(--translate-y, 0px),
+    0
+  );
+  --bleed: 3rem;
+}
+
+.wm-drawer-popup[data-swiping] {
+  transition-duration: 0ms;
+}
+
+.wm-drawer-popup[data-starting-style],
+.wm-drawer-popup[data-ending-style] {
+  transform: var(--closed-transform);
+}
+
+/* Horizontal (left / right) — floats via --drawer-inset margin */
+.wm-drawer-popup[data-swipe-axis='x'] {
+  inset-block: 0;
+  flex-direction: row;
+  width: min(24rem, 75vw);
+  height: auto;
+  max-height: none;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+.wm-drawer-popup[data-swipe-direction='left'] {
+  left: 0;
+  transform-origin: left;
+  border: 1px solid var(--color-border, #00000014);
+  border-radius: 1.25rem;
+  --closed-transform: translate3d(calc(-100% - var(--drawer-inset, 0px) - 2px), 0, 0);
+  --translate-x: var(--drawer-swipe-movement-x, 0px);
+}
+
+.wm-drawer-popup[data-swipe-direction='right'] {
+  right: 0;
+  transform-origin: right;
+  border: 1px solid var(--color-border, #00000014);
+  border-radius: 1.25rem;
+  --closed-transform: translate3d(calc(100% + var(--drawer-inset, 0px) + 2px), 0, 0);
+  --translate-x: var(--drawer-swipe-movement-x, 0px);
+}
+
+.wm-react-map-canvas .wm-drawer-overlay {
+  position: absolute;
+  inset: 0;
+  /* Start under toolbar; leave TimeNav scrubber undimmed */
+  top: calc(
+    var(--wm-map-toolbar-top, 12px) + var(--wm-map-toolbar-row, 32px) +
+      var(--wm-map-toolbar-gap, 12px)
+  );
+  bottom: var(--wm-map-scrubber-height, 156px);
+  z-index: 40;
+  min-height: 0;
+  height: auto;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.wm-react-map-canvas .wm-drawer-viewport {
+  position: absolute;
+  inset: 0;
+  /* Full map height under toolbar — drawer can reach map bottom */
+  top: calc(
+    var(--wm-map-toolbar-top, 12px) + var(--wm-map-toolbar-row, 32px) +
+      var(--wm-map-toolbar-gap, 12px)
+  );
+  bottom: 0;
+  z-index: 41;
+  min-height: 0;
+  height: auto;
+  width: 100%;
+  pointer-events: none;
+}
+
+.wm-react-map-canvas .wm-drawer-viewport > * {
+  pointer-events: auto;
+}
+
+.wm-react-map-canvas .wm-drawer-popup {
+  position: absolute;
+  z-index: 42;
+}
+
+/* AI Footprint: under toolbar, height wraps content (cap at map bottom) */
+.wm-react-map-canvas .wm-drawer-popup.wm-ai-drawer {
+  --drawer-inset: 12px;
+  inset-block: unset;
+  top: 0;
+  bottom: auto;
+  left: var(--drawer-inset);
+  height: fit-content;
+  max-height: calc(100% - var(--drawer-inset));
+  margin: 0;
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+
+.wm-react-map-canvas .wm-drawer-popup.wm-ai-drawer .wm-drawer-content {
+  flex: 0 1 auto;
+  height: auto;
+  max-height: 100%;
+}
+
+/* TimelineJS TimeNav scrubber + Astryx/Carbon chrome — black bar, inverted info */
+.wm-map-time-scrubber {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 38;
+  height: var(--wm-map-scrubber-height, 156px);
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #fff;
+  border-block-start: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  font-family: var(--font-family-body, inherit);
+}
+
+.wm-map-time-scrubber-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 8px 12px 0;
+  color: #fff;
+}
+
+.wm-map-time-scrubber-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  color: #fff;
+}
+
+.wm-map-time-scrubber-actions button,
+.wm-map-time-scrubber-actions svg {
+  color: #fff !important;
+}
+
+.wm-map-time-scrubber-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #fff;
+}
+
+.wm-map-time-scrubber-label svg {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.wm-map-time-scrubber-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  background: #000;
+}
+
+.wm-map-time-scrubber-tl,
+.wm-map-time-scrubber .tl-timeline {
+  height: 100% !important;
+  width: 100%;
+  font-family: var(--font-family-body, inherit) !important;
+  background: #000 !important;
+}
+
+/* TimeNav only — story slides later */
+.wm-map-time-scrubber .tl-storyslider {
+  display: none !important;
+}
+
+.wm-map-time-scrubber .tl-timenav {
+  height: 100% !important;
+  border: none !important;
+  font-family: var(--font-family-body, inherit) !important;
+  /* TimelineJS ships a light TimeNav — invert ticks, labels, markers on black */
+  background: #fff !important;
+  filter: invert(1);
+}
+
+.wm-map-time-scrubber .tl-timenav h2,
+.wm-map-time-scrubber .tl-timenav h3,
+.wm-map-time-scrubber .tl-headline,
+.wm-map-time-scrubber .tl-timeaxis,
+.wm-map-time-scrubber .tl-timeaxis-tick,
+.wm-map-time-scrubber .tl-timegroup,
+.wm-map-time-scrubber .tl-menubar {
+  font-family: var(--font-family-body, inherit) !important;
+}
+
+.wm-map-time-scrubber .tl-menubar {
+  /* Chrome row owns step/live — hide TimelineJS menubar chrome */
+  display: none !important;
+}
+
+.wm-map-time-scrubber .tl-attribution {
+  display: none !important;
+}
+
+/* Vertical (fallback) */
+.wm-drawer-popup[data-swipe-axis='y'] {
+  inset-inline: 0;
+  max-height: calc(100dvh - 6rem);
+}
+
+.wm-drawer-popup[data-swipe-direction='down'] {
+  bottom: 0;
+  --closed-transform: translate3d(0, calc(100% + var(--drawer-inset, 0px) + 2px), 0);
+  --translate-y: var(--drawer-swipe-movement-y, 0px);
+}
+
+.wm-drawer-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  user-select: text;
+  width: 100%;
+  border-radius: inherit;
+}
+
+.wm-drawer-swipe-handle {
+  position: relative;
+  z-index: 10;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  width: 12px;
+  align-self: stretch;
+}
+
+.wm-drawer-popup[data-swipe-direction='left'] .wm-drawer-swipe-handle {
+  order: 2;
+}
+
+.wm-drawer-swipe-handle::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 96px;
+  border-radius: 999px;
+  background: var(--color-border, #cfcfcf);
+}
+
+.wm-drawer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 16px 16px 0;
+}
+
+.wm-drawer-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 0 16px 16px;
+}
+
+.wm-drawer-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text-primary, #111);
+}
+
+.wm-drawer-description {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary, #666);
+  text-wrap: balance;
+}
+
+.wm-ai-drawer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wm-ai-drawer-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-block-size: 100%;
+  /* Match Astryx SideNav: neutral thumb, no track, no arrow buttons — 2px */
+  scrollbar-color: var(--color-neutral, rgba(5, 54, 89, 0.1)) transparent;
+  scrollbar-width: thin;
+}
+
+.wm-ai-drawer-body::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+
+.wm-ai-drawer-body::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.wm-ai-drawer-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wm-ai-drawer-body::-webkit-scrollbar-thumb {
+  background-color: var(--color-neutral, rgba(5, 54, 89, 0.1));
+  border-radius: 999px;
+}
+
+.wm-ai-drawer-body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.wm-feed-sidebar {
+  min-height: 0;
+  background: var(--color-background-surface, #fff);
+}
+
+/* Match Map chrome row height so “Feeds” lines up with “MAP” */
+.wm-feed-sidebar .wm-feed-bento-head {
+  min-height: 36px;
+  margin: 0;
+  padding: 4px 12px;
+  box-sizing: border-box;
+  border-block-end: 1px solid var(--color-border, #00000014);
+}
+
+.wm-feed-sidebar .wm-feed-bento-head .astryx-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.wm-overlay-panel {
+  min-height: 0;
+}
+
+/* Match Overlays dropdown row rhythm: 2px gap, 8px padding */
+.wm-overlay-panel .astryx-checkbox-list ul,
+.wm-overlay-panel .astryx-checkbox-list [role='group'],
+.wm-overlay-panel .astryx-checkbox-list .astryx-list {
+  gap: 2px !important;
+}
+
+.wm-overlay-panel .astryx-checkbox-list-item,
+.wm-overlay-panel .astryx-list-item {
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 8px !important;
+  box-sizing: border-box;
+}
+
+/* IoR-style filter triggers (also used inside .wm-map-toolbar) */
+.wm-react-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wm-react-filter-bar button.astryx-button {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--color-text-primary, #111) !important;
+  background: var(--color-background-surface, #fff) !important;
+  box-shadow: none !important;
+}
+
+.wm-react-filter-bar button.astryx-button:hover,
+.wm-react-filter-bar button.astryx-button[aria-expanded='true'] {
+  background: var(--color-background-muted, #f1f1f1) !important;
+}
+
+/* Astryx caps DropdownMenu at 300px — show the full filter lists without scroll */
+.wm-react-filter-menu {
+  max-height: none !important;
+  overflow-y: visible !important;
+}
+
+[popover]:has(> .wm-react-filter-menu),
+:popover-open:has(> .wm-react-filter-menu) {
+  max-height: none !important;
+  max-block-size: none !important;
+}
+
+.wm-ai-era-snapshot-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.wm-ai-era-snapshot-list button.astryx-button {
+  justify-content: flex-start;
+  text-align: start;
+}
+
+.wm-ai-drawer-accordions .astryx-checkbox-list {
+  padding-block: 4px;
+}
+
+.wm-react-map-layout--fullscreen .wm-feed-bento,
+.wm-react-map-layout--fullscreen .wm-feed-sidebar-tab,
+.wm-react-map-layout--fullscreen .wm-overlay-sidebar-tab,
+.wm-react-map-layout--fullscreen .wm-map-toolbar,
+.wm-react-map-layout--fullscreen .wm-map-time-scrubber,
+.wm-react-map-layout--fullscreen [data-slot='drawer-portal'] {
+  display: none;
+}
+
+.wm-react-map-chrome {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 4px 12px;
+  border-block-end: 1px solid var(--color-border, #00000014);
+  background: var(--color-background-surface, #fff);
+}
+
+.wm-react-map-chrome-left {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.wm-react-map-chrome-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--color-text-primary, #111);
+}
+
+.wm-react-map-chrome-clock {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--color-text-secondary, #666);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.wm-react-map-chrome-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 1 1 0;
+}
+
+.wm-react-map {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  position: relative;
+  overflow: hidden;
+  /* Do NOT set transform / isolation / contain here — deck.gl interleaved
+     mode reads MapLibre's viewport matrix; a CSS transform ancestor warps
+     Polygon/Path overlays into the 2D scribble/blob artifacts. */
+}
+
+.wm-react-map.map-container,
+.wm-react-map.deckgl-mode,
+.wm-react-map.globe-mode,
+.wm-react-map.svg-mode {
+  width: 100%;
+  height: 100%;
+}
+
+.wm-react-map.map-container.deckgl-mode {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.wm-react-map .deckgl-map-wrapper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.wm-react-map #deckgl-basemap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* MapboxOverlay (non-interleaved) uses canvas#deckgl-overlay inside
+   .deck-widget-container — do not treat #deckgl-overlay as a layout shell
+   (absolute/inset/100% warps deck's drawing buffer vs MapLibre sync). */
+.wm-react-map .deck-widget-container,
+.wm-react-map #deckgl-overlay {
+  background: transparent !important;
+}
+
+.wm-react-map .maplibregl-map {
+  font-family: inherit;
+}
+
+/* Hide vanilla deck chrome when chrome:false still leaves stubs */
+.wm-react-map .deckgl-layer-toggles,
+.wm-react-map .deckgl-controls,
+.wm-react-map .deckgl-time-slider {
+  display: none !important;
+}
+
+.wm-react-map-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-block: 1px solid var(--color-border, #00000014);
+  background: var(--color-background-surface, #fff);
+}
+
+.wm-overlay-hint {
+  padding: 4px 12px 8px;
+}
+
+.wm-feed-bento {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 10px 12px 12px;
+  background: var(--color-background-surface, #fff);
+}
+
+.wm-feed-bento--sidebar {
+  border-block-start: none;
+  /* Flush with Map chrome so “Feeds” shares the same vertical band as “MAP” */
+  padding: 0 0 12px;
+}
+
+.wm-feed-bento-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex: 0 0 auto;
+}
+
+.wm-feed-bento-head-actions {
+  margin-inline-start: auto;
+}
+
+.wm-feed-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(110px, 1fr));
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.wm-feed-bento--sidebar .wm-feed-bento-grid {
+  grid-template-columns: 1fr;
+  grid-template-rows: none;
+  grid-auto-rows: minmax(88px, auto);
+  overflow: auto;
+  padding-inline: 12px;
+}
+
+.wm-feed-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, #00000014);
+  border-radius: 10px;
+  background: var(--color-background-muted, #f1f1f1);
+  overflow: hidden;
+}
+
+.wm-feed-cell--empty {
+  border-style: dashed;
+  opacity: 0.35;
+}
+
+.wm-feed-cell-head {
+  flex: 0 0 auto;
+}
+
+.wm-feed-cell-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  min-height: 0;
+}
+
+.wm-feed-cell-list li {
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 4px 0;
+  border-block-end: 1px solid color-mix(in srgb, var(--color-border, #00000014) 80%, transparent);
+}
+
+.wm-feed-cell-list a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wm-feed-cell-list a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 960px) {
+  .wm-feed-bento-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(100px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .wm-react-map-layout {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .wm-react-map-body {
+    flex-direction: column;
+  }
+
+  .wm-react-map-chrome-clock {
+    position: static;
+    transform: none;
+    order: 3;
+    flex: 1 1 100%;
+    text-align: center;
+    padding-block-start: 2px;
+  }
+
+  .wm-react-map-chrome {
+    flex-wrap: wrap;
+  }
+
+  .wm-feed-bento-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: minmax(100px, auto);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm-react-map .maplibregl-canvas {
+    transition: none !important;
+  }
+}
