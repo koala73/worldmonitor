@@ -10,6 +10,7 @@ import {
 } from "./payments/checkoutRateLimit";
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
+import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import {
@@ -1821,6 +1822,12 @@ http.route({
   path: "/resend-webhook",
   method: "POST",
   handler: resendWebhookHandler,
+});
+
+http.route({
+  path: "/clerk-webhook",
+  method: "POST",
+  handler: clerkWebhookHandler,
 });
 
 // Bulk email suppression: service-to-service, authenticated via CONVEX_EMAIL_SUPPRESSION_SECRET.

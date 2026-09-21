@@ -55,9 +55,21 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "retain",
     notes: "Pre-seeded country locks are global",
   },
-  { target: "userApiKeys", action: "delete", notes: "Revoke by deleting rows" },
-  { target: "embedKeys", action: "delete", notes: "Partner embed keys" },
-  { target: "mcpProTokens", action: "delete", notes: "Pro MCP grants" },
+  {
+    target: "userApiKeys",
+    action: "delete",
+    notes: "Capture keyHash then delete; invalidate user-api-key Redis",
+  },
+  {
+    target: "embedKeys",
+    action: "delete",
+    notes: "Capture keyHash then delete; invalidate embed-key Redis",
+  },
+  {
+    target: "mcpProTokens",
+    action: "delete",
+    notes: "Capture token id then delete; write pro-mcp-token-neg:<tokenId>",
+  },
   {
     target: "businessProGrants",
     action: "delete",
@@ -143,6 +155,36 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "skip",
     notes: "No userId index; broadcast pick rows are not the account record",
   },
+  {
+    target: "redis:entitlements",
+    action: "delete",
+    notes: "entitlements:{env}:{userId}",
+  },
+  {
+    target: "redis:user-api-key",
+    action: "delete",
+    notes: "user-api-key:<sha256> and bootstrap-user-api-key-invalid:<sha256>",
+  },
+  {
+    target: "redis:briefs",
+    action: "delete",
+    notes: "brief:latest:{userId} and brief:{userId}:{slot} from that pointer",
+  },
+  {
+    target: "clerk.users",
+    action: "delete",
+    notes: "Backend Users API; 404 is success",
+  },
+  {
+    target: "dodo.subscriptions",
+    action: "anonymize",
+    notes: "Cancel covering subscriptions; keep merchant customer and invoices",
+  },
+  {
+    target: "workos.users",
+    action: "skip",
+    notes: "Consumer identity is the Clerk subject; no separate WorkOS user row",
+  },
 ] as const;
 
 export const ERASE_WRITE_BUDGET = 64;
@@ -159,6 +201,17 @@ export async function sha256Hex(value: string): Promise<string> {
 
 export function tombstoneUserId(userIdHash: string): string {
   return `deleted:${userIdHash}`;
+}
+
+export function mergeUniqueStrings(
+  current: readonly string[] | undefined,
+  extras: readonly string[],
+): string[] {
+  const seen = new Set(current ?? []);
+  for (const value of extras) {
+    if (value) seen.add(value);
+  }
+  return [...seen];
 }
 
 export function normalizeVerifiedEmail(

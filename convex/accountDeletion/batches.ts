@@ -8,6 +8,7 @@ import {
 import { userIdToShard } from "../lib/shards";
 import {
   ERASE_WRITE_BUDGET,
+  mergeUniqueStrings,
   redactBillingPayload,
   tombstoneUserId,
 } from "./registry";
@@ -40,7 +41,7 @@ async function takePersonalRows(
   table: PersonalDeleteTable,
   userId: string,
   limit: number,
-): Promise<Array<{ _id: Id<PersonalDeleteTable> }>> {
+): Promise<Array<Doc<PersonalDeleteTable>>> {
   switch (table) {
     case "userPreferences":
       return ctx.db
@@ -237,6 +238,28 @@ async function erasePersonal(
     if (!table) break;
     const remaining = budget - writes;
     const rows = await takePersonalRows(ctx, table, deletion.userId, remaining);
+    if (table === "userApiKeys") {
+      writes += await mergeDeletionStrings(
+        ctx,
+        deletion._id,
+        "keyHashes",
+        rows.map((row) => (row as Doc<"userApiKeys">).keyHash),
+      );
+    } else if (table === "embedKeys") {
+      writes += await mergeDeletionStrings(
+        ctx,
+        deletion._id,
+        "embedKeyHashes",
+        rows.map((row) => (row as Doc<"embedKeys">).keyHash),
+      );
+    } else if (table === "mcpProTokens") {
+      writes += await mergeDeletionStrings(
+        ctx,
+        deletion._id,
+        "mcpTokenIds",
+        rows.map((row) => String(row._id)),
+      );
+    }
     for (const row of rows) {
       await ctx.db.delete(row._id);
       writes += 1;
@@ -511,6 +534,22 @@ async function eraseEmailKeyed(
   };
 }
 
+async function mergeDeletionStrings(
+  ctx: MutationCtx,
+  deletionId: Id<"accountDeletions">,
+  field: "keyHashes" | "embedKeyHashes" | "mcpTokenIds",
+  extras: string[],
+): Promise<number> {
+  if (extras.length === 0) return 0;
+  const row = await ctx.db.get(deletionId);
+  if (!row) return 0;
+  const current = row[field] ?? [];
+  const merged = mergeUniqueStrings(current, extras);
+  if (merged.length === current.length) return 0;
+  await ctx.db.patch(deletionId, { [field]: merged, updatedAt: Date.now() });
+  return 1;
+}
+
 async function patchDeletion(
   ctx: MutationCtx,
   deletionId: Id<"accountDeletions">,
@@ -584,14 +623,9 @@ export async function runEraseBatch(
     const result = await eraseEmailKeyed(ctx, current, remaining);
     remaining -= result.writes;
     if (!result.done) return current;
-    const now = Date.now();
-    await ctx.db.patch(deletionId, {
-      step: "complete",
-      status: "complete",
-      verifiedEmail: undefined,
+    await patchDeletion(ctx, deletionId, {
+      step: "external",
       lastError: undefined,
-      completedAt: now,
-      updatedAt: now,
     });
     return await ctx.db.get(deletionId);
   }
@@ -599,17 +633,48 @@ export async function runEraseBatch(
   return await ctx.db.get(deletionId);
 }
 
+export async function scheduleEraseContinuation(
+  ctx: MutationCtx,
+  after: DeletionDoc,
+): Promise<void> {
+  if (after.status === "complete") return;
+  if (after.step === "external") {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.accountDeletion.sideEffects.runExternalErase,
+      { deletionId: after._id },
+    );
+    return;
+  }
+  await ctx.scheduler.runAfter(0, internal.accountDeletion.batches.advanceErase, {
+    deletionId: after._id,
+  });
+}
+
 export const advanceErase = internalMutation({
   args: { deletionId: v.id("accountDeletions") },
+  returns: v.object({
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+      v.literal("missing"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("external"),
+      v.literal("complete"),
+      v.null(),
+    ),
+  }),
   handler: async (ctx, args) => {
     const after = await runEraseBatch(ctx, args.deletionId);
-    if (after && after.status !== "complete") {
-      await ctx.scheduler.runAfter(0, internal.accountDeletion.batches.advanceErase, {
-        deletionId: args.deletionId,
-      });
-    }
-    return after
-      ? { status: after.status, step: after.step }
-      : { status: "missing" as const, step: null };
+    if (!after) return { status: "missing" as const, step: null };
+    await scheduleEraseContinuation(ctx, after);
+    return { status: after.status, step: after.step };
   },
 });

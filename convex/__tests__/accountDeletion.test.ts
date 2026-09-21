@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import {
   company,
@@ -9,6 +9,29 @@ import {
   schema,
 } from "./companyMonitoring.helpers";
 import { sha256Hex, tombstoneUserId } from "../accountDeletion/registry";
+
+const { dodoUpdateMock } = vi.hoisted(() => ({
+  dodoUpdateMock: vi.fn(async () => ({ status: "cancelled" })),
+}));
+
+vi.mock("dodopayments", () => {
+  class NotFoundError extends Error {
+    status = 404;
+  }
+  class APIConnectionTimeoutError extends Error {
+    constructor(message = "timeout") {
+      super(message);
+      this.name = "APIConnectionTimeoutError";
+    }
+  }
+  return {
+    DodoPayments: class {
+      subscriptions = { update: dodoUpdateMock };
+    },
+    NotFoundError,
+    APIConnectionTimeoutError,
+  };
+});
 
 installCompanyMonitoringTestEnvironment();
 
@@ -33,12 +56,52 @@ const INVITEE = {
   email: "invitee@acme.test",
 };
 
+const fetchCalls: string[] = [];
+
 async function makeT() {
+  fetchCalls.length = 0;
+  dodoUpdateMock.mockReset();
+  dodoUpdateMock.mockResolvedValue({ status: "cancelled" });
+  process.env.CLERK_SECRET_KEY = "sk_test_account_deletion";
+  process.env.DODO_API_KEY = "ddp_test_account_deletion";
+  process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
+  process.env.UPSTASH_REDIS_REST_TOKEN = "upstash-token";
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = decodeURIComponent(String(input));
+    const body = typeof init?.body === "string" ? init.body : "";
+    fetchCalls.push(`${init?.method ?? "POST"} ${url} ${body}`.trim());
+    if (url.includes("api.clerk.com")) {
+      return new Response("gone", { status: 404 });
+    }
+    if (url.includes("upstash.test")) {
+      if (url.includes("/get/")) {
+        return Response.json({
+          result: JSON.stringify({ issueSlot: "2026-09-21-1200" }),
+        });
+      }
+      return Response.json(
+        url.includes("/pipeline")
+          ? [{ result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }]
+          : { result: "OK" },
+      );
+    }
+    return new Response(`unexpected fetch ${url}`, { status: 500 });
+  });
   const t = convexTest(schema, modules);
   await t.mutation(internal.followedCountries._seedShards, {});
   await t.mutation(internal.followedCountries._seedCountryLocks, {});
   return t;
 }
+
+afterEach(() => {
+  dodoUpdateMock.mockReset();
+  vi.unstubAllGlobals();
+  fetchCalls.length = 0;
+  delete process.env.CLERK_SECRET_KEY;
+  delete process.env.DODO_API_KEY;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+});
 
 async function drainErase(t: ReturnType<typeof convexTest>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -518,5 +581,134 @@ describe("account deletion — business seats", () => {
     const dunning = await t.run(async (ctx) => ctx.db.query("dunningEmails").collect());
     expect(dunning[0]?.email).toBe(tombstone);
     expect(await rowsForUser(t, "users", INVITEE.subject)).toHaveLength(1);
+  });
+});
+
+describe("account deletion — external side effects", () => {
+  test("Dodo cancel then Clerk 404 still completes and captures key hashes", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    const now = Date.now();
+    const tokenId = await t.run(async (ctx) => {
+      await ctx.db.insert("userApiKeys", {
+        userId: USER_A.subject,
+        name: "erase-key",
+        keyPrefix: "wm_erase1",
+        keyHash: "b".repeat(64),
+        createdAt: now,
+      });
+      await ctx.db.insert("embedKeys", {
+        userId: USER_A.subject,
+        name: "erase-embed",
+        keyPrefix: "wme_erase",
+        keyHash: "c".repeat(64),
+        createdAt: now,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: USER_A.subject,
+        dodoSubscriptionId: "sub_erase_dodo",
+        dodoProductId: "pdt_pro",
+        planKey: "pro",
+        status: "active",
+        currentPeriodStart: now,
+        currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+        rawPayload: {},
+        updatedAt: now,
+      });
+      return ctx.db.insert("mcpProTokens", {
+        userId: USER_A.subject,
+        createdAt: now,
+      });
+    });
+
+    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    });
+    await drainErase(t);
+
+    const row = await deletionRow(t, USER_A.subject);
+    expect(row?.status).toBe("complete");
+    expect(row?.keyHashes).toContain("b".repeat(64));
+    expect(row?.embedKeyHashes).toContain("c".repeat(64));
+    expect(row?.mcpTokenIds).toContain(String(tokenId));
+    expect(row?.cancelledDodoSubscriptionIds).toContain("sub_erase_dodo");
+    expect(dodoUpdateMock).toHaveBeenCalledWith("sub_erase_dodo", { status: "cancelled" });
+    expect(fetchCalls.some((call) => call.includes("api.clerk.com/v1/users/user_deletion_a"))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes("entitlements:test:user_deletion_a"))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes(`pro-mcp-token-neg:${String(tokenId)}`))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes("brief:latest:user_deletion_a"))).toBe(true);
+    expect(fetchCalls.some((call) => call.includes("brief:user_deletion_a:2026-09-21-1200"))).toBe(true);
+    expect(await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId })).toBeNull();
+  });
+
+  test("Dodo timeout records last error and retries without double-cancel", async () => {
+    const t = await makeT();
+    const { APIConnectionTimeoutError } = await import("dodopayments");
+    dodoUpdateMock
+      .mockRejectedValueOnce(new APIConnectionTimeoutError("provider timeout"))
+      .mockResolvedValue({ status: "cancelled" });
+    await seedUser(t, USER_A);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: USER_A.subject,
+        dodoSubscriptionId: "sub_timeout_once",
+        dodoProductId: "pdt_pro",
+        planKey: "pro",
+        status: "active",
+        currentPeriodStart: now,
+        currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
+        rawPayload: {},
+        updatedAt: now,
+      });
+    });
+
+    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    });
+    await drainErase(t);
+
+    expect(dodoUpdateMock).toHaveBeenCalledTimes(2);
+    expect(dodoUpdateMock.mock.calls.every((call) => call[0] === "sub_timeout_once")).toBe(true);
+    const row = await deletionRow(t, USER_A.subject);
+    expect(row?.status).toBe("complete");
+    expect(row?.cancelledDodoSubscriptionIds).toEqual(["sub_timeout_once"]);
+  });
+
+  test("Redis delete is attempted even when Clerk delete fails, then Clerk is retried", async () => {
+    const t = await makeT();
+    let clerkCalls = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = decodeURIComponent(String(input));
+      const body = typeof init?.body === "string" ? init.body : "";
+      fetchCalls.push(`${init?.method ?? "POST"} ${url} ${body}`.trim());
+      if (url.includes("api.clerk.com")) {
+        clerkCalls += 1;
+        if (clerkCalls === 1) return new Response("busy", { status: 500 });
+        return new Response("gone", { status: 404 });
+      }
+      if (url.includes("upstash.test")) {
+        if (url.includes("/get/")) {
+          return Response.json({ result: JSON.stringify({ issueSlot: "2026-09-21-1200" }) });
+        }
+        return Response.json({ result: "OK" });
+      }
+      return new Response("unexpected", { status: 500 });
+    });
+    await seedUser(t, USER_A);
+    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: USER_A.subject,
+      source: "support",
+    });
+    await drainErase(t);
+
+    expect(clerkCalls).toBeGreaterThanOrEqual(2);
+    const firstRedis = fetchCalls.findIndex((call) => call.includes("upstash.test"));
+    const firstClerk = fetchCalls.findIndex((call) => call.includes("api.clerk.com"));
+    expect(firstRedis).toBeGreaterThanOrEqual(0);
+    expect(firstClerk).toBeGreaterThan(firstRedis);
+    expect((await deletionRow(t, USER_A.subject))?.status).toBe("complete");
   });
 });

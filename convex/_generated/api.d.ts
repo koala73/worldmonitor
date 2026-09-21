@@ -9,8 +9,10 @@
  */
 
 import type * as accountDeletion_batches from "../accountDeletion/batches.js";
+import type * as accountDeletion_clerkWebhook from "../accountDeletion/clerkWebhook.js";
 import type * as accountDeletion_erase from "../accountDeletion/erase.js";
 import type * as accountDeletion_registry from "../accountDeletion/registry.js";
+import type * as accountDeletion_sideEffects from "../accountDeletion/sideEffects.js";
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as apiPlanLimitEmails from "../apiPlanLimitEmails.js";
@@ -89,8 +91,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "accountDeletion/batches": typeof accountDeletion_batches;
+  "accountDeletion/clerkWebhook": typeof accountDeletion_clerkWebhook;
   "accountDeletion/erase": typeof accountDeletion_erase;
   "accountDeletion/registry": typeof accountDeletion_registry;
+  "accountDeletion/sideEffects": typeof accountDeletion_sideEffects;
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
   apiPlanLimitEmails: typeof apiPlanLimitEmails;

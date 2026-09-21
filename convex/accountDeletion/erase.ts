@@ -1,14 +1,15 @@
 import { ConvexError, v } from "convex/values";
-import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   internalMutation,
+  internalQuery,
   mutation,
+  query,
   type MutationCtx,
 } from "../_generated/server";
 import { applyOwnerDeletedFence } from "../companyMonitoring/accounts";
-import { requireUserId } from "../lib/auth";
-import { runEraseBatch } from "./batches";
+import { requireUserId, resolveUserId } from "../lib/auth";
+import { runEraseBatch, scheduleEraseContinuation } from "./batches";
 import {
   normalizeVerifiedEmail,
   sha256Hex,
@@ -68,9 +69,9 @@ async function scheduleAdvance(
   ctx: MutationCtx,
   deletionId: Id<"accountDeletions">,
 ): Promise<void> {
-  await ctx.scheduler.runAfter(0, internal.accountDeletion.batches.advanceErase, {
-    deletionId,
-  });
+  const row = await ctx.db.get(deletionId);
+  if (!row) return;
+  await scheduleEraseContinuation(ctx, row);
 }
 
 async function beginErase(
@@ -166,5 +167,188 @@ export const eraseConfirmedUser = internalMutation({
   returns: eraseResultValidator,
   handler: async (ctx, args): Promise<EraseResult> => {
     return beginErase(ctx, args.userId, args.source);
+  },
+});
+
+export const ingestClerkUserDeleted = internalMutation({
+  args: {
+    webhookId: v.string(),
+    userId: v.string(),
+  },
+  returns: v.object({
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("already_deleted"),
+      v.literal("duplicate"),
+    ),
+    userIdHash: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("webhookEvents")
+      .withIndex("by_webhookId", (q) => q.eq("webhookId", args.webhookId))
+      .unique();
+    if (existing) {
+      return { status: "duplicate" as const };
+    }
+    // Erase first so a failed first delivery is retried. Inserting the
+    // idempotency row before beginErase would turn Clerk's retry into a
+    // no-op and leave Convex data behind.
+    const result = await beginErase(ctx, args.userId, "clerk_webhook");
+    await ctx.db.insert("webhookEvents", {
+      webhookId: args.webhookId,
+      eventType: "user.deleted",
+      rawPayload: { type: "user.deleted", data: { id: args.userId } },
+      processedAt: Date.now(),
+      status: "processed",
+    });
+    return { status: result.status, userIdHash: result.userIdHash };
+  },
+});
+
+const deletionStatusValidator = v.union(
+  v.null(),
+  v.object({
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("external"),
+      v.literal("complete"),
+    ),
+    userIdHash: v.string(),
+    lastError: v.optional(v.string()),
+  }),
+);
+
+export const getOwnDeletionStatus = query({
+  args: {},
+  returns: deletionStatusValidator,
+  handler: async (ctx) => {
+    const userId = await resolveUserId(ctx);
+    if (!userId) return null;
+    const row = await ctx.db
+      .query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+    if (!row) return null;
+    return {
+      status: row.status,
+      step: row.step,
+      userIdHash: row.userIdHash,
+      lastError: row.lastError,
+    };
+  },
+});
+
+const externalSnapshotValidator = v.union(
+  v.null(),
+  v.object({
+    deletionId: v.id("accountDeletions"),
+    userId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("external"),
+      v.literal("complete"),
+    ),
+    dodoSubscriptionIds: v.array(v.string()),
+    cancelledDodoSubscriptionIds: v.array(v.string()),
+    keyHashes: v.array(v.string()),
+    embedKeyHashes: v.array(v.string()),
+    mcpTokenIds: v.array(v.string()),
+    redisClearedAt: v.optional(v.number()),
+    clerkDeletedAt: v.optional(v.number()),
+  }),
+);
+
+export const getExternalEraseSnapshot = internalQuery({
+  args: { deletionId: v.id("accountDeletions") },
+  returns: externalSnapshotValidator,
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.deletionId);
+    if (!row) return null;
+    return {
+      deletionId: row._id,
+      userId: row.userId,
+      status: row.status,
+      step: row.step,
+      dodoSubscriptionIds: row.dodoSubscriptionIds ?? [],
+      cancelledDodoSubscriptionIds: row.cancelledDodoSubscriptionIds ?? [],
+      keyHashes: row.keyHashes ?? [],
+      embedKeyHashes: row.embedKeyHashes ?? [],
+      mcpTokenIds: row.mcpTokenIds ?? [],
+      redisClearedAt: row.redisClearedAt,
+      clerkDeletedAt: row.clerkDeletedAt,
+    };
+  },
+});
+
+export const recordExternalProgress = internalMutation({
+  args: {
+    deletionId: v.id("accountDeletions"),
+    cancelledDodoSubscriptionIds: v.optional(v.array(v.string())),
+    redisClearedAt: v.optional(v.number()),
+    clerkDeletedAt: v.optional(v.number()),
+    lastError: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.deletionId);
+    if (!row || row.status === "complete") return null;
+    await ctx.db.patch(args.deletionId, {
+      ...(args.cancelledDodoSubscriptionIds
+        ? { cancelledDodoSubscriptionIds: args.cancelledDodoSubscriptionIds }
+        : {}),
+      ...(args.redisClearedAt !== undefined
+        ? { redisClearedAt: args.redisClearedAt }
+        : {}),
+      ...(args.clerkDeletedAt !== undefined
+        ? { clerkDeletedAt: args.clerkDeletedAt }
+        : {}),
+      lastError: args.lastError === null ? undefined : args.lastError,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const markExternalComplete = internalMutation({
+  args: { deletionId: v.id("accountDeletions") },
+  returns: eraseResultValidator,
+  handler: async (ctx, args): Promise<EraseResult> => {
+    const row = await ctx.db.get(args.deletionId);
+    if (!row) {
+      throw new ConvexError("DELETION_ROW_MISSING");
+    }
+    if (row.status === "complete") {
+      return { status: "already_deleted", userIdHash: row.userIdHash };
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.deletionId, {
+      step: "complete",
+      status: "complete",
+      verifiedEmail: undefined,
+      lastError: undefined,
+      completedAt: now,
+      updatedAt: now,
+    });
+    return { status: "complete", userIdHash: row.userIdHash };
   },
 });
