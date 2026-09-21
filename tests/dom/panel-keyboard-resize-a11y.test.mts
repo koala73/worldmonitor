@@ -26,6 +26,7 @@ describe('Panel heading outline', () => {
     const panel = new Panel({ id: 'heading-outline-probe', title: 'Probe' });
     const title = panel.getElement().querySelector('.panel-title');
 
+    expect(title?.id).toBe('heading-outline-probeTitle');
     expect(title?.getAttribute('role')).toBe('heading');
     expect(title?.getAttribute('aria-level')).toBe('2');
     expect(title?.textContent).toBe('Probe');
@@ -80,12 +81,25 @@ describe('Panel scrollable content keyboard access (#8460)', () => {
     panel.destroy();
   });
 
+  it('names the content tab stop from the panel title without a region landmark', () => {
+    const panel = new Panel({ id: 'insights', title: 'Insights' });
+    const title = panel.getElement().querySelector('.panel-title');
+    const content = panel.getElement().querySelector('#insightsContent');
+
+    expect(title?.id).toBe('insightsTitle');
+    expect(content?.getAttribute('aria-labelledby')).toBe('insightsTitle');
+    expect(content?.getAttribute('role')).toBeNull();
+
+    panel.destroy();
+  });
+
   it('applies the same tab stop to every panel content id, not only insights', () => {
     const panel = new Panel({ id: 'markets', title: 'Markets' });
     const content = panel.getElement().querySelector('#marketsContent');
 
     expect(content).toBeInstanceOf(HTMLElement);
     expect((content as HTMLElement).tabIndex).toBe(0);
+    expect(content?.getAttribute('aria-labelledby')).toBe('marketsTitle');
 
     panel.destroy();
   });
@@ -99,6 +113,7 @@ describe('Panel scrollable content keyboard access (#8460)', () => {
 
     expect(content).toBeInstanceOf(HTMLElement);
     expect((content as HTMLElement).tabIndex).toBe(0);
+    expect(content?.getAttribute('aria-labelledby')).toBe('insightsTitle');
     expect(content?.querySelector('.brief-para')?.textContent).toBe('brief that may wrap');
 
     panel.destroy();

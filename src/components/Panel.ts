@@ -211,6 +211,7 @@ export class Panel {
 
     const title = document.createElement('span');
     title.className = 'panel-title';
+    title.id = `${options.id}Title`;
     title.textContent = options.title;
     // Panels are the dashboard's sections, but a real <h2> would drag along
     // element styles; role/aria-level gives the outline with zero visual change.
@@ -299,6 +300,9 @@ export class Panel {
     // (WCAG 2.1.1) requires a keyboard path whenever that region overflows.
     // Always-on tabIndex=0 avoids a layout read on every render (#7112, #7045).
     this.content.tabIndex = 0;
+    // Name the tab stop from the heading. No role=region — that would add a
+    // landmark per panel.
+    this.content.setAttribute('aria-labelledby', title.id);
 
     this.element.appendChild(this.header);
     this.element.appendChild(this.content);
