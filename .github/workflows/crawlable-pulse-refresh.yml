@@ -56,7 +56,12 @@ jobs:
       - name: Reconcile the weekly review branch
         id: reconcile
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Prefer a user or app token when one is configured. A PR opened
+          # with github.token needs the repository setting that lets Actions
+          # create pull requests (the block that ended every refresh run,
+          # #8417) and triggers no CI, which the required checks on main then
+          # block. With REVIEW_PR_TOKEN unset this falls back to github.token.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
         run: |
           # ISO year-week, not year-month: the branch key is what makes the
           # run idempotent, so a month-keyed name under a weekly cron would
@@ -109,7 +114,7 @@ jobs:
           WORLDMONITOR_API_KEY: ${{ secrets.WORLDMONITOR_API_KEY }}
         run: npm run freeze:crawlable-live-pulse
       - name: Preserve the frozen snapshot
-        # The verification below can reject the capture (the developments
+        # The corpus build below can reject the capture (the developments
         # coverage floor, #7748). A rejected capture must stay inspectable
         # and republishable with the operator override, not vanish with the
         # job: the freeze spent ~190 index requests and ~100 LLM calls on it.
@@ -120,7 +125,8 @@ jobs:
           path: docs/snapshots/crawlable-live-pulse-*.json
           retention-days: 14
           if-no-files-found: error
-      - name: Rebuild and verify published artifacts
+      - name: Rebuild published artifacts
+        id: build
         if: steps.reconcile.outputs.skip != 'true'
         env:
           # Empty on the schedule; a workflow_dispatch operator can lower the
@@ -138,6 +144,17 @@ jobs:
           # snapshot (#8070). Skipping the rebuild would leave the corpus quoting
           # last week's Brier after /accuracy/ had already moved.
           npm run build:llms-full
+      - name: Verify published artifacts
+        id: verify
+        # Every refresh from 2026-09-02 to 2026-09-14 failed here, each time on
+        # a test that needed updating for the new capture and never on the
+        # capture itself, and each failure discarded a good capture (#8339,
+        # #8417). A failure here still fails the job, which is what the
+        # freshness monitor reports, but the PR below opens anyway as a draft
+        # carrying the capture, so the fix lands in that branch instead of
+        # costing a re-freeze.
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
           node --import tsx --test --test-concurrency=1 \
             tests/accuracy-corpus.test.mjs \
             tests/seo-geo-residue.test.mjs \
@@ -149,7 +166,8 @@ jobs:
             tests/welcome-teasers.test.mjs \
             tests/sitemap-generation.test.mjs
       - name: Prune superseded pulse snapshots
-        if: steps.reconcile.outputs.skip != 'true'
+        # Runs after a failed verification, never after a rejected build.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           # Keep only the newest snapshot: resolveLatestLivePulseSnapshotPath
           # reads the highest-dated file, so older ones are dead weight.
@@ -158,10 +176,13 @@ jobs:
             | tail -n +2 \
             | xargs -r git rm --quiet
       - name: Open the weekly pulse PR
-        if: steps.reconcile.outputs.skip != 'true'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Same preference as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           snapshot_date=$(date -u +%F)
           snapshot_path="docs/snapshots/crawlable-live-pulse-${snapshot_date}.json"
@@ -178,8 +199,18 @@ jobs:
           fi
           node scripts/build-sitemap.mjs --check
           git push --set-upstream origin "$BRANCH_NAME"
+          body="Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
+          draft=()
+          if [ "$VERIFY_OUTCOME" != "success" ]; then
+            draft=(--draft)
+            # The weekly reconcile step skips a period whose PR already exists,
+            # so this branch is the only publication vehicle for the week: a
+            # test fix, a generator fix or a hand re-capture all land here.
+            body="$(printf '%s\n\n%s' "$body" "**Verification failed** in ${RUN_URL}, so this draft carries the capture instead of losing it to a re-freeze. Fix the failing test or generator in this branch and push (a push runs CI on this PR), then mark it ready. A re-capture for this week also goes into this branch: the workflow will not re-freeze a period whose PR exists.")"
+          fi
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
-            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
+            --body "$body" \
+            "${draft[@]}"

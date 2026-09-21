@@ -324,9 +324,20 @@ export const SERVER_NAME = 'worldmonitor';
 //     clustered news incidents reconciled against first-party records, with
 //     per-producer freshness — so an agent stops rebuilding country matching,
 //     expiry and de-duplication out of the raw news tools. Tool count 74 → 75.
+// Bumped 1.20.0 → 1.21.0 (2026-09-18) reflecting a wire-visible contract fix (#8328):
+//   - Every successful `tools/call` now returns `structuredContent` beside
+//     `content[0].text`. A strict client (the official SDK, Grok Bot's host)
+//     rejected EVERY call with -32600 because each tool advertises an
+//     `outputSchema` and none returned structured content.
+//   - The advertised `outputSchema` is now `{ type: 'object', anyOf: [<the
+//     documented shape, unchanged>, <reshaped payload>, <rider-wrapped
+//     projection>, <_budget_exceeded>, <_jmespath_error>] }`, because the same
+//     client also validates `structuredContent` against it (-32602) and those
+//     responses are not the documented shape. `content[0].text` is
+//     byte-identical to before. See api/mcp/structured-content.ts.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.20.0';
+export const SERVER_VERSION = '1.21.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

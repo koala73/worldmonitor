@@ -6,12 +6,14 @@ keywords: "real-time conflict map, geopolitical intelligence map, military track
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
-modifiedDate: "2026-09-10"
+modifiedDate: "2026-09-20"
 ---
 
 When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
 
 World Monitor was built to give you those 24 hours back.
+
+To compare aircraft observations with conflict reporting, follow the [military flight-tracking workflow](/blog/posts/military-flight-tracking-osint/).
 
 ## A Situation Room in Your Browser
 

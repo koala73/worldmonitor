@@ -153,6 +153,37 @@ describe('hybrid clustering initial worker stage (#7782)', () => {
     expect(merged?.lastUpdated).toBeInstanceOf(Date);
   });
 
+  it('recomputes derived fields and preserves primary metadata when merging', async () => {
+    const first = cluster(1, {
+      lat: 10,
+      lon: 20,
+      lang: 'en',
+      credibilityScore: 0.9,
+      velocity: { sourcesPerHour: 4, level: 'elevated', trend: 'rising', sentiment: 'negative', sentimentScore: -3 },
+    });
+    const secondItem = item(2, 'Reuters');
+    secondItem.lat = 10;
+    secondItem.lon = 20;
+    secondItem.monitorColor = 'red';
+    secondItem.threat = { level: 'critical', category: 'conflict', confidence: 0.8, source: 'keyword' };
+    const second = cluster(2, { allItems: [secondItem] });
+    workerMocks.clusterNews.mockResolvedValue([first, second, cluster(3), cluster(4), cluster(5)]);
+    mlMocks.available = true;
+    mlMocks.clusterBySemanticSimilarity.mockResolvedValueOnce([[first.id, second.id], ['cluster-3'], ['cluster-4'], ['cluster-5']]);
+
+    const merged = (await clusterNewsHybrid(Array.from({ length: 5 }, (_, index) => item(index))))
+      .find(({ allItems }) => allItems.length === 2);
+    expect(merged).toMatchObject({
+      lat: 10,
+      lon: 20,
+      lang: 'en',
+      credibilityScore: 0.9,
+      monitorColor: 'red',
+      velocity: { sourcesPerHour: 4, level: 'elevated', trend: 'rising', sentiment: 'negative', sentimentScore: -3 },
+    });
+    expect(merged?.threat?.level).toBe('critical');
+  });
+
   it('keeps the 250 semantic cap and all overflow clusters', async () => {
     const clusters = Array.from({ length: MAX_SEMANTIC_CLUSTER_INPUT + 10 }, (_, index) => cluster(index));
     workerMocks.clusterNews.mockResolvedValue(clusters);

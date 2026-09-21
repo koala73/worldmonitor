@@ -670,6 +670,8 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
   // in CI rather than during a Redis incident.
   const FAIL_CLOSED_REQUIRED = [
     'api/chat-analyst.ts', // streaming LLM analyst, Pro-only
+    'api/widget-agent.ts', // frontier-model widget proxy
+    'api/create-checkout.ts', // paid Dodo checkout relay
   ];
 
   for (const path of FAIL_CLOSED_REQUIRED) {

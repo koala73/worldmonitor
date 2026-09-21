@@ -14,6 +14,7 @@ export interface ImportResult {
 import { CLOUD_SYNC_KEYS } from './sync-keys';
 import { invalidatePanelStorageCacheForKeys } from './panel-storage';
 import { safeStorageSnapshot } from './safe-storage';
+import { PINNED_WEBCAMS_KEY, normalizePinnedWebcamsPreference } from '../../shared/pinned-webcams';
 
 const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -65,7 +66,7 @@ export function exportSettings(): void {
   let variant = 'full';
   for (const [key, value] of snapshot.entries) {
     if (key === 'worldmonitor-variant' && value) variant = value;
-    if (isSettingsKey(key)) data[key] = value;
+    if (isSettingsKey(key)) data[key] = key === PINNED_WEBCAMS_KEY ? normalizePinnedWebcamsPreference(value) : value;
   }
 
   const exportData: ExportedSettings = {
@@ -101,7 +102,7 @@ export function importSettings(file: File): Promise<ImportResult> {
         const result = e.target?.result as string;
         const parsed = JSON.parse(result) as ExportedSettings;
 
-        if (!parsed || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) {
+        if (!parsed || !parsed.data || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) {
           throw new Error('Invalid format: expected an object with a data property.');
         }
 
@@ -112,8 +113,8 @@ export function importSettings(file: File): Promise<ImportResult> {
         let keysImported = 0;
         const importedKeys: string[] = [];
         for (const [key, value] of Object.entries(parsed.data)) {
-          if (isSettingsKey(key) && typeof value === 'string') {
-            localStorage.setItem(key, value);
+          if (isSettingsKey(key) && (typeof value === 'string' || key === PINNED_WEBCAMS_KEY)) {
+            localStorage.setItem(key, key === PINNED_WEBCAMS_KEY ? normalizePinnedWebcamsPreference(value) : value);
             keysImported++;
             importedKeys.push(key);
           }

@@ -24,7 +24,7 @@ tags: [youtube, live-video, relay-fetch, railway-relay, fallback-video-ids, idle
 
 ## Problem
 
-The dashboard's "TV screen" (Live News and Live Webcams) looks healthy for a few minutes, then fails in three independent ways. None of them raises an error or an alarm. A cancelling paying user reported it on 2026-09-14: "your dashboard only last for about 4 minutes. you have the wrong video links in the tv screen". Each part of that report maps to a verified defect. A fix for Defect 1 is on branch `feat/live-media-idle-notice` (unmerged as of 2026-09-14); Defects 2 and 3 have no fix yet. This doc records the diagnosis, the audit method, and the fixes.
+The dashboard's "TV screen" (Live News and Live Webcams) looks healthy for a few minutes, then fails in three independent ways. None of them raises an error or an alarm. A cancelling paying user reported it on 2026-09-14: "your dashboard only last for about 4 minutes. you have the wrong video links in the tv screen". Each part of that report maps to a verified defect. Defect 1 is fixed by #8155. Defect 3 has a data fix and a liveness checker in #8163. Defect 2 has no fix yet. This doc records the diagnosis, the audit method, and the fixes.
 
 ## Symptoms
 
@@ -46,7 +46,7 @@ These approaches gave wrong or misleading readings during diagnosis.
 
 ## Solution
 
-Status: diagnosis verified against production and against the code at 618757b97b. The Defect 1 fix is implemented on branch `feat/live-media-idle-notice` (unmerged as of 2026-09-14). The Defect 2 and 3 fixes below remain recommendations.
+Status: diagnosis verified against production and against the code at 618757b97b. The Defect 1 fix merged in #8155. Defect 3 has a data fix and a liveness checker in #8163; runtime detection of streams that end later is still to come. The Defect 2 fixes below remain recommendations.
 
 ### Defect 1: the 5-minute idle stop ("only lasts about 4 minutes")
 
@@ -70,7 +70,7 @@ Observed on production 2026-09-14, driven with real input:
 
 A secondary factor makes the first minutes feel static. Feeds refresh every 20 minutes and markets every 12 (`src/config/variants/base.ts:13-14`). The untouched run recorded almost no API requests between about 20s and 570s (observed on production 2026-09-14).
 
-Fix (branch `feat/live-media-idle-notice`, unmerged as of 2026-09-14):
+Fix (merged in #8155):
 
 - One owner, `src/services/live-media-idle.ts`, replaces the two panel timers. It listens once, suspends while the tab is hidden, and fires once per idle episode.
 - A "Stop live video when idle" preference (`wm-live-media-idle-stop`: 15/30/60/120/240 minutes or never, default 60) lives in `src/services/live-stream-settings.ts`. It is cloud-synced and absence-tolerant during rolling deploys. A user who had saved always-on reads as never, and always-on now means autoplay only.
@@ -92,13 +92,13 @@ The request passes through three fallback layers. In the failure mode observed i
    `ytFetchDirect` does follow redirects (`scripts/ais-relay.cjs:11505-11507`).
 3. **Edge to its own scrape.** On any non-2xx, `handleYouTubeLiveRequest` replies HTTP 200 `{videoId:null, channelExists:false}` without logging (`scripts/ais-relay.cjs:11587-11589`). The edge handler treats any `relayRes.ok` as success and caches the null for 600s (`api/youtube/live.js:61-69`). Its own scrape, which uses `redirect: 'follow'` (`api/youtube/live.js:104-139`), runs only when the relay is unset, unreachable, or answers non-2xx (`api/youtube/live.js:57-74`). The server RPC has the same shape. `parseRelayPayload` always returns an object (`server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts:47-57`), so `fetchLiveStreamInfo` returns the relay's null before its own scrape (`:161-162`).
 
-UNVERIFIED: why the relay's proxied fetch fails for handles such as @SkyNews, which return 200 both from a residential IP and through a direct TLS tunnel. Candidates:
+Verified 2026-09-14: `YOUTUBE_PROXY_URL` points at Froxy (host `proxy.froxy.com`), and a CONNECT to `www.youtube.com` through it returns HTTP 422, which `ytFetchViaProxy` swallows. UNVERIFIED: why Froxy refuses the tunnel for handles such as @SkyNews, which return 200 both from a residential IP and through a direct TLS tunnel. Candidates:
 
-- proxy authentication
-- egress blocking
+- proxy authentication or plan limits
+- the proxy blocking youtube.com as a target
 - a YouTube bot wall served to the proxy's exit IPs
 
-The relay logs no upstream status, so Railway logs cannot answer this today. The Decodo dashboard breaks traffic down by target host (auto memory [claude]), so its `youtube.com` row is the first place to look.
+The relay logs no upstream status, so Railway logs cannot answer this today. The Froxy dashboard and its request logs are the first place to look.
 
 The relay detection path was added in efc1945bb8 (2026-02-28) and last changed in #2702 (2026-04-05).
 
@@ -110,11 +110,11 @@ Recommended (not implemented as of 2026-09-14):
 - Log the upstream status and `location` on every non-2xx before returning null.
 - When detection fails, return a non-200 or an explicit error field. That lets the edge and RPC fallbacks run and stops the null from being cached for 10 minutes.
 - Add a synthetic monitor that fails when `/api/youtube/live` returns null for handles known to be live.
-- Measure before turning on a direct fallback from Railway. The edge handler itself notes that datacenter IPs are limited for live detection (`api/youtube/live.js:76`, `:104`). A fix that revives a dead proxy path can also raise the Decodo bill without anyone noticing (auto memory [claude]).
+- Measure before turning on a direct fallback from Railway. The edge handler itself notes that datacenter IPs are limited for live detection (`api/youtube/live.js:76`, `:104`). A fix that revives a dead proxy path can also raise the proxy bill (Froxy) without anyone noticing (auto memory [claude]).
 
 ### Defect 3: rotted hardcoded fallback IDs ("wrong video links")
 
-Live Webcams never detects anything. `channelHandle` is declared (`src/components/LiveWebcamsPanel.ts:22`) and filled in for every feed, but no code reads it. Tiles play `fallbackVideoId` only. With the default `regionFilter` of `'all'`, the grid is `ALL_GRID_IDS = ['jerusalem', 'middle-east', 'kyiv', 'washington']` (`src/components/LiveWebcamsPanel.ts:215-221`).
+Live Webcams never detects anything. `channelHandle` was declared (`src/components/LiveWebcamsPanel.ts:22`) and filled in for every feed, but no code read it. Tiles play `fallbackVideoId` only. With the default `regionFilter` of `'all'`, the grid is `ALL_GRID_IDS = ['jerusalem', 'middle-east', 'kyiv', 'washington']` (`src/components/LiveWebcamsPanel.ts:215-221`).
 
 Audit results for the default grid, observed 2026-09-14:
 
@@ -144,11 +144,23 @@ The current tree has 47 unique Live News fallback IDs. The session audited 46 an
 
 The existing structural tests only check presence. `tests/live-news-hls.test.mjs:63-71` checks that each `DIRECT_HLS_MAP` channel has a fallback ID, an `hlsUrl`, or a handle. `:96-101` checks that full-variant channels have a `fallbackVideoId`. No test, script, or workflow checks whether an ID is still live.
 
-Recommended (not implemented as of 2026-09-14):
+Fix (#8163, 2026-09-14):
 
-- Once Defect 2 is fixed, resolve webcam IDs from `channelHandle` the way Live News does.
+- `npm run live-video:check -- <video URL, channel URL, video ID or https .m3u8> ...` plays each YouTube entry in headless Chromium as if embedded on `https://www.worldmonitor.app`. It classifies the player with `classifyAttempt` (`src/services/live-video/model.ts`) and exits 1 when any entry is not live. The rules:
+  - A player error such as 150 is failed.
+  - `isLive` true plus a sample taken while the player is PLAYING is live. A scheduled stream also reports `isLive` true but never plays.
+  - `isLive` false that holds while playing through the recording-confirm window (`recordingConfirmMs`, 2 s) is an ended recording.
+  - At the 15 s verdict deadline, `isLive` true that never played is not started (failed), and a missing `isLive` is unverifiable.
+  - An HLS entry's media playlist is fetched, reloaded one target duration later (clamped to 1-10 s and to the deadline), and reloaded once more half a target duration after that. It is live as soon as the playlist advanced: a higher `#EXT-X-MEDIA-SEQUENCE`, a different last segment, or more segments. `#EXT-X-ENDLIST` or `#EXT-X-PLAYLIST-TYPE:VOD` is a recording, and only a playlist that advanced in neither reload fails. The second look follows RFC 8216 6.3.4: a CDN edge can still serve the previous copy one target duration on, so one unchanged reload is not a frozen stream. When the deadline leaves no room for that second look and already clipped the first wait, the entry reads as unverifiable rather than dead. `#EXT-X-PROGRAM-DATE-TIME` is not a liveness signal, because a frozen playlist keeps it.
+  - A LIVE verdict covers the web embed origin only. The desktop sidecar embed (`http://localhost:<port>/api/youtube-embed`) is not probed, so a video whose owner restricts embedding by referrer can pass here and still fail on desktop.
+- Every webcam and Live News `fallbackVideoId` was re-checked with it. Dead or ended IDs were replaced with verified live streams, most of them found by the owner. Where no live stream exists, the ID was removed: the tel-aviv, beirut-mtv, nasa-live and space-x webcams are gone, and 25 optional Live News channels lost their dead fallback. The odessa webcam was folded into one Ukraine feed that rotates through several cities, and the unused `channelHandle` field was deleted.
+- The checker also read CNN's `DIRECT_HLS_MAP` stream (`cnn_slate`) as a recording: a playlist with `#EXT-X-ENDLIST`, about 10 minutes long, that played under a LIVE label on web. It was removed, so CNN plays its live YouTube stream `GotlA1KKWoo`.
+
+Still recommended:
+
+- Verify liveness in the player at runtime, and move to the next feed on an ended recording or a player error, so a stream that ends after a check is never shown as live.
 - Map YouTube `onError` from the native iframe to `markIframeBlocked` or to the next feed.
-- Add a scheduled audit of every `fallbackVideoId` (recipe below) that opens an issue or PR when an ID dies.
+- Add a scheduled run of the checker over every configured entry that opens an issue naming each slot that needs a replacement.
 
 ### Audit recipe: is a video ID still live?
 
