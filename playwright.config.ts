@@ -91,7 +91,18 @@ export default defineConfig({
     timezoneId: 'UTC',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    // `retain-on-failure` records EVERY test and deletes the video when it
+    // passes, so a green shard pays for video it then throws away: 34 ffmpeg
+    // processes for 28 passing tests on shard 2, 54 for 76 on shard 1
+    // (runs 35579482854 and 35563542710). One ffmpeg per context, spawned and
+    // killed alongside the browser.
+    //
+    // `on-first-retry` keeps what the failure artifacts are actually for. CI
+    // runs with retries: 1, so a test that genuinely fails is recorded on its
+    // retry. What is lost is the first attempt of a deterministic failure,
+    // whose retry fails too and IS recorded, and the video of a flake that
+    // passed on retry, which `retain-on-failure` discarded anyway.
+    video: 'on-first-retry',
   },
   projects: [
     {
