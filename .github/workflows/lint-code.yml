@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: '17 6 * * 1'
 
+# See test.yml. The weekly cron is a standalone detection net, so it lands in
+# a group of one via `github.run_id` and is never evicted (#8443).
+concurrency:
+  group: lint-code-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

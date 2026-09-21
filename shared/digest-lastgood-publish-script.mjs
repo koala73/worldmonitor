@@ -29,11 +29,11 @@
 // filter and out of the browser's own `.map`.
 //
 // KEYS[1] = durable snapshot body key, KEYS[2] = revoked URL set,
-// KEYS[3] = optional canonical digest key.
+// KEYS[3] = attempt identity key, KEYS[4] = optional canonical digest key.
 // ARGV: 1=nowMs 2=maxAgeMs 3=candidateAcceptedAt 4=durableTtlSeconds
 //       5=candidateDataJson (the digest body alone, verbatim)
 //       6=optional canonicalTtlSeconds 7=canonicalMinGeneratedAtIso
-//       8=canonicalMaxGeneratedAtIso 9=canonicalNegativeTtlSeconds.
+//       8=canonicalMaxGeneratedAtIso 9=canonicalNegativeTtlSeconds 10=attemptTtlSeconds.
 // Returns 1 when written, 0 when the live snapshot was kept, -1 when the
 // candidate has no servable items.
 //
@@ -76,9 +76,11 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   'if okCandidate then candidate = countData(candidateData) end',
   'if not candidate or candidate.categories < 1 or candidate.items < 1 then return -1 end',
   'local canonicalRaw = nil',
-  "if KEYS[3] then canonicalRaw = redis.call('GET', KEYS[3]) end",
+  "if KEYS[4] then canonicalRaw = redis.call('GET', KEYS[4]) end",
   'local function rejectNarrower()',
-  "  if KEYS[3] and not canonicalRaw then redis.call('SET', KEYS[3], '\"__WM_NEG__\"', 'EX', ARGV[9]) end",
+  `  local attempt = '{"ts":' .. ARGV[1] .. ',"outcome":"gate-held"}'`,
+  "  redis.call('SET', KEYS[3], attempt, 'EX', ARGV[10])",
+  "  if KEYS[4] and not canonicalRaw then redis.call('SET', KEYS[4], '\"__WM_NEG__\"', 'EX', ARGV[9]) end",
   '  return 0',
   'end',
   'local function isNarrower(nextData, currentData)',
@@ -119,7 +121,7 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '    end',
   '  end',
   'end',
-  'if KEYS[3] then',
+  'if KEYS[4] then',
   '  if canonicalRaw then',
   '    local okCanonical, canonicalData = pcall(cjson.decode, canonicalRaw)',
   "    if okCanonical and type(canonicalData) == 'table' then",
@@ -142,6 +144,6 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "  .. ',\"peakAt\":' .. string.format('%.0f', carriedPeakAt or tonumber(ARGV[3]) or 0)",
   '  .. \',"data":\' .. ARGV[5] .. \'}\'',
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
-  "if KEYS[3] then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6]) end",
+  "if KEYS[4] then redis.call('SET', KEYS[4], ARGV[5], 'EX', ARGV[6]) end",
   'return 1',
 ].join('\n');

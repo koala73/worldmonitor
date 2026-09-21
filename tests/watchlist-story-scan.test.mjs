@@ -111,8 +111,7 @@ describe('scanAndEnqueueWatchlistStoryEvents', () => {
     { symbol: 'LLY', name: 'Eli Lilly' },
   ]);
 
-  it('dedupes accumulator hashes, reads tracks, hydrates sources, gates by score, then publishes', async () => {
-    const order = [];
+  it('dedupes accumulator hashes, reads tracks, hydrates sources BEFORE building events, gates by score, then publishes', async () => {    const order = [];
     const queued = [];
     const pipelineCalls = [];
     const trackReads = [];
@@ -156,11 +155,53 @@ describe('scanAndEnqueueWatchlistStoryEvents', () => {
     assert.deepEqual(result, { hashes: 3, candidates: 2, events: 1, enqueued: 1, scoreMin: 69 });
     assert.deepEqual(order, ['ZRANGEBYSCORE', 'ZRANGEBYSCORE', 'track-read', 'SMEMBERS', 'SET', 'LPUSH']);
     assert.deepEqual(trackReads, [{ hashes: ['h1', 'low', 'h2'], samePipeline: true }]);
-    assert.deepEqual(pipelineCalls, [[['SMEMBERS', 'story:sources:v1:h1']]]);
+    // #8398: sources resolve per CANDIDATE (both survivors) before events
+    // are built, so the builder can gate each link against its publisher.
+    assert.deepEqual(pipelineCalls, [[['SMEMBERS', 'story:sources:v1:h1'], ['SMEMBERS', 'story:sources:v1:h2']]]);
     assert.equal(queued.length, 1);
     assert.equal(queued[0].eventType, 'watchlist_story_alert');
     assert.deepEqual(queued[0].payload.tickers, ['MSFT']);
     assert.equal(queued[0].payload.source, 'Reuters');
+  });
+
+  it('blank-links an event whose story link leaves its resolved publisher domain (#8398)', async () => {
+    const queued = [];
+    const upstashRest = async (...args) => {
+      if (args[0] === 'ZRANGEBYSCORE') return ['h1'];
+      if (args[0] === 'SET') return 'OK';
+      if (args[0] === 'LPUSH') {
+        queued.push(JSON.parse(args[2]));
+        return 1;
+      }
+      throw new Error(`unexpected command ${args[0]}`);
+    };
+    // Track row carries the hostile link verbatim (pre-gate residue or a
+    // direct write); the resolved source names a publisher whose domains
+    // do not include it.
+    const readStoryTracksChunked = async () => [{
+      result: flatTrack({
+        title: 'Microsoft antitrust probe',
+        link: 'https://evil.example/phish',
+        currentScore: '74',
+      }),
+    }];
+    const upstashPipeline = async (commands) =>
+      commands.map(() => ({ result: ['Reuters Business'] }));
+
+    const result = await scanAndEnqueueWatchlistStoryEvents(10_000, {
+      env: { WATCHLIST_STORY_SCORE_MIN: '69' },
+      upstashRest,
+      upstashPipeline,
+      readStoryTracksChunked,
+      tickerDictionary: dictionary,
+      logger: silentLogger,
+    });
+
+    assert.deepEqual(result, { hashes: 1, candidates: 1, events: 1, enqueued: 1, scoreMin: 69 });
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].payload.link, '');
+    assert.equal(queued[0].payload.title, 'Microsoft antitrust probe');
+    assert.deepEqual(queued[0].payload.tickers, ['MSFT']);
   });
 
   it('does not publish when the importance threshold filters out ticker matches', async () => {

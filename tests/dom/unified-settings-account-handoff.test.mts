@@ -376,6 +376,16 @@ afterEach(() => {
 });
 
 describe('UnifiedSettings real auth-subscription handoff', () => {
+  it('offers the canonical MCP endpoint when no clients are connected', () => {
+    internal.mcpClients = [];
+    internal.mcpClientsLoading = false;
+    internal.renderMcpClientsList();
+
+    const copy = internal.overlay.querySelector<HTMLButtonElement>('.mcp-clients-copy-url-btn');
+    expect(copy?.dataset.copyValue).toBe('https://worldmonitor.app/mcp');
+    expect(internal.overlay.textContent).not.toContain('api.worldmonitor.app/mcp');
+  });
+
   it('keeps checking past 12 seconds while entitlement verification is still in flight', () => {
     vi.useFakeTimers();
     panelGatingMocks.hasPremiumAccess = false;

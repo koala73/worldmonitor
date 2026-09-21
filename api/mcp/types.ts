@@ -88,6 +88,8 @@ export interface BaseToolDef {
   // throws rather than signing. In practice that means `_apiPaths: []` and a
   // committed-registry or cache read. Enforced by test, not by convention.
   _freeTier?: true;
+  // Cache-backed tools can require the same paid access as their REST route.
+  _subscriptionOnly?: true;
   // Budget units this tool charges, overriding the class default in
   // `registry/index.ts::toolWeight`. Set it only when the tool's downstream
   // maximum downstream fan-out differs from its class. A tool that adds a

@@ -126,7 +126,7 @@ describe("checkout rate-limit classification", () => {
       isCheckoutRateLimitedOutcome({
         checkoutFailed: true,
         code: CHECKOUT_RATE_LIMITED,
-        retryAfterSeconds: 999,
+        retryAfterSeconds: 10_000,
       }),
     ).toBe(false);
   });

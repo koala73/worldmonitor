@@ -1376,6 +1376,7 @@
       "etfs": "ETF's",
       "netInflow": "NETTO INSTROOM",
       "netOutflow": "NETTO UITSTROOM",
+      "netNeutral": "NETTO NEUTRAAL",
       "table": {
         "ticker": "Ticker",
         "issuer": "Uitgever",
@@ -1791,7 +1792,7 @@
       "infoTooltip": "<strong>Economische kalender</strong> Geplande macro-economische publicaties: CPI, NFP, GDP, PMI en centrale bankbesluiten. Toont prognose vs. werkelijk vs. vorig. Gebeurtenissen met hoge impact zijn gemarkeerd. Bron: economische dataproviders."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financiële-stressindicator</strong> WorldMonitor-verhouding van hoogrentend krediet tot langlopende Amerikaanse staatsobligaties, gecorrigeerd voor aandelenvolatiliteit en de hoogrentende spread: (HYG / TLT) / (VIX × HY spread / 100). Dit is niet de Financial Stress Index van de Federal Reserve Bank of Kansas City. Een waarde van 1.5 of hoger betekent lage stress; onder 0.3 betekent hoge stress.",
       "title": "Financiële stressindicator",
       "usFsiValue": "US FSI-WAARDE",
       "cissTitle": "EU CISS (systeemstress eurozone)",

@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import crypto from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import widgetResponseParser from '../scripts/_widget-response-parser.cjs';
 
@@ -27,6 +28,41 @@ const root = resolve(__dirname, '..');
 function src(relPath) {
   return readFileSync(resolve(root, relPath), 'utf-8');
 }
+
+describe('widget relay spend identity trust', () => {
+  const relay = src('scripts/ais-relay.cjs');
+  const functions = ['safeTokenEquals', 'getRelaySecretFromRequest', 'isAuthorizedRequest', 'handleWidgetAgentRequest']
+    .map(name => {
+      const match = relay.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
+      assert.ok(match, `Missing ${name}`);
+      return match[0];
+    }).join('\n');
+
+  for (const secret of ['server-only-secret', '']) {
+    it(`trusts only server-authenticated spend IDs (secret configured: ${!!secret})`, async () => {
+      const buckets = [];
+      const context = {
+        crypto, Buffer, RELAY_SHARED_SECRET: secret, RELAY_AUTH_HEADER: 'x-relay-key',
+        ALLOW_UNAUTHENTICATED_RELAY: true,
+        requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: 'pro' }),
+        PRO_WIDGET_KEY: 'legacy-pro-key',
+        readRequestBody: async () => '{"prompt":"Show markets","tier":"pro"}',
+        checkProWidgetRateLimit: bucket => { buckets.push(bucket); return true; },
+        safeEnd: (_res, status) => { assert.equal(status, 429); },
+      };
+      const run = vm.runInNewContext(`${functions}\nhandleWidgetAgentRequest`, context);
+      for (const relayKey of [undefined, 'legacy-pro-key', 'wrong-secret', 'server-only-secret']) {
+        for (const spendId of ['user:rotated-one', 'user:rotated-two']) {
+          await run({ headers: {
+            'x-pro-key': 'legacy-pro-key', 'x-wm-widget-spend-id': spendId,
+            ...(relayKey ? { 'x-relay-key': relayKey } : {}),
+          }, socket: { remoteAddress: '192.0.2.1' } }, {});
+          assert.equal(buckets.at(-1), secret && relayKey === secret ? `id:${spendId}` : '192.0.2.1');
+        }
+      }
+    });
+  }
+});
 
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
