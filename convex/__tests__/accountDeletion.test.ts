@@ -58,6 +58,23 @@ const INVITEE = {
 
 const fetchCalls: string[] = [];
 
+function hostnameOf(urlLike: string): string | null {
+  try {
+    return new URL(urlLike).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isClerkApiUrl(urlLike: string): boolean {
+  return hostnameOf(urlLike) === "api.clerk.com";
+}
+
+function fetchCallTargetsClerkApi(call: string): boolean {
+  const match = /\s(https?:\/\/\S+)/.exec(call);
+  return match != null && isClerkApiUrl(match[1]!);
+}
+
 async function makeT() {
   fetchCalls.length = 0;
   dodoUpdateMock.mockReset();
@@ -70,7 +87,7 @@ async function makeT() {
     const url = decodeURIComponent(String(input));
     const body = typeof init?.body === "string" ? init.body : "";
     fetchCalls.push(`${init?.method ?? "POST"} ${url} ${body}`.trim());
-    if (url.includes("api.clerk.com")) {
+    if (isClerkApiUrl(url)) {
       return new Response("gone", { status: 404 });
     }
     if (url.includes("upstash.test")) {
@@ -684,7 +701,7 @@ describe("account deletion — external side effects", () => {
       const url = decodeURIComponent(String(input));
       const body = typeof init?.body === "string" ? init.body : "";
       fetchCalls.push(`${init?.method ?? "POST"} ${url} ${body}`.trim());
-      if (url.includes("api.clerk.com")) {
+      if (isClerkApiUrl(url)) {
         clerkCalls += 1;
         if (clerkCalls === 1) return new Response("busy", { status: 500 });
         return new Response("gone", { status: 404 });
@@ -706,7 +723,7 @@ describe("account deletion — external side effects", () => {
 
     expect(clerkCalls).toBeGreaterThanOrEqual(2);
     const firstRedis = fetchCalls.findIndex((call) => call.includes("upstash.test"));
-    const firstClerk = fetchCalls.findIndex((call) => call.includes("api.clerk.com"));
+    const firstClerk = fetchCalls.findIndex((call) => fetchCallTargetsClerkApi(call));
     expect(firstRedis).toBeGreaterThanOrEqual(0);
     expect(firstClerk).toBeGreaterThan(firstRedis);
     expect((await deletionRow(t, USER_A.subject))?.status).toBe("complete");

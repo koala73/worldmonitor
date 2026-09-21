@@ -42,6 +42,18 @@ function deletedPayload(userId = USER_ID): string {
   });
 }
 
+function hostnameOf(urlLike: string): string | null {
+  try {
+    return new URL(urlLike).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isClerkApiUrl(urlLike: string): boolean {
+  return hostnameOf(urlLike) === "api.clerk.com";
+}
+
 async function signPayload(
   payload: string,
   {
@@ -124,7 +136,7 @@ describe("Clerk account-deletion webhook", () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = "token";
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("api.clerk.com")) return new Response("gone", { status: 404 });
+      if (isClerkApiUrl(url)) return new Response("gone", { status: 404 });
       if (url.includes("upstash.test")) return Response.json({ result: "OK" });
       return new Response("unexpected", { status: 500 });
     });

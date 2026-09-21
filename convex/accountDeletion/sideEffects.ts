@@ -25,7 +25,7 @@ export function buildDeletionDodoClientOptions(env: {
   if (!env.DODO_API_KEY) {
     throw new Error("DODO_API_KEY_MISSING");
   }
-  const isLive = env.DODO_PAYMENTS_ENVIRONMENT === "[REDACTED]";
+  const isLive = env.DODO_PAYMENTS_ENVIRONMENT === "live_mode";
   return {
     bearerToken: env.DODO_API_KEY,
     ...(isLive ? {} : { environment: "test_mode" as const }),
@@ -35,8 +35,7 @@ export function buildDeletionDodoClientOptions(env: {
 }
 
 function entitlementKey(userId: string): string {
-  const envPrefix =
-    process.env.DODO_PAYMENTS_ENVIRONMENT === "[REDACTED]" ? "live" : "test";
+  const envPrefix = process.env.DODO_PAYMENTS_ENVIRONMENT === "live_mode" ? "live" : "test";
   return `entitlements:${envPrefix}:${userId}`;
 }
 
