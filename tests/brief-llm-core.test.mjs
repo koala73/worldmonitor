@@ -890,3 +890,98 @@ describe('captured country headline spelling', () => {
     assert.equal(validateNoHallucinatedFacts('The plan costs US$34 billion.', 'Plan costs US$34').ok, false);
   });
 });
+
+describe('validateNoHallucinatedStatusQualifiers — Sep 20 "former President Trump" regression + class', () => {
+  let validate;
+  before(async () => {
+    ({ validateNoHallucinatedStatusQualifiers: validate } = await import('../shared/brief-llm-core.js'));
+  });
+
+  const SEP_20_HEADLINE = 'Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints';
+  const SEP_20_CARD =
+    'Former President Trump returned to the UN General Assembly amidst escalating maritime tensions as Iranian-linked attacks on shipping chokepoints intensified globally.';
+  const SEP_20_LEAD_TAIL =
+    'This development comes as former President Trump returns to the UN, with the ongoing conflict in the Persian Gulf spreading to critical shipping chokepoints.';
+
+  it('REGRESSION (captured card): "Former President Trump" against a headline naming only Trump → flagged', () => {
+    const r = validate(SEP_20_CARD, SEP_20_HEADLINE);
+    assert.equal(r.ok, false);
+    assert.match(r.hallucinated[0], /former president trump/i);
+  });
+
+  it('REGRESSION (captured lead): lowercase mid-sentence "former" is flagged too', () => {
+    assert.equal(validate(SEP_20_LEAD_TAIL, SEP_20_HEADLINE).ok, false);
+  });
+
+  it('CLASS: interleaved nationality and dotted acronyms still resolve to the claim', () => {
+    assert.equal(validate('This comes as former US President Trump prepares to address the UN.', SEP_20_HEADLINE).ok, false);
+    assert.equal(validate('This comes as former U.S. President Trump prepares to address the UN.', SEP_20_HEADLINE).ok, false);
+    assert.equal(validate('Former Lebanese Prime Minister Hariri returned to Beirut.', 'Hariri returns to Beirut').ok, false);
+  });
+
+  it('CLASS: every qualifier class is caught when the source lacks it', () => {
+    const cases = [
+      ['Ex-President Yoon appeared in court.', 'Yoon appears in court'],
+      ['The then-Senator Obama backed the bill.', 'Obama backed the bill'],
+      ['The late Queen Elizabeth opened the session.', 'Elizabeth opens the session'],
+      ['Acting Prime Minister Vance chaired the meeting.', 'Vance chairs the meeting'],
+      ['Interim head of Mossad Barnea briefed the cabinet.', 'Barnea briefs the cabinet'],
+      ['Outgoing Chancellor Scholz met the delegation.', 'Scholz meets the delegation'],
+      ['Retired General Petraeus warned of escalation.', 'Petraeus warns of escalation'],
+      ['Incoming Governor Shapiro named his cabinet.', 'Shapiro names his cabinet'],
+    ];
+    for (const [summary, headline] of cases) {
+      assert.equal(validate(summary, headline).ok, false, summary);
+    }
+  });
+
+  it('grounded: the source itself carries the qualifier → ok', () => {
+    assert.equal(validate(SEP_20_CARD, 'Former President Trump returns to UN as Iran war spreads').ok, true);
+    assert.equal(validate('Former President Bolsonaro was sentenced.', 'Ex-president Bolsonaro sentenced to 27 years').ok, true);
+    assert.equal(validate('Interim Prime Minister Bennett resigned.', 'Acting PM Bennett resigns').ok, true);
+  });
+
+  it('classes are not synonyms of each other: summary "acting", source "former" → flagged', () => {
+    assert.equal(validate('Acting President Trump addressed the UN.', 'Former President Trump addresses the UN').ok, false);
+  });
+
+  it('per-story ground: the qualifier must sit in the SAME story as the name', () => {
+    const pool = ['Former President Bolsonaro sentenced to 27 years', SEP_20_HEADLINE];
+    assert.equal(validate(SEP_20_CARD, pool).ok, false);
+    assert.equal(validate(SEP_20_CARD, ['Former President Trump to address UN', 'Bolsonaro sentenced']).ok, true);
+  });
+
+  it('not our claim: qualifier without a person title, or a title without a capitalized name → ok', () => {
+    assert.equal(validate('The former Soviet republic of Georgia held elections.', 'Georgia holds elections').ok, true);
+    assert.equal(validate('Former officials said the deal was near.', 'Deal nears, officials say').ok, true);
+    assert.equal(validate('The two leaders met late Tuesday, President Trump said.', 'Trump comments on the meeting').ok, true);
+  });
+
+  it('a lowercase word after the title is not the name; the engine backtracks to the capitalized one', () => {
+    const r = validate('Former official adviser John Smith warned of escalation.', 'Smith warns of escalation');
+    assert.equal(r.ok, false);
+    assert.match(r.hallucinated[0], /John$/);
+  });
+
+  it('a hyphenated "then-" in the source grounds "then-President"; the bare adverb does not', () => {
+    assert.equal(validate('The senator, then-President Obama, backed it.', 'then-President Obama backs it').ok, true);
+    assert.equal(validate('The senator, then-President Obama, backed it.', 'and then President Obama backed it').ok, false);
+  });
+
+  it('adverb "then" without a hyphen is not a qualifier', () => {
+    assert.equal(validate('Talks stalled, and then President Trump left the summit.', 'Trump leaves the summit').ok, true);
+  });
+
+  it('a sentence boundary ends the bridge between qualifier and title', () => {
+    assert.equal(validate('Former officials met. President Trump then spoke.', 'Trump speaks after officials meet').ok, true);
+  });
+
+  it('malformed inputs accept without throwing', () => {
+    for (const bad of [null, undefined, '', 42, {}]) {
+      assert.equal(validate(bad, SEP_20_HEADLINE).ok, true);
+      assert.equal(validate(SEP_20_CARD, bad).ok, true);
+    }
+    assert.equal(validate(SEP_20_CARD, []).ok, true);
+    assert.equal(validate(SEP_20_CARD, ['', null]).ok, true);
+  });
+});

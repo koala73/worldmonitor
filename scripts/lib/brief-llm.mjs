@@ -49,6 +49,7 @@ import {
   parseWhyMatters,
   checkLeadGrounding,
   leadGroundsAgainstStory,
+  validateNoHallucinatedStatusQualifiers,
 } from '../../shared/brief-llm-core.js';
 
 // #4921: the grounding spine now lives in shared/brief-llm-core.js — re-export
@@ -332,9 +333,11 @@ export function buildStoryDescriptionPrompt(story) {
  *
  * @param {unknown} text
  * @param {string} [headline]  used to detect headline-echo drift
+ * @param {string} [groundText]  RSS body; with the headline, the ground for
+ *   status qualifiers ("former President X") the model may not introduce
  * @returns {string | null}
  */
-export function parseStoryDescription(text, headline) {
+export function parseStoryDescription(text, headline, groundText) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   if (!s) return null;
@@ -348,6 +351,12 @@ export function parseStoryDescription(text, headline) {
     // is exactly the fallback we're replacing, shipping it as
     // "LLM enrichment" would be dishonest about cache spend.
     if (normalise(sentence) === normalise(headline)) return null;
+    const ground = [headline, groundText].filter((x) => typeof x === 'string' && x.length > 0).join('\n');
+    const check = validateNoHallucinatedStatusQualifiers(sentence, ground);
+    if (!check.ok) {
+      console.warn(`[brief-llm] status-qualifier gate: rejected description (${check.hallucinated.join(' | ')})`);
+      return null;
+    }
   }
   return sentence;
 }
@@ -384,7 +393,7 @@ export async function generateStoryDescription(story, deps) {
     if (typeof hit === 'string') {
       // Revalidate on cache hit so a pre-fix bad row (short, echo,
       // malformed) can't flow into the envelope unchecked.
-      const valid = parseStoryDescription(hit, story.headline);
+      const valid = parseStoryDescription(hit, story.headline, story.description);
       if (valid) return valid;
     }
   } catch { /* cache miss is fine */ }
@@ -405,7 +414,7 @@ export async function generateStoryDescription(story, deps) {
   } catch {
     return null;
   }
-  const parsed = parseStoryDescription(text, story.headline);
+  const parsed = parseStoryDescription(text, story.headline, story.description);
   if (!parsed) return null;
   try {
     await deps.cacheSet(key, parsed, STORY_DESCRIPTION_TTL_SEC);
@@ -602,11 +611,11 @@ export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
 export function validateDigestProseShape(obj, stories) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
 
-  const lead = typeof obj.lead === 'string' ? obj.lead.trim() : '';
+  let lead = typeof obj.lead === 'string' ? obj.lead.trim() : '';
   if (lead.length < 40 || lead.length > 1500) return null;
 
   const rawThreads = Array.isArray(obj.threads) ? obj.threads : [];
-  const threads = rawThreads
+  let threads = rawThreads
     .filter((t) => t && typeof t.tag === 'string' && typeof t.teaser === 'string')
     .map((t) => ({
       tag: t.tag.trim().slice(0, 40),
@@ -645,16 +654,52 @@ export function validateDigestProseShape(obj, stories) {
     .filter((x) => x.length >= 4)
     .slice(0, MAX_STORIES_PER_USER * 2);
 
-  // v5 grounding gate. Run AFTER shape normalisation so the
-  // synthesis we evaluate is the same shape the renderer would
-  // see — checkLeadGrounding inspects `lead` and `threads[].teaser`,
-  // both already trimmed and capped above.
-  if (Array.isArray(stories) && stories.length > 0
-      && !checkLeadGrounding({ lead, threads }, stories, MAX_STORIES_PER_USER)) {
-    return null;
+  // Status-qualifier repair, then the v5 grounding gate. Run AFTER
+  // shape normalisation so the synthesis we evaluate is the same shape
+  // the renderer would see — both inspect `lead` and `threads[].teaser`,
+  // already trimmed and capped above.
+  if (Array.isArray(stories) && stories.length > 0) {
+    const ground = stories.slice(0, MAX_STORIES_PER_USER).map(storyGroundText);
+    const repaired = repairLeadStatusQualifiers(lead, ground);
+    if (repaired.dropped.length > 0) {
+      console.warn(`[brief-llm] status-qualifier gate: dropped lead sentence(s) (${repaired.dropped.join(' | ')})`);
+    }
+    lead = repaired.lead;
+    if (lead.length < 40) return null;
+    threads = threads.filter((t) => {
+      const check = validateNoHallucinatedStatusQualifiers(t.teaser, ground);
+      if (!check.ok) console.warn(`[brief-llm] status-qualifier gate: dropped teaser (${check.hallucinated.join(' | ')})`);
+      return check.ok;
+    });
+    if (threads.length < 1) return null;
+    const groundingOpts = repaired.dropped.length > 0 ? { combinedThreshold: 1 } : {};
+    if (!checkLeadGrounding({ lead, threads }, stories, MAX_STORIES_PER_USER, groundingOpts)) return null;
   }
 
   return { lead, threads, signals, rankedStoryHashes };
+}
+
+/** @param {{ headline?: unknown; description?: unknown }} story */
+function storyGroundText(story) {
+  return [story?.headline, story?.description]
+    .filter((x) => typeof x === 'string' && x.length > 0)
+    .join('\n');
+}
+
+const LEAD_SENTENCE_SPLIT = /(?<=(?<!\b\p{Lu})[.!?])\s+/u;
+
+/**
+ * @param {string} lead
+ * @param {string[]} ground  one entry per pool story
+ * @returns {{ lead: string; dropped: string[] }}
+ */
+function repairLeadStatusQualifiers(lead, ground) {
+  const whole = validateNoHallucinatedStatusQualifiers(lead, ground);
+  if (whole.ok) return { lead, dropped: [] };
+  const kept = lead.split(LEAD_SENTENCE_SPLIT).filter((s) => validateNoHallucinatedStatusQualifiers(s, ground).ok);
+  const repaired = kept.join(' ');
+  if (!validateNoHallucinatedStatusQualifiers(repaired, ground).ok) return { lead: '', dropped: whole.hallucinated };
+  return { lead: repaired, dropped: whole.hallucinated };
 }
 
 /**

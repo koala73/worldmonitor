@@ -2009,3 +2009,114 @@ describe('generateWhyMatters — v11 endpoint-cache cross-read (#4914)', () => {
     assert.equal(v11Keys.length, 0, 'legacy fallback output must stay in the v6 namespace');
   });
 });
+
+describe('status-qualifier gate on the email brief (Sep 20 "former President Trump")', () => {
+  const pool = [
+    { hash: 'a1b2c3d4e5f6a1b2', headline: 'Iran war live: Tehran sets terms for peace; Saudi forces foil Riyadh attack', threatLevel: 'critical', category: 'Conflict', country: 'Iran', source: 'Al Jazeera' },
+    { hash: 'b2c3d4e5f6a1b2c3', headline: 'Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints', threatLevel: 'critical', category: 'Geopolitics', country: 'United States', source: 'gCaptain' },
+    { hash: 'c3d4e5f6a1b2c3d4', headline: "'Abhorrent acts' — Russian forces committed widespread sexual violence in Ukraine since full-scale invasion, UN reports", threatLevel: 'critical', category: 'Humanitarian', country: 'Ukraine', source: 'Kyiv Independent' },
+  ];
+  const CAPTURED_LEAD =
+    'Good morning. Iran has declared its terms for peace, demanding a complete cessation of Saudi-led military operations and the lifting of all sanctions, following an attempted attack on Riyadh that Saudi forces claim to have foiled. This development comes as former President Trump returns to the UN, with the ongoing conflict in the Persian Gulf spreading to critical shipping chokepoints, directly impacting global trade and energy security.';
+  const CAPTURED_TEASER =
+    'Former President Trump re-engages with the UN as the Iran conflict intensifies, impacting international relations and global stability.';
+  const CAPTURED_CARD =
+    'Former President Trump returned to the UN General Assembly amidst escalating maritime tensions as Iranian-linked attacks on shipping chokepoints intensified globally.';
+  const groundedLead =
+    'Iran has declared its terms for peace, demanding a complete cessation of Saudi-led military operations following an attempted attack on Riyadh that Saudi forces claim to have foiled.';
+  const conflictThread = { tag: 'Conflict', teaser: 'Iran outlines peace terms, including an end to Saudi military actions and sanctions relief.' };
+
+  it('validateDigestProseShape drops the fabricated sentence from the captured lead and keeps the rest', () => {
+    const out = validateDigestProseShape({ lead: CAPTURED_LEAD, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(
+      out.lead,
+      'Good morning. Iran has declared its terms for peace, demanding a complete cessation of Saudi-led military operations and the lifting of all sanctions, following an attempted attack on Riyadh that Saudi forces claim to have foiled.',
+    );
+  });
+
+  it('validateDigestProseShape rejects a lead whose only sentence carries the fabricated qualifier', () => {
+    assert.equal(validateDigestProseShape({ lead: CAPTURED_TEASER, threads: [conflictThread] }, pool), null);
+  });
+
+  it('validateDigestProseShape rejects when the surviving lead no longer grounds against the pool', () => {
+    const lead = 'Good morning to every reader of this edition, wherever you are today. Former President Trump returns to the UN as the Iran conflict intensifies across shipping chokepoints.';
+    assert.equal(validateDigestProseShape({ lead, threads: [conflictThread] }, pool), null);
+  });
+
+  it('validateDigestProseShape repairs the dotted "former U.S. President" variant instead of rejecting it', () => {
+    const lead = 'Good morning. Iran has declared its terms for peace after an attempted attack on Riyadh that Saudi forces claim to have foiled. This comes as former U.S. President Trump prepares to address the UN.';
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, 'Good morning. Iran has declared its terms for peace after an attempted attack on Riyadh that Saudi forces claim to have foiled.');
+  });
+
+  it('validateDigestProseShape drops the captured teaser and keeps the digest', () => {
+    const out = validateDigestProseShape(
+      { lead: groundedLead, threads: [conflictThread, { tag: 'Diplomacy', teaser: CAPTURED_TEASER }] },
+      pool,
+    );
+    assert.ok(out);
+    assert.deepEqual(out.threads.map((t) => t.tag), ['Conflict']);
+  });
+
+  it('validateDigestProseShape rejects when every teaser is dropped', () => {
+    assert.equal(
+      validateDigestProseShape({ lead: groundedLead, threads: [{ tag: 'Diplomacy', teaser: CAPTURED_TEASER }] }, pool),
+      null,
+    );
+  });
+
+  it('validateDigestProseShape accepts "former" when the same story headline says it', () => {
+    const formerPool = pool.map((s, i) => (i === 1 ? { ...s, headline: 'Former President Trump returns to UN as Iran war spreads' } : s));
+    assert.ok(validateDigestProseShape({ lead: CAPTURED_LEAD, threads: [{ tag: 'Diplomacy', teaser: CAPTURED_TEASER }] }, formerPool));
+  });
+
+  it('validateDigestProseShape accepts "former" when the same story RSS description says it', () => {
+    const descPool = pool.map((s, i) => (i === 1 ? { ...s, description: 'Former President Trump will address the General Assembly on Tuesday.' } : s));
+    assert.ok(validateDigestProseShape({ lead: CAPTURED_LEAD, threads: [conflictThread] }, descPool));
+  });
+
+  it('validateDigestProseShape without stories stays a pure shape check', () => {
+    assert.ok(validateDigestProseShape({ lead: CAPTURED_LEAD, threads: [conflictThread] }));
+  });
+
+  it('parseStoryDescription rejects the captured card against the gCaptain headline', () => {
+    assert.equal(parseStoryDescription(CAPTURED_CARD, pool[1].headline), null);
+  });
+
+  it('parseStoryDescription accepts the card when the RSS description carries "former"', () => {
+    assert.equal(
+      parseStoryDescription(CAPTURED_CARD, pool[1].headline, 'Former President Trump will address the General Assembly on Tuesday.'),
+      CAPTURED_CARD,
+    );
+  });
+
+  it('parseStoryDescription without a headline stays a pure shape check', () => {
+    assert.equal(parseStoryDescription(CAPTURED_CARD), CAPTURED_CARD);
+  });
+
+  it('generateStoryDescription revalidates a cached "Former President" row and re-LLMs it', async () => {
+    const trumpStory = story({ headline: pool[1].headline, source: 'gCaptain', category: 'Geopolitics', country: 'United States' });
+    const cache = makeCache();
+    const grounded = 'Trump returned to the UN General Assembly as Iranian-linked attacks on shipping chokepoints intensified across the region.';
+    await generateStoryDescription(trumpStory, { ...cache, callLLM: makeLLM(() => grounded).callLLM });
+    const keys = [...cache.store.keys()];
+    assert.equal(keys.length, 1);
+    cache.store.set(keys[0], CAPTURED_CARD);
+    let calls = 0;
+    const retry = makeLLM(() => { calls++; return grounded; });
+    const out = await generateStoryDescription(trumpStory, { ...cache, callLLM: retry.callLLM });
+    assert.equal(calls, 1, 'poisoned cache row must be re-LLMd');
+    assert.equal(out, grounded);
+    assert.equal(cache.store.get(keys[0]), grounded);
+  });
+
+  it('generateStoryDescription refuses a fresh "Former President" sentence and caches nothing', async () => {
+    const trumpStory = story({ headline: pool[1].headline, source: 'gCaptain', category: 'Geopolitics', country: 'United States' });
+    const cache = makeCache();
+    const out = await generateStoryDescription(trumpStory, { ...cache, callLLM: makeLLM(() => CAPTURED_CARD).callLLM });
+    assert.equal(out, null);
+    assert.equal(cache.store.size, 0);
+  });
+});

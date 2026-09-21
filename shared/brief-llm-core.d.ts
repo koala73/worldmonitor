@@ -62,6 +62,10 @@ export function validateNoHallucinatedFacts(
   summary: unknown,
   groundText: unknown,
 ): { ok: true } | { ok: false; hallucinated: string[] };
+export function validateNoHallucinatedStatusQualifiers(
+  summary: unknown,
+  groundText: unknown,
+): { ok: true } | { ok: false; hallucinated: string[] };
 
 // ── Grounding spine (#4921) ────────────────────────────────────────────────
 export function extractAnchorTokens(s: string): string[];

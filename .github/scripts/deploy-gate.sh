@@ -152,10 +152,76 @@ trap post_pending_on_exit EXIT
 # `typecheck-changes` / `lint-changes` so all three are evaluated
 # instead of two being masked by the third (#5822).
 required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
-gate_contract=$(REQUIRED_JOBS="$required" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["REQUIRED_JOBS"].encode()).hexdigest()[:12])')
+# The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
+# names it inspects. A rules change that left the stamp alone would inherit
+# every success earned under the old rules, because the sweep only re-evaluates
+# a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
+# passing gate changes.
+gate_rules='base-drift-v1'
+gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 repo_owner=${REPO%%/*}
 repo_name=${REPO#*/}
+# A green check set proves the BRANCH, not the merge. GitHub computes
+# refs/pull/N/merge once per push and never recomputes it when the base moves,
+# and `main` here is `strict: false`, so a branch can merge on checks that
+# never saw the commits it lands on. When two such branches touch the same file
+# from different bases the 3-way merge has nothing to conflict on and `main`
+# goes red with both PRs green — #8269 deleted a declaration that #8376 had
+# added a use of, reddening biome, typecheck and two unit shards at once.
+#
+# The predicate: has `main` changed a file this head also changes, since this
+# head's merge base? Updating the branch always clears it, because the merge
+# base then IS `main` and the comparison below reports `ahead`.
+#
+# GitHub caps a comparison's `files` at 300. A truncated list cannot prove the
+# absence of an overlap, so it blocks too — the same branch update clears it.
+BASE_DRIFT_FILE_CAP=300
+drift_files=""
+base_drift_reason=""
+# Echoes the overlapping paths, or nothing when the head is safe to merge.
+# Returns non-zero only when GitHub could not answer, so the caller can leave
+# the gate pending instead of publishing a success it did not establish.
+base_drift() {
+  local head="$1"
+  local head_cmp base_cmp merge_base cmp_status
+  drift_files=""
+  base_drift_reason=""
+  head_cmp=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/compare/main...$head?per_page=$BASE_DRIFT_FILE_CAP") || return $?
+  cmp_status=$(printf '%s\n' "$head_cmp" | jq -r '.status // empty')
+  # Read the status as an allow-list. A truncated or malformed body yields an
+  # empty string, and treating that as "not diverged" would publish a success
+  # this function never established.
+  case "$cmp_status" in
+    # Already contained in main: a push to main evaluates here too, and a commit
+    # cannot be stale against the branch that contains it.
+    behind | identical) return 0 ;;
+    # The merge base already is main's tip, so nothing has drifted under it.
+    ahead) return 0 ;;
+    diverged) ;;
+    *)
+      echo "::error::Unusable comparison status '$cmp_status' for $head" >&2
+      return 1
+      ;;
+  esac
+  merge_base=$(printf '%s\n' "$head_cmp" | jq -r '.merge_base_commit.sha // empty')
+  if ! [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "::error::Could not resolve the merge base for $head" >&2
+    return 1
+  fi
+  base_cmp=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/compare/$merge_base...main?per_page=$BASE_DRIFT_FILE_CAP") || return $?
+  if printf '%s\n' "$head_cmp" "$base_cmp" |
+    jq -se --argjson cap "$BASE_DRIFT_FILE_CAP" 'any(.[]; (.files | length) >= $cap)' >/dev/null; then
+    base_drift_reason="comparison truncated at $BASE_DRIFT_FILE_CAP files"
+    return 0
+  fi
+  drift_files=$(printf '%s\n' "$head_cmp" "$base_cmp" | jq -sr '
+    ([.[0].files[]?.filename] - ([.[0].files[]?.filename] - [.[1].files[]?.filename]))
+    | unique | join(",")')
+  return 0
+}
 # GraphQL is the cheap rollup, but GitHub outages often 503 the
 # query endpoint while REST check-runs still answers. Falling back
 # lets a SHA-specific dispatch post `gate` instead of stranding the
@@ -478,6 +544,24 @@ fi
 
 if [ -n "$failed" ]; then
   post_gate_status "failure" "Required PR gates did not pass ($(name_count "$failed")): $failed"
+  active_sha=""
+  return 0
+fi
+
+if ! base_drift "$SHA"; then
+  post_gate_status "pending" "Deploy Gate could not compare this head against main; retry scheduled"
+  active_sha=""
+  return 0
+fi
+
+if [ -n "$base_drift_reason" ]; then
+  post_gate_status "failure" "Stale base ($base_drift_reason): update the branch"
+  active_sha=""
+  return 0
+fi
+
+if [ -n "$drift_files" ]; then
+  post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
   active_sha=""
   return 0
 fi
