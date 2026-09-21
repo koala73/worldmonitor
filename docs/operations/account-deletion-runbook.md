@@ -29,7 +29,11 @@ npx convex run accountDeletion/erase:eraseConfirmedUser '{"userId":"user_...","s
 ```
 
 Then wait until `accountDeletions.status === "complete"` for that `userId`.
-A second run for the same subject returns `already_deleted`.
+A second run after completion returns `already_deleted`. A request already in
+progress returns `pending` without creating another worker chain. If the row is
+`failed`, inspect `lastError`, correct the provider configuration or failure, and
+run the same command to resume from its saved progress. Provider calls use at
+most five attempts with exponential backoff; permanent failures stop immediately.
 
 Do **not** pass an email argument. Extra fields are rejected.
 
@@ -39,6 +43,9 @@ Do **not** pass an email argument. Extra fields are rejected.
 - Revokes API keys, embed keys, and Pro MCP tokens and deletes their Redis
   caches / negative-cache sentinels.
 - Deletes or anonymizes personal Convex rows per the account-deletion registry.
+  A durable fence rejects new personal writes from stale sessions and callbacks.
+- Reads the current verified primary email from Clerk before email-keyed cleanup.
+  Cached profile emails and email-only token claims are never ownership proof.
 - Delegates Company Monitoring to `markOwnerDeleted`.
 - Deletes the Clerk user if it is still present (404 is success).
 - Invoice-linked payment evidence stays without email or a live `userId`.
@@ -56,5 +63,11 @@ Do **not** pass an email argument. Extra fields are rejected.
 Subscribe `user.deleted` to the Convex HTTP route `/clerk-webhook` only after
 this change is deployed. Unsigned deliveries 401. A payload for an unknown
 Clerk user still 200s after a tombstone insert so Clerk does not retry forever.
+
+A webhook that starts erasure after Clerk has removed the user cannot establish
+current email ownership. It erases subject-linked records but skips email-only
+records unless the engine captured verified ownership before deletion. Use the
+self-serve control or the support command before deleting the Clerk user when
+email-keyed cleanup is required.
 
 Do not enable Clerk hosted user-delete as the primary product control.

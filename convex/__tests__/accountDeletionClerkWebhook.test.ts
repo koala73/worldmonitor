@@ -181,10 +181,10 @@ describe("Clerk account-deletion webhook", () => {
     expect(rows).toHaveLength(0);
   });
 
-  test("support mutation without userId fails", async () => {
+  test("support action without userId fails", async () => {
     const t = convexTest(schema, modules);
     await expect(
-      t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+      t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
         userId: "",
         source: "support",
       }),

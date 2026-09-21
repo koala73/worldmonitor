@@ -4,11 +4,18 @@
 # Public function names are intentionally absent — deploy-skew must still report.
 #
 *Could not find public function for 'accountDeletion/batches:advanceErase'*
+*Could not find public function for 'accountDeletion/batches:advanceEraseSafely'*
+*Could not find public function for 'accountDeletion/batches:getBatchSnapshot'*
+*Could not find public function for 'accountDeletion/batches:markBatchFailed'*
+*Could not find public function for 'accountDeletion/erase:beginConfirmedErase'*
 *Could not find public function for 'accountDeletion/erase:eraseConfirmedUser'*
 *Could not find public function for 'accountDeletion/erase:getExternalEraseSnapshot'*
+*Could not find public function for 'accountDeletion/erase:hasDeletionRecord'*
 *Could not find public function for 'accountDeletion/erase:ingestClerkUserDeleted'*
 *Could not find public function for 'accountDeletion/erase:markExternalComplete'*
 *Could not find public function for 'accountDeletion/erase:recordExternalProgress'*
+*Could not find public function for 'accountDeletion/sideEffects:beginExternalAttempt'*
+*Could not find public function for 'accountDeletion/sideEffects:recordExternalFailure'*
 *Could not find public function for 'accountDeletion/sideEffects:runExternalErase'*
 *Could not find public function for 'alertRules:getAlertRulesByUserId'*
 *Could not find public function for 'alertRules:getByEnabled'*
@@ -206,6 +213,7 @@
 *Could not find public function for 'payments/checkoutRateLimitAlarm:recordCheckoutTimedOut'*
 *Could not find public function for 'payments/repairStaleOnHoldDerivedState:run'*
 *Could not find public function for 'payments/seedProductPlans:seedProductPlans'*
+*Could not find public function for 'payments/subscriptionEmails:canSendBillingEmail'*
 *Could not find public function for 'payments/subscriptionEmails:getDunningContext'*
 *Could not find public function for 'payments/subscriptionEmails:recordDunningStepSent'*
 *Could not find public function for 'payments/subscriptionEmails:reserveResendSlot'*

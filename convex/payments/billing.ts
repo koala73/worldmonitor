@@ -9,6 +9,8 @@
  * - claimSubscription: mutation to migrate entitlements from anon ID to authed user
  */
 
+import { assertAccountWritable } from "../accountDeletion/guard";
+import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -21,6 +23,7 @@ import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { proActivationStepIdValidator } from "../constants";
 import {
+  billingDeletionForUser,
   isCoveringAt,
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
@@ -700,6 +703,7 @@ export const claimProActivationPresentation = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const now = Date.now();
     const subscription = await ctx.db.get(args.activationKey);
     if (
@@ -756,6 +760,7 @@ export const confirmProActivationPresentation = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     // Retro cohort only: presentation confirmation is the lease handshake, and
     // the day-0 path has no lease to confirm.
     const presentation = await activationPresentationForCohort(ctx, args.activationKey, undefined);
@@ -820,6 +825,7 @@ export const openProActivationDay0Presentation = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const subscription = await ctx.db.get(args.activationKey);
     // Ownership and plan identity only. Deliberately NOT gated on
     // isFirstBillingCycle/isCoveringAt like the retro claim is: those decide
@@ -961,6 +967,7 @@ export const recordProActivationOutcome = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const presentation = await activationPresentationForCohort(
       ctx,
       args.activationKey,
@@ -1653,6 +1660,7 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
     // every cycle with a fresh clean slate.
     const stillStaleAfterPatch =
       args.remote.status === "active" && args.remote.currentPeriodEnd < args.observedAt;
+    const deletion = await billingDeletionForUser(ctx, existing.userId);
     await ctx.db.patch(existing._id, {
       status: args.remote.status,
       dodoProductId: args.remote.productId,
@@ -1660,7 +1668,8 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       currentPeriodStart: args.remote.currentPeriodStart,
       currentPeriodEnd: args.remote.currentPeriodEnd,
       dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
-      rawPayload: args.remote.rawPayload,
+      ...(deletion ? { userId: tombstoneUserId(deletion.userIdHash) } : {}),
+      rawPayload: deletion ? redactBillingPayload(args.remote.rawPayload) : args.remote.rawPayload,
       updatedAt: args.observedAt,
       // A successful lookup proves the sub EXISTS in Dodo → any 404 streak is
       // broken (reset to 0 while still stale, cleared once it leaves the set).
@@ -2633,6 +2642,7 @@ export const inspectCustomerOwnership = internalQuery({
 export const repairCustomerFromSubscriptionPayload = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    if (await billingDeletionForUser(ctx, args.userId)) return null;
     const subs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -2760,6 +2770,7 @@ export const backfillMissingCustomers = internalMutation({
     const summary = {
       usersInspected: userIds.size,
       alreadyHadCustomer: 0,
+      skippedDeleted: 0,
       repaired: 0,
       couldNotRepair: 0,
       // userIds that need manual support touch — rawPayload didn't carry
@@ -2768,6 +2779,10 @@ export const backfillMissingCustomers = internalMutation({
     };
 
     for (const userId of userIds) {
+      if (await billingDeletionForUser(ctx, userId)) {
+        summary.skippedDeleted++;
+        continue;
+      }
       const existing = await ctx.db
         .query("customers")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -3391,10 +3406,15 @@ export const claimStuckPaymentReconciliation = internalMutation({
       return { action: "already_terminal" as const };
     }
 
+    const deletion = await billingDeletionForUser(ctx, args.userId);
+    const retainedUserId = deletion ? tombstoneUserId(deletion.userIdHash) : args.userId;
+    if (deletion && !isTerminalPaymentStatus(args.observedStatus)) {
+      return { action: "account_deleted" as const };
+    }
     const now = Date.now();
     if (isTerminalPaymentStatus(args.observedStatus)) {
       await ctx.db.insert("paymentEvents", {
-        userId: args.userId,
+        userId: retainedUserId,
         dodoPaymentId: args.dodoPaymentId,
         type: "charge",
         amount: args.amount,
@@ -3402,12 +3422,12 @@ export const claimStuckPaymentReconciliation = internalMutation({
         status: args.observedStatus,
         dodoSubscriptionId: args.dodoSubscriptionId,
         planKey: args.planKey,
-        rawPayload: args.rawPayload,
+        rawPayload: deletion ? redactBillingPayload(args.rawPayload) : args.rawPayload,
         occurredAt: now,
       });
       await ctx.db.insert("paymentReconciliationAttempts", {
         dodoPaymentId: args.dodoPaymentId,
-        userId: args.userId,
+        userId: retainedUserId,
         planKey: args.planKey,
         action: "terminal_reconciled",
         observedStatus: args.observedStatus,
@@ -3421,7 +3441,7 @@ export const claimStuckPaymentReconciliation = internalMutation({
       // never-activated sub (#4794's renewal reconciler only scans active
       // rows). Silently closing the case here would bury it. Page ops when a
       // succeeded charge has a subscription id but no subscription row at all.
-      if (args.observedStatus === "succeeded" && args.dodoSubscriptionId) {
+      if (!deletion && args.observedStatus === "succeeded" && args.dodoSubscriptionId) {
         const sub = await ctx.db
           .query("subscriptions")
           .withIndex("by_dodoSubscriptionId", (q) =>
@@ -3446,7 +3466,7 @@ export const claimStuckPaymentReconciliation = internalMutation({
     // would be a false alarm.
     await ctx.db.insert("paymentReconciliationAttempts", {
       dodoPaymentId: args.dodoPaymentId,
-      userId: args.userId,
+      userId: retainedUserId,
       planKey: args.planKey,
       action: "ops_notified",
       observedStatus: args.observedStatus,
@@ -3765,6 +3785,7 @@ export const claimSubscription = mutation({
   args: { anonId: v.string(), claimToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const realUserId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, realUserId);
 
     // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
     // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
@@ -3973,6 +3994,7 @@ export const grantComplimentaryEntitlement = internalMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     if (args.days <= 0 || !Number.isFinite(args.days)) {
       throw new Error(`grantComplimentaryEntitlement: days must be a positive finite number, got ${args.days}`);
     }

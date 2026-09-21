@@ -11,7 +11,8 @@ import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
 import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
-import { isCoveringAt } from "./subscriptionHelpers";
+import { billingDeletionForEvent, billingDeletionForUser, isCoveringAt } from "./subscriptionHelpers";
+import { tombstoneUserId } from "../accountDeletion/registry";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
@@ -373,6 +374,11 @@ function buildPriceRowsHtml(args: {
  * Send welcome email to user + admin notification on new subscription.
  * Scheduled from handleSubscriptionActive via ctx.scheduler.
  */
+export const canSendBillingEmail = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => !(await billingDeletionForUser(ctx, args.userId)),
+});
+
 export const sendSubscriptionEmails = internalAction({
   args: {
     userEmail: v.string(),
@@ -392,7 +398,9 @@ export const sendSubscriptionEmails = internalAction({
     // email to the checkout inbox, and the Billing Email row for admin.
     checkoutEmail: v.optional(v.string()),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    const canSend = () => ctx.runQuery(internal.payments.subscriptionEmails.canSendBillingEmail, { userId: args.userId });
+    if (!await canSend()) return;
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.error("[subscriptionEmails] RESEND_API_KEY not set");
@@ -427,6 +435,7 @@ export const sendSubscriptionEmails = internalAction({
     }
 
     // 1b. Sign-in pointer to the checkout inbox (#6330) — see sendSignInPointer.
+    if (!await canSend()) return;
     if (args.checkoutEmail) {
       await sendSignInPointer(apiKey, args.checkoutEmail, args.userEmail, planName);
     }
@@ -434,6 +443,7 @@ export const sendSubscriptionEmails = internalAction({
     // 2. Admin notification — leads with what the user actually paid (and how
     // it compares to list price) instead of the opaque subscription_id, which
     // is rarely the question being asked when this email lands.
+    if (!await canSend()) return;
     const priceRows = buildPriceRowsHtml({
       planKey: args.planKey,
       recurringPreTaxAmount: args.recurringPreTaxAmount,
@@ -475,6 +485,8 @@ export const sendSubscriptionEmails = internalAction({
  */
 export const sendReactivationEmail = internalAction({
   args: {
+    // Legacy queued jobs lack an owner; skip them instead of mailing a deleted account.
+    userId: v.optional(v.string()),
     userEmail: v.string(),
     planKey: v.string(),
     // #6330: same contract as sendSubscriptionEmails — set only when the Dodo
@@ -482,7 +494,11 @@ export const sendReactivationEmail = internalAction({
     // checkout is exactly as capable of alias divergence as a first one.
     checkoutEmail: v.optional(v.string()),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) return;
+    const canSend = () => ctx.runQuery(internal.payments.subscriptionEmails.canSendBillingEmail, { userId });
+    if (!await canSend()) return;
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.error("[subscriptionEmails] RESEND_API_KEY not set");
@@ -521,6 +537,7 @@ export const sendReactivationEmail = internalAction({
 
     // Sign-in pointer to the checkout inbox — same rationale as the welcome
     // path (#6330); best-effort by construction.
+    if (!await canSend()) return;
     if (args.checkoutEmail) {
       await sendSignInPointer(apiKey, args.checkoutEmail, args.userEmail, planName);
     }
@@ -611,7 +628,7 @@ export const getDunningContext = internalQuery({
         q.eq("dodoSubscriptionId", args.dodoSubscriptionId),
       )
       .unique();
-    if (!sub) return null;
+    if (!sub || await billingDeletionForUser(ctx, sub.userId)) return null;
 
     // Recipient resolution mirrors the portal's trust order: the sub's own
     // rawPayload email first (per-Clerk-userId by construction), then the
@@ -693,11 +710,12 @@ export const recordDunningStepSent = internalMutation({
     email: v.string(),
   },
   handler: async (ctx, args) => {
+    const deletion = await billingDeletionForEvent(ctx, { subscription_id: args.dodoSubscriptionId });
     await ctx.db.insert("dunningEmails", {
       dodoSubscriptionId: args.dodoSubscriptionId,
       step: args.step,
       episodeAt: args.episodeAt,
-      email: args.email,
+      email: deletion ? tombstoneUserId(deletion.userIdHash) : args.email,
       sentAt: Date.now(),
     });
   },

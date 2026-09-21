@@ -69,7 +69,7 @@ export async function requestOwnAccountDeletion(): Promise<AccountDeletionResult
   const started = await settleAccountOperation(
     userId,
     'deleting the account',
-    () => client.mutation(
+    () => client.action(
       (api as any).accountDeletion.erase.requestAccountDeletion,
       {},
     ) as Promise<AccountDeletionResult>,

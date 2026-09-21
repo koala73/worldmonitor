@@ -1,0 +1,144 @@
+import { convexTest } from "convex-test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { internal } from "../_generated/api";
+import { modules, schema } from "./companyMonitoring.helpers";
+
+const { dodoUpdate } = vi.hoisted(() => ({
+  dodoUpdate: vi.fn<(id: string, body: unknown) => Promise<unknown>>(),
+}));
+vi.mock("dodopayments", () => ({
+  DodoPayments: class { subscriptions = { update: dodoUpdate }; },
+  NotFoundError: class extends Error {},
+  APIConnectionTimeoutError: class extends Error {},
+  APIConnectionError: class extends Error {},
+}));
+
+const fetchMock = vi.fn<typeof fetch>();
+function success(input: RequestInfo | URL): Promise<Response> {
+  const url = String(input);
+  if (url.includes("api.clerk.com")) return Promise.resolve(new Response(null, { status: 204 }));
+  return Promise.resolve(Response.json(url.includes("/pipeline") ? [{ result: 1 }] : { result: null }));
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.stubEnv("DODO_API_KEY", "test-dodo");
+  vi.stubEnv("CLERK_SECRET_KEY", "test-clerk");
+  vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.test");
+  vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "test-redis");
+  dodoUpdate.mockReset().mockResolvedValue({ status: "cancelled" });
+  fetchMock.mockReset().mockImplementation(success);
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+async function setup(subscriptionIds: string[] = []) {
+  const t = convexTest(schema, modules);
+  const deletionId = await t.run((ctx) => ctx.db.insert("accountDeletions", {
+    userId: "user_retry", userIdHash: "hash", source: "self", status: "pending",
+    step: "external", dodoSubscriptionIds: subscriptionIds, startedAt: Date.now(), updatedAt: Date.now(),
+  }));
+  return { t, deletionId, row: () => t.run((ctx) => ctx.db.get(deletionId)) };
+}
+
+async function pendingJobs(t: ReturnType<typeof convexTest>) {
+  return t.run(async (ctx) => (await ctx.db.system.query("_scheduled_functions").collect())
+    .filter((job) => job.state.kind === "pending"));
+}
+
+describe("external account deletion retry policy", () => {
+  test.each(["DODO_API_KEY", "CLERK_SECRET_KEY", "UPSTASH_REDIS_REST_TOKEN"])(
+    "missing %s fails without scheduling more work", async (key) => {
+      vi.stubEnv(key, "");
+      const { t, deletionId, row } = await setup(["sub_1"]);
+      expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+        .toEqual({ status: "failed" });
+      expect((await row())?.externalAttempts).toBe(1);
+      expect((await row())?.status).toBe("failed");
+      expect(await pendingJobs(t)).toHaveLength(0);
+      const calls = fetchMock.mock.calls.length;
+      await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId });
+      expect(fetchMock).toHaveBeenCalledTimes(calls);
+    },
+  );
+
+  test.each([401, 403])("permanent Clerk HTTP %i fails without retries", async (status) => {
+    fetchMock.mockImplementation((input) => String(input).includes("api.clerk.com")
+      ? Promise.resolve(new Response(null, { status })) : success(input));
+    const { t, deletionId, row } = await setup();
+    expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+      .toEqual({ status: "failed" });
+    expect((await row())?.lastError).toContain(String(status));
+    expect(await pendingJobs(t)).toHaveLength(0);
+  });
+
+  test("Dodo authentication failure still clears access caches and then stops", async () => {
+    dodoUpdate.mockRejectedValue(Object.assign(new Error("unauthorized"), { status: 401 }));
+    const { t, deletionId, row } = await setup(["sub_1"]);
+    expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+      .toEqual({ status: "failed" });
+    expect((await row())?.redisClearedAt).toBeDefined();
+    expect(await pendingJobs(t)).toHaveLength(0);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("api.clerk.com"))).toBe(false);
+  });
+
+  test("SDK connection failures retry and can recover", async () => {
+    const { APIConnectionError } = await import("dodopayments");
+    dodoUpdate.mockRejectedValueOnce(new APIConnectionError({ message: "Connection error" }))
+      .mockResolvedValue({ status: "cancelled" });
+    const { t, deletionId, row } = await setup(["sub_1"]);
+    expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+      .toEqual({ status: "pending" });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await row())?.status).toBe("complete");
+    expect(dodoUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  test("persistent transient failures back off and stop after five attempts", async () => {
+    fetchMock.mockImplementation((input) => String(input).includes("api.clerk.com")
+      ? Promise.resolve(new Response(null, { status: 503 })) : success(input));
+    const { t, deletionId, row } = await setup();
+    const startedAt = Date.now();
+    await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId });
+    expect((await pendingJobs(t))[0]?.scheduledTime).toBe(startedAt + 30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await t.finishInProgressScheduledFunctions();
+    expect((await row())?.externalAttempts).toBe(2);
+    expect((await pendingJobs(t))[0]?.scheduledTime).toBe(startedAt + 90_000);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await row())?.externalAttempts).toBe(5);
+    expect((await row())?.status).toBe("failed");
+    expect(await pendingJobs(t)).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("api.clerk.com"))).toHaveLength(5);
+  });
+
+  test("a transient Dodo failure resumes without cancelling completed subscriptions twice", async () => {
+    dodoUpdate.mockResolvedValueOnce({ status: "cancelled" })
+      .mockRejectedValueOnce(Object.assign(new Error("rate limited"), { status: 429 }))
+      .mockResolvedValue({ status: "cancelled" });
+    const { t, deletionId, row } = await setup(["sub_a", "sub_b"]);
+    await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId });
+    expect((await row())?.cancelledDodoSubscriptionIds).toEqual(["sub_a"]);
+    expect((await row())?.redisClearedAt).toBeDefined();
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await row())?.status).toBe("complete");
+    expect(dodoUpdate.mock.calls.map(([id]) => id)).toEqual(["sub_a", "sub_b", "sub_b"]);
+  });
+
+  test.each(["/get/", "/pipeline", "/set/"])("Redis HTTP 200 error on %s cannot complete deletion", async (operation) => {
+    fetchMock.mockImplementation((input) => String(input).includes(operation)
+      ? Promise.resolve(Response.json(operation === "/pipeline" ? [{ error: "ERR denied" }] : { error: "ERR denied" }))
+      : success(input));
+    const { t, deletionId, row } = await setup();
+    await t.run((ctx) => ctx.db.patch(deletionId, { mcpTokenIds: ["token_1"] }));
+    expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+      .toEqual({ status: "failed" });
+    expect((await row())?.redisClearedAt).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("api.clerk.com"))).toBe(false);
+    expect(await pendingJobs(t)).toHaveLength(0);
+  });
+});

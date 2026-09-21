@@ -28,6 +28,7 @@ vi.mock("dodopayments", () => {
     DodoPayments: class {
       subscriptions = { update: dodoUpdateMock };
     },
+    APIConnectionError: class extends Error {},
     NotFoundError,
     APIConnectionTimeoutError,
   };
@@ -88,6 +89,13 @@ async function makeT() {
     const body = typeof init?.body === "string" ? init.body : "";
     fetchCalls.push(`${init?.method ?? "POST"} ${url} ${body}`.trim());
     if (isClerkApiUrl(url)) {
+      if (init?.method !== "DELETE") {
+        const userId = new URL(url).pathname.split("/").at(-1);
+        const identity = [USER_A, USER_B, OWNER, INVITEE].find(user => user.subject === userId);
+        if (identity) return Response.json({ id: userId, primary_email_address_id: "primary", email_addresses: [
+          { id: "primary", email_address: identity.email, verification: { status: "verified" } },
+        ] });
+      }
       return new Response("gone", { status: 404 });
     }
     if (url.includes("upstash.test")) {
@@ -323,7 +331,7 @@ describe("account deletion — requestAccountDeletion auth", () => {
   test("unauthenticated request throws AUTH_REQUIRED", async () => {
     const t = await makeT();
     await expect(
-      t.mutation(api.accountDeletion.erase.requestAccountDeletion, {}),
+      t.action(api.accountDeletion.erase.requestAccountDeletion, {}),
     ).rejects.toThrow("AUTH_REQUIRED");
   });
 });
@@ -332,7 +340,7 @@ describe("account deletion — eraseConfirmedUser identity", () => {
   test("support rejects a missing userId", async () => {
     const t = await makeT();
     await expect(
-      t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+      t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
         userId: "",
         source: "support",
       }),
@@ -342,7 +350,7 @@ describe("account deletion — eraseConfirmedUser identity", () => {
   test("email is not an accepted argument", async () => {
     const t = await makeT();
     await expect(
-      t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+      t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
         userId: USER_A.subject,
         source: "support",
         email: USER_A.email,
@@ -371,7 +379,7 @@ describe("account deletion — Convex cascade", () => {
 
     const result = await t
       .withIdentity(USER_A)
-      .mutation(api.accountDeletion.erase.requestAccountDeletion, {});
+      .action(api.accountDeletion.erase.requestAccountDeletion, {});
     await drainErase(t);
 
     expect(result.status === "pending" || result.status === "complete").toBe(true);
@@ -455,14 +463,14 @@ describe("account deletion — Convex cascade", () => {
   test("second erase is already-deleted", async () => {
     const t = await makeT();
     await seedUser(t, USER_A);
-    const first = await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    const first = await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: USER_A.subject,
       source: "support",
     });
     await drainErase(t);
     expect((await deletionRow(t, USER_A.subject))?.status).toBe("complete");
 
-    const second = await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    const second = await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: USER_A.subject,
       source: "support",
     });
@@ -476,7 +484,7 @@ describe("account deletion — Convex cascade", () => {
 
   test("every erase creates a Company Monitoring denied fence even without a prior account", async () => {
     const t = await makeT();
-    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: "user_never_used_cm",
       source: "support",
     });
@@ -524,7 +532,7 @@ describe("account deletion — business seats", () => {
       });
     });
 
-    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: INVITEE.subject,
       source: "support",
     });
@@ -577,7 +585,7 @@ describe("account deletion — business seats", () => {
       });
     });
 
-    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: OWNER.subject,
       source: "support",
     });
@@ -638,7 +646,7 @@ describe("account deletion — external side effects", () => {
       });
     });
 
-    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: USER_A.subject,
       source: "support",
     });
@@ -681,7 +689,7 @@ describe("account deletion — external side effects", () => {
       });
     });
 
-    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: USER_A.subject,
       source: "support",
     });
@@ -702,6 +710,11 @@ describe("account deletion — external side effects", () => {
       const body = typeof init?.body === "string" ? init.body : "";
       fetchCalls.push(`${init?.method ?? "POST"} ${url} ${body}`.trim());
       if (isClerkApiUrl(url)) {
+        if (init?.method !== "DELETE") return Response.json({
+          id: USER_A.subject, primary_email_address_id: "primary", email_addresses: [
+            { id: "primary", email_address: USER_A.email, verification: { status: "verified" } },
+          ],
+        });
         clerkCalls += 1;
         if (clerkCalls === 1) return new Response("busy", { status: 500 });
         return new Response("gone", { status: 404 });
@@ -710,12 +723,12 @@ describe("account deletion — external side effects", () => {
         if (url.includes("/get/")) {
           return Response.json({ result: JSON.stringify({ issueSlot: "2026-09-21-1200" }) });
         }
-        return Response.json({ result: "OK" });
+        return Response.json(url.includes("/pipeline") ? Array.from({ length: 5 }, () => ({ result: 1 })) : { result: "OK" });
       }
       return new Response("unexpected", { status: 500 });
     });
     await seedUser(t, USER_A);
-    await t.mutation(internal.accountDeletion.erase.eraseConfirmedUser, {
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
       userId: USER_A.subject,
       source: "support",
     });
@@ -723,9 +736,116 @@ describe("account deletion — external side effects", () => {
 
     expect(clerkCalls).toBeGreaterThanOrEqual(2);
     const firstRedis = fetchCalls.findIndex((call) => call.includes("upstash.test"));
-    const firstClerk = fetchCalls.findIndex((call) => fetchCallTargetsClerkApi(call));
+    const firstClerk = fetchCalls.findIndex((call) => call.startsWith("DELETE ") && fetchCallTargetsClerkApi(call));
     expect(firstRedis).toBeGreaterThanOrEqual(0);
     expect(firstClerk).toBeGreaterThan(firstRedis);
     expect((await deletionRow(t, USER_A.subject))?.status).toBe("complete");
+  });
+});
+
+
+describe("account deletion — verified email ownership", () => {
+  async function seedEmailRows(t: Awaited<ReturnType<typeof makeT>>, email: string) {
+    return t.run(async ctx => ctx.db.insert("contactMessages", {
+      name: "Other person", email, normalizedEmail: email,
+      source: "contact", receivedAt: Date.now(),
+    }));
+  }
+
+  function mockCurrentEmail(email: string, verified: boolean) {
+    const defaultFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (isClerkApiUrl(String(input)) && init?.method !== "DELETE") {
+        return Promise.resolve(Response.json({ id: USER_A.subject,
+          primary_email_address_id: "primary", email_addresses: [{ id: "primary",
+            email_address: email, verification: { status: verified ? "verified" : "unverified" },
+          }],
+        }));
+      }
+      return defaultFetch(input, init);
+    });
+  }
+
+  test("unverified Clerk email cannot erase email-only records even with cached profile and JWT email", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    const victim = await seedEmailRows(t, USER_A.email);
+    mockCurrentEmail(USER_A.email, false);
+    await t.withIdentity({ ...USER_A, emailVerified: true })
+      .action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+    expect(await t.run(ctx => ctx.db.get(victim))).not.toBeNull();
+    expect((await deletionRow(t, USER_A.subject))?.status).toBe("complete");
+  });
+
+  test.each(["self", "support"] as const)("%s uses current verified Clerk email instead of stale cached or token email", async source => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    const stale = await seedEmailRows(t, USER_A.email);
+    const current = await seedEmailRows(t, "current@example.com");
+    mockCurrentEmail("current@example.com", true);
+    if (source === "self") await t.withIdentity(USER_A).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    else await t.action(internal.accountDeletion.erase.eraseConfirmedUser, { userId: USER_A.subject, source });
+    await drainErase(t);
+    expect(await t.run(ctx => ctx.db.get(stale))).not.toBeNull();
+    expect(await t.run(ctx => ctx.db.get(current))).toBeNull();
+  });
+
+  test("webhook-only deletion never treats a cached profile email as ownership proof", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    const victim = await seedEmailRows(t, USER_A.email);
+    await t.mutation(internal.accountDeletion.erase.ingestClerkUserDeleted, {
+      userId: USER_A.subject, webhookId: "verified-proof-webhook",
+    });
+    await drainErase(t);
+    expect(await t.run(ctx => ctx.db.get(victim))).not.toBeNull();
+    const event = await t.run(ctx => ctx.db.query("webhookEvents").first());
+    expect(JSON.stringify(event?.rawPayload)).not.toContain(USER_A.subject);
+  });
+
+  test("failed Clerk ownership lookup stops before any deletion", async () => {
+    const t = await makeT();
+    await seedUser(t, USER_A);
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(null, { status: 503 })));
+    await expect(t.withIdentity(USER_A).action(api.accountDeletion.erase.requestAccountDeletion, {}))
+      .rejects.toThrow("EMAIL_VERIFICATION_UNAVAILABLE");
+    expect(await deletionRow(t, USER_A.subject)).toBeNull();
+    expect(await rowsForUser(t, "users", USER_A.subject)).toHaveLength(1);
+  });
+});
+
+describe("account deletion — continuation ownership", () => {
+  test("repeated pending requests do not start duplicate workers; failed requests can resume", async () => {
+    const t = await makeT();
+    const deletionId = await t.run(ctx => ctx.db.insert("accountDeletions", {
+      userId: USER_A.subject, userIdHash: "hash-a", source: "self", status: "pending",
+      step: "external", externalAttempts: 3, startedAt: Date.now(), updatedAt: Date.now(),
+    }));
+    const before = await t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    await t.withIdentity(USER_A).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    const after = await t.run(ctx => ctx.db.system.query("_scheduled_functions").collect());
+    expect(after.length).toBe(before.length);
+    expect((await t.run(ctx => ctx.db.get(deletionId)))?.externalAttempts).toBe(3);
+    await t.run(ctx => ctx.db.patch(deletionId, { status: "failed", externalAttempts: 5 }));
+    await t.withIdentity(USER_A).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    expect((await t.run(ctx => ctx.db.get(deletionId)))?.externalAttempts).toBe(0);
+    await drainErase(t);
+    expect((await t.run(ctx => ctx.db.get(deletionId)))?.status).toBe("complete");
+  });
+
+  test("an external action cannot complete before a newly discovered subscription is cancelled", async () => {
+    const t = await makeT();
+    const deletionId = await t.run(ctx => ctx.db.insert("accountDeletions", {
+      userId: USER_A.subject, userIdHash: "hash-a", source: "self", status: "pending",
+      step: "external", dodoSubscriptionIds: ["sub-first", "sub-late"],
+      cancelledDodoSubscriptionIds: ["sub-first"], startedAt: Date.now(), updatedAt: Date.now(),
+    }));
+    expect(await t.mutation(internal.accountDeletion.erase.markExternalComplete, { deletionId }))
+      .toMatchObject({ status: "pending" });
+    await drainErase(t);
+    expect(dodoUpdateMock).toHaveBeenCalledWith("sub-late", { status: "cancelled" });
+    expect(dodoUpdateMock).not.toHaveBeenCalledWith("sub-first", expect.anything());
+    expect((await t.run(ctx => ctx.db.get(deletionId)))?.status).toBe("complete");
   });
 });

@@ -79,7 +79,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "userReferralCredits",
     action: "delete",
-    notes: "Referrer-owned credits (PII in referee email)",
+    notes: "Delete referrer-owned credits; anonymize referee email on surviving credits",
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
@@ -222,7 +222,12 @@ export function normalizeVerifiedEmail(
   return normalized.length > 0 ? normalized : undefined;
 }
 
-const CUSTOMER_PII_KEYS = new Set(["email", "name"]);
+const BILLING_PII_KEYS = new Set([
+  "email", "normalizedemail", "normalized_email",
+  "wm_login_email", "wm_login_email_sig", "wm_user_id", "wm_user_id_sig",
+  "phone", "phone_number", "phonenumber", "billing", "billing_address", "billingaddress",
+]);
+const CUSTOMER_PII_KEYS = new Set(["name", "address"]);
 
 /**
  * Strip person-identifying fields from Dodo-shaped billing payloads while
@@ -239,7 +244,7 @@ export function redactBillingPayload(value: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
     const lower = key.toLowerCase();
-    if (lower === "email" || lower === "normalizedemail" || lower === "normalized_email") {
+    if (BILLING_PII_KEYS.has(lower)) {
       continue;
     }
     if (lower === "customer" && nested && typeof nested === "object" && !Array.isArray(nested)) {
@@ -247,7 +252,7 @@ export function redactBillingPayload(value: unknown): unknown {
       for (const [customerKey, customerValue] of Object.entries(
         nested as Record<string, unknown>,
       )) {
-        if (CUSTOMER_PII_KEYS.has(customerKey.toLowerCase())) continue;
+        if (CUSTOMER_PII_KEYS.has(customerKey.toLowerCase()) || BILLING_PII_KEYS.has(customerKey.toLowerCase())) continue;
         customer[customerKey] = redactBillingPayload(customerValue);
       }
       out[key] = customer;

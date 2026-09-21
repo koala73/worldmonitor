@@ -6,10 +6,10 @@
  * network; this module must not call live providers from unit tests.
  */
 
-import { DodoPayments, NotFoundError, APIConnectionTimeoutError } from "dodopayments";
+import { DodoPayments, NotFoundError, APIConnectionTimeoutError, APIConnectionError } from "dodopayments";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalAction } from "../_generated/server";
+import { internalAction, internalMutation } from "../_generated/server";
 import { mergeUniqueStrings } from "./registry";
 
 const REDIS_FETCH_TIMEOUT_MS = 5_000;
@@ -17,6 +17,68 @@ const CLERK_FETCH_TIMEOUT_MS = 8_000;
 const DODO_ATTEMPT_TIMEOUT_MS = 8_000;
 const MCP_NEG_CACHE_TTL_SECONDS = 60;
 const USER_AGENT = "worldmonitor-convex/1.0";
+const MAX_EXTERNAL_ATTEMPTS = 5;
+const RETRY_BASE_DELAY_MS = 30_000;
+const RETRY_MAX_DELAY_MS = 5 * 60_000;
+
+class ProviderError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+  }
+}
+
+function isRetryable(err: unknown): boolean {
+  if (isTimeout(err)) return true;
+  if (!err || typeof err !== "object") return false;
+  const status = (err as { status?: unknown }).status;
+  if (typeof status === "number") {
+    return status === 408 || status === 429 || status >= 500;
+  }
+  return err instanceof TypeError || err instanceof APIConnectionError;
+}
+
+export const beginExternalAttempt = internalMutation({
+  args: { deletionId: v.id("accountDeletions") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.deletionId);
+    if (!row || row.status !== "pending" || row.step !== "external") return false;
+    if ((row.externalAttempts ?? 0) >= MAX_EXTERNAL_ATTEMPTS) {
+      await ctx.db.patch(row._id, {
+        status: "failed", lastError: "EXTERNAL_ATTEMPTS_EXHAUSTED", updatedAt: Date.now(),
+      });
+      return false;
+    }
+    await ctx.db.patch(row._id, {
+      externalAttempts: (row.externalAttempts ?? 0) + 1, updatedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
+export const recordExternalFailure = internalMutation({
+  args: {
+    deletionId: v.id("accountDeletions"),
+    lastError: v.string(),
+    retryable: v.boolean(),
+  },
+  returns: v.union(v.literal("pending"), v.literal("failed")),
+  handler: async (ctx, args): Promise<"pending" | "failed"> => {
+    const row = await ctx.db.get(args.deletionId);
+    if (!row || row.status !== "pending") return "failed";
+    const attempts = row.externalAttempts ?? 0;
+    const status = args.retryable && attempts < MAX_EXTERNAL_ATTEMPTS ? "pending" : "failed";
+    await ctx.db.patch(row._id, { status, lastError: args.lastError, updatedAt: Date.now() });
+    if (status === "pending") {
+      await ctx.scheduler.runAfter(
+        Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1)),
+        internal.accountDeletion.sideEffects.runExternalErase,
+        { deletionId: row._id },
+      );
+    }
+    return status;
+  },
+});
 
 export function buildDeletionDodoClientOptions(env: {
   DODO_API_KEY?: string;
@@ -82,10 +144,9 @@ async function cancelDodoSubscription(
 async function redisCommand(
   pathAndQuery: string,
   init: RequestInit = {},
-): Promise<Response | null> {
+): Promise<Response> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url && !token) return null;
   if (!url || !token) {
     throw new Error("UPSTASH_REDIS_PAIR_INCOMPLETE");
   }
@@ -108,6 +169,19 @@ async function redisCommand(
   }
 }
 
+async function redisResult(response: Response, operation: string): Promise<unknown> {
+  if (!response.ok) {
+    throw new ProviderError(`REDIS_${operation}_FAILED:${response.status}`, response.status);
+  }
+  const body: unknown = await response.json();
+  const results = Array.isArray(body) ? body : [body];
+  if (results.length === 0 || results.some((result) =>
+    !result || typeof result !== "object" || "error" in result || !("result" in result))) {
+    throw new ProviderError(`REDIS_${operation}_INVALID_RESULT`);
+  }
+  return body;
+}
+
 async function redisDel(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
   const unique = mergeUniqueStrings([], keys);
@@ -115,19 +189,12 @@ async function redisDel(keys: string[]): Promise<void> {
   const response = await redisCommand("/pipeline", {
     body: JSON.stringify(commands),
   });
-  if (!response) return;
-  if (!response.ok) {
-    throw new Error(`REDIS_DEL_FAILED:${response.status}`);
-  }
+  await redisResult(response, "DEL");
 }
 
 async function redisGetJson(key: string): Promise<unknown> {
   const response = await redisCommand(`/get/${encodeURIComponent(key)}`);
-  if (!response) return null;
-  if (!response.ok) {
-    throw new Error(`REDIS_GET_FAILED:${response.status}`);
-  }
-  const body = (await response.json()) as { result?: unknown };
+  const body = (await redisResult(response, "GET")) as { result?: unknown };
   const raw = body.result;
   if (typeof raw !== "string" || raw.length === 0) return null;
   try {
@@ -141,10 +208,7 @@ async function redisSetEx(key: string, value: string, ttlSeconds: number): Promi
   const response = await redisCommand(
     `/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/EX/${ttlSeconds}`,
   );
-  if (!response) return;
-  if (!response.ok) {
-    throw new Error(`REDIS_SET_FAILED:${response.status}`);
-  }
+  await redisResult(response, "SET");
 }
 
 async function deleteAccountRedisKeys(args: {
@@ -197,7 +261,7 @@ async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {
   );
   if (response.status === 404) return "missing";
   if (!response.ok) {
-    throw new Error(`CLERK_DELETE_FAILED:${response.status}`);
+    throw new ProviderError(`CLERK_DELETE_FAILED:${response.status}`, response.status);
   }
   return "deleted";
 }
@@ -207,13 +271,14 @@ const runResultValidator = v.object({
     v.literal("pending"),
     v.literal("complete"),
     v.literal("already_deleted"),
+    v.literal("failed"),
   ),
 });
 
 export const runExternalErase = internalAction({
   args: { deletionId: v.id("accountDeletions") },
   returns: runResultValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ status: "pending" | "complete" | "already_deleted" | "failed" }> => {
     const snapshot = await ctx.runQuery(
       internal.accountDeletion.erase.getExternalEraseSnapshot,
       { deletionId: args.deletionId },
@@ -224,9 +289,12 @@ export const runExternalErase = internalAction({
     if (snapshot.status === "complete") {
       return { status: "already_deleted" as const };
     }
+    if (snapshot.status === "failed") return { status: "failed" as const };
     if (snapshot.step !== "external") {
       return { status: "pending" as const };
     }
+    const started = await ctx.runMutation(internal.accountDeletion.sideEffects.beginExternalAttempt, args);
+    if (!started) return { status: "failed" as const };
 
     let cancelled = [...snapshot.cancelledDodoSubscriptionIds];
     const remaining = snapshot.dodoSubscriptionIds.filter(
@@ -247,11 +315,9 @@ export const runExternalErase = internalAction({
         }
       }
     } catch (err) {
-      await ctx.runMutation(internal.accountDeletion.erase.recordExternalProgress, {
-        deletionId: args.deletionId,
-        cancelledDodoSubscriptionIds: cancelled,
-        lastError: `${isTimeout(err) ? "DODO_TIMEOUT" : "DODO_CANCEL"}:${errorMessage(err)}`,
-      });
+      let lastError = `${isTimeout(err) ? "DODO_TIMEOUT" : "DODO_CANCEL"}:${errorMessage(err)}`;
+      let retryable = isRetryable(err);
+      // Revoke cache-backed access even when billing cancellation is unavailable.
       try {
         await deleteAccountRedisKeys({
           userId: snapshot.userId,
@@ -263,21 +329,15 @@ export const runExternalErase = internalAction({
           deletionId: args.deletionId,
           cancelledDodoSubscriptionIds: cancelled,
           redisClearedAt: Date.now(),
-          lastError: `${isTimeout(err) ? "DODO_TIMEOUT" : "DODO_CANCEL"}:${errorMessage(err)}`,
         });
       } catch (redisErr) {
-        await ctx.runMutation(internal.accountDeletion.erase.recordExternalProgress, {
-          deletionId: args.deletionId,
-          cancelledDodoSubscriptionIds: cancelled,
-          lastError: `${isTimeout(err) ? "DODO_TIMEOUT" : "DODO_CANCEL"}:${errorMessage(err)};REDIS:${errorMessage(redisErr)}`,
-        });
+        lastError += `;REDIS:${errorMessage(redisErr)}`;
+        retryable = retryable && isRetryable(redisErr);
       }
-      await ctx.scheduler.runAfter(
-        0,
-        internal.accountDeletion.sideEffects.runExternalErase,
-        { deletionId: args.deletionId },
-      );
-      return { status: "pending" as const };
+      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
+        deletionId: args.deletionId, lastError, retryable,
+      });
+      return { status };
     }
 
     try {
@@ -293,16 +353,12 @@ export const runExternalErase = internalAction({
         lastError: null,
       });
     } catch (err) {
-      await ctx.runMutation(internal.accountDeletion.erase.recordExternalProgress, {
+      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
         deletionId: args.deletionId,
         lastError: `REDIS:${errorMessage(err)}`,
+        retryable: isRetryable(err),
       });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.accountDeletion.sideEffects.runExternalErase,
-        { deletionId: args.deletionId },
-      );
-      return { status: "pending" as const };
+      return { status };
     }
 
     try {
@@ -313,21 +369,17 @@ export const runExternalErase = internalAction({
         lastError: null,
       });
     } catch (err) {
-      await ctx.runMutation(internal.accountDeletion.erase.recordExternalProgress, {
+      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
         deletionId: args.deletionId,
         lastError: `CLERK_DELETE:${errorMessage(err)}`,
+        retryable: isRetryable(err),
       });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.accountDeletion.sideEffects.runExternalErase,
-        { deletionId: args.deletionId },
-      );
-      return { status: "pending" as const };
+      return { status };
     }
 
-    await ctx.runMutation(internal.accountDeletion.erase.markExternalComplete, {
+    const result = await ctx.runMutation(internal.accountDeletion.erase.markExternalComplete, {
       deletionId: args.deletionId,
     });
-    return { status: "complete" as const };
+    return { status: result.status === "already_deleted" ? "complete" as const : result.status };
   },
 });

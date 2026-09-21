@@ -9,6 +9,7 @@
  * Both share the same core logic via _createCheckoutSession().
  */
 
+import { assertAccountWritable } from "../accountDeletion/guard";
 import { v, ConvexError } from "convex/values";
 import { action, internalAction, internalMutation, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -59,6 +60,7 @@ const CHECKOUT_ADMISSION_WINDOW_MS = 10 * 60 * 1000;
 export const admitCheckout = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, { userId }): Promise<CheckoutRateLimitedOutcome | null> => {
+    await assertAccountWritable(ctx, userId);
     const now = Date.now();
     const row = await ctx.db.query("checkoutAdmissions")
       .withIndex("by_user", (q) => q.eq("userId", userId)).unique();

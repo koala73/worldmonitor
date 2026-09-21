@@ -207,7 +207,7 @@ export class UnifiedSettings {
       if (e.key === 'Escape') {
         if (this.deletionDialog) {
           e.stopPropagation();
-          this.closeDeletionDialog();
+          if (!this.deletionBusy) this.closeDeletionDialog();
           return;
         }
         this.close();

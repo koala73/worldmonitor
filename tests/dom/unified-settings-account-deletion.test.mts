@@ -275,6 +275,29 @@ describe('UnifiedSettings account deletion', () => {
     );
   });
 
+  it('keeps the dialog busy after Escape until the deletion request settles', async () => {
+    let resolveRequest!: (value: { status: string; userIdHash: string }) => void;
+    deletionMocks.request.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }));
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    typePhrase('DELETE');
+    const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!;
+    confirm.click();
+    expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    expect(document.querySelector('[data-deletion-confirm]')).toBe(confirm);
+    expect(confirm.disabled).toBe(true);
+    confirm.click();
+    expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+    expect(signOutMock).not.toHaveBeenCalled();
+
+    resolveRequest({ status: 'complete', userIdHash: 'abc' });
+    await vi.waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
+    expect(document.querySelector('[data-deletion-confirm]')).toBeNull();
+  });
+
   it('does not sign out when the account changes mid-request', async () => {
     deletionMocks.request.mockRejectedValue(
       new Error('Account changed while deleting the account. Try again.'),

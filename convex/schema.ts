@@ -594,7 +594,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_referrer", ["referrerUserId"])
-    .index("by_referrer_email", ["referrerUserId", "refereeEmail"]),
+    .index("by_referrer_email", ["referrerUserId", "refereeEmail"])
+    .index("by_refereeEmail", ["refereeEmail"]),
 
   contactMessages: defineTable({
     name: v.string(),
@@ -1028,6 +1029,7 @@ export default defineSchema({
     redisClearedAt: v.optional(v.number()),
     clerkDeletedAt: v.optional(v.number()),
     fenceAppliedAt: v.optional(v.number()),
+    externalAttempts: v.optional(v.number()),
     lastError: v.optional(v.string()),
     startedAt: v.number(),
     updatedAt: v.number(),

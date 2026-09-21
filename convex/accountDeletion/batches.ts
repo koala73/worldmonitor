@@ -2,10 +2,13 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
+  internalAction,
   internalMutation,
+  internalQuery,
   type MutationCtx,
 } from "../_generated/server";
 import { userIdToShard } from "../lib/shards";
+import { recomputeEntitlementFromAllSubs } from "../payments/subscriptionHelpers";
 import {
   ERASE_WRITE_BUDGET,
   mergeUniqueStrings,
@@ -331,8 +334,22 @@ async function eraseGrants(
     if (writes >= budget) break;
     const existing = await ctx.db.get(grantId);
     if (existing) {
+      const inviteeUserId = existing.status === "accepted"
+        ? existing.inviteeUserId
+        : undefined;
+      const deletingInvitee = inviteeUserId && inviteeUserId !== deletion.userId
+        ? await ctx.db.query("accountDeletions")
+          .withIndex("by_userId", (q) => q.eq("userId", inviteeUserId))
+          .first()
+        : null;
+      const recomputeInvitee = inviteeUserId && inviteeUserId !== deletion.userId && !deletingInvitee;
+      if (recomputeInvitee && writes + 2 > budget) break;
       await ctx.db.delete(grantId);
       writes += 1;
+      if (recomputeInvitee) {
+        await recomputeEntitlementFromAllSubs(ctx, inviteeUserId, Date.now());
+        writes += 1;
+      }
     }
   }
   const leftover = await collectGrantIds(ctx, deletion);
@@ -406,9 +423,9 @@ async function anonymizeBilling(
       .withIndex("by_sub_step_episode", (q) =>
         q.eq("dodoSubscriptionId", dodoSubscriptionId),
       )
+      .filter((q) => q.neq(q.field("email"), replacement))
       .take(budget - writes);
     for (const row of dunning) {
-      if (row.email === replacement) continue;
       await ctx.db.patch(row._id, { email: replacement });
       writes += 1;
       if (writes >= budget) return { writes, done: false };
@@ -454,8 +471,9 @@ async function anonymizeBilling(
       .withIndex("by_sub_step_episode", (q) =>
         q.eq("dodoSubscriptionId", dodoSubscriptionId),
       )
-      .take(8);
-    if (rows.some((row) => row.email !== replacement)) {
+      .filter((q) => q.neq(q.field("email"), replacement))
+      .take(1);
+    if (rows.length > 0) {
       leftoverDunning = true;
       break;
     }
@@ -496,6 +514,17 @@ async function eraseEmailKeyed(
   if (!email) return { writes: 0, done: true };
 
   let writes = 0;
+  const referralCredits = await ctx.db
+    .query("userReferralCredits")
+    .withIndex("by_refereeEmail", (q) => q.eq("refereeEmail", email))
+    .take(budget - writes);
+  for (const row of referralCredits) {
+    await ctx.db.patch(row._id, {
+      refereeEmail: tombstoneUserId(deletion.userIdHash),
+    });
+    writes += 1;
+    if (writes >= budget) return { writes, done: false };
+  }
   const registrations = await ctx.db
     .query("registrations")
     .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
@@ -564,7 +593,7 @@ export async function runEraseBatch(
 ): Promise<DeletionDoc | null> {
   const deletion = await ctx.db.get(deletionId);
   if (!deletion) return null;
-  if (deletion.status === "complete") return deletion;
+  if (deletion.status !== "pending") return deletion;
 
   let current = deletion;
   let remaining = ERASE_WRITE_BUDGET;
@@ -637,7 +666,7 @@ export async function scheduleEraseContinuation(
   ctx: MutationCtx,
   after: DeletionDoc,
 ): Promise<void> {
-  if (after.status === "complete") return;
+  if (after.status !== "pending") return;
   if (after.step === "external") {
     await ctx.scheduler.runAfter(
       0,
@@ -646,7 +675,7 @@ export async function scheduleEraseContinuation(
     );
     return;
   }
-  await ctx.scheduler.runAfter(0, internal.accountDeletion.batches.advanceErase, {
+  await ctx.scheduler.runAfter(0, internal.accountDeletion.batches.advanceEraseSafely, {
     deletionId: after._id,
   });
 }
@@ -672,9 +701,70 @@ export const advanceErase = internalMutation({
     ),
   }),
   handler: async (ctx, args) => {
+    const before = await ctx.db.get(args.deletionId);
     const after = await runEraseBatch(ctx, args.deletionId);
     if (!after) return { status: "missing" as const, step: null };
+    if (after.status === "pending") {
+      // A page can delete rows without advancing its table/step cursor. Stamp
+      // every committed page, even within one millisecond, so a stale action's
+      // failure cannot overwrite this transaction's successful progress.
+      await ctx.db.patch(after._id, {
+        updatedAt: Math.max(Date.now(), before?.updatedAt ?? 0, after.updatedAt) + 1,
+      });
+    }
     await scheduleEraseContinuation(ctx, after);
     return { status: after.status, step: after.step };
+  },
+});
+
+export const getBatchSnapshot = internalQuery({
+  args: { deletionId: v.id("accountDeletions") },
+  handler: async (ctx, args): Promise<{
+    step: DeletionDoc["step"];
+    personalTableIndex?: number;
+    updatedAt: number;
+  } | null> => {
+    const row = await ctx.db.get(args.deletionId);
+    if (!row || row.status !== "pending") return null;
+    return { step: row.step, personalTableIndex: row.personalTableIndex, updatedAt: row.updatedAt };
+  },
+});
+
+export const markBatchFailed = internalMutation({
+  args: {
+    deletionId: v.id("accountDeletions"),
+    step: v.string(),
+    personalTableIndex: v.optional(v.number()),
+    updatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.deletionId);
+    // A separate continuation or explicit retry may have advanced since the
+    // action read its snapshot. Never overwrite that newer progress.
+    if (!row || row.status !== "pending" || row.step !== args.step
+      || row.personalTableIndex !== args.personalTableIndex || row.updatedAt !== args.updatedAt) return;
+    await ctx.db.patch(row._id, {
+      status: "failed",
+      lastError: "ERASE_BATCH_FAILED",
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const advanceEraseSafely = internalAction({
+  args: { deletionId: v.id("accountDeletions") },
+  handler: async (ctx, args): Promise<void> => {
+    const snapshot = await ctx.runQuery(internal.accountDeletion.batches.getBatchSnapshot, args);
+    if (!snapshot) return;
+    try {
+      await ctx.runMutation(internal.accountDeletion.batches.advanceErase, args);
+    } catch {
+      // sentry-coverage-ok: persist the failure for the status UI and explicit
+      // retry. The failed mutation rolls back all batch writes before this
+      // separate transaction records failure; no unbounded retry is queued.
+      await ctx.runMutation(internal.accountDeletion.batches.markBatchFailed, {
+        ...args, ...snapshot,
+      });
+    }
   },
 });

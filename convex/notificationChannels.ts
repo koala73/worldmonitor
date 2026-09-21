@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalAction,
@@ -210,6 +211,7 @@ export const setChannelForUser = internalMutation({
     verifiedAccountEmail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, channelType, webhookEnvelope, email, webhookLabel } = args;
     const existing = await ctx.db
       .query("notificationChannels")
@@ -279,6 +281,7 @@ export const setWebPushChannelForUser = internalMutation({
     scheduleWelcome: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     // Step 1: find the current user's row before cross-account endpoint
     // cleanup. A retry with the same endpoint must remain a re-link rather
     // than deleting its own row and appearing to be a first connection.
@@ -353,6 +356,7 @@ export const setSlackOAuthChannelForUser = internalMutation({
     slackConfigurationUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -387,6 +391,7 @@ export const setDiscordOAuthChannelForUser = internalMutation({
     discordChannelId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -439,6 +444,7 @@ export const deleteChannelForUser = internalMutation({
 export const createPairingTokenForUser = internalMutation({
   args: { userId: v.string(), variant: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const { userId, variant } = args;
     const existing = await ctx.db
       .query("telegramPairingTokens")
@@ -486,6 +492,7 @@ export const setChannel = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     const existing = await ctx.db
@@ -605,6 +612,7 @@ export const createPairingToken = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
     await assertProEntitlement(ctx, userId);
 
     // Invalidate any existing unused tokens for this user
@@ -647,6 +655,7 @@ export const claimPairingToken = internalMutation({
       .unique();
 
     if (!record) return { ok: false, reason: "NOT_FOUND" as const };
+    await assertAccountWritable(ctx, record.userId);
     if (record.used) return { ok: false, reason: "ALREADY_USED" as const };
     if (record.expiresAt < Date.now()) return { ok: false, reason: "EXPIRED" as const };
     if (!(await hasProEntitlement(ctx, record.userId))) {

@@ -6,9 +6,11 @@
  * records and entitlements.
  */
 
-import { MutationCtx, internalMutation } from "../_generated/server";
+import { MutationCtx, type QueryCtx, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
+import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import {
   PLAN_PRECEDENCE,
@@ -68,6 +70,113 @@ interface DodoPaymentData {
   // requires_customer_action | …). On `payment.processing` this is where the
   // 3DS/SCA-pending state is surfaced. See derivePaymentEventStatus.
   status?: string;
+}
+
+export async function billingDeletionForUser(ctx: MutationCtx | QueryCtx, userId: string) {
+  return userId.startsWith("deleted:")
+    ? ctx.db.query("accountDeletions")
+      .withIndex("by_userIdHash", (q) => q.eq("userIdHash", userId.slice("deleted:".length)))
+      .unique()
+    : ctx.db.query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+}
+
+/** Stored ownership wins over checkout metadata, including after anonymization. */
+export async function billingDeletionForEvent(
+  ctx: MutationCtx,
+  value: unknown,
+): Promise<Doc<"accountDeletions"> | null> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  if (typeof data.subscription_id === "string") {
+    const subscription = await ctx.db.query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", data.subscription_id as string))
+      .unique();
+    if (subscription) return billingDeletionForUser(ctx, subscription.userId);
+  }
+  const customer = data.customer as DodoCustomer | undefined;
+  if (typeof customer?.customer_id === "string") {
+    const existing = await ctx.db.query("customers")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customer.customer_id!))
+      .first();
+    if (existing) return billingDeletionForUser(ctx, existing.userId);
+  }
+  const metadata = data.metadata as Record<string, unknown> | undefined;
+  if (typeof metadata?.wm_user_id === "string" && typeof metadata.wm_user_id_sig === "string"
+    && await verifyUserId(metadata.wm_user_id, metadata.wm_user_id_sig)) {
+    return billingDeletionForUser(ctx, metadata.wm_user_id);
+  }
+  return null;
+}
+
+/** Retain billing evidence without reviving personal data, access or email work. */
+async function retainDeletedSubscriptionEvent(
+  ctx: MutationCtx,
+  data: DodoSubscriptionData,
+  eventTimestamp: number,
+  eventType: string,
+): Promise<boolean> {
+  const deletion = await billingDeletionForEvent(ctx, data);
+  if (!deletion) return false;
+  const existing = await ctx.db.query("subscriptions")
+    .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", data.subscription_id))
+    .unique();
+  if (existing && !isNewerEvent(existing.updatedAt, eventTimestamp)) return true;
+  const nextStatus = eventType === "subscription.updated" ? data.status : eventType.slice("subscription.".length);
+  const status = nextStatus === "active" || nextStatus === "renewed" ? "active"
+    : nextStatus === "on_hold" || nextStatus === "cancelled" || nextStatus === "expired" ? nextStatus
+    : existing?.status;
+  if (!status) return true;
+  const periodEnd = data.next_billing_date == null ? existing?.currentPeriodEnd ?? eventTimestamp
+    : toEpochMs(data.next_billing_date, "next_billing_date", eventTimestamp);
+  const record = {
+    userId: tombstoneUserId(deletion.userIdHash),
+    dodoSubscriptionId: data.subscription_id,
+    dodoProductId: data.product_id ?? existing?.dodoProductId ?? "",
+    planKey: data.product_id ? await resolvePlanKey(ctx, data.product_id) : existing?.planKey ?? "free",
+    status,
+    currentPeriodStart: data.previous_billing_date == null ? existing?.currentPeriodStart ?? eventTimestamp
+      : toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp),
+    currentPeriodEnd: status === "cancelled" ? Math.max(existing?.currentPeriodEnd ?? periodEnd, periodEnd) : periodEnd,
+    dodoCustomerId: data.customer?.customer_id ?? existing?.dodoCustomerId,
+    rawPayload: redactBillingPayload(data),
+    updatedAt: eventTimestamp,
+  };
+  const subscriptionId = existing?._id ?? await ctx.db.insert("subscriptions", record);
+  if (existing) await ctx.db.patch(existing._id, record);
+
+  // Later payment/refund events can carry only this customer ID. Keep its
+  // anonymous ownership mapping so they do not become PII-bearing incidents.
+  if (record.dodoCustomerId) {
+    const customer = await ctx.db.query("customers")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", record.dodoCustomerId!))
+      .first();
+    const anonymous = { userId: record.userId, email: record.userId,
+      normalizedEmail: record.userId, updatedAt: eventTimestamp };
+    if (!customer) {
+      await ctx.db.insert("customers", { ...anonymous,
+        dodoCustomerId: record.dodoCustomerId, createdAt: eventTimestamp });
+    } else if (customer.userId === deletion.userId || customer.userId === record.userId) {
+      await ctx.db.patch(customer._id, anonymous);
+    }
+  }
+
+  if (!(deletion.dodoSubscriptionIds ?? []).includes(data.subscription_id)) {
+    const resumeExternal = deletion.status === "complete"
+      || (deletion.status === "failed" && deletion.step === "external");
+    await ctx.db.patch(deletion._id, {
+      dodoSubscriptionIds: [...(deletion.dodoSubscriptionIds ?? []), data.subscription_id],
+      subscriptionDocIds: [...(deletion.subscriptionDocIds ?? []), subscriptionId],
+      updatedAt: Date.now(),
+      ...(resumeExternal ? { status: "pending" as const, step: "external" as const,
+        externalAttempts: 0, completedAt: undefined, lastError: undefined } : {}),
+    });
+    if (resumeExternal) await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.runExternalErase, {
+      deletionId: deletion._id,
+    });
+  }
+  return true;
 }
 
 // The payment/refund webhook event types we route to handlePaymentOrRefundEvent
@@ -217,6 +326,7 @@ export async function upsertEntitlements(
   validUntil: number,
   updatedAt: number,
 ): Promise<void> {
+  if (await billingDeletionForUser(ctx, userId)) return;
   const existing = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -447,6 +557,7 @@ export async function recomputeEntitlementFromAllSubs(
   userId: string,
   observedAt: number,
 ): Promise<void> {
+  if (await billingDeletionForUser(ctx, userId)) return;
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -1039,6 +1150,7 @@ export async function handleSubscriptionActive(
   // replay in `attributeUnattributedPayment` re-dispatch it correctly.
   eventType = "subscription.active",
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, eventType)) return;
   const planKey = await resolvePlanKey(ctx, data.product_id);
 
   const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp);
@@ -1320,6 +1432,7 @@ export async function handleSubscriptionActive(
         0,
         internal.payments.subscriptionEmails.sendReactivationEmail,
         {
+          userId,
           userEmail: recipientEmail,
           planKey,
           checkoutEmail: checkoutEmailDiffers ? email.trim() : undefined,
@@ -1378,6 +1491,7 @@ export async function handleSubscriptionRenewed(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.renewed")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1432,6 +1546,7 @@ export async function handleSubscriptionOnHold(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.on_hold")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1571,6 +1686,7 @@ export async function handleSubscriptionCancelled(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.cancelled")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1681,6 +1797,7 @@ export async function handleSubscriptionPlanChanged(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.plan_changed")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1742,6 +1859,7 @@ export async function handleSubscriptionExpired(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.expired")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1808,6 +1926,7 @@ export async function handleSubscriptionUpdated(
   webhookId: string,
   rawPayload: unknown,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.updated")) return;
   const status = (data.status ?? "").toString();
   switch (status) {
     case "active":
@@ -1923,7 +2042,9 @@ export async function handlePaymentOrRefundEvent(
     else console.warn(message);
     return;
   }
-  const userId = resolvedUserId;
+  const deletion = await billingDeletionForEvent(ctx, data)
+    ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const type = eventType.startsWith("refund.") ? "refund" : "charge";
   // Non-terminal payment states (processing, requires_customer_action / 3DS-SCA)
@@ -1949,9 +2070,10 @@ export async function handlePaymentOrRefundEvent(
     // pending row to its tierGroup (#4438). Undefined for sessions created
     // before the bridge shipped or events that drop session metadata.
     planKey: data.metadata?.wm_plan_key,
-    rawPayload: data,
+    rawPayload: deletion ? redactBillingPayload(data) : data,
     occurredAt: eventTimestamp,
   });
+  if (deletion) return;
 
   // Refund-without-prior-cancellation alert. Dodo Payments treats refund
   // and subscription cancellation as separate operations — refunding a
@@ -2081,12 +2203,15 @@ export async function handleDisputeEvent(
         )
         .unique()
     : null;
-  const userId = existingSubscription?.userId
+  const resolvedUserId = existingSubscription?.userId
     ?? await resolveUserId(
       ctx,
       data.customer?.customer_id ?? "",
       data.metadata,
     );
+  const deletion = await billingDeletionForEvent(ctx, data)
+    ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const disputeStatusMap: Record<string, "dispute_opened" | "dispute_won" | "dispute_lost" | "dispute_closed"> = {
     "dispute.opened": "dispute_opened",
@@ -2108,7 +2233,7 @@ export async function handleDisputeEvent(
     currency: data.currency ?? "USD",
     status: disputeStatus,
     dodoSubscriptionId: data.subscription_id ?? undefined,
-    rawPayload: data,
+    rawPayload: deletion ? redactBillingPayload(data) : data,
     occurredAt: eventTimestamp,
   });
 
@@ -2120,7 +2245,8 @@ export async function handleDisputeEvent(
     if (existingSubscription && isNewerEvent(existingSubscription.updatedAt, eventTimestamp)) {
       await ctx.db.patch(existingSubscription._id, {
         status: "expired",
-        rawPayload: data,
+        ...(deletion ? { userId } : {}),
+        rawPayload: deletion ? redactBillingPayload(data) : data,
         updatedAt: eventTimestamp,
       });
     }

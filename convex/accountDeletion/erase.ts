@@ -1,9 +1,12 @@
+import { internal } from "../_generated/api";
+import { lookupVerifiedAccountEmail } from "../lib/notificationEmail";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
-  mutation,
+  action,
+  internalAction,
   query,
   type MutationCtx,
 } from "../_generated/server";
@@ -49,22 +52,6 @@ async function loadSubscriptions(ctx: MutationCtx, userId: string) {
     .take(256);
 }
 
-async function captureVerifiedEmail(
-  ctx: MutationCtx,
-  userId: string,
-  fallbackEmail?: string,
-): Promise<string | undefined> {
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .unique();
-  return (
-    normalizeVerifiedEmail(user?.normalizedEmail) ??
-    normalizeVerifiedEmail(user?.email) ??
-    normalizeVerifiedEmail(fallbackEmail)
-  );
-}
-
 async function scheduleAdvance(
   ctx: MutationCtx,
   deletionId: Id<"accountDeletions">,
@@ -78,7 +65,7 @@ async function beginErase(
   ctx: MutationCtx,
   userId: string,
   source: Doc<"accountDeletions">["source"],
-  fallbackEmail?: string,
+  verifiedAccountEmail?: string,
 ): Promise<EraseResult> {
   const confirmedUserId = requireNonEmptyUserId(userId);
   const existing = await ctx.db
@@ -90,11 +77,15 @@ async function beginErase(
     return { status: "already_deleted", userIdHash: existing.userIdHash };
   }
 
-  const now = Date.now();
+  if (existing?.status === "pending") {
+    return { status: "pending", userIdHash: existing.userIdHash };
+  }
+
+  const now = Math.max(Date.now(), (existing?.updatedAt ?? 0) + 1);
   const userIdHash = existing?.userIdHash ?? (await sha256Hex(confirmedUserId));
   const verifiedEmail =
     existing?.verifiedEmail ??
-    (await captureVerifiedEmail(ctx, confirmedUserId, fallbackEmail));
+    normalizeVerifiedEmail(verifiedAccountEmail);
   const subscriptions =
     existing?.dodoSubscriptionIds && existing.subscriptionDocIds
       ? null
@@ -106,6 +97,7 @@ async function beginErase(
     await ctx.db.patch(existing._id, {
       source: existing.source,
       status: "pending",
+      externalAttempts: 0,
       lastError: undefined,
       verifiedEmail,
       dodoSubscriptionIds:
@@ -149,24 +141,48 @@ async function beginErase(
   return { status: "complete", userIdHash };
 }
 
-export const requestAccountDeletion = mutation({
+// Email-keyed erasure uses current Clerk proof, never cached profile fields or
+// email-only JWT claims. A retry reuses the proof captured before Clerk deletion.
+export const hasDeletionRecord = internalQuery({
+  args: { userId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => Boolean(await ctx.db.query("accountDeletions")
+    .withIndex("by_userId", q => q.eq("userId", args.userId)).unique()),
+});
+
+export const beginConfirmedErase = internalMutation({
+  args: {
+    userId: v.string(),
+    source: v.union(v.literal("self"), eraseSourceValidator),
+    verifiedEmail: v.optional(v.string()),
+  },
+  returns: eraseResultValidator,
+  handler: (ctx, args): Promise<EraseResult> => beginErase(ctx, args.userId, args.source, args.verifiedEmail),
+});
+
+export const requestAccountDeletion = action({
   args: {},
   returns: eraseResultValidator,
   handler: async (ctx): Promise<EraseResult> => {
     const userId = await requireUserId(ctx);
-    const identity = await ctx.auth.getUserIdentity();
-    return beginErase(ctx, userId, "self", identity?.email);
+    const existing = await ctx.runQuery(internal.accountDeletion.erase.hasDeletionRecord, { userId });
+    const verifiedEmail = existing ? undefined : await lookupVerifiedAccountEmail(userId);
+    return ctx.runMutation(internal.accountDeletion.erase.beginConfirmedErase, {
+      userId, source: "self", verifiedEmail,
+    });
   },
 });
 
-export const eraseConfirmedUser = internalMutation({
-  args: {
-    userId: v.string(),
-    source: eraseSourceValidator,
-  },
+export const eraseConfirmedUser = internalAction({
+  args: { userId: v.string(), source: eraseSourceValidator },
   returns: eraseResultValidator,
   handler: async (ctx, args): Promise<EraseResult> => {
-    return beginErase(ctx, args.userId, args.source);
+    const userId = requireNonEmptyUserId(args.userId);
+    const existing = await ctx.runQuery(internal.accountDeletion.erase.hasDeletionRecord, { userId });
+    const verifiedEmail = existing ? undefined : await lookupVerifiedAccountEmail(userId, { allowMissingUser: true });
+    return ctx.runMutation(internal.accountDeletion.erase.beginConfirmedErase, {
+      userId, source: args.source, verifiedEmail,
+    });
   },
 });
 
@@ -199,7 +215,7 @@ export const ingestClerkUserDeleted = internalMutation({
     await ctx.db.insert("webhookEvents", {
       webhookId: args.webhookId,
       eventType: "user.deleted",
-      rawPayload: { type: "user.deleted", data: { id: args.userId } },
+      rawPayload: { type: "user.deleted", data: { userIdHash: result.userIdHash } },
       processedAt: Date.now(),
       status: "processed",
     });
@@ -314,7 +330,7 @@ export const recordExternalProgress = internalMutation({
     if (!row || row.status === "complete") return null;
     await ctx.db.patch(args.deletionId, {
       ...(args.cancelledDodoSubscriptionIds
-        ? { cancelledDodoSubscriptionIds: args.cancelledDodoSubscriptionIds }
+        ? { cancelledDodoSubscriptionIds: [...new Set([...(row.cancelledDodoSubscriptionIds ?? []), ...args.cancelledDodoSubscriptionIds])] }
         : {}),
       ...(args.redisClearedAt !== undefined
         ? { redisClearedAt: args.redisClearedAt }
@@ -339,6 +355,12 @@ export const markExternalComplete = internalMutation({
     }
     if (row.status === "complete") {
       return { status: "already_deleted", userIdHash: row.userIdHash };
+    }
+    // A late paid checkout can add a subscription while this action runs.
+    // Complete only when every subscription in the current row is cancelled.
+    if ((row.dodoSubscriptionIds ?? []).some(id => !row.cancelledDodoSubscriptionIds?.includes(id))) {
+      await scheduleAdvance(ctx, row._id);
+      return { status: "pending", userIdHash: row.userIdHash };
     }
     const now = Date.now();
     await ctx.db.patch(args.deletionId, {
