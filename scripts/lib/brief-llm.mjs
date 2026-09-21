@@ -625,6 +625,12 @@ export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
  * grounding check, preserving the original 1-arg behavior for
  * callers that don't have the source pool in hand.
  *
+ * #8438: always drops lead sentences that match a banned stitching
+ * stem (`comes as`, `occurs as`, `meanwhile`, …). The prompt already
+ * listed exact variants and 24/24 production-prompt samples still
+ * opened with "This development comes as" or "occurs as". The gate
+ * is stem-keyed, not variant-keyed, and does not need a stories pool.
+ *
  * @param {unknown} obj
  * @param {Array<{ headline?: string }>} [stories]  source pool used to
  *   ground-check the lead. Optional for back-compat.
@@ -676,6 +682,18 @@ export function validateDigestProseShape(obj, stories) {
     .filter((x) => x.length >= 4)
     .slice(0, MAX_STORIES_PER_USER * 2);
 
+  // Stitching-phrase repair is a shape gate: the stems are banned
+  // connectives, not claims that need a stories pool. Run it before
+  // the status-qualifier / grounding block so a glue sentence that
+  // also carries a fabricated qualifier is dropped once, for the
+  // connective, even when the qualifier would have been licensed.
+  const stitch = repairLeadStitchingPhrases(lead);
+  if (stitch.dropped.length > 0) {
+    console.warn(`[brief-llm] stitching-phrase gate: dropped lead sentence(s) (${stitch.dropped.join(' | ')})`);
+  }
+  lead = stitch.lead;
+  if (lead.length < 40) return null;
+
   // Status-qualifier repair, then the v5 grounding gate. Run AFTER
   // shape normalisation so the synthesis we evaluate is the same shape
   // the renderer would see — both inspect `lead` and `threads[].teaser`,
@@ -694,7 +712,9 @@ export function validateDigestProseShape(obj, stories) {
       return check.ok;
     });
     if (threads.length < 1) return null;
-    const groundingOpts = repaired.dropped.length > 0 ? { combinedThreshold: 1 } : {};
+    const groundingOpts = (repaired.dropped.length > 0 || stitch.dropped.length > 0)
+      ? { combinedThreshold: 1 }
+      : {};
     if (!checkLeadGrounding({ lead, threads }, stories, MAX_STORIES_PER_USER, groundingOpts)) return null;
   }
 
@@ -710,6 +730,47 @@ function storyGroundText(story) {
 
 const LEAD_SENTENCE_SPLIT = /(?<=(?<!\b\p{Lu})[.!?])\s+/u;
 
+// Stem list, not the prompt's exact variants. "This development comes as"
+// and "This development occurs as" were the 24/24 Sep 20 near-misses;
+// listing "this comes as" / "this declaration comes as" in the prompt
+// did not catch them. Word-bounded so "becomes as" is not a hit.
+const LEAD_STITCHING_STEM_RE = /\b(?:comes as|occurs as|meanwhile|at the same time|in other news|elsewhere|on another front|in a separate development)\b/i;
+
+// LEAD_SENTENCE_SPLIT leaves "U.S. Navy" intact by not breaking after a
+// single capital + period. The same lookbehind glues a following stitch
+// sentence onto "... at the U.N. This development comes as ...". Split
+// that case only here, and only when the next words are a stitch opener,
+// so status-qualifier repair keeps the shared splitter.
+const STITCH_AFTER_INITIALISM_SPLIT =
+  /(?<=\b(?:\p{Lu}\.)+)\s+(?=(?:This|Meanwhile|Elsewhere|At the same time|In other news|On another front|In a separate development)\b)/iu;
+
+/**
+ * @param {string} lead
+ * @returns {string[]}
+ */
+function splitLeadSentencesForStitching(lead) {
+  const parts = [];
+  for (const coarse of lead.split(LEAD_SENTENCE_SPLIT)) {
+    parts.push(...coarse.split(STITCH_AFTER_INITIALISM_SPLIT));
+  }
+  return parts;
+}
+
+/**
+ * @param {string} lead
+ * @returns {{ lead: string; dropped: string[] }}
+ */
+function repairLeadStitchingPhrases(lead) {
+  if (!LEAD_STITCHING_STEM_RE.test(lead)) return { lead, dropped: [] };
+  const dropped = [];
+  const kept = [];
+  for (const sentence of splitLeadSentencesForStitching(lead)) {
+    if (LEAD_STITCHING_STEM_RE.test(sentence)) dropped.push(sentence);
+    else kept.push(sentence);
+  }
+  return { lead: kept.join(' ').trim(), dropped };
+}
+
 /**
  * @param {string} lead
  * @param {string[]} ground  one entry per pool story
@@ -724,27 +785,123 @@ function repairLeadStatusQualifiers(lead, ground) {
   return { lead: repaired, dropped: whole.hallucinated };
 }
 
+const DIGEST_FENCE_START = /^```(?:json)?\s*/i;
+const DIGEST_FENCE_END = /\s*```$/;
+const DIGEST_GREETING_LINE = /^good\s+(?:morning|afternoon|evening|night)(?:[.!])?$/i;
+
+function stripDigestFences(text) {
+  return text.replace(DIGEST_FENCE_START, '').replace(DIGEST_FENCE_END, '').trim();
+}
+
+function normalizeGreetingCore(s) {
+  return s.trim().replace(/[.!]+$/u, '').replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * True for a short time-of-day greeting the prompt injects via
+ * `Open the lead with: "${greeting}."`. Only `Good morning` /
+ * `Good afternoon` / `Good evening` / `Good night` (optional `.`/`!`)
+ * count so an editorial preamble ("Here is the digest:", "This
+ * morning") is not peeled onto `digest.lead`.
+ *
+ * @param {string} line
+ */
+function isDigestGreetingLine(line) {
+  if (typeof line !== 'string') return false;
+  const s = line.trim();
+  if (!s || s.length > 48 || s.includes('{')) return false;
+  return DIGEST_GREETING_LINE.test(s);
+}
+
+/**
+ * @param {string} line
+ * @param {string} expected
+ */
+function greetingLineMatchesExpected(line, expected) {
+  if (typeof line !== 'string' || typeof expected !== 'string') return false;
+  const s = line.trim();
+  if (!s || s.length > 48 || s.includes('{')) return false;
+  const want = normalizeGreetingCore(expected);
+  const got = normalizeGreetingCore(s);
+  return Boolean(want) && got === want;
+}
+
+function normalizeGreetingPrefix(line) {
+  return `${line.trim().replace(/[.!]+$/u, '')}.`;
+}
+
+function leadAlreadyOpensWithGreeting(lead, greeting) {
+  const core = greeting.trim().replace(/[.!]+$/u, '');
+  if (!core) return false;
+  const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Match at end of lead or any non-word boundary so "Good morning,"
+  // (comma) and "Good morning." (period) both count as already open.
+  return new RegExp(`^${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(lead.trim());
+}
+
+/**
+ * gemini-2.5-flash sometimes writes the requested greeting on its own
+ * line and then the JSON object (#8439). Peel that line so JSON.parse
+ * can run; the caller prepends it back onto `lead`.
+ *
+ * @param {string} text
+ * @param {string} [expectedGreeting]
+ * @returns {{ json: string; greeting: string }}
+ */
+function peelLeadingDigestGreeting(text, expectedGreeting) {
+  const s = stripDigestFences(text.trim());
+  if (!s || s.startsWith('{')) return { json: s, greeting: '' };
+  const match = s.match(/^([^\r\n]+)\r?\n+([\s\S]*)$/);
+  if (!match) return { json: s, greeting: '' };
+  const firstLine = match[1].trim();
+  const rest = stripDigestFences(match[2].trim());
+  // 3-state: omitted expectedGreeting → tight regex for 2-arg callers;
+  // explicit '' → never peel (public / unpersonalised); non-empty →
+  // exact match against the requested greeting.
+  const isGreeting = typeof expectedGreeting === 'string'
+    ? expectedGreeting.trim() !== '' && greetingLineMatchesExpected(firstLine, expectedGreeting)
+    : isDigestGreetingLine(firstLine);
+  if (!isGreeting || !rest.startsWith('{')) {
+    return { json: s, greeting: '' };
+  }
+  return { json: rest, greeting: firstLine };
+}
+
 /**
  * @param {unknown} text
  * @param {Array<{ headline?: string }>} [stories]  forwarded to
  *   validateDigestProseShape so fresh LLM output is grounding-checked
  *   the same way cache hits are.
+ * @param {string} [expectedGreeting]  when a string, peel the first line
+ *   only if it matches this greeting (trim / case / trailing punct).
+ *   Empty string means never peel (public / unpersonalised prompts).
+ *   When omitted, the tight `Good morning|afternoon|evening|night`
+ *   regex still recovers those opens for 2-arg callers.
  * @returns {{ lead: string; threads: Array<{tag:string;teaser:string}>; signals: string[] } | null}
  */
-export function parseDigestProse(text, stories) {
+export function parseDigestProse(text, stories, expectedGreeting) {
   if (typeof text !== 'string') return null;
-  let s = text.trim();
-  if (!s) return null;
-  // Defensive: strip common wrappings the model sometimes inserts
-  // despite the explicit system instruction.
-  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  if (!text.trim()) return null;
+  // Defensive: strip code fences, then a leading greeting line the
+  // model emits despite "produce EXACTLY this JSON and nothing else"
+  // (#8439). The greeting is prepended back onto the validated lead
+  // so the reader still sees the requested open.
+  const { json, greeting } = peelLeadingDigestGreeting(text, expectedGreeting);
+  if (!json) return null;
   let obj;
   try {
-    obj = JSON.parse(s);
+    obj = JSON.parse(json);
   } catch {
     return null;
   }
-  return validateDigestProseShape(obj, stories);
+  const validated = validateDigestProseShape(obj, stories);
+  if (!validated) return null;
+  if (!greeting || leadAlreadyOpensWithGreeting(validated.lead, greeting)) {
+    return validated;
+  }
+  const prefixed = `${normalizeGreetingPrefix(greeting)} ${validated.lead}`;
+  if (prefixed.length > 1500) return validated;
+  return { ...validated, lead: prefixed };
 }
 
 /**
@@ -863,6 +1020,11 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // substantively linked. v7 cache rows would otherwise serve stitched
   // leads for the full 4h TTL. Prompt content change → cache invalidation.
   //
+  // #8438 (2026-09-21): validateDigestProseShape now drops lead sentences
+  // that match a stitching stem. Parser-only; the prompt is unchanged, so
+  // this is not a cache-generation bump. The hit path already revalidates,
+  // and a repairable stitch returns the shortened lead without a re-LLM.
+  //
   // v9 (2026-09-21): bumped from v8 when the brief's prose model moved from
   // google/gemini-2.5-flash to google/gemini-3.5-flash-lite (#4944 bakeoff).
   // v8 rows hold the old model's prose — including the fabricated-actor leads
@@ -902,7 +1064,14 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
     );
     return null;
   }
-  const parsed = parseDigestProse(text, stories);
+  // Empty string means "do not peel": public / unpersonalised prompts
+  // never ask for a greeting, so a regex fallback would splice
+  // "Good morning." onto a share-URL lead. 2-arg parseDigestProse
+  // callers still use the tight Good-morning regex.
+  const expectedGreeting = ctx?.isPublic === true
+    ? ''
+    : (typeof ctx?.greeting === 'string' ? ctx.greeting : '');
+  const parsed = parseDigestProse(text, stories, expectedGreeting);
   if (!parsed) {
     // LLM returned text but parseDigestProse rejected it. Three sub-
     // failures land here, distinguishable on log search:

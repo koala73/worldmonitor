@@ -469,10 +469,25 @@ describe('MCP live smoke — the production detection net', () => {
     );
   });
 
-  it('runs on pushes that change the mcp-proxy probe helper', () => {
+  it('runs on pushes that change MCP smoke helpers', () => {
     const pushBlock = smokeWorkflow.match(/\n {2}push:\n[\s\S]*?(?=\n {2}[a-z_]+:)/)?.[0];
     assert.ok(pushBlock, 'MCP live smoke workflow must define a push trigger');
     assert.match(pushBlock, /^\s+- 'scripts\/mcp-proxy-live-smoke\.mjs'\s*$/m);
+    assert.match(pushBlock, /^\s+- 'scripts\/mcp-smoke-http\.mjs'\s*$/m);
+  });
+
+  it('writes and uploads a diagnostic report for both passing and failing runs', () => {
+    const smokeJob = YAML.parse(smokeWorkflow).jobs.smoke;
+    const probe = smokeJob.steps.find((step: { run?: string }) => step.run?.includes('mcp-live-smoke.mjs'));
+    assert.match(probe?.run ?? '', /--report\s+"\$RUNNER_TEMP\/mcp-live-smoke-report\.json"/);
+
+    const upload = smokeJob.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'));
+    assert.equal(upload?.if, '${{ always() }}');
+    assert.equal(upload?.uses, 'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
+    assert.equal(upload?.with?.path, '${{ runner.temp }}/mcp-live-smoke-report.json');
+    assert.equal(upload?.with?.['if-no-files-found'], 'error');
+    assert.equal(upload?.with?.['retention-days'], 14);
+    assert.match(upload?.with?.name ?? '', /github\.run_id.*github\.run_attempt/);
   });
 
   // Workflow-level concurrency lets a pending or in-progress Production event

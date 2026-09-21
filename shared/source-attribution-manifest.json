@@ -1441,9 +1441,6 @@
           "path": "src/app/desktop-updater.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
-        },
-        {
           "path": "src/mcp-grant-main.ts"
         },
         {
@@ -10186,6 +10183,9 @@
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
+          "path": "scripts/mcp-live-smoke.mjs"
+        },
+        {
           "path": "scripts/mcp-proxy-live-smoke.mjs"
         },
         {
@@ -10244,6 +10244,9 @@
         },
         {
           "path": "src/components/LiveNewsPanel.ts"
+        },
+        {
+          "path": "src/components/UnifiedSettings.ts"
         },
         {
           "path": "src/config/web-origin.ts"

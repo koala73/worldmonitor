@@ -1,3 +1,5 @@
+import { formatSafeError, safeUrlLabel } from './mcp-smoke-http.mjs';
+
 const ORIGIN = 'https://www.worldmonitor.app';
 const AUTH_ERROR = 'Pro authentication required';
 
@@ -23,12 +25,13 @@ export async function runMcpProxyProbe(url, timedFetch) {
     preflight = await timedFetch(url, {
       method: 'OPTIONS',
       headers: { Origin: ORIGIN, 'Access-Control-Request-Method': 'POST' },
-    });
+    }, { group: 'proxy' });
   } catch (err) {
+    if (err?.code === 'MCP_SMOKE_RUN_BUDGET_EXHAUSTED') throw err;
     records.push({
       check: 'mcp-proxy OPTIONS',
       ok: false,
-      detail: `HANG/transport error: ${err?.name ?? err}`,
+      detail: `HANG/transport error: ${formatSafeError(err)}`,
     });
     return records;
   }
@@ -40,13 +43,13 @@ export async function runMcpProxyProbe(url, timedFetch) {
       records.push({
         check: 'mcp-proxy OPTIONS',
         ok: true,
-        detail: `301 → ${location} (expected apex → www host split; www carries the assertions)`,
+        detail: `301 → ${safeUrlLabel(location)} (expected apex → www host split; www carries the assertions)`,
       });
     } else {
       records.push({
         check: 'mcp-proxy OPTIONS',
         ok: false,
-        detail: `unexpected redirect ${preflight.res.status} → ${location}; expected 301 → ${expectedLocation ?? 'no redirect on this host'}`,
+        detail: `unexpected redirect ${preflight.res.status} → ${safeUrlLabel(location)}; expected 301 → ${expectedLocation ? safeUrlLabel(expectedLocation) : 'no redirect on this host'}`,
       });
     }
     return records;
@@ -63,7 +66,7 @@ export async function runMcpProxyProbe(url, timedFetch) {
   }
 
   try {
-    const { res, text } = await timedFetch(url, { headers: { Origin: ORIGIN } });
+    const { res, text } = await timedFetch(url, { headers: { Origin: ORIGIN } }, { group: 'proxy' });
     if (res.status !== 401) {
       records.push({
         check: 'mcp-proxy anon GET',
@@ -80,7 +83,7 @@ export async function runMcpProxyProbe(url, timedFetch) {
       records.push({
         check: 'mcp-proxy anon GET',
         ok: false,
-        detail: `401 body is not the handler's JSON: ${text.slice(0, 120)}`,
+        detail: "401 body is not the handler's JSON",
       });
       return records;
     }
@@ -89,7 +92,7 @@ export async function runMcpProxyProbe(url, timedFetch) {
       records.push({
         check: 'mcp-proxy anon GET',
         ok: false,
-        detail: `401 JSON error must be exactly ${JSON.stringify(AUTH_ERROR)}: ${text.slice(0, 120)}`,
+        detail: `401 JSON error must be exactly ${JSON.stringify(AUTH_ERROR)}`,
       });
       return records;
     }
@@ -97,13 +100,14 @@ export async function runMcpProxyProbe(url, timedFetch) {
     records.push({
       check: 'mcp-proxy anon GET',
       ok: true,
-      detail: `401 ${JSON.stringify(body.error)}`,
+      detail: `401 ${JSON.stringify(AUTH_ERROR)}`,
     });
   } catch (err) {
+    if (err?.code === 'MCP_SMOKE_RUN_BUDGET_EXHAUSTED') throw err;
     records.push({
       check: 'mcp-proxy anon GET',
       ok: false,
-      detail: `HANG/transport error: ${err?.name ?? err}`,
+      detail: `HANG/transport error: ${formatSafeError(err)}`,
     });
   }
 

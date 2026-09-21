@@ -560,6 +560,69 @@ describe('parseDigestProse', () => {
     assert.match(out.lead, /Strait of Hormuz/);
   });
 
+  // #8439: gemini-2.5-flash obeys `Open the lead with: "Good morning."`
+  // by writing that sentence on its own line, then the JSON object.
+  // The system prompt also says "produce EXACTLY this JSON and nothing
+  // else", so JSON.parse of the whole string threw and the cron fell
+  // through to L2/L3. 8 of 24 production samples on the 2026-09-20
+  // pool were lost this way. Strip the greeting line, parse, prepend.
+  it('REGRESSION (#8439): leading "Good morning." line is stripped, parsed, and prepended to lead', () => {
+    const wrapped = `Good morning.\n${good}`;
+    const out = parseDigestProse(wrapped);
+    assert.ok(out, 'greeting-prefixed JSON must parse, not fall through to L2');
+    assert.match(out.lead, /^Good morning\./);
+    assert.match(out.lead, /Strait of Hormuz/);
+    assert.equal(out.threads.length, 2);
+  });
+
+  it('REGRESSION (#8439): Good afternoon / Good evening prefixes recover the same way', () => {
+    for (const greeting of ['Good afternoon.', 'Good evening.', 'Good morning', 'Good night.']) {
+      const out = parseDigestProse(`${greeting}\n\n${good}`);
+      assert.ok(out, `must recover ${JSON.stringify(greeting)} prefix`);
+      const expectedOpen = `${greeting.trim().replace(/[.!]+$/u, '')}.`;
+      assert.equal(out.lead.startsWith(expectedOpen), true, `lead must open with ${JSON.stringify(expectedOpen)}`);
+      assert.match(out.lead, /Strait of Hormuz/);
+    }
+  });
+
+  it('REGRESSION (#8439): greeting then fenced JSON still parses', () => {
+    const wrapped = 'Good morning.\n```json\n' + good + '\n```';
+    const out = parseDigestProse(wrapped);
+    assert.ok(out);
+    assert.match(out.lead, /^Good morning\./);
+    assert.match(out.lead, /Strait of Hormuz/);
+  });
+
+  it('REGRESSION (#8439): does not double-prepend when lead already opens with the greeting', () => {
+    const obj = JSON.parse(good);
+    obj.lead = `Good morning. ${obj.lead}`;
+    const out = parseDigestProse(`Good morning.\n${JSON.stringify(obj)}`);
+    assert.ok(out);
+    assert.equal(out.lead.match(/Good morning/gi)?.length, 1, 'greeting must appear once');
+    assert.match(out.lead, /^Good morning\./);
+  });
+
+  it('REGRESSION (#8439): comma after an existing greeting is still an open, not a second prepend', () => {
+    const obj = JSON.parse(good);
+    obj.lead = `Good morning, ${obj.lead}`;
+    const out = parseDigestProse(`Good morning.\n${JSON.stringify(obj)}`);
+    assert.ok(out);
+    assert.equal(out.lead.match(/Good morning/gi)?.length, 1, 'greeting must appear once');
+    assert.match(out.lead, /^Good morning,/);
+  });
+
+  it('REGRESSION (#8439): a non-greeting preamble still fails closed', () => {
+    assert.equal(parseDigestProse(`Here is the digest:\n${good}`), null);
+    assert.equal(parseDigestProse(`Sure.\n${good}`), null);
+    assert.equal(parseDigestProse(`This morning\n${good}`), null);
+    assert.equal(parseDigestProse(`Overnight developments\n${good}`), null);
+    assert.equal(parseDigestProse(`Hello.\n${good}`), null);
+    assert.equal(parseDigestProse(`Hi\n${good}`), null);
+    // Explicit empty expected greeting (public / unpersonalised path)
+    // must not fall through to the 2-arg regex.
+    assert.equal(parseDigestProse(`Good morning.\n${good}`, undefined, ''), null);
+  });
+
   it('returns null on malformed JSON', () => {
     assert.equal(parseDigestProse('not json {'), null);
     assert.equal(parseDigestProse('[]'), null);
@@ -643,6 +706,39 @@ describe('generateDigestProse', () => {
     const cache = makeCache();
     const llm = makeLLM('not json');
     const out = await generateDigestProse('user_abc', stories, 'all', { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, null);
+    assert.equal(cache.store.size, 0);
+  });
+
+  it('REGRESSION (#8439): greeting-prefixed LLM JSON is adopted, not treated as a parse miss', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(`Good morning.\n${validJson}`);
+    const out = await generateDigestProse('user_abc', stories, 'critical', {
+      ...cache,
+      callLLM: llm.callLLM,
+    }, { greeting: 'Good morning' });
+    assert.ok(out, 'L1 must keep the lead instead of falling through to L2');
+    assert.match(out.lead, /^Good morning\./);
+    assert.match(out.lead, /Hormuz/);
+    assert.equal(cache.store.size, 1, 'recovered parse must still cache');
+    assert.match(cache.store.values().next().value.lead, /^Good morning\./);
+  });
+
+  it('REGRESSION (#8439): a mismatched greeting prefix is not spliced onto a morning prompt', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(`Good evening.\n${validJson}`);
+    const out = await generateDigestProse('user_abc', stories, 'critical', {
+      ...cache,
+      callLLM: llm.callLLM,
+    }, { greeting: 'Good morning' });
+    assert.equal(out, null);
+    assert.equal(cache.store.size, 0);
+  });
+
+  it('REGRESSION (#8439): public synthesis does not peel a greeting onto the share-URL lead', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(`Good morning.\n${validJson}`);
+    const out = await generateDigestProsePublic(stories, 'all', { ...cache, callLLM: llm.callLLM });
     assert.equal(out, null);
     assert.equal(cache.store.size, 0);
   });
@@ -2122,5 +2218,155 @@ describe('status-qualifier gate on the email brief (Sep 20 "former President Tru
     const out = await generateStoryDescription(trumpStory, { ...cache, callLLM: makeLLM(() => CAPTURED_CARD).callLLM });
     assert.equal(out, null);
     assert.equal(cache.store.size, 0);
+  });
+});
+
+describe('stitching-phrase gate on the email brief (Sep 20 "This development comes as")', () => {
+  // Distinctive from the status-qualifier suite: "Former President" is in
+  // the headline, so that gate PASSES. The glue sentence must still drop.
+  const pool = [
+    { hash: 'a1b2c3d4e5f6a1b2', headline: 'Iran war live: Tehran sets terms for peace; Saudi forces foil Riyadh attack', threatLevel: 'critical', category: 'Conflict', country: 'Iran', source: 'Al Jazeera' },
+    { hash: 'b2c3d4e5f6a1b2c3', headline: 'Former President Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints', threatLevel: 'critical', category: 'Geopolitics', country: 'United States', source: 'gCaptain' },
+    { hash: 'c3d4e5f6a1b2c3d4', headline: "'Abhorrent acts' — Russian forces committed widespread sexual violence in Ukraine since full-scale invasion, UN reports", threatLevel: 'critical', category: 'Humanitarian', country: 'Ukraine', source: 'Kyiv Independent' },
+  ];
+  const conflictThread = { tag: 'Conflict', teaser: 'Iran outlines peace terms, including an end to Saudi military actions and sanctions relief.' };
+  const iranLead =
+    'Good morning. Iran has declared its terms for peace, demanding a complete cessation of Saudi-led military operations and the lifting of all sanctions, following an attempted attack on Riyadh that Saudi forces claim to have foiled.';
+  const capturedStitch =
+    'This development comes as former President Trump returns to the UN, with the ongoing conflict in the Persian Gulf spreading to critical shipping chokepoints, directly impacting global trade and energy security.';
+  const capturedLead = `${iranLead} ${capturedStitch}`;
+  const groundedJson = JSON.stringify({
+    lead: iranLead,
+    threads: [conflictThread],
+    signals: ['Watch for Hormuz closure threats.'],
+  });
+
+  it('REGRESSION (captured lead): drops "This development comes as" even when former is grounded', () => {
+    const out = validateDigestProseShape({ lead: capturedLead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('drops the "This development occurs as" near-miss the prompt list does not name', () => {
+    const lead = `${iranLead} This development occurs as former President Trump returns to the UN amid shipping attacks.`;
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('drops each remaining stem as its own sentence', () => {
+    const cases = [
+      'Meanwhile former President Trump returns to the UN.',
+      'At the same time former President Trump returns to the UN.',
+      'In other news former President Trump returns to the UN.',
+      'Fighting continued elsewhere as former President Trump returns to the UN.',
+      'On another front former President Trump returns to the UN.',
+      'In a separate development former President Trump returns to the UN.',
+    ];
+    for (const stitch of cases) {
+      const out = validateDigestProseShape({ lead: `${iranLead} ${stitch}`, threads: [conflictThread] }, pool);
+      assert.ok(out, stitch);
+      assert.equal(out.lead, iranLead, stitch);
+    }
+  });
+
+  it('rejects when dropping the stitch would leave the lead under 40 characters', () => {
+    const lead = 'Watch Hormuz today. This development comes as former President Trump returns to the UN amid shipping attacks.';
+    assert.equal(validateDigestProseShape({ lead, threads: [conflictThread] }, pool), null);
+  });
+
+  it('rejects a lead whose only sentence is a stitch', () => {
+    const lead = 'This development comes as former President Trump returns to the UN amid shipping chokepoint attacks across the Persian Gulf.';
+    assert.equal(validateDigestProseShape({ lead, threads: [conflictThread] }, pool), null);
+  });
+
+  it('keeps the prior sentence when a stitch is glued after U.N. or U.S.', () => {
+    // LEAD_SENTENCE_SPLIT does not break after a dotted initialism, so the
+    // stitch would otherwise sit in the same entry as the true first sentence
+    // and take the whole lead with it.
+    const cases = ['U.N.', 'U.S.'];
+    for (const initialism of cases) {
+      const lead =
+        `Iran has declared its terms for peace after Saudi forces foiled a Riyadh attack, speaking at the ${initialism} This development comes as former President Trump returns to the UN amid shipping attacks.`;
+      const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+      assert.ok(out, initialism);
+      assert.equal(
+        out.lead,
+        `Iran has declared its terms for peace after Saudi forces foiled a Riyadh attack, speaking at the ${initialism}`,
+        initialism,
+      );
+    }
+  });
+
+  it('does not split "U.S. Navy" just because the next word is capitalized', () => {
+    const lead =
+      'Iran has declared its terms for peace after the U.S. Navy foiled an attack on Riyadh that Saudi forces also reported.';
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, lead);
+  });
+
+  it('does not treat "becomes as" as the "comes as" stem', () => {
+    const lead = 'Iran has declared its terms for peace after Saudi forces foiled an attack on Riyadh, and the ceasefire proposal becomes as important as the military picture for Gulf shipping.';
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, lead);
+  });
+
+  it('leaves a stitching teaser in place — the gate is lead-only', () => {
+    const out = validateDigestProseShape({
+      lead: iranLead,
+      threads: [
+        conflictThread,
+        { tag: 'Diplomacy', teaser: 'Meanwhile former President Trump returns to the UN as shipping attacks spread.' },
+      ],
+    }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+    assert.deepEqual(out.threads.map((t) => t.tag), ['Conflict', 'Diplomacy']);
+  });
+
+  it('repairs a stitched lead even without a stories pool', () => {
+    const out = validateDigestProseShape({ lead: capturedLead, threads: [conflictThread] });
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('generateDigestProse cache hit returns the repaired lead without re-LLM', async () => {
+    const stories = pool.map((s) => story(s));
+    const cache = makeCache();
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: makeLLM(groundedJson).callLLM });
+    const key = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v9:'));
+    assert.ok(key, 'expected a digest prose cache entry');
+    cache.store.set(key, {
+      lead: capturedLead,
+      threads: [conflictThread],
+      signals: ['Watch for Hormuz closure threats.'],
+      rankedStoryHashes: [],
+    });
+    let calls = 0;
+    const retry = makeLLM(() => { calls++; return groundedJson; });
+    const out = await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: retry.callLLM });
+    assert.equal(calls, 0, 'a repairable stitch is still a cache hit');
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('generateDigestProse re-LLMs when a cached stitch leaves the lead too short', async () => {
+    const stories = pool.map((s) => story(s));
+    const cache = makeCache();
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: makeLLM(groundedJson).callLLM });
+    const key = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v9:'));
+    assert.ok(key, 'expected a digest prose cache entry');
+    cache.store.set(key, {
+      lead: 'This development comes as former President Trump returns to the UN amid shipping chokepoint attacks across the Persian Gulf.',
+      threads: [conflictThread],
+      signals: ['Watch for Hormuz closure threats.'],
+      rankedStoryHashes: [],
+    });
+    let calls = 0;
+    const retry = makeLLM(() => { calls++; return groundedJson; });
+    const out = await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: retry.callLLM });
+    assert.equal(calls, 1, 'an irreparable stitch must be treated as a miss');
+    assert.equal(out.lead, iranLead);
   });
 });

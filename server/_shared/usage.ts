@@ -106,6 +106,7 @@ export type RequestReason =
   | 'internal_mcp_replay'
   | 'unknown_route'
   | 'method_not_allowed'
+  | 'canonical_endpoint_required'
   | 'cors_error'
   // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
   // would-have-rejected but served (shadow mode), threaded onto the single

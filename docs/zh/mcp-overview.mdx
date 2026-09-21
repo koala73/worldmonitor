@@ -113,10 +113,10 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 1. **在 MCP 客户端中添加服务器 URL**。规范入口为：
 
    ```
-   https://api.worldmonitor.app/mcp
+   https://worldmonitor.app/mcp
    ```
 
-   （`https://worldmonitor.app/mcp` 也可用 —— 它代理同一个 handler。）
+   这是唯一的产品 MCP 传输端点。已列出的生产别名（`www`、`api` 以及各仪表盘子域）不是额外的服务器。这些主机上普通 GET/HEAD `/mcp` 与 `/api/mcp` 会 308 到 `https://worldmonitor.app/mcp`；普通 GET/HEAD `/.well-known/mcp` 与 `/.well-known/mcp.json` 会 308 到 `https://worldmonitor.app/.well-known/mcp` 与 `https://worldmonitor.app/.well-known/mcp.json`。查询字符串不会转发。传输层 POST/SSE/replay 会收到 HTTP 410，JSON-RPC `-32000` 提示客户端改用 `https://worldmonitor.app/mcp`。
 
 2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
 
