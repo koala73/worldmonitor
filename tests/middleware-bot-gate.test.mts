@@ -421,8 +421,8 @@ describe('middleware /mcp — product aliases reach the host-policy handler', ()
     assert.equal(res, undefined);
   });
 
-  it('passes /mcp from every variant subdomain', () => {
-    for (const host of ['tech', 'finance', 'commodity', 'happy', 'energy']) {
+  it('passes /mcp from every listed production alias', () => {
+    for (const host of ['www', 'api', 'tech', 'finance', 'commodity', 'happy', 'energy']) {
       const res = call(`https://${host}.worldmonitor.app/mcp`, CHROME_UA);
       assert.equal(res, undefined, `${host} must reach the handler`);
     }
@@ -433,14 +433,48 @@ describe('middleware /mcp — product aliases reach the host-policy handler', ()
     assert.equal(call('https://www.worldmonitor.app/mcp', CHROME_UA), undefined);
   });
 
-  it('does NOT redirect POST /mcp from a variant subdomain (MCP handshake)', () => {
+  it('lets POST /api/mcp on www fall through the bot gate (curl UA)', () => {
+    const req = new Request('https://www.worldmonitor.app/api/mcp', {
+      method: 'POST',
+      headers: { 'user-agent': GENERIC_CURL_UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    });
+    const res = middleware(req) as Response | void;
+    assert.equal(res, undefined, 'alias POST /api/mcp must not 403 before the handler 410');
+  });
+
+  it('lets SSE GET /api/mcp on www fall through the bot gate (curl UA)', () => {
+    const req = new Request('https://www.worldmonitor.app/api/mcp', {
+      headers: { 'user-agent': GENERIC_CURL_UA, Accept: 'text/event-stream' },
+    });
+    const res = middleware(req) as Response | void;
+    assert.equal(res, undefined, 'alias SSE GET /api/mcp must not 403 before the handler 410');
+  });
+
+  it('still 403s curl on canonical apex /api/mcp (not PUBLIC_API_PATHS)', () => {
+    const res = middleware(new Request('https://worldmonitor.app/api/mcp', {
+      method: 'POST',
+      headers: { 'user-agent': GENERIC_CURL_UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    })) as Response | void;
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 403);
+  });
+
+  it('does NOT redirect GET /mcp from apex, localhost, or preview hosts', () => {
+    assert.equal(call('https://worldmonitor.app/mcp', CHROME_UA), undefined);
+    assert.equal(call('http://localhost:4173/mcp', CHROME_UA), undefined);
+    assert.equal(call('https://worldmonitor-feature.vercel.app/mcp', CHROME_UA), undefined);
+  });
+
+  it('does NOT redirect POST /mcp from a variant subdomain (handler retires it)', () => {
     const req = new Request('https://tech.worldmonitor.app/mcp', {
       method: 'POST',
       headers: { 'user-agent': CHROME_UA, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
     });
     const res = middleware(req) as Response | void;
-    assert.equal(res, undefined, 'POST /mcp must fall through to the /api/mcp rewrite');
+    assert.equal(res, undefined, 'POST /mcp must fall through to the handler 410');
   });
 
   it('does NOT redirect OPTIONS /mcp from a variant subdomain', () => {

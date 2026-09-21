@@ -1,7 +1,9 @@
 name: MCP Live Smoke
 
-# Anonymous strict-client walk of the PRODUCTION MCP surface on both hosts
-# (apex + www) — the regression net for #4937/#4938, two outages that were
+# Anonymous strict-client walk of the PRODUCTION MCP surface on the
+# canonical product origin (`https://worldmonitor.app`), plus alias
+# 308/410 migration probes and direct www `/api/mcp-proxy` liveness.
+# This is the regression net for #4937/#4938, two outages that were
 # structurally invisible to unit tests:
 #   #4937 — an advertised-but-gated method (prompts/list) hung strict SDK
 #           clients (Claude Desktop via mcp-remote) and got the server marked
@@ -108,7 +110,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      # Probes the production ALIASES, never the checked-out SHA's own bits: the
+      # Probes the production CANONICAL origin, listed aliases, and www
+      # `/api/mcp-proxy`, never the checked-out SHA's own bits: the
       # `ref:` above pins which copy of this checker runs, not what it measures.
       # That is deliberate — CDN rules, host-split and deploy config only exist
       # at the alias — but it bounds what a green run proves. A run that queued

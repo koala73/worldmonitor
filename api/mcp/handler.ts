@@ -46,7 +46,14 @@ import { emitTelemetry, principalIdForLog } from './telemetry';
 import { hashKeySync } from '../../server/_shared/usage-identity';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
 import { safeJsonRpcId, utf8ByteLength } from './utils';
-import { isMcpAliasRequest, MCP_CANONICAL_ENDPOINT, MCP_CANONICAL_LINK, mcpCanonicalLocation } from '../../shared/mcp-host-policy';
+import {
+  isMcpAliasRequest,
+  MCP_CANONICAL_ENDPOINT_ERROR_CODE,
+  MCP_CANONICAL_ENDPOINT_ERROR_DATA,
+  MCP_CANONICAL_ENDPOINT_ERROR_MESSAGE,
+  MCP_CANONICAL_LINK,
+  mcpCanonicalLocation,
+} from '../../shared/mcp-host-policy';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 import type { McpBudget } from './quota';
 
@@ -548,27 +555,18 @@ function mcpMigrationHeaders(corsHeaders: Record<string, string>): Record<string
   return withMcpNoStore({
     'Content-Type': 'application/json; charset=utf-8',
     Link: MCP_CANONICAL_LINK,
+    Vary: DISCOVERY_VARY,
     ...corsHeaders,
   });
-}
-
-function mcpMigrationResponse(corsHeaders: Record<string, string>, headOnly = false): Response {
-  return new Response(
-    headOnly ? null : JSON.stringify({
-      error: 'canonical_endpoint_required',
-      endpoint: MCP_CANONICAL_ENDPOINT,
-    }),
-    { status: 410, headers: mcpMigrationHeaders(corsHeaders) },
-  );
 }
 
 function mcpAliasRpcError(id: unknown, corsHeaders: Record<string, string>): Response {
   return rpcError(
     id,
-    -32000,
-    `Use ${MCP_CANONICAL_ENDPOINT}`,
+    MCP_CANONICAL_ENDPOINT_ERROR_CODE,
+    MCP_CANONICAL_ENDPOINT_ERROR_MESSAGE,
     mcpMigrationHeaders(corsHeaders),
-    { reason: 'canonical_endpoint_required', endpoint: MCP_CANONICAL_ENDPOINT },
+    { ...MCP_CANONICAL_ENDPOINT_ERROR_DATA },
     410,
   );
 }
@@ -758,7 +756,9 @@ async function mcpHandlerInner(
       });
     }
     usage.phase = 'migration';
-    return mcpMigrationResponse(corsHeaders, req.method === 'HEAD');
+    return req.method === 'HEAD'
+      ? new Response(null, { status: 410, headers: mcpMigrationHeaders(corsHeaders) })
+      : mcpAliasRpcError(null, corsHeaders);
   }
 
   if (aliasRequest && req.method !== 'POST') {

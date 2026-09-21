@@ -10183,6 +10183,9 @@
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
+          "path": "scripts/mcp-live-smoke.mjs"
+        },
+        {
           "path": "scripts/mcp-proxy-live-smoke.mjs"
         },
         {

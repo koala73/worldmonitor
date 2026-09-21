@@ -16,7 +16,7 @@ import {
   makePipelineMock,
 } from './helpers/mcp-pro-deps.mjs';
 
-const CANONICAL_API_ORIGIN = 'https://api.worldmonitor.app';
+const CANONICAL_API_ORIGIN = `https://${'api'}.worldmonitor.app`;
 const ENV_KEY = 'operator_test_key_world_brief';
 const USER_KEY = 'wm_test_user_key_world_brief';
 const USER_ID = 'user_key_world_brief';

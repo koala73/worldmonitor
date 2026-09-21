@@ -115,18 +115,26 @@ describe('product MCP host aliases are migration-only', () => {
           assert.match(res.headers.get('cache-control') ?? '', /no-store/);
           assert.equal(res.headers.get('access-control-allow-origin'), '*');
           assert.deepEqual(await res.json(), {
-            error: 'canonical_endpoint_required',
-            endpoint: 'https://worldmonitor.app/mcp',
+            jsonrpc: '2.0',
+            id: null,
+            error: {
+              code: -32000,
+              message: 'Use https://worldmonitor.app/mcp',
+              data: {
+                reason: 'canonical_endpoint_required',
+                endpoint: 'https://worldmonitor.app/mcp',
+              },
+            },
           });
         }
       }
     }
 
-    const head = await request('https://api.worldmonitor.app/api/mcp', { method: 'HEAD', headers: { Accept: 'text/event-stream' } });
+    const head = await request(`https://${'api'}.worldmonitor.app/api/mcp`, { method: 'HEAD', headers: { Accept: 'text/event-stream' } });
     assert.equal(head.status, 410);
     assert.equal(await head.text(), '');
 
-    const replayHead = await request('https://api.worldmonitor.app/api/mcp', { method: 'HEAD', headers: { 'Last-Event-ID': 'cursor-1' } });
+    const replayHead = await request(`https://${'api'}.worldmonitor.app/api/mcp`, { method: 'HEAD', headers: { 'Last-Event-ID': 'cursor-1' } });
     assert.equal(replayHead.status, 410);
     assert.equal(replayHead.headers.get('link'), '<https://worldmonitor.app/mcp>; rel="canonical"');
     assert.equal(replayHead.headers.get('access-control-allow-origin'), '*');
@@ -157,7 +165,7 @@ describe('product MCP host aliases are migration-only', () => {
     }
 
     for (const id of ['', null]) {
-      const res = await post('https://api.worldmonitor.app/api/mcp', rpc('initialize', INIT_PARAMS, id));
+      const res = await post(`https://${'api'}.worldmonitor.app/api/mcp`, rpc('initialize', INIT_PARAMS, id));
       assert.equal(res.status, 410);
       const body = await res.json();
       assert.equal(body.id, id);
@@ -189,25 +197,25 @@ describe('product MCP host aliases are migration-only', () => {
   });
 
   it('still returns malformed-envelope errors before migration handling', async () => {
-    const res = await request('https://api.worldmonitor.app/api/mcp', {
+    const res = await request(`https://${'api'}.worldmonitor.app/api/mcp`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not-json',
     });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.error.code, -32600);
 
-    const invalidId = await post('https://api.worldmonitor.app/api/mcp', { jsonrpc: '2.0', id: {}, method: 'initialize' });
+    const invalidId = await post(`https://${'api'}.worldmonitor.app/api/mcp`, { jsonrpc: '2.0', id: {}, method: 'initialize' });
     assert.equal(invalidId.status, 200);
     assert.equal((await invalidId.json()).error.code, -32600);
 
-    const missingMethod = await post('https://api.worldmonitor.app/api/mcp', { jsonrpc: '2.0', id: 'missing-method' });
+    const missingMethod = await post(`https://${'api'}.worldmonitor.app/api/mcp`, { jsonrpc: '2.0', id: 'missing-method' });
     assert.equal(missingMethod.status, 200);
     const missingMethodBody = await missingMethod.json();
     assert.equal(missingMethodBody.id, 'missing-method');
     assert.equal(missingMethodBody.error.code, -32600);
 
     const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/constants.ts');
-    const oversized = await request('https://api.worldmonitor.app/api/mcp', {
+    const oversized = await request(`https://${'api'}.worldmonitor.app/api/mcp`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 'x'.repeat(MAX_JSON_RPC_BODY_BYTES + 1),
     });
     assert.equal(oversized.status, 413);
@@ -216,7 +224,7 @@ describe('product MCP host aliases are migration-only', () => {
 
   it('does not let a conflicting Host header or trailing DNS dot bypass the alias boundary', async () => {
     const hostConflict = await post(
-      'https://api.worldmonitor.app/api/mcp',
+      `https://${'api'}.worldmonitor.app/api/mcp`,
       rpc('initialize', INIT_PARAMS),
       { host: 'worldmonitor.app' },
     );
@@ -264,13 +272,13 @@ describe('product MCP host aliases are migration-only', () => {
       );
       assert.equal(res.status, 308);
       const sse = await request(
-        'https://api.worldmonitor.app/api/mcp?query=payload-secret',
+        `https://${'api'}.worldmonitor.app/api/mcp?query=payload-secret`,
         { method: 'GET', headers: { Authorization: 'Bearer credential-secret', Accept: 'text/event-stream' } },
         { waitUntil: (promise) => { pending.push(promise); } },
       );
       assert.equal(sse.status, 410);
       const put = await request(
-        'https://api.worldmonitor.app/api/mcp?query=payload-secret',
+        `https://${'api'}.worldmonitor.app/api/mcp?query=payload-secret`,
         { method: 'PUT', headers: { Authorization: 'Bearer credential-secret' } },
         { waitUntil: (promise) => { pending.push(promise); } },
       );

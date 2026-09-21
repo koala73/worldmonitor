@@ -23,8 +23,7 @@
 // make there, which must keep answering.
 //
 // This script does what a strict anonymous MCP client does, against LIVE
-// production, on BOTH hosts (the apex serves /mcp too, and apex-vs-www split
-// is exactly where #4938 lived):
+// production, once on the canonical product origin (`https://worldmonitor.app`):
 //   0. the connect-time challenge — an unauthenticated initialize on /mcp must
 //      answer 401 with a WWW-Authenticate challenge naming the /mcp
 //      protected-resource document, and echo the JSON-RPC id so an SDK
@@ -54,9 +53,15 @@
 //      lives in the CDN and is invisible to every in-process test, so the
 //      probe warms the cache with the plain GET first and only then issues
 //      the SSE GET.
-//   6. Variant-subdomain canonicalization — crawler-facing GETs on the
-//      product variants must 308 to the apex /mcp (Google reported the
-//      variant URLs as unreachable), while POST must NOT be redirected.
+//   6. Listed production aliases (www, api, and the dashboard variants) are a
+//      client-migration surface: ordinary GET/HEAD 308 to apex, transport
+//      POST/SSE/replay 410. They are not additional servers and do not get a
+//      second capability walk.
+//   7. Direct www `/api/mcp-proxy` liveness (OPTIONS 204 + anonymous GET 401).
+//      An apex redirect alone does not prove that function is healthy.
+//
+// Report and console output are grouped as `canonical`, `aliases`, and `proxy`.
+// A later group still runs after an earlier group fails; any failure fails the job.
 //
 // Every request runs under a hard timeout that covers BODY READ, not just
 // response headers — a server/CDN that sends headers then stalls the body
@@ -65,25 +70,23 @@
 // text is fully read).
 //
 // Request budget: the anonymous discovery limiter is 60/min shared per client
-// IP and both hosts see the same runner IP, so the walk caps its fan-out
-// (MAX_PROMPT_GETS / MAX_RESOURCE_READS) and reuses each catalog listing
-// instead of re-fetching it per sub-walk. Current shape: ≤16 alias POSTs per
-// host (≤32 total) + 3 non-/mcp OAuth probes per host + 2 non-/mcp
-// /api/mcp-proxy probes per host (1 on the apex, which 301s) — headroom
-// under the bucket even as the prompt/resource catalogs grow. The discovery
-// probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
-// the discovery branch and the transport 405 return ahead of
-// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). Step 0 adds
-// one challenged initialize (stops before a limiter) and one limiter-counted
-// keyless tools/list per host, plus two keyless `get_sources` calls per host
-// for the structuredContent probe: those count against the free tool's own
-// 10/min/IP ceiling, not the discovery bucket (4 per run, both hosts sharing
-// the runner IP; a 429 there is reported as a skip). The variant probes (6) add one limiter-counted
-// ping plus four GET/HEADs per variant host; redirect, stream-open, and
-// unauthenticated replay all stop before a limiter.
+// IP. The full capability walk runs once on the canonical origin. Alias 308/410
+// probes return before applyAnonDiscoveryLimit. Current canonical shape: ≤16
+// discovery POSTs + 3 non-/mcp OAuth probes + the existing discovery GET/HEADs.
+// Apex `/api/mcp` initialize stays an in-process handler check; live smoke does
+// not POST it because the apex CDN 301s that path to www. Alias hosts add
+// OPTIONS/GET/HEAD/POST routing probes that do not consume the discovery
+// bucket. www `/api/mcp-proxy` is two non-/mcp requests. MCP_SMOKE_HOSTS still
+// overrides the canonical origin for local fixtures; when it is set, default
+// production aliases and the www proxy host are not used unless the caller
+// also sets MCP_SMOKE_ALIAS_HOSTS / MCP_SMOKE_VARIANT_HOSTS /
+// MCP_SMOKE_PROXY_HOSTS.
 //
 // Usage: node scripts/mcp-live-smoke.mjs
-//   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
+//   MCP_SMOKE_HOSTS=https://a,https://b  overrides the canonical host list.
+//   MCP_SMOKE_ALIAS_HOSTS / MCP_SMOKE_VARIANT_HOSTS  override alias hosts
+//     (`tech` or a full origin). Empty string skips the alias group.
+//   MCP_SMOKE_PROXY_HOSTS  overrides the proxy liveness origin list.
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -102,8 +105,42 @@ import {
 } from './mcp-smoke-http.mjs';
 import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 
-const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
-  .split(',').map((h) => h.trim()).filter(Boolean);
+const CANONICAL_ORIGIN = 'https://worldmonitor.app';
+const CANONICAL_MCP = `${CANONICAL_ORIGIN}/mcp`;
+const CANONICAL_LINK_RE = /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i;
+const DEFAULT_ALIAS_LABELS = ['www', 'api', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+
+function csvList(raw) {
+  return String(raw ?? '').split(',').map((part) => part.trim()).filter(Boolean);
+}
+
+function toOrigin(entry) {
+  if (/^https?:\/\//i.test(entry)) return entry.replace(/\/+$/, '');
+  return `https://${entry}.worldmonitor.app`;
+}
+
+const hostsOverride = Object.hasOwn(process.env, 'MCP_SMOKE_HOSTS');
+const HOSTS = hostsOverride ? csvList(process.env.MCP_SMOKE_HOSTS) : [CANONICAL_ORIGIN];
+
+const aliasOverride = process.env.MCP_SMOKE_ALIAS_HOSTS ?? process.env.MCP_SMOKE_VARIANT_HOSTS;
+let ALIAS_HOSTS;
+if (aliasOverride !== undefined) {
+  ALIAS_HOSTS = csvList(aliasOverride).map(toOrigin);
+} else if (hostsOverride) {
+  ALIAS_HOSTS = [];
+} else {
+  ALIAS_HOSTS = DEFAULT_ALIAS_LABELS.map(toOrigin);
+}
+
+let PROXY_HOSTS;
+if (process.env.MCP_SMOKE_PROXY_HOSTS !== undefined) {
+  PROXY_HOSTS = csvList(process.env.MCP_SMOKE_PROXY_HOSTS);
+} else if (hostsOverride) {
+  PROXY_HOSTS = [];
+} else {
+  PROXY_HOSTS = [toOrigin('www')];
+}
+
 const TIMEOUT_MS = 15_000;
 // The workflow job has a 12 minute hard limit. Keep the request walk within
 // ten minutes so normal failure handling can write its report and GitHub can
@@ -206,7 +243,7 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
-    }, { group: 'rpc', rpcMethod: method }));
+    }, { group: 'canonical', rpcMethod: method }));
   } catch (err) {
     throwIfRunBudgetExhausted(err);
     fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
@@ -262,7 +299,7 @@ async function probeConnectChallenge(host) {
         jsonrpc: '2.0', id, method: 'initialize',
         params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'wm-mcp-live-smoke', version: '1.0' } },
       }),
-    }, { group: 'rpc', rpcMethod: 'initialize' }));
+    }, { group: 'canonical', rpcMethod: 'initialize' }));
   } catch (err) {
     throwIfRunBudgetExhausted(err);
     fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
@@ -300,7 +337,7 @@ async function probeStatelessKeylessList(host) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list' }),
-    }, { group: 'rpc', rpcMethod: 'tools/list' });
+    }, { group: 'canonical', rpcMethod: 'tools/list' });
     if (res.status !== 200) {
       fail(host, check, `expected HTTP 200, got ${res.status} — this breaks every installed worldmonitor CLI/SDK, which lists tools without a key`);
       return;
@@ -338,7 +375,7 @@ async function probeStructuredContent(host) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'get_sources', arguments: args } }),
-      }, { group: 'rpc', rpcMethod: 'tools/call' });
+      }, { group: 'canonical', rpcMethod: 'tools/call' });
       if (res.status === 429) {
         // The free tool has its own 10/min/IP ceiling, and a shared CI egress
         // IP can legitimately hit it. That is not a missing-field regression.
@@ -468,7 +505,7 @@ async function walkHost(host) {
   try {
     const { res, text } = await timedFetch(`${host}/.well-known/oauth-authorization-server`, {
       headers: { Accept: 'application/json' },
-    }, { group: 'oauth' });
+    }, { group: 'canonical' });
     if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
     meta = JSON.parse(text);
     ok(host, 'oauth metadata', 'served');
@@ -489,7 +526,7 @@ async function walkHost(host) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{', // malformed on purpose: reaches the origin, registers nothing
-      }, { group: 'oauth' });
+      }, { group: 'canonical' });
       const result = validateMalformedOAuthResponse(res, text);
       if (!result.ok) fail(host, `oauth ${key}`, `${result.detail} (${ms}ms)`);
       else ok(host, `oauth ${key}`, `POST reaches origin (${result.detail}, ${ms}ms)`);
@@ -507,7 +544,7 @@ async function probeDiscovery(host) {
   // Plain GET /mcp — the "can Google read this?" shape.
   checks += 1;
   try {
-    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'discovery' });
+    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'canonical' });
     if (res.status !== 200) {
       fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
     } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
@@ -536,7 +573,7 @@ async function probeDiscovery(host) {
     const { res } = await timedFetch(`${host}/mcp`, {
       method: 'HEAD',
       headers: { Accept: 'text/html,*/*' },
-    }, { group: 'discovery' });
+    }, { group: 'canonical' });
     if (res.status !== 200) {
       fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
     } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
@@ -547,7 +584,7 @@ async function probeDiscovery(host) {
       fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
     } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
-    } else if (!/<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i.test(res.headers.get('link') ?? '')) {
+    } else if (!CANONICAL_LINK_RE.test(res.headers.get('link') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
     } else {
       ok(host, 'HEAD /mcp (crawler)', '200 markdown metadata');
@@ -560,7 +597,7 @@ async function probeDiscovery(host) {
   // The canary: an SSE stream-open on the URL just warmed must still be 405.
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/event-stream' } }, { group: 'discovery' });
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/event-stream' } }, { group: 'canonical' });
     if (res.status !== 405) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT'
         ? ' from a CDN cache HIT — the discovery 200 is being replayed to transport clients (missing/ignored Vary)'
@@ -578,7 +615,7 @@ async function probeDiscovery(host) {
   // depends on Vary rather than no-store.
   checks += 1;
   try {
-    const { res, text } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'application/json' } }, { group: 'discovery' });
+    const { res, text } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'application/json' } }, { group: 'canonical' });
     if (res.status !== 200) {
       fail(host, 'GET /.well-known/mcp', `expected 200, got ${res.status}`);
     // `(?!-)` is load-bearing: `-` is a word boundary, so a naive /\bAccept\b/
@@ -599,7 +636,7 @@ async function probeDiscovery(host) {
 
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'text/event-stream' } }, { group: 'discovery' });
+    const { res } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'text/event-stream' } }, { group: 'canonical' });
     if (res.status !== 405) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT'
         ? ' from a CDN cache HIT — the manifest is being replayed to transport clients'
@@ -617,7 +654,7 @@ async function probeDiscovery(host) {
   try {
     const { res } = await timedFetch(`${host}/.well-known/mcp`, {
       headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
-    }, { group: 'discovery' });
+    }, { group: 'canonical' });
     if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
       fail(host, '/.well-known/mcp (replay-shaped GET)', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
@@ -659,99 +696,115 @@ async function probeMcpProxy(host) {
   }
 }
 
-// Variant subdomains: crawler GETs canonicalize to apex, POST never does.
-const VARIANT_HOSTS = (process.env.MCP_SMOKE_VARIANT_HOSTS
-  ?? 'tech,finance,commodity,happy,energy')
-  .split(',').map((v) => v.trim()).filter(Boolean)
-  .map((v) => `https://${v}.worldmonitor.app`);
+function hasDiscoveryVary(res) {
+  const vary = res.headers.get('vary') ?? '';
+  return /\bAccept\b(?!-)/i.test(vary) && /\bLast-Event-ID\b/i.test(vary);
+}
 
-async function probeVariantCanonical(host) {
+function hasGoneTransportHeaders(res) {
+  return /\bno-store\b/i.test(res.headers.get('cache-control') ?? '')
+    && CANONICAL_LINK_RE.test(res.headers.get('link') ?? '');
+}
+
+async function probeAliasRedirect(host, { method = 'GET', path = '/mcp' } = {}) {
+  const check = `${method} ${path} → canonical`;
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'variant' });
-    const location = res.headers.get('location');
-    if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
-      fail(host, 'GET /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${safeUrlLabel(location)}`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
-    } else {
-      ok(host, 'GET /mcp → apex canonical', '308');
-    }
-  } catch (err) {
-    throwIfRunBudgetExhausted(err);
-    fail(host, 'GET /mcp → apex canonical', `HANG/transport error: ${formatSafeError(err)}`);
-  }
-
-  checks += 1;
-  try {
-    const { res } = await timedFetch(`${host}/mcp`, {
-      method: 'HEAD',
+    const { res } = await timedFetch(`${host}${path}`, {
+      method,
       headers: { Accept: 'text/html,*/*' },
-    }, { group: 'variant' });
+    }, { group: 'aliases' });
     const location = res.headers.get('location');
-    if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
-      fail(host, 'HEAD /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${safeUrlLabel(location)}`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    if (res.status !== 308 || location !== CANONICAL_MCP) {
+      fail(host, check, `expected 308 → ${CANONICAL_MCP}, got ${res.status} → ${safeUrlLabel(location)}`);
+    } else if (!hasDiscoveryVary(res)) {
+      fail(host, check, `308 lacks Vary: Accept, Last-Event-ID (got "${res.headers.get('vary')}")`);
     } else {
-      ok(host, 'HEAD /mcp → apex canonical', '308');
+      ok(host, check, '308');
     }
   } catch (err) {
     throwIfRunBudgetExhausted(err);
-    fail(host, 'HEAD /mcp → apex canonical', `HANG/transport error: ${formatSafeError(err)}`);
+    fail(host, check, `HANG/transport error: ${formatSafeError(err)}`);
   }
+}
+
+// Listed production aliases are a client-migration surface, not extra servers.
+// Ordinary GET/HEAD 308 to apex; POST/SSE/replay 410. No capability walk.
+async function probeAliasMigration(host) {
+  await probeAliasRedirect(host, { method: 'GET', path: '/mcp' });
+  await probeAliasRedirect(host, { method: 'HEAD', path: '/mcp' });
+  await probeAliasRedirect(host, { method: 'GET', path: '/api/mcp' });
 
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'Text/Event-Stream' } }, { group: 'variant' });
-    if (res.status !== 405) {
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'Text/Event-Stream' } }, { group: 'aliases' });
+    if (res.status !== 410) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
-      fail(host, 'GET /mcp SSE stays on variant', `expected 405, got ${res.status}${cached}`);
+      fail(host, 'GET /mcp SSE retired', `expected 410, got ${res.status}${cached}`);
+    } else if (!hasGoneTransportHeaders(res)) {
+      fail(host, 'GET /mcp SSE retired', `410 lacks no-store + canonical Link (cache="${res.headers.get('cache-control')}", link="${res.headers.get('link')}")`);
     } else {
-      ok(host, 'GET /mcp SSE stays on variant', '405 preserved after cached canonical redirect');
+      ok(host, 'GET /mcp SSE retired', '410');
     }
   } catch (err) {
     throwIfRunBudgetExhausted(err);
-    fail(host, 'GET /mcp SSE stays on variant', `HANG/transport error: ${formatSafeError(err)}`);
+    fail(host, 'GET /mcp SSE retired', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
   try {
     const { res } = await timedFetch(`${host}/mcp`, {
       headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
-    }, { group: 'variant' });
-    if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
+    }, { group: 'aliases' });
+    if (res.status !== 410) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
-      fail(host, 'GET /mcp replay stays on variant', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
+      fail(host, 'GET /mcp replay retired', `expected 410, got ${res.status}${cached}`);
+    } else if (res.headers.get('www-authenticate')) {
+      fail(host, 'GET /mcp replay retired', '410 must not emit WWW-Authenticate — aliases never authenticate');
     } else {
-      ok(host, 'GET /mcp replay stays on variant', '401 preserved after cached canonical redirect');
+      ok(host, 'GET /mcp replay retired', '410');
     }
   } catch (err) {
     throwIfRunBudgetExhausted(err);
-    fail(host, 'GET /mcp replay stays on variant', `HANG/transport error: ${formatSafeError(err)}`);
+    fail(host, 'GET /mcp replay retired', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, {
+    const { res, text, ms } = await timedFetch(`${host}/mcp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} }),
-    }, { group: 'variant', rpcMethod: 'ping' });
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+    }, { group: 'aliases', rpcMethod: 'initialize' });
+    let body;
+    try { body = JSON.parse(text); } catch { body = null; }
     if (res.status >= 300 && res.status < 400) {
-      fail(host, 'POST /mcp stays on host', `POST answered ${res.status} → ${safeUrlLabel(res.headers.get('location'))} — a redirected POST becomes a GET and the handshake dies (#4938)`);
-    } else if (res.status !== 200) {
-      fail(host, 'POST /mcp stays on host', `expected 200 ping, got ${res.status}`);
+      fail(host, 'POST /mcp retired', `POST answered ${res.status} → ${safeUrlLabel(res.headers.get('location'))} — a redirected POST becomes a GET (#4938)`);
+    } else if (res.status !== 410) {
+      fail(host, 'POST /mcp retired', `expected 410, got ${res.status}`);
+    } else if (body?.id !== 1 || body?.error?.code !== -32000 || body?.error?.data?.reason !== 'canonical_endpoint_required') {
+      fail(host, 'POST /mcp retired', '410 body is not the canonical-endpoint JSON-RPC error');
+    } else if (!hasGoneTransportHeaders(res)) {
+      fail(host, 'POST /mcp retired', `410 lacks no-store + canonical Link (cache="${res.headers.get('cache-control')}", link="${res.headers.get('link')}")`);
     } else {
-      ok(host, 'POST /mcp stays on host', '200 — handshake not canonicalized');
+      ok(host, 'POST /mcp retired', `410 ${ms}ms`);
     }
   } catch (err) {
     throwIfRunBudgetExhausted(err);
-    fail(host, 'POST /mcp stays on host', `HANG/transport error: ${formatSafeError(err)}`);
+    fail(host, 'POST /mcp retired', `HANG/transport error: ${formatSafeError(err)}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, { method: 'OPTIONS' }, { group: 'aliases' });
+    if (res.status !== 204) {
+      fail(host, 'OPTIONS /mcp CORS', `expected 204, got ${res.status}`);
+    } else {
+      ok(host, 'OPTIONS /mcp CORS', '204');
+    }
+  } catch (err) {
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'OPTIONS /mcp CORS', `HANG/transport error: ${formatSafeError(err)}`);
   }
 }
 
@@ -811,30 +864,35 @@ async function main() {
       throw new Error('MCP_SMOKE_RUN_BUDGET_MS must be a positive number');
     }
     runDeadlineAt = Date.now() + runBudgetMs;
+
+    console.log('\n── canonical ──');
     for (const host of HOSTS) {
       await walkHost(host);
       stopIfRunBudgetExhausted();
-      completeGroup(`walk:${safeUrlLabel(host)}`);
       await probeDiscovery(host);
       stopIfRunBudgetExhausted();
-      completeGroup(`discovery:${safeUrlLabel(host)}`);
+    }
+    completeGroup('canonical');
+
+    console.log('\n── aliases ──');
+    for (const host of ALIAS_HOSTS) {
+      await probeAliasMigration(host);
+      stopIfRunBudgetExhausted();
+    }
+    completeGroup('aliases');
+
+    console.log('\n── proxy ──');
+    for (const host of PROXY_HOSTS) {
       await probeMcpProxy(host);
       stopIfRunBudgetExhausted();
-      completeGroup(`proxy:${safeUrlLabel(host)}`);
     }
-
-    console.log('\n── variant canonicalization ──');
-    for (const host of VARIANT_HOSTS) {
-      await probeVariantCanonical(host);
-      stopIfRunBudgetExhausted();
-      completeGroup(`variant:${safeUrlLabel(host)}`);
-    }
+    completeGroup('proxy');
     completedAllGroups = true;
   } catch (error) {
     fail(RUNNER_LABEL, 'execution', formatSafeError(error));
   }
 
-  console.log(`\n${checks} checks across ${HOSTS.length} host(s); ${failures.length} failure(s).`);
+  console.log(`\n${checks} checks across ${HOSTS.length} canonical, ${ALIAS_HOSTS.length} alias, ${PROXY_HOSTS.length} proxy origin(s); ${failures.length} failure(s).`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
     for (const failure of failures) console.log(`  [${failure.host}] ${failure.check}: ${failure.detail}`);

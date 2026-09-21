@@ -116,7 +116,7 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
    https://worldmonitor.app/mcp
    ```
 
-   This is the only product MCP transport endpoint.
+   This is the only product MCP transport endpoint. Listed production aliases (`www`, `api`, and the dashboard variants) are not additional servers. Ordinary GET/HEAD `/mcp` and `/api/mcp` on those hosts redirect (308) to `https://worldmonitor.app/mcp`; ordinary GET/HEAD `/.well-known/mcp` and `/.well-known/mcp.json` redirect (308) to `https://worldmonitor.app/.well-known/mcp` and `https://worldmonitor.app/.well-known/mcp.json`. Query is not forwarded. A transport POST/SSE/replay receives HTTP 410 with JSON-RPC `-32000` telling the client to use `https://worldmonitor.app/mcp`.
 
 2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
 

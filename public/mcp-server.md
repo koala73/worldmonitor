@@ -14,7 +14,8 @@ This persistent hosted server is distinct from [WorldMonitor WebMCP](https://www
 
 ## Endpoint
 
-- **Server URL:** `https://worldmonitor.app/mcp` — Streamable HTTP transport, JSON-RPC 2.0 (JSON responses by default, SSE when the client advertises `text/event-stream`; `initialize` defaults to protocol `2025-03-26`).
+- **Server URL:** `https://worldmonitor.app/mcp` — Streamable HTTP transport, JSON-RPC 2.0 (JSON responses by default, SSE when the client advertises `text/event-stream`; `initialize` defaults to protocol `2025-03-26`). This is the only advertised product MCP server.
+- **Aliases:** `www`, `api`, `tech`, `finance`, `commodity`, `happy`, and `energy` under `worldmonitor.app` are a client-migration surface, not extra installations. Ordinary GET/HEAD `/mcp` and `/api/mcp` redirect (308) to `https://worldmonitor.app/mcp`; ordinary GET/HEAD `/.well-known/mcp` and `/.well-known/mcp.json` redirect (308) to `https://worldmonitor.app/.well-known/mcp` and `https://worldmonitor.app/.well-known/mcp.json`. Query is not forwarded. Transport POST, SSE, and replay answer HTTP 410 with JSON-RPC `-32000` `Use https://worldmonitor.app/mcp`.
 - **Server card:** https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — a second, public (no-auth) MCP server with search-and-retrieval tools over the documentation. Route "how do I…" questions there; route live-data calls to the product server above.
 
