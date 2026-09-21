@@ -223,7 +223,7 @@ test("the fence is subject-specific and permits another account's writes", async
 });
 
 describe.each([false, true])("billing repair after anonymization=%s", (anonymized) => {
-  test("reconciliation retains accounting evidence without restoring contact or identity fields", async () => {
+  test("reconciliation retains accounting evidence with contact data but without the identity bridge", async () => {
     const t = await makeT(anonymized ? states[3]! : states[0]!);
     const retainedUserId = `deleted:${"a".repeat(64)}`;
     const userId = anonymized ? retainedUserId : identity.subject;
@@ -256,9 +256,11 @@ describe.each([false, true])("billing repair after anonymization=%s", (anonymize
       const [payment] = await ctx.db.query("paymentEvents").collect();
       expect(subscription?.userId).toBe(retainedUserId);
       expect(payment).toMatchObject({ userId: retainedUserId, amount: 2900 });
-      expect(subscription?.rawPayload).toEqual(payment?.rawPayload);
-      expect(JSON.stringify(payment?.rawPayload)).not.toContain(identity.email);
+      expect(subscription?.rawPayload).toEqual((payment?.rawPayload as { data?: unknown }).data ?? payment?.rawPayload);
+      expect(JSON.stringify(payment?.rawPayload)).toContain(identity.email);
       expect(JSON.stringify(payment?.rawPayload)).not.toContain(identity.subject);
+      expect(JSON.stringify(payment?.rawPayload)).not.toContain("wm_user_id");
+      expect(JSON.stringify(payment?.rawPayload)).not.toContain("wm_login_email");
       expect(await ctx.db.query("entitlements").collect()).toEqual([]);
     });
   });

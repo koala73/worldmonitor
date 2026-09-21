@@ -36,7 +36,7 @@ async function seedDeletion(
 }
 
 describe("account deletion cleanup", () => {
-  test("scrubs checkout identity, customer contact and address in retained billing evidence", async () => {
+  test("retains checkout and customer evidence while stripping the internal identity bridge", async () => {
     const t = convexTest(schema, modules);
     const deletionId = await seedDeletion(t, "anonymize");
     const payload = {
@@ -67,8 +67,10 @@ describe("account deletion cleanup", () => {
     const expected = {
       subscription_id: "sub_cleanup", payment_id: "pay_cleanup", total_amount: 2900,
       currency: "USD", next_billing_date: new Date(END).toISOString(),
-      customer: { customer_id: "cus_cleanup" }, metadata: { campaign: "launch" },
-      items: [{ amount: 2900 }],
+      customer: payload.customer,
+      billing: payload.billing,
+      metadata: { campaign: "launch" },
+      items: payload.items,
     };
     expect(retained.subscription?.rawPayload).toEqual(expected);
     expect(retained.payment?.rawPayload).toEqual({ data: expected });
@@ -76,29 +78,30 @@ describe("account deletion cleanup", () => {
     expect(retained.payment?.userId).toBe(REPLACEMENT);
   });
 
-  test("anonymizes all dunning episodes across batches, including after an already-redacted prefix", async () => {
+  test("keeps every dunning ledger row with its real recipient email", async () => {
     const t = convexTest(schema, modules);
     const deletionId = await seedDeletion(t, "anonymize");
-    const total = ERASE_WRITE_BUDGET * 2 + 5;
+    const total = 5;
     await t.run(async (ctx) => {
       for (let i = 0; i < total; i++) {
         await ctx.db.insert("dunningEmails", {
           dodoSubscriptionId: "sub_cleanup", step: "dunning_day0", episodeAt: NOW + i,
-          email: i < 8 ? REPLACEMENT : EMAIL, sentAt: NOW + i,
+          email: EMAIL, sentAt: NOW + i,
         });
       }
     });
     let batches = 0;
+    let reachedExternal = false;
     for (; batches < 5; batches++) {
       const result = await t.run((ctx) => runEraseBatch(ctx, deletionId));
       const rows = await t.run((ctx) => ctx.db.query("dunningEmails").collect());
       if (result?.step === "external") {
-        expect(rows.every((row) => row.email === REPLACEMENT)).toBe(true);
+        reachedExternal = true;
+        expect(rows.every((row) => row.email === EMAIL)).toBe(true);
         break;
       }
     }
-    expect(batches).toBeGreaterThan(0);
-    expect(batches).toBeLessThan(5);
+    expect(reachedExternal).toBe(true);
     const retained = await t.run((ctx) => ctx.db.query("dunningEmails").collect());
     expect(retained).toHaveLength(total);
     expect(new Set(retained.map((row) => row.episodeAt)).size).toBe(total);

@@ -360,7 +360,7 @@ describe("account deletion — eraseConfirmedUser identity", () => {
 });
 
 describe("account deletion — Convex cascade", () => {
-  test("self-delete erases the caller only and keeps billing evidence without email", async () => {
+  test("self-delete erases the caller only and retains billing evidence", async () => {
     const t = await makeT();
     await seedUser(t, USER_A);
     await seedUser(t, USER_B);
@@ -412,18 +412,18 @@ describe("account deletion — Convex cascade", () => {
     expect(retained?.amount).toBe(2900);
     const payload = retained?.rawPayload as {
       customer?: { email?: string; name?: string; customer_id?: string };
-      email?: string;
+      metadata?: Record<string, unknown>;
     };
-    expect(payload.email).toBeUndefined();
-    expect(payload.customer?.email).toBeUndefined();
-    expect(payload.customer?.name).toBeUndefined();
+    expect(payload.customer?.email).toBe(USER_A.email);
+    expect(payload.customer?.name).toBe("Alice Example");
+    expect(payload.metadata).toBeUndefined();
     expect(payload.customer?.customer_id).toBe(`cus_${USER_A.subject}`);
 
     const customers = await t.run(async (ctx) => ctx.db.query("customers").collect());
     const anonymized = customers.find((item) => item.dodoCustomerId === `cus_${USER_A.subject}`);
     expect(anonymized?.userId).toBe(tombstone);
-    expect(anonymized?.email).toBe(tombstone);
-    expect(anonymized?.normalizedEmail).toBe(tombstone);
+    expect(anonymized?.email).toBe(USER_A.email);
+    expect(anonymized?.normalizedEmail).toBe(USER_A.email.toLowerCase());
 
     const registrations = await t.run(async (ctx) =>
       ctx.db
@@ -550,7 +550,7 @@ describe("account deletion — business seats", () => {
     expect(await rowsForUser(t, "users", OWNER.subject)).toHaveLength(1);
   });
 
-  test("owner delete removes grants and anonymizes the owner subscription", async () => {
+  test("owner delete removes grants and retains the owner subscription evidence", async () => {
     const t = await makeT();
     await seedUser(t, OWNER);
     await seedUser(t, INVITEE);
@@ -601,10 +601,10 @@ describe("account deletion — business seats", () => {
     expect(subs[0]?.userId).toBe(tombstone);
     expect(subs[0]?.dodoSubscriptionId).toBe("sub_owner_erase");
     const raw = subs[0]?.rawPayload as { customer?: { email?: string; customer_id?: string } };
-    expect(raw.customer?.email).toBeUndefined();
+    expect(raw.customer?.email).toBe(OWNER.email);
     expect(raw.customer?.customer_id).toBe("cus_owner");
     const dunning = await t.run(async (ctx) => ctx.db.query("dunningEmails").collect());
-    expect(dunning[0]?.email).toBe(tombstone);
+    expect(dunning[0]?.email).toBe(OWNER.email);
     expect(await rowsForUser(t, "users", INVITEE.subject)).toHaveLength(1);
   });
 });

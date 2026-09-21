@@ -48,7 +48,11 @@ Do **not** pass an email argument. Extra fields are rejected.
   Cached profile emails and email-only token claims are never ownership proof.
 - Delegates Company Monitoring to `markOwnerDeleted`.
 - Deletes the Clerk user if it is still present (404 is success).
-- Invoice-linked payment evidence stays without email or a live `userId`.
+- Billing evidence is retained for accounting, disputes, and lawful requests:
+  customer contact data (email, name, phone, billing address) stays in the
+  customers, subscriptions, paymentEvents, webhookEvents, and dunningEmails
+  rows; the live `userId` link is replaced by the `deleted:<sha256>`
+  tombstone, and signed identity markers are stripped from stored payloads.
 
 ## After the row is complete
 

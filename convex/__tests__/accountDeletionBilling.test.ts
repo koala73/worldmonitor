@@ -81,7 +81,7 @@ const lifecycleHandlers: Array<[string, SubscriptionHandler]> = [
 ];
 
 describe("late billing events during account deletion", () => {
-  test.each(lifecycleHandlers)("direct %s handler keeps redacted audit without access or email work", async (_name, handler) => {
+  test.each(lifecycleHandlers)("direct %s handler retains billing audit without access or email work", async (_name, handler) => {
     const { t, ids } = await setup();
     await t.run((ctx) => handler(ctx, payload()));
     const state = await t.run(async (ctx) => ({
@@ -90,16 +90,18 @@ describe("late billing events during account deletion", () => {
       jobs: await ctx.db.system.query("_scheduled_functions").collect(),
     }));
     expect(state.sub?.userId).toBe(REPLACEMENT);
-    expect(state.sub?.rawPayload.customer).toEqual({ customer_id: "cus_deleted" });
+    expect(state.sub?.rawPayload.customer).toEqual(payload().customer);
     expect(state.sub?.rawPayload.metadata).toEqual({});
     expect(state.sub?.rawPayload.recurring_pre_tax_amount).toBe(2900);
     expect(state.customers).toHaveLength(1);
+    // The complete-deletion fixture already seeded the tombstoned email;
+    // the late handler must preserve it (no live-owner rewrite).
     expect(state.customers[0]?.email).toBe(REPLACEMENT);
     expect(state.entitlements).toEqual([]);
     expect(state.jobs).toEqual([]);
   });
 
-  test.each([false, true])("payment and webhook audit stay anonymous (complete=%s)", async (complete) => {
+  test.each([false, true])("payment and webhook audit retain billing evidence (complete=%s)", async (complete) => {
     const { t } = await setup(complete);
     for (const type of ["payment.succeeded", "refund.succeeded", "dispute.lost"]) {
       const data = { ...payload(), payment_id: `pay_${type}`, total_amount: 2900 };
@@ -117,12 +119,12 @@ describe("late billing events during account deletion", () => {
     for (const row of state.payments) {
       expect(row.userId).toBe(REPLACEMENT);
       expect(row.amount).toBe(2900);
-      expect(row.rawPayload.customer).toEqual({ customer_id: "cus_deleted" });
+      expect(row.rawPayload.customer).toEqual(payload().customer);
       expect(row.rawPayload.metadata).toEqual({});
     }
     expect(state.events).toHaveLength(3);
     for (const row of state.events) {
-      expect(row.rawPayload.data.customer).toEqual({ customer_id: "cus_deleted" });
+      expect(row.rawPayload.data.customer).toEqual(payload().customer);
       expect(row.rawPayload.data.metadata).toEqual({});
     }
     expect(state.entitlements).toEqual([]);
@@ -167,7 +169,7 @@ describe("late billing events during account deletion", () => {
     expect(state.customers.every((row) => row.email === REPLACEMENT)).toBe(true);
     expect(state.payments).toHaveLength(1);
     expect(state.payments[0]?.userId).toBe(REPLACEMENT);
-    expect(state.payments[0]?.rawPayload.customer).toEqual({ customer_id: data.customer.customer_id });
+    expect(state.payments[0]?.rawPayload.customer).toEqual(data.customer);
     expect(state.unattributed).toEqual([]);
     expect(state.jobs).toHaveLength(1);
     expect(state.jobs[0]?.name).toContain("accountDeletion/sideEffects");
@@ -213,7 +215,7 @@ describe("late billing events during account deletion", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test.each([false, true])("late dunning send records retain no recipient identity (complete=%s)", async (complete) => {
+  test.each([false, true])("late dunning send keeps recipient identity but never re-sends (complete=%s)", async (complete) => {
     const { t } = await setup(complete);
     expect(await t.query(internal.payments.subscriptionEmails.getDunningContext, {
       dodoSubscriptionId: "sub_deleted",
@@ -223,7 +225,6 @@ describe("late billing events during account deletion", () => {
       dodoSubscriptionId: "sub_deleted", step: "dunning_day0", episodeAt: NOW, email: EMAIL,
     });
     const rows = await t.run((ctx) => ctx.db.query("dunningEmails").collect());
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ email: REPLACEMENT, episodeAt: NOW, step: "dunning_day0" });
+    expect(rows).toHaveLength(0);
   });
 });

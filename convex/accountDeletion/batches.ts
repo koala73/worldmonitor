@@ -371,8 +371,6 @@ async function anonymizeBilling(
   for (const row of customers) {
     await ctx.db.patch(row._id, {
       userId: replacement,
-      email: replacement,
-      normalizedEmail: replacement,
       updatedAt: Date.now(),
     });
     writes += 1;
@@ -416,22 +414,6 @@ async function anonymizeBilling(
     if (writes >= budget) return { writes, done: false };
   }
 
-  const dodoSubscriptionIds = deletion.dodoSubscriptionIds ?? [];
-  for (const dodoSubscriptionId of dodoSubscriptionIds) {
-    const dunning = await ctx.db
-      .query("dunningEmails")
-      .withIndex("by_sub_step_episode", (q) =>
-        q.eq("dodoSubscriptionId", dodoSubscriptionId),
-      )
-      .filter((q) => q.neq(q.field("email"), replacement))
-      .take(budget - writes);
-    for (const row of dunning) {
-      await ctx.db.patch(row._id, { email: replacement });
-      writes += 1;
-      if (writes >= budget) return { writes, done: false };
-    }
-  }
-
   const subscriptionDocIds = deletion.subscriptionDocIds ?? [];
   for (const subscriptionId of subscriptionDocIds) {
     const presentations = await ctx.db
@@ -464,21 +446,6 @@ async function anonymizeBilling(
     .withIndex("by_userId", (q) => q.eq("userId", deletion.userId))
     .take(1);
 
-  let leftoverDunning = false;
-  for (const dodoSubscriptionId of dodoSubscriptionIds) {
-    const rows = await ctx.db
-      .query("dunningEmails")
-      .withIndex("by_sub_step_episode", (q) =>
-        q.eq("dodoSubscriptionId", dodoSubscriptionId),
-      )
-      .filter((q) => q.neq(q.field("email"), replacement))
-      .take(1);
-    if (rows.length > 0) {
-      leftoverDunning = true;
-      break;
-    }
-  }
-
   let leftoverPresentations = false;
   for (const subscriptionId of subscriptionDocIds) {
     const rows = await ctx.db
@@ -500,7 +467,6 @@ async function anonymizeBilling(
       stillLiveSubs.length === 0 &&
       stillLivePayments.length === 0 &&
       stillLiveDeletedCustomers.length === 0 &&
-      !leftoverDunning &&
       !leftoverPresentations,
   };
 }

@@ -12,7 +12,6 @@ import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
 import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
 import { billingDeletionForEvent, billingDeletionForUser, isCoveringAt } from "./subscriptionHelpers";
-import { tombstoneUserId } from "../accountDeletion/registry";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
@@ -711,11 +710,15 @@ export const recordDunningStepSent = internalMutation({
   },
   handler: async (ctx, args) => {
     const deletion = await billingDeletionForEvent(ctx, { subscription_id: args.dodoSubscriptionId });
+    // Deleted accounts keep the dunning ledger row with the real recipient
+    // email as retained billing evidence (owner decision 2026-09-21), but a
+    // tombstoned subscription must never trigger or fund another send.
+    if (deletion) return;
     await ctx.db.insert("dunningEmails", {
       dodoSubscriptionId: args.dodoSubscriptionId,
       step: args.step,
       episodeAt: args.episodeAt,
-      email: deletion ? tombstoneUserId(deletion.userIdHash) : args.email,
+      email: args.email,
       sentAt: Date.now(),
     });
   },

@@ -1203,7 +1203,7 @@ export class UnifiedSettings {
     return `
       <section class="account-deletion-zone" data-account-deletion>
         <h3 class="account-deletion-title">Delete account</h3>
-        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Invoice-linked billing records are kept without email or a live user id. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
+        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; your login account is disconnected from them. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
         <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
       </section>
     `;

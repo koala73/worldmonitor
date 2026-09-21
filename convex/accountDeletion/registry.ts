@@ -92,23 +92,23 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   },
   {
     target: "dunningEmails",
-    action: "anonymize",
-    notes: "Keep step timestamps; strip recipient email",
+    action: "retain",
+    notes: "Keep step timestamps and recipient email as billing evidence",
   },
   {
     target: "customers",
     action: "anonymize",
-    notes: "Keep dodoCustomerId; strip email; tombstone userId",
+    notes: "Keep dodoCustomerId and contact email; tombstone userId",
   },
   {
     target: "subscriptions",
     action: "anonymize",
-    notes: "Retain periods and amounts; strip PII in rawPayload; tombstone userId",
+    notes: "Retain periods, amounts, and Dodo customer contact data; strip internal identity bridge; tombstone userId",
   },
   {
     target: "paymentEvents",
     action: "anonymize",
-    notes: "Retain payment evidence; tombstone userId; strip email from rawPayload",
+    notes: "Retain payment evidence with Dodo customer contact data; strip internal identity bridge; tombstone userId",
   },
   {
     target: "deletedSubscriptionCustomers",
@@ -222,16 +222,21 @@ export function normalizeVerifiedEmail(
   return normalized.length > 0 ? normalized : undefined;
 }
 
-const BILLING_PII_KEYS = new Set([
-  "email", "normalizedemail", "normalized_email",
-  "wm_login_email", "wm_login_email_sig", "wm_user_id", "wm_user_id_sig",
-  "phone", "phone_number", "phonenumber", "billing", "billing_address", "billingaddress",
+// Deleted-account billing retention: Dodo customer contact data (email, name,
+// phone, billing address) and amounts stay in our records so complaints,
+// authority requests, and bookkeeping can still resolve who paid (owner
+// decision 2026-09-21; Dodo is not the system of record). Only the internal
+// World Monitor identity bridge is stripped — the signed Clerk userId and the
+// checkout login-email bridge — because the retained userId tombstone
+// (`deleted:<sha256>`) replaces the userId link and the customers row keeps
+// the account email.
+const INTERNAL_IDENTITY_KEYS = new Set([
+  "wm_user_id", "wm_user_id_sig", "wm_login_email", "wm_login_email_sig",
 ]);
-const CUSTOMER_PII_KEYS = new Set(["name", "address"]);
 
 /**
- * Strip person-identifying fields from Dodo-shaped billing payloads while
- * keeping amounts, ids, and periods.
+ * Strip internal identity-bridge fields from Dodo-shaped billing payloads
+ * while keeping amounts, ids, periods, and the Dodo customer contact block.
  */
 export function redactBillingPayload(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -244,18 +249,7 @@ export function redactBillingPayload(value: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
     const lower = key.toLowerCase();
-    if (BILLING_PII_KEYS.has(lower)) {
-      continue;
-    }
-    if (lower === "customer" && nested && typeof nested === "object" && !Array.isArray(nested)) {
-      const customer: Record<string, unknown> = {};
-      for (const [customerKey, customerValue] of Object.entries(
-        nested as Record<string, unknown>,
-      )) {
-        if (CUSTOMER_PII_KEYS.has(customerKey.toLowerCase()) || BILLING_PII_KEYS.has(customerKey.toLowerCase())) continue;
-        customer[customerKey] = redactBillingPayload(customerValue);
-      }
-      out[key] = customer;
+    if (INTERNAL_IDENTITY_KEYS.has(lower)) {
       continue;
     }
     out[key] = redactBillingPayload(nested);

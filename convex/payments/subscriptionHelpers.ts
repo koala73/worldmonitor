@@ -147,18 +147,20 @@ async function retainDeletedSubscriptionEvent(
   if (existing) await ctx.db.patch(existing._id, record);
 
   // Later payment/refund events can carry only this customer ID. Keep its
-  // anonymous ownership mapping so they do not become PII-bearing incidents.
+  // tombstoned ownership mapping so they resolve to the deletion record. The
+  // customers row keeps the Dodo contact email for billing-retention evidence.
   if (record.dodoCustomerId) {
     const customer = await ctx.db.query("customers")
       .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", record.dodoCustomerId!))
       .first();
-    const anonymous = { userId: record.userId, email: record.userId,
-      normalizedEmail: record.userId, updatedAt: eventTimestamp };
+    const retained = { userId: record.userId, updatedAt: eventTimestamp };
     if (!customer) {
-      await ctx.db.insert("customers", { ...anonymous,
+      // No prior row exists, so there is no real contact email to retain;
+      // fall back to the tombstone id rather than inventing one.
+      await ctx.db.insert("customers", { ...retained, email: record.userId,
         dodoCustomerId: record.dodoCustomerId, createdAt: eventTimestamp });
     } else if (customer.userId === deletion.userId || customer.userId === record.userId) {
-      await ctx.db.patch(customer._id, anonymous);
+      await ctx.db.patch(customer._id, retained);
     }
   }
 
@@ -1151,6 +1153,7 @@ export async function handleSubscriptionActive(
   eventType = "subscription.active",
 ): Promise<void> {
   if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, eventType)) return;
+  if (await billingDeletionForEvent(ctx, data)) return;
   const planKey = await resolvePlanKey(ctx, data.product_id);
 
   const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp);
@@ -1335,6 +1338,12 @@ export async function handleSubscriptionActive(
 
   if (incomingDodoCustomerId) {
     if (existingCustomer) {
+      // Deleted accounts: the row must keep its tombstoned owner. Dodo
+      // contact data is retained as billing evidence; never revive the
+      // deletion with the live userId from a late webhook.
+      if (userId.startsWith("deleted:")) {
+        return;
+      }
       // Skip the rewrite when nothing changes. Dodo delivers related events
       // for one purchase in a burst (subscription.active + payment.succeeded
       // + subscription.updated within milliseconds), and re-patching the same
