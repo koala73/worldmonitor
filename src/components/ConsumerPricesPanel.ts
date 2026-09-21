@@ -124,7 +124,7 @@ export class ConsumerPricesPanel extends Panel {
   private inflationLoading = false;
   private inflationFilter = '';
   private settings: PanelSettings = loadSettings();
-  private loading = false; // tracks in-flight fetch to avoid duplicates
+  private fetchGeneration = 0;
 
   // CMD+K deep-link: switch to the requested tab (e.g. World) when opened via
   // the `panel:consumer-prices@world` command. Bound once so destroy() can drop it.
@@ -236,38 +236,51 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public async fetchData(): Promise<void> {
-    if (this.loading) return;
-    this.loading = true;
+    const generation = ++this.fetchGeneration;
     this.showLoading();
 
-    const { market, basket, range } = this.settings;
+    const captured = {
+      market: this.settings.market,
+      basket: this.settings.basket,
+      range: this.settings.range,
+    };
+    const stillCurrent = (): boolean => (
+      generation === this.fetchGeneration
+      && this.element?.isConnected === true
+      && this.settings.market === captured.market
+      && this.settings.basket === captured.basket
+      && this.settings.range === captured.range
+    );
 
-    if (market === 'all') {
-      const results = await fetchAllMarketsOverview();
-      if (!this.element?.isConnected) { this.loading = false; return; }
-      this.allMarkets = results;
-      this.loading = false;
+    try {
+      if (captured.market === 'all') {
+        const results = await fetchAllMarketsOverview();
+        if (!stillCurrent()) return;
+        this.allMarkets = results;
+        this.render();
+        return;
+      }
+
+      const [overview, categories, movers, spread, freshness] = await Promise.all([
+        fetchConsumerPriceOverview(captured.market, captured.basket),
+        fetchConsumerPriceCategories(captured.market, captured.basket, captured.range),
+        fetchConsumerPriceMovers(captured.market, captured.range),
+        fetchRetailerPriceSpreads(captured.market, captured.basket),
+        fetchConsumerPriceFreshness(captured.market),
+      ]);
+
+      if (!stillCurrent()) return;
+      this.overview = overview;
+      this.categories = categories;
+      this.movers = movers;
+      this.spread = spread;
+      this.freshness = freshness;
       this.render();
-      return;
+    } catch (error) {
+      if (!stillCurrent()) return;
+      console.error('[ConsumerPrices] fetch failed:', error);
+      this.showError(undefined, () => { void this.fetchData(); });
     }
-
-    const [overview, categories, movers, spread, freshness] = await Promise.all([
-      fetchConsumerPriceOverview(market, basket),
-      fetchConsumerPriceCategories(market, basket, range),
-      fetchConsumerPriceMovers(market, range),
-      fetchRetailerPriceSpreads(market, basket),
-      fetchConsumerPriceFreshness(market),
-    ]);
-
-    if (!this.element?.isConnected) { this.loading = false; return; }
-
-    this.overview = overview;
-    this.categories = categories;
-    this.movers = movers;
-    this.spread = spread;
-    this.freshness = freshness;
-    this.loading = false;
-    this.render();
   }
 
   private render(): void {

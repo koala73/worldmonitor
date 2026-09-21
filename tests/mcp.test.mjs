@@ -13,6 +13,7 @@ import {
 } from './helpers/mcp-pro-deps.mjs';
 import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -98,14 +99,17 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- Public discovery (initialize + tools/list + resources/list servable without creds) ---
 
-  it('initialize succeeds WITHOUT credentials (public discovery)', async () => {
-    const req = new Request(BASE_URL, {
+  // The transport challenges an unauthenticated handshake
+  // (tests/mcp-transport-challenge.test.mjs); the anonymous handshake lives on
+  // the machine-discovery alias, where agent-readiness scanners POST theirs.
+  it('initialize succeeds WITHOUT credentials on the discovery alias (public discovery)', async () => {
+    const req = new Request('https://worldmonitor.app/.well-known/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(initBody(1)),
     });
     const res = await handler(req);
-    assert.equal(res.status, 200, 'unauthenticated initialize must be public');
+    assert.equal(res.status, 200, 'unauthenticated initialize must be public on the discovery alias');
     const body = await res.json();
     assert.equal(body.result?.protocolVersion, '2025-03-26');
     assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
@@ -1408,7 +1412,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.match(economic.description, /no proxies/i);
     assert.match(economic.description, /launchReady/i);
     assert.doesNotMatch(economic.description, /NBS\/SAFE live/i);
-    const chinaSchema = economic.outputSchema.properties.data.properties['china-macro'];
+    const chinaSchema = documentedOutputSchema(economic).properties.data.properties['china-macro'];
     assert.ok(chinaSchema.properties.indicators);
     assert.ok(!chinaSchema.properties.observations);
     const indicatorSchema = chinaSchema.properties.indicators.items.properties;

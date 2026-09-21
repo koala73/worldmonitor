@@ -1106,8 +1106,8 @@ function updateCountryQuery(select, dashboardLink) {
   if (dashboardLink) {
     // Keep conversion attribution on dynamically-rewritten dashboard links.
     dashboardLink.href = code
-      ? `/?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
-      : '/?utm_source=seo-tool';
+      ? `/dashboard?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
+      : '/dashboard?utm_source=seo-tool';
   }
 }
 

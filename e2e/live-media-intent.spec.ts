@@ -441,8 +441,8 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
     await expect(webcams.locator('.webcam-iframe[title="Jerusalem live webcam"]')).toBeVisible();
 
-    await webcams.getByRole('button', { name: 'Kyiv' }).click();
+    await webcams.getByRole('button', { name: 'Ukraine' }).click();
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
-    await expect(webcams.locator('.webcam-iframe[title="Kyiv live webcam"]')).toBeVisible();
+    await expect(webcams.locator('.webcam-iframe[title="Ukraine live webcam"]')).toBeVisible();
   });
 });

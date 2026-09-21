@@ -23,6 +23,7 @@ export class DeductionPanel extends Panel {
     private inputEl: HTMLTextAreaElement;
     private geoInputEl: HTMLInputElement;
     private resultContainer: HTMLElement;
+    private contentRoot: HTMLElement;
     private submitBtn: HTMLButtonElement;
     private isSubmitting = false;
     private getLatestNews?: () => NewsItem[];
@@ -74,6 +75,7 @@ export class DeductionPanel extends Panel {
             this.formEl,
             this.resultContainer
         );
+        this.contentRoot = container;
 
         replaceChildren(this.content, container);
 
@@ -104,6 +106,27 @@ export class DeductionPanel extends Panel {
 
         this.fwSelector = new FrameworkSelector({ panelId: 'deduction', isPremium: hasPremiumAccess(), panel: this });
         this.header.appendChild(this.fwSelector.el);
+    }
+
+    private deductionGeneration = 0;
+
+    public override clearSensitiveContent(): void {
+        this.deductionGeneration += 1;
+        this.inputEl.value = '';
+        this.geoInputEl.value = '';
+        this.resultContainer.replaceChildren();
+        this.resultContainer.className = 'deduction-result';
+        this.isSubmitting = false;
+        this.submitBtn.disabled = false;
+        super.clearSensitiveContent();
+    }
+
+    public override unlockPanel(): void {
+        super.unlockPanel();
+        if (!this.content.contains(this.contentRoot)) {
+            this.resultContainer.replaceChildren();
+            this.setContentNodes(this.contentRoot);
+        }
     }
 
     public override destroy(): void {
@@ -238,6 +261,7 @@ export class DeductionPanel extends Panel {
 
         const fw = getActiveFrameworkForPanel('deduction');
 
+        const generation = ++this.deductionGeneration;
         this.isSubmitting = true;
         this.submitBtn.disabled = true;
 
@@ -256,17 +280,17 @@ export class DeductionPanel extends Panel {
                 geoContext,
                 framework: fw?.systemPromptAppend ?? '',
             });
-            if (!this.element?.isConnected) return;
+            if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
 
             this.resultContainer.className = 'deduction-result';
             if (resp.analysis) {
                 const parsed = await marked.parse(resp.analysis);
-                if (!this.element?.isConnected) return;
+                if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
                 // Yield so the response paint lands before the synchronous DOMPurify
                 // pass (the heavy `sanitize` chunk) — breaks the post-response long
                 // task instead of running parse+purify+innerHTML as one block (#4537).
                 await yieldToMain();
-                if (!this.element?.isConnected) return;
+                if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
                 const safe = DOMPurify.sanitize(parsed);
                 setTrustedHtml(this.resultContainer, trustedHtml(safe, 'legacy direct innerHTML migration'));
                 this.reformatResult(this.resultContainer);
@@ -276,14 +300,16 @@ export class DeductionPanel extends Panel {
                     : 'No analysis available for this query.';
             }
         } catch (err) {
-            if (!this.element?.isConnected) return;
+            if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
             console.error('[DeductionPanel] Error:', err);
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
-            this.isSubmitting = false;
-            if (this.element?.isConnected) {
-                setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            if (generation === this.deductionGeneration) {
+                this.isSubmitting = false;
+                if (this.element?.isConnected) {
+                    setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+                }
             }
         }
     }

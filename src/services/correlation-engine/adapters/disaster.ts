@@ -1,12 +1,31 @@
 // boundary-ignore: AppContext is an aggregate type that lives in app/ by design
 import type { AppContext } from '@/app/app-context';
 import type { DomainAdapter, SignalEvidence } from '../types';
+import { getCountryAtCoordinates, iso3ToIso2Code, nameToCountryCode } from '@/services/country-geometry';
 
 // v1 weights: wildfire and cable_alert deferred — renormalized to sum to 1.0.
 const WEIGHTS: Record<string, number> = {
   earthquake: 0.55,
   infra_outage: 0.45,
 };
+
+function normalizeToCode(country: string | undefined, lat?: number, lon?: number): string | undefined {
+  const trimmed = country?.trim();
+  if (trimmed) {
+    const fromName = nameToCountryCode(trimmed);
+    if (fromName) return fromName;
+    if (trimmed.length === 3) {
+      const fromIso3 = iso3ToIso2Code(trimmed);
+      if (fromIso3) return fromIso3;
+    }
+    if (trimmed.length === 2) return trimmed.toUpperCase();
+  }
+  if (lat != null && lon != null && !(lat === 0 && lon === 0)) {
+    const geo = getCountryAtCoordinates(lat, lon);
+    if (geo?.code) return geo.code;
+  }
+  return undefined;
+}
 
 export const disasterAdapter: DomainAdapter = {
   domain: 'disaster',
@@ -54,14 +73,15 @@ export const disasterAdapter: DomainAdapter = {
           const age = now - (p.time?.getTime?.() ?? now);
           return age <= windowMs;
         })
-        .map(p => p.country)
-        .filter(Boolean),
+        .map(p => normalizeToCode(p.country, p.lat, p.lon))
+        .filter((code): code is string => !!code),
     );
     const outages = cache.outages ?? [];
     for (const o of outages) {
       const age = now - (o.pubDate?.getTime?.() ?? now);
       if (age > windowMs) continue;
-      if (o.country && conflictCountries.has(o.country)) continue;
+      const country = normalizeToCode(o.country, o.lat, o.lon);
+      if (country && conflictCountries.has(country)) continue;
       // Skip outages with sentinel 0/0 coordinates (no real location)
       if (o.lat == null || o.lon == null || (o.lat === 0 && o.lon === 0)) continue;
 

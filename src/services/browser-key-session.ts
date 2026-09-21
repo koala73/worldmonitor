@@ -2,6 +2,15 @@ import { establishWmKeySession } from '@/services/wm-session';
 
 export type BrowserSessionKeyName = 'wm-widget-key' | 'wm-pro-key';
 
+// Finish a pending exchange before clearing, so its later Set-Cookie cannot
+// restore a credential after the caller's clear has completed.
+let keySessionChange: Promise<boolean> = Promise.resolve(true);
+function changeKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<boolean> {
+  const next = keySessionChange.then(() => establishWmKeySession(keys));
+  keySessionChange = next.catch(() => false);
+  return next;
+}
+
 function safeLocalStorageGet(name: BrowserSessionKeyName): string {
   try { return localStorage.getItem(name) ?? ''; } catch { return ''; }
 }
@@ -46,7 +55,7 @@ export async function migrateLegacyKeysToHttpOnlySession(keys: {
   const proKey = keys.proKey?.trim() ?? '';
   if (!widgetKey && !proKey) return false;
 
-  const ok = await establishWmKeySession({
+  const ok = await changeKeySession({
     ...(widgetKey ? { widgetKey } : {}),
     ...(proKey ? { proKey } : {}),
   });
@@ -55,4 +64,11 @@ export async function migrateLegacyKeysToHttpOnlySession(keys: {
   if (widgetKey) clearLegacyKeyStorage('wm-widget-key');
   if (proKey) clearLegacyKeyStorage('wm-pro-key');
   return true;
+}
+
+/** Delete an HttpOnly tester credential at the same API host that issued it. */
+export async function clearBrowserKeySession(name: BrowserSessionKeyName): Promise<boolean> {
+  const ok = await changeKeySession(name === 'wm-widget-key' ? { widgetKey: '' } : { proKey: '' });
+  if (ok) clearLegacyKeyStorage(name);
+  return ok;
 }
