@@ -294,6 +294,31 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual(m.get('title'), 'Attacker headline with off-publisher link');
   });
 
+  it('preserves registered feed-host links from parsing through persistence', () => {
+    const feed = __testing__.buildDigestFeedBatches('full', 'en').allEntries
+      .find(entry => entry.feed.name === 'Al Jazeera')!.feed;
+    const link = 'https://www.aljazeera.com/news/2026/9/21/peace-talks';
+    const parsed = parseRssXml(`<rss><channel><item>
+      <title>Peace talks resume after border agreement</title><link>${link}</link>
+      <pubDate>${new Date(Date.now() - 60_000).toUTCString()}</pubDate>
+    </item></channel></rss>`, feed, 'full');
+    assert.ok(parsed?.items[0]);
+    assert.equal(parsed.items[0].link, link);
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(parsed.items[0], '1745000000001', 99)).get('link'), link);
+  });
+
+  it('uses registered feed hosts rather than a forged feed URL or untrusted origin', () => {
+    const item = baseItem({
+      source: 'Al Jazeera',
+      link: 'https://evil.example/phish',
+      feedUrl: 'https://evil.example/feed',
+      originPublisher: 'Reuters',
+      originPublisherTrusted: false,
+    });
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields(item, '1745000000001', 99)).get('link'), '');
+    assert.equal(fieldsToMap(buildStoryTrackHsetFields({ ...item, link: 'https://www.reuters.com/world/x' }, '1745000000001', 99)).get('link'), '');
+  });
+
   it('blanks a persisted link for a source with no server-known publisher signal (#8398)', () => {
     // Fail-closed: an item whose source names no curated family persists
     // with a blank link when the feed-host leg is unavailable item-side.

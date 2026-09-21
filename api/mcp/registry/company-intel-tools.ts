@@ -1,4 +1,5 @@
 import { buildAuthHeaders } from '../auth';
+import { fetchMcpDownstream } from '../downstream';
 import { assertToolFetchOk } from '../billing-denial';
 import type { ToolDef } from '../types';
 
@@ -219,7 +220,7 @@ export const COMPANY_INTEL_TOOL: ToolDef = {
     },
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  _execute: async (params, base, context) => {
+  _execute: async (params, base, context, execution) => {
     const view = typeof params.view === 'string' && (COMPANY_INTEL_VIEWS as readonly string[]).includes(params.view)
       ? params.view
       : 'enrichment';
@@ -229,10 +230,10 @@ export const COMPANY_INTEL_TOOL: ToolDef = {
     const call = async (path: string, query: URLSearchParams, timeoutMs: number) => {
       const url = `${base}${path}?${query}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(timeoutMs),
-      });
+      }, execution);
       await assertToolFetchOk(response, path.split('/').pop() ?? path);
       return response.json();
     };

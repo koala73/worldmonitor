@@ -8,6 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import {
   cachedFetchJsonWithMeta,
   getCachedJson,
@@ -121,6 +122,7 @@ import {
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+const DIGEST_LANGUAGES = new Set(['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
 const COUNTRY_ITEMS_PER_FEED = 20;
@@ -1943,7 +1945,10 @@ export async function listFeedDigest(
   req: ListFeedDigestRequest,
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
-  const lang = req.lang || 'en';
+  const lang = req.lang === undefined || req.lang === '' ? 'en' : req.lang;
+  if (typeof lang !== 'string' || !DIGEST_LANGUAGES.has(lang)) {
+    throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
+  }
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
@@ -2355,6 +2360,22 @@ function expectedPublisherHostsForItem(
   return [...hosts];
 }
 
+// Persistence no longer has the feed object. Recover its host from the
+// server-owned registry, never from upstream item metadata. Build once so
+// each story lookup stays independent of the number of configured feeds.
+const registeredFeedHostsBySource = new Map<string, Set<string>>();
+for (const categories of Object.values(VARIANT_FEEDS)) {
+  for (const feeds of Object.values(categories)) {
+    for (const feed of feeds) {
+      const host = feedPublisherHost(feed.url);
+      if (!host) continue;
+      const hosts = registeredFeedHostsBySource.get(feed.name) ?? new Set<string>();
+      hosts.add(host);
+      registeredFeedHostsBySource.set(feed.name, hosts);
+    }
+  }
+}
+
 /**
  * #8398: ingest-side publisher-link gate.
  *
@@ -2365,29 +2386,18 @@ function expectedPublisherHostsForItem(
  * hostile link is harder to contain than a rejected one, and the relay
  * fans stored rows out to every matching user.
  *
- * Fail-closed WITHOUT the feed URL: this function is item-scoped and does
- * not know the item's feed, so it cannot compose the feed-host leg of the
- * expected set. The defense is the persisted-`link` shape: a surviving
- * hostile link must BOTH pass the parse-time feed-scoped gate AND survive
- * this item-scoped re-check against the curated family domains + the
- * trusted-aggregator origin publisher. `isPublisherLink` with an empty set
- * returns false, so an item with no server-known publisher signal persists
- * with a blank link.
+ * Recheck against the configured feed hosts, curated family domains, and
+ * trusted-aggregator origin publisher. Unknown sources without a curated
+ * publisher still fail closed. Item-supplied feed URLs cannot extend the
+ * expected host set.
  */
 function storyTrackLinkForPersist(
   item: Pick<ParsedItem, 'link' | 'source' | 'originPublisher' | 'originPublisherTrusted'>,
 ): string {
   const link = typeof item.link === 'string' ? item.link : '';
   if (!link) return '';
-  const hosts = new Set<string>();
-  const sourceFamily = publisherFamilyFor(item?.source ?? '');
-  const familyDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[sourceFamily];
-  if (Array.isArray(familyDomains)) for (const domain of familyDomains) hosts.add(domain);
-  if (item?.originPublisherTrusted === true) {
-    const originFamily = publisherFamilyFor(item?.originPublisher ?? '');
-    const originDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[originFamily];
-    if (Array.isArray(originDomains)) for (const domain of originDomains) hosts.add(domain);
-  }
+  const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
+  for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
   if (isPublisherLink(link, hosts)) return link;
   console.warn(
     `[digest] publisher-link-gate persist-blank source="${item?.source ?? ''}" ` +
@@ -3299,7 +3309,7 @@ async function buildDigest(
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
     // spraying arbitrary values cannot inflate the keyspace.
-    if (VARIANT_FEEDS[variant] && /^[a-z]{2}$/.test(lang)) {
+    if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
       await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>

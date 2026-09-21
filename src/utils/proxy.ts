@@ -151,14 +151,35 @@ function throwIfAborted(signal?: AbortSignal | null): void {
   throw new DOMException('The operation was aborted.', 'AbortError');
 }
 
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('name' in error)) return false;
+  if (error.name === 'AbortError') return true;
+  // WebKit aborted body reads sometimes arrive as TypeError whose message
+  // still says `AbortError: Fetch is aborted` (WORLDMONITOR-132).
+  return error.name === 'TypeError'
+    && 'message' in error
+    && /Fetch is aborted/i.test(String(error.message));
+}
+
 async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Response> {
   const response = await fetch(proxyUrl(url), proxyFetchInit(url, { ...init, cache: 'no-store' }));
   throwIfAborted(init.signal);
   if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
     try {
       const body = await response.clone().text();
-      void setPersistentCache(buildResponseCacheKey(url), toCachedPayload(url, response, body));
+      throwIfAborted(init.signal);
+      await setPersistentCache(buildResponseCacheKey(url), toCachedPayload(url, response, body)).catch(() => {});
+      throwIfAborted(init.signal);
     } catch (error) {
+      // Panel-close / country-switch abort mid-body-read is expected. Do not
+      // console.warn it, and do not return a Response whose body is already
+      // cancelled — propagate so callers' AbortError catches run once.
+      if (isAbortError(error) || init.signal?.aborted) {
+        throwIfAborted(init.signal);
+        throw error instanceof Error
+          ? error
+          : new DOMException('The operation was aborted.', 'AbortError');
+      }
       console.warn('[proxy] Failed to persist API response cache', error);
     }
   }

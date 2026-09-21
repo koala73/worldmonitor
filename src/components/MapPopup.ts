@@ -2182,9 +2182,12 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
     } else if (advisory) {
       statusLabel = advisory.severity === 'fault' ? t('popups.cable.fault') : t('popups.cable.degraded');
       statusBadge = advisory.severity === 'fault' ? 'high' : 'elevated';
-    } else {
+    } else if (healthRecord?.status === 'ok') {
       statusLabel = t('popups.cable.active');
       statusBadge = 'low';
+    } else {
+      statusLabel = t('popups.unknown');
+      statusBadge = 'info';
     }
     const repairEta = repairShip?.eta || advisory?.repairEta;
     const cableName = escapeHtml(cable.name.toUpperCase());

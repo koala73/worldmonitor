@@ -30,6 +30,10 @@ vi.mock('../_shared/api-key-rate-limit', () => ({
   rateLimitHeaders: () => ({}), ENTERPRISE_API_RATE_LIMIT: 1000,
 }));
 const runRedisPipeline = vi.fn(async (commands: string[][]) => {
+  if (commands.length === 0) return [];
+  if (commands[0][0] === 'GET' && String(commands[0][1]).endsWith(':sweep')) return [{ result: null }];
+  if (commands[0][0] === 'SSCAN') return [{ result: ['0', []] }];
+  if (commands[0][0] === 'SET' && String(commands[0][1]).endsWith(':sweep')) return [{ result: 'OK' }];
   if (commands[0][0] === 'SMEMBERS') return [{ result: ['own', 'foreign'] }];
   return [hash(keyA), hash(keyB)].map((ownerTag, i) => ({ result: JSON.stringify({
     subscriberId: i === 0 ? 'own' : 'foreign', ownerTag, secret: 'must-not-leak',
@@ -37,6 +41,11 @@ const runRedisPipeline = vi.fn(async (commands: string[][]) => {
     createdAt: '2026-09-11T00:00:00Z', active: true,
   }) }));
 });
+const ownerMembersCall = (ownerTag: string) => (
+  runRedisPipeline.mock.calls.some(([commands]) => (
+    commands[0]?.[0] === 'SMEMBERS' && commands[0][1] === `webhook:owner:${ownerTag}:v1`
+  ))
+);
 vi.mock('../_shared/redis', async (importOriginal) => ({
   ...await importOriginal<typeof import('../_shared/redis')>(),
   runRedisPipeline: (...args: [string[][]]) => runRedisPipeline(...args),
@@ -65,7 +74,7 @@ for (const [key, id] of [[keyA, 'own'], [keyB, 'foreign']]) {
     const body = await response.json();
     expect(body.webhooks.map((row: { subscriberId: string }) => row.subscriberId)).toEqual([id]);
     expect(JSON.stringify(body)).not.toContain('must-not-leak');
-    expect(runRedisPipeline).toHaveBeenNthCalledWith(1, [['SMEMBERS', `webhook:owner:${hash(key)}:v1`]]);
+    expect(ownerMembersCall(hash(key))).toBe(true);
     expect(validateUserApiKey).toHaveBeenCalledWith(key);
   });
 }
@@ -104,14 +113,14 @@ test('handler-side validation outage fails closed without reading ownership', as
 });
 
 test('invalid explicit user key cannot borrow an enterprise cookie', async () => {
-  const response = await gateway(request(invalidKey, { Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request(invalidKey, { Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(401);
   expect(runRedisPipeline).not.toHaveBeenCalled();
 });
 
 test('enterprise cookie retains its credential owner when an anonymous header is present', async () => {
-  const response = await gateway(request('wms_anonymous', { Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(200);
-  expect(runRedisPipeline).toHaveBeenNthCalledWith(1, [['SMEMBERS', `webhook:owner:${hash('enterprise-test')}:v1`]]);
+  expect(ownerMembersCall(hash('enterprise-test'))).toBe(true);
   expect(await response.json()).toEqual({ webhooks: [] });
 });

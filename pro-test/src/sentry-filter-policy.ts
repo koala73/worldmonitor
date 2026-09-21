@@ -345,6 +345,16 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // `!hasFirstParty` gate for exactly that reason), so only the WebAuthn
   // wording — which no first-party call site can reach — is suppressed here.
   /^(?:Error: )?NotSupportedError: The user agent does not support public key credentials\.$/,
+  // The same WebAuthn surface failing one step earlier. WORLDMONITOR-12H is the
+  // shape: `NotSupportedError: Error connecting to Web Authentication service.`
+  // on Chrome 152 / macOS at `/pro`, via `onunhandledrejection` with zero
+  // frames, breadcrumbs ending at Clerk's `POST /v1/client/sign_ins` after
+  // clicks on its identifier field. Chromium raises it when the platform
+  // authenticator service cannot be reached, which only a WebAuthn CALLER can
+  // hit. The WebAuthn-free scan that licenses the entry above pins that this
+  // surface has none, so the caller is Clerk's sign-in UI. Anchored to the whole
+  // sentence for the same reason: bare `NotSupportedError` stays reportable.
+  /^(?:Error: )?NotSupportedError: Error connecting to Web Authentication service\.$/,
   // The same WebAuthn surface as the entry above, reached from the other
   // direction: a SECOND credential request issued while one is still
   // outstanding. WORLDMONITOR-11T is the shape: `Error: OperationError: A
@@ -376,6 +386,23 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // already pending` would also drop a first-party message that merely CONTAINS
   // the phrase while riding a `/pro/assets/*.js` frame.
   /^(?:Error: )?OperationError: A request is already pending\.$/,
+  // Clerk's own SDK wrapping a failed fetch to its frontend API. The dashboard
+  // has carried `/ClerkJS: Network error/` for months; this surface runs a
+  // separate client and never got the entry, so WORLDMONITOR-12W leaked through
+  // it: `ClerkJS: Network error at "https://clerk.worldmonitor.app/v1/client/
+  // sign_ups/<id>/attempt_verification" - TypeError: Failed to fetch
+  // (clerk.worldmonitor.app). Please try again.` on Chrome 152 / Windows at
+  // `/pro`, via `onunhandledrejection`, every frame in `/pro/assets/clerk-*.js`.
+  // That frame is why the `MARKETING_NETWORK_NOISE` rule in `marketingBeforeSend`
+  // cannot catch it either: Clerk's chunk lives under `/pro/assets/`, so it
+  // counts as first-party there, and the value is an `Error`, not a `TypeError`.
+  //
+  // `ClerkJS:` is the SDK's own message prefix and appears in no `pro-test/src`
+  // file, no `shared/` leaf and neither inline script (pinned by
+  // tests/pro-sentry-filter-policy.test.mts), so the anchored prefix can only
+  // ever match Clerk. A user's flaky connection to Clerk is not actionable here;
+  // Clerk's UI already tells them to retry.
+  /^(?:Error: )?ClerkJS: Network error\b/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */
@@ -444,6 +471,13 @@ const MASKED_URL_FRAME = /^webkit-masked-url:/;
  * that must page.
  */
 const CSP_EVAL_BLOCK = /unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval/;
+/**
+ * Chrome's wording for a `<script>` whose inline source failed to parse when it
+ * was inserted: the DOM call is prefixed onto the parse error. Deliberately NOT
+ * in `MARKETING_IGNORE_ERRORS`: this bundle appends scripts too (turnstile.ts,
+ * debugbear-rum.ts), so only a frame gate can tell an injected script from ours.
+ */
+const APPEND_CHILD_PARSE_FAILURE = /^Failed to execute 'appendChild' on 'Node': /;
 /**
  * A script the browser fetched but could not PARSE. Deliberately NOT in
  * `MARKETING_IGNORE_ERRORS`: a `SyntaxError` message is generic enough that our
@@ -607,8 +641,9 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // is still not a precedent to copy, though the old reason given here — that
   // the dashboard bundle mints its own DOMException carrying caller frames —
   // was wrong, and cost WORLDMONITOR-Q4. `createTimeoutSignal` only mints one
-  // on the pre-Baseline-2024 fallback path; every current engine takes the
-  // native `AbortSignal.timeout` branch and produces the same frameless
+  // on the pre-Baseline-2024 fallback path, and stamps it with the native
+  // header-only stack; every current engine takes the native
+  // `AbortSignal.timeout` branch instead. Both produce the same frameless
   // rejection seen here (Chromium 141: `stack` is the header line alone).
   // What separates the two surfaces is that the dashboard gate exempts any
   // event carrying a first-party `kind` tag, which its checkout and panel
@@ -649,6 +684,28 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // injection.
   if (nonInfraFrames.length === 0
       && CSP_EVAL_BLOCK.test(msg)
+      && frames.some((f) => f.filename === '<anonymous>')) return null;
+
+  // An injected script inserting a `<script>` whose inline source fails to
+  // parse. WORLDMONITOR-12D is the shape: `SyntaxError: Failed to execute
+  // 'appendChild' on 'Node': Invalid regular expression: missing /` on Chrome
+  // 152 / Windows at `/`, an `onerror` capture whose eight frames are all
+  // `<anonymous>`, beside breadcrumbs from a third-party RUM beacon this surface
+  // never loads. The dashboard drops the same class through its
+  // `/Invalid regular expression: missing/` entry and `appendChild.*Unexpected`
+  // gate; the two surfaces run separate Sentry clients.
+  //
+  // Gated like the eval rule above, on the WHOLE stack being `<anonymous>` or
+  // infra: a parse failure attributable to this bundle's own script loaders
+  // would ride a `/pro/assets/*.js` frame, and one from an inline first-party
+  // script would put the document URL on the stack. A frame with no filename
+  // is dropped from `nonInfraFrames` yet could be that attributing frame, so
+  // it keeps the event reporting (PR #8174 review). The `SyntaxError` type
+  // keeps a script that parsed and then threw reporting.
+  if (nonInfraFrames.length === 0
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && exceptionType === 'SyntaxError'
+      && APPEND_CHILD_PARSE_FAILURE.test(msg)
       && frames.some((f) => f.filename === '<anonymous>')) return null;
 
   // A module the browser fetched but could not parse. WORLDMONITOR-TS is the

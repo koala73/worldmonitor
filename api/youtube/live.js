@@ -13,6 +13,8 @@ export const config = { runtime: 'edge' };
 // two copies drift. (#6234)
 const RATE_LIMIT_SCOPE = 'youtube-live';
 const RATE_LIMIT_PER_MINUTE = 30;
+const CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
+const HANDLE_RE = /^[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}._·-]{0,28}[\p{L}\p{N}\p{M}])?$/u;
 
 export default async function handler(request, ctx) {
   const cors = getCorsHeaders(request);
@@ -39,6 +41,14 @@ export default async function handler(request, ctx) {
   const url = new URL(request.url);
   const channel = url.searchParams.get('channel');
   const videoIdParam = url.searchParams.get('videoId');
+  const handle = channel?.replace(/^@/, '').normalize('NFC') || '';
+  if ((channel && (channel.length > 128 || channel !== channel.trim()
+    || (!CHANNEL_ID_RE.test(channel) && !HANDLE_RE.test(handle))))
+    || (videoIdParam && (videoIdParam.length !== 11 || !/^[A-Za-z0-9_-]{11}$/.test(videoIdParam)))) {
+    return new Response(JSON.stringify({ error: 'Invalid YouTube handle, channel ID or video ID' }), {
+      status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
 
   const params = new URLSearchParams();
   if (channel) params.set('channel', channel);
@@ -103,8 +113,8 @@ export default async function handler(request, ctx) {
 
   // Fallback: direct scrape (limited from datacenter IPs)
   try {
-    const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-    const response = await fetch(`https://www.youtube.com/${channelHandle}/live`, {
+    const channelPath = CHANNEL_ID_RE.test(channel) ? `channel/${channel}` : `@${encodeURIComponent(handle)}`;
+    const response = await fetch(`https://www.youtube.com/${channelPath}/live`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       redirect: 'follow',
     });

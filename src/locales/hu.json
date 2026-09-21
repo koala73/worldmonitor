@@ -188,7 +188,8 @@
       "activeSirens": "Aktív szirénák",
       "sirens24h": "Szirénák / 24h",
       "aviationDisruptions": "Repülési zavarok",
-      "gpsJammingZones": "GPS-zavar zónák"
+      "gpsJammingZones": "GPS-zavar zónák",
+      "temporalUnavailable": "Időbeli megfigyelések nem érhetők el"
     },
     "fallback": {
       "instabilityIndex": "**Instabilitási index: {{score}}/100** ({{level}}, {{trend}})",
@@ -924,7 +925,6 @@
   "components": {
     "webcams": {
       "paused": "Webkamerák szüneteltetve",
-      "pausedIdle": "Webkamerák szüneteltetve — mozgassa az egeret a folytatáshoz",
       "regions": {
         "all": "ÖSSZES",
         "mideast": "KÖZEL-KELET",
@@ -1319,9 +1319,6 @@
       "base": "Bázis",
       "nuclear": "Nukleáris"
     },
-    "community": {
-      "joinDiscussion": "Alakítsd meg a jövőt"
-    },
     "threatLabels": {
       "critical": "KRI",
       "high": "MAG",
@@ -1631,7 +1628,10 @@
       "provenanceTitle": "Lefedettség eredete: hány feldolgozott történetből és különálló forrásból választotta ki ezt az összefoglalót",
       "compiledFrom": "{{stories}} történetből és {{sources}} forrásból összeállítva",
       "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "A hír részletei ({{count}})",
+      "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
+      "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
+      "streamIdleStopNever": "Soha"
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",
@@ -2043,6 +2043,7 @@
       "etfs": "ETF-ek",
       "netInflow": "NETTÓ BEÁRAMLÁS",
       "netOutflow": "NETTÓ KIÁRAMLÁS",
+      "netNeutral": "NETTÓ SEMLEGES",
       "table": {
         "ticker": "Ticker",
         "issuer": "Kibocsátó",
@@ -2379,7 +2380,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Ütemezett makrogazdasági közlemények: CPI, NFP, GDP, PMI és jegybanki döntések. Előrejelzést, tényleges értéket és előző értéket mutatja. A nagy hatású eseményeket kiemelve. Forrás: gazdasági adatszolgáltatók."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): az amerikai pénzügyi piacok stresszét méri 11 mutató felhasználásával, beleértve a hozamszpreadeket, a volatilitást és a keresztkorreláció-kat. A pozitív értékek az átlagosnál magasabb stresszre utalnak. Forrás: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Pénzügyi stresszmutató</strong> A WorldMonitor magas hozamú hitel és hosszú lejáratú amerikai államkötvények közötti aránya, részvénypiaci volatilitással és magas hozamú felárral korrigálva: (HYG / TLT) / (VIX × HY spread / 100). Ez nem a Kansas City-i Fed pénzügyi stresszindexe. Az 1.5 vagy magasabb érték alacsony stresszt jelent; 0.3 alatt magas stresszt.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI ÉRTÉK",
       "cissTitle": "EU CISS (Euró Terület Szisztematikus Stressz)",
@@ -2696,7 +2697,14 @@
       "signals_one": "{{count}} jel",
       "signals_other": "{{count}} jel",
       "analyzing": "Elemzés...",
-      "viewOnMap": "Megtekintés a térképen"
+      "viewOnMap": "Megtekintés a térképen",
+      "waiting": "Várakozás a következő adatfrissítésre. Ez a panel automatikusan frissül.",
+      "offline": "Várakozás a kapcsolatra. Ez a panel automatikusan frissül, amikor újra csatlakozik az internethez.",
+      "updated": "Frissítve {{time}}",
+      "saved": "Utolsó ismert frissítés {{time}} · Frissítések keresése",
+      "savedOffline": "Utolsó ismert frissítés {{time}} · Nincs kapcsolat",
+      "localSignals": "A betöltött irányítópult-jelzések alapján",
+      "emptySaved": "Az utolsó ismert frissítésben nem volt konvergencia."
     },
     "thermalEscalation": {
       "title": "Hőmérsékleti Eszkaláció",
@@ -2879,6 +2887,14 @@
       "captured": "Betöltve. Letöltés előtt ellenőrizze a megfigyelési dátumokat és a korlátokat.",
       "failed": "Nem sikerült betölteni a forgatókönyveket. Ellenőrizze hozzáférését, és próbálja újra. Nincs exportálható eredmény.",
       "locked": "A döntési összefoglaló Pro csomaggal érhető el."
+    },
+    "liveMedia": {
+      "idleStatus": "Szüneteltetve az inaktivitás miatt",
+      "idleBody": "Az élő videó leállítva {{duration}} után egér-, billentyűzet- vagy érintésaktivitás hiányában.",
+      "idleResume": "Folytatás",
+      "idleKeepPlaying": "Élő videó lejátszása üresjárat során",
+      "idleSettingsHint": "Ezt bármikor módosíthatja a Beállítások › Média menüben.",
+      "idleKeepPlayingToast": "Az élő videó üresjárat során is lejátszódik. Módosítása a Beállítások › Média menüben."
     }
   },
   "popups": {

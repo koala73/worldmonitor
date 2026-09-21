@@ -1,4 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { CORRELATION_DOMAINS } from '@/types/correlation';
+import type { CorrelationPanel } from '@/components/CorrelationPanel';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { hasPanelSettingEntry, newsPanelKeyForCategory, newsPanelKeyLookupsFor } from '@/app/news-panel-keys';
@@ -65,7 +67,7 @@ import {
   handleCheckoutReturn,
   resolveCheckoutReturnRouting,
 } from '@/services/checkout-return';
-import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
+import { showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
 import {
   markProActivationPending,
   ProActivationController,
@@ -468,6 +470,8 @@ export class PanelLayoutManager implements AppModule {
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
+  private gatingPrincipal: string | null | undefined = undefined;
+  private premiumPanelsUnlocked = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
@@ -493,8 +497,7 @@ export class PanelLayoutManager implements AppModule {
     // post-checkout:
     //   1. Full-page Dodo redirect — handleCheckoutReturn() reads
     //      subscription_id/status URL params and cleans them.
-    //   2. Dodo overlay success — setTimeout(reload) with no URL params;
-    //      we stash a session flag before the reload and consume it here.
+    //   2. A legacy overlay-success flag left by an older tab.
     const returnResult = handleCheckoutReturn();
     const returnedFromOverlayFlag = consumePostCheckoutFlag();
     const routing = resolveCheckoutReturnRouting(returnResult, returnedFromOverlayFlag);
@@ -639,18 +642,6 @@ export class PanelLayoutManager implements AppModule {
       initSubscriptionWatch(userId).catch(() => {});
     }
 
-    // Overlay success fires BEFORE the entitlement-watcher reload. The
-    // banner stays mounted through the reload via waitForEntitlement so
-    // the user sees visual continuity from "Payment received!" through
-    // "Premium activated" without a blank intermediate state. Read the
-    // email lazily at fire-time (not at register-time) so a just-signed-
-    // in buyer who completes checkout in the same session still sees
-    // the receipt acknowledgement.
-    registerCheckoutSuccessCallback(() => showCheckoutSuccess({
-      waitForEntitlement: true,
-      email: getAuthState().user?.email ?? null,
-    }));
-
     // Reload at most once per account and browser tab on a free→pro
     // transition. Legacy-pro users whose first snapshot is already pro must
     // not reload, while a newly upgraded user gets one clean boot with every
@@ -670,8 +661,7 @@ export class PanelLayoutManager implements AppModule {
     // another transient free→pro sequence and reloads again every ~500ms.
     //
     // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — this remains the sole
-    // automatic reload source for post-checkout success (the overlay handler
-    // in checkout.ts deliberately does NOT reload). Regression guards:
+    // automatic reload source for post-checkout success. Regression guards:
     // tests/entitlement-transition.test.mts locks the raw transition semantics;
     // tests/entitlement-reload-controller.test.mts locks the cross-boot
     // one-navigation invariant from the daypesta customer recording.
@@ -932,9 +922,6 @@ export class PanelLayoutManager implements AppModule {
     this.proActivationController.destroy();
     this.passkeyOfferController.destroy();
 
-    // Reset checkout overlay so next layout init can register its callback
-    destroyCheckoutOverlay();
-
     removeResponsiveZoneListener(this.responsiveZoneListener);
     this.responsiveZoneListener = null;
   }
@@ -982,17 +969,31 @@ export class PanelLayoutManager implements AppModule {
       // resubscribe) so we never push a paying user toward duplicate checkout.
       if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
 
+      const gatedPanel = panel as Panel;
+      const principal = state.user?.id ?? null;
+      const principalChanged = this.gatingPrincipal !== undefined && this.gatingPrincipal !== principal;
+      const hadUnlockedPayload = isPremium && this.premiumPanelsUnlocked.has(key);
+      if (hadUnlockedPayload && (principalChanged || reason !== PanelGateReason.NONE)) {
+        gatedPanel.clearSensitiveContent();
+      }
+
       if (reason === PanelGateReason.NONE) {
-        // User has access -- unlock if previously locked
-        (panel as Panel).unlockPanel();
+        // Bind before unlock so a snapshot taken under another user is refused.
+        gatedPanel.bindContentPrincipal(principal);
+        gatedPanel.unlockPanel();
+        if (isPremium) this.premiumPanelsUnlocked.add(key);
       } else {
-        // User does NOT have access -- show appropriate CTA
+        // Snapshot while the previous principal is still bound, then record
+        // the user who is now locked out.
         const onAction = resolveGateAction(reason, {
           openAuthModal: () => this.ctx.authModal?.open(),
         });
-        (panel as Panel).showGatedCta(reason, onAction);
+        gatedPanel.showGatedCta(reason, onAction);
+        gatedPanel.bindContentPrincipal(principal);
+        this.premiumPanelsUnlocked.delete(key);
       }
     }
+    this.gatingPrincipal = state.user?.id ?? null;
 
     // KTD8: the tab cap rides the SAME pass, so it re-evaluates on both
     // subscribeAuthState and onEntitlementChange (plus onSubscriptionChange).
@@ -1307,7 +1308,6 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://www.worldmonitor.app/docs/documentation" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
           ${this.ctx.isDesktopApp ? '' : `<span id="footerDownloadMount"></span>`}
         </nav>
@@ -2645,6 +2645,11 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private afterPanelMounted(key: string, panel: Panel): void {
+    const domain = CORRELATION_DOMAINS.find(domain => key === `${domain}-correlation`);
+    const engine = this.ctx.correlationEngine;
+    if (domain && engine) {
+      (panel as CorrelationPanel).setAssessmentHandler(cards => engine.assessCards(domain, cards));
+    }
     const config = this.ctx.panelSettings[key];
     if (config) panel.toggle(config.enabled);
     this.observePanelForHydration(panel);
@@ -3073,7 +3078,11 @@ export class PanelLayoutManager implements AppModule {
         'events',
         () => import('@/components/TechEventsPanel'),
         'TechEventsPanel',
-        (TechEventsPanel) => new TechEventsPanel('events', () => this.ctx.allNews),
+        (TechEventsPanel) => {
+          const panel = new TechEventsPanel('events', () => this.ctx.allNews);
+          panel.setMapNavigateHandler((lat, lng) => { this.ctx.map?.setCenter(lat, lng, 10); });
+          return panel;
+        },
       ),
     );
     this.lazyDefaultPanel('internet-disruptions', () => import('@/components/InternetDisruptionsPanel'), 'InternetDisruptionsPanel');

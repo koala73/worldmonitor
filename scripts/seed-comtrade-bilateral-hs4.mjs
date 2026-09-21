@@ -279,10 +279,10 @@ export function __setSleepForTests(fn) {
 
 /**
  * @param {string} url
- * @param {number} [timeoutMs]
+ * @param {number} timeoutMs
  * @param {(() => void) | undefined} [reserveRequest]
  */
-async function fetchBilateralOnce(url, timeoutMs = 45_000, reserveRequest) {
+async function fetchBilateralOnce(url, timeoutMs, reserveRequest) {
   // Reserve immediately before the network call so retries count against the
   // same hard quota budget as first attempts. A logical batch fetch may issue
   // up to four upstream requests (one 429 retry plus two transient-5xx
@@ -342,7 +342,8 @@ function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M') {
  *   request, which reuses this function purely for its retry and 429 handling.
  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, reporterCode?: string, primaryValue: number, year: number}>>}
  */
-export async function fetchBilateral(reporterCode, hs4Batch, period = recentPeriod(), reserveRequest, onRawRowCount, flowCode = 'M') {
+export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequest, onRawRowCount, flowCode = 'M') {
+  period = period ?? recentPeriod();
   let rateLimitedOnce = false;
   let transientRetries = 0;
   const MAX_TRANSIENT_RETRIES = 2;

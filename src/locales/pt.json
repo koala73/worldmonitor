@@ -493,7 +493,6 @@
         "space": "ESPAÇO"
       },
       "paused": "Webcams em pausa",
-      "pausedIdle": "Webcams em pausa — mova o rato para retomar",
       "play": "Reproduzir",
       "previewStatus": "Prévia ao vivo"
     },
@@ -759,9 +758,6 @@
       "datacenter": "Datacenter",
       "base": "Base",
       "nuclear": "Nuclear"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "CRÍT",
@@ -1318,7 +1314,10 @@
       "provenanceTitle": "Proveniência de cobertura: quantas histórias ingeridas e fontes distintas foram selecionadas para este resumo",
       "compiledFrom": "Compilado de {{stories}} histórias em {{sources}} fontes",
       "briefFreshness": "Gerado há {{minutes}}m · fonte mais recente com {{hours}}h",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Detalhes da notícia ({{count}})",
+      "streamIdleStopLabel": "Pausar vídeo ao vivo quando inativo",
+      "streamIdleStopDesc": "Para Live News e Live Webcams após este período sem atividade e exibe um aviso no painel.",
+      "streamIdleStopNever": "Nunca"
     },
     "techHubs": {
       "infoTooltip": "<strong>Atividade do Tech Hub</strong><br>Mostra os hubs de tecnologia com mais atividade de notícias.<br><br><em>Níveis de atividade:</em><br>• <span style=\"color: {{highColor}}\">Alto</span> — Notícias de última hora ou pontuação acima de 50<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Pontuação 20-49<br>• <span style=\"color: {{lowColor}}\">Baixo</span> — Pontuação abaixo de 20<br><br>Clique em um hub para ampliar sua localização."
@@ -1379,6 +1378,7 @@
       "etfs": "ETFs",
       "netInflow": "ENTRADA LÍQUIDA",
       "netOutflow": "SAÍDA LÍQUIDA",
+      "netNeutral": "LÍQUIDO NEUTRO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emissor",
@@ -1799,7 +1799,7 @@
       "infoTooltip": "<strong>Calendário económico</strong> Publicações macroeconómicas programadas: CPI, NFP, GDP, PMI e decisões de bancos centrais. Mostra previsão vs. real vs. anterior. Eventos de alto impacto destacados. Fonte: provedores de dados económicos."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicador de stress financeiro</strong> Índice de Stress Financeiro do Fed de Kansas City (KCFSI): mede o stress nos mercados financeiros dos EUA usando 11 indicadores incluindo spreads de rendimento, volatilidade e correlações cruzadas. Valores positivos indicam stress acima da média. Fonte: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Indicador de estresse financeiro</strong> Relação WorldMonitor entre crédito de alto rendimento e títulos do Tesouro dos EUA de longo prazo, ajustada pela volatilidade das ações e pelo spread de alto rendimento: (HYG / TLT) / (VIX × HY spread / 100). Este não é o Índice de Estresse Financeiro do Federal Reserve de Kansas City. Uma leitura de 1.5 ou superior indica baixo estresse; abaixo de 0.3 indica alto estresse.",
       "title": "Indicador de Estresse Financeiro",
       "usFsiValue": "VALOR FSI EUA",
       "cissTitle": "EU CISS (Estresse Sistêmico da Zona do Euro)",
@@ -2259,7 +2259,14 @@
       "signals_other": "{{count}} sinais",
       "analyzing": "Analisando...",
       "viewOnMap": "Visualizar no mapa",
-      "signals_many": "{{count}} sinais"
+      "signals_many": "{{count}} sinais",
+      "waiting": "A aguardar a próxima atualização dos dados. Este painel atualiza-se automaticamente.",
+      "offline": "A aguardar uma ligação. Este painel atualiza-se automaticamente quando voltar a estar online.",
+      "updated": "Atualizado {{time}}",
+      "saved": "Última atualização conhecida {{time}} · A procurar atualizações",
+      "savedOffline": "Última atualização conhecida {{time}} · Sem ligação",
+      "localSignals": "Com base nos sinais carregados no painel",
+      "emptySaved": "Sem convergência na última atualização conhecida."
     },
     "thermalEscalation": {
       "title": "Escalação Térmica",
@@ -2447,6 +2454,14 @@
       "captured": "Captura concluída. Verifique as datas de observação e as restrições antes de baixar.",
       "failed": "Não foi possível capturar os cenários. Verifique seu acesso e tente novamente. Nenhum resultado disponível para exportar.",
       "locked": "O resumo de decisão está disponível no Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Pausado por inatividade",
+      "idleBody": "Vídeo ao vivo interrompido após {{duration}} sem atividade de mouse, teclado ou toque.",
+      "idleResume": "Retomar",
+      "idleKeepPlaying": "Continuar reproduzindo quando inativo",
+      "idleSettingsHint": "Altere isso a qualquer momento em Configurações › Mídia.",
+      "idleKeepPlayingToast": "O vídeo ao vivo continuará reproduzindo quando inativo. Altere em Configurações › Mídia."
     }
   },
   "popups": {
@@ -3314,7 +3329,8 @@
       "activeSirens": "Sirenes ativas",
       "sirens24h": "Sirenes / 24h",
       "aviationDisruptions": "Perturbações aéreas",
-      "gpsJammingZones": "Zonas de interferência GPS"
+      "gpsJammingZones": "Zonas de interferência GPS",
+      "temporalUnavailable": "Observações temporais indisponíveis"
     },
     "countryFacts": "Dados do país",
     "loadingFacts": "Carregando dados do país...",

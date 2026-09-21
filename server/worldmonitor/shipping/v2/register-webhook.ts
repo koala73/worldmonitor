@@ -14,6 +14,7 @@ import { validateUserApiKey } from '../../../_shared/user-api-key';
 import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
+import { pruneOwnerWebhookIndex } from './webhook-owner-index';
 import { runRedisPipeline } from '../../../_shared/redis';
 import {
   WEBHOOK_TTL,
@@ -95,6 +96,7 @@ export async function registerWebhook(
   }
 
   const ownerTag = await callerFingerprint(ctx.request, apiKeyResult.credential);
+  await pruneOwnerWebhookIndex(ownerTag);
   const newSubscriberId = generateSubscriberId();
   const secret = await generateSecret();
 

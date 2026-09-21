@@ -31,7 +31,8 @@ export default function handler(req, res) {
   const baseUrl = 'https://worldmonitor.app';
   const storyParams = new URLSearchParams({ c: countryCode, t: type });
   if (ts) storyParams.set('ts', ts);
-  const spaUrl = `${baseUrl}/?${storyParams}`;
+  const dashboardUrl = 'https://www.worldmonitor.app/dashboard';
+  const spaUrl = `${dashboardUrl}?${storyParams}`;
 
   // Real users → redirect to SPA
   if (!isBot) {
@@ -75,7 +76,7 @@ export default function handler(req, res) {
   <meta name="twitter:description" content="${esc(description)}"/>
   <meta name="twitter:image" content="${esc(imageUrl)}"/>
 
-  <link rel="canonical" href="${esc(storyUrl)}"/>
+  <link rel="canonical" href="${esc(dashboardUrl)}"/>
 </head>
 <body>
   <h1>${esc(title)}</h1>

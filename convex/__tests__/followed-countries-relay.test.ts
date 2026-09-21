@@ -12,15 +12,15 @@ describe("/relay/followed-countries HTTP action", () => {
   let originalSecret: string | undefined;
 
   beforeEach(() => {
-    originalSecret = process.env.RELAY_SHARED_SECRET;
-    process.env.RELAY_SHARED_SECRET = RELAY_SECRET;
+    originalSecret = process.env.CONVEX_TENANT_RELAY_SECRET;
+    process.env.CONVEX_TENANT_RELAY_SECRET = RELAY_SECRET;
   });
 
   afterEach(() => {
     if (originalSecret === undefined) {
-      delete process.env.RELAY_SHARED_SECRET;
+      delete process.env.CONVEX_TENANT_RELAY_SECRET;
     } else {
-      process.env.RELAY_SHARED_SECRET = originalSecret;
+      process.env.CONVEX_TENANT_RELAY_SECRET = originalSecret;
     }
   });
 

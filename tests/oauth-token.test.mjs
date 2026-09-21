@@ -699,6 +699,22 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.match(body.error_description, /invalid, expired, or already used/);
   });
 
+  it('refresh client lookup failure returns Retry-After and preserves the refresh token', async () => {
+    const { redis, deps } = makeDeps();
+    const refresh = { kind: 'pro', client_id: CLIENT_ID, userId: USER_ID, mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro', family_id: 'fam' };
+    redis.store.set('oauth:refresh:rt-client-failure', refresh);
+    const get = deps.redisGet;
+    deps.redisGet = async key => {
+      if (key === `oauth:client:${CLIENT_ID}`) throw new Error('Controlled client lookup failure');
+      return get(key);
+    };
+    const response = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-client-failure', client_id: CLIENT_ID }), deps);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '5');
+    const restored = redis.store.get('oauth:refresh:rt-client-failure');
+    assert.deepEqual(typeof restored === 'string' ? JSON.parse(restored) : restored, refresh);
+  });
+
   it('F3: Pro refresh on Convex transient → 503 + Retry-After + refresh token preserved', async () => {
     await ensureFixtures();
     const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
@@ -717,6 +733,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 503, 'transient Convex failure → 503');
+    assert.equal(resp.headers.get('Retry-After'), '5');
     const body = await resp.json();
     assert.equal(body.error, 'server_error');
     // F3: refresh token must be restored to Redis with the original payload.

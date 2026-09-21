@@ -85,6 +85,58 @@ afterEach(() => {
 });
 
 describe('reverse-geocode shared cache contract', () => {
+  for (const failure of ['fetch', 'json', 'http']) {
+    it(`returns a fixed error for ${failure} failures and permits recovery`, async () => {
+      configurePreviewRedis();
+      let fail = true;
+      let writes = 0;
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/get/')) return json({ result: null });
+        if (url.endsWith('/pipeline')) return allowLimiter(init);
+        if (url === 'https://redis.example.test/') {
+          writes++;
+          return json({ result: 'OK' });
+        }
+        assert.match(url, /^https:\/\/nominatim\.openstreetmap\.org\/reverse\?/);
+        if (fail) {
+          if (failure === 'fetch') throw new Error('synthetic private transport detail');
+          if (failure === 'json') return new Response('synthetic private response body');
+          return new Response('synthetic provider failure', { status: 503 });
+        }
+        return json({ address: { country: 'Canada', country_code: 'ca' } });
+      }) as typeof fetch;
+      assert.deepEqual(await reverseGeocode(context, { lat: 49, lon: -97 }), {
+        country: '', code: '', displayName: '', error: 'Nominatim request failed',
+      });
+      assert.equal(writes, 0);
+      fail = false;
+      assert.deepEqual(await reverseGeocode(context, { lat: 49, lon: -97 }), {
+        country: 'Canada', code: 'CA', displayName: 'Canada', error: '',
+      });
+      assert.equal(writes, 1);
+    });
+  }
+
+  it('returns a fixed edge error for Nominatim HTTP failures', async () => {
+    configurePreviewRedis();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/get/')) return json({ result: null });
+      if (url.endsWith('/pipeline')) return allowLimiter(init);
+      if (url === 'https://redis.example.test/') return json({ result: 'OK' });
+      assert.match(url, /^https:\/\/nominatim\.openstreetmap\.org\/reverse\?/);
+      return new Response('synthetic provider failure', { status: 503 });
+    }) as typeof fetch;
+
+    const response = await edgeReverseGeocode(new Request(
+      'https://worldmonitor.app/api/reverse-geocode?lat=49&lon=-97',
+      { headers: { Origin: 'https://worldmonitor.app', 'x-real-ip': '198.51.100.40' } },
+    ));
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'Nominatim request failed' });
+  });
+
   it('reads the edge route deployment-scoped key in preview and normalizes its value', async () => {
     configurePreviewRedis();
     const urls: string[] = [];
@@ -364,5 +416,36 @@ describe('browser reverse-geocode memoization', () => {
       displayName: 'Manitoba, Canada',
     });
     assert.equal(urls.length, 2, 'each side of the border must miss the in-memory cell cache');
+  });
+
+  it('does not memoize retryable HTTP failures or thrown fetches', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response('bad gateway', { status: 502 });
+      if (calls === 2) throw new Error('network down');
+      return json({ country: 'Canada', code: 'CA', displayName: 'Canada' });
+    }) as typeof fetch;
+
+    assert.equal(await reverseGeocodeBrowser(10.123, 20.456), null);
+    assert.equal(await reverseGeocodeBrowser(10.123, 20.456), null);
+    assert.deepEqual(await reverseGeocodeBrowser(10.123, 20.456), {
+      country: 'Canada',
+      code: 'CA',
+      displayName: 'Canada',
+    });
+    assert.equal(calls, 3);
+  });
+
+  it('still memoizes a genuine 200 with no country', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return json({ country: '', code: '' });
+    }) as typeof fetch;
+
+    assert.equal(await reverseGeocodeBrowser(1.234, 2.345), null);
+    assert.equal(await reverseGeocodeBrowser(1.234, 2.345), null);
+    assert.equal(calls, 1);
   });
 });

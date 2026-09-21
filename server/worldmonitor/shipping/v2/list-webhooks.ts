@@ -12,10 +12,8 @@ import { validateUserApiKey } from '../../../_shared/user-api-key';
 import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
-import { runRedisPipeline } from '../../../_shared/redis';
+import { readOwnerWebhooks } from './webhook-owner-index';
 import {
-  webhookKey,
-  ownerIndexKey,
   callerFingerprint,
   type WebhookRecord,
 } from './webhook-shared';
@@ -52,19 +50,11 @@ export async function listWebhooks(
   await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
 
   const ownerHash = await callerFingerprint(ctx.request, apiKeyResult.credential);
-  const smembersResult = await runRedisPipeline([['SMEMBERS', ownerIndexKey(ownerHash)]]);
-  const memberIds = (smembersResult[0]?.result as string[] | null) ?? [];
-
-  if (memberIds.length === 0) {
-    return { webhooks: [] };
-  }
-
-  const getResults = await runRedisPipeline(memberIds.map(id => ['GET', webhookKey(id)]));
+  const records = await readOwnerWebhooks(ownerHash);
   const webhooks: WebhookSummary[] = [];
-  for (const r of getResults) {
-    if (!r.result || typeof r.result !== 'string') continue;
+  for (const value of records) {
     try {
-      const record = JSON.parse(r.result) as WebhookRecord;
+      const record = JSON.parse(value) as WebhookRecord;
       if (record.ownerTag !== ownerHash) continue;
       webhooks.push({
         subscriberId: record.subscriberId,

@@ -52,12 +52,12 @@ export async function getUSNIFleetReport(
   }
 
   try {
-    const report = (await getCachedJson(USNI_CACHE_KEY)) as USNIFleetReport | null;
+    const report = (await getCachedJson(USNI_CACHE_KEY, true)) as USNIFleetReport | null;
     if (report) {
       return buildUSNIFleetReportCacheResponse(report, null);
     }
 
-    const stale = (await getCachedJson(USNI_STALE_CACHE_KEY)) as USNIFleetReport | null;
+    const stale = (await getCachedJson(USNI_STALE_CACHE_KEY, true)) as USNIFleetReport | null;
     return buildUSNIFleetReportCacheResponse(null, stale);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

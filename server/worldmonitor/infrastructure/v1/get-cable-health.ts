@@ -494,7 +494,7 @@ async function loadCableHealth(): Promise<GetCableHealthResponse> {
     await repairSnapshot(retained);
     return retained;
   }
-  return { generatedAt: Date.now(), cables: {} };
+  return { generatedAt: 0, cables: {} };
 }
 
 export async function getCableHealth(

@@ -1591,7 +1591,10 @@ export interface CountryBriefSignals {
   aisDisruptions: number;
   satelliteFires: number;
   radiationAnomalies: number;
-  temporalAnomalies: number;
+  /** Observed country anomalies; null when the cluster snapshot is unavailable. */
+  temporalAnomalies: number | null;
+  /** Global observations, never included in country counts or severity totals. */
+  globalTemporalAnomalies?: number | null;
   cyberThreats: number;
   earthquakes: number;
   displacementOutflow: number;

@@ -138,7 +138,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "Civil.ge": { risk: 'reviewed', type: 'reviewed' },
   "Clarín": { risk: 'unknown', type: 'unknown' },
   "Cloud Outages": { risk: 'unknown', type: 'unknown' },
-  "CNA": { risk: 'unknown', type: 'unknown' },
+  "CNA": { risk: 'reviewed', type: 'reviewed' },
   "CNAS": { risk: 'unknown', type: 'reviewed' },
   "CNBC": { risk: 'unknown', type: 'reviewed' },
   "CNBC Commodities": { risk: 'unknown', type: 'unknown' },

@@ -383,13 +383,18 @@ describe("stale on_hold derived-state repair", () => {
     vi.useRealTimers();
   });
 
-  test("uses the processing clock to repair every affected user and mark completion once", async () => {
+  test.each(["api_business", "api_business_annual"] as const)("repairs %s grants after v1 completion and marks v2 once", async (businessPlan) => {
     vi.useFakeTimers();
     vi.setSystemTime(AFTER_PERIOD_END);
     const t = convexTest(schema, modules);
     const processingAt = AFTER_PERIOD_END;
 
     await t.run(async (ctx) => {
+      await ctx.db.insert("counters", {
+        name: "payments.repairStaleOnHoldDerivedState.v1.completedAt",
+        value: BASE_TIMESTAMP,
+      });
+
       // One user has two stale higher-tier holds plus a genuinely covering Pro
       // subscription. The pre-fix recompute elected a dead hold and left this
       // paying customer with an already-expired Enterprise entitlement.
@@ -436,7 +441,7 @@ describe("stale on_hold derived-state repair", () => {
         userId: "business-owner",
         dodoSubscriptionId: "sub_stale_business",
         dodoProductId: "pdt_stale_business",
-        planKey: "api_business",
+        planKey: businessPlan,
         status: "on_hold",
         currentPeriodStart: BASE_TIMESTAMP,
         currentPeriodEnd: PERIOD_END,
@@ -445,8 +450,8 @@ describe("stale on_hold derived-state repair", () => {
       });
       await ctx.db.insert("entitlements", {
         userId: "business-owner",
-        planKey: "api_business",
-        features: getFeaturesForPlan("api_business"),
+        planKey: businessPlan,
+        features: getFeaturesForPlan(businessPlan),
         validUntil: PERIOD_END,
         updatedAt: BASE_TIMESTAMP,
       });
@@ -512,7 +517,7 @@ describe("stale on_hold derived-state repair", () => {
       const marker = await ctx.db
         .query("counters")
         .withIndex("by_name", (q) =>
-          q.eq("name", "payments.repairStaleOnHoldDerivedState.v1.completedAt"),
+          q.eq("name", "payments.repairStaleOnHoldDerivedState.v2.completedAt"),
         )
         .unique();
       return { subscriptions, entitlements, grant, marker };

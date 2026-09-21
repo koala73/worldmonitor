@@ -8,6 +8,7 @@ import { t } from '../services/i18n';
 import type { NewsItem, DeductContextDetail } from '@/types';
 import { buildNewsContext } from '@/utils/news-context';
 import { bindActivationKeys } from '@/utils/activation';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 export class StrategicPosturePanel extends Panel {
   private postures: TheaterPostureSummary[] = [];
@@ -17,6 +18,9 @@ export class StrategicPosturePanel extends Panel {
   private onLocationClick?: (lat: number, lon: number) => void;
   private lastTimestamp: string = '';
   private isStale: boolean = false;
+  private staleRetryPending = false;
+  private staleRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshGuard = new LatestRequestGuard();
 
   constructor(private getLatestNews?: () => NewsItem[]) {
     super({
@@ -50,7 +54,9 @@ export class StrategicPosturePanel extends Panel {
   private async reaugmentVessels(): Promise<void> {
     if (!this.isPanelVisible() || this.postures.length === 0) return;
     console.log('[StrategicPosturePanel] Re-augmenting with vessels...');
-    await this.augmentWithVessels();
+    const postures = this.postures;
+    await this.augmentWithVessels(postures);
+    if (postures !== this.postures) return;
     if (!this.element?.isConnected) return;
     this.render();
   }
@@ -138,10 +144,18 @@ export class StrategicPosturePanel extends Panel {
     }
     if (!this.isPanelVisible()) return;
 
+    const generation = this.refreshGuard.begin();
+    if (this.staleRetryTimer !== null) {
+      clearTimeout(this.staleRetryTimer);
+      this.staleRetryTimer = null;
+    }
     try {
       // Fetch aircraft data from server
       this.showLoadingStage('aircraft');
-      const data = await fetchCachedTheaterPosture(this.signal);
+      const forceRefresh = this.staleRetryPending;
+      this.staleRetryPending = false;
+      const data = await fetchCachedTheaterPosture(this.signal, { forceRefresh });
+      if (!this.refreshGuard.isCurrent(generation)) return;
       if (!this.element?.isConnected) return;
       if (!data || !data.postures?.length) {
         this.showNoData();
@@ -158,7 +172,8 @@ export class StrategicPosturePanel extends Panel {
 
       // Try to augment with vessel data (client-side)
       this.showLoadingStage('vessels');
-      await this.augmentWithVessels();
+      await this.augmentWithVessels(this.postures);
+      if (!this.refreshGuard.isCurrent(generation)) return;
       if (!this.element?.isConnected) return;
 
       this.showLoadingStage('analysis');
@@ -166,22 +181,28 @@ export class StrategicPosturePanel extends Panel {
       this.render();
 
       // If we rendered stale localStorage data, re-fetch fresh after a short delay
-      if (this.isStale) {
-        setTimeout(() => {
+      if (this.isStale && !forceRefresh) {
+        this.staleRetryPending = true;
+        if (this.staleRetryTimer !== null) clearTimeout(this.staleRetryTimer);
+        this.staleRetryTimer = setTimeout(() => {
+          this.staleRetryTimer = null;
           void this.fetchAndRender();
         }, 3000);
       }
     } catch (error) {
+      if (!this.refreshGuard.isCurrent(generation)) return;
       if (this.isAbortError(error)) return;
       console.error('[StrategicPosturePanel] Fetch error:', error);
       this.showFetchError();
     }
   }
 
-  private async augmentWithVessels(): Promise<void> {
+  private async augmentWithVessels(postures: TheaterPostureSummary[]): Promise<void> {
     try {
       const { fetchMilitaryVessels } = await getMilitaryVesselsModule();
+      if (postures !== this.postures || this.signal.aborted) return;
       const { vessels } = await fetchMilitaryVessels();
+      if (postures !== this.postures || this.signal.aborted) return;
       console.log(`[StrategicPosturePanel] Got ${vessels.length} total military vessels`);
       if (vessels.length === 0) {
         // AIS stream hasn't accumulated data yet — restore from cache
@@ -232,6 +253,7 @@ export class StrategicPosturePanel extends Panel {
       recalcPostureWithVessels(this.postures);
       console.log('[StrategicPosturePanel] Augmented with', vessels.length, 'vessels, posture levels recalculated');
     } catch (error) {
+      if (postures !== this.postures || this.signal.aborted) return;
       // Deliberate teardown of the lazy vessel runtime — leave the cached
       // posture as-is rather than logging a misleading fetch failure.
       if (isVesselRuntimeStoppedError(error)) return;
@@ -286,6 +308,12 @@ export class StrategicPosturePanel extends Panel {
   }
 
   public updatePostures(data: CachedTheaterPosture): void {
+    const generation = this.refreshGuard.begin();
+    if (this.staleRetryTimer !== null) {
+      clearTimeout(this.staleRetryTimer);
+      this.staleRetryTimer = null;
+    }
+    this.staleRetryPending = false;
     if (!data || !data.postures?.length) {
       this.showNoData();
       return;
@@ -297,7 +325,8 @@ export class StrategicPosturePanel extends Panel {
     }));
     this.lastTimestamp = data.timestamp;
     this.isStale = data.stale || false;
-    this.augmentWithVessels().then(() => {
+    this.augmentWithVessels(this.postures).then(() => {
+      if (!this.refreshGuard.isCurrent(generation)) return;
       if (!this.element?.isConnected) return;
       this.updateBadges();
       this.render();
@@ -595,7 +624,12 @@ export class StrategicPosturePanel extends Panel {
   }
 
   public destroy(): void {
+    this.refreshGuard.begin();
     this.stopLoadingTimer();
+    if (this.staleRetryTimer !== null) {
+      clearTimeout(this.staleRetryTimer);
+      this.staleRetryTimer = null;
+    }
     this.vesselTimeouts.forEach(t => clearTimeout(t));
     this.vesselTimeouts = [];
     super.destroy();

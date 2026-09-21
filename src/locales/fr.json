@@ -129,7 +129,8 @@
       "activeSirens": "Sirènes actives",
       "sirens24h": "Sirènes / 24h",
       "aviationDisruptions": "Perturbations aériennes",
-      "gpsJammingZones": "Zones de brouillage GPS"
+      "gpsJammingZones": "Zones de brouillage GPS",
+      "temporalUnavailable": "Observations temporelles indisponibles"
     },
     "countryFacts": "Fiche pays",
     "loadingFacts": "Chargement des données du pays...",
@@ -875,7 +876,6 @@
         "space": "ESPACE"
       },
       "paused": "Webcams en pause",
-      "pausedIdle": "Webcams en pause — bougez la souris pour reprendre",
       "play": "Lire",
       "previewStatus": "Aperçu en direct"
     },
@@ -1131,9 +1131,6 @@
       "datacenter": "Centre de données",
       "base": "Base",
       "nuclear": "Nucléaire"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "CRIT",
@@ -1445,7 +1442,10 @@
       "provenanceTitle": "Provenance de la couverture : nombre d'articles ingérés et de sources distinctes à partir desquels ce résumé a été sélectionné",
       "compiledFrom": "Compilé à partir de {{stories}} articles provenant de {{sources}} sources",
       "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Détails de l’article ({{count}})",
+      "streamIdleStopLabel": "Arrêter la vidéo en direct en cas d'inactivité",
+      "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau.",
+      "streamIdleStopNever": "Jamais"
     },
     "settings": {
       "exportSettings": "Exporter les paramètres",
@@ -1647,6 +1647,7 @@
       "etfs": "ETFs",
       "netInflow": "FLUX NET ENTRANT",
       "netOutflow": "FLUX NET SORTANT",
+      "netNeutral": "FLUX NET NEUTRE",
       "table": {
         "ticker": "Ticker",
         "issuer": "Émetteur",
@@ -2181,7 +2182,7 @@
       "infoTooltip": "<strong>Calendrier économique</strong> Publications macroéconomiques programmées : CPI, NFP, GDP, PMI et décisions des banques centrales. Affiche prévision vs réalisé vs précédent. Événements à fort impact mis en évidence. Source : fournisseurs de données économiques."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicateur de stress financier</strong> Indice de stress financier de la Fed de Kansas City (KCFSI) : mesure le stress sur les marchés financiers américains à l'aide de 11 indicateurs incluant les écarts de rendement, la volatilité et les corrélations croisées. Les valeurs positives indiquent un stress supérieur à la moyenne. Source : Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Indicateur de stress financier</strong> Ratio WorldMonitor du crédit à haut rendement aux obligations du Trésor américain à long terme, ajusté pour la volatilité des actions et l'écart de crédit à haut rendement : (HYG / TLT) / (VIX × HY spread / 100). Il ne s'agit pas de l'indice de stress financier de la Réserve fédérale de Kansas City. Une valeur de 1.5 ou plus indique un stress faible ; en dessous de 0.3, un stress élevé.",
       "title": "Indicateur de stress financier",
       "usFsiValue": "VALEUR FSI US",
       "cissTitle": "CISS UE (Stress systémique de la zone euro)",
@@ -2641,7 +2642,14 @@
       "signals_other": "{{count}} signaux",
       "analyzing": "Analyse en cours…",
       "viewOnMap": "Voir sur la carte",
-      "signals_many": "{{count}} signaux"
+      "signals_many": "{{count}} signaux",
+      "waiting": "En attente de la prochaine mise à jour des données. Ce panneau se met à jour automatiquement.",
+      "offline": "En attente d’une connexion. Ce panneau se met à jour automatiquement dès votre retour en ligne.",
+      "updated": "Mis à jour {{time}}",
+      "saved": "Dernière mise à jour connue {{time}} · Recherche de mises à jour",
+      "savedOffline": "Dernière mise à jour connue {{time}} · Hors ligne",
+      "localSignals": "Selon les signaux chargés dans le tableau de bord",
+      "emptySaved": "Aucune convergence dans la dernière mise à jour connue."
     },
     "thermalEscalation": {
       "title": "Escalade thermique",
@@ -2829,6 +2837,14 @@
       "captured": "Capture terminée. Vérifiez les dates des observations et les contraintes avant le téléchargement.",
       "failed": "Impossible de capturer les scénarios. Vérifiez votre accès et réessayez. Aucun résultat à exporter.",
       "locked": "La note de décision est disponible avec Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "En pause pour inactivité",
+      "idleBody": "La vidéo en direct s’est arrêtée après {{duration}} sans activité de la souris, du clavier ou de l’écran tactile.",
+      "idleResume": "Reprendre",
+      "idleKeepPlaying": "Continuer la lecture en cas d'inactivité",
+      "idleSettingsHint": "Modifiez ce paramètre à tout moment dans Paramètres › Média.",
+      "idleKeepPlayingToast": "La vidéo en direct continuera de se lire en cas d'inactivité. Modifiez dans Paramètres › Média."
     }
   },
   "popups": {

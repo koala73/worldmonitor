@@ -29,8 +29,12 @@ import { maybeServeBootstrapFromKv } from './kv-serve.js';
 // superset of (or identical to) the function-side allowlist; if it's narrower,
 // origins that the function would accept get the canonical fallback origin
 // echoed back and fail CORS at the browser.
+// App-serving hosts only; sibling vendor hosts do not inherit browser trust.
+// Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
+const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+
 const ALLOWED_ORIGIN_PATTERNS = [
-  /^https:\/\/(.*\.)?worldmonitor\.app$/,
+  APP_ORIGIN_PATTERN,
   // Vercel previews under the "eliewm" team scope, e.g.
   //   worldmonitor-git-<branch>-eliewm.vercel.app / worldmonitor-<hash>-eliewm.vercel.app
   // Mirror of api/_cors.js + server/cors.ts (see superset note above).
@@ -143,19 +147,19 @@ function originForAllowlistMatch(origin) {
 
 /**
  * Decode Google Translate hostname rewrite; require reconstructed host to be
- * worldmonitor.app / *.worldmonitor.app. Keep in sync with api/_cors.js (#6411).
+ * an enumerated app host. Keep in sync with api/_cors.js (#6411).
  */
 function isWorldMonitorGoogleTranslateOrigin(origin) {
   try {
     const url = new URL(origin);
-    if (url.protocol !== 'https:') return false;
+    if (url.protocol !== 'https:' || url.port !== '') return false;
     const host = url.hostname.replace(/\.+$/, '');
     const suffix = '.translate.goog';
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
     if (!encoded || encoded.includes('.')) return false;
     const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
-    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+    return APP_ORIGIN_PATTERN.test(`https://${decoded}`);
   } catch {
     return false;
   }

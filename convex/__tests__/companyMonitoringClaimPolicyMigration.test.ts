@@ -5,6 +5,8 @@ import { COMPANY_MONITORING_CLAIM_POLICY_VERSION } from "../companyMonitoring/_s
 import { CLAIM_POLICY_MIGRATION_COMPANY_PAGE_SIZE } from "../companyMonitoring/claimPolicyMigration";
 import {
   accountFor,
+  CM,
+  company,
   grantProvisioned,
   installCompanyMonitoringTestEnvironment,
   modules,
@@ -262,6 +264,64 @@ describe("Company Monitoring claim-policy migration", () => {
         )
     );
     expect(aliasesAfterReplay).toHaveLength(1);
+  });
+
+  test.each([false, true])("purge leaves no claims after removal, legacy alias %s", async (legacyAlias) => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const created = await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "removed-policy-company",
+      company: company("Removed Policy Corp"),
+    });
+    const account = await accountFor(t, OWNER_A);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(account!._id, { claimPolicyVersion: undefined });
+    });
+    await t.mutation(CM.companies.setCompanyStateForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: created.companyId,
+      state: "removed",
+    });
+    if (legacyAlias) {
+      await t.run(async (ctx) => {
+        await ctx.db.insert("companyMonitoringClaims", {
+          ownerAccountId: account!.logicalAccountId,
+          companyId: created.companyId,
+          claimId: "legacy-resurrected-alias",
+          type: "alias",
+          value: "Removed Policy Corp",
+          provenance: "customer",
+          trustState: "unverified",
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      });
+    } else {
+      const migration = await t.mutation(MIGRATION.migrateAccountClaimPolicy, {
+        ownerAccountId: account!.logicalAccountId,
+      });
+      expect(migration).toMatchObject({ status: "complete", aliasesInserted: 0, claimsPatched: 0 });
+    }
+    const purge = await t.mutation(CM.companies.advanceCompanyPurge, {
+      ownerAccountId: account!.logicalAccountId,
+      companyId: created.companyId,
+      purgeGeneration: 1,
+    });
+    expect(purge).toEqual({ status: "complete" });
+    const state = await t.run(async (ctx) => ({
+      company: await ctx.db.query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", account!.logicalAccountId).eq("companyId", created.companyId))
+        .unique(),
+      claims: await ctx.db.query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", account!.logicalAccountId).eq("companyId", created.companyId))
+        .collect(),
+    }));
+    expect(state.company).toMatchObject({ lifecycle: "removed", purgePhase: "complete" });
+    expect(state.company?.name).toBeUndefined();
+    expect(state.claims).toEqual([]);
   });
 
   test("new entitled accounts start at the current claim-policy version", async () => {

@@ -105,7 +105,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
       if (!/^[A-Z]{2}$/.test(countryCode)) {
         return { markets: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
       }
-      const countryIndex = await getCachedJson(COUNTRY_INDEX_KEY) as CountryIndexData | null;
+      const countryIndex = await getCachedJson(COUNTRY_INDEX_KEY, true) as CountryIndexData | null;
       if (countryIndex) {
         const countryMarkets = Array.isArray(countryIndex.countries?.[countryCode])
           ? countryIndex.countries[countryCode]
@@ -125,7 +125,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
       return { markets: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
     }
 
-    const bootstrap = await getCachedJson(BOOTSTRAP_KEY) as BootstrapData | null;
+    const bootstrap = await getCachedJson(BOOTSTRAP_KEY, true) as BootstrapData | null;
     if (!bootstrap) return { markets: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
 
     const fetchedAt = Number(bootstrap.fetchedAt ?? 0);

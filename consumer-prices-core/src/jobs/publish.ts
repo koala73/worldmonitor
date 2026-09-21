@@ -196,7 +196,7 @@ export async function publishAll() {
       logger.error(`overview:${marketCode} failed: ${err}`);
     }
 
-    for (const days of [7, 30]) {
+    for (const days of [7, 30, 90]) {
       try {
         const movers = await buildMoversSnapshot(marketCode, days);
         // Null is a data-quality skip, not an infrastructure failure: every

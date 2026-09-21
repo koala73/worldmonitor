@@ -29,6 +29,8 @@ const NEW_TRANSLATED_KEYS = [
   'popups.militaryCluster.showLess',
   'preferences.panelFontScale',
   'preferences.followGlobalFontScale',
+  ...['waiting', 'offline', 'updated', 'saved', 'savedOffline', 'emptySaved', 'localSignals']
+    .map(key => `components.correlation.${key}`),
 ];
 
 // Current English-identity counts plus three values of reviewable headroom.
@@ -92,7 +94,7 @@ describe('app locale freshness', () => {
     assert.deepEqual(problems, [], REFRESH_HINT);
   });
 
-  it('does not persist the seven new labels as English placeholders', () => {
+  it('does not persist new labels as English placeholders', () => {
     const en = readJson(`${LOCALES_DIR}/en.json`);
     const placeholders = [];
     for (const locale of LOCALES) {

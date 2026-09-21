@@ -367,7 +367,6 @@ const getCspDirectiveTokens = (csp, directive) => {
 // scheme-wide source is flagged while the known ones stay quiet.
 const KNOWN_FRAME_WILDCARDS = [
   'https://*.clerk.accounts.dev',
-  'https://*.vercel.app',
   'https://*.dodopayments.com',
   'https://*.hs.dodopayments.com',
   'https://*.custom.hs.dodopayments.com',
@@ -1341,7 +1340,7 @@ describe('welcome landing page routing', () => {
   it('redirects legacy root map-state deep links to /dashboard before welcome routing', () => {
     assert.match(
       middlewareSource,
-      /LEGACY_DASHBOARD_ROOT_QUERY_KEYS = \['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'\]/,
+      /LEGACY_DASHBOARD_ROOT_QUERY_KEYS = \['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers', 'c', 'country', 'chokepoint'\]/,
       'middleware must list dashboard URL-state params that bypass the root welcome page',
     );
     assert.match(
@@ -2695,6 +2694,17 @@ describe('security header guardrails', () => {
     }
   });
 
+  it('CSP framing rejects unrelated Vercel projects while preserving same-origin previews and the toolbar', () => {
+    const csp = getHeaderValue('Content-Security-Policy');
+    for (const directive of ['frame-src', 'frame-ancestors']) {
+      const tokens = getCspDirectiveTokens(csp, directive);
+      assert.ok(tokens.includes("'self'"), `${directive} must allow same-origin preview frames`);
+      assert.ok(tokens.some((token) => token === 'https://vercel.live'), `${directive} must allow the Vercel toolbar`);
+      assert.ok(!tokens.includes('https://*.vercel.app'), `${directive} must not trust every Vercel team`);
+    }
+    assert.deepEqual(findOpenFrameSources(getCspDirectiveTokens(csp, 'frame-ancestors')), []);
+  });
+
   // Per-file assertions, so the built /pro pages drop out of the population
   // rather than taking the five committed files down with them (#6898).
   it('HTML entry script tags carry the nonce trusted by the header CSP', () => {
@@ -2807,6 +2817,7 @@ describe('security header guardrails', () => {
     // (`https://*.vercel.app`). It therefore passed while dead. Drive the
     // predicate directly against widenings written the way they'd really appear.
     for (const widened of [
+      'https://*.vercel.app', // arbitrary projects on other Vercel teams
       'https://*.evil.com',   // a new vendor wildcard
       'https://*',            // scheme-wide with a wildcard host
       'http://*.evil.com',
@@ -3492,11 +3503,14 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       /resource_metadata="\$\{[A-Za-z_][A-Za-z0-9_]*\}"|`[^`]*resource_metadata="\$\{[^}]+\}"/,
       'api/mcp.ts must construct resource_metadata from a host-derived variable'
     );
-    // Must actually read the request host header somewhere in the file.
+    // Must derive the origin from the request, through the shared resolver that
+    // validates Host against the allowlist (api/_agent-metadata.ts). Reading the
+    // raw header directly would reflect a spoofed Host into the discovery
+    // pointer, and could name a host whose metadata document we never serve.
     assert.match(
       source,
-      /request\.headers\.get\(['"]host['"]\)|req\.headers\.get\(['"]host['"]\)/i,
-      'api/mcp.ts should read the request host header'
+      /resolveMetadataOrigin\(req(?:uest)?\)/,
+      'api/mcp.ts must derive the resource_metadata origin via resolveMetadataOrigin'
     );
   });
 

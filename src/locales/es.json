@@ -129,7 +129,8 @@
       "activeSirens": "Sirenas activas",
       "sirens24h": "Sirenas / 24h",
       "aviationDisruptions": "Interrupciones aéreas",
-      "gpsJammingZones": "Zonas de interferencia GPS"
+      "gpsJammingZones": "Zonas de interferencia GPS",
+      "temporalUnavailable": "Observaciones temporales no disponibles"
     },
     "countryFacts": "Datos del país",
     "loadingFacts": "Cargando datos del país...",
@@ -875,7 +876,6 @@
         "space": "ESPACIO"
       },
       "paused": "Cámaras en pausa",
-      "pausedIdle": "Cámaras en pausa — mueva el ratón para reanudar",
       "play": "Reproducir",
       "previewStatus": "Vista previa en vivo"
     },
@@ -1297,9 +1297,6 @@
       "datacenter": "Centro de datos",
       "base": "Base",
       "nuclear": "Nuclear"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "CRÍT",
@@ -1842,7 +1839,10 @@
       "provenanceTitle": "Procedencia de cobertura: cuántas historias ingeridas y fuentes distintas se seleccionaron para este resumen",
       "compiledFrom": "Compilado de {{stories}} historias en {{sources}} fuentes",
       "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Detalles de la noticia ({{count}})",
+      "streamIdleStopLabel": "Detener vídeo en directo cuando está inactivo",
+      "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel.",
+      "streamIdleStopNever": "Nunca"
     },
     "etfFlows": {
       "unavailable": "Datos ETF temporalmente no disponibles",
@@ -1853,6 +1853,7 @@
       "etfs": "ETFs",
       "netInflow": "ENTRADA NETA",
       "netOutflow": "SALIDA NETA",
+      "netNeutral": "NEUTRO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emisor",
@@ -2181,7 +2182,7 @@
       "infoTooltip": "<strong>Calendario económico</strong> Publicaciones macroeconómicas programadas: CPI, NFP, GDP, PMI y decisiones de bancos centrales. Muestra pronóstico vs. real vs. anterior. Eventos de alto impacto resaltados. Fuente: proveedores de datos económicos."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Índice de estrés financiero del Fed de Kansas City (KCFSI): mide el estrés en los mercados financieros de EE.UU. usando 11 indicadores que incluyen diferenciales de rendimiento, volatilidad y correlaciones cruzadas. Valores positivos indican estrés superior al promedio. Fuente: Banco de la Reserva Federal de Kansas City.",
+      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Relación de WorldMonitor entre crédito de alto rendimiento y bonos del Tesoro estadounidense a largo plazo, ajustada por la volatilidad de la renta variable y el diferencial de alto rendimiento: (HYG / TLT) / (VIX × HY spread / 100). No es el Índice de Estrés Financiero de la Reserva Federal de Kansas City. Una lectura de 1.5 o superior indica estrés bajo; por debajo de 0.3 indica estrés alto.",
       "title": "Indicador de Estrés Financiero",
       "usFsiValue": "VALOR FSI DE EE.UU.",
       "cissTitle": "EU CISS (Estrés Sistémico del Área Euro)",
@@ -2641,7 +2642,14 @@
       "signals_other": "{{count}} señales",
       "analyzing": "Analizando...",
       "viewOnMap": "Ver en mapa",
-      "signals_many": "{{count}} señales"
+      "signals_many": "{{count}} señales",
+      "waiting": "Esperando la próxima actualización de datos. Este panel se actualiza automáticamente.",
+      "offline": "Esperando una conexión. Este panel se actualiza automáticamente cuando vuelvas a estar en línea.",
+      "updated": "Actualizado {{time}}",
+      "saved": "Última actualización conocida {{time}} · Buscando actualizaciones",
+      "savedOffline": "Última actualización conocida {{time}} · Sin conexión",
+      "localSignals": "Basado en las señales cargadas en el panel",
+      "emptySaved": "No hubo convergencia en la última actualización conocida."
     },
     "thermalEscalation": {
       "title": "Escalada Térmica",
@@ -2829,6 +2837,14 @@
       "captured": "Captura completa. Revise las fechas de observación y las restricciones antes de descargar.",
       "failed": "No se pudieron capturar los escenarios. Compruebe su acceso e inténtelo de nuevo. No hay resultados para exportar.",
       "locked": "El informe de decisión está disponible con Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "En pausa por inactividad",
+      "idleBody": "Vídeo en directo detenido después de {{duration}} sin actividad de ratón, teclado o pantalla táctil.",
+      "idleResume": "Reanudar",
+      "idleKeepPlaying": "Seguir reproduciendo cuando está inactivo",
+      "idleSettingsHint": "Cambia esto en cualquier momento en Configuración › Multimedia.",
+      "idleKeepPlayingToast": "El vídeo en directo seguirá reproduciéndose cuando esté inactivo. Cambia en Configuración › Multimedia."
     }
   },
   "popups": {

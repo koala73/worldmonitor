@@ -145,6 +145,43 @@ test('llm-chain: an exact allowlist prevents fallback models from changing a pin
   assert.deepEqual(attempted, ['google/gemini-2.5-flash']);
 });
 
+test('llm-chain: a per-call model override moves both the request and its telemetry off the chain default', async () => {
+  baseEnv();
+  const attempted = [];
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (!raw.includes('openrouter.ai')) throw new Error(`unexpected provider: ${raw}`);
+    attempted.push(JSON.parse(String(init.body || '{}')).model);
+    return { ok: true, json: async () => llmJson('overridden brief prose') };
+  };
+
+  const overridden = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    modelOverrides: { openrouter: 'google/gemini-3.5-flash-lite' },
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(overridden, 'overridden brief prose');
+  assert.deepEqual(attempted, ['google/gemini-3.5-flash-lite']);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].model, 'google/gemini-3.5-flash-lite');
+
+  const unoverridden = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(unoverridden, 'overridden brief prose');
+  assert.deepEqual(attempted, ['google/gemini-3.5-flash-lite', 'google/gemini-2.5-flash']);
+  assert.equal(captured.length, 2);
+  assert.equal(captured[1].model, 'google/gemini-2.5-flash');
+});
+
 test('llm-chain: rejects length-limited prose and falls through to the next provider', async () => {
   baseEnv();
   const captured = [];

@@ -33,9 +33,24 @@ const records = new Map<string, Record<string, unknown>>();
 const getCachedJson = vi.fn(async (key: string) => records.get(key) ?? null);
 const setCachedJson = vi.fn(async (key: string, value: Record<string, unknown>, _ttl: number) => { records.set(key, value); });
 const runRedisPipeline = vi.fn(async (commands: string[][]) => commands.map(command => {
-  if (command[0] === 'SET') records.set(command[1], JSON.parse(command[2]));
-  return { result: command[0] === 'SET' ? 'OK' : 1 };
+  if (command[0] === 'GET') {
+    const value = records.get(command[1]);
+    return { result: value == null ? null : typeof value === 'string' ? value : JSON.stringify(value) };
+  }
+  if (command[0] === 'SSCAN') return { result: ['0', []] };
+  if (command[0] === 'SET') {
+    records.set(command[1], JSON.parse(command[2]));
+    return { result: 'OK' };
+  }
+  return { result: 1 };
 }));
+const registrationCommands = () => {
+  const call = runRedisPipeline.mock.calls.find(([commands]) => (
+    commands[0]?.[0] === 'SET' && String(commands[0][1]).startsWith('webhook:sub:')
+  ));
+  expect(call).toBeDefined();
+  return call![0];
+};
 vi.mock('../_shared/redis', async (importOriginal) => ({
   ...await importOriginal<typeof import('../_shared/redis')>(),
   runRedisPipeline: (...args: [string[][]]) => runRedisPipeline(...args),
@@ -73,8 +88,7 @@ for (const key of [keyA, keyB]) {
     const body = await response.json();
     expect(body.subscriberId).toMatch(/^wh_[a-f0-9]{24}$/);
     expect(body.secret).toMatch(/^[a-f0-9]{64}$/);
-    expect(runRedisPipeline).toHaveBeenCalledOnce();
-    const commands = runRedisPipeline.mock.calls[0][0];
+    const commands = registrationCommands();
     const record = JSON.parse(commands[0][2]);
     expect(record).toMatchObject({ ...payload, ownerTag: hash(key), subscriberId: body.subscriberId, secret: body.secret, active: true });
     expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(key)}:v1`, body.subscriberId]);
@@ -84,7 +98,7 @@ for (const key of [keyA, keyB]) {
 }
 
 test('revoked key cannot register using a forged identity or enterprise cookie', async () => {
-  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(401);
   expect(runRedisPipeline).not.toHaveBeenCalled();
 });
@@ -119,8 +133,8 @@ test('validated user key still cannot register a private callback', async () => 
 });
 
 test('enterprise cookie keeps its owner with an anonymous header', async () => {
-  expect((await gateway(request('wms_anonymous', { Cookie: 'wm-pro-key=enterprise-test' }), context)).status).toBe(200);
-  const commands = runRedisPipeline.mock.calls[0][0];
+  expect((await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context)).status).toBe(200);
+  const commands = registrationCommands();
   expect(JSON.parse(commands[0][2]).ownerTag).toBe(hash('enterprise-test'));
   expect(commands[1][1]).toBe(`webhook:owner:${hash('enterprise-test')}:v1`);
 });
@@ -178,7 +192,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
       expect(denied.status).toBe(401);
       expect(await denied.text()).not.toContain('gateway validation');
     }
-    expect((await manage('wh_test', action, invalidKey, { Cookie: 'wm-pro-key=enterprise-test' })).status).toBe(401);
+    expect((await manage('wh_test', action, invalidKey, { Cookie: '__Host-wm-pro-key=enterprise-test' })).status).toBe(401);
     apiAccess = false;
     expect((await manage('wh_test', action, keyA)).status).toBe(403);
     expect(getCachedJson).not.toHaveBeenCalled();
@@ -199,7 +213,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} keeps enterprise cookie credential ownership`, async () => {
-    const extra = { Cookie: 'wm-pro-key=enterprise-test' };
+    const extra = { Cookie: '__Host-wm-pro-key=enterprise-test' };
     const own = await (await gateway(request('wms_anonymous', extra), context)).json();
     expect((await manage(own.subscriberId, action, 'wms_anonymous', extra)).status).toBe(200);
     expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.ownerTag).toBe(hash('enterprise-test'));

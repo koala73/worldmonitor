@@ -22,8 +22,8 @@ import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 
 const REGISTRY_DIR = fileURLToPath(new URL('../api/mcp/registry/', import.meta.url));
 
-/** Occurrences of a `fetch(` call in a chunk of source. */
-const countFetch = (src) => (src.match(/\bfetch\s*\(/g) ?? []).length;
+/** Downstream fetch call sites, including the shared transport policy. */
+const countFetch = (src) => (src.match(/\b(?:fetch|fetchMcpDownstream)\s*\(/g) ?? []).length;
 
 /** Occurrences of `name(` — how many times a source calls a named helper. */
 const countCalls = (src, name) => (src.match(new RegExp(`\\b${name}\\s*\\(`, 'g')) ?? []).length;
@@ -174,6 +174,17 @@ describe('fan-out matcher', () => {
       await fetch('https://example.test/b');
     }
     assert.equal(authenticatedFanOut(twoFetches, new Map()), 2);
+  });
+
+  it('counts signed calls through the downstream transport policy', () => {
+    async function transportFetches() {
+      const fetchMcpDownstream = async () => ({});
+      const buildAuthHeaders = async () => ({});
+      await buildAuthHeaders();
+      await fetchMcpDownstream('https://example.test/a', {}, undefined);
+      await fetchMcpDownstream('https://example.test/b', {}, undefined);
+    }
+    assert.equal(authenticatedFanOut(transportFetches, new Map()), 2);
   });
 
   it('ignores fetch in a function that never signs', () => {

@@ -136,11 +136,12 @@ async function run() {
   const COVERAGE_KEY = `consumer-prices:coverage:${MARKET}`;
 
   // Fetch all snapshots in parallel
-  const [overview, movers30d, movers7d, spread, freshness, series30d, series7d, series90d,
+  const [overview, movers30d, movers7d, movers90d, spread, freshness, series30d, series7d, series90d,
          categories30d, categories7d, categories90d, coverage] = await Promise.all([
     fetchSnapshot(`/wm/consumer-prices/v1/overview?market=${MARKET}`),
     fetchSnapshot(`/wm/consumer-prices/v1/movers?market=${MARKET}&days=30`),
     fetchSnapshot(`/wm/consumer-prices/v1/movers?market=${MARKET}&days=7`),
+    fetchSnapshot(`/wm/consumer-prices/v1/movers?market=${MARKET}&days=90`),
     fetchSnapshot(`/wm/consumer-prices/v1/retailer-spread?market=${MARKET}&basket=${BASKET}`),
     fetchSnapshot(`/wm/consumer-prices/v1/freshness?market=${MARKET}`),
     fetchSnapshot(`/wm/consumer-prices/v1/basket-series?market=${MARKET}&basket=${BASKET}&range=30d`),
@@ -170,6 +171,12 @@ async function run() {
       data: movers7d ?? emptyMovers(MARKET, '7d'),
       ttl: TTL_MOVERS,
       metaKey: `seed-meta:consumer-prices:movers:${MARKET}:7d`,
+    },
+    {
+      key: `consumer-prices:movers:${MARKET}:90d`,
+      data: movers90d ?? emptyMovers(MARKET, '90d'),
+      ttl: TTL_MOVERS,
+      metaKey: `seed-meta:consumer-prices:movers:${MARKET}:90d`,
     },
     {
       key: `consumer-prices:retailer-spread:${MARKET}:${BASKET}`,

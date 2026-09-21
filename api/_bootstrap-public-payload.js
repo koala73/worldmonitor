@@ -1,5 +1,6 @@
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
 import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.js';
+import { normalizeSocialVelocity } from './_social-velocity.js';
 
 export function stripXFeedRestrictedFields(value) {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -17,6 +18,7 @@ export function stripXFeedRestrictedFields(value) {
 
 // All bootstrap transports expose the same public payload shape.
 export function sanitizeBootstrapValue(name, value) {
+  if (name === 'socialVelocity' && value != null) return normalizeSocialVelocity(value);
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
   if (name === 'forecasts') {
     const { enrichmentMeta: _internal, ...rest } = value;

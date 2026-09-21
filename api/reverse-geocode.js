@@ -112,7 +112,7 @@ export default async function handler(req, ctx) {
     );
 
     if (!resp.ok) {
-      return jsonResponse({ error: `Nominatim ${resp.status}` }, 502, cors);
+      return jsonResponse({ error: 'Nominatim request failed' }, 502, cors);
     }
 
     const data = await resp.json();

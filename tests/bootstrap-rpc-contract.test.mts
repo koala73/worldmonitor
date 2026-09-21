@@ -99,7 +99,7 @@ test('RPC, public bootstrap and publisher apply the same transforms and cutover 
 test('public payload helpers stay equivalent across Edge and worker packaging', () => {
   const edge = readFileSync(new URL('../api/_bootstrap-public-payload.js', import.meta.url), 'utf8');
   const worker = readFileSync(new URL('../scripts/_bootstrap-public-payload.mjs', import.meta.url), 'utf8');
-  assert.equal(worker.replaceAll('-dashboard.mjs', '-dashboard.js'), edge);
+  assert.equal(worker.replaceAll('-dashboard.mjs', '-dashboard.js').replace('./_social-velocity.mjs', './_social-velocity.js'), edge);
 });
 
 test('fast and slow selectors stay within their tier; missing values retain their names', async t => {

@@ -30,7 +30,7 @@ export async function listConsumerPriceMovers(
     const cached = await getCachedJson(key, true) as ListConsumerPriceMoversResponse | null;
     if (!cached) return EMPTY;
 
-    const limit = req.limit ?? 10;
+    const limit = req.limit > 0 ? Math.min(Math.max(1, Math.floor(req.limit)), 10) : 10;
     const filterCategory = req.categorySlug;
 
     const filter = (movers: typeof cached.risers) =>

@@ -9,7 +9,7 @@ const notificationChannelFns = (internal as any).notificationChannels;
 const originalFetch = globalThis.fetch;
 const originalUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-const originalRelaySecret = process.env.RELAY_SHARED_SECRET;
+const originalRelaySecret = process.env.CONVEX_TENANT_RELAY_SECRET;
 const originalClerkSecret = process.env.CLERK_SECRET_KEY;
 
 const USER = {
@@ -25,8 +25,8 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_URL = originalUpstashUrl;
   if (originalUpstashToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalUpstashToken;
-  if (originalRelaySecret === undefined) delete process.env.RELAY_SHARED_SECRET;
-  else process.env.RELAY_SHARED_SECRET = originalRelaySecret;
+  if (originalRelaySecret === undefined) delete process.env.CONVEX_TENANT_RELAY_SECRET;
+  else process.env.CONVEX_TENANT_RELAY_SECRET = originalRelaySecret;
   if (originalClerkSecret === undefined) delete process.env.CLERK_SECRET_KEY;
   else process.env.CLERK_SECRET_KEY = originalClerkSecret;
   vi.restoreAllMocks();
@@ -256,7 +256,7 @@ describe("notificationChannels — durable first-connect welcome", () => {
   test("negotiates and schedules through the registered relay", async () => {
     vi.useFakeTimers();
     const fetchMock = installQueueMock();
-    process.env.RELAY_SHARED_SECRET = "relay-secret";
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
     const t = convexTest(schema, modules);
     const headers = {
       Authorization: "Bearer relay-secret",
@@ -339,7 +339,7 @@ describe("notificationChannels — durable first-connect welcome", () => {
   test("preserves the old-edge relay response without scheduling a duplicate", async () => {
     vi.useFakeTimers();
     const fetchMock = installQueueMock();
-    process.env.RELAY_SHARED_SECRET = "relay-secret";
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
     const t = convexTest(schema, modules);
     await seedEntitlement(t);
 
@@ -638,7 +638,7 @@ describe("notificationChannels — relay email ownership", () => {
     { destination: "owner@example.com", status: "unverified", expected: 400 },
     { destination: "owner@example.com", status: "verified", expected: 200 },
   ])("server verifies Clerk primary email: %j", async ({ destination, status, expected }) => {
-    process.env.RELAY_SHARED_SECRET = "relay-secret";
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
     process.env.CLERK_SECRET_KEY = "fake-clerk-secret";
     const t = convexTest(schema, modules);
     await seedEntitlement(t);
@@ -662,7 +662,7 @@ describe("notificationChannels — relay email ownership", () => {
   });
 
   test.each(["missing-secret", "provider-error", "wrong-user"])("fails closed when verification is unavailable: %s", async failure => {
-    process.env.RELAY_SHARED_SECRET = "relay-secret";
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
     process.env.CLERK_SECRET_KEY = "fake-clerk-secret";
     if (failure === "missing-secret") delete process.env.CLERK_SECRET_KEY;
     const t = convexTest(schema, modules);
