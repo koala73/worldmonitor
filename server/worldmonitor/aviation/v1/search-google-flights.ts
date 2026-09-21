@@ -10,7 +10,7 @@ import { sha256Hex } from '../../../../api/_crypto.js';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { parseStringArray } from '../../../_shared/parse-string-array';
 import { normalizePassengerCount } from '../../../_shared/passenger-count';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 
 const CACHE_TTL = 600;
 
@@ -84,7 +84,7 @@ export async function searchGoogleFlights(
   const cacheKey = `aviation:gf:${await sha256Hex(params.toString())}:v2`;
 
   try {
-    const data = await cachedFetchJson<{ flights: unknown[] }>(
+    const { data } = await cachedFetchJsonWithMeta<{ flights: unknown[] }>(
       cacheKey,
       CACHE_TTL,
       async () => {
@@ -93,10 +93,13 @@ export async function searchGoogleFlights(
           signal: AbortSignal.timeout(20_000),
         });
         if (!resp.ok) throw new Error(`relay returned ${resp.status}`);
-        const json = (await resp.json()) as { flights?: unknown[]; error?: string };
+        const json = (await resp.json()) as { flights?: unknown[]; cooldown?: boolean; error?: string };
         if (!Array.isArray(json.flights)) throw new Error(json.error ?? 'no results');
+        if (json.cooldown === true) throw new Error('provider cooldown');
         return { flights: json.flights };
       },
+      120,
+      { cacheFailures: false },
     );
 
     if (!data) {

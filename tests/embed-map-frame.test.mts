@@ -444,3 +444,15 @@ describe('embed map frame', () => {
     });
   });
 });
+
+it('does not publicly cache partial or unavailable requested map layers', async () => {
+  for (const state of ['partial', 'unavailable'] as const) {
+    const response = await handleEmbedMapFrame(new Request('https://www.worldmonitor.app/api/embed/map-frame?layers=weather&public=1'), {
+      getCorsHeaders: () => ({}),
+      verifyGrant: async () => null,
+      checkRateLimit: async () => null,
+      composeFrame: async () => ({ tier: 'free', refreshMs: 3600000, generatedAt: NOW, layers: { weather: state }, data: {} }),
+    });
+    assert.match(response.headers.get('Cache-Control') ?? '', /no-store/);
+  }
+});

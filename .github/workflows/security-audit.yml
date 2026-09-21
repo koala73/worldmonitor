@@ -8,6 +8,13 @@ on:
     - cron: '30 4 * * *'
   workflow_dispatch:
 
+# See test.yml. The nightly audit and any manual dispatch land in a group of
+# one via `github.run_id`, so a PR push can never evict a running scan
+# (#8443).
+concurrency:
+  group: security-audit-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -133,6 +140,11 @@ jobs:
           AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime railway-reconcile-control'
           FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: |
+          # On a run this workflow's concurrency group evicted (#8443), this
+          # branch is the expected outcome and it reddens a SHA that has
+          # already been superseded. Branch protection reads the head SHA, so
+          # nothing acts on it. Keep the exit 1: a matrix cancelled for any
+          # other reason has genuinely not audited every lockfile.
           if [ "$AUDIT_RESULT" = "cancelled" ]; then
             echo "::error::The dependency audit matrix was cancelled before every production lockfile was audited."
             exit 1

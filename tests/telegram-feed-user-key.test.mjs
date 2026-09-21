@@ -15,6 +15,7 @@ let redisStatus;
 let remaining;
 let accountRemaining;
 let accountRedisStatus;
+let burstRedisStatus;
 let dailyInitial;
 let daily;
 let commandsSeen;
@@ -33,6 +34,7 @@ beforeEach(() => {
   cachedEntitlement = false;
   relayStatus = 200;
   accountRedisStatus = 200;
+  burstRedisStatus = 200;
   dailyInitial = 0;
   daily = new Map();
   commandsSeen = [];
@@ -51,6 +53,7 @@ beforeEach(() => {
     if (new URL(url).hostname === 'redis.test') {
       const commands = JSON.parse(String(init?.body));
       const accountCommands = commands.some(command => command.some(arg => String(arg).startsWith('rl:apikey:')));
+      const burstCommands = commands.some(command => command.some(arg => String(arg).startsWith('rl:apikey:min:')));
       return new Response(JSON.stringify(commands.map(command => {
         commandsSeen.push(command);
         const verb = String(command[0]).toUpperCase();
@@ -66,7 +69,7 @@ beforeEach(() => {
         const accountBurst = String(command[3]).startsWith('rl:apikey:min:');
         // Upstash sliding-window Lua returns [remainingTokens, effectiveLimit].
         return { result: [accountBurst ? accountRemaining : remaining, Number(command[3 + Number(command[2])])] };
-      })), { status: accountCommands ? accountRedisStatus : redisStatus });
+      })), { status: burstCommands ? burstRedisStatus : accountCommands ? accountRedisStatus : redisStatus });
     }
     if (url === 'https://convex.test/api/internal-validate-api-key') {
       const body = JSON.parse(init.body);
@@ -212,6 +215,7 @@ for (const allowance of [-1, 0, undefined]) {
 }
 it('retains shared-meter fail-open behavior after successful auth admission', async () => {
   accountRedisStatus = 503;
+  burstRedisStatus = 503;
   assert.equal((await request()).status, 200);
   assert.equal(burstCommands().length, 1);
   assert.equal(dailyCommands('INCR').length, 1);
@@ -245,4 +249,14 @@ it('shares daily usage with the gateway typed adapter without double accounting'
   assert.equal((await request()).status, 200);
   assert.deepEqual([...daily.values()], [1000]);
   assert.equal(dailyCommands('INCR').length, 2);
+});
+
+it('enforces daily allowance when only the account burst is unavailable', async () => {
+  burstRedisStatus = 503;
+  dailyInitial = 1000;
+  const response = await request();
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).limit_type, 'daily');
+  assert.equal(dailyCommands('INCR').length, 1);
+  assert.equal(dailyCommands('DECR').length, 1);
 });

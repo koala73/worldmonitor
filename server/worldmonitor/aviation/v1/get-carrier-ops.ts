@@ -13,6 +13,7 @@ import {
     MAX_AIRPORTS_PER_REQUEST,
     requireLiveAviationAccess,
 } from './_shared';
+import { aviationStackBudgetCycle } from './_avstack-budget';
 import { listAirportFlights } from './list-airport-flights';
 
 // 15min, matching list-airport-flights — see the TTL note there. This route is
@@ -48,7 +49,7 @@ export async function getCarrierOps(
         .slice(0, MAX_AIRPORTS_PER_REQUEST);
 
     const minFlights = req.minFlights ?? 3;
-    const cacheKey = `aviation:carrier-ops:${[...airports].sort().join(',')}:v1`;
+    const cacheKey = `aviation:carrier-ops:${[...airports].sort().join(',')}:v2:${aviationStackBudgetCycle()}`;
     let unavailableSource = 'unavailable';
 
     try {

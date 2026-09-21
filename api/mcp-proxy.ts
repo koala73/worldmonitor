@@ -14,7 +14,7 @@ import {
 } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
 import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
 import { captureSilentError } from './_sentry-edge.js';
 import {
   buildRequestEvent,
@@ -169,10 +169,11 @@ function emitProxyUsage(req, status: number, durationMs: number, ctx, callerIden
       durationMs,
       reqBytes: deriveReqBytes(req),
       // Not tracked: the proxy streams upstream bodies through bounded readers
-      // and jsonResponse sets no content-length, so there is no byte count to
-      // report without buffering a second time. Size questions belong to
-      // MAX_MCP_PROXY_RESPONSE_BYTES, not to this row.
-      resBytes: 0,
+      // and jsonResponse Content-Length reflects only the local denial/error
+      // envelopes — never the proxied upstream size. Size questions belong to
+      // MAX_MCP_PROXY_RESPONSE_BYTES, not to this row. null (not 0) so unknown
+      // is not confused with an empty body (#8403).
+      resBytes: null,
       customerId: usageIdentity.customer_id,
       principalId: usageIdentity.principal_id,
       authKind: usageIdentity.auth_kind,
@@ -938,6 +939,11 @@ export default async function handler(req, ctx) {
   }
 
   const started = Date.now();
+  const proofDenied = checkIpScopedEdgeProof(req, cors);
+  if (proofDenied) {
+    emitProxyUsage(req, proofDenied.status, Date.now() - startedAt, ctx);
+    return proofDenied;
+  }
   const ip = getClientIp(req);
   const meta: ProxyMeta = { targetHost: '', targetPath: '', headerNames: [] };
 

@@ -321,7 +321,7 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/utils/index.ts :: localStorage.<member> x2',
   'src/utils/panel-storage.ts :: localStorage.<member> x3',
   'src/utils/settings-persistence.ts :: localStorage.<member> x1',
-  'src/utils/theme-manager.ts :: localStorage.<member> x5',
+  'src/utils/theme-manager.ts :: localStorage.<member> x4',
 ];
 
 /**
