@@ -21,30 +21,16 @@ const require = createRequire(import.meta.url);
 const cjs = require('../scripts/shared/notify-fields.cjs');
 const ts = await import('../server/_shared/notify-fields.ts');
 
-const FNS = [
-  'stripNotificationControlChars',
-  'sanitizeNotificationText',
-  'isImpersonatingSource',
-  'sanitizeNotificationTitle',
-  'sanitizeCommunityNotificationTitle',
-  'sanitizeNotificationDescription',
-  'sanitizeNotificationSource',
-  'sanitizeUserNotificationSource',
-  'classifyNotificationLink',
-  'isFirstPartyNotificationHost',
-  'sanitizeUserNotificationLinkUrl',
-  'sanitizeNotificationLinkUrl',
-  'renderNotificationLinkForText',
-];
-
-const CONSTANTS = [
-  'NOTIFY_TITLE_MAX_LENGTH',
-  'NOTIFY_SOURCE_MAX_LENGTH',
-  'NOTIFY_DESCRIPTION_MAX_LENGTH',
-  'NOTIFY_DASHBOARD_URL',
-  'NOTIFY_COMMUNITY_TITLE_PREFIX',
-  'NOTIFY_NEUTRAL_SOURCE',
-];
+// DERIVED from the modules, never hand-listed. A hand-written name list is a
+// third copy that drifts from the two it is meant to pin: add a sanitizer to
+// both modules, implement the CJS side slightly differently, forget the list
+// entry, and the suite passes with zero coverage of the new function — the
+// exact "mirror that cannot fail" shape this file exists to prevent (#8414
+// review finding). Deriving the surface also makes a function present in one
+// module and absent from the other fail on its own.
+const exportNames = (mod) => Object.keys(mod).filter((k) => k !== 'default' && k !== '__esModule');
+const FNS = exportNames(cjs).filter((k) => typeof cjs[k] === 'function').sort();
+const CONSTANTS = exportNames(cjs).filter((k) => typeof cjs[k] !== 'function').sort();
 
 // One table, both modules. Covers the #8397 PoC shapes plus the legitimate
 // traffic the fix must not break (RSS punctuation/unicode, long-tail
@@ -52,7 +38,7 @@ const CONSTANTS = [
 const VECTORS = {
   stripNotificationControlChars: [
     ['a\nb\rc\td'],
-    ['line para sep'],
+    ['line\u2028para\u2029sep'],
     ['World\u200bMonitor'],
     ['World\u2060Monitor'],
     ['World\u2066Monitor\u2069'],
@@ -68,6 +54,28 @@ const VECTORS = {
     [123, 200],
     [null, 200],
     [undefined, 200],
+    // Exact-boundary and astral-boundary shapes (review findings): a slice at
+    // an odd offset through a surrogate pair must not leave a lone high half.
+    ['x'.repeat(200), 200],
+    ['x'.repeat(201), 200],
+    [`A${'\u{1F600}'.repeat(150)}`, 200],
+    ['\u{1F600}'.repeat(150), 200],
+  ],
+  redactNotificationUrlTokens: [
+    ['Verify at https://wm-verify.example/login'],
+    ['see www.evil.test/go now'],
+    ['go to evil.test/login'],
+    ['Reuters reports via reuters.com'],
+    ['no links here at all'],
+    ['mailto:x@y.test and ftp://h.test/f'],
+    [''],
+  ],
+  sanitizeUserNotificationDescription: [
+    ['click https://evil.test/x'],
+    ['plain snippet with unicode ✓'],
+    ['x'.repeat(500)],
+    [null],
+    [undefined],
   ],
   isImpersonatingSource: [
     ['WorldMonitor Security'],
@@ -85,8 +93,19 @@ const VECTORS = {
     ['World-Monitor Security'],
     ['World.Monitor Security'],
     ['ＷｏｒｌｄＭｏｎｉｔｏｒ Security'],
+    // Nonspacing-mark and cross-script-confusable bypasses (review finding):
+    // NFKC folds compatibility forms but not these, and \p{Cf} misses \p{Mn}.
+    ['World\u034fMonitor Security'],
+    ['World\ufe0fMonitor Security'],
+    ['Wоrldmonitor Security'],
+    ['WorldМonitor Security'],
+    ['Wοrldmonitor Security'],
+    ['W0rldMonitor Security'],
+    ['World+Monitor Security'],
+    ['WоrldПonitor Security'],
     ['Reuters'],
     ['Tzeva Adom / Pikud HaOref'],
+    ['Commodity Market'],
     [''],
     [null],
     [123],
@@ -185,16 +204,25 @@ describe('notify-fields TS/CJS parity', () => {
     });
   }
 
-  it('exports the same function surface', () => {
-    for (const name of FNS) {
-      assert.equal(typeof cjs[name], 'function', `CJS missing ${name}`);
-      assert.equal(typeof ts[name], 'function', `TS missing ${name}`);
-    }
+  it('exports the same surface in both copies', () => {
+    const tsNames = exportNames(ts).filter((k) => typeof ts[k] !== 'undefined').sort();
+    const cjsNames = exportNames(cjs).sort();
+    assert.deepEqual(cjsNames, tsNames, 'TS and CJS export surfaces diverged');
+  });
+
+  it('every exported function has at least one parity vector', () => {
+    const missing = FNS.filter((name) => !VECTORS[name]?.length);
+    assert.deepEqual(
+      missing,
+      [],
+      `these exported functions run zero parity vectors: ${missing.join(', ')}. ` +
+      'Add a VECTORS entry so a TS/CJS divergence in them can fail this suite.',
+    );
   });
 
   for (const name of FNS) {
     it(`${name} agrees on every vector`, () => {
-      for (const args of VECTORS[name]) {
+      for (const args of VECTORS[name] ?? []) {
         assert.deepEqual(
           cjs[name](...args),
           ts[name](...args),
