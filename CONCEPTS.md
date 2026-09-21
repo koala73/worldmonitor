@@ -591,6 +591,18 @@ The fingerprint of the Deploy Gate's required list, stamped onto every gate stat
 
 A CI job that runs and reports on a change but is neither a branch-protection context nor a name on the Deploy Gate's required list, so a red result blocks nothing. It is the state a check falls into silently when it is moved out of a required job without being listed itself, and the reason a Wiring Guard fails the build whenever a gated workflow gains a job the required list does not name. See also: Deploy Gate, Wiring Guard, Vacuous Guard.
 
+### Superseded Run
+
+A run of a gated workflow whose head commit a later push has already replaced, so no consumer will ever read its verdict. Only the head commit's checks decide mergeability, and the Deploy Gate's sweep looks only at the head of each open branch, so a superseded run's result reaches nothing.
+
+Left running, it is pure loss. It holds runner capacity against the very commit that replaced it, which is why a gated workflow should cancel one as soon as its replacement is queued. Cancellation is only ever correct because nothing reads the verdict, so the rule is to scope it to change proposals alone and to give every other run a group of its own so it cannot be evicted. A run something does read, such as a Detection Net probe or a mainline run still owing the Deploy Gate an answer, must never be discarded this way. Getting that scoping wrong is silent in both directions: an un-evicted superseded run only wastes capacity, and a wrongly evicted mainline run only goes missing. See also: Deploy Gate, Detection Net, Advisory-Only Check.
+
+### Detection Net
+
+A scheduled or post-deploy run whose only purpose is to notice breakage no change-triggered run would surface, whether by probing a live production surface or by sweeping the whole repository. Its value is entirely in running to completion, because a result it never produces is indistinguishable from a passing one.
+
+This makes it the opposite of a Superseded Run under contention: a net must never be evicted, since an evicted probe reads as neither pass nor fail and the coverage is lost silently. Where a workflow mixes a net with ordinary change-proposal jobs, the eviction rule is therefore attached to the individual job rather than the workflow, because a workflow-wide rule is evaluated before the conditions that decide which jobs were going to run at all. See also: Superseded Run, Deploy Gate.
+
 ## Localization & First Paint
 
 ### English Shell
@@ -1007,4 +1019,5 @@ A viewer preference that starts live news and webcams as soon as their panels ar
 - *"Crashed"* had been used for both a build that failed and a run that exited non-zero — these are distinct. A failed build never started a container and leaves the previous Active Deployment serving; a crash is a started run that exited non-zero. Only the second is a seeder outcome; the first is a platform outcome that decides whether the seeder will ever run again.
 - *"Release"* names two unrelated things. A desktop Release Line is a publication sequence addressable by update clients. An error-tracking release is an event grouping label, and the browser and server surfaces choose it differently, which is what decides whether a Resolve Pin is satisfiable. Never reason about one from the other.
 - *"Gate"* had been used for both the local pre-push Tiered Gate and the CI Deploy Gate — these are distinct. The Tiered Gate is a cacheable pre-flight that can be scoped or escalated on one machine; only the Deploy Gate decides mergeability, and only names on its required list count toward it.
+- *"Superseded"* qualifies two unrelated things. A Superseded Run is a change-proposal CI run replaced by a later push, and it is discarded on purpose. A Superseded Failure is a scheduled run's failure that a newer capture, by hand or by a later run, has since made moot, and it is an alarm that resolves itself. The first is about wasted capacity, the second about alert noise; never reason about one from the other.
 - *"Capability"* names two things. A Capability-Gated Deep Link is gated on an entitlement predicate the destination also renders on; a Brief URL is a bearer link where the token itself is the capability. Say "entitlement" for the first sense in prose and "Brief URL" for the second; avoid "capability URL".
