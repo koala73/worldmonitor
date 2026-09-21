@@ -1343,7 +1343,7 @@ describe('crawlable live intelligence view models', () => {
       value: 'JP',
       selectedOptions: [{ dataset: { bounds: '31,129,46,146' } }],
     };
-    const dashboardLink = { href: '/?country=NO&expanded=1' };
+    const dashboardLink = { href: '/dashboard?country=NO&expanded=1' };
     const tool = {
       dataset: {},
       querySelector(selector) {
@@ -1377,7 +1377,11 @@ describe('crawlable live intelligence view models', () => {
     try {
       await loadHazards(tool);
       assert.deepEqual(replacedUrls, ['/tools/natural-hazard-pulse/?country=JP']);
-      assert.equal(dashboardLink.href, '/?country=JP&expanded=1&utm_source=seo-tool');
+      assert.equal(dashboardLink.href, '/dashboard?country=JP&expanded=1&utm_source=seo-tool');
+      select.value = '';
+      await loadHazards(tool);
+      assert.equal(dashboardLink.href, '/dashboard?utm_source=seo-tool');
+      assert.equal(replacedUrls.at(-1), '/tools/natural-hazard-pulse/');
     } finally {
       globalThis.fetch = originalFetch;
       if (originalWindow === undefined) delete globalThis.window;
@@ -1883,7 +1887,7 @@ describe('crawlable live intelligence view models', () => {
       async () => ({
         counter: 2,
         url: '/tools/natural-hazard-pulse/?country=JP',
-        dashboardLink: '/?country=JP&expanded=1',
+        dashboardLink: '/dashboard?country=JP&expanded=1',
       }),
       (value) => Object.assign(rendered, value),
     );
@@ -1892,14 +1896,14 @@ describe('crawlable live intelligence view models', () => {
     resolveFirst({
       counter: 99,
       url: '/tools/natural-hazard-pulse/?country=US',
-      dashboardLink: '/?country=US&expanded=1',
+      dashboardLink: '/dashboard?country=US&expanded=1',
     });
     await first;
 
     assert.deepEqual(rendered, {
       counter: 2,
       url: '/tools/natural-hazard-pulse/?country=JP',
-      dashboardLink: '/?country=JP&expanded=1',
+      dashboardLink: '/dashboard?country=JP&expanded=1',
     });
   });
 });

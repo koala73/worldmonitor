@@ -1181,9 +1181,6 @@
       "base": "Baza",
       "nuclear": "Nuclear"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "MARE",
@@ -1909,6 +1906,7 @@
       "etfs": "ETF-uri",
       "netInflow": "FLUX NET",
       "netOutflow": "DEBIT NET",
+      "netNeutral": "NEUTRU NET",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emitent",
@@ -2184,7 +2182,7 @@
       "infoTooltip": "<strong>Calendar economic</strong> Publicări macroeconomice programate: CPI, NFP, GDP, PMI și decizii ale băncilor centrale. Afișează prognoză vs. real vs. anterior. Evenimentele cu impact ridicat sunt evidențiate. Sursă: furnizori de date economice."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Indicator de stres financiar</strong> Raportul WorldMonitor dintre creditul cu randament ridicat și titlurile de Trezorerie americane pe termen lung, ajustat pentru volatilitatea acțiunilor și diferențialul de randament ridicat: (HYG / TLT) / (VIX × HY spread / 100). Acesta nu este Indicele de stres financiar al Rezervei Federale din Kansas City. O valoare de 1.5 sau mai mare indică stres redus; sub 0.3 indică stres ridicat.",
       "title": "Indicatorul de Stres Financiar",
       "usFsiValue": "VALOARE FSI SUA",
       "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",

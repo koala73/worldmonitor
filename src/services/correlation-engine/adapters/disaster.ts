@@ -56,7 +56,7 @@ export const disasterAdapter: DomainAdapter = {
           return age <= windowMs;
         })
         .map(p => normalizeToCountryCode(p.country, p.lat, p.lon))
-        .filter(Boolean),
+        .filter((code): code is string => !!code),
     );
     const outages = cache.outages ?? [];
     for (const o of outages) {

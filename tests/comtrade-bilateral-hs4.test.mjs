@@ -526,8 +526,14 @@ describe('CountryDeepDivePanel product imports section', () => {
   });
 
   it('PRO gate check (hasPremiumAccess) guards product imports card', () => {
-    assert.ok(
-      src.includes("import { hasPremiumAccess }"),
+    // Match the binding inside the import list, not the list's exact spelling:
+    // the panel legitimately imports siblings from panel-gating (the
+    // WORLDMONITOR-147 denial diagnostic added two), and pinning the literal
+    // `import { hasPremiumAccess }` made an unrelated import widening fail a
+    // test whose invariant — this panel gates on hasPremiumAccess — still held.
+    assert.match(
+      src,
+      /import \{[^}]*\bhasPremiumAccess\b[^}]*\} from '@\/services\/panel-gating'/,
       'CountryDeepDivePanel: must import hasPremiumAccess for PRO gating',
     );
     const productImportsIdx = src.indexOf('productImportsCardBody');

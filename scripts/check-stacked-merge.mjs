@@ -48,7 +48,7 @@ export function evaluatePreMergeGuard({ defaultBranch, baseRef, baseHeadPulls })
   return { ok: true, reason: 'base-pr-absent' };
 }
 
-export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, pendingParent }) {
+export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, integratedParent, pendingParent }) {
   if (!merged) {
     return { ok: true, reason: 'not-merged' };
   }
@@ -57,6 +57,9 @@ export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, pendin
   }
   if (isAncestor) {
     return { ok: true, reason: 'merge-on-default' };
+  }
+  if (integratedParent) {
+    return { ok: true, reason: 'content-on-default', integratedParent };
   }
   if (pendingParent) {
     return { ok: true, reason: 'pending-parent-integration', pendingParent };
@@ -99,13 +102,22 @@ function parentList(parents) {
   return parents.map((pull) => `- ${pullLabel(pull)}. State: ${isMergedPull(pull) ? 'merged' : pull.state || 'unknown'}.`).join('\n');
 }
 
-export function formatOrphanIssue({ pull, mergeSha, defaultBranch, parents = [], reason }) {
+export function formatOrphanIssue({ pull, mergeSha, defaultBranch, parents = [], reason, integratedParent }) {
   const number = pull?.number ?? '?';
   const title = `${ISSUE_TITLE_PREFIX} #${number} on ${defaultBranch}`;
   if (reason === 'merge-on-default') {
     return {
       title,
       body: `Integration of PR ${pullLabel(pull)} is confirmed. Merge commit \`${mergeSha}\` is an ancestor of \`${defaultBranch}\`.`,
+    };
+  }
+  if (reason === 'content-on-default') {
+    return {
+      title,
+      body: `Integration of PR ${pullLabel(pull)} content into \`${defaultBranch}\` is confirmed through parent ${pullLabel(integratedParent)}.\n\n`
+        + `Child merge \`${mergeSha}\` is an ancestor of parent head \`${integratedParent.head.sha}\`. `
+        + `All paths changed by the child match between that parent head and parent merge \`${integratedParent.merge_commit_sha}\`, `
+        + `which is an ancestor of \`${defaultBranch}\`. This proves historical integration, not current behavior or deployment.`,
     };
   }
   const body = [
@@ -177,7 +189,40 @@ function confirmAncestry({ git, commit, ref, defaultBranch, shouldRetry, sleep }
   return last;
 }
 
-function findPendingParent({ gh, git, repository, defaultBranch, pull, mergeSha }) {
+function parentPreservesChildPaths({ gh, git, repository, pull, mergeSha, parent }) {
+  // A rebase merge SHA identifies only the last commit. Require the complete PR
+  // file list, including rename sources, before comparing the landed content.
+  const detail = JSON.parse(gh(['api', `repos/${repository}/pulls/${pull.number}`]));
+  if (detail.merge_commit_sha !== mergeSha || !Number.isInteger(detail.changed_files)
+    || detail.changed_files <= 0) return false;
+  const files = flattenGhPages(gh([
+    'api', '--paginate', '--slurp', `repos/${repository}/pulls/${pull.number}/files?per_page=100`,
+  ]));
+  if (files.length !== detail.changed_files) return false;
+  const paths = new Set();
+  for (const file of files) {
+    if (typeof file.filename !== 'string' || !file.filename) return false;
+    paths.add(file.filename);
+    if (file.status === 'renamed' && !file.previous_filename) return false;
+    if (file.previous_filename) paths.add(file.previous_filename);
+  }
+  // Also cover merge-resolution paths absent from the original PR diff.
+  for (const path of git(['diff', '--name-only', '--no-renames', '-z', `${mergeSha}^1`, mergeSha, '--']).split('\0')) {
+    if (path) paths.add(path);
+  }
+  try {
+    git([
+      '--literal-pathspecs', 'diff', '--quiet', '--no-ext-diff', '--no-textconv',
+      parent.head.sha, parent.merge_commit_sha, '--', ...paths,
+    ]);
+    return true;
+  } catch (error) {
+    if (error?.status === 1) return false;
+    throw error;
+  }
+}
+
+function findParentIntegration({ gh, git, repository, defaultBranch, pull, mergeSha }) {
   const parents = [];
   const queue = [pull];
   const visited = new Set([pull.number]);
@@ -196,6 +241,14 @@ function findPendingParent({ gh, git, repository, defaultBranch, pull, mergeSha 
           return { parents, pendingParent: parent };
         }
       } else if (isMergedPull(parent)) {
+        if (parent.head?.sha && parent.merge_commit_sha) {
+          git(['fetch', '--quiet', 'origin', parent.head.sha, parent.merge_commit_sha]);
+          if (isCommitAncestor({ git, commit: mergeSha, ref: parent.head.sha })
+            && isCommitAncestor({ git, commit: parent.merge_commit_sha, ref: `origin/${defaultBranch}` })
+            && parentPreservesChildPaths({ gh, git, repository, pull, mergeSha, parent })) {
+            return { parents, integratedParent: parent };
+          }
+        }
         queue.push(parent);
       }
     }
@@ -310,10 +363,10 @@ export function checkStackedMerge({
       sleep,
     })
     : false;
-  const { parents = [], pendingParent } = !isAncestor && mergeSha && typeof gh === 'function'
-    ? findPendingParent({ gh, git, repository, defaultBranch, pull, mergeSha })
+  const { parents = [], pendingParent, integratedParent } = !isAncestor && mergeSha && typeof gh === 'function'
+    ? findParentIntegration({ gh, git, repository, defaultBranch, pull, mergeSha })
     : {};
-  const verdict = evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, pendingParent });
+  const verdict = evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, pendingParent, integratedParent });
 
   const alarm = formatOrphanIssue({
     pull,
@@ -321,6 +374,7 @@ export function checkStackedMerge({
     defaultBranch,
     parents,
     reason: verdict.reason,
+    integratedParent,
   });
   const issueClient = issues || (typeof gh === 'function' ? defaultIssues(gh, repository) : null);
   let existingIssue;
@@ -330,7 +384,7 @@ export function checkStackedMerge({
     if (found.length > 0) {
       existingIssue = found[0].number;
       for (const issue of new Map(found.map((item) => [item.number, item])).values()) {
-        if (isAncestor) {
+        if (isAncestor || integratedParent) {
           if (issue.state?.toLowerCase() !== 'closed') issueClient.close(issue.number, alarm.body);
         } else {
           const fields = { title: alarm.title, body: alarm.body };

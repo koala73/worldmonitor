@@ -8,11 +8,11 @@ run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inp
 # (#5479): event-driven evaluation alone can strand a PR — the check-runs API
 # can serve stale reads (~1 min normally, longer during GitHub degradation),
 # and the last workflow_run event for a SHA is the last time anything
-# re-evaluates. For 24 hours after a pending status is published, the sweep
-# re-evaluates it. Older pending heads remain blocked and are listed in the
-# run summary for a branch update or exact-SHA dispatch. Failed gates stay
-# blocked until a workflow event or dispatch evaluates them again. Successes
-# with an old required-check contract are always invalidated (#5851).
+# re-evaluates. For 24 hours after a pending, failure, or error status is
+# published, the sweep re-evaluates it. This also recovers a failed gate when
+# the successful rerun's event saw stale checks. Older blocked heads are listed
+# in the run summary for a branch update or exact-SHA dispatch. Successes with
+# an old required-check contract are always invalidated (#5851).
 
 on:
   workflow_run:

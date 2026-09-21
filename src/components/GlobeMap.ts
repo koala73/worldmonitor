@@ -876,7 +876,7 @@ export class GlobeMap {
       .arcDashLength(0.9)
       .arcDashGap(4)
       .arcDashAnimateTime(5000)
-      .arcLabel((d: TradeRouteSegment) => `${d.routeName} · ${d.volumeDesc}`);
+      .arcLabel((d: TradeRouteSegment) => escapeHtml(`${d.routeName} · ${d.volumeDesc}`));
 
     // Path accessors — set once
     (globe as any)
@@ -941,7 +941,7 @@ export class GlobeMap {
         if (d.pathType === 'stormHistory') return 0;
         return 5000;
       })
-      .pathLabel((d: GlobePath) => d?.name ?? '');
+      .pathLabel((d: GlobePath) => escapeHtml(d?.name ?? ''));
 
     // Polygon accessors — set once
     (globe as any)
@@ -976,7 +976,7 @@ export class GlobeMap {
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
-        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${d.score}/100 (${escapeHtml(d.level ?? '')})`;
+        if (d._kind === 'cii') return `<b>${escapeHtml(d.name)}</b><br/>CII: ${Number.isFinite(Number(d.score)) ? Number(d.score) : '—'}/100 (${escapeHtml(d.level ?? '')})`;
         if (d._kind === 'conflict') {
           let label = `<b>${escapeHtml(d.name)}</b>`;
           if (d.parties?.length) label += `<br/>Parties: ${d.parties.map(p => escapeHtml(p)).join(', ')}`;
@@ -988,7 +988,7 @@ export class GlobeMap {
           if (d.datetime) label += `<br><span style="opacity:.7;">${escapeHtml(d.datetime)}</span>`;
           if (d.resolutionM != null || d.mode) {
             const parts: string[] = [];
-            if (d.resolutionM != null) parts.push(`${d.resolutionM}m`);
+            if (d.resolutionM != null) parts.push(`${Number.isFinite(Number(d.resolutionM)) ? Number(d.resolutionM) : '—'}m`);
             if (d.mode) parts.push(escapeHtml(d.mode));
             label += `<br><span style="opacity:.5;">Res: ${parts.join(' \u00B7 ')}</span>`;
           }
