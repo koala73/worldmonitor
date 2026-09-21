@@ -14,10 +14,29 @@ vi.mock("dodopayments", () => ({
 }));
 
 const fetchMock = vi.fn<typeof fetch>();
+function hostnameOf(urlLike: string): string | null {
+  try {
+    return new URL(urlLike).hostname;
+  } catch {
+    return null;
+  }
+}
+// CodeQL js/incomplete-url-substring-sanitization: match the URL host, not a
+// substring, so an arbitrary host containing "api.clerk.com" cannot pass.
+function isClerkApiUrl(urlLike: string): boolean {
+  return hostnameOf(urlLike) === "api.clerk.com";
+}
+function isRedisPipelineUrl(urlLike: string): boolean {
+  try {
+    return new URL(urlLike).pathname === "/pipeline";
+  } catch {
+    return false;
+  }
+}
 function success(input: RequestInfo | URL): Promise<Response> {
   const url = String(input);
-  if (url.includes("api.clerk.com")) return Promise.resolve(new Response(null, { status: 204 }));
-  return Promise.resolve(Response.json(url.includes("/pipeline") ? [{ result: 1 }] : { result: null }));
+  if (isClerkApiUrl(url)) return Promise.resolve(new Response(null, { status: 204 }));
+  return Promise.resolve(Response.json(isRedisPipelineUrl(url) ? [{ result: 1 }] : { result: null }));
 }
 
 beforeEach(() => {
@@ -67,7 +86,7 @@ describe("external account deletion retry policy", () => {
   );
 
   test.each([401, 403])("permanent Clerk HTTP %i fails without retries", async (status) => {
-    fetchMock.mockImplementation((input) => String(input).includes("api.clerk.com")
+    fetchMock.mockImplementation((input) => isClerkApiUrl(String(input))
       ? Promise.resolve(new Response(null, { status })) : success(input));
     const { t, deletionId, row } = await setup();
     expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
@@ -83,7 +102,7 @@ describe("external account deletion retry policy", () => {
       .toEqual({ status: "failed" });
     expect((await row())?.redisClearedAt).toBeDefined();
     expect(await pendingJobs(t)).toHaveLength(0);
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("api.clerk.com"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([input]) => isClerkApiUrl(String(input)))).toBe(false);
   });
 
   test("SDK connection failures retry and can recover", async () => {
@@ -99,7 +118,7 @@ describe("external account deletion retry policy", () => {
   });
 
   test("persistent transient failures back off and stop after five attempts", async () => {
-    fetchMock.mockImplementation((input) => String(input).includes("api.clerk.com")
+    fetchMock.mockImplementation((input) => isClerkApiUrl(String(input))
       ? Promise.resolve(new Response(null, { status: 503 })) : success(input));
     const { t, deletionId, row } = await setup();
     const startedAt = Date.now();
@@ -113,7 +132,7 @@ describe("external account deletion retry policy", () => {
     expect((await row())?.externalAttempts).toBe(5);
     expect((await row())?.status).toBe("failed");
     expect(await pendingJobs(t)).toHaveLength(0);
-    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("api.clerk.com"))).toHaveLength(5);
+    expect(fetchMock.mock.calls.filter(([input]) => isClerkApiUrl(String(input)))).toHaveLength(5);
   });
 
   test("a transient Dodo failure resumes without cancelling completed subscriptions twice", async () => {
@@ -138,7 +157,7 @@ describe("external account deletion retry policy", () => {
     expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
       .toEqual({ status: "failed" });
     expect((await row())?.redisClearedAt).toBeUndefined();
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("api.clerk.com"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([input]) => isClerkApiUrl(String(input)))).toBe(false);
     expect(await pendingJobs(t)).toHaveLength(0);
   });
 });
