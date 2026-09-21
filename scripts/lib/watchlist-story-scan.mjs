@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 
 import { buildDedupMaterial } from '../shared/notification-dedup.cjs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+// #8398: relay-emitted watchlist_story_alert events must not carry a link
+// outside the item's registered publisher set. CJS require (not ESM import)
+// because the digest-notifications cron bundles scripts/lib as CJS-adjacent
+// helpers and the relay gate module is dependency-free CJS by design.
+const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
 import { buildWatchlistStoryEvents, resolveWatchlistScoreMin, WATCHLIST_STORY_EVENT_TYPE } from './watchlist-story-events.mjs';
 
 export const WATCHLIST_SCAN_DEDUP_TTL_SECONDS = 24 * 60 * 60;
@@ -100,6 +108,12 @@ export async function scanAndEnqueueWatchlistStoryEvents(nowMs, {
       if (!track.title) continue;
       const currentScore = parseInt(track.currentScore ?? '0', 10);
       if (!Number.isFinite(currentScore) || currentScore < scoreMin) continue;
+      // #8398: the candidate's source MUST be known before the event is
+      // built (the builder gates the link against the source's publisher
+      // family). story:track rows do not carry the feed label, so resolve
+      // it here from story:sources:v1 — the same SMEMBERS read the old code
+      // did after building events. A story with no resolvable source keeps
+      // source '' and the builder blanks the link (fail-closed).
       candidates.push({
         hash: hashes[i],
         title: track.title,
@@ -111,23 +125,30 @@ export async function scanAndEnqueueWatchlistStoryEvents(nowMs, {
     }
     if (candidates.length === 0) return { hashes: hashes.length, candidates: 0, events: 0, enqueued: 0, scoreMin };
 
+    try {
+      const srcResults = await upstashPipeline(
+        candidates.map(({ hash }) => ['SMEMBERS', `story:sources:v1:${hash}`]),
+      );
+      for (let i = 0; i < candidates.length; i++) {
+        const arr = srcResults[i]?.result;
+        if (!Array.isArray(arr)) continue;
+        const members = arr.filter((m) => typeof m === 'string' && m.length > 0);
+        if (members.length === 0) continue;
+        // #8398 review: story:sources:v1 is a SET over every feed label that
+        // mentioned the story — a merged cluster carries several publishers,
+        // and SMEMBERS order is undefined. Prefer the member that authorizes
+        // the persisted link so a corroborated story keeps its link; fall
+        // back to the first member for payload.source.
+        candidates[i].source =
+          members.find((m) => gateRelayStoryLink(candidates[i].link, m) !== '') ?? members[0];
+      }
+    } catch { /* best-effort — unresolved sources fail closed at the builder */ }
+
     const eventEntries = [];
     for (const candidate of candidates) {
       for (const event of buildWatchlistStoryEvents([candidate], tickerDictionary, scoreMin)) {
-        eventEntries.push({ event, sourceKey: `story:sources:v1:${candidate.hash}` });
+        eventEntries.push({ event });
       }
-    }
-
-    if (eventEntries.length > 0) {
-      try {
-        const srcResults = await upstashPipeline(
-          eventEntries.map(({ sourceKey }) => ['SMEMBERS', sourceKey]),
-        );
-        for (let i = 0; i < eventEntries.length; i++) {
-          const arr = srcResults[i]?.result;
-          if (Array.isArray(arr) && typeof arr[0] === 'string') eventEntries[i].event.payload.source = arr[0];
-        }
-      } catch { /* best-effort */ }
     }
 
     const events = eventEntries.map(({ event }) => event);
