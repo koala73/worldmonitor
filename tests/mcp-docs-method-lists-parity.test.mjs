@@ -12,6 +12,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
 
 const handler = read('api/mcp/handler.ts');
+const CANONICAL_MCP_ENDPOINT = new URL('https://worldmonitor.app/mcp');
+const MCP_TRANSPORT_PATHS = new Set(['/mcp', '/api/mcp']);
 
 const publicMethodsBlock = handler.match(/const PUBLIC_MCP_METHODS[^=]*= new Set\(\[([\s\S]*?)\]\)/);
 assert.ok(publicMethodsBlock, 'PUBLIC_MCP_METHODS literal not found in api/mcp/handler.ts');
@@ -33,6 +35,18 @@ function assertNames(file, marker, methods) {
   }
 }
 
+function publishedMcpTransportUrls(content) {
+  return [...content.matchAll(/https?:\/\/[^\s`<>"')\]]+/g)]
+    .flatMap(([value]) => {
+      try {
+        return [new URL(value)];
+      } catch {
+        return [];
+      }
+    })
+    .filter((url) => MCP_TRANSPORT_PATHS.has(url.pathname));
+}
+
 describe('MCP docs method lists match api/mcp/handler.ts', () => {
   it('publishes only the canonical product transport endpoint', () => {
     for (const file of [
@@ -41,14 +55,21 @@ describe('MCP docs method lists match api/mcp/handler.ts', () => {
       'docs/zh/usage-quickstart.mdx',
       'docs/zh/mcp-overview.mdx',
     ]) {
-      const content = read(file);
-      assert.ok(content.includes('https://worldmonitor.app/mcp'), `${file}: canonical MCP endpoint missing`);
-      assert.doesNotMatch(
-        content,
-        /https:\/\/(?:api|www|tech|finance|commodity|happy|energy)\.worldmonitor\.app\/(?:api\/)?mcp/,
-        `${file}: retired MCP alias published`,
+      const endpoints = publishedMcpTransportUrls(read(file));
+      assert.ok(
+        endpoints.some((url) => url.href === CANONICAL_MCP_ENDPOINT.href),
+        `${file}: canonical MCP endpoint missing`,
+      );
+      assert.ok(
+        endpoints.every((url) => url.href === CANONICAL_MCP_ENDPOINT.href),
+        `${file}: non-canonical MCP endpoint published`,
       );
     }
+  });
+
+  it('does not accept a canonical endpoint embedded in another URL', () => {
+    const endpoints = publishedMcpTransportUrls('https://untrusted.example/?target=https://worldmonitor.app/mcp');
+    assert.deepEqual(endpoints, []);
   });
 
   it('reads a plausible method set from the handler', () => {
