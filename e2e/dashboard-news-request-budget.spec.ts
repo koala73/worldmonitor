@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 
+import { NO_GPU_LAUNCH } from './helpers/no-gpu-launch';
+
+test.use(NO_GPU_LAUNCH);
+
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
 // What went wrong in production, measured on a live anonymous

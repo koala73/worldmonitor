@@ -4,6 +4,10 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
 import { waitForDomQuiescence, type DomQuiescenceResult } from './helpers/dom-quiescence';
 
+import { NO_GPU_LAUNCH } from './helpers/no-gpu-launch';
+
+test.use(NO_GPU_LAUNCH);
+
 /**
  * #7112 — the SVG renderer's HTML overlay must stay bounded.
  *

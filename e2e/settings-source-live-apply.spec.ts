@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 
+import { NO_GPU_LAUNCH } from './helpers/no-gpu-launch';
+
+test.use(NO_GPU_LAUNCH);
+
 /**
  * Settings → SOURCES must reach the live dashboard when the modal closes (#6380).
  *

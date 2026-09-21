@@ -1,5 +1,9 @@
 import { devices, expect, test, type Page } from '@playwright/test';
 
+import { NO_GPU_LAUNCH } from './helpers/no-gpu-launch';
+
+test.use(NO_GPU_LAUNCH);
+
 const { defaultBrowserType: mobileDefaultBrowserType, ...mobileDevice } = devices['iPhone 14 Pro Max'];
 void mobileDefaultBrowserType;
 

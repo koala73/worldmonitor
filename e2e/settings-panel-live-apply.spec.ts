@@ -1,5 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { NO_GPU_LAUNCH } from './helpers/no-gpu-launch';
+
+test.use(NO_GPU_LAUNCH);
+
 /**
  * The Settings modal must apply a panel toggle to the LIVE dashboard on Save.
  *
