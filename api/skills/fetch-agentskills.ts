@@ -3,7 +3,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error -- JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { readJsonFromUpstash, setCachedData } from '../_upstash-json.js';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp, scopedTooManyRequestsResponse } from '../../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, scopedTooManyRequestsResponse } from '../../server/_shared/rate-limit';
 
 const ALLOWED_AGENTSKILLS_HOSTS = new Set(['agentskills.io', 'www.agentskills.io', 'api.agentskills.io']);
 
@@ -72,6 +72,8 @@ export default async function handler(
   // upstream is a single public host behind a fixed three-entry allowlist and
   // the only caller is the settings skill importer, so degradation (logged by
   // checkScopedRateLimit) must not break skill import.
+  const proofDenied = checkIpScopedEdgeProof(req, corsHeaders);
+  if (proofDenied) return proofDenied;
   const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, getClientIp(req));
   if (!scoped.allowed) {
     // Shared builder, not a hand-rolled subset: it emits the IETF RateLimit-*

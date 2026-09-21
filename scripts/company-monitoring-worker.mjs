@@ -50,6 +50,22 @@ const DEFAULT_POLL_INTERVAL_MS = 5_000;
 export const COMPANY_MONITORING_CONVEX_TIMEOUT_MS = 15_000;
 export const COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS = 5_000;
 const REDIS_TIMEOUT_MS = 5_000;
+const TRANSIENT_HTTP_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_SOCKET',
+]);
+const CLAIM_FAILURE_KINDS = new Set([
+  'timeout', 'network', 'http_transient', 'http_error', 'invalid_response', 'unknown',
+]);
+
+class ControlRequestError extends Error {
+  constructor(kind, httpStatus = null) {
+    super(`Company Monitoring control request: ${kind}`);
+    this.kind = kind;
+    this.httpStatus = httpStatus;
+  }
+}
 
 if (
   COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS <
@@ -127,7 +143,18 @@ function providerCoverage(outcome) {
 function projectSubsystemHealth(value, outcomes, healthyOutcomes, fallback) {
   const outcome = outcomes.has(value?.outcome) ? value.outcome : fallback.outcome;
   const status = value?.status === 'ok' && healthyOutcomes.has(outcome) ? 'ok' : 'error';
-  return { status, outcome };
+  const failure = value?.claimFailure;
+  const claimFailure = outcome === 'claim_error' && CLAIM_FAILURE_KINDS.has(failure?.kind)
+    ? {
+      kind: failure.kind,
+      httpStatus: Number.isInteger(failure.httpStatus) && failure.httpStatus >= 400 && failure.httpStatus <= 599
+        ? failure.httpStatus : null,
+      consecutiveFailures: boundedCounter(failure.consecutiveFailures),
+      lastHealthyAt: Number.isSafeInteger(failure.lastHealthyAt) && failure.lastHealthyAt > 0
+        ? failure.lastHealthyAt : null,
+    }
+    : null;
+  return { status, outcome, ...(claimFailure ? { claimFailure } : {}) };
 }
 
 function projectWorkerHealth(input) {
@@ -326,14 +353,33 @@ function finalizeResult(execution) {
  * @returns {typeof fetch}
  */
 export function createConvexFetch(fetchImpl = globalThis.fetch) {
-  return (input, init = {}) => {
+  return async (input, init = {}) => {
     const headers = new Headers(init.headers);
     headers.set('User-Agent', 'worldmonitor-company-monitoring-worker/1.0');
-    return fetchImpl(input, {
-      ...init,
-      headers,
-      signal: init.signal ?? AbortSignal.timeout(COMPANY_MONITORING_CONVEX_TIMEOUT_MS),
-    });
+    let response;
+    try {
+      response = await fetchImpl(input, {
+        ...init,
+        headers,
+        signal: init.signal ?? AbortSignal.timeout(COMPANY_MONITORING_CONVEX_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (error?.name === 'TimeoutError') throw new ControlRequestError('timeout');
+      if (TRANSIENT_NETWORK_CODES.has(error?.cause?.code ?? error?.code)) {
+        throw new ControlRequestError('network');
+      }
+      throw error;
+    }
+    // Convex uses 560 for application failures. Let its client decode those;
+    // only known transport statuses qualify for bounded pending health.
+    if (!response.ok && response.status !== 560) {
+      await response.body?.cancel().catch(() => {});
+      throw new ControlRequestError(
+        TRANSIENT_HTTP_STATUSES.has(response.status) ? 'http_transient' : 'http_error',
+        response.status,
+      );
+    }
+    return response;
   };
 }
 
@@ -353,6 +399,7 @@ export function createConvexFetch(fetchImpl = globalThis.fetch) {
  * @param {(result: Record<string, unknown>, work: Record<string, unknown>) => Promise<void>} [options.afterExecute]
  * @param {(payload: Record<string, unknown>) => Promise<unknown>} [options.publishHealth]
  * @param {number} [options.pollIntervalMs]
+ * @param {() => number} [options.now]
  * @param {{ warn?: (...args: unknown[]) => void }} [options.logger]
  */
 export function createCompanyMonitoringWorker(options) {
@@ -367,6 +414,7 @@ export function createCompanyMonitoringWorker(options) {
     afterExecute,
     publishHealth = async () => false,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+    now = Date.now,
     logger = console,
   } = options;
   if (!client || typeof client.mutation !== 'function') throw new Error('Convex client is required');
@@ -378,6 +426,8 @@ export function createCompanyMonitoringWorker(options) {
   let pollTimer = null;
   let finishPoll = null;
   let inFlight = false;
+  let lastHealthyScanAt = null;
+  let consecutiveClaimFailures = 0;
   const counters = projectCounters({});
   const health = {
     scan: { status: 'error', outcome: 'starting' },
@@ -386,8 +436,12 @@ export function createCompanyMonitoringWorker(options) {
       : { status: 'ok', outcome: 'disabled' },
   };
 
-  const safePublish = async (subsystem, status, outcome) => {
-    health[subsystem] = { status, outcome };
+  const safePublish = async (subsystem, status, outcome, claimFailure = null) => {
+    if (subsystem === 'scan' && outcome !== 'claim_error') {
+      lastHealthyScanAt = status === 'ok' && HEALTHY_SCAN_OUTCOMES.has(outcome) ? now() : null;
+      consecutiveClaimFailures = 0;
+    }
+    health[subsystem] = { status, outcome, ...(claimFailure ? { claimFailure } : {}) };
     try {
       await publishHealth(projectWorkerHealth({
         activeSubsystem: subsystem,
@@ -399,6 +453,20 @@ export function createCompanyMonitoringWorker(options) {
     }
   };
 
+  const publishClaimError = async (kind, httpStatus = null) => {
+    counters.claimErrors += 1;
+    consecutiveClaimFailures += 1;
+    if (!['timeout', 'network', 'http_transient'].includes(kind)) lastHealthyScanAt = null;
+    const claimFailure = {
+      kind, httpStatus,
+      consecutiveFailures: boundedCounter(consecutiveClaimFailures),
+      lastHealthyAt: lastHealthyScanAt,
+    };
+    logger.warn?.('[company-monitoring-worker] scan claim failed:', claimFailure);
+    await safePublish('scan', 'error', 'claim_error', claimFailure);
+    return 'claim_error';
+  };
+
   const tick = async () => {
     if (stopping) return 'stopping';
     counters.loops += 1;
@@ -408,10 +476,11 @@ export function createCompanyMonitoringWorker(options) {
         anyApi.companyMonitoring.orchestration.claimNextWork,
         { secret, workerId },
       );
-    } catch {
-      counters.claimErrors += 1;
-      await safePublish('scan', 'error', 'claim_error');
-      return 'claim_error';
+    } catch (error) {
+      return publishClaimError(
+        error instanceof ControlRequestError ? error.kind : 'unknown',
+        error instanceof ControlRequestError ? error.httpStatus : null,
+      );
     }
 
     if (claim?.status === 'disabled' || claim?.status === 'idle') {
@@ -419,9 +488,7 @@ export function createCompanyMonitoringWorker(options) {
       return claim.status;
     }
     if (claim?.status !== 'claimed' || !claim.work) {
-      counters.claimErrors += 1;
-      await safePublish('scan', 'error', 'claim_error');
-      return 'claim_error';
+      return publishClaimError('invalid_response');
     }
 
     counters.claims += 1;

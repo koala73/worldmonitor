@@ -18,9 +18,10 @@ import { applyJmespath } from './jmespath';
 import { isSharedRestCounter, reserveQuota, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
-import { isQuotaExemptMetadataTool, toolWeight, TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, toolAccess, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
+import { buildStructuredContent } from './structured-content';
 import {
   emitTelemetry,
   principalIdForLog,
@@ -313,7 +314,9 @@ export async function dispatchToolsCall(
   // limiter (60/min) still applies as the abuse guard.
   const isMetadataTool = isQuotaExemptMetadataTool(tool);
 
-  // #6716 F1: the free-account allowance covers CACHE-BACKED tools only.
+  // The free-account allowance covers only eligible cache-backed tools.
+  // Explicit subscription tools (including sanctions cache reads) use the
+  // same classifier as the advertised catalog and are denied before metering.
   // A tool with `_execute` fans out to server/gateway.ts, which runs its own
   // checkProMcpAccess re-check that this feature deliberately does not relax
   // (see api/mcp/types.ts's `freeAccountAllowance` note). Admitting one would
@@ -325,7 +328,7 @@ export async function dispatchToolsCall(
   // from metering below: `describe_tool` has an `_execute`, but it is a purely
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
-  if (freeAccountAllowance && tool._execute && !isMetadataTool && tool._freeTier !== true) {
+  if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
     return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
   }
 
@@ -432,7 +435,7 @@ export async function dispatchToolsCall(
     // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
     // so we can report `bytes_pre_jmespath` separately from the projected
     // size.
-    const { text: projectedText, failed } = applyJmespath(result, jmespathArg);
+    const { text: projectedText, value: projectedValue, failed } = applyJmespath(result, jmespathArg);
     // Attribution accompaniment. A projection can detach a redistribution-
     // permitted value from the licence fields sitting beside it in the
     // unprojected payload, so a licence-bearing tool declares an extraction
@@ -502,14 +505,26 @@ export async function dispatchToolsCall(
       const hint = jmespathUsed
         ? 'Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.'
         : 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.';
-      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify({
+      const envelope = {
         _budget_exceeded: true,
         budget_bytes: budget,
         actual_bytes: textBytes,
         hint,
-      }) }] }, corsHeaders);
+      };
+      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope }, corsHeaders);
     }
-    return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
+    // Every tool advertises an `outputSchema`, so a strict client rejects a
+    // result without `structuredContent` before the model sees it (#8328). A
+    // soft-fail envelope is already an object in its own advertised branch. A
+    // payload reshaped by the caller — a `jmespath` projection, or a cache
+    // tool's `summary: true`, which turns lists into `{count, sample}` — is no
+    // longer the documented shape and is carried under `projection`.
+    const summaryUsed = tool._execute === undefined && argBool(p.arguments?.summary);
+    const structuredContent = buildStructuredContent(projectedValue, {
+      reshaped: failed === undefined && (jmespathUsed || summaryUsed),
+      rider,
+    });
+    return rpcOk(id, { content: [{ type: 'text', text }], structuredContent }, corsHeaders);
   } catch (err: unknown) {
     // `latency_ms` is time-in-tool (from tStart, captured after the quota
     // reservation) so the P95 error-path dashboard isn't skewed by reservation

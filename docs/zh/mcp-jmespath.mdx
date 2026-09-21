@@ -17,6 +17,7 @@ description: "使用 JMESPath 投影表达式将 MCP 响应载荷体积精简 80
   - 投影输出：≤ **256 KB**。
 
   失败会在正常结果信封内返回 `{ _jmespath_error, original_keys, ... }`——工具调用在 JSON-RPC 层仍然成功（不会 `isError: true`），而 `original_keys` 回显未投影响应的顶层键名，让模型能在下一次调用中自我修正。
+- **投影会出现在两个位置。** `result.content[0].text` 中是投影后的值，与下文示例完全一致。`result.structuredContent` 中是同一个值，包装为 `{ "projection": <值> }`，因为该字段必须是 JSON 对象，而投影可能是数字、字符串、数组或 `null`。
 
 下面用到的三种响应结构是 `tests/fixtures/jmespath-samples/` 下抓取的固件（会定期对生产 MCP 端点重新抓取）。它们是故意挑选的——大（~100 KB，使用 `limit: 0`）、中（~30 KB）、小（~10 KB）——以覆盖你实际会投影的各种大小档位。
 

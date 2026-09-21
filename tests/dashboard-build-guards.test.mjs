@@ -49,7 +49,7 @@ function runGuardProbe(expectBuiltOutput) {
     if (expectBuiltOutput) env.WM_EXPECT_BUILT_OUTPUT = '1';
     else delete env.WM_EXPECT_BUILT_OUTPUT;
 
-    const result = spawnSync(process.execPath, ['--test', probePath], {
+    const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', probePath], {
       cwd: repoRoot,
       encoding: 'utf8',
       env,
@@ -240,10 +240,22 @@ describe('built-output guard contract', () => {
   it('fails the built-output suite when CI expects output but it is missing', () => {
     const result = runGuardProbe(true);
 
+    // CI uses Node 24: a guard failure must fail the process as well as the
+    // suite. The probe selects TAP explicitly because Node 24 defaults to spec.
     assert.notEqual(result.status, 0, result.output);
+    assert.match(
+      result.output,
+      /^not ok 1 - built-output guard probe$/m,
+      `the probe suite must be reported as failed:\n${result.output}`,
+    );
+    assert.match(
+      result.output,
+      /missing but WM_EXPECT_BUILT_OUTPUT=1 indicates CI expected a build/,
+      `the failure must come from the guard, not an unrelated crash:\n${result.output}`,
+    );
+    assert.notEqual(result.status, null, 'the probe process must not have been killed by a signal');
     assert.equal(result.loaded, true, 'the probe module should load');
     assert.equal(result.suite, true, 'the suite callback should run when CI expects built output');
     assert.equal(result.assertion, false, 'the assertion must not run after the guard fails');
-    assert.match(result.output, /WM_EXPECT_BUILT_OUTPUT=1/);
   });
 });
