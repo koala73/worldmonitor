@@ -2220,3 +2220,153 @@ describe('status-qualifier gate on the email brief (Sep 20 "former President Tru
     assert.equal(cache.store.size, 0);
   });
 });
+
+describe('stitching-phrase gate on the email brief (Sep 20 "This development comes as")', () => {
+  // Distinctive from the status-qualifier suite: "Former President" is in
+  // the headline, so that gate PASSES. The glue sentence must still drop.
+  const pool = [
+    { hash: 'a1b2c3d4e5f6a1b2', headline: 'Iran war live: Tehran sets terms for peace; Saudi forces foil Riyadh attack', threatLevel: 'critical', category: 'Conflict', country: 'Iran', source: 'Al Jazeera' },
+    { hash: 'b2c3d4e5f6a1b2c3', headline: 'Former President Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints', threatLevel: 'critical', category: 'Geopolitics', country: 'United States', source: 'gCaptain' },
+    { hash: 'c3d4e5f6a1b2c3d4', headline: "'Abhorrent acts' — Russian forces committed widespread sexual violence in Ukraine since full-scale invasion, UN reports", threatLevel: 'critical', category: 'Humanitarian', country: 'Ukraine', source: 'Kyiv Independent' },
+  ];
+  const conflictThread = { tag: 'Conflict', teaser: 'Iran outlines peace terms, including an end to Saudi military actions and sanctions relief.' };
+  const iranLead =
+    'Good morning. Iran has declared its terms for peace, demanding a complete cessation of Saudi-led military operations and the lifting of all sanctions, following an attempted attack on Riyadh that Saudi forces claim to have foiled.';
+  const capturedStitch =
+    'This development comes as former President Trump returns to the UN, with the ongoing conflict in the Persian Gulf spreading to critical shipping chokepoints, directly impacting global trade and energy security.';
+  const capturedLead = `${iranLead} ${capturedStitch}`;
+  const groundedJson = JSON.stringify({
+    lead: iranLead,
+    threads: [conflictThread],
+    signals: ['Watch for Hormuz closure threats.'],
+  });
+
+  it('REGRESSION (captured lead): drops "This development comes as" even when former is grounded', () => {
+    const out = validateDigestProseShape({ lead: capturedLead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('drops the "This development occurs as" near-miss the prompt list does not name', () => {
+    const lead = `${iranLead} This development occurs as former President Trump returns to the UN amid shipping attacks.`;
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('drops each remaining stem as its own sentence', () => {
+    const cases = [
+      'Meanwhile former President Trump returns to the UN.',
+      'At the same time former President Trump returns to the UN.',
+      'In other news former President Trump returns to the UN.',
+      'Fighting continued elsewhere as former President Trump returns to the UN.',
+      'On another front former President Trump returns to the UN.',
+      'In a separate development former President Trump returns to the UN.',
+    ];
+    for (const stitch of cases) {
+      const out = validateDigestProseShape({ lead: `${iranLead} ${stitch}`, threads: [conflictThread] }, pool);
+      assert.ok(out, stitch);
+      assert.equal(out.lead, iranLead, stitch);
+    }
+  });
+
+  it('rejects when dropping the stitch would leave the lead under 40 characters', () => {
+    const lead = 'Watch Hormuz today. This development comes as former President Trump returns to the UN amid shipping attacks.';
+    assert.equal(validateDigestProseShape({ lead, threads: [conflictThread] }, pool), null);
+  });
+
+  it('rejects a lead whose only sentence is a stitch', () => {
+    const lead = 'This development comes as former President Trump returns to the UN amid shipping chokepoint attacks across the Persian Gulf.';
+    assert.equal(validateDigestProseShape({ lead, threads: [conflictThread] }, pool), null);
+  });
+
+  it('keeps the prior sentence when a stitch is glued after U.N. or U.S.', () => {
+    // LEAD_SENTENCE_SPLIT does not break after a dotted initialism, so the
+    // stitch would otherwise sit in the same entry as the true first sentence
+    // and take the whole lead with it.
+    const cases = ['U.N.', 'U.S.'];
+    for (const initialism of cases) {
+      const lead =
+        `Iran has declared its terms for peace after Saudi forces foiled a Riyadh attack, speaking at the ${initialism} This development comes as former President Trump returns to the UN amid shipping attacks.`;
+      const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+      assert.ok(out, initialism);
+      assert.equal(
+        out.lead,
+        `Iran has declared its terms for peace after Saudi forces foiled a Riyadh attack, speaking at the ${initialism}`,
+        initialism,
+      );
+    }
+  });
+
+  it('does not split "U.S. Navy" just because the next word is capitalized', () => {
+    const lead =
+      'Iran has declared its terms for peace after the U.S. Navy foiled an attack on Riyadh that Saudi forces also reported.';
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, lead);
+  });
+
+  it('does not treat "becomes as" as the "comes as" stem', () => {
+    const lead = 'Iran has declared its terms for peace after Saudi forces foiled an attack on Riyadh, and the ceasefire proposal becomes as important as the military picture for Gulf shipping.';
+    const out = validateDigestProseShape({ lead, threads: [conflictThread] }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, lead);
+  });
+
+  it('leaves a stitching teaser in place — the gate is lead-only', () => {
+    const out = validateDigestProseShape({
+      lead: iranLead,
+      threads: [
+        conflictThread,
+        { tag: 'Diplomacy', teaser: 'Meanwhile former President Trump returns to the UN as shipping attacks spread.' },
+      ],
+    }, pool);
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+    assert.deepEqual(out.threads.map((t) => t.tag), ['Conflict', 'Diplomacy']);
+  });
+
+  it('repairs a stitched lead even without a stories pool', () => {
+    const out = validateDigestProseShape({ lead: capturedLead, threads: [conflictThread] });
+    assert.ok(out);
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('generateDigestProse cache hit returns the repaired lead without re-LLM', async () => {
+    const stories = pool.map((s) => story(s));
+    const cache = makeCache();
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: makeLLM(groundedJson).callLLM });
+    const key = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v9:'));
+    assert.ok(key, 'expected a digest prose cache entry');
+    cache.store.set(key, {
+      lead: capturedLead,
+      threads: [conflictThread],
+      signals: ['Watch for Hormuz closure threats.'],
+      rankedStoryHashes: [],
+    });
+    let calls = 0;
+    const retry = makeLLM(() => { calls++; return groundedJson; });
+    const out = await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: retry.callLLM });
+    assert.equal(calls, 0, 'a repairable stitch is still a cache hit');
+    assert.equal(out.lead, iranLead);
+  });
+
+  it('generateDigestProse re-LLMs when a cached stitch leaves the lead too short', async () => {
+    const stories = pool.map((s) => story(s));
+    const cache = makeCache();
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: makeLLM(groundedJson).callLLM });
+    const key = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v9:'));
+    assert.ok(key, 'expected a digest prose cache entry');
+    cache.store.set(key, {
+      lead: 'This development comes as former President Trump returns to the UN amid shipping chokepoint attacks across the Persian Gulf.',
+      threads: [conflictThread],
+      signals: ['Watch for Hormuz closure threats.'],
+      rankedStoryHashes: [],
+    });
+    let calls = 0;
+    const retry = makeLLM(() => { calls++; return groundedJson; });
+    const out = await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: retry.callLLM });
+    assert.equal(calls, 1, 'an irreparable stitch must be treated as a miss');
+    assert.equal(out.lead, iranLead);
+  });
+});

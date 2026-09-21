@@ -478,9 +478,13 @@ rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"
 and weak stitching phrases such as "this comes as" or "meanwhile", requires
 substantive linkage before a lead combines two stories, and validates cache
-hits and fresh outputs through the same shape and proper-noun grounding gate.
-Per-story prompts also require named actors where possible and can use the RSS
-description as grounding context.
+hits and fresh outputs through the same shape, proper-noun grounding,
+status-qualifier, and stitching-phrase gates. The stitching-phrase gate
+matches stems (`comes as`, `occurs as`, `meanwhile`) rather than the prompt's
+exact variants, drops the offending lead sentence, and rejects the digest
+when the surviving lead falls under 40 characters. Per-story prompts also
+require named actors where possible and can use the RSS description as grounding
+context.
 
 ## Bias Posture
 

@@ -53,6 +53,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/mcp-live-smoke.mjs'
+      - 'scripts/mcp-smoke-http.mjs'
       - 'scripts/mcp-proxy-live-smoke.mjs'
       - 'scripts/mcp-schema-wire-check.mjs'
       - '.github/workflows/mcp-live-smoke.yml'
@@ -88,8 +89,9 @@ jobs:
       group: mcp-live-smoke-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # ~40 requests × 15s worst-case timeout each ≈ 10min absolute ceiling;
-    # nominal runs finish in well under a minute.
+    # The smoke run itself stops after 10 minutes, reserving two minutes for
+    # report persistence and artifact upload. Nominal runs finish in well under
+    # a minute.
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -114,4 +116,14 @@ jobs:
       # or earlier than the commit that triggered it, so treat green as "the
       # production surface is healthy now", NOT as "this deployment is good".
       - name: Live MCP production smoke
-        run: node scripts/mcp-live-smoke.mjs
+        env:
+          MCP_SMOKE_RUN_BUDGET_MS: '600000'
+        run: node scripts/mcp-live-smoke.mjs --report "$RUNNER_TEMP/mcp-live-smoke-report.json"
+      - name: Upload MCP smoke report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mcp-live-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mcp-live-smoke-report.json
+          if-no-files-found: error
+          retention-days: 14

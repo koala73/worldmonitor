@@ -625,6 +625,12 @@ export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
  * grounding check, preserving the original 1-arg behavior for
  * callers that don't have the source pool in hand.
  *
+ * #8438: always drops lead sentences that match a banned stitching
+ * stem (`comes as`, `occurs as`, `meanwhile`, …). The prompt already
+ * listed exact variants and 24/24 production-prompt samples still
+ * opened with "This development comes as" or "occurs as". The gate
+ * is stem-keyed, not variant-keyed, and does not need a stories pool.
+ *
  * @param {unknown} obj
  * @param {Array<{ headline?: string }>} [stories]  source pool used to
  *   ground-check the lead. Optional for back-compat.
@@ -676,6 +682,18 @@ export function validateDigestProseShape(obj, stories) {
     .filter((x) => x.length >= 4)
     .slice(0, MAX_STORIES_PER_USER * 2);
 
+  // Stitching-phrase repair is a shape gate: the stems are banned
+  // connectives, not claims that need a stories pool. Run it before
+  // the status-qualifier / grounding block so a glue sentence that
+  // also carries a fabricated qualifier is dropped once, for the
+  // connective, even when the qualifier would have been licensed.
+  const stitch = repairLeadStitchingPhrases(lead);
+  if (stitch.dropped.length > 0) {
+    console.warn(`[brief-llm] stitching-phrase gate: dropped lead sentence(s) (${stitch.dropped.join(' | ')})`);
+  }
+  lead = stitch.lead;
+  if (lead.length < 40) return null;
+
   // Status-qualifier repair, then the v5 grounding gate. Run AFTER
   // shape normalisation so the synthesis we evaluate is the same shape
   // the renderer would see — both inspect `lead` and `threads[].teaser`,
@@ -694,7 +712,9 @@ export function validateDigestProseShape(obj, stories) {
       return check.ok;
     });
     if (threads.length < 1) return null;
-    const groundingOpts = repaired.dropped.length > 0 ? { combinedThreshold: 1 } : {};
+    const groundingOpts = (repaired.dropped.length > 0 || stitch.dropped.length > 0)
+      ? { combinedThreshold: 1 }
+      : {};
     if (!checkLeadGrounding({ lead, threads }, stories, MAX_STORIES_PER_USER, groundingOpts)) return null;
   }
 
@@ -709,6 +729,47 @@ function storyGroundText(story) {
 }
 
 const LEAD_SENTENCE_SPLIT = /(?<=(?<!\b\p{Lu})[.!?])\s+/u;
+
+// Stem list, not the prompt's exact variants. "This development comes as"
+// and "This development occurs as" were the 24/24 Sep 20 near-misses;
+// listing "this comes as" / "this declaration comes as" in the prompt
+// did not catch them. Word-bounded so "becomes as" is not a hit.
+const LEAD_STITCHING_STEM_RE = /\b(?:comes as|occurs as|meanwhile|at the same time|in other news|elsewhere|on another front|in a separate development)\b/i;
+
+// LEAD_SENTENCE_SPLIT leaves "U.S. Navy" intact by not breaking after a
+// single capital + period. The same lookbehind glues a following stitch
+// sentence onto "... at the U.N. This development comes as ...". Split
+// that case only here, and only when the next words are a stitch opener,
+// so status-qualifier repair keeps the shared splitter.
+const STITCH_AFTER_INITIALISM_SPLIT =
+  /(?<=\b(?:\p{Lu}\.)+)\s+(?=(?:This|Meanwhile|Elsewhere|At the same time|In other news|On another front|In a separate development)\b)/iu;
+
+/**
+ * @param {string} lead
+ * @returns {string[]}
+ */
+function splitLeadSentencesForStitching(lead) {
+  const parts = [];
+  for (const coarse of lead.split(LEAD_SENTENCE_SPLIT)) {
+    parts.push(...coarse.split(STITCH_AFTER_INITIALISM_SPLIT));
+  }
+  return parts;
+}
+
+/**
+ * @param {string} lead
+ * @returns {{ lead: string; dropped: string[] }}
+ */
+function repairLeadStitchingPhrases(lead) {
+  if (!LEAD_STITCHING_STEM_RE.test(lead)) return { lead, dropped: [] };
+  const dropped = [];
+  const kept = [];
+  for (const sentence of splitLeadSentencesForStitching(lead)) {
+    if (LEAD_STITCHING_STEM_RE.test(sentence)) dropped.push(sentence);
+    else kept.push(sentence);
+  }
+  return { lead: kept.join(' ').trim(), dropped };
+}
 
 /**
  * @param {string} lead
@@ -958,6 +1019,11 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // model to lead with ONE primary story when two top stories aren't
   // substantively linked. v7 cache rows would otherwise serve stitched
   // leads for the full 4h TTL. Prompt content change → cache invalidation.
+  //
+  // #8438 (2026-09-21): validateDigestProseShape now drops lead sentences
+  // that match a stitching stem. Parser-only; the prompt is unchanged, so
+  // this is not a cache-generation bump. The hit path already revalidates,
+  // and a repairable stitch returns the shortened lead without a re-LLM.
   //
   // v9 (2026-09-21): bumped from v8 when the brief's prose model moved from
   // google/gemini-2.5-flash to google/gemini-3.5-flash-lite (#4944 bakeoff).

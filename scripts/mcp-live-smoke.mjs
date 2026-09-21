@@ -85,17 +85,31 @@
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
 
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { arch, platform } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
 
 import {
   collectRequiredCapabilityFailures,
   collectToolSchemaWireFailures,
 } from './mcp-schema-wire-check.mjs';
+import {
+  createTimedFetch,
+  formatSafeError,
+  safeUrlLabel,
+  validateMalformedOAuthResponse,
+} from './mcp-smoke-http.mjs';
 import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 
 const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
   .split(',').map((h) => h.trim()).filter(Boolean);
 const TIMEOUT_MS = 15_000;
+// The workflow job has a 12 minute hard limit. Keep the request walk within
+// ten minutes so normal failure handling can write its report and GitHub can
+// upload it before the job is terminated. A request is never started unless
+// its own full timeout still fits in this run budget.
+const DEFAULT_RUN_BUDGET_MS = 600_000;
 // The transport challenges an unauthenticated `initialize`; a full anonymous
 // handshake is served on the machine-discovery alias (same handler).
 const TRANSPORT_PATH = '/mcp';
@@ -106,6 +120,7 @@ const USER_AGENT = 'WorldMonitor-MCP-Smoke/1.0 (+https://worldmonitor.app; githu
 // list; growth beyond a cap trims coverage (logged), never correctness.
 const MAX_PROMPT_GETS = 6;
 const MAX_RESOURCE_READS = 6;
+const RUNNER_LABEL = 'runner';
 
 // Capability key → methods the walk exercises. A capability advertised by the
 // anonymous initialize with no mapping here fails the run — mirror of
@@ -119,38 +134,59 @@ const CAPABILITY_METHODS = {
 };
 
 const failures = [];
+const requests = [];
+const completedGroups = [];
 let checks = 0;
+let runBudgetMs = DEFAULT_RUN_BUDGET_MS;
+let runDeadlineAt = null;
+let runBudgetError = null;
+
+class RunBudgetExhaustedError extends Error {
+  constructor(remainingMs) {
+    super(`Run budget exhausted before starting another request (${Math.max(0, remainingMs)}ms remaining; requires ${TIMEOUT_MS}ms)`);
+    this.name = 'RunBudgetExhaustedError';
+    this.code = 'MCP_SMOKE_RUN_BUDGET_EXHAUSTED';
+  }
+}
+
+function completeGroup(group) {
+  completedGroups.push(group);
+}
+
+function throwIfRunBudgetExhausted(error) {
+  if (error?.code === 'MCP_SMOKE_RUN_BUDGET_EXHAUSTED') throw error;
+}
+
+function stopIfRunBudgetExhausted() {
+  if (runBudgetError) throw runBudgetError;
+}
 
 function fail(host, check, detail) {
-  failures.push({ host, check, detail });
-  console.log(`  ✖ [${host}] ${check}: ${detail}`);
+  const safeHost = host === RUNNER_LABEL ? RUNNER_LABEL : safeUrlLabel(host);
+  failures.push({ host: safeHost, check, detail });
+  console.log(`  ✖ [${safeHost}] ${check}: ${detail}`);
 }
 
 function ok(host, check, detail = '') {
-  console.log(`  ✔ [${host}] ${check}${detail ? ` — ${detail}` : ''}`);
+  console.log(`  ✔ [${safeUrlLabel(host)}] ${check}${detail ? ` — ${detail}` : ''}`);
 }
 
 // Fetch with a hard timeout spanning the WHOLE exchange including body read.
-// The AbortSignal is wired into fetch, so aborting mid-body rejects the
-// text() promise — clearing the timer only after the body is consumed is what
-// turns a stalled-body response into a fast HANG failure instead of a job
-// that idles until the workflow timeout.
-async function timedFetch(url, init = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const started = Date.now();
-  try {
-    const res = await fetch(url, {
-      redirect: 'manual',
-      ...init,
-      headers: { 'User-Agent': USER_AGENT, ...(init.headers ?? {}) },
-      signal: controller.signal,
-    });
-    const text = await res.text();
-    return { res, text, ms: Date.now() - started };
-  } finally {
-    clearTimeout(timer);
+// The helper records one safe, bounded result for every attempted request,
+// including failures before headers and failures while consuming a body.
+const requestTimedFetch = createTimedFetch({
+  deadlineMs: TIMEOUT_MS,
+  userAgent: USER_AGENT,
+  onRecord: (record) => requests.push(record),
+});
+
+async function timedFetch(...args) {
+  const remainingMs = runDeadlineAt === null ? 0 : runDeadlineAt - Date.now();
+  if (remainingMs < TIMEOUT_MS) {
+    runBudgetError ??= new RunBudgetExhaustedError(remainingMs);
+    throw runBudgetError;
   }
+  return requestTimedFetch(...args);
 }
 
 let nextId = 1;
@@ -170,9 +206,10 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
-    }));
+    }, { group: 'rpc', rpcMethod: method }));
   } catch (err) {
-    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
     return null;
   }
   if (res.status !== expectStatus) {
@@ -200,7 +237,7 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
     return null;
   }
   if (body.error) {
-    fail(host, check, `JSON-RPC error: ${JSON.stringify(body.error)}`);
+    fail(host, check, 'JSON-RPC error response');
     return null;
   }
   ok(host, check, `${ms}ms`);
@@ -225,9 +262,10 @@ async function probeConnectChallenge(host) {
         jsonrpc: '2.0', id, method: 'initialize',
         params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'wm-mcp-live-smoke', version: '1.0' } },
       }),
-    }));
+    }, { group: 'rpc', rpcMethod: 'initialize' }));
   } catch (err) {
-    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
     return;
   }
   if (res.status !== 401) {
@@ -262,7 +300,7 @@ async function probeStatelessKeylessList(host) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list' }),
-    });
+    }, { group: 'rpc', rpcMethod: 'tools/list' });
     if (res.status !== 200) {
       fail(host, check, `expected HTTP 200, got ${res.status} — this breaks every installed worldmonitor CLI/SDK, which lists tools without a key`);
       return;
@@ -275,7 +313,8 @@ async function probeStatelessKeylessList(host) {
     }
     ok(host, check, `${ms}ms, ${body.result.tools.length} tools`);
   } catch (err) {
-    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
   }
 }
 
@@ -299,7 +338,7 @@ async function probeStructuredContent(host) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'get_sources', arguments: args } }),
-      });
+      }, { group: 'rpc', rpcMethod: 'tools/call' });
       if (res.status === 429) {
         // The free tool has its own 10/min/IP ceiling, and a shared CI egress
         // IP can legitimately hit it. That is not a missing-field regression.
@@ -326,13 +365,14 @@ async function probeStructuredContent(host) {
       }
       ok(host, check, `${ms}ms`);
     } catch (err) {
-      fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${err?.name ?? err}`);
+      throwIfRunBudgetExhausted(err);
+      fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
     }
   }
 }
 
 async function walkHost(host) {
-  console.log(`\n── ${host} ──`);
+  console.log(`\n── ${safeUrlLabel(host)} ──`);
 
   await probeConnectChallenge(host);
   await probeStatelessKeylessList(host);
@@ -389,7 +429,7 @@ async function walkHost(host) {
           await rpc(host, 'prompts/get', { name: prompt.name, arguments: args }, { label: `prompts/get(${prompt.name})` });
         }
         if (prompts.length > MAX_PROMPT_GETS) {
-          console.log(`  ℹ [${host}] prompts/get walk capped at ${MAX_PROMPT_GETS} of ${prompts.length} prompts (request budget)`);
+          console.log(`  ℹ [${safeUrlLabel(host)}] prompts/get walk capped at ${MAX_PROMPT_GETS} of ${prompts.length} prompts (request budget)`);
         }
       } else if (method === 'resources/list') {
         resourcesList = await rpc(host, 'resources/list', {});
@@ -402,10 +442,10 @@ async function walkHost(host) {
       } else if (method === 'resources/read') {
         const resources = resourcesList?.resources ?? [];
         for (const resource of resources.slice(0, MAX_RESOURCE_READS)) {
-          await rpc(host, 'resources/read', { uri: resource.uri }, { label: `resources/read(${resource.uri})` });
+          await rpc(host, 'resources/read', { uri: resource.uri }, { label: 'resources/read' });
         }
         if (resources.length > MAX_RESOURCE_READS) {
-          console.log(`  ℹ [${host}] resources/read walk capped at ${MAX_RESOURCE_READS} of ${resources.length} resources (request budget)`);
+          console.log(`  ℹ [${safeUrlLabel(host)}] resources/read walk capped at ${MAX_RESOURCE_READS} of ${resources.length} resources (request budget)`);
         }
       } else if (method === 'logging/setLevel') {
         await rpc(host, 'logging/setLevel', { level: 'info' });
@@ -428,12 +468,13 @@ async function walkHost(host) {
   try {
     const { res, text } = await timedFetch(`${host}/.well-known/oauth-authorization-server`, {
       headers: { Accept: 'application/json' },
-    });
+    }, { group: 'oauth' });
     if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
     meta = JSON.parse(text);
     ok(host, 'oauth metadata', 'served');
   } catch (err) {
-    fail(host, 'oauth metadata', `not served: ${err?.message ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'oauth metadata', `not served: ${formatSafeError(err)}`);
     return;
   }
   for (const key of ['registration_endpoint', 'token_endpoint']) {
@@ -444,20 +485,17 @@ async function walkHost(host) {
       continue;
     }
     try {
-      const { res, ms } = await timedFetch(endpoint, {
+      const { res, text, ms } = await timedFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{', // malformed on purpose: reaches the origin, registers nothing
-      });
-      if (res.status >= 300 && res.status < 400) {
-        fail(host, `oauth ${key}`, `POST answered ${res.status} redirect → ${res.headers.get('location')} — a redirected POST becomes a GET and OAuth dies with 405 (#4938)`);
-      } else if (res.status === 405) {
-        fail(host, `oauth ${key}`, 'POST answered 405 — endpoint not accepting POST (#4938 fingerprint)');
-      } else {
-        ok(host, `oauth ${key}`, `POST reaches origin (HTTP ${res.status}, ${ms}ms)`);
-      }
+      }, { group: 'oauth' });
+      const result = validateMalformedOAuthResponse(res, text);
+      if (!result.ok) fail(host, `oauth ${key}`, `${result.detail} (${ms}ms)`);
+      else ok(host, `oauth ${key}`, `POST reaches origin (${result.detail}, ${ms}ms)`);
     } catch (err) {
-      fail(host, `oauth ${key}`, `HANG/transport error: ${err?.name ?? err}`);
+      throwIfRunBudgetExhausted(err);
+      fail(host, `oauth ${key}`, `HANG/transport error: ${formatSafeError(err)}`);
     }
   }
 }
@@ -469,7 +507,7 @@ async function probeDiscovery(host) {
   // Plain GET /mcp — the "can Google read this?" shape.
   checks += 1;
   try {
-    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } });
+    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'discovery' });
     if (res.status !== 200) {
       fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
     } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
@@ -486,7 +524,8 @@ async function probeDiscovery(host) {
       ok(host, 'GET /mcp (crawler)', '200 markdown guide');
     }
   } catch (err) {
-    fail(host, 'GET /mcp (crawler)', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'GET /mcp (crawler)', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   // HEAD must expose the same discovery metadata without a response body.
@@ -497,7 +536,7 @@ async function probeDiscovery(host) {
     const { res } = await timedFetch(`${host}/mcp`, {
       method: 'HEAD',
       headers: { Accept: 'text/html,*/*' },
-    });
+    }, { group: 'discovery' });
     if (res.status !== 200) {
       fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
     } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
@@ -514,13 +553,14 @@ async function probeDiscovery(host) {
       ok(host, 'HEAD /mcp (crawler)', '200 markdown metadata');
     }
   } catch (err) {
-    fail(host, 'HEAD /mcp (crawler)', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'HEAD /mcp (crawler)', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   // The canary: an SSE stream-open on the URL just warmed must still be 405.
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/event-stream' } });
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/event-stream' } }, { group: 'discovery' });
     if (res.status !== 405) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT'
         ? ' from a CDN cache HIT — the discovery 200 is being replayed to transport clients (missing/ignored Vary)'
@@ -530,14 +570,15 @@ async function probeDiscovery(host) {
       ok(host, 'GET /mcp (SSE stream open)', '405 preserved after a discovery GET');
     }
   } catch (err) {
-    fail(host, 'GET /mcp (SSE stream open)', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'GET /mcp (SSE stream open)', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   // Same contract on the well-known manifest, which IS cacheable and so
   // depends on Vary rather than no-store.
   checks += 1;
   try {
-    const { res, text } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'application/json' } });
+    const { res, text } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'application/json' } }, { group: 'discovery' });
     if (res.status !== 200) {
       fail(host, 'GET /.well-known/mcp', `expected 200, got ${res.status}`);
     // `(?!-)` is load-bearing: `-` is a word boundary, so a naive /\bAccept\b/
@@ -552,12 +593,13 @@ async function probeDiscovery(host) {
       ok(host, 'GET /.well-known/mcp', 'cacheable card, correctly varied');
     }
   } catch (err) {
-    fail(host, 'GET /.well-known/mcp', `not served or not JSON: ${err?.message ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'GET /.well-known/mcp', `not served or not JSON: ${formatSafeError(err)}`);
   }
 
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'text/event-stream' } });
+    const { res } = await timedFetch(`${host}/.well-known/mcp`, { headers: { Accept: 'text/event-stream' } }, { group: 'discovery' });
     if (res.status !== 405) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT'
         ? ' from a CDN cache HIT — the manifest is being replayed to transport clients'
@@ -567,14 +609,15 @@ async function probeDiscovery(host) {
       ok(host, '/.well-known/mcp (SSE stream open)', '405 preserved after a manifest GET');
     }
   } catch (err) {
-    fail(host, '/.well-known/mcp (SSE stream open)', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, '/.well-known/mcp (SSE stream open)', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
   try {
     const { res } = await timedFetch(`${host}/.well-known/mcp`, {
       headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
-    });
+    }, { group: 'discovery' });
     if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
       fail(host, '/.well-known/mcp (replay-shaped GET)', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
@@ -582,7 +625,8 @@ async function probeDiscovery(host) {
       ok(host, '/.well-known/mcp (replay-shaped GET)', '401 preserved after a manifest GET');
     }
   } catch (err) {
-    fail(host, '/.well-known/mcp (replay-shaped GET)', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, '/.well-known/mcp (replay-shaped GET)', `HANG/transport error: ${formatSafeError(err)}`);
   }
 }
 
@@ -624,10 +668,10 @@ const VARIANT_HOSTS = (process.env.MCP_SMOKE_VARIANT_HOSTS
 async function probeVariantCanonical(host) {
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } });
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'variant' });
     const location = res.headers.get('location');
     if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
-      fail(host, 'GET /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${location}`);
+      fail(host, 'GET /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${safeUrlLabel(location)}`);
     } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
       fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
     } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
@@ -636,7 +680,8 @@ async function probeVariantCanonical(host) {
       ok(host, 'GET /mcp → apex canonical', '308');
     }
   } catch (err) {
-    fail(host, 'GET /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'GET /mcp → apex canonical', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
@@ -644,10 +689,10 @@ async function probeVariantCanonical(host) {
     const { res } = await timedFetch(`${host}/mcp`, {
       method: 'HEAD',
       headers: { Accept: 'text/html,*/*' },
-    });
+    }, { group: 'variant' });
     const location = res.headers.get('location');
     if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
-      fail(host, 'HEAD /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${location}`);
+      fail(host, 'HEAD /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${safeUrlLabel(location)}`);
     } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
       fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
     } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
@@ -656,12 +701,13 @@ async function probeVariantCanonical(host) {
       ok(host, 'HEAD /mcp → apex canonical', '308');
     }
   } catch (err) {
-    fail(host, 'HEAD /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'HEAD /mcp → apex canonical', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
   try {
-    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'Text/Event-Stream' } });
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'Text/Event-Stream' } }, { group: 'variant' });
     if (res.status !== 405) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
       fail(host, 'GET /mcp SSE stays on variant', `expected 405, got ${res.status}${cached}`);
@@ -669,14 +715,15 @@ async function probeVariantCanonical(host) {
       ok(host, 'GET /mcp SSE stays on variant', '405 preserved after cached canonical redirect');
     }
   } catch (err) {
-    fail(host, 'GET /mcp SSE stays on variant', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'GET /mcp SSE stays on variant', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
   try {
     const { res } = await timedFetch(`${host}/mcp`, {
       headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
-    });
+    }, { group: 'variant' });
     if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
       fail(host, 'GET /mcp replay stays on variant', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
@@ -684,7 +731,8 @@ async function probeVariantCanonical(host) {
       ok(host, 'GET /mcp replay stays on variant', '401 preserved after cached canonical redirect');
     }
   } catch (err) {
-    fail(host, 'GET /mcp replay stays on variant', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'GET /mcp replay stays on variant', `HANG/transport error: ${formatSafeError(err)}`);
   }
 
   checks += 1;
@@ -693,33 +741,106 @@ async function probeVariantCanonical(host) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} }),
-    });
+    }, { group: 'variant', rpcMethod: 'ping' });
     if (res.status >= 300 && res.status < 400) {
-      fail(host, 'POST /mcp stays on host', `POST answered ${res.status} → ${res.headers.get('location')} — a redirected POST becomes a GET and the handshake dies (#4938)`);
+      fail(host, 'POST /mcp stays on host', `POST answered ${res.status} → ${safeUrlLabel(res.headers.get('location'))} — a redirected POST becomes a GET and the handshake dies (#4938)`);
     } else if (res.status !== 200) {
       fail(host, 'POST /mcp stays on host', `expected 200 ping, got ${res.status}`);
     } else {
       ok(host, 'POST /mcp stays on host', '200 — handshake not canonicalized');
     }
   } catch (err) {
-    fail(host, 'POST /mcp stays on host', `HANG/transport error: ${err?.name ?? err}`);
+    throwIfRunBudgetExhausted(err);
+    fail(host, 'POST /mcp stays on host', `HANG/transport error: ${formatSafeError(err)}`);
   }
 }
 
-for (const host of HOSTS) {
-  await walkHost(host);
-  await probeDiscovery(host);
-  await probeMcpProxy(host);
+function reportPathFromArgs(args) {
+  let reportPath = null;
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--report') throw new Error(`Unknown argument: ${args[index]}`);
+    if (reportPath !== null || !args[index + 1]) throw new Error('--report requires exactly one path');
+    reportPath = args[index + 1];
+    index += 1;
+  }
+  return reportPath;
 }
 
-console.log('\n── variant canonicalization ──');
-for (const host of VARIANT_HOSTS) {
-  await probeVariantCanonical(host);
+function checkedOutSha() {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
 }
 
-console.log(`\n${checks} checks across ${HOSTS.length} host(s); ${failures.length} failure(s).`);
-if (failures.length > 0) {
-  console.log('\nFAILURES:');
-  for (const f of failures) console.log(`  [${f.host}] ${f.check}: ${f.detail}`);
-  process.exit(1);
+function writeReport(reportPath, completedAllGroups) {
+  if (!reportPath) return true;
+  const report = {
+    version: 'mcp_live_smoke_report/v1',
+    runId: process.env.GITHUB_RUN_ID ?? null,
+    attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    checkedOutSha: checkedOutSha(),
+    nodeVersion: process.version,
+    undiciVersion: process.versions.undici ?? null,
+    os: platform(),
+    architecture: arch(),
+    checks: { total: checks, failures: failures.length },
+    completedAllGroups,
+    completedGroups,
+    failures,
+    requests,
+  };
+  try {
+    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    console.log(`MCP smoke report: ${reportPath}`);
+    return true;
+  } catch (error) {
+    console.error(`Unable to write MCP smoke report: ${formatSafeError(error)}`);
+    return false;
+  }
 }
+
+async function main() {
+  let completedAllGroups = false;
+  let reportPath = null;
+  try {
+    reportPath = reportPathFromArgs(process.argv.slice(2));
+    runBudgetMs = Number(process.env.MCP_SMOKE_RUN_BUDGET_MS ?? DEFAULT_RUN_BUDGET_MS);
+    if (!(Number.isFinite(runBudgetMs) && runBudgetMs > 0)) {
+      throw new Error('MCP_SMOKE_RUN_BUDGET_MS must be a positive number');
+    }
+    runDeadlineAt = Date.now() + runBudgetMs;
+    for (const host of HOSTS) {
+      await walkHost(host);
+      stopIfRunBudgetExhausted();
+      completeGroup(`walk:${safeUrlLabel(host)}`);
+      await probeDiscovery(host);
+      stopIfRunBudgetExhausted();
+      completeGroup(`discovery:${safeUrlLabel(host)}`);
+      await probeMcpProxy(host);
+      stopIfRunBudgetExhausted();
+      completeGroup(`proxy:${safeUrlLabel(host)}`);
+    }
+
+    console.log('\n── variant canonicalization ──');
+    for (const host of VARIANT_HOSTS) {
+      await probeVariantCanonical(host);
+      stopIfRunBudgetExhausted();
+      completeGroup(`variant:${safeUrlLabel(host)}`);
+    }
+    completedAllGroups = true;
+  } catch (error) {
+    fail(RUNNER_LABEL, 'execution', formatSafeError(error));
+  }
+
+  console.log(`\n${checks} checks across ${HOSTS.length} host(s); ${failures.length} failure(s).`);
+  if (failures.length > 0) {
+    console.log('\nFAILURES:');
+    for (const failure of failures) console.log(`  [${failure.host}] ${failure.check}: ${failure.detail}`);
+  }
+  const reportWritten = writeReport(reportPath, completedAllGroups);
+  if (failures.length > 0 || !reportWritten) process.exitCode = 1;
+}
+
+await main();
