@@ -120,6 +120,7 @@ const USER_AGENT = 'WorldMonitor-MCP-Smoke/1.0 (+https://worldmonitor.app; githu
 // list; growth beyond a cap trims coverage (logged), never correctness.
 const MAX_PROMPT_GETS = 6;
 const MAX_RESOURCE_READS = 6;
+const RUNNER_LABEL = 'runner';
 
 // Capability key → methods the walk exercises. A capability advertised by the
 // anonymous initialize with no mapping here fails the run — mirror of
@@ -161,7 +162,7 @@ function stopIfRunBudgetExhausted() {
 }
 
 function fail(host, check, detail) {
-  const safeHost = safeUrlLabel(host);
+  const safeHost = host === RUNNER_LABEL ? RUNNER_LABEL : safeUrlLabel(host);
   failures.push({ host: safeHost, check, detail });
   console.log(`  ✖ [${safeHost}] ${check}: ${detail}`);
 }
@@ -830,7 +831,7 @@ async function main() {
     }
     completedAllGroups = true;
   } catch (error) {
-    fail('runner', 'execution', formatSafeError(error));
+    fail(RUNNER_LABEL, 'execution', formatSafeError(error));
   }
 
   console.log(`\n${checks} checks across ${HOSTS.length} host(s); ${failures.length} failure(s).`);

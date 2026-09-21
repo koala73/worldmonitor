@@ -85,7 +85,9 @@ test('the smoke CLI preserves a partial report when its whole-run budget expires
     assert.equal(report.completedAllGroups, false);
     assert.deepEqual(report.completedGroups, []);
     assert.deepEqual(report.requests, []);
-    assert.ok(report.failures.some((failure) => failure.check === 'execution'));
+    assert.deepEqual(report.failures.map((failure) => ({ host: failure.host, check: failure.check })), [
+      { host: 'runner', check: 'execution' },
+    ]);
     assert.doesNotMatch(JSON.stringify(report), new RegExp(sentinel));
     assert.doesNotMatch(stdout, new RegExp(sentinel));
   } finally {
