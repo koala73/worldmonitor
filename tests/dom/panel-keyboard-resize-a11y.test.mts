@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { Panel } from '@/components/Panel';
+import { unsafeRawHtml } from '@/utils/sanitize';
 import {
   clearPanelColSpans,
   clearPanelSpans,
@@ -63,6 +64,42 @@ describe('Panel keyboard resize accessibility', () => {
 
     expect(rowHandle?.getAttribute('aria-valuenow')).toBe('1');
     expect(colHandle?.getAttribute('aria-valuenow')).toBe('1');
+
+    panel.destroy();
+  });
+});
+
+describe('Panel scrollable content keyboard access (#8460)', () => {
+  it('makes the overflow-y:auto content region a tab stop', () => {
+    const panel = new Panel({ id: 'insights', title: 'Insights' });
+    const content = panel.getElement().querySelector('#insightsContent');
+
+    expect(content).toBeInstanceOf(HTMLElement);
+    expect((content as HTMLElement).tabIndex).toBe(0);
+
+    panel.destroy();
+  });
+
+  it('applies the same tab stop to every panel content id, not only insights', () => {
+    const panel = new Panel({ id: 'markets', title: 'Markets' });
+    const content = panel.getElement().querySelector('#marketsContent');
+
+    expect(content).toBeInstanceOf(HTMLElement);
+    expect((content as HTMLElement).tabIndex).toBe(0);
+
+    panel.destroy();
+  });
+
+  it('keeps the content region focusable after a content write', () => {
+    const panel = new Panel({ id: 'insights', title: 'Insights' });
+    panel.setSafeContentImmediate(
+      unsafeRawHtml('<p class="brief-para">brief that may wrap</p>', 'test fixture'),
+    );
+    const content = panel.getElement().querySelector('#insightsContent');
+
+    expect(content).toBeInstanceOf(HTMLElement);
+    expect((content as HTMLElement).tabIndex).toBe(0);
+    expect(content?.querySelector('.brief-para')?.textContent).toBe('brief that may wrap');
 
     panel.destroy();
   });

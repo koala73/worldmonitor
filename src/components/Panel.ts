@@ -295,6 +295,10 @@ export class Panel {
     this.content = document.createElement('div');
     this.content.className = 'panel-content';
     this.content.id = `${options.id}Content`;
+    // #8460: `.panel-content` is `overflow-y: auto`. Axe `scrollable-region-focusable`
+    // (WCAG 2.1.1) requires a keyboard path whenever that region overflows.
+    // Always-on tabIndex=0 avoids a layout read on every render (#7112, #7045).
+    this.content.tabIndex = 0;
 
     this.element.appendChild(this.header);
     this.element.appendChild(this.content);
