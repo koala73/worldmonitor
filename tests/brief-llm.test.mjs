@@ -576,10 +576,11 @@ describe('parseDigestProse', () => {
   });
 
   it('REGRESSION (#8439): Good afternoon / Good evening prefixes recover the same way', () => {
-    for (const greeting of ['Good afternoon.', 'Good evening.', 'Good morning']) {
+    for (const greeting of ['Good afternoon.', 'Good evening.', 'Good morning', 'Good night.']) {
       const out = parseDigestProse(`${greeting}\n\n${good}`);
       assert.ok(out, `must recover ${JSON.stringify(greeting)} prefix`);
-      assert.match(out.lead, /^Good (morning|afternoon|evening)\./);
+      const expectedOpen = `${greeting.trim().replace(/[.!]+$/u, '')}.`;
+      assert.equal(out.lead.startsWith(expectedOpen), true, `lead must open with ${JSON.stringify(expectedOpen)}`);
       assert.match(out.lead, /Strait of Hormuz/);
     }
   });
@@ -604,6 +605,13 @@ describe('parseDigestProse', () => {
   it('REGRESSION (#8439): a non-greeting preamble still fails closed', () => {
     assert.equal(parseDigestProse(`Here is the digest:\n${good}`), null);
     assert.equal(parseDigestProse(`Sure.\n${good}`), null);
+    assert.equal(parseDigestProse(`This morning\n${good}`), null);
+    assert.equal(parseDigestProse(`Overnight developments\n${good}`), null);
+    assert.equal(parseDigestProse(`Hello.\n${good}`), null);
+    assert.equal(parseDigestProse(`Hi\n${good}`), null);
+    // Explicit empty expected greeting (public / unpersonalised path)
+    // must not fall through to the 2-arg regex.
+    assert.equal(parseDigestProse(`Good morning.\n${good}`, undefined, ''), null);
   });
 
   it('returns null on malformed JSON', () => {
@@ -704,6 +712,26 @@ describe('generateDigestProse', () => {
     assert.match(out.lead, /^Good morning\./);
     assert.match(out.lead, /Hormuz/);
     assert.equal(cache.store.size, 1, 'recovered parse must still cache');
+    assert.match(cache.store.values().next().value.lead, /^Good morning\./);
+  });
+
+  it('REGRESSION (#8439): a mismatched greeting prefix is not spliced onto a morning prompt', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(`Good evening.\n${validJson}`);
+    const out = await generateDigestProse('user_abc', stories, 'critical', {
+      ...cache,
+      callLLM: llm.callLLM,
+    }, { greeting: 'Good morning' });
+    assert.equal(out, null);
+    assert.equal(cache.store.size, 0);
+  });
+
+  it('REGRESSION (#8439): public synthesis does not peel a greeting onto the share-URL lead', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(`Good morning.\n${validJson}`);
+    const out = await generateDigestProsePublic(stories, 'all', { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, null);
+    assert.equal(cache.store.size, 0);
   });
 
   it('different users do NOT share the digest cache even when the story pool is identical', async () => {

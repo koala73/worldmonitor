@@ -726,18 +726,22 @@ function repairLeadStatusQualifiers(lead, ground) {
 
 const DIGEST_FENCE_START = /^```(?:json)?\s*/i;
 const DIGEST_FENCE_END = /\s*```$/;
-const DIGEST_GREETING_LINE = /^(?:good\s+(?:morning|afternoon|evening|night)|hello|hi)(?:[.!])?$/i;
+const DIGEST_GREETING_LINE = /^good\s+(?:morning|afternoon|evening|night)(?:[.!])?$/i;
 
 function stripDigestFences(text) {
   return text.replace(DIGEST_FENCE_START, '').replace(DIGEST_FENCE_END, '').trim();
 }
 
+function normalizeGreetingCore(s) {
+  return s.trim().replace(/[.!]+$/u, '').replace(/\s+/g, ' ').toLowerCase();
+}
+
 /**
  * True for a short time-of-day greeting the prompt injects via
- * `Open the lead with: "${greeting}."`. Locale phrases that still
- * hash into greetingBucket (morning/afternoon/evening) also count,
- * so a "Good night." variant is recovered without treating an
- * editorial preamble ("Here is the digest:") as a greeting.
+ * `Open the lead with: "${greeting}."`. Only `Good morning` /
+ * `Good afternoon` / `Good evening` / `Good night` (optional `.`/`!`)
+ * count so an editorial preamble ("Here is the digest:", "This
+ * morning") is not peeled onto `digest.lead`.
  *
  * @param {string} line
  */
@@ -745,8 +749,20 @@ function isDigestGreetingLine(line) {
   if (typeof line !== 'string') return false;
   const s = line.trim();
   if (!s || s.length > 48 || s.includes('{')) return false;
-  if (DIGEST_GREETING_LINE.test(s)) return true;
-  return greetingBucket(s) !== '' && /^[\p{L}\p{M}\s]+[.!]?$/u.test(s);
+  return DIGEST_GREETING_LINE.test(s);
+}
+
+/**
+ * @param {string} line
+ * @param {string} expected
+ */
+function greetingLineMatchesExpected(line, expected) {
+  if (typeof line !== 'string' || typeof expected !== 'string') return false;
+  const s = line.trim();
+  if (!s || s.length > 48 || s.includes('{')) return false;
+  const want = normalizeGreetingCore(expected);
+  const got = normalizeGreetingCore(s);
+  return Boolean(want) && got === want;
 }
 
 function normalizeGreetingPrefix(line) {
@@ -766,16 +782,23 @@ function leadAlreadyOpensWithGreeting(lead, greeting) {
  * can run; the caller prepends it back onto `lead`.
  *
  * @param {string} text
+ * @param {string} [expectedGreeting]
  * @returns {{ json: string; greeting: string }}
  */
-function peelLeadingDigestGreeting(text) {
+function peelLeadingDigestGreeting(text, expectedGreeting) {
   const s = stripDigestFences(text.trim());
   if (!s || s.startsWith('{')) return { json: s, greeting: '' };
   const match = s.match(/^([^\r\n]+)\r?\n+([\s\S]*)$/);
   if (!match) return { json: s, greeting: '' };
   const firstLine = match[1].trim();
   const rest = stripDigestFences(match[2].trim());
-  if (!isDigestGreetingLine(firstLine) || !rest.startsWith('{')) {
+  // 3-state: omitted expectedGreeting → tight regex for 2-arg callers;
+  // explicit '' → never peel (public / unpersonalised); non-empty →
+  // exact match against the requested greeting.
+  const isGreeting = typeof expectedGreeting === 'string'
+    ? expectedGreeting.trim() !== '' && greetingLineMatchesExpected(firstLine, expectedGreeting)
+    : isDigestGreetingLine(firstLine);
+  if (!isGreeting || !rest.startsWith('{')) {
     return { json: s, greeting: '' };
   }
   return { json: rest, greeting: firstLine };
@@ -786,16 +809,21 @@ function peelLeadingDigestGreeting(text) {
  * @param {Array<{ headline?: string }>} [stories]  forwarded to
  *   validateDigestProseShape so fresh LLM output is grounding-checked
  *   the same way cache hits are.
+ * @param {string} [expectedGreeting]  when a string, peel the first line
+ *   only if it matches this greeting (trim / case / trailing punct).
+ *   Empty string means never peel (public / unpersonalised prompts).
+ *   When omitted, the tight `Good morning|afternoon|evening|night`
+ *   regex still recovers those opens for 2-arg callers.
  * @returns {{ lead: string; threads: Array<{tag:string;teaser:string}>; signals: string[] } | null}
  */
-export function parseDigestProse(text, stories) {
+export function parseDigestProse(text, stories, expectedGreeting) {
   if (typeof text !== 'string') return null;
   if (!text.trim()) return null;
   // Defensive: strip code fences, then a leading greeting line the
   // model emits despite "produce EXACTLY this JSON and nothing else"
   // (#8439). The greeting is prepended back onto the validated lead
   // so the reader still sees the requested open.
-  const { json, greeting } = peelLeadingDigestGreeting(text);
+  const { json, greeting } = peelLeadingDigestGreeting(text, expectedGreeting);
   if (!json) return null;
   let obj;
   try {
@@ -968,7 +996,14 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
     );
     return null;
   }
-  const parsed = parseDigestProse(text, stories);
+  // Empty string means "do not peel": public / unpersonalised prompts
+  // never ask for a greeting, so a regex fallback would splice
+  // "Good morning." onto a share-URL lead. 2-arg parseDigestProse
+  // callers still use the tight Good-morning regex.
+  const expectedGreeting = ctx?.isPublic === true
+    ? ''
+    : (typeof ctx?.greeting === 'string' ? ctx.greeting : '');
+  const parsed = parseDigestProse(text, stories, expectedGreeting);
   if (!parsed) {
     // LLM returned text but parseDigestProse rejected it. Three sub-
     // failures land here, distinguishable on log search:
