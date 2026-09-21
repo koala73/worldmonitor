@@ -6,12 +6,14 @@ keywords: "aviation intelligence dashboard, airport delay monitoring, NOTAM airs
 audience: "Airline and ops teams, travel security managers, OSINT analysts, journalists, frequent travelers"
 heroImage: "/blog/images/blog/aviation-intelligence-airports-airspace-flight-prices.jpg"
 pubDate: "2026-07-21"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-20"
 ---
 
 Aviation is the most reactive layer in the global system. Airlines reroute around risk hours before governments issue statements; insurers reprice overflight before analysts publish; evacuation demand hits booking engines before it hits the news. If you can read the aviation layer, you often get the earliest civilian-visible signal that something changed.
 
 WorldMonitor gives that layer a dedicated panel — and wires it into the same map as conflicts, chokepoints, and infrastructure.
+
+For aircraft observations, unusual activity, and the limits of flight history, use the [military flight-tracking guide for OSINT](/blog/posts/military-flight-tracking-osint/).
 
 ## The six-tab Aviation Intelligence panel
 

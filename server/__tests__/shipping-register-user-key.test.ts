@@ -98,7 +98,7 @@ for (const key of [keyA, keyB]) {
 }
 
 test('revoked key cannot register using a forged identity or enterprise cookie', async () => {
-  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(401);
   expect(runRedisPipeline).not.toHaveBeenCalled();
 });
@@ -133,7 +133,7 @@ test('validated user key still cannot register a private callback', async () => 
 });
 
 test('enterprise cookie keeps its owner with an anonymous header', async () => {
-  expect((await gateway(request('wms_anonymous', { Cookie: 'wm-pro-key=enterprise-test' }), context)).status).toBe(200);
+  expect((await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context)).status).toBe(200);
   const commands = registrationCommands();
   expect(JSON.parse(commands[0][2]).ownerTag).toBe(hash('enterprise-test'));
   expect(commands[1][1]).toBe(`webhook:owner:${hash('enterprise-test')}:v1`);
@@ -192,7 +192,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
       expect(denied.status).toBe(401);
       expect(await denied.text()).not.toContain('gateway validation');
     }
-    expect((await manage('wh_test', action, invalidKey, { Cookie: 'wm-pro-key=enterprise-test' })).status).toBe(401);
+    expect((await manage('wh_test', action, invalidKey, { Cookie: '__Host-wm-pro-key=enterprise-test' })).status).toBe(401);
     apiAccess = false;
     expect((await manage('wh_test', action, keyA)).status).toBe(403);
     expect(getCachedJson).not.toHaveBeenCalled();
@@ -213,7 +213,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} keeps enterprise cookie credential ownership`, async () => {
-    const extra = { Cookie: 'wm-pro-key=enterprise-test' };
+    const extra = { Cookie: '__Host-wm-pro-key=enterprise-test' };
     const own = await (await gateway(request('wms_anonymous', extra), context)).json();
     expect((await manage(own.subscriberId, action, 'wms_anonymous', extra)).status).toBe(200);
     expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.ownerTag).toBe(hash('enterprise-test'));

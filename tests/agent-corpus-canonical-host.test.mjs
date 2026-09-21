@@ -149,9 +149,11 @@ describe('published agent corpus names the serving host (#7660)', () => {
     const card = JSON.parse(readFileSync(join(PUBLIC_DIR, '.well-known/mcp/server-card.json'), 'utf-8'));
     assert.equal(card.url, 'https://worldmonitor.app/mcp');
     assert.equal(card.transport.endpoint, 'https://worldmonitor.app/mcp');
+    // The identifier clients compare is the one the connect-time challenge
+    // names: the path-scoped document for /mcp (RFC 9728 §3.1), on the apex.
     assert.equal(
       card.authentication.resource,
-      'https://worldmonitor.app',
+      'https://worldmonitor.app/mcp',
       'the OAuth protected-resource identifier is compared byte-for-byte by clients'
     );
     assert.deepEqual(

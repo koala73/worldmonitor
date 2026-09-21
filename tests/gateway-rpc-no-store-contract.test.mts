@@ -262,3 +262,16 @@ describe('high-tier bare-empty source guard', () => {
     assert.deepEqual(failures, []);
   });
 });
+
+it('keeps generated RPC availability errors out of HTTP caches', async () => {
+  const { createSeismologyServiceRoutes, ApiError } = await import('../src/generated/server/worldmonitor/seismology/v1/service_server.ts');
+  const { serverOptions } = await import('../server/gateway.ts');
+  const gateway = createDomainGateway(createSeismologyServiceRoutes({
+    listEarthquakes: async () => { throw new ApiError(503, 'Seed unavailable', ''); },
+  }, serverOptions));
+  const response = await gateway(request('/api/seismology/v1/list-earthquakes'));
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.equal(response.headers.get('CDN-Cache-Control'), null);
+  assert.equal(response.headers.get('Vercel-CDN-Cache-Control'), null);
+});

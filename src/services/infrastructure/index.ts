@@ -104,18 +104,20 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
     resp = hydrated;
   } else {
     resp = await outageBreaker.execute(async () => {
-      return client.listInternetOutages({
+      const response = await client.listInternetOutages({
         country: '',
         start: 0,
         end: 0,
         pageSize: 0,
         cursor: '',
       });
-    }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
+      outagesConfigured = true;
+      return response;
+    }, emptyOutageFallback);
   }
 
+  if (outageBreaker.getDataState().mode !== 'unavailable') outagesConfigured = true;
   if (resp.outages.length === 0) {
-    if (outagesConfigured === null) outagesConfigured = false;
     return [];
   }
 
@@ -239,9 +241,8 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
   }, emptyStatusFallback, { shouldCache: (r) => r.statuses.length > 0 });
 
   const services = resp.statuses.map(toServiceResult);
-
   return {
-    success: true,
+    success: statusBreaker.getDataState().mode !== 'unavailable',
     timestamp: new Date().toISOString(),
     summary: computeSummary(services),
     services,
