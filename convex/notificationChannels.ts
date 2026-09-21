@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import {
   internalAction,
   internalMutation,
@@ -10,6 +10,8 @@ import {
 import { internal } from "./_generated/api";
 import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail } from "./lib/notificationEmail";
+
+type ChannelType = Infer<typeof channelTypeValidator>;
 
 // Versioned queue: old Railway relays only poll wm:events:queue and ignore
 // welcomeId. Keeping connection-scoped events on a new queue means they wait
@@ -412,27 +414,56 @@ export const setDiscordOAuthChannelForUser = internalMutation({
   },
 });
 
+// Shared by the relay-facing `*ForUser` mutations and the identity-scoped
+// internal twins below. Deletion/deactivation are de-escalation: never gate
+// on Pro (#8430).
+async function deleteChannelRow(
+  ctx: MutationCtx,
+  userId: string,
+  channelType: ChannelType,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user_channel", (q) =>
+      q.eq("userId", userId).eq("channelType", channelType),
+    )
+    .unique();
+  if (!existing) return;
+  await ctx.db.delete(existing._id);
+  const rules = await ctx.db
+    .query("alertRules")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  for (const rule of rules) {
+    const filtered = rule.channels.filter((c) => c !== channelType);
+    if (filtered.length !== rule.channels.length) {
+      await ctx.db.patch(rule._id, { channels: filtered });
+    }
+  }
+}
+
+async function deactivateChannelRow(
+  ctx: MutationCtx,
+  userId: string,
+  channelType: ChannelType,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("notificationChannels")
+    .withIndex("by_user_channel", (q) =>
+      q.eq("userId", userId).eq("channelType", channelType),
+    )
+    .unique();
+  if (existing) {
+    await ctx.db.patch(existing._id, { verified: false });
+  }
+}
+
+// Production delete path. The dashboard reaches this via the shared-secret
+// `/relay/notification-channels` action `delete-channel` (convex/http.ts).
 export const deleteChannelForUser = internalMutation({
   args: { userId: v.string(), channelType: channelTypeValidator },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", args.userId).eq("channelType", args.channelType),
-      )
-      .unique();
-    if (!existing) return;
-    await ctx.db.delete(existing._id);
-    const rules = await ctx.db
-      .query("alertRules")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-    for (const rule of rules) {
-      const filtered = rule.channels.filter((c) => c !== args.channelType);
-      if (filtered.length !== rule.channels.length) {
-        await ctx.db.patch(rule._id, { channels: filtered });
-      }
-    }
+    await deleteChannelRow(ctx, args.userId, args.channelType);
   },
 });
 
@@ -529,73 +560,35 @@ export const setChannel = mutation({
   },
 });
 
-export const deleteChannel = mutation({
-  args: { channelType: channelTypeValidator },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("UNAUTHENTICATED");
-    const userId = identity.subject;
-    await assertProEntitlement(ctx, userId);
-
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", userId).eq("channelType", args.channelType),
-      )
-      .unique();
-
-    if (!existing) return;
-    await ctx.db.delete(existing._id);
-
-    // Remove this channel from all alert rules for this user
-    const rules = await ctx.db
-      .query("alertRules")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
-    for (const rule of rules) {
-      const filtered = rule.channels.filter((c) => c !== args.channelType);
-      if (filtered.length !== rule.channels.length) {
-        await ctx.db.patch(rule._id, { channels: filtered });
-      }
-    }
-  },
-});
-
 // Called by the notification relay via /relay/deactivate HTTP action
-// when Telegram returns 403 or Slack returns 404/410.
+// when Telegram returns 403 or Slack returns 404/410. Ungated by design —
+// delivery-side deactivation must work after Pro lapses (see #8430).
 export const deactivateChannelForUser = internalMutation({
   args: { userId: v.string(), channelType: channelTypeValidator },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", args.userId).eq("channelType", args.channelType),
-      )
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, { verified: false });
-    }
+    await deactivateChannelRow(ctx, args.userId, args.channelType);
   },
 });
 
-export const deactivateChannel = mutation({
+// INTERNAL ONLY — #8430. Formerly public `mutation`s with a Pro gate that
+// contradicted the ungated relay path. Kept as identity-scoped internals so
+// authenticated deploy-key callers and Sentry probe filters still resolve the
+// historical names; production traffic uses `*ForUser` above.
+export const deleteChannel = internalMutation({
   args: { channelType: channelTypeValidator },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
-    const userId = identity.subject;
-    await assertProEntitlement(ctx, userId);
+    await deleteChannelRow(ctx, identity.subject, args.channelType);
+  },
+});
 
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", userId).eq("channelType", args.channelType),
-      )
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, { verified: false });
-    }
+export const deactivateChannel = internalMutation({
+  args: { channelType: channelTypeValidator },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("UNAUTHENTICATED");
+    await deactivateChannelRow(ctx, identity.subject, args.channelType);
   },
 });
 
