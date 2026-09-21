@@ -52,12 +52,23 @@ export default defineConfig({
   testMatch: webMcpProduction ? '**/webmcp.spec.ts' : undefined,
   // CI: the smoke specs are dominated by fixed settle windows (eight 8 s
   // waits in dashboard-news-request-budget alone), so running them serially
-  // just stacks idle sleeps — 4 workers overlap them. Tests already isolate
-  // via per-test contexts and fresh seeded profiles. Locally stay at 1 so a
-  // dev run keeps deterministic ordering and predictable machine load.
+  // just stacks idle sleeps — overlapping workers hide them. Tests already
+  // isolate via per-test contexts and fresh seeded profiles. Locally stay at 1
+  // so a dev run keeps deterministic ordering and predictable machine load.
   // fullyParallel lets tests WITHIN a file spread across workers; with 1
   // worker (local) it changes nothing.
-  workers: process.env.CI ? 4 : 1,
+  //
+  // 4 -> 2 to test the last surviving hypothesis for the #8447 browser
+  // crashes. All four crashes analysed in detail sit in the top 10-20% of
+  // process-churn moments within their own run, and 4 workers on a 2-core
+  // runner is the churn. Measured cost of halving: 45.2 s -> 74.4 s on a
+  // two-spec subset, 1.64x rather than 2x because the settle windows above
+  // are wall-clock, not CPU.
+  //
+  // REVERT THIS if the crash rate does not fall. The annotations from #8449
+  // measure it on every merge; the baseline is 50 crashes across 76
+  // shard-runs, 47% of runs affected.
+  workers: process.env.CI ? 2 : 1,
   fullyParallel: true,
   timeout: 90000,
   expect: {
