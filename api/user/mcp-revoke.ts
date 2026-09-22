@@ -107,6 +107,7 @@ async function callConvexRevoke(
     );
     captureSilentError(err, {
       tags: { route: 'api/user/mcp-revoke', step: 'convex-fetch' },
+      fingerprint: ['api/user/mcp-revoke', 'convex-fetch', err instanceof Error ? err.name : 'Error'],
     });
     return { ok: false, reason: 'network' };
   }
@@ -186,6 +187,7 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
       );
       captureSilentError(err, {
         tags: { route: 'api/user/mcp-revoke', step: 'invalidate-cache' },
+        fingerprint: ['api/user/mcp-revoke', 'invalidate-cache', err instanceof Error ? err.name : 'Error'],
       });
     }
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: jsonHeaders });

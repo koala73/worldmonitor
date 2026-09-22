@@ -607,8 +607,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
   '/api/aviation/v1/search-google-dates': { limit: 10, window: '60 s' },
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
-  // Public relay/HTML discovery has the same scrape fan-out as the legacy
-  // YouTube live endpoint and needs its own fail-closed gateway budget.
+  // Public YouTube video lookups call oEmbed on cache misses (channel live
+  // detection is retired) and keep their own fail-closed gateway budget.
   '/api/aviation/v1/get-youtube-live-stream-info': { limit: 30, window: '60 s' },
   // Interactive fare searches use one provider request on a cache miss.
   // 30/min leaves headroom under the provider's 300-600/min shared quota.
@@ -823,9 +823,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // source of truth for the audit script and the docs, and
   // tests/rate-limit.test.mts fails if the two copies drift. (#6234)
   //
-  // youtube/live: one request can fan out to the Railway relay AND a full
-  // live-page HTML scrape of youtube.com, so it takes the same 30/min
-  // provider-proxy budget as the batch fan-out routes above.
+  // youtube/live: a video lookup calls youtube.com oEmbed from our egress IPs
+  // (channel live detection answers 410 without upstream work), so it keeps
+  // the same 30/min provider-proxy budget as the batch fan-out routes above.
   '/api/youtube/live': { limit: 30, window: '60 s' },
   // reverse-geocode: already Upstash-cached on a 0.001-degree grid and memoized
   // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
@@ -889,7 +889,7 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
     reason: 'Public aviation news can fan out to nine RSS feeds when the shared snapshot is unavailable.',
   },
   '/api/aviation/v1/get-youtube-live-stream-info': {
-    reason: 'Public live-stream discovery can fan out to relay and YouTube HTML scrapes on cache misses.',
+    reason: 'Public YouTube video lookups call oEmbed on cache misses; channel live detection is retired.',
   },
   '/api/aviation/v1/search-flight-prices': {
     reason: 'Caller-selected fare searches consume Travelpayouts request quota on cache misses.',

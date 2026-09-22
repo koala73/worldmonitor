@@ -145,25 +145,34 @@ function tedDate(value) {
 // non-federal keys). An hourly seed that fetches every tick — worse, with
 // in-run 429 retries — burns ~72 requests/day and pins the source at HTTP 429
 // permanently (#5444). Spread the budget instead: only hit the API when the
-// last success is older than this interval (~9.6 requests/day). Because the
-// enclosing bundle only checks this member hourly, successful SAM publishes
-// land roughly every 180 minutes; source health allows one more hourly gate
-// for normal scheduling jitter.
+// last ATTEMPT is older than this interval. The quota is spent by attempts,
+// not successes: a failed run carries lastSuccessfulAt forward unchanged, so a
+// gate measured from the last success stopped pacing as soon as a failure was
+// older than the interval and every hourly tick hit SAM again (#8505). Because
+// the enclosing bundle only checks this member hourly, the gate opens on every
+// third tick — 180 minutes apart, 8 requests/day against the 10/day budget —
+// and source health allows one more hourly gate for scheduling jitter.
 const SAM_MIN_FETCH_INTERVAL_MS = 150 * 60_000;
 
 function previousSamResult(previousSnapshot, now) {
   const status = (previousSnapshot?.sourceStatuses || []).find((entry) => entry?.source === 'sam');
-  const lastSuccessMs = Date.parse(status?.lastSuccessfulAt || '');
-  if (!status || !Number.isFinite(lastSuccessMs)) return null;
+  // fetchedAt is the last attempt that spent a request: sourceStatus() stamps a
+  // success, mergeTenderSourceResults stamps a failure, and a paced run carries
+  // the prior value through. 'unavailable' is the one status written without a
+  // request (no API key), so it must not start the clock — a restored
+  // credential would otherwise wait out a full interval before fetching.
+  if (!status || status.state === 'unavailable') return null;
+  const lastAttemptMs = Date.parse(status.fetchedAt || '');
+  if (!Number.isFinite(lastAttemptMs)) return null;
   const records = (previousSnapshot?.tenders || [])
     .filter((tender) => tender.source === 'sam' && isOpenOpportunity(tender, now));
-  return { status, records, lastSuccessMs };
+  return { status, records, lastAttemptMs };
 }
 
 export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn, httpsGetFn = httpsGet, previousSnapshot = null } = {}) {
   if (!apiKey) return { records: [], status: sourceStatus('sam', 'unavailable', [], 'SAM_GOV_API_KEY is not configured', now) };
   const prior = previousSamResult(previousSnapshot, now);
-  if (prior && now - prior.lastSuccessMs < SAM_MIN_FETCH_INTERVAL_MS) {
+  if (prior && now - prior.lastAttemptMs < SAM_MIN_FETCH_INTERVAL_MS) {
     // Within budget interval: carry the fresh-enough prior result through
     // without spending a request. lastSuccessfulAt keeps its real value, so
     // health staleness accounting is unaffected. Only an already-healthy
@@ -187,6 +196,9 @@ export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Dat
   // endpoints so native fetch does not repeatedly select a doomed address.
   const payload = await (fetchJsonFn ?? createSamFetchJson(httpsGetFn))(url, {
     retry429: false,
+    // A timed-out or reset request may already be metered, so the next
+    // interval is the only retry; in-run retries tripled every attempt (#8505).
+    maxRetries: 0,
   });
   if (!Array.isArray(payload?.opportunitiesData)) throw new Error('SAM response is missing opportunitiesData');
   const records = payload.opportunitiesData.map(normalizeSamOpportunity).filter((tender) => isOpenOpportunity(tender, now));

@@ -862,7 +862,11 @@
         "space": "太空"
       },
       "play": "播放",
-      "previewStatus": "即時預覽"
+      "previewStatus": "準備播放",
+      "connecting": "正在連線…",
+      "unverified": "無法確認此直播流是否即時",
+      "offline": "{{city}} 目前離線",
+      "noFeeds": "此地區目前沒有即時攝影機"
     },
     "positiveNewsFeed": {
       "noStories": "此類別暫無報道"
@@ -1981,15 +1985,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} 無法在此播放 — 可能在您所在的地區受到限制（錯誤 {{code}}）",
-      "botCheck": "YouTube要求登入才能播放{{name}}",
       "signInToYouTube": "登入YouTube",
       "openOnYouTube": "Open on YouTube",
       "manage": "管理頻道",
       "addChannel": "新增頻道",
       "remove": "刪除",
-      "youtubeHandle": "YouTube 控制代碼（如 @Channel）",
-      "youtubeHandleOrUrl": "YouTube 頻道名稱或連結",
       "displayName": "顯示名稱（可選）",
       "channelSettings": "頻道設定",
       "save": "儲存",
@@ -2005,12 +2005,24 @@
       "regionMiddleEast": "中東",
       "regionAfrica": "非洲",
       "regionOceania": "大洋洲",
-      "invalidHandle": "請輸入有效的YouTube使用者名稱（例如 @ChannelName）",
       "verifying": "驗證中…",
       "hlsUrl": "HLS流地址（可選）",
       "invalidHlsUrl": "請輸入有效的HLS流地址（.m3u8）",
       "playLiveFeed": "播放直播源",
-      "readyStatus": "準備就緒，隨時可播"
+      "readyStatus": "準備就緒，隨時可播",
+      "embedBlocked": "YouTube 暫時不允許在其他網站中播放 {{name}}",
+      "unavailable": "{{name}} 目前無法播放",
+      "noStream": "{{name}} 還沒有設定直播流",
+      "needsChannelUrl": "請用頻道 URL (youtube.com/channel/UC…) 或直播影片 URL 重新新增 {{name}}",
+      "insecureStream": "{{name}} 使用不安全的 (http) 流，瀏覽器會阻止。請用安全的 (https) 流 URL 重新新增",
+      "connecting": "正在連線 {{name}}…",
+      "recording": "錄製中",
+      "unverified": "無法確認此流是否為直播",
+      "playNextChannel": "播放下一個頻道",
+      "channelOrVideoUrl": "YouTube 頻道或影片 URL",
+      "channelUrlHint": "貼上頻道 URL (youtube.com/channel/UC…) 或直播影片 URL",
+      "youtubeChannel": "YouTube 頻道",
+      "httpsStreamHint": "瀏覽器會阻止不安全的 (http) 流。請貼上安全的 (https) 流 URL"
     },
     "map": {
       "showMap": "顯示地圖",

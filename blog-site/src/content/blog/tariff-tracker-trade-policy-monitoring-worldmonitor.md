@@ -50,7 +50,7 @@ Use the [WTO World Tariff Profiles](https://www.wto.org/english/res_e/reser_e/ta
 
 **Can I look up the tariff on a specific product?**
 
-Not at HS-line granularity for every country pair. The tracker covers WTO MFN baselines, US tariff trends, and customs revenue — the macro picture. Product-level filings still need the official schedule for the importing country.
+Not at HS-line granularity for every country pair. The tracker covers WTO MFN baselines, US [tariff trends](https://www.worldmonitor.app/docs/api-reference/tradeservice/gettarifftrends), and customs revenue — the macro picture. Product-level filings still need the official schedule for the importing country.
 
 **How is this different from reading trade news?**
 

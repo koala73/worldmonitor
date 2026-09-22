@@ -125,7 +125,7 @@ export default async function handler(
     return completeStandaloneIdempotency(idempotency, json(data, 200, cors));
   } catch (err) {
     console.error('[customer-portal] Relay failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' }, fingerprint: ['api/customer-portal', 'relay', err instanceof Error ? err.name : 'Error'], ctx });
     return completeStandaloneIdempotency(idempotency, json({ error: 'Customer portal unavailable' }, 502, cors));
   }
 }

@@ -995,7 +995,7 @@ Refresh cadence:
 
 - The seven live-flow rows are energy-baseline-backed; the other six monitored
   waterways do not yet publish mb/d estimates.
-- The Dover Strait live-flow row currently maps to the EIA `danish` baseline id.
+- The [Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/) live-flow row currently maps to the EIA `danish` baseline id.
   Treat `baselineMbd` as the source reference and `id` as the canonical
   WorldMonitor row id.
 - AIS and PortWatch coverage can degrade near heavily jammed or conflict-heavy
@@ -2712,7 +2712,7 @@ The crawlable CRI snapshot workflow is scheduled for the first day of each month
 ## Energy Atlas automated revision log (planned)
 
 WorldMonitor's Energy Atlas publishes evidence bundles — not opinions —
-for pipelines, storage facilities, fuel shortages, and disruption
+for pipelines, storage facilities, [fuel shortages](/api-reference/supplychainservice/listfuelshortages), and disruption
 events. A deterministic, versioned classifier turns those bundles into
 public badges (`flowing` / `reduced` / `offline` / `disputed` for
 assets; `confirmed` / `watch` for shortages).

@@ -20,6 +20,7 @@ import {
   COMPARISON_NARRATIVES,
 } from './comparison-page-narratives.mjs';
 import { computeStats } from './docs-stats.mjs';
+import { renderRelatedReading } from './related-reading.mjs';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
 export const COMPARISONS_CONTENT_VERSION = '2026-09-10';
@@ -591,7 +592,7 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
   ];
 }
 
-function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate }) {
+function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading = [] }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const pageUrl = new URL(page.path, baseUrl).href;
   const description = page.metaDescription ?? (page.h1
@@ -681,6 +682,7 @@ function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate }) {
       page.slug + ' methodology',
     ),
     '',
+    renderRelatedReading(relatedReading, escapeHtml),
     '      <h2>Frequently asked questions</h2>',
     ...page.faqs.flatMap(([question, answer]) => [
       '      <h3>' + escapeHtml(question) + '</h3>',
@@ -806,7 +808,7 @@ function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   });
 }
 
-export function writeComparisonPages({ outDir, baseUrl, tpl, snapshotDate, lastmod = COMPARISONS_CONTENT_VERSION }) {
+export function writeComparisonPages({ outDir, baseUrl, tpl, snapshotDate, lastmod = COMPARISONS_CONTENT_VERSION, relatedReading = new Map() }) {
   mkdirSync(join(outDir, 'compare'), { recursive: true });
   writeFileSync(
     join(outDir, 'compare', 'index.html'),
@@ -816,7 +818,7 @@ export function writeComparisonPages({ outDir, baseUrl, tpl, snapshotDate, lastm
     mkdirSync(join(outDir, 'compare', page.slug), { recursive: true });
     writeFileSync(
       join(outDir, 'compare', page.slug, 'index.html'),
-      renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate }),
+      renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedReading: relatedReading.get(page.path) }),
     );
   }
 }

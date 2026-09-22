@@ -425,6 +425,44 @@ describe('durable last-good wiring (#7084)', () => {
     }
   });
 
+  it('keeps the warm full:en shard when other langs are sprayed past the cap', async () => {
+    // The scenario the eviction policy exists for, and the one the original
+    // test missed: full:en is already warm, then enough OTHER keys are written
+    // to cycle the whole cache. Under the previous policy full:en was evicted
+    // (recency was bumped only on rebuild, and it is the key rebuilt least
+    // often), leaving degraded serving with nothing to fall back to.
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
+    const cache = mod.__testing__.fallbackDigestCache;
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.ok(cache.has('full:en'), 'precondition: full:en is warm');
+
+    for (let i = 0; i < 80; i++) {
+      cache.set(`full:x${String(i).padStart(2, '0')}`, { data: body([`https://a/${i}`], COVERAGE), ts: NOW });
+      if (cache.size > 50) mod.__testing__.evictOldestIsolateEntry();
+    }
+
+    assert.ok(
+      cache.has('full:en'),
+      'full:en must survive a spray of other shards — degraded serving depends on it',
+    );
+  });
+
+  it('evicts the least-recently-used isolate entry instead of wiping the cache', async () => {
+    // Fill the isolate tier to capacity, then trigger one more write: the
+    // warm full:en entry must survive while the oldest key is evicted.
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
+    const cache = mod.__testing__.fallbackDigestCache;
+    for (let i = 0; i < 50; i++) {
+      cache.set(`full:l${String(i).padStart(2, '0')}`, { data: body([`https://a/${i}`], COVERAGE), ts: NOW });
+    }
+    assert.equal(cache.size, 50);
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(cache.size, 50);
+    assert.ok(cache.has('full:en'), 'the high-traffic full:en entry must survive eviction');
+  });
+
   it('a genuine MISS publishes through one atomic guarded write', async () => {
     reset();
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));

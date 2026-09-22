@@ -2,7 +2,19 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { LiveWebcamsPanel } from '@/components/LiveWebcamsPanel';
 
+import { createFakeYouTubeIframeApi, type FakeYouTubeIframeApi } from './helpers/fake-youtube-iframe-api.mts';
 import { initTestI18n } from './helpers/i18n.mts';
+
+const loader = vi.hoisted(() => ({ api: null as FakeYouTubeIframeApi | null }));
+
+vi.mock('@/services/live-video/youtube-iframe-api', () => ({
+  loadYouTubeIframeApi: () => Promise.resolve(loader.api?.namespace ?? null),
+}));
+
+vi.mock('@/config/live-video-sources', async (importOriginal) => {
+  const { withFixtureWebcamCatalog } = await import('./helpers/webcam-catalog.mts');
+  return withFixtureWebcamCatalog(await importOriginal<typeof import('@/config/live-video-sources')>());
+});
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -91,16 +103,20 @@ function setHidden(hidden: boolean): void {
   document.dispatchEvent(new Event('visibilitychange'));
 }
 
+// Every tile is a live session now; advance async so the player API and live verdicts settle.
+const elapse = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+
 beforeAll(async () => {
   await initTestI18n();
 });
 
 beforeEach(() => {
+  // Tiles carry real YouTube embed URLs; keep happy-dom from fetching them.
+  (window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM.settings.disableIframePageLoading = true;
   vi.useFakeTimers();
   localStorage.clear();
   vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
-  const prototype = LiveWebcamsPanel.prototype as unknown as { buildEmbedUrl(videoId: string): string };
-  vi.spyOn(prototype, 'buildEmbedUrl').mockReturnValue('about:blank');
+  loader.api = createFakeYouTubeIframeApi({ autoLive: true });
 });
 
 afterEach(() => {
@@ -114,21 +130,21 @@ afterEach(() => {
 });
 
 describe('Live Webcams idle stop', () => {
-  it('leaves preview tiles untouched when nothing is playing', () => {
+  it('leaves preview tiles untouched when nothing is playing', async () => {
     mountOnScreen();
-    vi.advanceTimersByTime(2 * HOUR);
+    await elapse(2 * HOUR);
     expect(notice()).toBeNull();
     expect(previewTileCount()).toBe(4);
   });
 
-  it('keeps the wall playing past five minutes and replaces it with a notice after an hour', () => {
+  it('keeps the wall playing past five minutes and replaces it with a notice after an hour', async () => {
     mountOnScreen();
     playFromPreview();
     expect(playingFeeds()).toEqual(ALL_REGIONS_WALL);
 
-    vi.advanceTimersByTime(5 * MINUTE);
+    await elapse(5 * MINUTE);
     expect(playingFeeds()).toEqual(ALL_REGIONS_WALL);
-    vi.advanceTimersByTime(55 * MINUTE);
+    await elapse(55 * MINUTE);
 
     expect(playingFeeds()).toEqual([]);
     const shown = notice();
@@ -136,22 +152,22 @@ describe('Live Webcams idle stop', () => {
     expect(shown?.textContent).toContain('Live video stopped after 1 hour without mouse, keyboard or touch activity.');
   });
 
-  it('keeps the notice through later mouse input', () => {
+  it('keeps the notice through later mouse input', async () => {
     mountOnScreen();
     playFromPreview();
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
 
     document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
-    vi.advanceTimersByTime(MINUTE);
+    await elapse(MINUTE);
 
     expect(playingFeeds()).toEqual([]);
     expect(notice()).not.toBeNull();
   });
 
-  it('restores the whole wall from Resume', () => {
+  it('restores the whole wall from Resume', async () => {
     mountOnScreen();
     playFromPreview();
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
 
     contentButton('Resume').click();
 
@@ -159,7 +175,7 @@ describe('Live Webcams idle stop', () => {
     expect(notice()).toBeNull();
   });
 
-  it('restores only the tile that was playing instead of lighting the whole wall', () => {
+  it('restores only the tile that was playing instead of lighting the whole wall', async () => {
     mountOnScreen();
     clickPanelControl('.webcam-view-btn[data-mode="single"]');
     playFromPreview();
@@ -167,7 +183,7 @@ describe('Live Webcams idle stop', () => {
     expect(playingFeeds()).toEqual(['Jerusalem live webcam']);
     expect(previewTileCount()).toBe(3);
 
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
     expect(notice()).not.toBeNull();
     contentButton('Resume').click();
 
@@ -175,10 +191,10 @@ describe('Live Webcams idle stop', () => {
     expect(previewTileCount()).toBe(3);
   });
 
-  it('keeps the notice across a region change, refresh, and scrolling away and back, then plays the new region', () => {
+  it('keeps the notice across a region change, refresh, and scrolling away and back, then plays the new region', async () => {
     const mounted = mountOnScreen();
     playFromPreview();
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
 
     clickPanelControl('.webcam-region-btn[data-region="europe"]');
     expect(notice()).not.toBeNull();
@@ -198,10 +214,10 @@ describe('Live Webcams idle stop', () => {
     ]);
   });
 
-  it('keeps the notice and what was playing across a hidden tab', () => {
+  it('keeps the notice and what was playing across a hidden tab', async () => {
     mountOnScreen();
     playFromPreview();
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
 
     setHidden(true);
     setHidden(false);
@@ -211,12 +227,12 @@ describe('Live Webcams idle stop', () => {
     expect(playingFeeds()).toEqual(ALL_REGIONS_WALL);
   });
 
-  it('keeps the notice on tab return and scroll-back for an auto-play user who chose an idle duration', () => {
+  it('keeps the notice on tab return and scroll-back for an auto-play user who chose an idle duration', async () => {
     localStorage.setItem('wm-live-streams-always-on', 'true');
     localStorage.setItem('wm-live-media-idle-stop', '60');
     mountOnScreen();
     expect(playingFeeds()).toEqual(ALL_REGIONS_WALL);
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
     expect(playingFeeds()).toEqual([]);
     expect(notice()).not.toBeNull();
 
@@ -235,19 +251,19 @@ describe('Live Webcams idle stop', () => {
     expect(notice()).toBeNull();
   });
 
-  it('never idle-stops a fullscreen wall', () => {
+  it('never idle-stops a fullscreen wall', async () => {
     const mounted = mountOnScreen();
     playFromPreview();
     mounted.setFullscreen(true);
-    vi.advanceTimersByTime(3 * HOUR);
+    await elapse(3 * HOUR);
     expect(playingFeeds()).toEqual(ALL_REGIONS_WALL);
     expect(notice()).toBeNull();
   });
 
-  it('clears the notice when the panel is closed', () => {
+  it('clears the notice when the panel is closed', async () => {
     const mounted = mountOnScreen();
     playFromPreview();
-    vi.advanceTimersByTime(HOUR);
+    await elapse(HOUR);
 
     mounted.stopLiveMediaForClose();
 

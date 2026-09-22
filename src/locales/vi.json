@@ -862,7 +862,11 @@
         "space": "KHÔNG GIAN"
       },
       "play": "Phát",
-      "previewStatus": "Xem trước trực tiếp"
+      "previewStatus": "Sẵn sàng phát",
+      "connecting": "Đang kết nối…",
+      "unverified": "Không thể xác nhận luồng này đang phát trực tiếp",
+      "offline": "{{city}} hiện đang ngoại tuyến",
+      "noFeeds": "Không có webcam trực tiếp trong khu vực này lúc này"
     },
     "positiveNewsFeed": {
       "noStories": "Chưa có bài viết trong danh mục này"
@@ -1981,15 +1985,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} hiện không phát trực tiếp",
-      "cannotEmbed": "Không thể phát {{name}} tại đây — có thể bị hạn chế ở khu vực của bạn (lỗi {{code}})",
-      "botCheck": "YouTube yêu cầu đăng nhập để phát {{name}}",
       "signInToYouTube": "Đăng nhập YouTube",
       "openOnYouTube": "Mở trên YouTube",
       "manage": "Quản lý kênh",
       "addChannel": "Thêm kênh",
       "remove": "Xóa",
-      "youtubeHandle": "Handle YouTube (vd: @Channel)",
-      "youtubeHandleOrUrl": "Tên kênh hoặc URL YouTube",
       "displayName": "Tên hiển thị (tùy chọn)",
       "channelSettings": "Cài đặt kênh",
       "save": "Lưu",
@@ -2005,12 +2005,24 @@
       "regionMiddleEast": "Trung Đông",
       "regionAfrica": "Châu Phi",
       "regionOceania": "Châu Đại Dương",
-      "invalidHandle": "Nhập handle YouTube hợp lệ (ví dụ: @TênKênh)",
       "verifying": "Đang xác minh…",
       "hlsUrl": "URL luồng HLS (tùy chọn)",
       "invalidHlsUrl": "Nhập URL luồng HLS hợp lệ (.m3u8)",
       "playLiveFeed": "Phát luồng trực tiếp",
-      "readyStatus": "Sẵn sàng khi bạn sẵn sàng"
+      "readyStatus": "Sẵn sàng khi bạn sẵn sàng",
+      "embedBlocked": "YouTube không phát {{name}} bên trong các trang web khác ngay bây giờ",
+      "unavailable": "Không thể phát {{name}} ngay bây giờ",
+      "noStream": "Chưa có luồng trực tiếp nào được thiết lập cho {{name}}",
+      "needsChannelUrl": "Thêm {{name}} lại với URL kênh của nó (youtube.com/channel/UC…) hoặc URL video trực tiếp",
+      "connecting": "Đang kết nối với {{name}}…",
+      "recording": "Đang ghi hình",
+      "unverified": "Không thể xác nhận luồng này đang trực tiếp",
+      "playNextChannel": "Phát kênh tiếp theo",
+      "channelOrVideoUrl": "Kênh YouTube hoặc URL video",
+      "channelUrlHint": "Dán URL kênh (youtube.com/channel/UC…) hoặc URL video trực tiếp",
+      "youtubeChannel": "Kênh YouTube",
+      "insecureStream": "{{name}} sử dụng luồng không an toàn (http), trình duyệt sẽ chặn. Thêm lại với URL luồng an toàn (https)",
+      "httpsStreamHint": "Trình duyệt chặn các luồng không an toàn (http). Dán URL luồng an toàn (https)"
     },
     "map": {
       "showMap": "Hiển thị bản đồ",

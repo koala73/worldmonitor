@@ -926,7 +926,7 @@
     "webcams": {
       "paused": "Webcams paused",
       "play": "Play",
-      "previewStatus": "Live preview",
+      "previewStatus": "آماده برای پخش",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",
@@ -934,7 +934,11 @@
         "americas": "AMERICAS",
         "asia": "ASIA",
         "space": "SPACE"
-      }
+      },
+      "connecting": "در حال اتصال…",
+      "unverified": "نمی‌توان تأیید کرد که این پخش زنده است",
+      "offline": "{{city}} در حال حاضر آفلاین است",
+      "noFeeds": "هیچ وب‌کمی زنده در این منطقه وجود ندارد"
     },
     "pinnedWebcams": {
       "pinFromMap": "Pin a webcam from the map"
@@ -2254,8 +2258,6 @@
     },
     "liveNews": {
       "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} can't be played here — it may be restricted in your region (error {{code}})",
-      "botCheck": "YouTube is requesting sign-in to play {{name}}",
       "signInToYouTube": "Sign in to YouTube",
       "openOnYouTube": "Open on YouTube",
       "playLiveFeed": "Play live feed",
@@ -2263,8 +2265,6 @@
       "manage": "Manage channels",
       "addChannel": "Add channel",
       "remove": "Remove",
-      "youtubeHandle": "YouTube handle (e.g. @Channel)",
-      "youtubeHandleOrUrl": "YouTube handle or URL",
       "displayName": "Display name (optional)",
       "channelSettings": "Channel Settings",
       "save": "Save",
@@ -2280,10 +2280,22 @@
       "regionMiddleEast": "Middle East",
       "regionAfrica": "Africa",
       "regionOceania": "Oceania",
-      "invalidHandle": "Enter a valid YouTube handle (e.g. @ChannelName)",
       "verifying": "Verifying…",
       "hlsUrl": "HLS Stream URL (optional)",
-      "invalidHlsUrl": "Enter a valid HLS stream URL (.m3u8)"
+      "invalidHlsUrl": "Enter a valid HLS stream URL (.m3u8)",
+      "embedBlocked": "یوتیوب در حال حاضر {{name}} را درون سایت‌های دیگر پخش نمی‌کند",
+      "unavailable": "{{name}} در حال حاضر قابل پخش نیست",
+      "noStream": "هنوز برای {{name}} جریان زندهٔ تنظیم‌شده‌ای وجود ندارد",
+      "needsChannelUrl": "{{name}} را دوباره با URL کانال آن (youtube.com/channel/UC…) یا URL ویدیوی زندهٔ آن اضافه کنید",
+      "insecureStream": "{{name}} از جریانِ نایمن (http) استفاده می‌کند که مرورگرها آن را مسدود می‌کنند. آن را دوباره با URL جریانِ ایمن (https) اضافه کنید",
+      "connecting": "درحال اتصال به {{name}}…",
+      "recording": "ضبط",
+      "unverified": "نمی‌توان تأیید کرد این جریان زندهٔ است",
+      "playNextChannel": "پخش کانال بعدی",
+      "channelOrVideoUrl": "کانال یا ویدیوی یوتیوب",
+      "channelUrlHint": "URL کانال (youtube.com/channel/UC…) یا URL ویدیوی زندهٔ را کپی کنید",
+      "youtubeChannel": "کانال یوتیوب",
+      "httpsStreamHint": "مرورگرها جریان‌های نایمن (http) را مسدود می‌کنند. یک URL جریانِ ایمن (https) را جای‌گذاری کنید"
     },
     "map": {
       "showMap": "Show Map",

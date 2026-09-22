@@ -17,17 +17,18 @@ import { renderBillingVerificationDenial } from '../../../../../server/_shared/e
 import { validateUserApiKey } from '../../../../../server/_shared/user-api-key';
 import { checkFailClosedScopedIpRateLimit } from '../../../../../server/_shared/rate-limit';
 import { resolvePremiumCallerIdentity } from '../../../../../server/_shared/premium-check';
-import { getCachedJson, setCachedJson } from '../../../../../server/_shared/redis';
+import { getCachedJson, runRedisTransaction } from '../../../../../server/_shared/redis';
 import {
   WEBHOOK_TTL,
   webhookKey,
+  ownerIndexKey,
   callerFingerprint,
   generateSecret,
   type WebhookRecord,
 } from '../../../../../server/worldmonitor/shipping/v2/webhook-shared';
 
 export default async function handler(req: Request): Promise<Response> {
-  const cors = getCorsHeaders(req);
+  const cors = getCorsHeaders(req, 'POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: cors });
@@ -117,7 +118,13 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (action === 'rotate-secret') {
     const newSecret = await generateSecret();
-    await setCachedJson(webhookKey(subscriberId), { ...record, secret: newSecret }, WEBHOOK_TTL);
+    const stored = await persistWebhook(subscriberId, { ...record, secret: newSecret }, record.ownerTag);
+    if (!stored) {
+      return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+        status: 503,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
     return new Response(
       JSON.stringify({ subscriberId, secret: newSecret, rotatedAt: new Date().toISOString() }),
       { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
@@ -125,9 +132,32 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // action === 'reactivate'
-  await setCachedJson(webhookKey(subscriberId), { ...record, active: true }, WEBHOOK_TTL);
+  const stored = await persistWebhook(subscriberId, { ...record, active: true }, record.ownerTag);
+  if (!stored) {
+    return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+      status: 503,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
   return new Response(JSON.stringify({ subscriberId, active: true }), {
     status: 200,
     headers: { ...cors, 'Content-Type': 'application/json' },
   });
+}
+
+// One MULTI/EXEC, not a pipeline: a pipeline could apply SET and then fail
+// SADD/EXPIRE, answering 503 while Redis already holds a rotated secret the
+// caller never saw. A command rejected at queue time aborts the whole EXEC.
+async function persistWebhook(subscriberId: string, record: WebhookRecord, ownerTag: string): Promise<boolean> {
+  const results = await runRedisTransaction([
+    ['SET', webhookKey(subscriberId), JSON.stringify(record), 'EX', String(WEBHOOK_TTL)],
+    ['SADD', ownerIndexKey(ownerTag), subscriberId],
+    ['EXPIRE', ownerIndexKey(ownerTag), String(WEBHOOK_TTL)],
+  ]);
+  return Array.isArray(results)
+    && results.length === 3
+    && results.every((result) => result && !result.error)
+    && results[0]?.result === 'OK'
+    && [0, 1, '0', '1'].includes(results[1]?.result as number | string)
+    && (results[2]?.result === 1 || results[2]?.result === '1');
 }

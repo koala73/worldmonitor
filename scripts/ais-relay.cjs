@@ -128,6 +128,7 @@ function requireShared(name) {
   throw new Error(`Cannot find shared/${name}`);
 }
 const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
+const { COMPARE_AND_DELETE_SCRIPT } = requireShared('compare-and-delete-script.cjs');
 
 // Log effective heap limit at startup (verifies NODE_OPTIONS=--max-old-space-size is active)
 const _heapStats = v8.getHeapStatistics();
@@ -731,8 +732,7 @@ function upstashReleaseLockIfOwner(key, owner) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
-    const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
-    const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const body = JSON.stringify(['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', key, owner]);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
@@ -3356,7 +3356,7 @@ function fetchYahooChartDirect(symbol, query = '') {
     if (Date.now() < _yahooConnectProxyCooldownUntil) return null;
     const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
-    return ytFetchViaProxy(url, proxy).then((resp) => {
+    return fetchViaProxy(url, proxy).then((resp) => {
       if (!resp?.ok) {
         _yahooConnectProxyFailCount++;
         if (_yahooConnectProxyFailCount >= 5) {
@@ -3843,7 +3843,7 @@ async function _fetchCoinPaprikaTickerById(id) {
 
   if (!PROXY_URL) throw new Error(`CoinPaprika ${id} direct failed and no PROXY_URL configured`);
   const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-  const resp = await ytFetchViaProxy(url, proxy);
+  const resp = await fetchViaProxy(url, proxy);
   if (!resp?.ok) throw new Error(`CoinPaprika ${id} proxy HTTP ${resp?.status || 'unavailable'}`);
   const data = JSON.parse(resp.body);
   if (!data || typeof data !== 'object' || !data.id) throw new Error(`CoinPaprika ${id} proxy returned invalid ticker`);
@@ -7253,7 +7253,7 @@ async function seedUsniFleet() {
     if (!fetched && PROXY_URL) {
       try {
         const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-        const result = await ytFetchViaProxy(USNI_URL, proxy);
+        const result = await fetchViaProxy(USNI_URL, proxy);
         if (result?.ok) {
           wpData = JSON.parse(result.body);
           fetched = true;
@@ -11494,7 +11494,7 @@ function handleYahooChartRequest(req, res) {
     _proxied = true;
     if (!PROXY_URL) return _serveStaleOrError(502, 'Yahoo upstream failed, no proxy');
     const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-    ytFetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
+    fetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
       if (!proxyResp?.ok) return _serveStaleOrError(proxyResp?.status || 502, 'Yahoo proxy failed');
       _serveYahooResult(proxyResp.body, 'relay-proxy');
     }).catch(() => _serveStaleOrError(502, 'Yahoo proxy error'));
@@ -11702,163 +11702,15 @@ function handleAviationStackRequest(req, res) {
   });
 }
 
-// ── YouTube Live Detection (residential proxy bypass) ──────────────
-const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
-
-function ytFetchViaProxy(targetUrl, proxy) {
+// ── Proxy fetch helper ─────────────────────────────────────────────
+// Resolves { ok, status, body } and never rejects. Written for the retired YouTube live
+// detection; the relay's PROXY_URL callers (Yahoo chart, USNI and others) still use it.
+function fetchViaProxy(targetUrl, proxy) {
   const { proxyFetch } = require('./_proxy-utils.cjs');
   return proxyFetch(targetUrl, proxy, { headers: { 'User-Agent': CHROME_UA } })
     .then(r => ({ ok: r.ok, status: r.status, body: r.buffer.toString('utf8') }))
     .catch(() => ({ ok: false, status: 0, body: '' }));
 }
-
-function ytFetchDirect(targetUrl) {
-  return new Promise((resolve, reject) => {
-    const target = new URL(targetUrl);
-    const req = https.request({
-      hostname: target.hostname,
-      path: target.pathname + target.search,
-      method: 'GET',
-      headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return ytFetchDirect(res.headers.location).then(resolve, reject);
-      }
-      let stream = res;
-      const enc = (res.headers['content-encoding'] || '').trim().toLowerCase();
-      if (enc === 'gzip') stream = res.pipe(zlib.createGunzip());
-      else if (enc === 'deflate') stream = res.pipe(zlib.createInflate());
-      const chunks = [];
-      stream.on('data', (c) => chunks.push(c));
-      stream.on('end', () => resolve({
-        ok: res.statusCode >= 200 && res.statusCode < 300,
-        status: res.statusCode,
-        body: Buffer.concat(chunks).toString(),
-      }));
-      stream.on('error', reject);
-    });
-    req.on('error', reject);
-    req.setTimeout(12000, () => { req.destroy(); reject(new Error('YouTube timeout')); });
-    req.end();
-  });
-}
-
-async function ytFetch(url) {
-  const proxy = parseProxyUrl(YOUTUBE_PROXY_URL);
-  if (proxy) {
-    try { return await ytFetchViaProxy(url, proxy); } catch { /* fall through */ }
-  }
-  return ytFetchDirect(url);
-}
-
-const ytLiveCache = new Map();
-const YT_CACHE_TTL = 5 * 60 * 1000;
-const YT_CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
-const YT_HANDLE_RE = /^[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}._·-]{0,28}[\p{L}\p{N}\p{M}])?$/u;
-
-function handleYouTubeLiveRequest(req, res) {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const channel = url.searchParams.get('channel');
-  const videoIdParam = url.searchParams.get('videoId');
-  const handle = channel?.replace(/^@/, '').normalize('NFC') || '';
-  if ((channel && (channel.length > 128 || channel !== channel.trim()
-    || (!YT_CHANNEL_ID_RE.test(channel) && !YT_HANDLE_RE.test(handle))))
-    || (videoIdParam && (videoIdParam.length !== 11 || !/^[A-Za-z0-9_-]{11}$/.test(videoIdParam)))) {
-    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Invalid YouTube handle, channel ID or video ID' }));
-  }
-
-  if (videoIdParam && /^[A-Za-z0-9_-]{11}$/.test(videoIdParam)) {
-    const cacheKey = `vid:${videoIdParam}`;
-    const cached = ytLiveCache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < 3600000) {
-      return sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' }, cached.json);
-    }
-    ytFetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoIdParam}&format=json`)
-      .then(r => {
-        if (r.ok) {
-          try {
-            const data = JSON.parse(r.body);
-            const json = JSON.stringify({ channelName: data.author_name || null, title: data.title || null, videoId: videoIdParam });
-            ytLiveCache.set(cacheKey, { json, ts: Date.now() });
-            return sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' }, json);
-          } catch {}
-        }
-        sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-          JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }));
-      })
-      .catch(() => {
-        sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-          JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }));
-      });
-    return;
-  }
-
-  if (!channel) {
-    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Missing channel parameter' }));
-  }
-
-  const channelHandle = YT_CHANNEL_ID_RE.test(channel) ? channel : `@${handle.toLowerCase()}`;
-  const cacheKey = `ch:${channelHandle}`;
-  const cached = ytLiveCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < YT_CACHE_TTL) {
-    return sendCompressed(req, res, 200, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
-    }, cached.json);
-  }
-
-  const channelPath = YT_CHANNEL_ID_RE.test(channel) ? `channel/${channel}` : `@${encodeURIComponent(handle)}`;
-  const liveUrl = `https://www.youtube.com/${channelPath}/live`;
-  ytFetch(liveUrl)
-    .then(r => {
-      if (!r.ok) {
-        return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-          JSON.stringify({ videoId: null, channelExists: false }));
-      }
-      const html = r.body;
-      const channelExists = html.includes('"channelId"') || html.includes('og:url');
-      let channelName = null;
-      const ownerMatch = html.match(/"ownerChannelName"\s*:\s*"([^"]+)"/);
-      if (ownerMatch) channelName = ownerMatch[1];
-      else { const am = html.match(/"author"\s*:\s*"([^"]+)"/); if (am) channelName = am[1]; }
-
-      let videoId = null;
-      const detailsIdx = html.indexOf('"videoDetails"');
-      if (detailsIdx !== -1) {
-        const block = html.substring(detailsIdx, detailsIdx + 5000);
-        const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-        const liveMatch = block.match(/"isLive"\s*:\s*true/);
-        if (vidMatch && liveMatch) videoId = vidMatch[1];
-      }
-
-      let hlsUrl = null;
-      const hlsMatch = html.match(/"hlsManifestUrl"\s*:\s*"([^"]+)"/);
-      if (hlsMatch && videoId) hlsUrl = hlsMatch[1].replace(/\\u0026/g, '&');
-
-      const json = JSON.stringify({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl });
-      ytLiveCache.set(cacheKey, { json, ts: Date.now() });
-      sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
-      }, json);
-    })
-    .catch(err => {
-      console.error('[Relay] YouTube live check error:', err.message);
-      sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-        JSON.stringify({ videoId: null, error: err.message }));
-    });
-}
-
-// Periodic cleanup for YouTube cache
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of ytLiveCache) {
-    const ttl = key.startsWith('vid:') ? 3600000 : YT_CACHE_TTL;
-    if (now - val.ts > ttl * 2) ytLiveCache.delete(key);
-  }
-}, 5 * 60 * 1000).unref?.();
 
 // ─────────────────────────────────────────────────────────────
 // NOTAM proxy — ICAO API times out from Vercel edge, relay proxies
@@ -12875,8 +12727,6 @@ const server = http.createServer(async (req, res) => {
     handleWorldBankRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
-  } else if (pathname === '/youtube-live') {
-    handleYouTubeLiveRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
     handleYahooChartRequest(req, res);
   } else if (pathname === '/crypto-quotes') {

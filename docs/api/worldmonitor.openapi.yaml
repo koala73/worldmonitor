@@ -477,7 +477,11 @@ paths:
                         type: string
                 - name: min_flights
                   in: query
-                  description: 'Minimum number of flights required to include a carrier (default: 1).'
+                  description: |-
+                    Minimum number of flights required to include a carrier (default: 3).
+                     The generated GET decoder emits 0 when the query param is absent, and 0
+                     means "use the default" in the handler — an explicit 0 is not a usable
+                     filter (every group has >= 1 flight).
                   required: false
                   example: 1
                   schema:
@@ -899,19 +903,20 @@ paths:
             tags:
                 - AviationService
             summary: GetYoutubeLiveStreamInfo
-            description: GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+            description: 'GetYoutubeLiveStreamInfo names a YouTube video (title and channel name) through YouTube oEmbed. Channel live detection is retired: a channel-only query returns error "channel_live_detection_retired", and the channel, is_live and hls_url fields are deprecated.'
             operationId: GetYoutubeLiveStreamInfo
             parameters:
                 - name: channel
+                  deprecated: true
                   in: query
-                  description: YouTube channel handle or ID.
+                  description: 'Deprecated: YouTube channel handle or ID. Channel live detection is retired; a channel-only query returns error "channel_live_detection_retired".'
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: video_id
                   in: query
-                  description: Specific video ID to check.
+                  description: YouTube video ID to name.
                   required: false
                   example: "example-id"
                   schema:
@@ -931,10 +936,12 @@ paths:
                         application/json:
                             example:
                                 "channelExists": true
-                                "channelName": "WorldMonitor Analyst"
-                                "error": "example"
-                                "hlsUrl": "https://example.com/worldmonitor"
-                                "isLive": true
+                                "channelName": "DW News"
+                                "error": ""
+                                "hlsUrl": ""
+                                "isLive": false
+                                "title": "DW News livestream"
+                                "videoId": "LuKwFajn37U"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_aviation_v1_GetYoutubeLiveStreamInfoResponse'
                 "400":
@@ -24499,7 +24506,7 @@ paths:
                     type: string
                 - name: lang
                   in: query
-                  description: ISO 639-1 language code (en, fr, ar, etc.)
+                  description: ISO 639-1 language code of a supported digest language (en, fr, ar, etc.). Unsupported codes are rejected with 400.
                   required: false
                   example: "en"
                   schema:
@@ -27183,13 +27190,13 @@ paths:
                 - name: jobId
                   in: query
                   description: |-
-                    Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
-                     guarded by JOB_ID_RE in the handler.
+                    Job id of the form `scenario:{epoch_ms}:{32-hex}` (128-bit). The legacy
+                     8-character suffix remains valid. Path-traversal guarded by JOB_ID_RE.
                   required: true
                   example: "scenario:1717200000000:abcd1234"
                   schema:
                     type: string
-                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
+                    pattern: '^scenario:[0-9]{13}:([a-f0-9]{32}|[a-z0-9]{8})$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -37666,7 +37673,11 @@ components:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: 'Minimum number of flights required to include a carrier (default: 1).'
+                    description: |-
+                        Minimum number of flights required to include a carrier (default: 3).
+                         The generated GET decoder emits 0 when the query param is absent, and 0
+                         means "use the default" in the handler — an explicit 0 is not a usable
+                         filter (every group has >= 1 flight).
             description: GetCarrierOpsRequest specifies parameters for carrier operations metrics.
         worldmonitor_aviation_v1_GetCarrierOpsResponse:
             type: object
@@ -37845,37 +37856,41 @@ components:
             type: object
             properties:
                 channel:
+                    deprecated: true
                     type: string
-                    description: YouTube channel handle or ID.
+                    description: 'Deprecated: YouTube channel handle or ID. Channel live detection is retired; a channel-only query returns error "channel_live_detection_retired".'
                 videoId:
                     type: string
-                    description: Specific video ID to check.
-            description: GetYoutubeLiveStreamInfoRequest parameters for detecting live status.
+                    description: YouTube video ID to name.
+            description: GetYoutubeLiveStreamInfoRequest names the YouTube video to look up.
         worldmonitor_aviation_v1_GetYoutubeLiveStreamInfoResponse:
             type: object
             properties:
                 videoId:
                     type: string
-                    description: Video ID of the live stream (if found).
+                    description: Video ID that was looked up.
                 isLive:
+                    deprecated: true
                     type: boolean
-                    description: Whether the stream is currently live.
+                    description: 'Always false: oEmbed does not report whether a video is live.'
                 channelExists:
+                    deprecated: true
                     type: boolean
-                    description: Whether the channel exists.
+                    description: 'Deprecated: true only when the oEmbed lookup succeeded, so it now carries exactly error == "".'
                 channelName:
                     type: string
                     description: Human-readable channel name.
                 hlsUrl:
+                    deprecated: true
                     type: string
-                    description: HLS manifest URL (if available).
+                    description: 'Always empty: YouTube manifest URLs are no longer returned.'
                 title:
                     type: string
-                    description: Stream title.
+                    description: Video title.
                 error:
                     type: string
-                    description: Optional error message.
-            description: GetYoutubeLiveStreamInfoResponse containing detection results.
+                    description: '"channel_live_detection_retired" for a channel-only query, or why the video lookup failed.'
+            description: GetYoutubeLiveStreamInfoResponse containing the oEmbed lookup result.
         worldmonitor_aviation_v1_SearchFlightPricesRequest:
             type: object
             properties:
@@ -51402,7 +51417,7 @@ components:
                     description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                 lang:
                     type: string
-                    description: ISO 639-1 language code (en, fr, ar, etc.)
+                    description: ISO 639-1 language code of a supported digest language (en, fr, ar, etc.). Unsupported codes are rejected with 400.
         worldmonitor_news_v1_ListFeedDigestResponse:
             type: object
             properties:
@@ -53454,10 +53469,10 @@ components:
             properties:
                 jobId:
                     type: string
-                    pattern: ^scenario:[0-9]{13}:[a-z0-9]{8}$
+                    pattern: ^scenario:[0-9]{13}:([a-f0-9]{32}|[a-z0-9]{8})$
                     description: |-
-                        Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
-                         guarded by JOB_ID_RE in the handler.
+                        Job id of the form `scenario:{epoch_ms}:{32-hex}` (128-bit). The legacy
+                         8-character suffix remains valid. Path-traversal guarded by JOB_ID_RE.
             required:
                 - jobId
             description: GetScenarioStatusRequest polls the worker result for an enqueued job id.

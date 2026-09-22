@@ -79,7 +79,7 @@ World Monitor's escalation algorithm goes beyond showing where events are happen
 - **Geographic convergence (25%):** Multiple event types (conflict, protest, natural disaster, cyber) co-occurring within the same 1-degree grid cell within 24 hours
 - **Military indicators (15%):** Unusual force movements, exercise activity, weapons tests
 
-Geographic convergence is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
+[Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
 
 ## Military Bases Mapped
 

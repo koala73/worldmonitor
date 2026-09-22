@@ -504,6 +504,7 @@ PROTO_INPUTS=(
   server/worldmonitor/consumer-prices/v1/_selection.ts
   server/worldmonitor/supply-chain/v1/scenario-templates.ts
   shared/attribution-rider.ts
+  shared/compare-and-delete-script.cjs
   shared/china-corridor-control-towers.ts
   shared/china-decision-signal-manifest.ts
   shared/china-decision-signals.ts

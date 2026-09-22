@@ -96,6 +96,11 @@ COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.c
 # that keeps this COPY list and that claim honest.
 # Guarded by tests/notify-fields-parity.test.mjs (behaviour parity).
 COPY scripts/shared/notify-fields.cjs ./scripts/shared/notify-fields.cjs
+# notification-link-suppression.cjs is the operator blocked-link matcher
+# (#8401) required by notification-relay.cjs; it requires notify-fields.cjs
+# above. Same guard caveat: pinned explicitly in
+# tests/dockerfile-relay-imports.test.mjs because the BFS cannot reach it.
+COPY scripts/shared/notification-link-suppression.cjs ./scripts/shared/notification-link-suppression.cjs
 # market-hours.cjs gates the equity portion of the relay market seed loop on
 # the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
 COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
@@ -112,6 +117,10 @@ COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+# compare-and-delete-script.cjs is the Redis EVAL body shared by releaseLock()
+# in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
+# any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).
+COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-delete-script.cjs
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs

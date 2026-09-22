@@ -3031,6 +3031,15 @@ body.panel-resize-active iframe {
   white-space: normal;
 }
 
+.live-news-manage-row-editing .live-news-manage-hint {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+.live-news-manage-row-editing .live-news-manage-edit-handle.invalid {
+  border-color: #f44;
+}
+
 .live-news-manage-row-editing .live-news-manage-edit-handle,
 .live-news-manage-row-editing .live-news-manage-edit-name {
   padding: 10px 12px;
@@ -3113,6 +3122,12 @@ body.panel-resize-active iframe {
 .live-news-manage-handle.invalid {
   border-color: #f44;
   box-shadow: 0 0 0 1px rgba(255, 68, 68, 0.3);
+}
+
+.live-news-manage-hint {
+  margin-top: 4px;
+  color: #f44;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .live-news-manage-add-btn {
@@ -3650,18 +3665,12 @@ body.panel-resize-active iframe {
   }
 }
 
-.bot-check-actions {
+.live-offline-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
   margin-top: 4px;
-}
-
-.bot-check-actions .bot-check-signin {
-  background: var(--accent, #4a9eff);
-  border-color: var(--accent, #4a9eff);
-  color: #fff;
 }
 
 @keyframes loadingDots {
@@ -3722,8 +3731,7 @@ body.panel-resize-active iframe {
 }
 
 .live-news-fullscreen .live-news-player,
-.live-news-fullscreen .live-news-native-video,
-.live-news-fullscreen .live-news-embed-frame {
+.live-news-fullscreen .live-news-media {
   height: 100% !important;
 }
 
@@ -3817,16 +3825,63 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .live-news-player {
+  position: relative;
   width: 100%;
   flex: 1;
   background: var(--bg);
   aspect-ratio: 16 / 9;
 }
 
-.live-news-player iframe {
+.live-news-player iframe,
+.live-news-player video {
   width: 100%;
   height: 100%;
   display: block;
+  border: 0;
+}
+
+.live-news-player video {
+  object-fit: contain;
+  background: #000;
+}
+
+/* Covers the player while a stream connects; a corner chip discloses a recording or an unconfirmed stream. */
+.live-news-status {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.live-news-status--cover {
+  inset: 0;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text-dim);
+}
+
+.live-news-status--chip {
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.live-news-status .offline-retry {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 /* Live Webcams Panel */
@@ -4115,6 +4170,21 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 .webcam-idle-notice {
   min-height: 200px;
+}
+
+.webcam-tile-status {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.webcam-offline-note {
+  padding: 4px 8px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  background: var(--darken-heavy);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
@@ -27991,6 +28061,50 @@ body.map-width-resizing {
 
 .us-notif-country-chip-on:hover .us-notif-country-chip-x {
   opacity: 1;
+}
+
+.us-notif-country-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.us-notif-country-add-input {
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  width: 7em;
+  padding: 4px 10px;
+  background: var(--settings-surface-inset);
+  border: 1px solid var(--settings-border);
+  border-radius: 5px;
+  color: var(--settings-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.us-notif-country-add-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.7;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.us-notif-country-add-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.us-notif-country-error {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--settings-red);
+}
+
+.us-notif-country-hint {
+  margin-top: 6px;
 }
 
 .us-notif-slack-wrap {

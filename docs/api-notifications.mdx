@@ -120,9 +120,9 @@ Hosted YouTube iframe wrapper retained for compatibility. The current web app em
 
 ### `GET /api/youtube/live?channel=<handle>` or `?videoId=<11-char-id>`
 
-Returns live-stream metadata for a YouTube channel (`channel` — handle with or without `@` prefix) or a specific video (`videoId` — 11-char YouTube id). At least one of the two params is required; returns `400 Missing channel or videoId parameter` otherwise. Response cached 10 min for channel lookups, 1 hour for videoId lookups.
+Names a YouTube video for channel management. `videoId` (11-char YouTube id) returns the video's `title` and author (`channelName`) from YouTube oEmbed, fetched directly; the response is cached 1 hour. If oEmbed fails, the response is `200` with null `title` and `channelName` and is not cached. When both params are sent, the `videoId` lookup answers.
 
-Proxies to the Railway relay first (residential proxy for YouTube scraping). On relay failure, falls back to YouTube oEmbed (for `videoId`) or direct channel scraping — both are unreliable from datacenter IPs.
+Channel live detection is retired. A valid `channel` (handle with or without `@`, or a `UC…` channel id) without `videoId` returns `410 {"error":"channel_live_detection_retired"}`, cached 1 day, with no request to YouTube or the Railway relay. At least one of the two params is required; returns `400 Missing channel or videoId parameter` otherwise, and `400` for a malformed handle, channel id or video id.
 
 ## Slack integration
 

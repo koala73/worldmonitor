@@ -1,3 +1,4 @@
+import { COMPARE_AND_DELETE_SCRIPT } from '../../shared/compare-and-delete-script.cjs';
 import { unwrapEnvelope } from './seed-envelope';
 import { getRpcNoStoreReasonFromPayload } from './cache-contract';
 import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
@@ -781,7 +782,6 @@ export async function compareAndDeleteRedisKey(key: string, expectedValue: strin
   if (!url || !token || !expectedValue) return false;
 
   const finalKey = raw ? key : prefixKey(key);
-  const script = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
   try {
     const response = await fetch(`${url}/`, {
       method: 'POST',
@@ -789,7 +789,7 @@ export async function compareAndDeleteRedisKey(key: string, expectedValue: strin
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(['EVAL', script, '1', finalKey, expectedValue]),
+      body: JSON.stringify(['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', finalKey, expectedValue]),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
     if (!response.ok) {

@@ -32,6 +32,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { Ratelimit } from '@upstash/ratelimit';
 import { HMAC_SECRET, PRO_USER_ID, PRO_TOKEN_ID, makeProDeps } from './helpers/mcp-pro-deps.mjs';
+import { hashKeySync } from '../server/_shared/usage-identity.ts';
 
 const originalEnv = { ...process.env };
 const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
@@ -491,7 +492,7 @@ async function withTelemetry(fn) {
 
 describe('api/mcp/auth.ts — applyPerMinuteLimit (#5379 Gap 9)', () => {
   const PER_MINUTE_CONTEXTS = [
-    { kind: 'env_key', context: ENV_KEY_CONTEXT, key: `rl:mcp:key:${ENV_KEY}`, message: 'Rate limit exceeded. Max 60 requests per minute per API key.' },
+    { kind: 'env_key', context: ENV_KEY_CONTEXT, key: `rl:mcp:key:${hashKeySync(ENV_KEY)}`, message: 'Rate limit exceeded. Max 60 requests per minute per API key.' },
     { kind: 'pro', context: PRO_CONTEXT, key: `rl:mcp:pro-min:pro-user:${PRO_USER_ID}`, message: 'Rate limit exceeded. Max 60 requests per minute per user.' },
     { kind: 'user_key', context: USER_KEY_CONTEXT, key: `rl:mcp:pro-min:pro-user:${USER_KEY_USER_ID}`, message: 'Rate limit exceeded. Max 60 requests per minute per user.' },
   ];

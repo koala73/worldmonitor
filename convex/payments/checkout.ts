@@ -458,7 +458,7 @@ async function _createCheckoutSession(
     console.error(
       `[checkout] createCheckout failed for user=${user.userId} product=${args.productId}: ${msg}`,
     );
-    throw new ConvexError(`Checkout failed: ${msg}`);
+    throw new ConvexError({ code: "CHECKOUT_FAILED" });
   }
 }
 

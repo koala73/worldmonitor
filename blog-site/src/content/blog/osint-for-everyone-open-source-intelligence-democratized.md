@@ -102,7 +102,7 @@ World Monitor doesn't just show you where things are happening. It tells you whe
 
 - News activity (35%)
 - CII score (25%)
-- Geographic convergence (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
+- [Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) (25%): when 3+ event types co-occur within the same 1-degree grid cell in 24 hours
 - Military indicators (15%)
 
 When a region's escalation score spikes, it surfaces in the Strategic Risk panel before traditional media picks up the story.
@@ -128,7 +128,7 @@ No account needed. No API keys required for the web version. For local AI analys
 
 Closed-source intelligence tools are black boxes. You can't verify how they score threats, where their data comes from, or whether their algorithms have blind spots.
 
-World Monitor's AGPL-3.0 license means every scoring algorithm, every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
+World Monitor's AGPL-3.0 license means every [scoring algorithm](https://www.worldmonitor.app/docs/algorithms), every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
 
 ## Frequently Asked Questions
 

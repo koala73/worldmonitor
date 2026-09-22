@@ -98,9 +98,9 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 ### `GET /api/youtube/live?channel=<handle>` 或 `?videoId=<11-char-id>`
 
-返回 YouTube 频道(`channel` — 带/不带 `@` 前缀的 handle)或指定视频(`videoId` — 11 字符 YouTube id)的直播元数据。两个参数至少需提供其一;否则返回 `400 Missing channel or videoId parameter`。频道查询响应缓存 10 分钟,videoId 查询缓存 1 小时。
+为频道管理返回 YouTube 视频名称。`videoId`(11 字符 YouTube id)直接通过 YouTube oEmbed 返回视频的 `title` 和作者(`channelName`),响应缓存 1 小时。oEmbed 失败时返回 `200`,`title` 和 `channelName` 为 null,且不缓存。两个参数同时提供时,按 `videoId` 查询作答。
 
-首先通过 Railway 中继代理(用于 YouTube 抓取的住宅代理)。中继失败时,回退到 YouTube oEmbed(用于 `videoId`)或直接频道抓取 — 两者从数据中心 IP 均不可靠。
+频道直播检测已停用。只提供合法 `channel`(带/不带 `@` 前缀的 handle,或 `UC…` 频道 id)而不提供 `videoId` 时,返回 `410 {"error":"channel_live_detection_retired"}`,缓存 1 天,不会请求 YouTube 或 Railway 中继。两个参数至少需提供其一;否则返回 `400 Missing channel or videoId parameter`;handle、频道 id 或视频 id 格式不合法时返回 `400`。
 
 ## Slack 集成
 

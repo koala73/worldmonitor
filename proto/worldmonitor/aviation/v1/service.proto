@@ -68,7 +68,7 @@ service AviationService {
     };
   }
 
-  // GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+  // GetYoutubeLiveStreamInfo names a YouTube video (title and channel name) through YouTube oEmbed. Channel live detection is retired: a channel-only query returns error "channel_live_detection_retired", and the channel, is_live and hls_url fields are deprecated.
   rpc GetYoutubeLiveStreamInfo(GetYoutubeLiveStreamInfoRequest) returns (GetYoutubeLiveStreamInfoResponse) {
     option (sebuf.http.config) = {
       path: "/get-youtube-live-stream-info"

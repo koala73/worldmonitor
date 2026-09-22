@@ -2,13 +2,32 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { LiveWebcamsPanel } from '@/components/LiveWebcamsPanel';
 
+import { createFakeYouTubeIframeApi, type FakeYouTubeIframeApi } from './helpers/fake-youtube-iframe-api.mts';
 import { initTestI18n } from './helpers/i18n.mts';
+
+const loader = vi.hoisted(() => ({ api: null as FakeYouTubeIframeApi | null }));
+
+vi.mock('@/services/live-video/youtube-iframe-api', () => ({
+  loadYouTubeIframeApi: () => Promise.resolve(loader.api?.namespace ?? null),
+}));
+
+vi.mock('@/config/live-video-sources', async (importOriginal) => {
+  const { withFixtureWebcamCatalog } = await import('./helpers/webcam-catalog.mts');
+  return withFixtureWebcamCatalog(await importOriginal<typeof import('@/config/live-video-sources')>());
+});
 
 const ALL_REGIONS_WALL = [
   'Jerusalem live webcam',
   'Middle East live webcam',
   'Ukraine live webcam',
   'Washington DC live webcam',
+];
+// The Middle East region skips its empty slots (Tel Aviv, Beirut) and fills from Mecca and Istanbul.
+const MIDDLE_EAST_WALL = [
+  'Istanbul live webcam',
+  'Jerusalem live webcam',
+  'Mecca live webcam',
+  'Middle East live webcam',
 ];
 const EUROPE_WALL = [
   'London live webcam',
@@ -87,11 +106,12 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  // Tiles carry real YouTube embed URLs; keep happy-dom from fetching them.
+  (window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM.settings.disableIframePageLoading = true;
   vi.useFakeTimers();
   localStorage.clear();
   vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
-  const prototype = LiveWebcamsPanel.prototype as unknown as { buildEmbedUrl(videoId: string): string };
-  vi.spyOn(prototype, 'buildEmbedUrl').mockReturnValue('about:blank');
+  loader.api = createFakeYouTubeIframeApi();
 });
 
 afterEach(() => {
@@ -113,6 +133,15 @@ describe('Live Webcams region switch', () => {
 
     expect(playingFeeds()).toEqual(EUROPE_WALL);
     expect(previewTileCities()).toEqual([]);
+  });
+
+  it('fills the Middle East wall from Mecca and Istanbul when earlier slots are empty', () => {
+    mountOnScreen();
+    playFromPreview();
+
+    clickPanelControl('.webcam-region-btn[data-region="middle-east"]');
+
+    expect(playingFeeds()).toEqual(MIDDLE_EAST_WALL);
   });
 
   it('leaves a never-played wall on previews across a region switch', () => {

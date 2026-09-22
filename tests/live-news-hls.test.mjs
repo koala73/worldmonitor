@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,9 +10,7 @@ const root = resolve(__dirname, '..');
 const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
 const liveNewsSrc = readSrc('src/components/LiveNewsPanel.ts') + readSrc('src/services/live-channels.ts');
-const liveWebcamsSrc = readSrc('src/components/LiveWebcamsPanel.ts');
-const liveNewsSvc = readSrc('src/services/live-news.ts');
-const youtubeApi = readSrc('api/youtube/live.js');
+const channelsWindowSrc = readSrc('src/live-channels-window.ts');
 const sidecarSrc = readSrc('src-tauri/sidecar/local-api-server.mjs');
 const vercelConfig = JSON.parse(readSrc('vercel.json'));
 const tauriConfig = JSON.parse(readSrc('src-tauri/tauri.conf.json'));
@@ -26,7 +24,8 @@ const tauriCsp = tauriConfig.app.security.csp;
 const getCspDirective = (csp, directive) =>
   csp.match(new RegExp(`${directive}\\s+([^;]+)`))?.[1]?.split(/\s+/) ?? [];
 
-// ── Extract channel IDs and DIRECT_HLS_MAP keys from source ──
+// Stream entries and their integrity checks live in tests/live-video-catalog.test.mts; playback
+// behaviour is pinned by tests/dom/live-news-live-verification.test.mts.
 
 const extractArrayIds = (arrayName) => {
   const pattern = new RegExp(`const ${arrayName}[^=]*=[^\\[]*\\[([\\s\\S]*?)\\];`);
@@ -38,95 +37,13 @@ const extractArrayIds = (arrayName) => {
 const fullIds = extractArrayIds('FULL_LIVE_CHANNELS');
 const techIds = extractArrayIds('TECH_LIVE_CHANNELS');
 const optionalIds = extractArrayIds('OPTIONAL_LIVE_CHANNELS');
-const allChannelIds = new Set([...fullIds, ...techIds, ...optionalIds]);
 
-const hlsMapMatch = liveNewsSrc.match(/const DIRECT_HLS_MAP[^{]*\{([\s\S]*?)\};/);
-const hlsMapEntries = hlsMapMatch
-  ? [...hlsMapMatch[1].matchAll(/'([^']+)':\s*'([^']+)'/g)].map(m => ({ id: m[1], url: m[2] }))
-  : [];
-
-const hlsMapIds = new Set(hlsMapEntries.map(e => e.id));
-
-// ── 1. DIRECT_HLS_MAP integrity ──
-
-describe('DIRECT_HLS_MAP integrity', () => {
-  it('has at least 6 entries', () => {
-    assert.ok(hlsMapEntries.length >= 6, `Expected ≥6 entries, got ${hlsMapEntries.length}`);
-  });
-
-  it('every key maps to an existing channel definition', () => {
-    for (const { id } of hlsMapEntries) {
-      assert.ok(allChannelIds.has(id), `DIRECT_HLS_MAP key '${id}' has no matching channel`);
-    }
-  });
-
-  it('every mapped channel has a fallbackVideoId or hlsUrl', () => {
-    for (const { id } of hlsMapEntries) {
-      const channelDef = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[^}]*}`));
-      assert.ok(channelDef, `Channel '${id}' definition not found`);
-      const hasFallback = /fallbackVideoId:\s*'[^']+'/.test(channelDef[0]);
-      const hasHlsUrl = /hlsUrl:\s*'[^']+'/.test(channelDef[0]);
-      const hasHandle = /handle:\s*'[^']+'/.test(channelDef[0]);
-      assert.ok(hasFallback || hasHlsUrl || hasHandle,
-        `Channel '${id}' in DIRECT_HLS_MAP lacks fallbackVideoId, hlsUrl, and handle`);
-    }
-  });
-
-  it('all HLS URLs use HTTPS', () => {
-    for (const { id, url } of hlsMapEntries) {
-      assert.ok(url.startsWith('https://'), `HLS URL for '${id}' is not HTTPS: ${url}`);
-    }
-  });
-
-  it('all HLS URLs contain .m3u8', () => {
-    for (const { id, url } of hlsMapEntries) {
-      assert.ok(url.includes('.m3u8'), `HLS URL for '${id}' does not contain .m3u8: ${url}`);
-    }
-  });
-
-  it('no duplicate channel IDs in the map', () => {
-    const ids = hlsMapEntries.map(e => e.id);
-    assert.equal(ids.length, new Set(ids).size, 'Duplicate IDs in DIRECT_HLS_MAP');
-  });
-
-  it('no HLS URL points at a slate clip', () => {
-    // CNN's cnn_slate playlist is a ~10-minute VOD (#EXT-X-ENDLIST) that played under a LIVE label.
-    const slates = hlsMapEntries.filter(({ url }) => /cnn_slate|[/_-]slate[/_.-]/i.test(url)).map(({ id }) => id);
-    assert.deepEqual(slates, [], 'a slate is a recording, not a live stream; use the channel\'s live YouTube fallback');
-  });
-});
-
-// ── 2. Channel data integrity ──
+// ── 1. Channel data integrity ──
 
 describe('channel data integrity', () => {
-  it('all FULL_LIVE_CHANNELS have fallbackVideoId', () => {
-    for (const id of fullIds) {
-      const match = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[^}]*}`, 's'));
-      assert.ok(match, `Channel '${id}' not found`);
-      assert.match(match[0], /fallbackVideoId:\s*'[^']+'/,
-        `FULL channel '${id}' missing fallbackVideoId`);
-    }
-  });
-
   it('does not ship CNBC, whose only YouTube live stream is a documentary marathon', () => {
-    assert.ok(!allChannelIds.has('cnbc'), 'cnbc must not be a built-in Live News channel');
-    assert.doesNotMatch(liveNewsSrc, /'cnbc'/, 'no region list, HLS map or proxy entry may still name cnbc');
-  });
-
-  it('no two webcam feeds play the same video', () => {
-    const ids = [...liveWebcamsSrc.matchAll(/fallbackVideoId:\s*'([^']+)'/g)].map((m) => m[1]);
-    assert.ok(ids.length > 0, 'no webcam fallbackVideoId found');
-    const repeated = ids.filter((id, index) => ids.indexOf(id) !== index);
-    assert.deepEqual(repeated, [], 'point one webcam feed at a stream instead of listing the same video twice');
-  });
-
-  it('every default webcam grid id names a webcam feed', () => {
-    const gridIds = liveWebcamsSrc.match(/ALL_GRID_IDS\s*=\s*\[([^\]]*)\]/)?.[1];
-    assert.ok(gridIds, 'ALL_GRID_IDS not found');
-    const feedIds = new Set([...liveWebcamsSrc.matchAll(/\{\s*id:\s*'([^']+)',\s*city:/g)].map((m) => m[1]));
-    for (const [, id] of gridIds.matchAll(/'([^']+)'/g)) {
-      assert.ok(feedIds.has(id), `ALL_GRID_IDS '${id}' has no WEBCAM_FEEDS entry`);
-    }
+    assert.ok(![...fullIds, ...techIds, ...optionalIds].includes('cnbc'), 'cnbc must not be a built-in Live News channel');
+    assert.doesNotMatch(liveNewsSrc, /'cnbc'/, 'no channel list or region list may still name cnbc');
   });
 
   it('no channel ID appears in multiple arrays with conflicting definitions', () => {
@@ -159,212 +76,64 @@ describe('channel data integrity', () => {
   });
 });
 
-// ── 3. renderNativeHlsPlayer safety checks ──
+// ── 2. Playback goes only through the verified live video session ──
 
-describe('renderNativeHlsPlayer safety', () => {
-  it('validates HLS URL starts with https://', () => {
-    assert.match(liveNewsSrc, /hlsUrl\.startsWith\('https:\/\/'\)/,
-      'Must validate HLS URL is HTTPS before creating video element');
+describe('Live News playback', () => {
+  it('plays through openLiveVideo and builds no player or stream of its own', () => {
+    assert.match(liveNewsSrc, /openLiveVideo\(/);
+    assert.doesNotMatch(liveNewsSrc, /YT\.Player|window\.YT|import\('hls\.js'\)|\/api\/hls-proxy/,
+      'LiveNewsPanel must not mount YouTube or HLS players outside the live video session');
   });
 
-  it('captures activeChannel ref for race safety in error handler', () => {
-    assert.match(liveNewsSrc, /const failedChannel\s*=\s*this\.activeChannel/,
-      'Error handler must capture channel ref to avoid race conditions');
+  it('never looks up a channel handle to find its live video', () => {
+    assert.doesNotMatch(liveNewsSrc, /\/api\/youtube\/live\?channel=/);
+    assert.doesNotMatch(channelsWindowSrc, /\/api\/youtube\/live\?channel=/);
+    assert.equal(existsSync(resolve(root, 'src/services/live-news.ts')), false,
+      'the handle-scraping client service is retired');
   });
 
-  it('sets cooldown on HLS failure', () => {
-    assert.match(liveNewsSrc, /this\.hlsFailureCooldown\.set\(failedChannel\.id/,
-      'Must set cooldown timestamp on failure');
-  });
-
-  it('checks current live media session before fallback', () => {
-    assert.match(liveNewsSrc, /this\.ownsLiveMediaSession\(failedChannel\.id,\s*sessionToken\)/,
-      'Must verify the HLS callback still belongs to the active media session before falling back');
-  });
-
-  it('explicitly stops video element on error', () => {
-    assert.match(liveNewsSrc, /video\.pause\(\);\s*\n\s*video\.removeAttribute\('src'\)/,
-      'Must pause and clear src on error for explicit cleanup');
-  });
-});
-
-// ── 4. getDirectHlsUrl cooldown logic ──
-
-describe('getDirectHlsUrl cooldown', () => {
-  it('checks cooldown map before returning URL', () => {
-    assert.match(liveNewsSrc, /this\.hlsFailureCooldown\.get\(channelId\)/,
-      'Must check cooldown before returning HLS URL');
-  });
-
-  it('uses HLS_COOLDOWN_MS for timeout comparison', () => {
-    assert.match(liveNewsSrc, /Date\.now\(\)\s*-\s*failedAt\s*<\s*this\.HLS_COOLDOWN_MS/,
-      'Must compare against HLS_COOLDOWN_MS');
-  });
-
-  it('cooldown is at least 1 minute', () => {
-    const match = liveNewsSrc.match(/HLS_COOLDOWN_MS\s*=\s*(\d+)\s*\*\s*(\d+)\s*\*\s*(\d+)/);
-    assert.ok(match, 'HLS_COOLDOWN_MS not found');
-    const ms = Number(match[1]) * Number(match[2]) * Number(match[3]);
-    assert.ok(ms >= 60_000, `Cooldown too short: ${ms}ms (need ≥60s)`);
-  });
-});
-
-// ── 5. Player decision tree ordering ──
-
-describe('player decision tree', () => {
-  it('switchChannel defers media resolution until playback is active or requested', () => {
+  it('switchChannel starts no media before the preview-only return', () => {
     const switchMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private async switchChannel'),
-      liveNewsSrc.indexOf('private showOfflineMessage'),
+      liveNewsSrc.indexOf('private switchChannel'),
+      liveNewsSrc.indexOf('private nextChannel'),
     );
     const shouldStartPos = switchMethod.indexOf('const shouldStartMedia');
     const previewOnlyPos = switchMethod.indexOf('if (!shouldStartMedia)');
     const placeholderPos = switchMethod.indexOf('this.renderPlaceholder()');
-    const resolvePos = switchMethod.indexOf('await this.resolveChannelVideo(channel)');
-    const requestPos = switchMethod.indexOf('this.requestPlaybackForActiveChannel()');
+    const beginPos = switchMethod.indexOf("this.beginPlayback('explicit')");
     assert.ok(shouldStartPos > 0, 'switchChannel must compute whether media should start');
     assert.ok(previewOnlyPos > shouldStartPos, 'switchChannel must branch on shouldStartMedia');
     assert.ok(placeholderPos > previewOnlyPos, 'switchChannel preview-only branch must render the placeholder');
-    assert.ok(resolvePos > placeholderPos, 'switchChannel must not resolve live media before preview-only return');
-    assert.ok(requestPos > resolvePos, 'switchChannel must request playback only after resolving the selected channel');
+    assert.ok(beginPos > placeholderPos, 'switchChannel must not start playback before the preview-only return');
+    assert.doesNotMatch(switchMethod, /openLiveVideo|renderPlayer/, 'switchChannel must start media only through the controller');
+    assert.match(switchMethod, /this\.syncOfflineButtonMarks\(\)/,
+      'preview-only switch must re-sync offline marks from failure memory');
+    assert.doesNotMatch(switchMethod, /classList\.remove\('offline'\)/,
+      'preview-only switch must not wipe offline marks on every channel button');
   });
 
-  it('switchChannel re-checks playback intent after async channel resolution', () => {
-    const switchMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private async switchChannel'),
-      liveNewsSrc.indexOf('private showOfflineMessage'),
+  it('gives each custom channel its own live-video failure-memory slot', () => {
+    const sourceFn = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('function liveVideoSourceFor'),
+      liveNewsSrc.indexOf('function hasBuiltinStreams'),
     );
-    const resolvePos = switchMethod.indexOf('await this.resolveChannelVideo(channel)');
-    const intentRecheckPos = switchMethod.indexOf('if (!this.hasPlaybackIntent())');
-    const requestPos = switchMethod.indexOf('this.requestPlaybackForActiveChannel()');
-    assert.ok(resolvePos > 0, 'switchChannel must resolve the selected channel');
-    assert.ok(intentRecheckPos > resolvePos, 'switchChannel must re-check playback intent after async resolution');
-    assert.ok(intentRecheckPos < requestPos, 'switchChannel must re-check intent before requesting playback');
+    assert.match(sourceFn, /slot: `live-news\/\$\{channel\.id\}`/);
+    assert.doesNotMatch(sourceFn, /slot: 'live-news\/custom'/);
   });
 
-  it('YouTube player callbacks are guarded by the current media session', () => {
-    const initMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private async initializePlayer'),
-      liveNewsSrc.indexOf('private startBotCheckTimeout'),
+  it('session callbacks are ignored once a newer player replaced them', () => {
+    const renderPlayer = liveNewsSrc.slice(
+      liveNewsSrc.indexOf('private renderPlayer'),
+      liveNewsSrc.indexOf('private ensurePlayerContainer'),
     );
-    assert.match(initMethod, /const playerSessionToken\s*=\s*this\.liveMediaSessionToken/,
-      'initializePlayer must capture the current media session before registering YouTube callbacks');
-    assert.match(initMethod, /onReady:\s*\(\)\s*=>\s*\{\s*if \(!this\.ownsLiveMediaSession\(playerChannelId,\s*playerSessionToken\)\) return;/,
-      'YouTube onReady callback must be guarded by current media session ownership');
-    assert.match(initMethod, /onError:\s*\(event\)\s*=>\s*\{\s*if \(!this\.ownsLiveMediaSession\(playerChannelId,\s*playerSessionToken\)\) return;/,
-      'YouTube onError callback must be guarded by current media session ownership');
-  });
-
-  it('desktop embed bridge messages are guarded by the current media session', () => {
-    const bridgeMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private setupBridgeMessageListener'),
-      liveNewsSrc.indexOf('private static resolveYouTubeOrigin'),
-    );
-    const desktopEmbedMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private async renderDesktopEmbedAsync'),
-      liveNewsSrc.indexOf('private async renderNativeHlsPlayer'),
-    );
-    const destroyMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private destroyPlayer'),
-      liveNewsSrc.indexOf('private createLiveButton'),
-    );
-    assert.match(bridgeMethod, /const session\s*=\s*this\.desktopEmbedSession/,
-      'desktop bridge handler must capture the iframe session before processing messages');
-    assert.match(bridgeMethod, /this\.ownsLiveMediaSession\(session\.channelId,\s*session\.sessionToken\)/,
-      'desktop bridge handler must ignore stale iframe messages after ownership changes');
-    assert.match(desktopEmbedMethod, /this\.desktopEmbedSession\s*=\s*\{\s*iframe,\s*channelId,\s*sessionToken\s*\}/,
-      'desktop embed creation must record channel and session ownership');
-    assert.match(destroyMethod, /this\.desktopEmbedSession\s*=\s*null/,
-      'destroyPlayer must clear desktop embed session ownership');
-  });
-
-  it('initializePlayer checks direct HLS before videoId validation', () => {
-    const initMethod = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private async initializePlayer'),
-      liveNewsSrc.indexOf('private startBotCheckTimeout'),
-    );
-    const hlsPos = initMethod.indexOf('getDirectHlsUrl(this.activeChannel.id)');
-    const videoIdPos = initMethod.indexOf("!/^[\\w-]{10,12}$/.test(this.activeChannel.videoId)");
-    assert.ok(hlsPos > 0, 'getDirectHlsUrl not found in initializePlayer');
-    assert.ok(videoIdPos > 0, 'videoId validation not found in initializePlayer');
-    assert.ok(hlsPos < videoIdPos,
-      'Direct HLS check must come BEFORE videoId validation in initializePlayer');
+    assert.match(renderPlayer, /const generation = \+\+this\.playerGeneration/);
+    assert.match(renderPlayer, /onState: \(state\) => \{\s*if \(isCurrent\(\)\) this\.onVideoState\(channel, state\);/);
+    // The synchronous handoff (keep only the newest session) is pinned by the DOM test in
+    // tests/dom/live-news-live-verification.test.mts that starts past a channel with no stream.
   });
 });
 
-// ── 6. resolveChannelVideo skips YouTube API for direct HLS ──
-
-describe('resolveChannelVideo optimization', () => {
-  it('skips fetchLiveVideoInfo for desktop direct-HLS channels', () => {
-    const resolve = liveNewsSrc.slice(
-      liveNewsSrc.indexOf('private async resolveChannelVideo'),
-      liveNewsSrc.indexOf('private async switchChannel'),
-    );
-    const directHlsPos = resolve.indexOf('getDirectHlsUrl(channel.id)');
-    const fetchPos = resolve.indexOf('fetchLiveVideoInfo');
-    assert.ok(directHlsPos > 0, 'getDirectHlsUrl not in resolveChannelVideo');
-    assert.ok(fetchPos > 0, 'fetchLiveVideoInfo not in resolveChannelVideo');
-    assert.ok(directHlsPos < fetchPos,
-      'Direct HLS early return must come before fetchLiveVideoInfo call');
-  });
-});
-
-// ── 7. YouTube API: hlsUrl extraction ──
-
-describe('YouTube API hlsManifestUrl extraction', () => {
-  it('extracts hlsManifestUrl from page HTML', () => {
-    assert.match(youtubeApi, /hlsManifestUrl/,
-      'API must extract hlsManifestUrl');
-  });
-
-  it('unescapes \\u0026 in HLS URL', () => {
-    assert.match(youtubeApi, /\\\\u0026/,
-      'Must unescape \\u0026 to & in HLS URLs');
-  });
-
-  it('only sets hlsUrl when videoId is present', () => {
-    assert.match(youtubeApi, /hlsMatch\s*&&\s*videoId/,
-      'hlsUrl must only be set when a live videoId was found');
-  });
-
-  it('includes hlsUrl in response JSON', () => {
-    assert.match(youtubeApi, /JSON\.stringify\(\{[^}]*hlsUrl/,
-      'Response must include hlsUrl field');
-  });
-});
-
-// ── 8. live-news.ts service ──
-
-describe('fetchLiveVideoInfo service', () => {
-  it('exports fetchLiveVideoInfo function', () => {
-    assert.match(liveNewsSvc, /export async function fetchLiveVideoInfo/,
-      'Must export fetchLiveVideoInfo');
-  });
-
-  it('returns hlsUrl from API response', () => {
-    assert.match(liveNewsSvc, /hlsUrl\s*=\s*data\.hlsUrl/,
-      'Must propagate hlsUrl from API response');
-  });
-
-  it('caches hlsUrl alongside videoId', () => {
-    assert.match(liveNewsSvc, /liveVideoCache\.set\([^)]*hlsUrl/,
-      'Cache must store hlsUrl');
-  });
-
-  it('returns null hlsUrl on error', () => {
-    assert.match(liveNewsSvc, /return\s*\{\s*videoId:\s*null,\s*hlsUrl:\s*null\s*\}/,
-      'Error path must return null for both videoId and hlsUrl');
-  });
-
-  it('keeps deprecated fetchLiveVideoId for backwards compat', () => {
-    assert.match(liveNewsSvc, /@deprecated/,
-      'fetchLiveVideoId should be marked deprecated');
-    assert.match(liveNewsSvc, /export async function fetchLiveVideoId/,
-      'fetchLiveVideoId must still be exported');
-  });
-});
-
-// ── 9. Sidecar YouTube embed endpoint ──
+// ── 3. Sidecar YouTube embed endpoint ──
 
 describe('sidecar youtube-embed endpoint', () => {
   it('registers /api/youtube-embed route', () => {
@@ -441,45 +210,16 @@ describe('sidecar youtube-embed endpoint', () => {
       'Must route yt-ready through the origin-checked parent bridge');
   });
 
-  it('passes the desktop webcam parent origin to the sidecar bridge', () => {
+  it('passes the desktop parent origin to the sidecar bridge', () => {
     assert.match(
-      liveWebcamsSrc,
+      readSrc('src/services/live-video/session.ts'),
       /params\.set\('parentOrigin',\s*window\.location\.origin\)/,
-      'LiveWebcamsPanel must identify its parent origin to the sidecar bridge',
+      'the live video session must identify its parent origin to the sidecar bridge',
     );
   });
 });
 
-// ── 10. Optional channels with fallbackVideoId ──
-
-describe('optional channels fallback coverage', () => {
-  const highPriorityOptional = ['abc-news', 'nbc-news', 'wion', 'rt'];
-
-  for (const id of highPriorityOptional) {
-    it(`${id} has a fallback path`, () => {
-      const match = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[^}]*}`));
-      assert.ok(match, `Channel '${id}' not found in OPTIONAL_LIVE_CHANNELS`);
-      const hasFallback = /fallbackVideoId:\s*'[A-Za-z0-9_-]{11}'/.test(match[0]);
-      const hasHlsUrl = /hlsUrl:\s*'[^']+'/.test(match[0]);
-      const hasHandle = /handle:\s*'[^']+'/.test(match[0]);
-      assert.ok(hasFallback || hasHlsUrl || hasHandle,
-        `Optional channel '${id}' must have fallbackVideoId, hlsUrl, or handle`);
-    });
-  }
-
-  it('channels with useFallbackOnly also have fallbackVideoId or hlsUrl', () => {
-    const useFallbackMatches = [...liveNewsSrc.matchAll(/id:\s*'([^']+)'[^}]*useFallbackOnly:\s*true[^}]*}/g)];
-    for (const m of useFallbackMatches) {
-      const channelId = m[1];
-      const hasFallback = /fallbackVideoId:\s*'[^']+'/.test(m[0]);
-      const hasHlsUrl = /hlsUrl:\s*'[^']+'/.test(m[0]);
-      assert.ok(hasFallback || hasHlsUrl,
-        `Channel '${channelId}' has useFallbackOnly but no fallbackVideoId or hlsUrl`);
-    }
-  });
-});
-
-// ── 11. CSP allows HLS media and desktop sidecar iframe ──
+// ── 4. CSP allows HLS media and desktop sidecar iframe ──
 
 describe('CSP configuration', () => {
   it('web header media-src allows https: for CDN HLS streams', () => {

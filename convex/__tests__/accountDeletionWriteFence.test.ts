@@ -33,8 +33,18 @@ async function makeT(state: (typeof states)[number]) {
   return t;
 }
 
-const rejected = (request: Promise<unknown>) =>
-  expect(request).rejects.toThrow("ACCOUNT_DELETION_IN_PROGRESS");
+// Object data, not a bare string: Convex's HTTP client drops string-data
+// `errorData`, so the Edge would see an opaque "Server Error" it retries as a
+// transient 503 (WORLDMONITOR-PD / -14D).
+const rejected = async (request: Promise<unknown>) => {
+  const error = await request.then(
+    () => { throw new Error("expected the write fence to reject"); },
+    (err: unknown) => err,
+  );
+  expect(JSON.parse(String((error as { data?: unknown }).data))).toEqual({
+    kind: "ACCOUNT_DELETION_IN_PROGRESS",
+  });
+};
 
 for (const state of states) {
   describe(`write fence with ${state.status}/${state.step}`, () => {

@@ -541,7 +541,12 @@ export class TelegramIntelPanel extends Panel {
             className: 'telegram-intel-image',
             src: validateUrl(url),
             loading: 'lazy',
-            onClick: () => window.open(validateUrl(url), '_blank', 'noopener,noreferrer'),
+            onClick: () => {
+              // validateUrl returns '' for a rejected URL; opening that would
+              // show a blank popup.
+              const safeUrl = validateUrl(url);
+              if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
+            },
           });
         })
       ) : null,

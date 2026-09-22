@@ -24,7 +24,7 @@ tags: [youtube, live-video, relay-fetch, railway-relay, fallback-video-ids, idle
 
 ## Problem
 
-The dashboard's "TV screen" (Live News and Live Webcams) looks healthy for a few minutes, then fails in three independent ways. None of them raises an error or an alarm. A cancelling paying user reported it on 2026-09-14: "your dashboard only last for about 4 minutes. you have the wrong video links in the tv screen". Each part of that report maps to a verified defect. Defect 1 is fixed by #8155. Defect 3 has a data fix and a liveness checker in #8163. Defect 2 has no fix yet. This doc records the diagnosis, the audit method, and the fixes.
+The dashboard's "TV screen" (Live News and Live Webcams) looks healthy for a few minutes, then fails in three independent ways. None of them raises an error or an alarm. A cancelling paying user reported it on 2026-09-14: "your dashboard only last for about 4 minutes. you have the wrong video links in the tv screen". Each part of that report maps to a verified defect. Defect 1 is fixed by #8155. Defect 3 has a data fix and a liveness checker in #8163. Defect 2 is closed by retiring channel live detection on branch `chore/retire-youtube-live-scraper`: Live News plays verified streams from a catalog instead. This doc records the diagnosis, the audit method, and the fixes.
 
 ## Symptoms
 
@@ -46,7 +46,7 @@ These approaches gave wrong or misleading readings during diagnosis.
 
 ## Solution
 
-Status: diagnosis verified against production and against the code at 618757b97b. The Defect 1 fix merged in #8155. Defect 3 has a data fix and a liveness checker in #8163; runtime detection of streams that end later is still to come. The Defect 2 fixes below remain recommendations.
+Status: diagnosis verified against production and against the code at 618757b97b. The Defect 1 fix merged in #8155. Defect 3 has a data fix and a liveness checker in #8163; runtime detection of streams that end later is still to come. The Defect 2 detection path was retired rather than repaired, so its fixes below are kept as history.
 
 ### Defect 1: the 5-minute idle stop ("only lasts about 4 minutes")
 
@@ -132,7 +132,7 @@ Dead IDs render YouTube's own error inside the tile, not the app's blocked overl
 Live News full-variant defaults (`src/components/LiveNewsPanel.ts:69-79`), observed on production 2026-09-14:
 
 - **Played.** bloomberg, sky, euronews, dw, france24, alarabiya, and aljazeera have `DIRECT_HLS_MAP` entries (`src/components/LiveNewsPanel.ts:244`).
-- **cnbc.** It has HLS only on desktop: `PROXIED_HLS_MAP` (`:300-302`) is gated by `isDesktopRuntime()` (`:620`). On web it goes to detection, gets null, and plays fallback `9NyxcX3rhQs` (`:74`), titled "LIVE: CNBC Marathon - Documentaries and deep dives 24/7".
+- **cnbc.** It has HLS only on desktop: `PROXIED_HLS_MAP` (`:300-302`) is gated by `isDesktopRuntime()` (`:620`). On web it goes to detection, gets null, and plays fallback `9NyxcX3rhQs` (`:74`), titled "LIVE: CNBC Marathon - Documentaries and deep dives 24/7". Resolved by removal: CNBC is no longer a Live News channel, and a stored channel order that names it drops it on load.
 - **cnn.** Its HLS stream (`:252`) hit `[LiveNews] HLS fatal error for cnn` (`:1398`). The handler sets a cooldown and re-initializes the player (`:1403-1408`; `HLS_COOLDOWN_MS` is 5 minutes, `:411`). Detection then returns null, and the panel plays fallback `w_Ma8oQLmSM` (`:75`), a deleted ABC News Live video. That is the error 150 message.
 
 The current tree has 47 unique Live News fallback IDs. The session audited 46 and found many ended or gone:

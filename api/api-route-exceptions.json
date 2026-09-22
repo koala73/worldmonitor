@@ -495,8 +495,8 @@
     },
     {
       "path": "api/youtube/live.js",
-      "category": "non-json",
-      "reason": "Streams YouTube live metadata — chunked text response, not a typed JSON payload.",
+      "category": "upstream-proxy",
+      "reason": "Names a YouTube video through YouTube's public oEmbed endpoint for channel management; channel live detection is retired and answers 410.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -653,6 +653,13 @@
       "path": "api/notify.ts",
       "category": "internal-helper",
       "reason": "Authenticated PRO event-publish endpoint that validates Clerk bearer auth, rejects relay-internal control events, and enqueues accepted events outside sebuf because it is queue plumbing rather than a typed domain RPC.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/notification-suppressions.js",
+      "category": "internal-helper",
+      "reason": "Anonymous operator incident-control read for the service worker: serves the Redis notification link-suppression set (blocked URLs/hosts) so already-delivered push payloads stop navigating on click. Kept outside sebuf because the SW consults it via a plain GET with no auth context at click time, and the shape is an unversioned incident snapshot rather than a typed domain RPC.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

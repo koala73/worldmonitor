@@ -60,7 +60,11 @@ describe('Dockerfile.relay — transitive-import closure', () => {
   // deleted with this suite still green (#8414 review finding). These explicit
   // assertions are what pin those lines.
   it('pins the COPY lines added for notification-relay.cjs, which the BFS cannot reach', () => {
-    for (const required of ['scripts/shared/notification-dedup.cjs', 'scripts/shared/notify-fields.cjs']) {
+    for (const required of [
+      'scripts/shared/notification-dedup.cjs',
+      'scripts/shared/notify-fields.cjs',
+      'scripts/shared/notification-link-suppression.cjs',
+    ]) {
       assert.ok(
         copied.has(required),
         `${required} is required by scripts/notification-relay.cjs and must stay COPY'd; ` +

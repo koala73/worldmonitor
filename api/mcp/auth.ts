@@ -26,6 +26,7 @@ import {
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { hashKeySync } from '../../server/_shared/usage-identity';
 import {
   checkFailClosedScopedIpRateLimit,
   RATE_LIMIT_DEGRADED_HEADERS,
@@ -512,6 +513,7 @@ export async function runProPreChecks(
   if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
     captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
       tags: { route: 'api/mcp', step: 'pro-secret-preflight' },
+      fingerprint: ['api/mcp', 'pro-secret-preflight', 'Error'],
       ctx,
     });
     return { ok: false, response: new Response(
@@ -666,7 +668,7 @@ async function checkMcpEntitlementGate(
   try {
     ent = await deps.getEntitlements(userId);
   } catch (err) {
-    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
+    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, fingerprint: ['api/mcp', sentryStep, err instanceof Error ? err.name : 'Error'], ctx });
     // #6716 F21: a THROWN entitlement lookup is the backend being unreachable.
     // Reporting it as 'no-account' told an already-authenticated caller — a
     // paying subscriber, possibly — to "sign in and subscribe", and buried a
@@ -755,6 +757,7 @@ export async function runUserKeyPreChecks(
   if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
     captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
       tags: { route: 'api/mcp', step: 'user-key-secret-preflight' },
+      fingerprint: ['api/mcp', 'user-key-secret-preflight', 'Error'],
       ctx,
     });
     return { ok: false, response: new Response(
@@ -831,7 +834,10 @@ export async function applyPerMinuteLimit(
     if (!rl) return null;
     let denied = false;
     try {
-      const { success } = await rl.limit(`key:${context.apiKey}`);
+      // Hash the operator key. The raw WORLDMONITOR_VALID_KEYS value must not
+      // sit in Redis under rl:mcp — telemetry and SSE replay already use
+      // hashKeySync for the same reason.
+      const { success } = await rl.limit(`key:${hashKeySync(context.apiKey)}`);
       if (!success) {
         // Operator env keys are ungated and carry no entitlement row, so this
         // branch keeps the fixed legacy threshold rather than a plan's.

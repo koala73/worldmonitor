@@ -52,13 +52,12 @@ const SOURCE_ROOTS = ['scripts', 'server', 'api', 'src'];
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
 const FEED_FILES = new Set([
   ...FEED_DECLARATION_FILES,
-  // Live channel data and its player own optional native-video HLS feeds. They are observed for
-  // completeness, but their playback transport is excluded from the data
-  // provider count below.
-  'src/components/LiveNewsPanel.ts',
-  'src/services/live-channels.ts',
+  // The live video catalog lists the broadcaster HLS streams Live News plays.
+  // They are observed for completeness, but their playback transport is
+  // excluded from the data provider count below.
+  'src/config/live-video-sources.ts',
 ]);
-const PRESENTATION_ONLY_FILES = new Set(['src/components/LiveNewsPanel.ts', 'src/services/live-channels.ts']);
+const PRESENTATION_ONLY_FILES = new Set(['src/config/live-video-sources.ts']);
 const STATUS_FILE = 'server/worldmonitor/infrastructure/v1/list-service-statuses.ts';
 
 // URL literals are intentionally parsed before classification.  This catches
@@ -1014,6 +1013,7 @@ const EXCLUDED_HOSTS = new Set([
   'reddit.com',
   'openrouter.ai',
   'api.groq.com',
+  'api.typesafe.ai',
   'tts.baidu.com',
   'api.indexnow.org',
   'data.worldbank.org',

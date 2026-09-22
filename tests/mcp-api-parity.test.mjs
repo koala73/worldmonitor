@@ -147,7 +147,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/aviation/v1/get-flight-status",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
   ["GET /api/aviation/v1/get-youtube-live-stream-info",
-    "fetch-on-miss: paid-upstream — external API call per request"],
+    "fetch-on-miss: paid-upstream — YouTube oEmbed call per cache miss; channel live detection is retired"],
   ["GET /api/aviation/v1/list-airport-flights",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/aviation/v1/list-aviation-news",

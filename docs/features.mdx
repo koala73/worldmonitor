@@ -178,7 +178,7 @@ Each panel aggregates region-specific sources to provide concentrated situationa
 
 ## Live News Streams
 
-Embedded YouTube live streams from major news networks with channel switching:
+Live streams from major news networks with channel switching:
 
 | Channel | Coverage |
 |---------|----------|
@@ -197,29 +197,28 @@ Embedded YouTube live streams from major news networks with channel switching:
 - **Mute Toggle** - Audio control (muted by default)
 - **Double-Width Panel** - Larger video player for better viewing
 
-**Performance Optimizations:**
+**Verified live playback:**
 
-The live stream panel uses the **YouTube IFrame Player API** rather than raw iframe embedding. This provides several advantages:
+Each channel tries its sources in order: the broadcaster's own HLS stream where one exists, then verified YouTube live streams played through the official **YouTube IFrame Player API**. A channel counts as live only after the player or the stream playlist confirms it:
 
-| Feature | Benefit |
-|---------|---------|
-| **Persistent player** | No iframe reload on mute/play/channel change |
-| **API control** | Direct `playVideo()`, `pauseVideo()`, `mute()` calls |
-| **Reduced bandwidth** | Same stream continues across state changes |
-| **Faster switching** | Channel changes via `loadVideoById()` |
+| Situation | What the panel shows |
+|-----------|----------------------|
+| **Connecting** | A "Connecting to…" cover until the stream is confirmed live |
+| **Ended, deleted or unembeddable stream** | The next source; when none is left, a card that says why, with Retry, Play next channel and Open on YouTube |
+| **Automatic start** (play-all, auto-play, Resume) | Skips a channel that is offline and plays the next one, without changing the saved channel |
+| **Player signals blocked** (extensions, strict tracking protection) | The stream keeps playing with a "Can’t confirm this stream is live" note |
+
+Streams are listed in `src/config/live-video-sources.ts`; `npm run live-video:check -- --all` reports any that stopped being live. A daily audit keeps one GitHub issue, "Live video sources: slots needing a replacement", that names each webcam or channel slot with nothing live, where it shows and why; maintainers check a replacement URL with `npm run live-video:check -- <url>` and paste it into that file.
 
 **Idle Detection:**
 
-To conserve resources, the panel implements automatic idle pausing:
+To conserve resources, playback stops in two cases:
 
 | Trigger | Action |
 |---------|--------|
-| **Tab hidden** | Stream pauses (via Visibility API) |
-| **5 min idle** | Stream pauses (no mouse/keyboard activity) |
-| **User returns** | Stream resumes automatically |
-| **Manual pause** | User intent tracked separately |
-
-This prevents background tabs from consuming bandwidth while preserving user preference for manually-paused streams.
+| **Tab hidden** | Stream stops (via Visibility API) |
+| **No mouse, keyboard or touch activity** | Stream stops after the idle time chosen in Settings › Media (one hour by default, or never) and shows a notice with Resume |
+| **Viewer paused the stream** | Left alone; the idle stop never overrides a manual pause |
 
 ## Market Data
 

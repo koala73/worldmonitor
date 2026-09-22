@@ -742,6 +742,8 @@ export class ChatAnalystPanel extends Panel {
     this.streamAbort?.abort();
     this.streamAbort = null;
     this.isStreaming = false;
+    // An unsent draft belongs to the previous account too.
+    if (this.inputEl) this.inputEl.value = '';
     super.clearSensitiveContent();
   }
 

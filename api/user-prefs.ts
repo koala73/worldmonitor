@@ -389,6 +389,14 @@ export default async function handler(
     if (kind === 'BLOB_TOO_LARGE') {
       return finish(jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors));
     }
+    if (kind === 'ACCOUNT_DELETION_IN_PROGRESS') {
+      // The account's write fence (convex/accountDeletion/guard.ts) — an
+      // expected answer for a tab still open during deletion, not a fault.
+      // Terminal 403 with no Retry-After so the client stops instead of
+      // retrying a write that can never land.
+      console.warn('[user-prefs] POST rejected: account deletion in progress');
+      return finish(jsonResponse({ error: 'ACCOUNT_DELETION_IN_PROGRESS' }, 403, cors));
+    }
     if (kind === 'RATE_LIMITED') {
       const limit = readConvexErrorNumber(err, 'limit') ?? USER_PREFS_WRITE_RATE_LIMIT;
       const reset = readConvexErrorNumber(err, 'reset') ?? Date.now() + 60_000;

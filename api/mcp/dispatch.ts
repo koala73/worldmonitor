@@ -108,6 +108,7 @@ export async function executeTool(
   if (activationUnknown) {
     captureSilentError(new Error('mcp activation marker read failed'), {
       tags: { route: 'api/mcp', step: 'activation-marker', tool: tool.name },
+      fingerprint: ['api/mcp', 'activation-marker', 'Error'],
     });
   }
   // Sample wall time AFTER the Redis reads, never at function entry. The same

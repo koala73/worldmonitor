@@ -17,6 +17,10 @@ const {
   recordDedupOutcome,
 } = require('./shared/notification-dedup.cjs');
 const {
+  parseSuppressionEntries,
+  isLinkSuppressed,
+} = require('./shared/notification-link-suppression.cjs');
+const {
   NOTIFY_DASHBOARD_URL,
   isImpersonatingSource,
   renderNotificationLinkForText,
@@ -103,6 +107,152 @@ async function upstashDedupSetNx(key) {
 }
 
 // ── Dedup ─────────────────────────────────────────────────────────────────────
+
+// Operator link suppression (#8401). The set is maintained without a deploy:
+//
+//   SADD notif:blocked-links:v1 <exact-url>
+//   SADD notif:blocked-links:v1 host:<hostname>
+//
+// Consulted once per event in processEvent before any delivery, so a blocked
+// link stops every channel (email, Telegram, Slack, Discord, web push,
+// webhook) at once, and again per held event when a quiet-hours batch drains
+// (drainHeldForUser), so a link blocked while an event sat in the queue does
+// not ride out in the batch. The service worker consults the same
+// set via the edge read endpoint for already-delivered push payloads —
+// relay-side suppression alone cannot revoke those. Suppressed deliveries
+// are logged with the [relay][link-suppressed] prefix so the blast radius
+// of an incident can be measured afterwards.
+const BLOCKED_LINKS_KEY = 'notif:blocked-links:v1';
+const BLOCKED_LINKS_LOG_KEY = 'notif:link-suppressions:v1';
+const BLOCKED_LINKS_LOG_TTL = 30 * 24 * 3600; // 30 days — incident scoping, not cache
+const BLOCKED_LINKS_UNREADABLE_TTL_MS = 60 * 1000;
+// How long a last-known snapshot may stand in for an unreadable set. Within
+// it, an incident block survives a Redis blip; past it, the snapshot is
+// dropped (fail-open, per the contract above) with an error-level log rather
+// than silently enforcing — or silently un-enforcing — a list of unknown age.
+const BLOCKED_LINKS_SNAPSHOT_MAX_AGE_MS = 15 * 60 * 1000;
+
+let blockedLinksCache = { entries: null, fetchedAtMs: 0, snapshotAtMs: 0 };
+
+async function readBlockedLinkSet(fetchImpl = fetch) {
+  try {
+    const res = await fetchImpl(`${UPSTASH_URL}/SMEMBERS/${encodeURIComponent(BLOCKED_LINKS_KEY)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { readable: false, entries: null };
+    const json = await res.json().catch(() => null);
+    const entries = json && Object.prototype.hasOwnProperty.call(json, 'result') ? json.result : undefined;
+    if (!Array.isArray(entries)) return { readable: false, entries: null };
+    return { readable: true, entries };
+  } catch {
+    return { readable: false, entries: null };
+  }
+}
+
+async function getBlockedLinkSet(fetchImpl = fetch) {
+  const nowMs = Date.now();
+  // Both positive snapshots AND negative (unreadable) outcomes are cached
+  // for the TTL window: entries!=null means we have a snapshot (possibly
+  // stale-but-usable), and fetchedAtMs!=0 means we attempted recently.
+  // Without the second condition a sustained outage would fire an SMEMBERS +
+  // warn per event under an event storm.
+  if ((blockedLinksCache.entries || blockedLinksCache.fetchedAtMs) && (nowMs - blockedLinksCache.fetchedAtMs) < BLOCKED_LINKS_UNREADABLE_TTL_MS) {
+    return blockedLinksCache;
+  }
+  const read = await readBlockedLinkSet(fetchImpl);
+  if (!read.readable) {
+    // Fail OPEN but not silent: keep the last known-good snapshot when we
+    // have one (an incident block survives a transient Redis blip), and
+    // tell the operator the control is currently unreadable. Stamp the
+    // attempt time so a sustained outage logs once per TTL window instead
+    // of firing an SMEMBERS + warn per event under an event storm.
+    const snapshotAgeMs = blockedLinksCache.entries ? nowMs - blockedLinksCache.snapshotAtMs : null;
+    if (snapshotAgeMs !== null && snapshotAgeMs > BLOCKED_LINKS_SNAPSHOT_MAX_AGE_MS) {
+      console.error(`[relay][link-suppressed-stale] blocked-link set unreadable and the last-known snapshot is ${Math.round(snapshotAgeMs / 1000)}s old (max ${BLOCKED_LINKS_SNAPSHOT_MAX_AGE_MS / 1000}s); dropping it and failing open until Redis is readable`);
+      blockedLinksCache = { entries: null, fetchedAtMs: nowMs, snapshotAtMs: 0, readable: false };
+      return blockedLinksCache;
+    }
+    blockedLinksCache = { ...blockedLinksCache, fetchedAtMs: nowMs, readable: false };
+    console.warn(snapshotAgeMs === null
+      ? '[relay][link-suppressed-unreadable] blocked-link set unreadable and no snapshot is held; failing open'
+      : `[relay][link-suppressed-unreadable] blocked-link set unreadable; continuing with last-known snapshot age=${Math.round(snapshotAgeMs / 1000)}s`);
+    return blockedLinksCache;
+  }
+  blockedLinksCache = { entries: read.entries, fetchedAtMs: nowMs, snapshotAtMs: nowMs, readable: true };
+  return blockedLinksCache;
+}
+
+function eventLinks(event) {
+  const links = [];
+  const link = event?.payload?.link;
+  const url = event?.payload?.url;
+  if (typeof link === 'string' && link.length > 0) links.push(link);
+  if (typeof url === 'string' && url.length > 0 && url !== link) links.push(url);
+  return links;
+}
+
+/**
+ * The links of `event` the operator set blocks, or [] when none are (or no
+ * snapshot is held — fail-open). Logs the [relay][link-suppressed] line and
+ * the incident record when something matched.
+ */
+async function suppressedLinksFor(event, matchedRuleCount, context) {
+  const links = eventLinks(event);
+  if (links.length === 0) return [];
+  const snapshot = await getBlockedLinkSet();
+  if (!snapshot.entries) return [];
+  const parsed = parseSuppressionEntries(snapshot.entries);
+  const suppressed = links.filter((l) => isLinkSuppressed(l, parsed));
+  if (suppressed.length === 0) return [];
+  const safeLinks = suppressed.map((l) => String(l).replace(/[\r\n]/g, ' ').slice(0, 200));
+  const safeType = String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80);
+  console.log(`[relay][link-suppressed] ${context} eventType=${safeType} rules=${matchedRuleCount} links=${safeLinks.join(',')}`);
+  await logLinkSuppression(event, matchedRuleCount).catch(() => {});
+  return suppressed;
+}
+
+async function logLinkSuppression(event, matchedRuleCount, fetchImpl = fetch) {
+  const record = {
+    ts: Date.now(),
+    eventType: event?.eventType ?? 'unknown',
+    severity: event?.severity ?? 'high',
+    title: String(event?.payload?.title ?? event?.eventType ?? '').slice(0, 160),
+    source: typeof event?.payload?.source === 'string' ? event.payload.source.slice(0, 120) : '',
+    link: eventLinks(event).map((l) => String(l).slice(0, 500)),
+    matchedRules: matchedRuleCount,
+  };
+  const retentionCutoff = record.ts - BLOCKED_LINKS_LOG_TTL * 1000;
+  try {
+    const response = await fetchImpl(`${UPSTASH_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-relay/1.0',
+      },
+      body: JSON.stringify([
+        ['ZADD', BLOCKED_LINKS_LOG_KEY, String(record.ts), JSON.stringify(record)],
+        ['ZREMRANGEBYSCORE', BLOCKED_LINKS_LOG_KEY, '-inf', String(retentionCutoff)],
+        ['EXPIRE', BLOCKED_LINKS_LOG_KEY, String(BLOCKED_LINKS_LOG_TTL)],
+      ]),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      console.warn('[relay][link-suppression-log-failed] suppression incident record returned a non-success response');
+      return;
+    }
+    const results = await response.json().catch(() => null);
+    if (!Array.isArray(results) || results.some((entry) => entry && typeof entry === 'object' && entry.error)) {
+      console.warn('[relay][link-suppression-log-failed] suppression incident record returned a command error');
+    }
+  } catch {
+    // Logging is best-effort — the suppression itself already happened —
+    // but failure must be visible so operators know incident scope is partial.
+    console.warn('[relay][link-suppression-log-failed] suppression incident record could not be written');
+  }
+}
 
 function sha256Hex(str) {
   return createHash('sha256').update(str).digest('hex');
@@ -246,7 +396,13 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   const items = await upstashRest('LRANGE', key, '0', '-1');
   if (!Array.isArray(items) || items.length === 0) return;
 
-  const events = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  // Re-check the operator set: a link blocked while the event sat in the
+  // queue must not go out in the batch (#8401).
+  const events = [];
+  for (const ev of parsedEvents) {
+    if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
+  }
   if (events.length === 0) { await upstashRest('DEL', key); return; }
 
   const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, ''];
@@ -312,7 +468,7 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         ok = await sendWebPush(userId, ch, {
           title: `WorldMonitor · ${events.length} held alert${events.length === 1 ? '' : 's'}`,
           body: subject,
-          url: 'https://worldmonitor.app/',
+          url: PUSH_DASHBOARD_PATH,
           tag: `quiet_hours_batch:${userId}`,
           eventType: 'quiet_hours_batch',
         });
@@ -683,6 +839,99 @@ function ensureVapidConfigured(client) {
   }
 }
 
+// Payload URLs originate from event.payload.link — published verbatim by Pro
+// accounts through /api/notify, or ingested verbatim from external RSS feeds.
+// Article links are the point of an rss_alert, so off-origin https targets
+// are kept; what must never happen is the service worker NAVIGATING the
+// user's already-open dashboard tab to one, which would replace a trusted
+// surface with a page WorldMonitor does not control. public/push-handler.js
+// owns that half: off-origin targets always get their own tab.
+//
+// The relay's half is scheme discipline — a javascript:, data: or http:
+// target must never be stored in a notification payload at all.
+// Resolution base ONLY — never returned. A relative base is not a legal base
+// (`new URL('/x', '/')` throws), so the sanitizer needs one absolute
+// first-party origin to parse against even though it emits none. This is the
+// single origin literal the push path is allowed to carry, and the
+// origin-literal pin below exempts it by name.
+const PUSH_PARSE_BASE = 'https://www.worldmonitor.app/';
+const PUSH_PARSE_BASE_ORIGIN = new URL(PUSH_PARSE_BASE).origin;
+
+// What we emit instead of an origin. Each service worker resolves this against
+// whichever host is serving it, so one payload works on www and on every
+// vertical subdomain.
+const PUSH_DASHBOARD_PATH = '/';
+
+// Generic aliases for "the dashboard", matched by EXACT hostname equality. The
+// vertical subdomains are deliberately absent: tech/finance/etc. are distinct
+// surfaces, so relativizing one would let another vertical's worker resolve it
+// onto itself and land the user on the wrong dashboard.
+const GENERIC_FIRST_PARTY_HOSTS = ['worldmonitor.app', 'www.worldmonitor.app'];
+
+// Paths Cloudflare serves on the apex (ARCHITECTURE.md §2). These must stay
+// absolute: relativizing /oauth/register destroys the apex origin before the
+// service worker — which can only recognize an ABSOLUTE apex URL — ever gets a
+// say, and a www redirect turns a registration POST into a GET (405, #4938).
+const APEX_SERVED_PATHS = [
+  /^\/mcp(?:\/|$)/,
+  /^\/oauth\//,
+  /^\/\.well-known\//,
+  /^\/robots\.txt$/,
+  /^\/security\.txt$/,
+];
+
+function safePushClickUrl(raw, userId) {
+  // A missing link is ordinary traffic on every plain brief_ready push, not a
+  // rejection — logging it would be noise.
+  if (typeof raw !== 'string' || raw.length === 0) return PUSH_DASHBOARD_PATH;
+
+  const reject = (reason) => {
+    console.warn(`[relay] push click URL rejected for ${userId ?? 'unknown'}: ${reason}`);
+    return PUSH_DASHBOARD_PATH;
+  };
+
+  let parsed;
+  try {
+    parsed = new URL(raw, PUSH_PARSE_BASE);
+  } catch (err) {
+    return reject(`unparseable (${err.message})`);
+  }
+  if (parsed.protocol !== 'https:') return reject(`scheme ${parsed.protocol}`);
+  // Embedded credentials exist only to make a hostile host read as ours.
+  if (parsed.username || parsed.password) return reject('embedded credentials');
+
+  // Off-origin articles and vertical-subdomain targets stay absolute: the
+  // worker gives them their own tab, which is the point of an rss_alert.
+  if (!GENERIC_FIRST_PARTY_HOSTS.includes(parsed.hostname)) return parsed.href;
+  if (APEX_SERVED_PATHS.some((re) => re.test(parsed.pathname))) return parsed.href;
+
+  const relative = parsed.pathname + parsed.search + parsed.hash;
+  // Detaching a path from its origin is where this gets dangerous: a URL can be
+  // first-party BY HOST and still have a pathname of //evil.com, which resolves
+  // straight back off-origin. Both laundering spellings arrive here as that
+  // same pathname, because the parser normalizes a backslash to a slash. We
+  // re-resolve and compare origins rather than testing the string's shape,
+  // because that is robust to ANY pathname the parser can produce — including
+  // authority-shaped ones a prefix test would have to enumerate.
+  let resolved;
+  try {
+    resolved = new URL(relative, PUSH_PARSE_BASE);
+  } catch {
+    return reject('path did not survive relativization');
+  }
+  if (resolved.origin !== PUSH_PARSE_BASE_ORIGIN) {
+    return reject('first-party host with an off-origin path');
+  }
+  // Return the RE-RESOLVED path, not the string we validated. They differ when
+  // the pathname is itself authority-shaped: '//www.worldmonitor.app/x' passes
+  // the origin check (it resolves back to us) but, handed to a worker on a
+  // vertical subdomain, re-resolves to www and pins the click off that
+  // worker's own origin — re-admitting the very coupling this emits relative
+  // paths to avoid. public/push-handler.js returns resolved.href for the same
+  // reason.
+  return resolved.pathname + resolved.search + resolved.hash;
+}
+
 /**
  * Deliver a web push notification to one subscription. Returns true on
  * success. On 404/410 (subscription gone) the channel is deactivated
@@ -700,7 +949,7 @@ async function sendWebPush(userId, subscription, payload) {
   const body = JSON.stringify({
     title: payload.title || 'WorldMonitor',
     body: payload.body || '',
-    url: payload.url || 'https://worldmonitor.app/',
+    url: safePushClickUrl(payload.url, userId),
     tag: payload.tag || 'worldmonitor-generic',
     eventType: payload.eventType,
   });
@@ -1155,7 +1404,7 @@ async function processWelcome(event) {
     await sendWebPush(userId, ch, {
       title: 'WorldMonitor connected',
       body: "You'll receive alerts here when events match your sensitivity settings.",
-      url: 'https://worldmonitor.app/',
+      url: PUSH_DASHBOARD_PATH,
       tag: `channel_welcome:${userId}`,
       eventType: 'channel_welcome',
     });
@@ -1352,6 +1601,16 @@ async function processEvent(event) {
     const rawAttribution = event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? '(unattributed)';
     const attribution = String(rawAttribution).replace(/[\r\n]/g, ' ').slice(0, 60);
     console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${countryScopeDrops} scoped rule(s)`);
+  }
+
+  // Operator link suppression (#8401): consult the blocked set BEFORE any
+  // delivery so one check covers every channel. Fail-open on read errors —
+  // the set is a revoke control, not an auth gate, and a Redis blip must not
+  // blank notifications — but never silent: unreadable reads log loudly.
+  // Suppression count is derived from the pre-PRO rule match so the log line
+  // scopes the incident even when some rules would later drop on entitlement.
+  if (matching.length > 0 && (await suppressedLinksFor(event, matching.length, 'stage=deliver')).length > 0) {
+    return;
   }
 
   if (matching.length === 0) return;
@@ -1558,10 +1817,21 @@ if (require.main === module) {
 
 module.exports = {
   processEvent,
+  safePushClickUrl,
   sendTelegram,
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
+  // Exported for tests: the link-suppression suite drives the real helpers
+  // (not mirrors) so matcher drift fails the suite instead of the incident.
+  eventLinks,
+  readBlockedLinkSet,
+  getBlockedLinkSet,
+  logLinkSuppression,
+  BLOCKED_LINKS_KEY,
+  BLOCKED_LINKS_LOG_KEY,
+  BLOCKED_LINKS_SNAPSHOT_MAX_AGE_MS,
+  __resetBlockedLinkCacheForTests: () => { blockedLinksCache = { entries: null, fetchedAtMs: 0, snapshotAtMs: 0 }; },
   // Exported for the same reason as eventMatchesCountryScope: the ticker-scope
   // tests previously kept hand-copied mirrors of these, which cannot fail when
   // the real ones change.

@@ -82,7 +82,7 @@ compositeScore =
 - `sanctionsScore` — Up to 10 points from new sanctions entries, largest-country entry volume, and sanctioned vessel/aircraft counts
 - `radiationScore` — Up to 12 points from radiation-watch spikes, elevated readings, and corroborated observations, reduced by low-confidence or conflicting observations
 
-**Alert fusion**: Alerts from convergence detection, CII spikes (≥10-point change), infrastructure cascades, sanctions pressure, and radiation watch are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. Direct inserts pop the oldest alert after 50 entries; the Strategic Risk refresh path then sorts by newest timestamp and trims the recomputed queue to 100 entries after 24-hour pruning.
+**Alert fusion**: Alerts from [convergence detection](/geographic-convergence), CII spikes (≥10-point change), infrastructure cascades, sanctions pressure, and radiation watch are merged when they occur within a 2-hour window and are within 200km or in the same country. Merged alerts carry the highest priority and combine summaries. Direct inserts pop the oldest alert after 50 entries; the Strategic Risk refresh path then sorts by newest timestamp and trims the recomputed queue to 100 entries after 24-hour pruning.
 
 **Trend detection**: Delta ≥3 from previous composite = "escalating", ≤−3 = "de-escalating", otherwise "stable". A 15-minute learning period after panel initialization suppresses CII spike alerts to prevent false positives from initial data loading.
 
@@ -251,7 +251,7 @@ The AI Insights panel ranks news clusters by geopolitical significance using `sc
 
 **Demotion keywords** — corporate and financial noise reduces scores to 35% when no corroborated entity or strong non-keyword signal is present, preventing business news from crowding out geopolitical developments in the full/geopolitical variant.
 
-**Theater posture integration** — when the Strategic Posture Assessment detects elevated military activity (e.g., unusual flight patterns in a theater), related news stories receive additional scoring boosts, surfacing contextually relevant reporting alongside the military signal.
+**Theater posture integration** — when the [Strategic Posture Assessment](/panels/strategic-posture) detects elevated military activity (e.g., unusual flight patterns in a theater), related news stories receive additional scoring boosts, surfacing contextually relevant reporting alongside the military signal.
 
 The scored list feeds into the World Brief generation pipeline, where the top-ranked stories are selected for LLM summarization. Server-side insights (via `seed-insights.mjs`) pre-compute the scored digest and cache it as `news:insights:v1` for bootstrap hydration, so the panel renders instantly with pre-ranked stories on page load.
 

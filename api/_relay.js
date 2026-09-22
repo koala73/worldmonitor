@@ -132,6 +132,7 @@ export function createRelayHandler(cfg) {
       // so those 504s are relay latency rather than product defects.
       void captureSilentError(error, {
         tags: { route, step: 'relay-fetch' },
+        fingerprint: ['api/_relay', 'relay-fetch', error instanceof Error ? error.name : 'Error'],
         ...(isTimeout ? { level: 'warning', extra: { timeout_ms: cfg.timeout || 15000 } } : {}),
       });
       return jsonResponse({

@@ -865,7 +865,11 @@
         "space": "ΔΙΑΣΤΗΜΑ"
       },
       "play": "Αναπαραγωγή",
-      "previewStatus": "Ζωντανή προεπισκόπηση"
+      "previewStatus": "Έτοιμο για αναπαραγωγή",
+      "connecting": "Σύνδεση…",
+      "unverified": "Δεν είναι δυνατή η επιβεβαίωση ότι αυτή η ροή είναι ζωντανή",
+      "offline": "Η {{city}} είναι εκτός σύνδεσης αυτή τη στιγμή",
+      "noFeeds": "Δεν υπάρχουν ζωντανές κάμερες ιστού σε αυτήν την περιοχή αυτή τη στιγμή"
     },
     "positiveNewsFeed": {
       "noStories": "Δεν υπάρχουν ακόμα ιστορίες σε αυτή την κατηγορία"
@@ -1985,15 +1989,11 @@
     },
     "liveNews": {
       "notLive": "Το {{name}} δεν είναι ζωντανά αυτή τη στιγμή",
-      "cannotEmbed": "Το {{name}} δεν μπορεί να αναπαραχθεί εδώ — ενδέχεται να είναι περιορισμένο στην περιοχή σας (σφάλμα {{code}})",
-      "botCheck": "Το YouTube ζητάει σύνδεση για αναπαραγωγή {{name}}",
       "signInToYouTube": "Σύνδεση στο YouTube",
       "openOnYouTube": "Άνοιγμα στο YouTube",
       "manage": "Διαχείριση καναλιών",
       "addChannel": "Προσθήκη καναλιού",
       "remove": "Αφαίρεση",
-      "youtubeHandle": "YouTube handle (π.χ. @Channel)",
-      "youtubeHandleOrUrl": "YouTube handle ή URL",
       "displayName": "Εμφανιζόμενο όνομα (προαιρετικό)",
       "channelSettings": "Ρυθμίσεις Καναλιού",
       "save": "Αποθήκευση",
@@ -2009,12 +2009,24 @@
       "regionMiddleEast": "Μέση Ανατολή",
       "regionAfrica": "Αφρική",
       "regionOceania": "Ωκεανία",
-      "invalidHandle": "Εισάγετε ένα έγκυρο YouTube handle (π.χ. @ChannelName)",
       "verifying": "Επαλήθευση…",
       "hlsUrl": "URL ροής HLS (προαιρετικό)",
       "invalidHlsUrl": "Εισάγετε ένα έγκυρο URL ροής HLS (.m3u8)",
       "playLiveFeed": "Αναπαραγωγή ζωντανής ροής",
-      "readyStatus": "Έτοιμο όταν είστε"
+      "readyStatus": "Έτοιμο όταν είστε",
+      "embedBlocked": "Το YouTube δεν αναπαράγει το {{name}} σε άλλες σελίδες αυτή τη στιγμή",
+      "unavailable": "Δεν είναι δυνατή η αναπαραγωγή του {{name}} αυτή τη στιγμή",
+      "noStream": "Δεν έχει ρυθμιστεί ακόμη live stream για το {{name}}",
+      "needsChannelUrl": "Προσθέστε το {{name}} ξανά με τη διεύθυνση URL του καναλιού του (youtube.com/channel/UC…) ή με τη διεύθυνση URL ενός live βίντεο",
+      "insecureStream": "Το {{name}} χρησιμοποιεί ένα μη ασφαλές stream (http), το οποίο φραγμένο από τους περιηγητές. Προσθέστε το ξανά με μια ασφαλή διεύθυνση URL stream (https)",
+      "connecting": "Σύνδεση στο {{name}}…",
+      "recording": "Εγγραφή",
+      "unverified": "Δεν είναι δυνατή η επιβεβαίωση ότι αυτό το stream είναι live",
+      "playNextChannel": "Αναπαραγωγή του επόμενου καναλιού",
+      "channelOrVideoUrl": "Κανάλι YouTube ή διεύθυνση URL βίντεο",
+      "channelUrlHint": "Επικολλήστε μια διεύθυνση URL καναλιού (youtube.com/channel/UC…) ή μια διεύθυνση URL live βίντεο",
+      "youtubeChannel": "Κανάλι YouTube",
+      "httpsStreamHint": "Οι περιηγητές μπλοκάρουν τα μη ασφαλή streams (http). Επικολλήστε μια ασφαλή διεύθυνση URL stream (https)"
     },
     "map": {
       "showMap": "Εμφάνιση χάρτη",

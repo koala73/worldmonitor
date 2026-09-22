@@ -934,7 +934,11 @@
         "space": "अंतरिक्ष"
       },
       "play": "चलाएं",
-      "previewStatus": "लाइव पूर्वावलोकन"
+      "previewStatus": "चलाने के लिए तैयार",
+      "connecting": "कनेक्ट हो रहा है…",
+      "unverified": "इस स्ट्रीम के लाइव होने की पुष्टि नहीं की जा सकी",
+      "offline": "{{city}} अभी ऑफलाइन है",
+      "noFeeds": "इस क्षेत्र में अभी कोई लाइव वेबकैम नहीं है"
     },
     "pinnedWebcams": {
       "pinFromMap": "मैप से वेबकैम पिन करें"
@@ -2251,15 +2255,11 @@
     },
     "liveNews": {
       "notLive": "{{name}} फिलहाल लाइव नहीं है",
-      "cannotEmbed": "{{name}} यहाँ नहीं चलाया जा सकता — क्षेत्र में प्रतिबंधित हो सकता है (त्रुटि {{code}})",
-      "botCheck": "YouTube {{name}} चलाने के लिए साइन-इन मांग रहा है",
       "signInToYouTube": "YouTube में साइन-इन करें",
       "openOnYouTube": "YouTube पर खोलें",
       "manage": "चैनल प्रबंधित करें",
       "addChannel": "चैनल जोड़ें",
       "remove": "हटाएं",
-      "youtubeHandle": "YouTube हैंडल (जैसे @Channel)",
-      "youtubeHandleOrUrl": "YouTube हैंडल या URL",
       "displayName": "डिस्प्ले नाम (वैकल्पिक)",
       "channelSettings": "चैनल सेटिंग्स",
       "save": "सहेजें",
@@ -2275,12 +2275,24 @@
       "regionMiddleEast": "मध्य पूर्व",
       "regionAfrica": "अफ्रीका",
       "regionOceania": "ओशिनिया",
-      "invalidHandle": "सही YouTube हैंडल दर्ज करें (जैसे @ChannelName)",
       "verifying": "सत्यापित कर रहे हैं…",
       "hlsUrl": "HLS स्ट्रीम URL (वैकल्पिक)",
       "invalidHlsUrl": "वैध HLS स्ट्रीम URL दर्ज करें (.m3u8)",
       "playLiveFeed": "लाइव फ़ीड चलाएं",
-      "readyStatus": "आप तैयार हों तो तैयार"
+      "readyStatus": "आप तैयार हों तो तैयार",
+      "embedBlocked": "YouTube अभी {{name}} को अन्य साइटों के अंदर चलाना नहीं चाहता",
+      "unavailable": "{{name}} को अभी चलाया नहीं जा सकता",
+      "noStream": "{{name}} के लिए अभी कोई लाइव स्ट्रीम सेट अप नहीं की गई है",
+      "needsChannelUrl": "{{name}} को फिर से इसके चैनल URL (youtube.com/channel/UC…) या लाइव वीडियो URL के साथ जोड़ें",
+      "insecureStream": "{{name}} एक असुरक्षित (http) स्ट्रीम का उपयोग करता है, जिसे ब्राउज़र ब्लॉक करते हैं। इसे एक सुरक्षित (https) स्ट्रीम URL के साथ फिर से जोड़ें",
+      "connecting": "{{name}} से कनेक्ट हो रहे हैं…",
+      "recording": "रिकॉर्डिंग",
+      "unverified": "इस स्ट्रीम के लाइव होने की पुष्टि नहीं की जा सकी",
+      "playNextChannel": "अगला चैनल चलाएं",
+      "channelOrVideoUrl": "YouTube चैनल या वीडियो URL",
+      "channelUrlHint": "चैनल URL (youtube.com/channel/UC…) या लाइव वीडियो URL पेस्ट करें",
+      "youtubeChannel": "YouTube चैनल",
+      "httpsStreamHint": "ब्राउज़र असुरक्षित (http) स्ट्रीम ब्लॉक करते हैं। एक सुरक्षित (https) स्ट्रीम URL पेस्ट करें"
     },
     "map": {
       "showMap": "मानचित्र दिखाएं",

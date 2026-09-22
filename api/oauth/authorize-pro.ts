@@ -532,6 +532,7 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
       );
       captureSilentError(err, {
         tags: { route: 'api/oauth/authorize-pro', step: 'rollback-revoke' },
+        fingerprint: ['api/oauth/authorize-pro', 'rollback-revoke', err instanceof Error ? err.name : 'Error'],
       });
     }
     return htmlError(

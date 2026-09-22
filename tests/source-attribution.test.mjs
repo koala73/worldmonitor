@@ -468,9 +468,9 @@ test('uppercase URL constants are included in the upstream inventory', () => {
 
 test('live HLS playback origins are observed with an explicit presentation exclusion', () => {
   const inventory = scanUpstreamHosts(rootDir);
-  assert.ok(inventory.some((entry) => entry.host === 'pe-fa-lp02a.9c9media.com'));
+  assert.ok(inventory.some((entry) => entry.host === 'live-hls-apps-aje-fa.getaj.net'));
   const manifest = loadManifest(rootDir);
-  const entry = manifest.entries.find((candidate) => candidate.host === 'pe-fa-lp02a.9c9media.com');
+  const entry = manifest.entries.find((candidate) => candidate.host === 'live-hls-apps-aje-fa.getaj.net');
   assert.equal(entry?.status, 'excluded');
   assert.match(entry?.attribution ?? '', /presentation-only HLS stream/);
 });
@@ -1011,13 +1011,13 @@ test('a playback-only host that gains a real fetch stops being excluded', () => 
     observed: true,
     kind: 'feed',
     status: 'excluded',
-    references: [{ path: 'src/components/LiveNewsPanel.ts' }],
+    references: [{ path: 'src/config/live-video-sources.ts' }],
   };
   const rebuilt = buildManifest(
     [{
       host: 'stream.example',
       kinds: ['structured'],
-      references: [{ path: 'scripts/seed-example.mjs' }, { path: 'src/components/LiveNewsPanel.ts' }],
+      references: [{ path: 'scripts/seed-example.mjs' }, { path: 'src/config/live-video-sources.ts' }],
     }],
     { entries: [playbackOnly], logicalEntries: [] },
   );
@@ -1029,7 +1029,7 @@ test('a playback-only host that gains a real fetch stops being excluded', () => 
   // The same host while still playback-only stays excluded — otherwise the
   // assertions above would pass against a rule that never fires.
   const unchanged = buildManifest(
-    [{ host: 'stream.example', kinds: ['feed'], references: [{ path: 'src/components/LiveNewsPanel.ts' }] }],
+    [{ host: 'stream.example', kinds: ['feed'], references: [{ path: 'src/config/live-video-sources.ts' }] }],
     { entries: [playbackOnly], logicalEntries: [] },
   );
   assert.equal(unchanged.entries.find((entry) => entry.host === 'stream.example').status, 'excluded');

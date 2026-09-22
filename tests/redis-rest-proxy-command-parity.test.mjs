@@ -36,6 +36,7 @@ import {
 } from '../scripts/lib/x-post-budget.cjs';
 import { SOURCE_RETRY_CLAIM_SCRIPT } from '../scripts/_bundle-runner.mjs';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
+import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -94,11 +95,19 @@ const accepts = (gate, args) => {
 
 it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
   const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
-  const script = source.slice(source.indexOf('export async function compareAndDeleteRedisKey')).match(/const script = "([^"]+)";/)?.[1];
-  assert.ok(script);
+  assert.match(source, /from '\.\.\/\.\.\/shared\/compare-and-delete-script\.cjs'/);
+  const start = source.indexOf('export async function compareAndDeleteRedisKey');
+  assert.ok(start >= 0, 'compareAndDeleteRedisKey export not found');
+  const nextExport = source.slice(start + 1).search(/\nexport /);
+  assert.ok(nextExport >= 0, 'next export after compareAndDeleteRedisKey not found');
+  const body = source.slice(start, start + 1 + nextExport);
+  assert.match(
+    body,
+    /JSON\.stringify\(\['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', finalKey, expectedValue\]\)/,
+  );
   const gate = buildGate();
-  assert.equal(accepts(gate, ['EVAL', script, '1', 'lock', 'token']), true);
-  assert.equal(accepts(gate, ['EVAL', `${script} `, '1', 'lock', 'token']), false);
+  assert.equal(accepts(gate, ['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', 'lock', 'token']), true);
+  assert.equal(accepts(gate, ['EVAL', `${COMPARE_AND_DELETE_SCRIPT} `, '1', 'lock', 'token']), false);
 });
 
 // A Redis command array is [CMD, <key expression>, ...]. A label/enum/country
@@ -314,6 +323,100 @@ describe('redis-rest-proxy command gate', () => {
     }
     assert.notEqual(gate.LEGACY_X_POST_BUDGET_RESERVE_SCRIPT, RESERVE_LUA);
     assert.notEqual(gate.LEGACY_X_POST_BUDGET_STATUS_SCRIPT, STATUS_LUA);
+  });
+
+  it('admits the compare-and-delete script releaseLock actually sends', async () => {
+    const gate = buildGate();
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const originalFetch = globalThis.fetch;
+    let command;
+    globalThis.fetch = async (_url, options) => {
+      command = JSON.parse(options.body);
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => '',
+        json: async () => ({ result: 1 }),
+      };
+    };
+    try {
+      const { releaseLock } = await import('../scripts/_seed-utils.mjs');
+      await releaseLock('theater-posture', 'run-1');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    }
+    assert.equal(command?.[1], COMPARE_AND_DELETE_SCRIPT);
+    assert.deepEqual(command?.slice(0, 3), ['EVAL', COMPARE_AND_DELETE_SCRIPT, 1]);
+    assert.equal(accepts(gate, command), true);
+    assert.equal(accepts(gate, ['EVAL', `${command[1]} `, '1', 'seed-lock:theater-posture', 'run-1']), false);
+  });
+
+  it('warns when seed lock release is rejected', async () => {
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+    globalThis.fetch = async () => {
+      throw new Error('Command not allowed: EVAL (script not in the pinned allowlist)');
+    };
+    console.warn = (...args) => { warnings.push(args.map(String).join(' ')); };
+    try {
+      const { releaseLock } = await import('../scripts/_seed-utils.mjs');
+      await releaseLock('theater-posture', 'run-9');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    }
+    const logged = warnings.join('\n');
+    assert.match(logged, /seed-lock:theater-posture/);
+    assert.match(logged, /Command not allowed: EVAL \(script not in the pinned allowlist\)/);
+  });
+
+  it('admits the AIS relay owner-checked lock release', () => {
+    const gate = buildGate();
+    const relaySrc = readFileSync(resolve(repoRoot, 'scripts/ais-relay.cjs'), 'utf8');
+    const marker = 'function upstashReleaseLockIfOwner';
+    const start = relaySrc.indexOf(marker);
+    assert.ok(start >= 0, 'upstashReleaseLockIfOwner not found');
+    const nextFn = relaySrc.slice(start + marker.length).search(/\n(?:async )?function /);
+    assert.ok(nextFn >= 0, 'next function after upstashReleaseLockIfOwner not found');
+    const body = relaySrc.slice(start, start + marker.length + nextFn);
+    assert.match(
+      body,
+      /JSON\.stringify\(\['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', key, owner\]\)/,
+    );
+    assert.equal(accepts(gate, ['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', 'lock', 'owner']), true);
+    assert.equal(accepts(gate, ['EVAL', `${COMPARE_AND_DELETE_SCRIPT} `, '1', 'lock', 'owner']), false);
+  });
+
+  it('rewrites the pre-pin seed lock release onto the pinned compare-and-delete', () => {
+    const gate = buildGate();
+    const legacy = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
+    assert.equal(
+      createHash('sha256').update(legacy).digest('hex'),
+      'e8f5cdd7bf30b91b9ff7a57af527e4e0acc1e3cb6f91a44a9ef89ee0512c71c0',
+    );
+    assert.equal(accepts(gate, ['EVAL', legacy, '1', 'seed-lock:x', 'run']), true);
+    assert.equal(
+      gate.commandForExecution(['EVAL', legacy, '1', 'seed-lock:x', 'run'])[1],
+      COMPARE_AND_DELETE_SCRIPT,
+    );
+    assert.equal(accepts(gate, ['EVAL', `${legacy} `, '1', 'seed-lock:x', 'run']), false);
   });
 
   it('pins the webhook owner-index remove-expired script by exact bytes', () => {

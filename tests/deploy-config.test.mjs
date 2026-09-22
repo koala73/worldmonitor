@@ -1815,7 +1815,8 @@ describe('welcome landing page routing', () => {
     // the redirect is decided from the live __session JWT alone.
     assert.ok(!welcomeApp.includes("import('./services/clerk')"));
     assert.ok(!welcomeApp.includes("import('./services/checkout')"));
-    assert.ok(welcomeApp.includes('maybeRedirectWelcomeVisitor(document.cookie, window.location)'));
+    assert.ok(welcomeApp.includes('maybeRedirectWelcomeVisitor(readDocumentCookie(), window.location)'));
+    assert.ok(welcomeApp.includes("import { readDocumentCookie } from './services/clerk-session'"));
   });
 });
 
