@@ -2362,9 +2362,9 @@ export const FETCH_PHASE_DEADLINE_MARGIN_MS = 120_000;
 
 // Time left between the fetch-phase deadline and the bundle section timeout so
 // publish (success) or releaseLock + TTL extend (graceful fetch failure) can
-// finish before `_bundle-runner` sends SIGTERM. Sized to match the headroom
-// already used by education-attainment and cross-strait activity seeders.
-export const FETCH_PHASE_PUBLISH_RESERVE_MS = 30_000;
+// finish before `_bundle-runner` sends SIGTERM. Matches the 40s headroom used
+// by education-attainment and cross-strait activity seeders.
+export const FETCH_PHASE_PUBLISH_RESERVE_MS = 40_000;
 
 export function raceFetchDeadline(promise, ms, label) {
   let timer;
@@ -2675,14 +2675,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // When spawned by the bundle runner, also clamp to the section timeout so
   // this graceful path fires before the runner's SIGTERM (#8479).
   const sectionTimeoutMs = getBundleSectionTimeoutMs();
+  const unconstrainedDeadlineMs = resolveFetchDeadlineMs({
+    fetchPhaseTimeoutMs,
+    lockTtlMs,
+    sectionTimeoutMs: null,
+  });
   const fetchDeadlineMs = resolveFetchDeadlineMs({
     fetchPhaseTimeoutMs,
     lockTtlMs,
     sectionTimeoutMs,
   });
-  const unconstrainedDeadlineMs = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
-    ? fetchPhaseTimeoutMs
-    : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
   if (sectionTimeoutMs != null && fetchDeadlineMs < unconstrainedDeadlineMs) {
     console.warn(
       `  [${domain}:${resource}] fetch deadline clamped ${unconstrainedDeadlineMs}ms → ${fetchDeadlineMs}ms `
