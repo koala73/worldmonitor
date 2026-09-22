@@ -223,14 +223,14 @@ export class LinkIndex {
     });
   }
 
-  similar(i, k) {
+  similar(i, k, accept = () => true) {
     const scores = new Map();
     for (const [t, x] of this.vecs[i]) {
       for (const [j, y] of this.postings.get(t)) if (j !== i) scores.set(j, (scores.get(j) ?? 0) + x * y);
     }
     const src = this.pages[i];
     return [...scores]
-      .filter(([j]) => mayLink(src, this.pages[j]))
+      .filter(([j]) => mayLink(src, this.pages[j]) && accept(this.pages[j]))
       .sort((a, b) => b[1] - a[1])
       .slice(0, k);
   }
@@ -352,6 +352,42 @@ export function parseJevAnswers(body, job) {
     verdicts[t.id] = { link: Number.isFinite(link) ? link : 0, anchor: choice, anchorConfidence: Number(anchor?.confidence) || 0 };
   }
   return verdicts;
+}
+
+export const RELATED_RUBRIC = {
+  instructions:
+    "Would a reader of this PAGE want to read the TARGET next? Yes only when the target is about the page's own subject: "
+    + 'the same country, the same crisis, or the same product choice the comparison helps with. '
+    + 'No when the target names the subject only in passing, in a list or table, or as one example among many; '
+    + 'no for general methodology, data-source or product overview pages that would suit any page of this kind.',
+  threshold: 0.7,
+  max: 3,
+};
+
+/** One request per generated page: a yes/no probability per candidate reading. */
+export function buildRelatedRequest(page, candidates, { copyWords = 800, model = JEV_MODEL } = {}) {
+  return {
+    model,
+    state: {
+      page: { url: page.url, title: page.title, about: page.about, copy: page.plain.split(/\s+/).slice(0, copyWords).join(' ') },
+      targets: candidates.map((c, n) => ({ id: `t${n + 1}`, title: c.title, about: c.about.slice(0, 240) })),
+    },
+    questions: Object.fromEntries(candidates.map((c, n) => [
+      `t${n + 1}`,
+      { type: 'noul', instructions: `TARGET t${n + 1}: ${c.title}. ${RELATED_RUBRIC.instructions}` },
+    ])),
+  };
+}
+
+/** The candidates Jev is sure about, most probable first, at most RELATED_RUBRIC.max. */
+export function pickRelated(body, candidates, rubric = RELATED_RUBRIC) {
+  const answers = body?.answers ?? {};
+  return candidates
+    .map((c, n) => ({ c, p: Number(answers[`t${n + 1}`]?.noul) }))
+    .filter(({ p }) => Number.isFinite(p) && p >= rubric.threshold)
+    .sort((a, b) => b.p - a.p)
+    .slice(0, rubric.max)
+    .map(({ c, p }) => ({ candidate: c, p }));
 }
 
 /** Sure enough about the link, an anchor that exists, best first, each target and phrase once. */
