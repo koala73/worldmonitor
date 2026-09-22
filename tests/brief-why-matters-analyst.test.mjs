@@ -219,7 +219,14 @@ describe('displayNameForIso2', () => {
 // ── Cache-key stability ──────────────────────────────────────────────────
 
 describe('cache key identity', () => {
-  it('hashBriefStory stable across the 5-field material', async () => {
+  it('uses an unambiguous tuple and a full SHA-256 digest', async () => {
+    const a = await hashBriefStory(story({ headline: 'a||b', source: 'c' }));
+    const b = await hashBriefStory(story({ headline: 'a', source: 'b||c' }));
+    assert.notEqual(a, b);
+    assert.match(a, /^[a-f0-9]{64}$/);
+  });
+
+  it('hashBriefStory stable across the six-field material', async () => {
     const a = await hashBriefStory(story());
     const b = await hashBriefStory(story());
     assert.equal(a, b);
@@ -227,7 +234,7 @@ describe('cache key identity', () => {
 
   it('hashBriefStory differs when any hash-field differs', async () => {
     const baseline = await hashBriefStory(story());
-    for (const f of ['headline', 'source', 'threatLevel', 'category', 'country']) {
+    for (const f of ['headline', 'source', 'threatLevel', 'category', 'country', 'description']) {
       const h = await hashBriefStory(story({ [f]: `${story()[f]}X` }));
       assert.notEqual(h, baseline, `${f} must be part of cache identity`);
     }
@@ -235,7 +242,7 @@ describe('cache key identity', () => {
 });
 
 describe('brief-why-matters Edge cache acceptance', () => {
-  it('serves a complete v10 envelope as a cache hit', async () => {
+  it('serves a complete v11 envelope as a cache hit', async () => {
     const whyMatters = 'The ruling keeps the 2027 race open while reshaping coalition strategy.';
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters,
@@ -250,7 +257,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(fetchCalls.length, 1, 'a valid cache hit must not call an LLM provider');
   });
 
-  it('treats a clipped v10 envelope as a miss when regeneration fails', async () => {
+  it('treats a clipped v11 envelope as a miss when regeneration fails', async () => {
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters: ANALYST_MAX_TOKEN_CLIP,
       producedBy: 'analyst',
@@ -298,7 +305,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(
       fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
       true,
-      'a stop-finished complete response should populate v10',
+      'a stop-finished complete response should populate v11',
     );
   });
 

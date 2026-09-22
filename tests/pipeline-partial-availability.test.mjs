@@ -30,3 +30,24 @@ test('pipeline availability accounts for each requested registry', async (t) => 
     assert.deepEqual(result.pipelines.map(p => p.id), ids);
   }
 });
+
+
+test('pipeline filters reject unknown values before reads and do not invent freshness', async (t) => {
+  const env = { ...process.env };
+  t.after(() => { process.env = env; });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  const keys = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    keys.push(decodeURIComponent(new URL(url).pathname));
+    return Response.json({ result: null });
+  });
+  for (const commodityType of ['coal', 'gas:extra', 'x'.repeat(100)]) {
+    await assert.rejects(listPipelines({}, { commodityType }), { name: 'ValidationError' });
+    assert.deepEqual(keys, []);
+  }
+  const result = await listPipelines({}, { commodityType: 'GAS' });
+  assert.deepEqual(keys, ['/get/energy:pipelines:gas:v1']);
+  assert.equal(result.fetchedAt, '');
+  assert.equal(result.upstreamUnavailable, true);
+});

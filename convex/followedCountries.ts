@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import {
@@ -342,6 +343,7 @@ export const followCountry = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
 
     if (!isValidIso2(args.country)) {
       throw new ConvexError({
@@ -419,6 +421,7 @@ export const unfollowCountry = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
 
     if (!isValidIso2(args.country)) {
       throw new ConvexError({
@@ -491,6 +494,7 @@ export const mergeAnonymousLocal = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
     const userId = identity.subject;
+    await assertAccountWritable(ctx, userId);
 
     // Step 2: empty-input guard.
     if (args.countries.length === 0) {

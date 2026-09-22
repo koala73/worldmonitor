@@ -2933,7 +2933,9 @@ export const RPC_TOOLS: ToolDef[] = [
           lat: { type: 'number' }, lon: { type: 'number' },
           mineral: { type: 'string' }, country: { type: 'string' },
           operator: { type: 'string' }, status: { type: 'string' }, significance: { type: 'string' },
-          annualOutput: { type: 'string' }, productionRank: { type: 'number' },
+          annualOutput: { type: 'string' },
+          // A label, not an ordinal: "Australia #2", "World deepest mine" (src/config/commodity-geo.ts).
+          productionRank: { type: 'string' },
           openPitOrUnderground: { type: 'string' },
         } } },
         total: { type: 'number' },
@@ -2941,7 +2943,7 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params: Record<string, unknown>) => {
-      type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: number; openPitOrUnderground?: string };
+      type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: string; openPitOrUnderground?: string };
       let sites = MINING_SITES_RAW as MineSite[];
       if (params.mineral) sites = sites.filter((s) => s.mineral === String(params.mineral));
       if (params.country) sites = sites.filter((s) => s.country.toLowerCase().includes(String(params.country).toLowerCase()));

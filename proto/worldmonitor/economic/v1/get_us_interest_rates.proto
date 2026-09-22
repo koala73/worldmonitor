@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// One published US interest rate. Percent per year. Zero is a real print.
+message UsInterestRateObservation {
+  // UTC midnight of the observation date, as Unix epoch milliseconds.
+  int64 date = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Percent per year. 4.25 means 4.25 percent.
+  double percent = 2;
+}
+
+// One named series. id is fed_funds_effective, fed_funds_target_lower,
+// fed_funds_target_upper, treasury_one_month, treasury_three_month,
+// treasury_six_month, treasury_one_year, treasury_two_year, treasury_five_year,
+// treasury_ten_year, treasury_thirty_year, or sofr.
+message UsInterestRateSeries {
+  // Stable series id.
+  string id = 1;
+  // Ascending observations. One element when history is false.
+  repeated UsInterestRateObservation points = 2;
+}
+
+// GetUsInterestRatesRequest chooses the latest prints or the full history.
+message GetUsInterestRatesRequest {
+  // When true, return every stored observation. When false, return the latest point of each series.
+  bool history = 1 [(sebuf.http.query) = {name: "history"}];
+}
+
+// GetUsInterestRatesResponse is the US rate basket for the requested window.
+message GetUsInterestRatesResponse {
+  // Fed funds, H.15 Treasury yields, and SOFR. Empty when unavailable.
+  repeated UsInterestRateSeries series = 1;
+  // True when the seeded rates are unavailable. An empty series list is not a zero rate.
+  bool unavailable = 2;
+}

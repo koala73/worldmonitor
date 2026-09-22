@@ -15,7 +15,7 @@
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 
 import { suggestTools } from './_agent-tool-suggest';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
 
@@ -195,6 +195,12 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
+  const proofDenied = checkIpScopedEdgeProof(req, CORS_HEADERS);
+  if (proofDenied) {
+    return new Response(JSON.stringify({ _meta: buildMeta('error'), error: 'Cloudflare edge proof required' }), {
+      status: proofDenied.status, headers: proofDenied.headers,
+    });
+  }
   const ip = getClientIp(req);
   // Redis-degraded scoped limits intentionally stay availability-first here:
   // this surface is anonymous, quota-free, and cheap (pure token matching

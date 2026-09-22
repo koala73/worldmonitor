@@ -8,6 +8,11 @@
  * @module
  */
 
+import type * as accountDeletion_batches from "../accountDeletion/batches.js";
+import type * as accountDeletion_clerkWebhook from "../accountDeletion/clerkWebhook.js";
+import type * as accountDeletion_erase from "../accountDeletion/erase.js";
+import type * as accountDeletion_registry from "../accountDeletion/registry.js";
+import type * as accountDeletion_sideEffects from "../accountDeletion/sideEffects.js";
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as apiPlanLimitEmails from "../apiPlanLimitEmails.js";
@@ -26,6 +31,8 @@ import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
 import type * as broadcast_waveRuns from "../broadcast/waveRuns.js";
 import type * as companyMonitoring__shared from "../companyMonitoring/_shared.js";
 import type * as companyMonitoring_accounts from "../companyMonitoring/accounts.js";
+import type * as companyMonitoring_admission from "../companyMonitoring/admission.js";
+import type * as companyMonitoring_admissionSnapshot from "../companyMonitoring/admissionSnapshot.js";
 import type * as companyMonitoring_claimPolicyMigration from "../companyMonitoring/claimPolicyMigration.js";
 import type * as companyMonitoring_companies from "../companyMonitoring/companies.js";
 import type * as companyMonitoring_evidence from "../companyMonitoring/evidence.js";
@@ -50,6 +57,7 @@ import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_identitySigning from "../lib/identitySigning.js";
 import type * as lib_iso2 from "../lib/iso2.js";
+import type * as lib_notificationEmail from "../lib/notificationEmail.js";
 import type * as lib_shards from "../lib/shards.js";
 import type * as mcpProTokens from "../mcpProTokens.js";
 import type * as notificationChannels from "../notificationChannels.js";
@@ -57,9 +65,11 @@ import type * as payments_backfillCustomerNormalizedEmail from "../payments/back
 import type * as payments_billing from "../payments/billing.js";
 import type * as payments_businessSeats from "../payments/businessSeats.js";
 import type * as payments_cacheActions from "../payments/cacheActions.js";
+import type * as payments_cancellationEmailCopy from "../payments/cancellationEmailCopy.js";
 import type * as payments_checkout from "../payments/checkout.js";
 import type * as payments_checkoutRateLimit from "../payments/checkoutRateLimit.js";
 import type * as payments_checkoutRateLimitAlarm from "../payments/checkoutRateLimitAlarm.js";
+import type * as payments_repairStaleOnHoldDerivedState from "../payments/repairStaleOnHoldDerivedState.js";
 import type * as payments_returnUrlOrigin from "../payments/returnUrlOrigin.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
 import type * as payments_subscriptionEmails from "../payments/subscriptionEmails.js";
@@ -80,6 +90,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "accountDeletion/batches": typeof accountDeletion_batches;
+  "accountDeletion/clerkWebhook": typeof accountDeletion_clerkWebhook;
+  "accountDeletion/erase": typeof accountDeletion_erase;
+  "accountDeletion/registry": typeof accountDeletion_registry;
+  "accountDeletion/sideEffects": typeof accountDeletion_sideEffects;
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
   apiPlanLimitEmails: typeof apiPlanLimitEmails;
@@ -98,6 +113,8 @@ declare const fullApi: ApiFromModules<{
   "broadcast/waveRuns": typeof broadcast_waveRuns;
   "companyMonitoring/_shared": typeof companyMonitoring__shared;
   "companyMonitoring/accounts": typeof companyMonitoring_accounts;
+  "companyMonitoring/admission": typeof companyMonitoring_admission;
+  "companyMonitoring/admissionSnapshot": typeof companyMonitoring_admissionSnapshot;
   "companyMonitoring/claimPolicyMigration": typeof companyMonitoring_claimPolicyMigration;
   "companyMonitoring/companies": typeof companyMonitoring_companies;
   "companyMonitoring/evidence": typeof companyMonitoring_evidence;
@@ -122,6 +139,7 @@ declare const fullApi: ApiFromModules<{
   "lib/env": typeof lib_env;
   "lib/identitySigning": typeof lib_identitySigning;
   "lib/iso2": typeof lib_iso2;
+  "lib/notificationEmail": typeof lib_notificationEmail;
   "lib/shards": typeof lib_shards;
   mcpProTokens: typeof mcpProTokens;
   notificationChannels: typeof notificationChannels;
@@ -129,9 +147,11 @@ declare const fullApi: ApiFromModules<{
   "payments/billing": typeof payments_billing;
   "payments/businessSeats": typeof payments_businessSeats;
   "payments/cacheActions": typeof payments_cacheActions;
+  "payments/cancellationEmailCopy": typeof payments_cancellationEmailCopy;
   "payments/checkout": typeof payments_checkout;
   "payments/checkoutRateLimit": typeof payments_checkoutRateLimit;
   "payments/checkoutRateLimitAlarm": typeof payments_checkoutRateLimitAlarm;
+  "payments/repairStaleOnHoldDerivedState": typeof payments_repairStaleOnHoldDerivedState;
   "payments/returnUrlOrigin": typeof payments_returnUrlOrigin;
   "payments/seedProductPlans": typeof payments_seedProductPlans;
   "payments/subscriptionEmails": typeof payments_subscriptionEmails;

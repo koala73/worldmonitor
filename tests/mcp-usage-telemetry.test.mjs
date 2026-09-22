@@ -4,6 +4,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
+  ANON_DISCOVERY_URL,
   BASE_URL,
   HMAC_SECRET,
   PRO_BEARER,
@@ -112,6 +113,12 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     assert.equal(ev.status, 200);
     assert.equal(ev.auth_kind, 'anon');
     assert.equal(ev.reason, 'ok');
+    assert.equal(ev.rpc_method, 'tools/list');
+    assert.equal(ev.tool_name, null);
+    // jsonResponse now advertises Content-Length, so a non-streamed JSON-RPC
+    // success must land a real byte count — never the pre-#8403 fake zero.
+    assert.equal(typeof ev.res_bytes, 'number');
+    assert.ok(ev.res_bytes > 0);
   });
 
   it('invalid wm_ key on tools/call emits status 401 reason auth_401 (the #4859 symptom, now visible)', async () => {
@@ -307,5 +314,194 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
     assert.equal(res.status, 200);
     await settle();
+  });
+
+  // #8403 — JSON-RPC method + tool name must be queryable, and missing
+  // Content-Length must not be recorded as a genuine zero-byte response.
+  it('tools/call records rpc_method and a registry-bounded tool_name (#8403)', async () => {
+    const { deps } = makeProDeps();
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
+    assert.equal(res.status, 200);
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].rpc_method, 'tools/call');
+    assert.equal(events[0].tool_name, 'describe_tool');
+    assert.equal(events[0].method, 'POST', 'HTTP method stays on method');
+  });
+
+  it('initialize / tools/list / tools/call are distinguishable by rpc_method (#8403)', async () => {
+    const { deps } = makeProDeps();
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+
+    const listRes = await mcpHandler(
+      new Request(BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      }),
+      deps,
+      ctx,
+    );
+    assert.equal(listRes.status, 200);
+
+    const initRes = await mcpHandler(
+      new Request(ANON_DISCOVERY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'initialize',
+          params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+        }),
+      }),
+      deps,
+      ctx,
+    );
+    assert.equal(initRes.status, 200);
+
+    const callRes = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
+    assert.equal(callRes.status, 200);
+
+    await settle();
+    const methods = events.map((e) => e.rpc_method).sort();
+    assert.deepEqual(methods, ['initialize', 'tools/call', 'tools/list']);
+    assert.equal(events.find((e) => e.rpc_method === 'tools/list')?.tool_name, null);
+    assert.equal(events.find((e) => e.rpc_method === 'initialize')?.tool_name, null);
+  });
+
+  it('unregistered tools/call name is not echoed into tool_name (#8403 cardinality)', async () => {
+    const { deps } = makeProDeps();
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(
+      proReq('POST', callBody('totally_fake_tool_xyz', {})),
+      deps,
+      ctx,
+    );
+    // Dispatch may 200 with a JSON-RPC tool-not-found, or refuse — either way
+    // the usage row must not invent cardinality from client input.
+    assert.ok(res.status === 200 || res.status >= 400);
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].rpc_method, 'tools/call');
+    assert.equal(events[0].tool_name, null);
+  });
+
+  it('unknown JSON-RPC method collapses to _unregistered (#8403 cardinality)', async () => {
+    const { deps } = makeProDeps();
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(
+      new Request(BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 99,
+          method: `invented.method.${'x'.repeat(200)}`,
+          params: {},
+        }),
+      }),
+      deps,
+      ctx,
+    );
+    assert.ok(res.status === 200 || res.status >= 400);
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].rpc_method, '_unregistered');
+    assert.equal(events[0].tool_name, null);
+  });
+
+  it('response without Content-Length does not record res_bytes: 0 (#8403)', async () => {
+    const { emitMcpRequestEvent, createMcpUsage } = await import('../api/mcp/usage.ts');
+    const events = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('axiom.co')) {
+        for (const ev of JSON.parse(init.body)) events.push(ev);
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+    const pending = [];
+    const ctx = { waitUntil: (p) => pending.push(p) };
+    const usage = createMcpUsage();
+    usage.rpcMethod = 'tools/list';
+    const body = '{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}';
+    // Chunked/streamed MCP responses omit Content-Length; Number(null)===0 was
+    // the defect — unknown size must be null/absent, never a fake zero.
+    const res = new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    assert.equal(res.headers.get('content-length'), null);
+    emitMcpRequestEvent(
+      new Request(BASE_URL, { method: 'POST', body: '{}' }),
+      res,
+      usage,
+      12,
+      ctx,
+    );
+    await Promise.allSettled(pending);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].res_bytes, null);
+    assert.notEqual(events[0].res_bytes, 0);
+  });
+
+  it('Content-Length when present is recorded as res_bytes (#8403)', async () => {
+    const { emitMcpRequestEvent, createMcpUsage } = await import('../api/mcp/usage.ts');
+    const events = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('axiom.co')) {
+        for (const ev of JSON.parse(init.body)) events.push(ev);
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+    const pending = [];
+    const ctx = { waitUntil: (p) => pending.push(p) };
+    const usage = createMcpUsage();
+    const body = '{"ok":true}';
+    const res = new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(new TextEncoder().encode(body).byteLength),
+      },
+    });
+    emitMcpRequestEvent(
+      new Request(BASE_URL, { method: 'POST', body: '{}' }),
+      res,
+      usage,
+      5,
+      ctx,
+    );
+    await Promise.allSettled(pending);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].res_bytes, new TextEncoder().encode(body).byteLength);
+  });
+
+  it('/api/mcp pathname emits the same rpc_method fields as /mcp (#8403)', async () => {
+    const { deps } = makeProDeps();
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(
+      new Request('https://worldmonitor.app/api/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      }),
+      deps,
+      ctx,
+    );
+    assert.equal(res.status, 200);
+    await settle();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].route, '/api/mcp');
+    assert.equal(events[0].rpc_method, 'tools/list');
+    assert.equal(events[0].tool_name, null);
   });
 });

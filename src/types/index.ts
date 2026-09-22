@@ -186,6 +186,7 @@ export interface ClusteredEvent {
   lastUpdated: Date;
   isAlert: boolean;
   monitorColor?: string;
+  credibilityScore?: number;
   velocity?: VelocityMetrics;
   threat?: ThreatClassification;
   lat?: number;

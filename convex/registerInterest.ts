@@ -1,3 +1,4 @@
+import { assertAccountWritable, isAccountDeleting } from "./accountDeletion/guard";
 import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { DatabaseReader, DatabaseWriter } from "./_generated/server";
@@ -109,7 +110,7 @@ export const register = internalMutation({
           .query("userReferralCodes")
           .withIndex("by_code", (q) => q.eq("code", args.referredBy as string))
           .first();
-        if (clerkReferrer) {
+        if (clerkReferrer && !(await isAccountDeleting(ctx, clerkReferrer.userId))) {
           // Dedupe by (referrer, email). Returning visitors who
           // re-submit the waitlist form must not double-credit.
           const existingCredit = await ctx.db
@@ -174,6 +175,7 @@ export const register = internalMutation({
 export const registerUserReferralCode = internalMutation({
   args: { userId: v.string(), code: v.string() },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     const existing = await ctx.db
       .query("userReferralCodes")
       .withIndex("by_code", (q) => q.eq("code", args.code))

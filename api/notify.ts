@@ -22,6 +22,13 @@ import {
 import { validateBearerToken } from '../server/auth-session';
 import { checkTierProEntitlement } from '../server/_shared/pro-entitlement';
 import {
+  sanitizeCommunityNotificationTitle,
+  sanitizeNotificationLinkUrl,
+  sanitizeNotificationTitle,
+  sanitizeUserNotificationDescription,
+  sanitizeUserNotificationSource,
+} from '../server/_shared/notify-fields';
+import {
   RATE_LIMIT_DEGRADED_HEADERS,
   checkScopedRateLimit,
   scopedTooManyRequestsResponse,
@@ -215,6 +222,71 @@ export default async function handler(req: Request): Promise<Response> {
   delete payload.importanceScore;
   delete payload.corroborationCount;
 
+  // Validate title/source/link/url/description at the boundary (issue
+  // #8397): these fields reach every delivery channel (email subject/body,
+  // Telegram/Slack/Discord text, web-push click URL) and PR #8384 closed only
+  // the push path. A hostile event produced a real email from
+  // alerts@worldmonitor.app with a forged subject, a forged `Source:` line,
+  // and an off-origin link verbatim.
+  //
+  // Shaping is per-field and non-destructive to legitimate traffic: a
+  // publisher name survives unless it impersonates a first-party identity,
+  // and an off-origin article link survives (the relay renders it with its
+  // destination host disclosed inline). The platform's own browser RSS
+  // forwarder posts through this endpoint, so neutralising every caller
+  // value destroyed real attribution on first-party alerts (review finding).
+  //
+  // Every rewrite is reported back in `warnings` — a caller that loses its
+  // `source` or `link` to the boundary must be able to see that it happened
+  // rather than discovering it from a "my notification looks wrong" report.
+  const warnings: string[] = [];
+  const noteIfChanged = (field: string, before: unknown, after: unknown) => {
+    if (before !== undefined && before !== after) warnings.push(`${field}_rewritten`);
+  };
+
+  const rawTitle = payload.title;
+  const title = sanitizeNotificationTitle(payload.title) || sanitizeNotificationTitle(eventType);
+  payload.title = sanitizeCommunityNotificationTitle(title);
+  noteIfChanged('title', rawTitle, payload.title);
+  if ('source' in payload) {
+    const rawSource = payload.source;
+    payload.source = sanitizeUserNotificationSource(payload.source);
+    noteIfChanged('source', rawSource, payload.source);
+    if (!payload.source) delete payload.source;
+  }
+  // Keep a deliverable off-origin article link: the relay renders it for text
+  // sinks with its destination host disclosed inline, and narrows it to
+  // first-party for the web-push click target (which has no room to disclose
+  // anything). Collapsing it here instead destroyed the article link on the
+  // platform's own RSS alerts (review finding).
+  if (payload.link !== undefined) {
+    const rawLink = payload.link;
+    const link = sanitizeNotificationLinkUrl(payload.link);
+    if (link) payload.link = link;
+    else delete payload.link;
+    noteIfChanged('link', rawLink, link || undefined);
+  }
+  // `payload.url` is a second link field the relay's web-push path reads
+  // (`event.payload?.link ?? event.payload?.url`). Classify it the same way
+  // so it cannot smuggle an unvalidated click target past this boundary.
+  if (payload.url !== undefined) {
+    const rawUrl = payload.url;
+    const url = sanitizeNotificationLinkUrl(payload.url);
+    if (url) payload.url = url;
+    else delete payload.url;
+    noteIfChanged('url', rawUrl, url || undefined);
+  }
+  // `payload.description` renders as a context line in chat/email bodies.
+  // Shape it as plain single-line text so header/body injection via embedded
+  // newlines or control characters cannot ride along with a snippet, and
+  // redact clickable URL tokens for the same reason the title does.
+  if (payload.description !== undefined) {
+    const rawDescription = payload.description;
+    payload.description = sanitizeUserNotificationDescription(payload.description);
+    noteIfChanged('description', rawDescription, payload.description);
+    if (!payload.description) delete payload.description;
+  }
+
   const rawSeverity = typeof body.severity === 'string' ? body.severity : 'high';
   const severity = VALID_SEVERITIES.has(rawSeverity) ? rawSeverity : 'high';
   const variant = typeof body.variant === 'string' ? body.variant : undefined;
@@ -237,5 +309,10 @@ export default async function handler(req: Request): Promise<Response> {
     return completeStandaloneIdempotency(idempotency, jsonResponse({ error: 'Publish failed' }, 502, cors));
   }
 
-  return completeStandaloneIdempotency(idempotency, jsonResponse({ ok: true }, 200, cors));
+  // `warnings` is additive and omitted when nothing was rewritten, so callers
+  // that ignore unknown fields see no change.
+  return completeStandaloneIdempotency(
+    idempotency,
+    jsonResponse(warnings.length ? { ok: true, warnings } : { ok: true }, 200, cors),
+  );
 }

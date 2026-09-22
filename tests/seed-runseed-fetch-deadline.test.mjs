@@ -30,6 +30,7 @@ describe('runSeed fetch-phase deadline (issue #4786)', () => {
   const realFetch = globalThis.fetch;
   const realLog = console.log;
   const realErr = console.error;
+  const realWarn = console.warn;
   let prevUrl, prevTok;
 
   before(() => {
@@ -43,6 +44,7 @@ describe('runSeed fetch-phase deadline (issue #4786)', () => {
     globalThis.fetch = realFetch;
     console.log = realLog;
     console.error = realErr;
+    console.warn = realWarn;
     if (prevUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = prevUrl;
     if (prevTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = prevTok;
   });
@@ -68,6 +70,7 @@ describe('runSeed fetch-phase deadline (issue #4786)', () => {
     mockRedis();
     console.log = () => {};
     console.error = () => {};
+    console.warn = () => {};
     process.exit = (code) => { throw Object.assign(new Error('__EXIT__'), { __exit: true, code }); };
     try {
       await runSeed('test', 'deadline', 'test:deadline:v1', fetchFn, opts);
@@ -80,6 +83,7 @@ describe('runSeed fetch-phase deadline (issue #4786)', () => {
       globalThis.fetch = realFetch;
       console.log = realLog;
       console.error = realErr;
+      console.warn = realWarn;
     }
   }
 
@@ -91,5 +95,26 @@ describe('runSeed fetch-phase deadline (issue #4786)', () => {
   it('an ordinary fetch rejection still takes the same graceful exit-75 path (deadline is not in the way)', async () => {
     const code = await exitCodeFor(() => Promise.reject(new Error('upstream 500')), { ttlSeconds: 600, validateFn: () => true, fetchPhaseTimeoutMs: 50_000 });
     assert.equal(code, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+  });
+
+  it('BUNDLE_SECTION_TIMEOUT_MS clamps the fetch deadline so a hang exits 75 before the section wall (#8479)', async () => {
+    const prevSection = process.env.BUNDLE_SECTION_TIMEOUT_MS;
+    // Section shorter than the publish reserve → resolveFetchDeadlineMs caps at 1ms.
+    process.env.BUNDLE_SECTION_TIMEOUT_MS = '80';
+    try {
+      // Without the clamp, lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS ≈ 240s still
+      // yields exit 75 — so assert.equal(code, 75) alone cannot prove the section
+      // env bounded the hang (review #8483 follow-up).
+      const started = Date.now();
+      const code = await exitCodeFor(hang, { ttlSeconds: 600, validateFn: () => true, lockTtlMs: 120_000 });
+      assert.equal(code, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+      assert.ok(
+        Date.now() - started < 5_000,
+        'section clamp must bound the hang, not merely end it',
+      );
+    } finally {
+      if (prevSection === undefined) delete process.env.BUNDLE_SECTION_TIMEOUT_MS;
+      else process.env.BUNDLE_SECTION_TIMEOUT_MS = prevSection;
+    }
   });
 });

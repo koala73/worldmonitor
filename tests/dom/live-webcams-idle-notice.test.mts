@@ -8,8 +8,8 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const ALL_REGIONS_WALL = [
   'Jerusalem live webcam',
-  'Kyiv live webcam',
   'Middle East live webcam',
+  'Ukraine live webcam',
   'Washington DC live webcam',
 ];
 
@@ -191,10 +191,10 @@ describe('Live Webcams idle stop', () => {
 
     contentButton('Resume').click();
     expect(playingFeeds()).toEqual([
-      'Kyiv live webcam',
-      'Odessa live webcam',
+      'London live webcam',
       'Paris live webcam',
       'St. Petersburg live webcam',
+      'Ukraine live webcam',
     ]);
   });
 

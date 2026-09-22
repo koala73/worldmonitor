@@ -1223,6 +1223,11 @@ export default defineConfig(({ mode }) => {
           // DeckGLMap boundary.
           onlyExplicitManualChunks: true,
           manualChunks(id) {
+            // Keep the existing secondary-flow chunk stable when standalone
+            // entries stop sharing panel dependencies with the dashboard.
+            if (id.endsWith('/src/services/checkout.ts')) {
+              return 'checkout';
+            }
             // Give the layered dashboard stylesheet a CSS-only chunk. Vite folds a
             // CSS-only chunk into each importing entry's own CSS, so dashboard.html
             // links it. Left inside a shared JavaScript chunk it inherited that
