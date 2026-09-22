@@ -464,7 +464,9 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(result, 'recovered');
     assert.equal(attempts, 2);
     assert.equal(sleepCalls.length, 1);
-    assert.equal(sleepCalls[0], 2_000);
+    // #8501 raised the cooldown from 2s, which was one token retry against an
+    // ArcGIS rate-limit window measured in minutes.
+    assert.equal(sleepCalls[0], 8_000);
   });
 
   it('does not retry unrelated ArcGIS failures', async () => {

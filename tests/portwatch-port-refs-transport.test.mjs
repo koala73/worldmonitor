@@ -130,7 +130,9 @@ describe('PortWatch reference pagination recovery', () => {
     assert.deepEqual(transport.requestedOffsets, [0, 1, 1]);
     assert.equal(transport.proxyCalls.length, 2);
     assert.equal(sleepCalls.length, 1);
-    assert.equal(sleepCalls[0][0], 2_000);
+    // #8501 raised the cooldown from 2s: one token retry never outlasted an
+    // ArcGIS rate-limit window, and the reference pages share that window.
+    assert.equal(sleepCalls[0][0], 8_000);
   });
 
   it('retries a code-only rate-limit envelope that carries no message', async () => {

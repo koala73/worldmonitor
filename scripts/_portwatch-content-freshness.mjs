@@ -20,6 +20,25 @@ export const PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES = 12 * 60;
 // floor if that detection delay ever costs more than the alarm did.
 export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 10 * 24 * 60;
 export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
+// Hard publication expiry: a cached country payload stops being publishable at
+// seven days. Lives here rather than in the seeder because orderColdFetchQueue
+// needs it to know which countries are about to fall off the cliff, and the
+// seeder re-exports it as MAX_CACHE_AGE_MS for its own callers.
+export const PORTWATCH_MAX_CACHE_AGE_MS = 7 * 86_400_000;
+// Tail of the cache lifetime in which a country outranks ordinary rotation.
+//
+// Sized at one full nominal sweep: ceil(174 eligible / 30 cold-fetch slots) = 6
+// runs at the 12h cadence = 3 days. A country that enters this window therefore
+// gets at least one slot -- and usually several, since the window admits far
+// fewer than 174 countries -- before its payload expires. The parity test in
+// tests/portwatch-rate-limit-rotation.test.mjs recomputes that floor from the
+// seeder's own constants and fails if this drops under it.
+//
+// #8501: without this window, oldest-ATTEMPT-first sorted the persistently
+// rate-limited countries to the back on every run (a failed fetch advances
+// refreshAttemptedAt), so the cohort that most needed a slot was the cohort
+// least likely to get one. 54 countries sat at 84.6h with no way back.
+export const PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES = 3 * 24 * 60;
 export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
   'seed-activated:supply_chain:portwatch-ports:content-freshness';
 export const PORTWATCH_DECISION_CRITICAL_COUNTRIES = Object.freeze(['CN', 'HK']);
@@ -60,11 +79,42 @@ export function isCriticalContentRefreshDue({
   return ageMs >= Math.max(0, budgetMs - leadMs);
 }
 
+// Cold-fetch slot order, in three tiers:
+//
+//   0 decision-critical (CN/HK) — bounded at two countries, so reserving them
+//     costs the rest of the queue almost nothing;
+//   1 expiring — inside PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES of the hard
+//     cache expiry, ordered closest-to-the-cliff first. Losing a country is
+//     irreversible; serving it a window stale is not, so the cliff outranks
+//     rotation fairness (#8501);
+//   2 everything else — oldest-ATTEMPT-first, the durable rotation cursor.
+//
+// A payload already past PORTWATCH_MAX_CACHE_AGE_MS is deliberately NOT in
+// tier 1: it is unpublishable whatever we do this run, and promoting it would
+// spend a scarce slot that a still-saveable country needs.
 export function orderColdFetchQueue(
   needsFetch,
   criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  {
+    now = Date.now(),
+    maxCacheAgeMs = PORTWATCH_MAX_CACHE_AGE_MS,
+    expiryPriorityLeadMinutes = PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES,
+  } = {},
 ) {
-  const critical = new Set(criticalCountries);
+  const critical = new Set(criticalCountries ?? PORTWATCH_DECISION_CRITICAL_COUNTRIES);
+  const expiryPriorityFromMs = Math.max(0, maxCacheAgeMs - expiryPriorityLeadMinutes * 60_000);
+  const cachedAt = (item) => {
+    const prev = item?.prevPayload;
+    return prev && typeof prev === 'object' && Number.isFinite(prev.cacheWrittenAt)
+      ? prev.cacheWrittenAt
+      : null;
+  };
+  const isExpiring = (item) => {
+    const writtenAt = cachedAt(item);
+    if (writtenAt === null) return false;
+    const age = now - writtenAt;
+    return age >= expiryPriorityFromMs && age < maxCacheAgeMs;
+  };
   const lastAttemptAt = (item) => {
     const prev = item?.prevPayload;
     if (!prev || typeof prev !== 'object') return Number.NEGATIVE_INFINITY;
@@ -73,11 +123,18 @@ export function orderColdFetchQueue(
     return Number.NEGATIVE_INFINITY;
   };
   const stableId = (item) => String(item?.iso2 || item?.iso3 || '');
-  const priority = (item) => (critical.has(item?.iso2) ? 0 : 1);
+  const priority = (item) => {
+    if (critical.has(item?.iso2)) return 0;
+    return isExpiring(item) ? 1 : 2;
+  };
   return [...needsFetch].sort((a, b) => {
     const priorityOrder = priority(a) - priority(b);
     if (priorityOrder !== 0) return priorityOrder;
-    const ageOrder = lastAttemptAt(a) - lastAttemptAt(b);
+    // Inside the expiring tier the deadline is the only thing that matters, so
+    // rank by how long the payload has been cached, not when we last tried it.
+    const ageOrder = priority(a) === 1
+      ? cachedAt(a) - cachedAt(b)
+      : lastAttemptAt(a) - lastAttemptAt(b);
     return ageOrder || stableId(a).localeCompare(stableId(b));
   });
 }

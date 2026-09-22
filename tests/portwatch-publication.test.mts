@@ -46,8 +46,12 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       static now() { return now; }
     };
     const realTimeout = setTimeout;
+    // The seeder's own cooldowns: the baseline inter-batch gap, its
+    // rate-limit escalations (#8501), and the per-country retry delay. Collapse
+    // them so a run under test costs no wall time; every other timer is real.
+    const seederCooldowns = new Set([5000, 8000, 10000, 20000, 40000]);
     globalThis.setTimeout = (fn, ms, ...args) => {
-      if (ms === 5000 || ms === 2000) { queueMicrotask(() => fn(...args)); return 0; }
+      if (seederCooldowns.has(ms)) { queueMicrotask(() => fn(...args)); return 0; }
       return realTimeout(fn, ms, ...args);
     };
     const state = installRedis(${JSON.stringify(input)});
@@ -113,8 +117,10 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
     };
     const producer = await import('./scripts/seed-portwatch-port-activity.mjs');
     let error = null;
-    try { await producer.main(); } catch (e) { error = e.message; }
-    console.log('RESULT ' + JSON.stringify({ error, requests,
+    let publishBlocked = false;
+    try { publishBlocked = (await producer.main())?.publishBlocked === true; }
+    catch (e) { error = e.message; }
+    console.log('RESULT ' + JSON.stringify({ error, publishBlocked, requests,
       rawRedis: Object.fromEntries(state.redis),
       redis: Object.fromEntries([...state.redis].map(([key, value]) => {
         try { return [key, JSON.parse(value)]; } catch { return [key, value]; }
@@ -387,11 +393,18 @@ test('a deferred refresh failure cannot be hidden by otherwise complete retained
   const code = countries[0][1];
   input[`${PREFIX}${code}`].refreshAttemptedAt = 1;
   const failed = runProducer(input, 'activity-page');
-  assert.match(failed.error, /Incomplete PortWatch coverage/);
+  // #8501: a refresh failure with every country still usable blocks publication
+  // without crashing. The canonical list is retained, the failure is recorded,
+  // and the run exits publish-blocked — not exit 1 twice a day.
+  assert.equal(failed.error, null);
+  assert.equal(failed.publishBlocked, true);
+  assert.match(failed.logs, /ROTATION INCOMPLETE: 1 of 174 countries failed to refresh/);
   assert.equal(failed.redis[META].coverage.published, 174);
+  assert.equal(failed.redis[META].sourceState, 'error');
   assert.match(failed.logs, /usable coverage 174\/174; full publication blocked; 1 unresolved refresh failures/);
   const deferred = runProducer(failed.redis, 'moving', NOW + DAY / 2);
-  assert.match(deferred.error, /Incomplete PortWatch coverage/);
+  assert.equal(deferred.error, null);
+  assert.equal(deferred.publishBlocked, true);
   assert.equal(deferred.redis[META].fetchedAt, input[META].fetchedAt);
   assert.ok(deferred.redis[META].coverage.refreshFailures.some((entry: any) => entry.iso2 === code));
   assert.equal(health(deferred.redis, NOW + DAY / 2).status, 'SEED_ERROR');
