@@ -228,9 +228,20 @@ describe('publisher-families map data', () => {
   });
 
   it('gives every family a publisher display name and at least two labels', () => {
+    // #8398: domain-only families (labels: []) declare an article-host
+    // allowance without folding any label — the ingest/relay link gates
+    // need wsj.com for Dow Jones delivery-host feeds, but the label must
+    // NOT merge (that would understate corroboration). Exempt from the
+    // two-label minimum: that rule targets label folding, and an empty
+    // label list cannot merge anything.
+    const DOMAIN_ONLY_FAMILIES = new Set(['wsj']);
     for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILIES)) {
       assert.equal(typeof entry.publisher, 'string', `${familyId} has no publisher name`);
       assert.ok(entry.publisher.length > 0, `${familyId} has an empty publisher name`);
+      if (DOMAIN_ONLY_FAMILIES.has(familyId)) {
+        assert.deepEqual(entry.labels, [], `${familyId} must stay domain-only (no label folding)`);
+        continue;
+      }
       assert.ok(
         entry.labels.length >= 2,
         `${familyId} lists ${entry.labels.length} label(s) — a one-label family is what the ` +

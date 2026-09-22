@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { afterEach, describe, it, mock } from 'node:test';
 
 const originalEnv = { ...process.env };
@@ -14,7 +15,7 @@ function restoreEnv(): void {
 
 async function importFreshNotificationChannels() {
   process.env.CONVEX_SITE_URL = 'https://convex.test';
-  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  process.env.CONVEX_TENANT_RELAY_SECRET = 'relay-secret';
   process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
   return import(`../api/notification-channels.ts?test=${Date.now()}-${Math.random()}`);
@@ -57,6 +58,7 @@ function makeSetWebPushRequest(): Request {
 }
 
 type RedisCommand = string[];
+
 
 function installInMemoryUpstash() {
   const store = new Map<string, string>();
@@ -121,11 +123,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
       relaySignals.push(signal);
       assert.equal(body.scheduleWelcome, true);
       if (mutationAttempt === 1) {
-        return await new Promise<Response>((_resolve, reject) => {
-          const rejectForAbort = () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError'));
-          if (signal.aborted) rejectForAbort();
-          else signal.addEventListener('abort', rejectForAbort, { once: true });
-        });
+        return hangUntilAbort(signal);
       }
       return Response.json({
         ok: true,

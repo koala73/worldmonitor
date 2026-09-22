@@ -56,16 +56,19 @@ function teardownAutoListener(): void {
   }
 }
 
-export function setThemePreference(pref: ThemePreference): void {
-  try { localStorage.setItem(STORAGE_KEY, pref); } catch { /* noop */ }
+function updateAutoListener(pref: ThemePreference): void {
   teardownAutoListener();
-  const effective: Theme = pref === 'auto' ? resolveAutoTheme() : pref;
-  setTheme(effective);
   if (pref === 'auto' && typeof window !== 'undefined' && window.matchMedia) {
     autoMediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    autoMediaHandler = () => setTheme(resolveAutoTheme());
+    autoMediaHandler = () => applyTheme(resolveAutoTheme());
     autoMediaQuery.addEventListener('change', autoMediaHandler);
   }
+}
+
+export function setThemePreference(pref: ThemePreference): void {
+  try { localStorage.setItem(STORAGE_KEY, pref); } catch { /* noop */ }
+  updateAutoListener(pref);
+  applyTheme(pref === 'auto' ? resolveAutoTheme() : pref);
 }
 
 /**
@@ -82,13 +85,12 @@ export function getCurrentTheme(): Theme {
  * persist to localStorage, update meta theme-color, and dispatch event.
  */
 export function setTheme(theme: Theme): void {
+  setThemePreference(theme);
+}
+
+function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   invalidateColorCache();
-  try {
-    localStorage.setItem(STORAGE_KEY, theme);
-  } catch {
-    // localStorage unavailable
-  }
   updateThemeMetaColor(theme);
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
 }
@@ -121,6 +123,7 @@ export function applyStoredTheme(): void {
     effective = variant === 'happy' ? 'light' : resolveAutoTheme();
   }
 
+  updateAutoListener(raw === 'auto' ? 'auto' : effective);
   document.documentElement.dataset.theme = effective;
   updateThemeMetaColor(effective, variant);
 }

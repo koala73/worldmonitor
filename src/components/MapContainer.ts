@@ -15,6 +15,7 @@ import {
   type RendererKind,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
+import { t } from '@/services/i18n';
 import type { MapComponent, MapComponentOptions } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
@@ -187,6 +188,7 @@ export class MapContainer {
     this.markHumanViewportInteraction();
   };
   private rendererReady = false;
+  private rendererInitError: Error | null = null;
   private rendererReadyWaiters = new Set<{
     resolve: () => void;
     reject: (error: Error) => void;
@@ -417,6 +419,7 @@ export class MapContainer {
     // currently selected generation may publish readiness; otherwise an old
     // async renderer could wake callers that are waiting on its replacement.
     if (!this.isCurrentRendererInit(token)) return;
+    this.rendererInitError = null;
     this.rendererReady = true;
     this.rendererDemandRequested = false;
     this.releaseRendererDemand = null;
@@ -635,6 +638,40 @@ export class MapContainer {
     void this.initSvgMap('[MapContainer] Initializing SVG map (globe fallback mode)', fallbackToken);
   }
 
+  private handleDeckGLRuntimeFailure(token: number, error: unknown): void {
+    if (token !== this.rendererInitToken || !this.useDeckGL) return;
+    console.warn('[MapContainer] DeckGL runtime failure, falling back to SVG map', error);
+    const snapshot = this.getState();
+    const center = this.getCenter();
+    this.initialState = snapshot;
+    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+    try {
+      this.deckGLMap?.destroy();
+    } catch (destroyError) {
+      console.warn('[MapContainer] DeckGL teardown failed during SVG fallback', destroyError);
+    }
+    this.deckGLMap = null;
+    this.useDeckGL = false;
+    const fallbackToken = ++this.rendererInitToken;
+    this.showRendererShell('svg');
+    void this.initSvgMap('[MapContainer] Initializing SVG map (DeckGL runtime fallback)', fallbackToken).catch((error: unknown) => {
+      if (!this.isCurrentRendererInit(fallbackToken)) return;
+      this.rendererInitError = error instanceof Error ? error : new Error(String(error));
+      console.warn('[MapContainer] SVG fallback initialization failed', this.rendererInitError);
+      try {
+        this.svgMap?.destroy();
+      } catch (destroyError) {
+        console.warn('[MapContainer] Partial SVG teardown failed', destroyError);
+      }
+      this.svgMap = null;
+      this.prepareRendererDom('svg-mode');
+      this.container.textContent = t('common.unavailable');
+      const waiters = Array.from(this.rendererReadyWaiters);
+      this.rendererReadyWaiters.clear();
+      for (const waiter of waiters) waiter.reject(this.rendererInitError);
+    });
+  }
+
   private async createDeckGLMap(token: number): Promise<void> {
     console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
     try {
@@ -646,7 +683,12 @@ export class MapContainer {
       this.deckGLMap = new DeckGLMap(this.container, {
         ...this.initialState,
         view: this.initialState.view as DeckMapView,
-      }, { chrome: this.chrome });
+      }, {
+        chrome: this.chrome,
+        // Mid-session MapLibre rebuilds (fallback basemap after WebGL loss)
+        // can throw GPUInitializationError outside whenReady(); degrade to SVG.
+        onFatalError: (error) => this.handleDeckGLRuntimeFailure(token, error),
+      });
       this.rehydrateActiveMap();
       // DeckGLMap defers MapLibre construction behind an async init. Await it so
       // a WebGL/map-construction throw still reaches this catch and degrades to
@@ -668,6 +710,7 @@ export class MapContainer {
 
   private async init(): Promise<void> {
     const token = ++this.rendererInitToken;
+    this.rendererInitError = null;
     this.rendererReady = false;
     this.showRendererShell(this.getPendingRendererKind());
     this.startResizeObserver();
@@ -835,6 +878,7 @@ export class MapContainer {
   public whenRendererReady(): Promise<void> {
     if (this.rendererReady && this.hasActiveRenderer()) return Promise.resolve();
     if (this.destroyed) return Promise.reject(new Error('Map renderer is no longer available.'));
+    if (this.rendererInitError) return Promise.reject(this.rendererInitError);
     this.rendererDemandRequested = true;
     this.releaseRendererDemand?.();
     return new Promise((resolve, reject) => {

@@ -3916,6 +3916,388 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-us-cpi-monthly:
+        get:
+            tags:
+                - EconomicService
+            summary: GetUsCpiMonthly
+            description: GetUsCpiMonthly returns seasonally adjusted US CPI-U for headline, core, food, energy, shelter, and services. Month-over-month and year-over-year changes are computed from that index. history=false is the latest month. history=true is every month from 1947.
+            operationId: GetUsCpiMonthly
+            parameters:
+                - name: history
+                  in: query
+                  description: When true, return every stored month. When false, return only the latest month.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "months":
+                                    - "core":
+                                        "index": 1.5
+                                        "monthOverMonth":
+                                            "percent": 42.5
+                                        "yearOverYear":
+                                            "percent": 42.5
+                                      "energy":
+                                          "index": 1.5
+                                          "monthOverMonth":
+                                              "percent": 42.5
+                                          "yearOverYear":
+                                              "percent": 42.5
+                                      "food":
+                                          "index": 1.5
+                                          "monthOverMonth":
+                                              "percent": 42.5
+                                          "yearOverYear":
+                                              "percent": 42.5
+                                      "headline":
+                                          "index": 1.5
+                                          "monthOverMonth":
+                                              "percent": 42.5
+                                          "yearOverYear":
+                                              "percent": 42.5
+                                      "month": 1717200000000
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetUsCpiMonthlyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-us-treasury-par-yield-curve:
+        get:
+            tags:
+                - EconomicService
+            summary: GetUsTreasuryParYieldCurve
+            description: GetUsTreasuryParYieldCurve returns the daily Treasury par yield curve, 1-month through 30-year. A missing tenor was not published that day. history=false is the latest business day. history=true is every business day since 1990.
+            operationId: GetUsTreasuryParYieldCurve
+            parameters:
+                - name: history
+                  in: query
+                  description: When true, return every stored business day since 1990. When false, return the latest day.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "curves":
+                                    - "date": 1717200000000
+                                      "fiveYear": 1.5
+                                      "fourMonth": 1.5
+                                      "oneAndAHalfMonth": 1.5
+                                      "oneMonth": 1.5
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetUsTreasuryParYieldCurveResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-us-interest-rates:
+        get:
+            tags:
+                - EconomicService
+            summary: GetUsInterestRates
+            description: GetUsInterestRates returns the effective federal funds rate, target range, H.15 Treasury yields, and SOFR. history=false is the latest point of each series. history=true is the full history. This is not the Treasury par curve.
+            operationId: GetUsInterestRates
+            parameters:
+                - name: history
+                  in: query
+                  description: When true, return every stored observation. When false, return the latest point of each series.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "series":
+                                    - "id": "fed_funds_effective"
+                                      "points":
+                                          - "date": 1717200000000
+                                            "percent": 42.5
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetUsInterestRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -6081,3 +6463,190 @@ components:
                     type: boolean
                 paced:
                     type: boolean
+        GetUsCpiMonthlyRequest:
+            type: object
+            properties:
+                history:
+                    type: boolean
+                    description: When true, return every stored month. When false, return only the latest month.
+            description: GetUsCpiMonthlyRequest chooses the latest print or the full monthly history.
+        GetUsCpiMonthlyResponse:
+            type: object
+            properties:
+                months:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UsCpiMonth'
+                unavailable:
+                    type: boolean
+                    description: True when the seeded series is unavailable. An empty month list is not a zero print.
+            description: GetUsCpiMonthlyResponse is the CPI basket for the requested window.
+        UsCpiMonth:
+            type: object
+            properties:
+                month:
+                    type: integer
+                    format: int64
+                    description: 'UTC midnight on the first day of the observation month, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                headline:
+                    $ref: '#/components/schemas/UsCpiReading'
+                core:
+                    $ref: '#/components/schemas/UsCpiReading'
+                food:
+                    $ref: '#/components/schemas/UsCpiReading'
+                energy:
+                    $ref: '#/components/schemas/UsCpiReading'
+                shelter:
+                    $ref: '#/components/schemas/UsCpiReading'
+                services:
+                    $ref: '#/components/schemas/UsCpiReading'
+            description: UsCpiMonth is one month of the US CPI basket.
+        UsCpiReading:
+            type: object
+            properties:
+                index:
+                    type: number
+                    format: double
+                    description: Index level, 1982-84=100.
+                monthOverMonth:
+                    $ref: '#/components/schemas/UsCpiPercentChange'
+                yearOverYear:
+                    $ref: '#/components/schemas/UsCpiPercentChange'
+            description: UsCpiReading is one seasonally adjusted CPI-U index for one month.
+        UsCpiPercentChange:
+            type: object
+            properties:
+                percent:
+                    type: number
+                    format: double
+                    description: Percent change. 2.5 means 2.5 percent, not an annualized rate.
+            description: UsCpiPercentChange is a simple percent change computed from the index.
+        GetUsTreasuryParYieldCurveRequest:
+            type: object
+            properties:
+                history:
+                    type: boolean
+                    description: When true, return every stored business day since 1990. When false, return the latest day.
+            description: GetUsTreasuryParYieldCurveRequest chooses the latest business day or the daily history.
+        GetUsTreasuryParYieldCurveResponse:
+            type: object
+            properties:
+                curves:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UsTreasuryParYieldCurve'
+                unavailable:
+                    type: boolean
+                    description: True when the seeded curve is unavailable. An empty list is not a zero yield.
+            description: GetUsTreasuryParYieldCurveResponse is the par curve for the requested window.
+        UsTreasuryParYieldCurve:
+            type: object
+            properties:
+                date:
+                    type: integer
+                    format: int64
+                    description: 'UTC midnight of the business day, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                oneMonth:
+                    type: number
+                    format: double
+                    description: 1-month par yield, in percent.
+                oneAndAHalfMonth:
+                    type: number
+                    format: double
+                    description: 1.5-month par yield, in percent.
+                twoMonth:
+                    type: number
+                    format: double
+                    description: 2-month par yield, in percent.
+                threeMonth:
+                    type: number
+                    format: double
+                    description: 3-month par yield, in percent.
+                fourMonth:
+                    type: number
+                    format: double
+                    description: 4-month par yield, in percent.
+                sixMonth:
+                    type: number
+                    format: double
+                    description: 6-month par yield, in percent.
+                oneYear:
+                    type: number
+                    format: double
+                    description: 1-year par yield, in percent.
+                twoYear:
+                    type: number
+                    format: double
+                    description: 2-year par yield, in percent.
+                threeYear:
+                    type: number
+                    format: double
+                    description: 3-year par yield, in percent.
+                fiveYear:
+                    type: number
+                    format: double
+                    description: 5-year par yield, in percent.
+                sevenYear:
+                    type: number
+                    format: double
+                    description: 7-year par yield, in percent.
+                tenYear:
+                    type: number
+                    format: double
+                    description: 10-year par yield, in percent.
+                twentyYear:
+                    type: number
+                    format: double
+                    description: 20-year par yield, in percent.
+                thirtyYear:
+                    type: number
+                    format: double
+                    description: 30-year par yield, in percent.
+            description: |-
+                UsTreasuryParYieldCurve is one business day's Treasury par yield curve.
+                 A tenor is absent when Treasury did not publish it that day.
+        GetUsInterestRatesRequest:
+            type: object
+            properties:
+                history:
+                    type: boolean
+                    description: When true, return every stored observation. When false, return the latest point of each series.
+            description: GetUsInterestRatesRequest chooses the latest prints or the full history.
+        GetUsInterestRatesResponse:
+            type: object
+            properties:
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UsInterestRateSeries'
+                unavailable:
+                    type: boolean
+                    description: True when the seeded rates are unavailable. An empty series list is not a zero rate.
+            description: GetUsInterestRatesResponse is the US rate basket for the requested window.
+        UsInterestRateSeries:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Stable series id.
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UsInterestRateObservation'
+            description: |-
+                One named series. id is fed_funds_effective, fed_funds_target_lower,
+                 fed_funds_target_upper, treasury_one_month, treasury_three_month,
+                 treasury_six_month, treasury_one_year, treasury_two_year, treasury_five_year,
+                 treasury_ten_year, treasury_thirty_year, or sofr.
+        UsInterestRateObservation:
+            type: object
+            properties:
+                date:
+                    type: integer
+                    format: int64
+                    description: 'UTC midnight of the observation date, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                percent:
+                    type: number
+                    format: double
+                    description: Percent per year. 4.25 means 4.25 percent.
+            description: One published US interest rate. Percent per year. Zero is a real print.

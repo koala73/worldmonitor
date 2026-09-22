@@ -1,3 +1,5 @@
+import { consumeSubRequestAdmission } from './_shared/sub-request-admission';
+import { hasCurrentEntitlementCoverage } from './_shared/entitlement-coverage';
 /**
  * Shared gateway logic for per-domain Vercel edge functions.
  *
@@ -14,7 +16,7 @@ import { getCorsHeaders, getOriginDeniedCorsHeaders, isDisallowedOrigin, isAllow
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
-import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
+import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeEqualSecret } from '../api/_crypto.js';
 // @ts-expect-error — JS module, no declaration file
@@ -24,7 +26,10 @@ import {
   checkRateLimit,
   checkEndpointRateLimit,
   checkFailClosedScopedIpRateLimit,
+  formatTrustedRateLimitPrincipal,
   hasEndpointRatePolicy,
+  RATE_LIMIT_DEGRADED_HEADERS,
+  TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
 } from './_shared/rate-limit';
 import {
   drainResponseHeaders,
@@ -51,13 +56,12 @@ import {
   getBillingVerificationDenial,
   getRequiredTier,
   getEntitlements,
-  isEntitlementBackendConfigured,
   type CachedEntitlements,
 } from './_shared/entitlement-check';
 import { EMBED_KEY_RPC_PATHS } from '../shared/embed-panels';
 import { hasEmbedAccess } from '../shared/embed-access';
 import { checkProMcpAccess } from './_shared/pro-mcp-gate';
-import { resolveClerkSession } from './_shared/auth-session';
+import { resolveClerkSession, sessionVerificationUnavailableResponse } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
   INTERNAL_MCP_USER_ID_HEADER,
@@ -357,6 +361,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-crude-inventories': 'daily',
   '/api/economic/v1/get-nat-gas-storage': 'daily',
   '/api/economic/v1/get-eu-yield-curve': 'daily',
+  // Daily macro seed. A miss returns unavailable:true, which the gateway
+  // already keeps out of the shared cache.
+  '/api/economic/v1/get-us-cpi-monthly': 'daily',
+  '/api/economic/v1/get-us-treasury-par-yield-curve': 'daily',
+  '/api/economic/v1/get-us-interest-rates': 'daily',
   '/api/supply-chain/v1/get-critical-minerals': 'daily',
   '/api/supply-chain/v1/get-mineral-production': 'daily',
   '/api/military/v1/get-aircraft-details': 'static',
@@ -761,28 +770,53 @@ function attachRequiredBboxDiagnosticHeaders(
   }
 }
 
-// `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) is gateway-internal: the
-// gateway is the ONLY layer permitted to set it, and it must reflect an
+// `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) and
+// `TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER` are gateway-internal: the gateway is
+// the ONLY layer permitted to set them, and each must reflect an
 // authenticated principal. Inbound client copies are stripped at handler
-// entry (see stripClientUserIdHeader); the authenticated value is re-
+// entry (see stripClientTrustedHeaders); the authenticated user id is re-
 // injected after Clerk / wm_ user-key / legacy bearer auth via
-// withAuthenticatedUserId. The internal-MCP block below has its own
-// strip-and-rebuild step that ALSO strips this header alongside
-// INTERNAL_MCP_VERIFIED_HEADER — both layers are defense-in-depth.
+// withAuthenticatedUserId, and the rate-limit principal is stamped once all
+// auth has resolved (see withTrustedRateLimitPrincipal).
+//
+// The sub-request header remains untrusted until its one-use Redis admission
+// is consumed. Presence alone never bypasses a gateway limit.
 function cloneRequestWithHeaders(request: Request, headers: Headers): Request {
   return new Request(request, { headers });
 }
 
-function stripClientUserIdHeader(request: Request): Request {
-  if (!request.headers.has(TRUSTED_USER_ID_HEADER)) return request;
+function stripClientTrustedHeaders(request: Request): Request {
+  if (
+    !request.headers.has(TRUSTED_USER_ID_HEADER) &&
+    !request.headers.has(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER)
+  ) {
+    return request;
+  }
   const headers = new Headers(request.headers);
   headers.delete(TRUSTED_USER_ID_HEADER);
+  headers.delete(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER);
   return cloneRequestWithHeaders(request, headers);
 }
 
 function withAuthenticatedUserId(request: Request, userId: string): Request {
   const headers = new Headers(request.headers);
   headers.set(TRUSTED_USER_ID_HEADER, userId);
+  return cloneRequestWithHeaders(request, headers);
+}
+
+// Stamped after auth resolution with the principal the gateway itself charged,
+// so a handler that re-dispatches sub-requests (the batch fan-out) charges the
+// same bucket a direct call would instead of guessing from raw credentials.
+function withTrustedRateLimitPrincipal(
+  request: Request,
+  userId: string,
+  scope: 'session' | 'api_key',
+): Request {
+  const headers = new Headers(request.headers);
+  headers.set(
+    TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
+    formatTrustedRateLimitPrincipal(userId, scope),
+  );
   return cloneRequestWithHeaders(request, headers);
 }
 
@@ -882,13 +916,35 @@ function markAuthErrorNoStore(response: Response): Response {
   return response;
 }
 
-function hasCredentialBearingHeader(request: Request): boolean {
-  return Boolean(
-    request.headers.get('Authorization') ||
-    request.headers.get('X-WorldMonitor-Key') ||
-    request.headers.get('X-Api-Key') ||
-    request.headers.get('Cookie'),
-  );
+/**
+ * Every request header the gateway or a sibling auth path treats as a
+ * credential (#8400). `hasCredentialBearingHeader` consumes this list so a
+ * new credential header cannot be added without appearing in the cache-tier
+ * guard. `register-interest.ts` desktop HMAC headers and `mcp-internal-hmac.ts`
+ * service-auth headers export their own constants and stay OUT: their
+ * verification is route-scoped (a single POST RPC, the internal-MCP
+ * pre-check) rather than consumed as a bearer by an auth path — per-principal
+ * bodies behind those MUST be no-store at the handler instead of relying on
+ * this audience overwrite.
+ *
+ * Exported so a divergence test can pin the list against the auth-path
+ * readers. When adding an entry here, extend the pinned literal in
+ * server/__tests__/gateway-credential-headers.test.ts.
+ */
+export const CREDENTIAL_BEARING_HEADERS = [
+  'Authorization',
+  'X-WorldMonitor-Key',
+  'X-Api-Key',
+  // Widget tester keys (validated in api/widget-agent.ts:273-274). Both are
+  // per-principal credentials like the operator keys above: X-Widget-Key
+  // unlocks basic, X-Pro-Key unlocks Pro-tier generation.
+  'X-Widget-Key',
+  'X-Pro-Key',
+  'Cookie',
+] as const;
+
+export function hasCredentialBearingHeader(request: Request): boolean {
+  return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
 
 async function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): Promise<boolean> {
@@ -949,7 +1005,7 @@ export function createDomainGateway(
       return buildMarkdownTwinResponse(originalRequest, originalPathname);
     }
 
-    let request = stripClientUserIdHeader(originalRequest);
+    let request = stripClientTrustedHeaders(originalRequest);
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
     const t0 = Date.now();
@@ -1126,13 +1182,15 @@ export function createDomainGateway(
     // Defense-in-depth: strip client-controlled copies of the trusted
     // internal-MCP markers BEFORE any other logic runs. The gateway is the
     // ONLY layer permitted to set `x-wm-mcp-internal-verified` /
-    // `x-user-id` (the latter is also set by verified session / user-key
-    // paths below). Without the strip step, an attacker
-    // who sends `x-wm-mcp-internal-verified: 1` from outside could spoof
-    // premium context to any handler that reads these markers via
-    // `isCallerPremium`. The strip MUST run regardless of whether the
-    // X-WM-MCP-Internal header is present, so that the legacy
-    // `validateApiKey` path also receives a sanitised request.
+    // `x-user-id` / the rate-limit principal stamp. Without the strip step,
+    // an attacker who sends `x-wm-mcp-internal-verified: 1` from outside
+    // could spoof premium context to any handler that reads these markers
+    // via `isCallerPremium`, and a forged principal stamp would let any
+    // caller name the bucket their fan-out is charged to. The strip MUST run
+    // regardless of whether the X-WM-MCP-Internal header is present, so that
+    // the legacy `validateApiKey` path also receives a sanitised request.
+    //
+    // Sub-request admission is verified separately before rate limiting.
     //
     // Mutation invariant: every subsequent request reconstruction in this
     // function must build from the (already-stripped) `request`, not from
@@ -1142,11 +1200,13 @@ export function createDomainGateway(
       const inboundHeaders = request.headers;
       if (
         inboundHeaders.has(INTERNAL_MCP_VERIFIED_HEADER) ||
-        inboundHeaders.has(TRUSTED_USER_ID_HEADER)
+        inboundHeaders.has(TRUSTED_USER_ID_HEADER) ||
+        inboundHeaders.has(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER)
       ) {
         const stripped = new Headers(inboundHeaders);
         stripped.delete(INTERNAL_MCP_VERIFIED_HEADER);
         stripped.delete(TRUSTED_USER_ID_HEADER);
+        stripped.delete(TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER);
         // For GET/HEAD: no body to forward. For other methods: buffer the
         // body bytes and pass them to the new Request — `body: request.body`
         // (a ReadableStream) requires `duplex: 'half'` in Node's undici
@@ -1362,6 +1422,14 @@ export function createDomainGateway(
       trusted.delete(INTERNAL_MCP_NONCE_HEADER);
       trusted.set(INTERNAL_MCP_VERIFIED_HEADER, getInternalMcpVerifiedNonce());
       trusted.set(TRUSTED_USER_ID_HEADER, verified.userId);
+      // The verified MCP caller is a confirmed paid principal: stamp the
+      // rate-limit principal here too, so a downstream fan-out (e.g. a batch
+      // issued through the MCP tool path) charges the verified userId bucket
+      // instead of silently downgrading to the caller's IP.
+      trusted.set(
+        TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER,
+        formatTrustedRateLimitPrincipal(verified.userId, 'session'),
+      );
       const rebuildInit: RequestInit = { method: request.method, headers: trusted };
       if (bodyBytes !== null) rebuildInit.body = bodyBytes;
       request = new Request(request.url, rebuildInit);
@@ -1429,6 +1497,10 @@ export function createDomainGateway(
     let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
+      if (session && 'reason' in session) {
+        emitRequest(503, 'billing_verification_503', null);
+        return sessionVerificationUnavailableResponse(corsHeaders);
+      }
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
       usage.sessionUserId = sessionUserId;
@@ -1462,10 +1534,7 @@ export function createDomainGateway(
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
-    const wmKey =
-      request.headers.get('X-WorldMonitor-Key') ??
-      request.headers.get('X-Api-Key') ??
-      '';
+    const wmKey = getHeaderApiKey(request);
     const dockerSelfHostSessionAuthorized =
       isDockerSelfHostCountryBrief &&
       keyCheck.valid &&
@@ -1685,49 +1754,36 @@ export function createDomainGateway(
       recordUsageEntitlement(userKeyEntitlement);
       const apiAccessCovered = !!userKeyEntitlement &&
         userKeyEntitlement.features.apiAccess &&
-        (userKeyEntitlement.validUntil ?? 0) >= Date.now();
+        hasCurrentEntitlementCoverage(userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
         apiAccessCovered,
       );
       if (billingDenial) return billingDenial;
-      // A validated wm_ key proves key ownership, not current paid access.
-      // Transient lookup failures now arrive as a verificationUnavailable
-      // marker and were already answered with the retryable 503 by
-      // denyForBillingVerification above; a null here means the backend is
-      // unconfigured or gave a confirmed/malformed answer, and allowing it
-      // would turn that state into paid API access. Fail closed with a 503
-      // — EXCEPT when the entitlement backend itself is unconfigured: that is
-      // a deploy defect, not customer billing state, and 503ing every wm_ key
-      // fleet-wide would convert a config regression into a total API outage.
-      // Misconfig serves fail-open (pre-#4770 behavior) and logs loudly.
+      // Key ownership does not prove paid access. Missing configuration and
+      // unresolved entitlements must remain retryable failures, not grants.
       if (!userKeyEntitlement) {
-        if (isEntitlementBackendConfigured()) {
-          emitRequest(503, 'billing_verification_503', null);
-          return new Response(
-            JSON.stringify({
-              error: 'Unable to verify API access',
-              code: 'entitlement_verification_unavailable',
-            }),
-            {
-              status: 503,
-              headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-store',
-                'Retry-After': '5',
-                'X-Billing-Verification': 'entitlement_verification_unavailable',
-              },
+        emitRequest(503, 'billing_verification_503', null);
+        return new Response(
+          JSON.stringify({
+            error: 'Unable to verify API access',
+            code: 'entitlement_verification_unavailable',
+          }),
+          {
+            status: 503,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'Retry-After': '5',
+              'X-Billing-Verification': 'entitlement_verification_unavailable',
             },
-          );
-        }
-        console.error(
-          '[gateway] entitlement backend unconfigured (CONVEX_SITE_URL / shared secret missing) — serving wm_-key request fail-open',
+          },
         );
       } else if (
         !userKeyEntitlement.features.apiAccess ||
-        (userKeyEntitlement.validUntil ?? 0) < Date.now()
+        !hasCurrentEntitlementCoverage(userKeyEntitlement)
       ) {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
@@ -1759,7 +1815,7 @@ export function createDomainGateway(
       hasProFreshCacheAccess =
         !!ent &&
         ent.features.tier >= 1 &&
-        ent.validUntil >= Date.now();
+        hasCurrentEntitlementCoverage(ent);
       if (hasProFreshCacheAccess) {
         rateLimitPrincipalUserId = sessionUserId;
       }
@@ -1805,14 +1861,14 @@ export function createDomainGateway(
             recordUsageEntitlement(ent);
             const proCovered = !!ent &&
               ent.features.tier >= 1 &&
-              ent.validUntil >= Date.now();
+              hasCurrentEntitlementCoverage(ent);
             const billingDenial = denyForBillingVerification(
               ent,
               corsHeaders,
               proCovered,
             );
             if (billingDenial) return billingDenial;
-            allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
+            allowed = !!ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent);
           }
           if (!allowed) {
             emitRequest(403, 'tier_403', null);
@@ -1919,7 +1975,7 @@ export function createDomainGateway(
         );
         quotaEntitlements = ent;
         recordUsageEntitlement(ent);
-        if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
+        if (ent && ent.features.tier >= 1 && hasCurrentEntitlementCoverage(ent)) {
           rateLimitPrincipalUserId = sessionUserId;
         }
       }
@@ -2034,8 +2090,27 @@ export function createDomainGateway(
     // Gateway rate limiting — two-phase: endpoint-specific first, then global fallback.
     // Confirmed paid principals use per-user buckets; other traffic uses IP.
     //
+    // Only a single-use admission for this exact request waives the prepaid
+    // endpoint/global limit. Account meters and auth still run for every call.
+    const subRequestAdmission = await consumeSubRequestAdmission(request, rateLimitPrincipalUserId
+      ? formatTrustedRateLimitPrincipal(rateLimitPrincipalUserId, isUserApiKey ? 'api_key' : 'session')
+      : null);
+    if (subRequestAdmission === 'unavailable') {
+      const response = new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          ...RATE_LIMIT_DEGRADED_HEADERS,
+          ...corsHeaders,
+        },
+      });
+      emitRequest(503, 'rate_limit_degraded', null);
+      return response;
+    }
+    const isServerSubRequest = subRequestAdmission === 'admitted';
     // Google searches need their tighter upstream budget even after MCP admission.
-    if (internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
+    if (!isServerSubRequest && internalMcpVerified && (pathname === '/api/aviation/v1/search-google-flights'
       || pathname === '/api/aviation/v1/search-google-dates')) {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders, {
         principalUserId: request.headers.get(TRUSTED_USER_ID_HEADER)!,
@@ -2052,6 +2127,7 @@ export function createDomainGateway(
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
+    //
     if (!internalMcpVerified) {
       // These local provider lookups use the sidecar cache without Upstash.
       // Keep these exceptions exact-path; cloud requests retain the provider cap.
@@ -2060,7 +2136,7 @@ export function createDomainGateway(
           || pathname === '/api/military/v1/get-wingbits-live-flight'
           || pathname === '/api/imagery/v1/search-imagery'
           || pathname === '/api/webcam/v1/get-webcam-image');
-      const endpointRlResponse = isSidecarProviderLookup ? null : rateLimitPrincipalUserId
+      const endpointRlResponse = isServerSubRequest || isSidecarProviderLookup ? null : rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
             principalUserId: rateLimitPrincipalUserId,
             principalScope: isUserApiKey ? 'api_key' : 'session',
@@ -2080,13 +2156,14 @@ export function createDomainGateway(
       // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
       // env key — are governed by a per-account burst + daily meter (enforced
       // at the sold allowance, #4635) instead of the global fallback. In ENFORCE
-      // they bypass that fallback below; in SHADOW they only record telemetry
+      // confirmed burst admission bypasses that fallback; in SHADOW they record telemetry
       // and still fall through to it. Validated user keys use their trusted
       // principal there, while enterprise keys retain IP attribution.
       // Limits are NOT in scope here (checkEntitlement discards `features`), so
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
+      let rollbackDailyMeter: (() => Promise<void>) | undefined;
       if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
         const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
@@ -2141,7 +2218,7 @@ export function createDomainGateway(
             planKey && planKey !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
           // 1. Per-minute burst (hard limit).
           const burst = await checkBurst(perMinute, identity);
-          if (!burst.ok) {
+          if (burst.ok === false) {
             if (enforce) {
               const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
               emitRequest(429, 'rl_min_429', null);
@@ -2171,6 +2248,7 @@ export function createDomainGateway(
               allowance,
               pipeline: (cmds) => runRedisPipeline(cmds),
             });
+            if (meter.metered) rollbackDailyMeter = meter.rollback;
             if (meter.overLimit) {
               if (enforce) {
                 await meter.rollback();
@@ -2202,15 +2280,15 @@ export function createDomainGateway(
               pendingShadowReason = 'rl_ceiling_shadow';
             }
           }
-          // Eligible + enforce + not rejected ⇒ the per-account layer governs
-          // this request and skips the global fallback. In shadow, keep that
+          // Confirmed burst admission + enforce ⇒ the per-account layer governs
+          // this request and skips the global fallback. If unavailable or in shadow, keep that
           // fallback active: validated user keys use their trusted principal,
           // while enterprise keys retain IP attribution.
-          if (enforce) governedByApiKeyLayer = true;
+          if (enforce && burst.ok === true) governedByApiKeyLayer = true;
         }
       }
 
-      if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
+      if (!isServerSubRequest && !governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
         // WORLDMONITOR-12A: scope the bucket to the credential, not just the
         // user. An API key and a browser session resolve to the same Clerk id,
         // so without this a customer's own scraper drains the 600/min budget
@@ -2223,6 +2301,7 @@ export function createDomainGateway(
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
+          await rollbackDailyMeter?.();
           const reason = getRateLimitTelemetryReason(
             rateLimitResponse,
             'rate_limit_429_global',
@@ -2329,7 +2408,18 @@ export function createDomainGateway(
     // without leaf handlers having to thread a usage hook through every call.
     let response: Response;
     const handlerCall = matchedHandler;
-    const requestForHandler = request;
+    // Handlers that re-dispatch sub-requests must charge the caller's own
+    // budget; the identity resolved above is the only trustworthy source for
+    // it, since raw credential headers are unvalidated at that point. Absent
+    // a resolved principal the marker stays unset and handlers fall back to
+    // the caller's IP, matching this gateway's own attribution.
+    const requestForHandler = rateLimitPrincipalUserId
+      ? withTrustedRateLimitPrincipal(
+          request,
+          rateLimitPrincipalUserId,
+          isUserApiKey ? 'api_key' : 'session',
+        )
+      : request;
     try {
       response = await runWithUsageScope(
         {

@@ -31,6 +31,12 @@ const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 const _originalFetch = globalThis.fetch;
 const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
 const sidecarAllowedPrivateFetchOrigins = new Set();
+// The sidecar's own listen origins. A fetch to one of these is a nested call
+// into this same process (MCP registry tools call sibling /api routes this
+// way), not an upstream request, so it must not hold an upstream slot: the
+// nested handler's own upstream fetches draw from the same pool, and six
+// concurrent self-calls would otherwise wedge until their timeouts fire.
+const sidecarSelfFetchOrigins = new Set();
 
 function normalizeRequestBody(body) {
   if (body == null) return null;
@@ -181,14 +187,19 @@ function makePinnedLookup(address, family = 4) {
 }
 
 function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
-  const origins = [
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
-    ...extraOrigins,
+  // Normalize through URL so a default port (80) compares equal to
+  // `url.origin`, which omits it: `http://127.0.0.1:80` never matches
+  // `new URL('http://127.0.0.1:80/x').origin === 'http://127.0.0.1'`.
+  const selfOrigins = [
+    new URL(`http://127.0.0.1:${port}`).origin,
+    new URL(`http://localhost:${port}`).origin,
   ];
+  const origins = [...selfOrigins, ...extraOrigins];
   for (const origin of origins) sidecarAllowedPrivateFetchOrigins.add(origin);
+  for (const origin of selfOrigins) sidecarSelfFetchOrigins.add(origin);
   return () => {
     for (const origin of origins) sidecarAllowedPrivateFetchOrigins.delete(origin);
+    for (const origin of selfOrigins) sidecarSelfFetchOrigins.delete(origin);
   };
 }
 
@@ -218,7 +229,8 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     ? { safe: true, resolvedAddresses: [url.hostname] }
     : await assertSafeSidecarFetchUrl(url);
   if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
-  await acquireUpstreamSlot();
+  const holdsUpstreamSlot = !sidecarSelfFetchOrigins.has(url.origin);
+  if (holdsUpstreamSlot) await acquireUpstreamSlot();
   try {
     const mod = url.protocol === 'https:' ? https : http;
     const method = init?.method || (isRequest ? input.method : 'GET');
@@ -295,7 +307,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       req.end();
     });
   } finally {
-    releaseUpstreamSlot();
+    if (holdsUpstreamSlot) releaseUpstreamSlot();
   }
 };
 
@@ -1512,11 +1524,11 @@ async function dispatch(requestUrl, req, routes, context) {
       || /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
     const safeVideoId = JSON.stringify(String(videoId));
     const safeOrigin = JSON.stringify(origin);
-    const safeParentOrigin = JSON.stringify(rawParentOrigin);
+    const safeParentOrigin = JSON.stringify(isAllowedParentOrigin ? rawParentOrigin : null).replace(/</g, '\\u003c');
     const bridgePostMessageScript = isAllowedParentOrigin
       ? `function postToParent(message){window.parent.postMessage(message,${safeParentOrigin})}`
       : 'function postToParent(){}';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!${isAllowedParentOrigin}||e.origin!==${safeParentOrigin}||e.source!==window.parent)return;if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
   }
 

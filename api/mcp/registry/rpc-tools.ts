@@ -21,7 +21,7 @@ import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import {
   assertMcpToolFetchOk,
   BothSourcesFailedError,
-  buildMcpDownstreamHeaders,
+  fetchMcpDownstream,
 } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
@@ -1020,13 +1020,13 @@ export const RPC_TOOLS: ToolDef[] = [
       // the tool reach the data by a path the gateway no longer checks.
       const url = `${base}/api/military/v1/get-defense-industrial-base?country_code=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
-        headers: buildMcpDownstreamHeaders(base, execution, {
+      const response = await fetchMcpDownstream(url, {
+        headers: {
           ...auth,
           'User-Agent': 'worldmonitor-mcp-edge/1.0',
-        }),
+        },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(response, {
         operation: 'get-defense-industrial-base',
         tool: 'get_defense_industrial_base',
@@ -1111,10 +1111,10 @@ export const RPC_TOOLS: ToolDef[] = [
     _execute: async (_params, base, context, execution) => {
       const url = `${base}/api/intelligence/v1/get-china-decision-signals`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(12_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(response, {
         operation: 'get-china-decision-signals',
         tool: 'get_china_decision_signals',
@@ -1180,7 +1180,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const query = new URLSearchParams();
       addStringParam(query, 'country', params.country);
       if (Array.isArray(params.countries)) {
@@ -1203,10 +1203,10 @@ export const RPC_TOOLS: ToolDef[] = [
 
       const url = `${base}/api/economic/v1/list-global-tenders?${query}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(response, 'list-global-tenders');
       const result = await response.json() as ProcurementRouteResponse;
       return {
@@ -1299,10 +1299,10 @@ export const RPC_TOOLS: ToolDef[] = [
       });
       const url = `${base}/api/trade/v1/get-trade-flows?${query}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(12_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(response, {
         operation: 'get-trade-flows',
         tool: 'get_wto_trade_flows',
@@ -1400,16 +1400,16 @@ export const RPC_TOOLS: ToolDef[] = [
       const insightsAuth = await buildAuthHeaders(context, 'GET', insightsUrl, null);
       // On a self-hosted install `base` is the sidecar's own loopback origin,
       // whose global auth gate requires the per-session LOCAL_API_TOKEN (the
-      // MCP key authenticates the client, not this internal hop). Route the
-      // headers through the loopback helper so the process attaches the token
-      // it already holds — mirroring get_defense_industrial_base (#6538).
-      const insightsRes = await fetch(insightsUrl, {
-        headers: buildMcpDownstreamHeaders(base, execution, {
+      // MCP key authenticates the client, not this internal hop). Every
+      // registry fetch goes through fetchMcpDownstream, which attaches the
+      // token when the target is the execution context's own loopback origin.
+      const insightsRes = await fetchMcpDownstream(insightsUrl, {
+        headers: {
           ...insightsAuth,
           'User-Agent': UA,
-        }),
+        },
         signal: AbortSignal.timeout(6_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(insightsRes, {
         operation: 'bootstrap-insights',
         tool: 'get_world_brief',
@@ -1516,7 +1516,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
     // ui:// app shell. Single source of truth — registered in ../ui/registry.ts.
     _uiResourceUri: COUNTRY_BRIEF_UI_URI,
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       const countryCode = requireCountryCode(params.country_code, 'get-country-intel-brief');
 
@@ -1530,10 +1530,10 @@ export const RPC_TOOLS: ToolDef[] = [
       try {
         const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
         const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
-        const digestRes = await fetch(digestUrl, {
+        const digestRes = await fetchMcpDownstream(digestUrl, {
           headers: { ...digestAuth, 'User-Agent': UA },
           signal: AbortSignal.timeout(2_000),
-        });
+        }, execution);
         if (digestRes.ok) {
           type DigestPayload = {
             categories?: Record<string, { items?: DigestItemForBrief[] }>;
@@ -1606,12 +1606,12 @@ export const RPC_TOOLS: ToolDef[] = [
       if (contextSnapshot) briefPayload.context = contextSnapshot;
       const briefBody = JSON.stringify(briefPayload);
       const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
-      const res = await fetch(briefUrl, {
+      const res = await fetchMcpDownstream(briefUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...briefAuth, 'User-Agent': UA },
         body: briefBody,
         signal: AbortSignal.timeout(22_000),
-      });
+      }, execution);
       if (!res.ok) {
         throwIfBillingDenial(res, 'get-country-intel-brief');
         // Surface the gateway's error code in the thrown message so Sentry
@@ -1720,14 +1720,14 @@ export const RPC_TOOLS: ToolDef[] = [
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: COUNTRY_RISK_UI_URI,
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const code = requireCountryCode(params.country_code, 'get-country-risk');
       const url = `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-country-risk');
       return res.json();
     },
@@ -1818,7 +1818,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const code = requireCountryCode(params.country_code, 'get-country-coverage');
       const query = new URLSearchParams({ country_code: code });
       const windowHours = params.window_hours;
@@ -1831,12 +1831,12 @@ export const RPC_TOOLS: ToolDef[] = [
       }
       const url = `${base}/api/intelligence/v1/get-country-coverage?${query.toString()}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         // The handler caps its own upstream feed fetches at 8s and degrades
         // rather than failing, so allow for that plus the structured reads.
         signal: AbortSignal.timeout(15_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-country-coverage');
       return res.json();
     },
@@ -1886,7 +1886,7 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['intelligence:x-feed:v1'],
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const qs = new URLSearchParams();
       const limit = Math.max(1, Math.min(200, Number(params.limit ?? 50) || 50));
       qs.set('limit', String(limit));
@@ -1894,10 +1894,10 @@ export const RPC_TOOLS: ToolDef[] = [
       if (params.account) qs.set('account', String(params.account).replace(/^@/, ''));
       const url = `${base}/api/intelligence/v1/list-x-feed?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(10_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'list-x-feed');
       const payload = await res.json() as Record<string, unknown>;
       const rawPosts = Array.isArray(payload.posts) ? payload.posts : [];
@@ -1986,7 +1986,7 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['resilience:food-stocks:v1', 'seed-meta:resilience:food-stocks'],
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const countryCode = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
       if (!/^(?:[A-Z]{2}|WORLD|WLD|_WORLD)$/.test(countryCode)) {
         throw new RpcValidationError('get-food-stocks', [{
@@ -1999,10 +1999,10 @@ export const RPC_TOOLS: ToolDef[] = [
       const qs = q.toString();
       const url = `${base}/api/resilience/v1/get-food-stocks${qs ? `?${qs}` : ''}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-food-stocks');
       return res.json();
     },
@@ -2080,14 +2080,14 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['demographics:capability:v1'],
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const countryCode = String(params.country_code ?? '').trim().toUpperCase();
       const url = `${base}/api/resilience/v1/get-demographics-capability?countryCode=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-demographics-capability');
       return res.json();
     },
@@ -2148,14 +2148,14 @@ export const RPC_TOOLS: ToolDef[] = [
       'resilience:recovery:external-debt:v1',
       'resilience:recovery:import-hhi:v1',
     ],
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const countryCode = String(params.country_code ?? '').trim().toUpperCase();
       const url = `${base}/api/resilience/v1/get-resilience-indicators?countryCode=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(20_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-resilience-indicators');
       return res.json();
     },
@@ -2199,7 +2199,7 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const countryCode = argStr(params.country_code).trim().toUpperCase();
       const preset = argStr(params.preset).trim().toUpperCase();
       const members = Array.isArray(params.members) ? params.members : [];
@@ -2230,10 +2230,10 @@ export const RPC_TOOLS: ToolDef[] = [
 
       const url = `${base}${path}?${q.toString()}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-five-factor-scorecard');
       return res.json();
     },
@@ -2250,13 +2250,13 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _coverageKeys: ['scorecard:five-factor:v1', 'seed-meta:scorecard:five-factor'],
-    _execute: async (_params, base, context) => {
+    _execute: async (_params, base, context, execution) => {
       const url = `${base}/api/scorecard/v1/list-five-factor-scorecards`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'list-five-factor-scorecards');
       return res.json();
     },
@@ -2458,7 +2458,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       // Resolve before the bbox lookup: truncation used to yield a VALID code
       // for the wrong country, so this guard passed and served Iran's airspace
       // for a request that said "Iraq" (WORLDMONITOR-Y2).
@@ -2481,7 +2481,7 @@ export const RPC_TOOLS: ToolDef[] = [
         const parts = await Promise.allSettled(urls.map(async url => {
           const auth = await buildAuthHeaders(context, 'GET', url, null);
           if (!auth) return null;
-          const response = await fetch(url, { headers: { ...auth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) });
+          const response = await fetchMcpDownstream(url, { headers: { ...auth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) }, execution);
           throwIfBillingDenial(response, operation);
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           return response.json() as Promise<T>;
@@ -2610,7 +2610,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       // Resolve before the bbox lookup — see the get_airspace note above.
       const code = resolveCountryCode(params.country_code);
       if (!code) {
@@ -2641,10 +2641,10 @@ export const RPC_TOOLS: ToolDef[] = [
         };
       };
 
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       if (!res.ok) {
         throwIfBillingDenial(res, 'get-vessel-snapshot');
         const detail = (await res.text().catch(() => '')).slice(0, 200);
@@ -2729,16 +2729,16 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const url = `${base}/api/intelligence/v1/deduct-situation`;
       const body = JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? ''), framework: String(params.framework ?? '') });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         body,
         signal: AbortSignal.timeout(25_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'deduct-situation');
       return res.json();
     },
@@ -2771,17 +2771,17 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       // 25 s — stays within Vercel Edge's ~30 s hard ceiling (was 60 s, which exceeded the limit)
       const url = `${base}/api/forecast/v1/get-forecasts`;
       const body = JSON.stringify({ domain: String(params.domain ?? ''), region: String(params.region ?? '') });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         body,
         signal: AbortSignal.timeout(25_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-forecasts');
       return res.json();
     },
@@ -2822,7 +2822,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
         destination: String(params.destination ?? ''),
@@ -2842,10 +2842,10 @@ export const RPC_TOOLS: ToolDef[] = [
       });
       const url = `${base}/api/aviation/v1/search-google-flights?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'search-google-flights');
       return res.json();
     },
@@ -2885,7 +2885,7 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
         destination: String(params.destination ?? ''),
@@ -2901,10 +2901,10 @@ export const RPC_TOOLS: ToolDef[] = [
       });
       const url = `${base}/api/aviation/v1/search-google-dates?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'search-google-dates', { preserveBackoff: true });
       return res.json();
     },
@@ -2933,7 +2933,9 @@ export const RPC_TOOLS: ToolDef[] = [
           lat: { type: 'number' }, lon: { type: 'number' },
           mineral: { type: 'string' }, country: { type: 'string' },
           operator: { type: 'string' }, status: { type: 'string' }, significance: { type: 'string' },
-          annualOutput: { type: 'string' }, productionRank: { type: 'number' },
+          annualOutput: { type: 'string' },
+          // A label, not an ordinal: "Australia #2", "World deepest mine" (src/config/commodity-geo.ts).
+          productionRank: { type: 'string' },
           openPitOrUnderground: { type: 'string' },
         } } },
         total: { type: 'number' },
@@ -2941,7 +2943,7 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params: Record<string, unknown>) => {
-      type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: number; openPitOrUnderground?: string };
+      type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: string; openPitOrUnderground?: string };
       let sites = MINING_SITES_RAW as MineSite[];
       if (params.mineral) sites = sites.filter((s) => s.mineral === String(params.mineral));
       if (params.country) sites = sites.filter((s) => s.country.toLowerCase().includes(String(params.country).toLowerCase()));
@@ -2973,17 +2975,17 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const qs = new URLSearchParams();
       if (params.commodity) qs.set('commodity', String(params.commodity));
       if (params.iso2) qs.set('iso2', String(params.iso2).toUpperCase());
       if (params.stage) qs.set('stage', String(params.stage));
       const url = `${base}/api/supply-chain/v1/get-mineral-production${qs.size ? `?${qs}` : ''}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(15_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'get-mineral-production');
       return res.json();
     },
@@ -3036,14 +3038,14 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const countryCode = argStr(params.country_code).trim().toUpperCase();
       const url = `${base}/api/supply-chain/v1/get-country-vulnerabilities?iso2=${encodeURIComponent(countryCode)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(response, 'get-country-vulnerabilities');
       return response.json();
     },
@@ -3087,16 +3089,16 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const chokepointId = argStr(params.chokepoint_id).trim().toLowerCase();
       const query = new URLSearchParams({ chokepointId });
       if (params.page_size) query.set('pageSize', String(params.page_size));
       const url = `${base}/api/supply-chain/v1/get-chokepoint-dependencies?${query}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertToolFetchOk(response, 'get-chokepoint-dependencies');
       return response.json();
     },
@@ -3142,10 +3144,10 @@ export const RPC_TOOLS: ToolDef[] = [
       const body = JSON.stringify({ query: params.query, domain: params.domain, country: country || undefined, from: params.from, to: params.to, limit: Math.min(Number(params.limit ?? MCP_HISTORY_SEARCH_MAX_LIMIT), MCP_HISTORY_SEARCH_MAX_LIMIT) });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
       // Budget covers one embeddings round-trip (4 s) plus the store read (5 s).
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, body,
         signal: AbortSignal.timeout(12_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(response, {
         operation: 'search-intel-history',
         tool: 'search_intel_history',
@@ -3216,10 +3218,10 @@ export const RPC_TOOLS: ToolDef[] = [
       const url = `${base}/api/intelligence/v1/get-intel-timeline?${query}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       // No embedding on this path — one store read, so the tighter budget.
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(response, {
         operation: 'get-intel-timeline',
         tool: 'get_intel_timeline',
@@ -3265,10 +3267,10 @@ export const RPC_TOOLS: ToolDef[] = [
       const body = JSON.stringify({ situation: params.situation, domain: params.domain, country: country || undefined, limit: Math.min(Number(params.limit ?? MCP_HISTORY_PRECEDENT_MAX_LIMIT), MCP_HISTORY_PRECEDENT_MAX_LIMIT) });
       const auth = await buildAuthHeaders(context, 'POST', url, body);
       // Budget covers one embeddings round-trip (4 s) plus the store read (5 s).
-      const response = await fetch(url, {
+      const response = await fetchMcpDownstream(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, body,
         signal: AbortSignal.timeout(12_000),
-      });
+      }, execution);
       await assertMcpToolFetchOk(response, {
         operation: 'get-similar-events',
         tool: 'get_similar_events',

@@ -10,6 +10,7 @@ import {
 } from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
+import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
 
 const AGENT_UA = new RegExp(`(?:^|[^a-z0-9-])(?:${agentRequestPolicy.userAgents.join('|')})(?:$|[^a-z0-9-])`, 'i');
 
@@ -20,7 +21,7 @@ const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
-const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
+const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers', 'c', 'country', 'chokepoint'] as const;
 const UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
@@ -89,28 +90,12 @@ const VARIANT_HOST_MAP: Record<string, string> = {
   'energy.worldmonitor.app': 'energy',
 };
 
-function normalizeHost(raw: string): string {
-  return raw.toLowerCase().replace(/:\d+$/, '');
-}
-
 function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
 function hasUnboundedDashboardRootState(searchParams: URLSearchParams): boolean {
   return UNBOUNDED_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
-}
-
-function clientAcceptsSse(request: Request): boolean {
-  const accept = request.headers.get('accept') ?? '';
-  return accept.split(',').some((entry) => {
-    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
-    if (type !== 'text/event-stream') return false;
-    const qParam = params.find((part) => part.startsWith('q='));
-    if (!qParam) return true;
-    const q = Number(qParam.slice(2));
-    return Number.isFinite(q) && q > 0;
-  });
 }
 
 /** Query keys that create duplicate index entries without changing document identity. */
@@ -143,6 +128,8 @@ const INDEX_NOISE_QUERY_KEYS = new Set([
  *    `redirects` before middleware, and the variant hosts have their own
  *    `/` -> `/dashboard` host redirect, so on those hosts robots.variant.txt
  *    is what keeps a crawler off the space (probed against production).
+ * Bounded root entity links also move to `/dashboard`, retaining their state
+ * in the same hop as attribution cleanup.
  *
  * Humans are deliberately excluded from the second collapse — the params are
  * what makes a shared or bookmarked legacy link open the view it encodes, and
@@ -167,9 +154,12 @@ function crawlerCanonicalUrl(url: URL): URL | null {
   }
   if (next.pathname === '/' && hasUnboundedDashboardRootState(next.searchParams)) {
     next.pathname = '/dashboard';
-    for (const key of LEGACY_DASHBOARD_ROOT_QUERY_KEYS) {
+    for (const key of [...LEGACY_DASHBOARD_ROOT_QUERY_KEYS, 'expanded', 't', 'ts']) {
       next.searchParams.delete(key);
     }
+    changed = true;
+  } else if (next.pathname === '/' && hasLegacyDashboardRootState(next.searchParams)) {
+    next.pathname = '/dashboard';
     changed = true;
   }
   return changed ? next : null;
@@ -199,7 +189,17 @@ export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
-  const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+  const host = normalizeMcpHost(request.headers.get('host') ?? url.hostname);
+  const aliasMcpRequest = isMcpAliasRequest(url.hostname, path)
+    || isMcpAliasRequest(request.headers.get('host') ?? '', path);
+
+  // Product MCP aliases are migration-only surfaces. Let every policy request
+  // reach the handler so it returns the protocol-shaped response and emits one
+  // bounded migration event. This bypass must precede generic crawler/API bot
+  // gates, which otherwise turn direct alias transport calls into a 403.
+  // The handler repeats the policy because dotted well-known paths bypass this
+  // middleware matcher.
+  if (aliasMcpRequest) return;
 
   // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380), and
   // map-state deep links as an unbounded redirect space (#7660). Humans still
@@ -222,10 +222,9 @@ export default function middleware(request: Request) {
     }
   }
 
-  // Human path for the same legacy root deep links. Crawlers never reach here
-  // — crawlerCanonicalUrl() above already sent them to the param-free
-  // /dashboard — so this branch keeps the query string, which is the whole
-  // point of a shared or bookmarked map link.
+  // Preserve the complete state and attribution in a person's legacy link.
+  // Crawlers have already reached /dashboard through crawlerCanonicalUrl(),
+  // retaining bounded entity state but collapsing coordinate combinations.
   //
   // Built by hand rather than via Response.redirect() so it can carry Vary. The
   // same request URL now yields two different Locations depending on the
@@ -287,38 +286,6 @@ export default function middleware(request: Request) {
     if (!isKnownPublicPagePath(path)) {
       return originNotFoundResponse(path, request);
     }
-  }
-
-  // Variant subdomain MCP discovery canonicalization. The MCP endpoint's
-  // canonical URL is apex (`https://worldmonitor.app/mcp`), and the Cloudflare
-  // apex→www redirect explicitly exempts `/mcp` so POST JSON-RPC calls aren't
-  // converted to GET. Variant subdomains would otherwise serve the same `/mcp`
-  // content as the apex, fragmenting discovery signals; redirect plain GET/HEAD
-  // requests to the apex canonical. GETs that carry MCP transport headers
-  // (`Last-Event-ID` or `Accept: text/event-stream`) are NOT redirected — they
-  // are protocol operations (SSE stream open or replay) and must reach the same
-  // host/instance that handled the POST handshake. POST/OPTIONS/etc. are also
-  // NOT redirected; they continue to the `/api/mcp` rewrite unchanged.
-  if (
-    path === '/mcp' &&
-    (request.method === 'GET' || request.method === 'HEAD') &&
-    VARIANT_HOST_MAP[host] &&
-    !request.headers.get('last-event-id') &&
-    !clientAcceptsSse(request)
-  ) {
-    // Built by hand rather than via Response.redirect() so the response can
-    // carry Vary. This redirect is decided by Accept and Last-Event-ID, and a
-    // 308 is cacheable by default (RFC 9110 §15.4.9) — without Vary a shared
-    // cache could store it and replay it to the SSE stream-open GET that must
-    // reach this host's transport instead.
-    return new Response(null, {
-      status: 308,
-      headers: {
-        Location: 'https://worldmonitor.app/mcp',
-        Vary: 'Accept, Last-Event-ID',
-        'Cache-Control': 'public, max-age=3600',
-      },
-    });
   }
 
   // Only apply bot filtering to /api/* paths.
