@@ -464,7 +464,30 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         && /^(?:TypeError: )?Load failed( \(.*\))?$/.test(msg)
       ) return null;
       const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
-      const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
+      // Chunks whose code is entirely third-party. `beforeSend` runs in the
+      // browser, BEFORE sourcemapping, so a hashed filename is the only
+      // ownership signal available here — hence a name list.
+      //
+      // `protomaps` and `h3-js` were emitted by vite.config.ts's node_modules
+      // branch but missing from this list, so an error whose only frame was one
+      // of those chunks counted as first-party and escaped every
+      // `!hasFirstParty` gate below. Both verified pure on a real build
+      // (2026-09-22) by dumping each chunk's `moduleIds` in `generateBundle`:
+      // protomaps 0/3 and h3-js 0/1 modules outside node_modules.
+      //
+      // KNOWN UNSOUND, do not extend without measuring. A chunk NAME does not
+      // tell you whose code is inside it — Rollup names a chunk after its seed
+      // module and then hoists shared modules into it. The same build showed
+      // three names already on this list matching chunks that DO hold our code:
+      // `i18n` (12/12 modules ours, incl. safe-storage/billing-retry/
+      // premium-paths — a second, genuinely pure `i18n` chunk shares the name),
+      // `deck-stack` (src/components/DeckGLMap.ts), and `sentry` (which also
+      // matches `sentry-init-<hash>.js`, 5/5 ours). Those are suppressed today.
+      // Removing the names cannot fix it, because two chunks named `i18n` have
+      // OPPOSITE ownership; only a build-time per-chunk manifest can. Adding a
+      // name here is safe ONLY after confirming that chunk has no first-party
+      // module.
+      const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime|protomaps|h3-js)-[A-Za-z0-9_-]+\.js/;
       const firstPartyFile = (filename: string) => {
         if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
         if (/\/assets\/[A-Za-z0-9_-]+\.js/.test(filename)) return !vendorChunk.test(filename);

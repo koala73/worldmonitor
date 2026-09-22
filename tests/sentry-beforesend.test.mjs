@@ -263,6 +263,13 @@ describe('first-party file detection', () => {
     ['/assets/locale-fr-abc123.js', 'locale chunk'],
     ['src/components/DeckGLMap.ts', 'source-mapped .ts'],
     ['src/App.tsx', 'source-mapped .tsx'],
+    // Boundary: a vendor name counts only at the start of the basename. An
+    // owned chunk that merely embeds one stays first-party, so widening the
+    // vendor list cannot silently capture our own chunks by substring.
+    // (Deliberately not named `map-*`: the maplibre internal-crash rule below
+    // matches `/(map|maplibre|deck-stack)-`, which would drop it for an
+    // unrelated reason and make this assertion prove nothing.)
+    ['/assets/overlay-protomaps-adapter-Q7x1.js', 'owned chunk embedding a vendor name'],
   ];
 
   for (const [filename, label] of testPatterns) {
@@ -282,6 +289,13 @@ describe('first-party file detection', () => {
     ['/assets/d3-xyz.js', 'd3 (vendor)'],
     ['/assets/transformers-xyz.js', 'transformers (vendor)'],
     ['/assets/onnxruntime-xyz.js', 'onnxruntime (vendor)'],
+    // Emitted by vite.config.ts's node_modules branch but absent from the
+    // vendor list, so an error whose only frame was one of these counted as
+    // first-party and escaped every `!hasFirstParty` gate. Both confirmed to
+    // hold no first-party module on a real build by dumping each chunk's
+    // `moduleIds` in `generateBundle`: protomaps 0/3, h3-js 0/1. Real hashes.
+    ['/assets/protomaps-ecfqTcHR.js', 'protomaps (vendor)'],
+    ['/assets/h3-js-BR3gmGp0.js', 'h3-js (vendor)'],
   ];
 
   for (const [filename, label] of vendorChunks) {
