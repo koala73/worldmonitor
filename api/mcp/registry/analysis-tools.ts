@@ -1,3 +1,5 @@
+import { RpcValidationError } from '../billing-denial';
+import { requireCountryCode } from '../_country-args';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
@@ -374,7 +376,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', description: 'Filter focal points to one country (ISO-2) and entities the registry relates to it.' },
+        country_code: { type: 'string', description: 'Filter focal points to one country (ISO-2, alpha-3, or English name) and entities the registry relates to it. Countries outside the entity registry return an explicit coverage error.' },
         limit: { type: 'number', description: 'Cap the focal point list (default 10, pass 0 for no cap).' },
       },
       required: [],
@@ -407,6 +409,16 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
+      const rawCountry = params.country_code;
+      const countryCode = rawCountry == null || (typeof rawCountry === 'string' && !rawCountry.trim())
+        ? '' : requireCountryCode(rawCountry, 'get-focal-points');
+      const index = getSharedEntityIndex();
+      if (countryCode && index.byId.get(countryCode)?.type !== 'country') {
+        throw new RpcValidationError('get-focal-points', [{
+          field: 'country_code',
+          description: `No focal-point coverage for ${countryCode}: that country is absent from the entity registry.`,
+        }]);
+      }
       const limit = resolveLimit(params.limit, 10);
       const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live];
       const checks: FreshnessCheck[] = [
@@ -421,14 +433,12 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         'No focal-point input feeds are available',
       );
 
-      const index = getSharedEntityIndex();
       const clusters = insightsToFocalClusters(insights);
       const mapping = crossSourceSignalsToSignalSummary(crossSource, index);
       const summary = new FocalPointCore(index).analyze(clusters, mapping.summary);
       const ciiLookup = riskScoresToCiiLookup(riskScores);
 
       let points = summary.focalPoints;
-      const countryCode = typeof params.country_code === 'string' ? params.country_code : '';
       if (countryCode) points = filterFocalPointsByCountry(points, countryCode, index);
       const selectedPoints = points.slice(0, limit);
       return {

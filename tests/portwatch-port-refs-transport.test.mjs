@@ -150,45 +150,25 @@ describe('PortWatch reference pagination recovery', () => {
     assert.equal(transport.proxyCalls[0][1], 'HTTP 200 rate-limited');
   });
 
-  it('routes the invalid-params retry backoff through the injected sleep', async (t) => {
-    // The other ArcGIS failure class. Its 500ms backoff lives in
-    // fetchWithRetryOnInvalidParams rather than retryRateLimited, so it has
-    // to reach the same injected sleepFn -- otherwise this branch cannot be
-    // covered without paying real wall-clock on every run.
-    portwatchSeed._resetInvalidParamsErrorCount();
-    t.after(() => portwatchSeed._resetInvalidParamsErrorCount());
-
-    const requestedOffsets = [];
-    const sleepCalls = [];
-    let offsetOneAttempts = 0;
-    const fetchFn = async (url) => {
-      const offset = Number(new URL(url).searchParams.get('resultOffset'));
-      requestedOffsets.push(offset);
-
-      if (offset === 0) {
-        return arcgisJson(FIRST_PAGE);
-      }
-
-      offsetOneAttempts += 1;
-      if (offsetOneAttempts === 1) {
-        return arcgisJson({
-          error: { message: 'Cannot perform query. Invalid query parameters.' },
-        });
-      }
-      return arcgisJson(FINAL_PAGE);
-    };
-
-    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
-      fetchFn,
-      sleepFn: async (...args) => {
-        sleepCalls.push(args);
-      },
-    });
-
-    assert.deepEqual(requestedOffsets, [0, 1, 1]);
-    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
-    assert.deepEqual(sleepCalls.map(([ms]) => ms), [500]);
+  it('does not retry semantic query errors', async () => {
+    const transport = paginationTransport({ error: { message: 'Invalid query parameters.' } });
+    await assert.rejects(portwatchSeed.fetchAllPortRefs({
+      ...transport, sleepFn: async () => assert.fail('semantic errors must not retry'),
+    }), /Invalid query parameters/);
+    assert.deepEqual(transport.requestedOffsets, [0, 1]);
+    assert.equal(transport.proxyCalls.length, 0);
   });
+
+  for (const page of [{}, { features: [], exceededTransferLimit: true }, { features: [], exceededTransferLimit: false }, { features: {}, exceededTransferLimit: false }, { features: [], exceededTransferLimit: 'false' }, FIRST_PAGE]) {
+    it('rejects malformed, non-progressing, or repeated reference pages: ' + JSON.stringify(page), async () => {
+      const transport = paginationTransport(page);
+      await assert.rejects(portwatchSeed.fetchAllPortRefs({
+        ...transport, sleepFn: async () => assert.fail('invalid pages must not retry'),
+      }), /incomplete page/);
+      assert.deepEqual(transport.requestedOffsets, [0, 1]);
+      assert.equal(transport.proxyCalls.length, 0);
+    });
+  }
 
   // The three rungs of the error ladder, pinned separately. The retry
   // classifier reads the thrown message, and `{"code":429}` stringifies to

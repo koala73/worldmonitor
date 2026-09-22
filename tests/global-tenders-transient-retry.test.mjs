@@ -20,7 +20,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchCanadaBuys } from '../scripts/seed-global-tenders.mjs';
+import { fetchCanadaBuys, fetchContractsFinder } from '../scripts/seed-global-tenders.mjs';
 
 const CSV = [
   '"title-titre-eng","referenceNumber-numeroReference","noticeURL-URLavis-eng",'
@@ -48,6 +48,37 @@ function stubFetch(responses) {
 }
 
 const realFetch = globalThis.fetch;
+
+test('Contracts Finder accepts a valid response slower than the old 20-second limit', async (t) => {
+  // Production query: first byte 23.6s, valid OCDS body at 24.2s. Advance the
+  // provider clock without sleeping; use the real adapter and timeout option.
+  const timeouts = [];
+  t.mock.method(AbortSignal, 'timeout', (ms) => {
+    timeouts.push(ms);
+    return { timeoutMs: ms };
+  });
+  t.mock.method(globalThis, 'fetch', async (_url, { signal }) => {
+    if (signal.timeoutMs < 24_200) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    return new Response(JSON.stringify({ releases: [] }));
+  });
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
+  t.after(() => { delete process.env.WM_SEED_RETRY_DELAY_MS; });
+  const result = await fetchContractsFinder();
+  assert.equal(result.status.state, 'ok');
+  assert.deepEqual(timeouts, [45_000]);
+});
+
+test('Contracts Finder bounds persistent timeouts to two attempts', async (t) => {
+  let attempts = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    attempts++;
+    throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+  });
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
+  t.after(() => { delete process.env.WM_SEED_RETRY_DELAY_MS; });
+  await assert.rejects(fetchContractsFinder(), /timeout/);
+  assert.equal(attempts, 2);
+});
 
 test('a transient CanadaBuys failure is retried, not surfaced as a source error', async () => {
   // First attempt dies the way a real blip dies (connection reset / timeout),

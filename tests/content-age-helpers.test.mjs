@@ -20,6 +20,15 @@ test('periodTokenToMs parses each SDMX granularity to a UTC instant', () => {
   assert.equal(periodTokenToMs('2026-05-18T14:00:00Z'), Date.parse('2026-05-18T14:00:00Z'));
 });
 
+test('periodTokenToMs rejects impossible calendar dates while accepting valid leap days', () => {
+  for (const bad of ['2026-02-29', '2026-02-31', '2025-04-31', '2026-06-31', '2026-11-31',
+                     '2026-02-29T12:00:00Z']) {
+    assert.equal(periodTokenToMs(bad), null, `expected null for ${bad}`);
+  }
+  assert.equal(periodTokenToMs('2024-02-29'), Date.UTC(2024, 1, 29));
+  assert.equal(periodTokenToMs('2024-02-29T12:00:00Z'), Date.parse('2024-02-29T12:00:00Z'));
+});
+
 test('periodTokenToMs returns null for unparseable / out-of-range tokens', () => {
   // `2026-05-18garbage` exercises the (?:T|$) anchor — a date PREFIX with
   // trailing garbage must be rejected, not silently accepted.

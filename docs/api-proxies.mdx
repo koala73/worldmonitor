@@ -51,3 +51,12 @@ Scrapes the FwdStart newsletter archive and republishes it as an RSS 2.0 XML fee
 ### `GET|POST /api/mcp-proxy`
 
 Pro-gated outbound MCP proxy: forwards MCP traffic to a caller-supplied third-party MCP server with SSRF protection (private/link-local targets are refused) and its own 30 requests/minute/IP limit. It does **not** forward to WorldMonitor's own [`/api/mcp`](/mcp-overview) — call that directly.
+
+
+Use `GET ?serverUrl=...` for tool discovery without custom headers. Query-string `headers` are rejected with 400. For authenticated upstream discovery, send a JSON POST body:
+
+```json
+{ "action": "tools/list", "serverUrl": "https://mcp.example.com/mcp", "customHeaders": { "Authorization": "Bearer YOUR_UPSTREAM_KEY" } }
+```
+
+The response remains `{ "tools": [...] }`. Existing POST tool calls with `serverUrl`, `toolName`, `toolArgs`, and optional `customHeaders` remain supported. Proxy errors use bounded messages owned by WorldMonitor; raw upstream error text is not returned.

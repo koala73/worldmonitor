@@ -12,7 +12,7 @@
  * - x-default points at the English URL
  */
 
-import { ORGANIZATION_ID, WEBSITE_ID } from './schema-graph-ids';
+import { CANONICAL_ORIGIN, ORGANIZATION_ID, PERSON_ID, WEBSITE_ID } from './schema-graph-ids';
 import { DOCS_PAGE_DATES } from './docs-page-dates.generated';
 
 export const DOCS_PUBLIC_ORIGIN = 'https://www.worldmonitor.app';
@@ -125,26 +125,34 @@ function replaceOgLocale(html: string, locale: string): string {
   return html;
 }
 
-function stripExistingDocsHreflang(html: string): string {
-  return html.replace(
-    /\s*<link\b[^>]*\brel=["']alternate["'][^>]*\bhreflang=["'][^"']+["'][^>]*>/gi,
-    '',
+function rewriteDocsHeadLinks(html: string, pathname: string): string {
+  const href = docsAbsoluteUrl(pathname).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const canonical = `<link rel="canonical" href="${href}" />`;
+  const alternates = buildDocsHreflangLinkTags(pathname).join('');
+  let inHead = false;
+  let replaced = false;
+  let inserted = false;
+  const rewritten = html.replace(
+    /<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1(?:[\t\n\f\r ][^>]*|\/[^>]*)?>|<(?:head|\/head|link)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    (tag) => {
+      if (/^<head[\t\n\f\r >]/i.test(tag)) inHead = true;
+      if (/^<\/head[\t\n\f\r >]/i.test(tag) && inHead) {
+        inHead = false;
+        inserted = true;
+        return `${replaced ? '' : canonical}${alternates}${tag}`;
+      }
+      if (!inHead || !/^<link\b/i.test(tag)) return tag;
+      const attributes = [...tag.matchAll(/\s+([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)];
+      const rel = attributes.find((attribute) => attribute[1]?.toLowerCase() === 'rel');
+      const relations = (rel?.[2] ?? rel?.[3] ?? rel?.[4] ?? '').toLowerCase().split(/\s+/);
+      if (relations.includes('alternate') && attributes.some((attribute) => attribute[1]?.toLowerCase() === 'hreflang')) return '';
+      if (!relations.includes('canonical')) return tag;
+      if (replaced) return '';
+      replaced = true;
+      return canonical;
+    },
   );
-}
-
-function injectAfterCanonical(html: string, linkTags: string[]): string {
-  if (linkTags.length === 0) return html;
-  const block = linkTags.join('');
-  if (/<link\b[^>]*\brel=["']canonical["'][^>]*>/i.test(html)) {
-    return html.replace(
-      /(<link\b[^>]*\brel=["']canonical["'][^>]*>)/i,
-      `$1${block}`,
-    );
-  }
-  if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `${block}</head>`);
-  }
-  return `${html}${block}`;
+  return inserted ? rewritten : `${rewritten}${alternates}`;
 }
 
 const CANONICAL_WEBSITE_ID = WEBSITE_ID;
@@ -155,7 +163,7 @@ const DOCS_WEBSITE_IDS = new Set([
   `${DOCS_PUBLIC_ORIGIN}/docs/#website`,
 ]);
 const JSON_LD_SCRIPT_RE =
-  /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi;
+  /<script\b(?=[^>]*\btype\s*=\s*["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
 
 /** `@type` may be a string or an array of strings in valid JSON-LD. */
 function hasJsonLdType(node: Record<string, unknown>, type: string): boolean {
@@ -174,7 +182,13 @@ function isMintlifyAgent(value: unknown): boolean {
   const agent = value as Record<string, unknown>;
   const name = typeof agent.name === 'string' ? agent.name.toLowerCase() : '';
   const url = typeof agent.url === 'string' ? agent.url.toLowerCase() : '';
-  return name.includes('mintlify') || url.includes('mintlify.com');
+  if (name.includes('mintlify')) return true;
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === 'mintlify.com' || hostname.endsWith('.mintlify.com');
+  } catch {
+    return false;
+  }
 }
 
 function isWebSiteNode(node: unknown): node is Record<string, unknown> {
@@ -228,19 +242,23 @@ function collapseCanonicalWebSite(node: Record<string, unknown>): Record<string,
 }
 
 /**
- * Walk every node at every depth — a WebSite can sit at the top level, inside a
+ * Collapse canonical Organization bodies to references and prune WebSites at
+ * every depth. These nodes can sit at the top level, inside a
  * top-level array, under `@graph`, or nested beneath any property such as
  * `mainEntity`. Returns null when the value itself must be removed.
  */
-function pruneWebSites(value: unknown): unknown | null {
+function pruneDocsEntities(value: unknown): unknown | null {
   if (Array.isArray(value)) {
-    // pruneWebSites returns null for a droppable entry, so mapping then
+    // pruneDocsEntities returns null for a droppable entry, so mapping then
     // discarding nulls removes and recurses in one pass.
     return value
-      .map((entry) => pruneWebSites(entry))
+      .map((entry) => pruneDocsEntities(entry))
       .filter((entry) => entry !== null);
   }
   if (!value || typeof value !== 'object') return value;
+  if ((value as Record<string, unknown>)['@id'] === ORGANIZATION_ID) {
+    return { '@id': ORGANIZATION_ID };
+  }
   if (shouldDropWebSite(value)) return null;
 
   const node = collapseCanonicalWebSite(value as Record<string, unknown>);
@@ -250,7 +268,7 @@ function pruneWebSites(value: unknown): unknown | null {
 
   const next: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(node)) {
-    const pruned = pruneWebSites(nested);
+    const pruned = pruneDocsEntities(nested);
     if (pruned === null) continue;
     next[key] = pruned;
   }
@@ -262,9 +280,9 @@ function rewriteDocsJsonLdValue(
   pathname?: string,
   allowArticleInjection = true,
 ): unknown | null {
-  const pruned = pruneWebSites(rewriteDocsWebsiteIds(value));
+  const pruned = pruneDocsEntities(rewriteDocsWebsiteIds(value));
   if (pruned === null) return null;
-  const attributed = withDocsArticleAuthor(withDocsSpeakable(pruned));
+  const attributed = withDocsArticleAuthor(withDocsSpeakable(pruned), pathname);
   const withArticle = allowArticleInjection
     ? withDocsArticleNode(attributed, pathname)
     : attributed;
@@ -308,21 +326,73 @@ function docsSlugForPathname(pathname: string | undefined): string | null {
 }
 
 /**
- * Backfill dateModified onto upstream Article nodes that lack it, from the
+ * The methodology family is the one part of the docs a human demonstrably owns:
+ * the weights, thresholds and stated limitations are editorial judgment, not
+ * generated output, and every page in it carries a rendered maintainer byline
+ * naming the same person. Those pages therefore attribute to the canonical
+ * Person; the rest of the docs stay Organization-authored (#7980).
+ */
+const DOCS_PERSON_AUTHORED_SLUG_PREFIX = 'methodology/';
+
+/**
+ * Anchored on the canonical `@id` AND self-describing. No docs page declares
+ * the Person node, and parsers resolve `@id` within one document, so a bare
+ * reference would be an unresolvable stub for exactly the naive extractors
+ * this attribution is meant to serve (#7459a). The strong `sameAs` anchors
+ * stay on the canonical node at /blog/authors/elie-habib/.
+ */
+const DOCS_PERSON_AUTHOR = Object.freeze({
+  '@id': PERSON_ID,
+  '@type': 'Person',
+  name: 'Elie Habib',
+});
+
+/**
+ * Same typed-stub-plus-@id shape as WORLD_MONITOR_ORG in the corpus
+ * generator. No docs page declares the Organization node — pruneDocsEntities
+ * collapses it to a reference — so a bare author `@id` cannot resolve inside
+ * the document (#8073). `sameAs` stays on the canonical welcome node.
+ */
+const DOCS_ORGANIZATION_AUTHOR = Object.freeze({
+  '@id': ORGANIZATION_ID,
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: CANONICAL_ORIGIN,
+});
+
+function isBareOrganizationAuthor(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const node = value as Record<string, unknown>;
+  if (node['@id'] !== ORGANIZATION_ID) return false;
+  return Object.keys(node).every((key) => key === '@id' || key === '@context');
+}
+
+function docsAuthorForPathname(pathname: string | undefined): Record<string, unknown> {
+  // The Chinese mirror keeps its locale segment in the slug ("zh/methodology/…"),
+  // and it is the same editorial work under translation, so drop the segment
+  // before matching the family rather than attributing it differently.
+  const slug = docsSlugForPathname(pathname)?.replace(/^zh\//, '');
+  return slug?.startsWith(DOCS_PERSON_AUTHORED_SLUG_PREFIX)
+    ? { ...DOCS_PERSON_AUTHOR }
+    : { ...DOCS_ORGANIZATION_AUTHOR };
+}
+
+/**
+ * Backfill publication and modification dates onto upstream Article nodes from the
  * same build-time manifest the injection path uses. An upstream shape flip
  * that drops dates must not ship dateless articles silently; unknown slugs
  * stay untouched rather than invented.
  */
 function withDocsArticleDates(value: unknown, pathname?: string): unknown {
   const slug = docsSlugForPathname(pathname);
-  const dateModified = slug ? DOCS_PAGE_DATES[slug] : undefined;
-  if (!dateModified) return value;
+  const dates = slug ? DOCS_PAGE_DATES[slug] : undefined;
+  if (!dates) return value;
   for (const node of collectJsonLdNodes(value)) {
     if (
-      (hasJsonLdType(node, 'Article') || hasJsonLdType(node, 'TechArticle'))
-      && node.dateModified == null
+      hasJsonLdType(node, 'Article') || hasJsonLdType(node, 'TechArticle')
     ) {
-      node.dateModified = dateModified;
+      node.datePublished ??= dates.datePublished;
+      node.dateModified ??= dates.dateModified;
     }
   }
   return value;
@@ -330,7 +400,7 @@ function withDocsArticleDates(value: unknown, pathname?: string): unknown {
 /**
  * Inject a full Article node when upstream ships a bare WebPage. Every field
  * is derived, never invented: headline/description/url from the page node,
- * dateModified from the build-time manifest for this slug, publisher/author
+ * dates from the build-time manifest for this slug, publisher/author
  * from the canonical Organization. Missing page name or missing manifest date
  * means no injection — a dateless or nameless Article is worse than none.
  */
@@ -342,8 +412,8 @@ function withDocsArticleNode(value: unknown, pathname?: string): unknown {
   const page = nodes.find((node) => hasJsonLdType(node, 'WebPage'));
   if (!page || typeof page.name !== 'string' || page.name.trim().length === 0) return value;
   const slug = docsSlugForPathname(pathname);
-  const dateModified = slug ? DOCS_PAGE_DATES[slug] : undefined;
-  if (!dateModified) return value;
+  const dates = slug ? DOCS_PAGE_DATES[slug] : undefined;
+  if (!dates) return value;
   const pageUrl = typeof page.url === 'string' && page.url.length > 0
     ? page.url
     : `${DOCS_PUBLIC_ORIGIN}${pathname ?? '/docs/'}`;
@@ -351,9 +421,10 @@ function withDocsArticleNode(value: unknown, pathname?: string): unknown {
     '@type': ['Article', 'TechArticle'],
     '@id': `${pageUrl}#article`,
     headline: page.name,
-    dateModified,
+    datePublished: dates.datePublished,
+    dateModified: dates.dateModified,
     publisher: { '@id': ORGANIZATION_ID },
-    author: { '@id': ORGANIZATION_ID },
+    author: docsAuthorForPathname(pathname),
   };
   if (typeof page.description === 'string' && page.description.trim().length > 0) {
     article.description = page.description;
@@ -399,9 +470,11 @@ function withDocsSpeakable(value: unknown): unknown {
  * plus the build-time date manifest when both exist; never invent either half.
  *
  * When upstream DOES emit an Article/TechArticle node, withDocsArticleAuthor
- * below still attributes it to the canonical Organization (the docs are
- * product documentation with no per-page byline, matching how the research
- * reports attribute themselves in scripts/build-research-reports.mjs).
+ * below still attributes it — to the canonical Person on the methodology
+ * family, which carries a rendered maintainer byline, and to the canonical
+ * Organization everywhere else, where the docs are product documentation with
+ * no per-page byline (matching how the research reports attribute themselves
+ * in scripts/build-research-reports.mjs).
  *
  * `datePublished` is deliberately NOT synthesised. No per-page publication date
  * exists anywhere: docs/*.mdx frontmatter carries only title and description,
@@ -410,17 +483,21 @@ function withDocsSpeakable(value: unknown): unknown {
  * assert a publication date we do not know, which is worse than omitting a
  * recommended (not required) property.
  */
-function withDocsArticleAuthor(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withDocsArticleAuthor);
+function withDocsArticleAuthor(value: unknown, pathname?: string): unknown {
+  if (Array.isArray(value)) return value.map((entry) => withDocsArticleAuthor(entry, pathname));
   if (!value || typeof value !== 'object') return value;
   const node = value as Record<string, unknown>;
   const next: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(node)) {
-    next[key] = withDocsArticleAuthor(nested);
+    next[key] = withDocsArticleAuthor(nested, pathname);
   }
   const isArticle = hasJsonLdType(next, 'Article') || hasJsonLdType(next, 'TechArticle');
-  if (isArticle && next.author == null) {
-    next.author = { '@id': ORGANIZATION_ID };
+  // Prune collapses every `#organization` body to `{ @id }` before this
+  // runs, including an author we injected on a previous rewrite. A bare
+  // reference is the defect (#8073); replace it the same way as a missing
+  // author. Named upstream bylines and Person authors are not bare refs.
+  if (isArticle && (next.author == null || isBareOrganizationAuthor(next.author))) {
+    next.author = docsAuthorForPathname(pathname);
   }
   return next;
 }
@@ -468,7 +545,7 @@ export function rewriteDocsLocaleHtml(html: string, pathname: string): string {
   const pair = resolveDocsLocalePair(pathname);
   if (!pair) return html;
 
-  let next = stripExistingDocsHreflang(html);
+  let next = rewriteDocsHeadLinks(html, pathname);
   if (pair.active === 'zh') {
     next = replaceHtmlLang(next, DOCS_ZH_HREFLANG);
     next = replaceOgLocale(next, 'zh_CN');
@@ -476,7 +553,6 @@ export function rewriteDocsLocaleHtml(html: string, pathname: string): string {
     next = replaceHtmlLang(next, DOCS_EN_HREFLANG);
     next = replaceOgLocale(next, 'en_US');
   }
-  next = injectAfterCanonical(next, buildDocsHreflangLinkTags(pathname));
   return rewriteDocsEntityGraph(next, pathname);
 }
 

@@ -1,3 +1,5 @@
+import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
+
 const COOKIE_DOMAIN = '.worldmonitor.app';
 const MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
@@ -9,12 +11,13 @@ export function getDismissed(key: string): boolean {
   if (usesCookies()) {
     return document.cookie.split('; ').some((c) => c === `${key}=1`);
   }
-  return localStorage.getItem(key) === '1' || localStorage.getItem(key) === 'true';
+  const stored = safeStorageGet(key);
+  return stored === '1' || stored === 'true';
 }
 
 export function setDismissed(key: string): void {
   if (usesCookies()) {
     document.cookie = `${key}=1; domain=${COOKIE_DOMAIN}; path=/; max-age=${MAX_AGE_SECONDS}; SameSite=Lax; Secure`;
   }
-  localStorage.setItem(key, '1');
+  safeStorageSet(key, '1');
 }

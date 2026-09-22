@@ -1,0 +1,47 @@
+name: MCP Preset Liveness
+
+# Vendor availability is monitored separately from PR and deployment gates.
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-preset-liveness
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Probe catalog endpoints
+        id: probe
+        continue-on-error: true
+        env:
+          LIVE_MCP_TESTS: '1'
+          MCP_PRESET_REPORT: ${{ runner.temp }}/mcp-preset-liveness.json
+        run: node --test tests/mcp-presets.test.mjs
+
+      # Findings become an issue, while broken test/report infrastructure still
+      # fails this dedicated monitor visibly. It is never a build requirement.
+      - name: Report endpoint findings
+        id: report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MCP_PRESET_REPORT: ${{ runner.temp }}/mcp-preset-liveness.json
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: node scripts/report-mcp-preset-liveness.mjs

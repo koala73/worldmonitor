@@ -30,7 +30,9 @@ tags: [bootstrap-hydration, seed-meta, freshness-tracking, redis, health]
 
 ## What Didn't Work
 
-Making every `EMPTY_DATA_OK` key fail when the payload was missing would have fixed the projection blind spot, but it would also have broken normal quiet-source behavior. `ddosAttacks`, `trafficAnomalies`, `weatherAlerts`, and `newsThreatSummary` legitimately write fresh metadata without a payload after a successful quiet cycle; they must remain healthy in that state. The test contract at `tests/health-empty-data-ok.test.mjs:16-92` covers this distinction.
+Making every `EMPTY_DATA_OK` key fail when the payload was missing would have fixed the projection blind spot, but it would also have broken normal quiet-source behavior. `weatherAlerts` and `newsThreatSummary` legitimately write fresh metadata without a payload after a successful quiet cycle; they must remain healthy in that state. CF Radar's `ddosAttacks` and `trafficAnomalies` now publish explicit payloads on confirmed-empty cycles. They remain in `EMPTY_DATA_OK_KEYS` for cold-start grace and are also in `MISSING_DATA_IS_FAILURE_KEYS` so fresh metadata cannot excuse a missing payload. `tests/health-empty-data-ok.test.mjs` covers this distinction.
+
+CF Radar payload TTLs must exceed their health staleness thresholds, including the rounded-minute boundary. DDoS retains three hours and traffic anomalies two hours against a 60-minute gate. The optional DDoS target-location slice reports `targetLocationsDegraded: true` on its health entry when the producer marks it degraded; this diagnostic does not change status. Production acceptance for #7864 still requires paired payload and metadata observations over several natural publications, including a confirmed-empty cycle.
 
 Earlier bootstrap work had correctly added compact dashboard-shaped side keys, but it also showed that a side key needs its own availability signal; healthy metadata alone cannot prove that a required projection is present (session history).
 

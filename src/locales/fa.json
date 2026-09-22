@@ -190,7 +190,8 @@
       "activeSirens": "Active Sirens",
       "sirens24h": "Sirens / 24h",
       "aviationDisruptions": "Aviation Disruptions",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "temporalUnavailable": "مشاهدات زمانی در دسترس نیست"
     },
     "fallback": {
       "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
@@ -924,7 +925,6 @@
   "components": {
     "webcams": {
       "paused": "Webcams paused",
-      "pausedIdle": "Webcams paused — move mouse to resume",
       "play": "Play",
       "previewStatus": "Live preview",
       "regions": {
@@ -1319,9 +1319,6 @@
       "base": "Base",
       "nuclear": "Nuclear"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "HIGH",
@@ -1631,7 +1628,10 @@
       "compiledFrom": "گردآوری‌شده از {{stories}} خبر از {{sources}} منبع",
       "provenanceTitle": "شفافیت پوشش: این گزیده از چه تعداد خبر دریافتی و چند منبع مجزا انتخاب شده است",
       "briefFreshness": "تولید شده {{minutes}}m پیش · جدیدترین منبع {{hours}}h قدیمی",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "جزئیات خبر ({{count}})",
+      "streamIdleStopLabel": "توقف ویدیوی زنده هنگام عدم فعالیت",
+      "streamIdleStopDesc": "پخش Live News و Live Webcams را پس از این مدت بدون فعالیت متوقف می‌کند و یک پیام را در پنل نمایش می‌دهد.",
+      "streamIdleStopNever": "هرگز"
     },
     "settings": {
       "exportSettings": "Export Settings",
@@ -2046,6 +2046,7 @@
       "etfs": "ETFs",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "خالص خنثی",
       "table": {
         "ticker": "Ticker",
         "issuer": "Issuer",
@@ -2382,7 +2383,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>شاخص تنش مالی</strong> نسبت WorldMonitor از اعتبار پربازده به اوراق خزانه‌داری بلندمدت آمریکا، تعدیل‌شده با نوسان سهام و اختلاف بازده اوراق پربازده: (HYG / TLT) / (VIX × HY spread / 100). این شاخص تنش مالی فدرال رزرو کانزاس‌سیتی نیست. مقدار 1.5 یا بالاتر نشان‌دهنده تنش کم است؛ کمتر از 0.3 نشان‌دهنده تنش زیاد است.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
@@ -2699,7 +2700,14 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "analyzing": "Analyzing...",
-      "viewOnMap": "View on map"
+      "viewOnMap": "View on map",
+      "waiting": "در انتظار به‌روزرسانی بعدی داده‌ها. این پنل به‌طور خودکار به‌روزرسانی می‌شود.",
+      "offline": "در انتظار اتصال. این پنل پس از اتصال دوباره به اینترنت به‌طور خودکار به‌روزرسانی می‌شود.",
+      "updated": "به‌روزرسانی‌شده {{time}}",
+      "saved": "آخرین به‌روزرسانی شناخته‌شده {{time}} · در حال بررسی به‌روزرسانی‌ها",
+      "savedOffline": "آخرین به‌روزرسانی شناخته‌شده {{time}} · آفلاین",
+      "localSignals": "بر اساس سیگنال‌های بارگذاری‌شده در داشبورد",
+      "emptySaved": "در آخرین به‌روزرسانی شناخته‌شده همگرایی وجود نداشت."
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2858,6 +2866,35 @@
       "succeeded": "کلید دسترسی ذخیره شد. می‌توانید آن را دفعه بعد هنگام ورود استفاده کنید.",
       "retryable": "این کار تکمیل نشد. می‌توانید دوباره تلاش کنید.",
       "failed": "نتوانستیم کلید دسترسی را در این دستگاه ذخیره کنیم."
+    },
+    "decisionBrief": {
+      "commodityTitle": "گزارش تصمیم‌گیری کالا",
+      "commodity": "کالا / محصول",
+      "blockedChokepoint": "گلوگاه با فرض انسداد",
+      "commodityCapture": "ثبت مقایسه کالا",
+      "title": "خلاصه تصمیم",
+      "fuel": "سوخت",
+      "chokepoint": "گلوگاه",
+      "baseline": "اختلال مبنا",
+      "comparison": "اختلال مقایسه‌ای",
+      "capture": "دریافت / تازه‌سازی هر دو",
+      "downloadHtml": "دریافت خلاصه به صورت HTML",
+      "downloadJson": "دریافت خلاصه به صورت JSON",
+      "back": "← بازگشت به خلاصه کشور",
+      "select": "یک اختلال در تأمین انرژی انتخاب کنید، سپس هر دو سناریو را دریافت کنید.",
+      "changed": "انتخاب تغییر کرد. پیش از خروجی گرفتن، هر دو سناریو را دریافت کنید.",
+      "loading": "در حال دریافت هر دو سناریو…",
+      "captured": "دریافت شد. پیش از بارگیری، تاریخ مشاهدات و محدودیت‌ها را بررسی کنید.",
+      "failed": "دریافت سناریوها ممکن نشد. دسترسی خود را بررسی کرده و دوباره تلاش کنید. نتیجه‌ای برای خروجی گرفتن موجود نیست.",
+      "locked": "خلاصه تصمیم با Pro در دسترس است."
+    },
+    "liveMedia": {
+      "idleStatus": "به دلیل عدم فعالیت متوقف شده",
+      "idleBody": "ویدیوی زنده پس از {{duration}} بدون فعالیت ماوس، صفحه‌کلید یا لمس متوقف شد.",
+      "idleResume": "ادامه",
+      "idleKeepPlaying": "ادامه پخش هنگام عدم فعالیت",
+      "idleSettingsHint": "می‌توانید این را هر زمانی در تنظیمات › رسانه تغییر دهید.",
+      "idleKeepPlayingToast": "ویدیوی زنده هنگام عدم فعالیت ادامه خواهد یافت. در تنظیمات › رسانه تغییر دهید."
     }
   },
   "popups": {

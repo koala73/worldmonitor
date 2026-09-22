@@ -42,6 +42,8 @@ import {
 } from './_quote-provider';
 import { CachedFetchTimeoutError, cachedFetchJson, readCachedJson } from '../../../_shared/redis';
 
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
 
 /** Per-symbol gap-fetch cache. Prefixed (app-owned), unlike the seed key. */
@@ -373,7 +375,7 @@ function withQuoteAsOf(
 }
 
 export async function listMarketQuotes(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListMarketQuotesRequest,
 ): Promise<ListMarketQuotesResponse> {
   const { accepted, dropped } = normalizeRequestedSymbols(parseStringArray(req.symbols));
@@ -383,7 +385,7 @@ export async function listMarketQuotes(
     // Distinguished from a miss on purpose: a read failure that looks like an
     // empty snapshot is how a dead pipeline stays invisible.
     console.warn('[ListMarketQuotes] seed read failed — skipping the provider gap fetch');
-    return seedUnavailableResponse([...accepted, ...dropped]);
+    return markNoStoreFallbackResponse(ctx.request, seedUnavailableResponse([...accepted, ...dropped]));
   }
 
   const bootstrap = seed.status === 'hit' ? (seed.value as ListMarketQuotesResponse | null) : null;
@@ -392,7 +394,7 @@ export async function listMarketQuotes(
   // empty response instead of throwing. Validate the shape to keep that
   // fail-soft behaviour without the catch-all that also hid real bugs.
   if (!Array.isArray(bootstrap?.quotes) || bootstrap.quotes.length === 0) {
-    return seedUnavailableResponse([...accepted, ...dropped]);
+    return markNoStoreFallbackResponse(ctx.request, seedUnavailableResponse([...accepted, ...dropped]));
   }
 
   // No symbol filter: the caller wants the seed universe as-is.

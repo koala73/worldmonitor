@@ -3,11 +3,14 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
+import pkg from '../package.json';
+import { getSentryBuildMetadata } from '../shared/sentry-build-metadata';
 
 // Mirrors the root config's gate. WORLDMONITOR-11Y and -107 are marketing-bundle
 // events that arrived with zero usable frames, so covering only the dashboard
 // would leave this half of the surface unreadable.
 const uploadSourceMapsToSentry = Boolean(process.env.SENTRY_AUTH_TOKEN);
+const sentryBuild = getSentryBuildMetadata(pkg.version, process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev');
 
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
@@ -21,6 +24,10 @@ function isWelcomeHydrationPreload(dep: string) {
 }
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -30,6 +37,16 @@ export default defineConfig({
           project: 'worldmonitor',
           authToken: process.env.SENTRY_AUTH_TOKEN,
           telemetry: false,
+          release: {
+            name: sentryBuild.release,
+            inject: false,
+            dist: sentryBuild.dist,
+            // The root build publishes the release after both bundles build.
+            create: false,
+            finalize: false,
+            setCommits: false,
+            deploy: false,
+          },
           sourcemaps: {
             // This bundle emits into ../public/pro, which the root build copies
             // wholesale into dist — a leftover map would ship publicly whatever

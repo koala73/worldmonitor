@@ -86,3 +86,40 @@ Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.a
 ## Platform endpoints
 
 Bootstrap, health, version, and cache-purge live outside the per-service catalog — see [Platform Endpoints](/api-platform).
+
+## Displacement snapshot years
+
+`GET /api/displacement/v1/get-displacement-summary` reads the current Railway
+snapshot only. Omit `year` or use `0` for the latest available data; `summary.year`
+reports its actual data year, which can precede the calendar year. Explicit years
+must be integers from 1951 through the current year. Invalid years return `400`
+before a cache read. A valid year is available only when it matches the seed's
+actual data year; this endpoint does not provide a historical archive.
+
+Missing, unreadable, or nonmatching snapshots return `dataAvailable: false`,
+`fetchedAt: 0`, and an empty summary. The gateway disables caching for these
+responses. Existing seeds remain readable with their original fetched timestamp;
+requests never fetch UNHCR or create query cache entries, even when the former
+`SEED_FALLBACK_DISPLACEMENT` flag is set. Country and flow limits still apply to
+the response without changing the shared seed. Desktop requests use the existing
+cloud proxy because the local sidecar does not hold Railway seeds.
+
+## ACLED conflict snapshot
+
+`GET /api/conflict/v1/list-acled-events` reads the Railway snapshot only; requests
+never fetch ACLED on demand. The producer targets the latest 30 days. Country and
+date filters cannot retrieve history outside the available snapshot.
+
+Omit `country`, `start`, and `end` (or use empty country and zero timestamps) for
+the full geographic snapshot. Filter by ISO alpha-2 country code or country name.
+Non-default queries use inclusive Unix-millisecond bounds; an unset start defaults
+to midnight UTC 30 days ago and an unset end defaults to now. `page_size` and `cursor` remain
+accepted no-ops. Rows without valid coordinates are omitted, including GDELT
+fallback rows that carry no location.
+
+A missing or unreadable seed returns `events: []` with caching disabled. Composed
+map embeds mark that conflict layer unavailable and disable frame caching until
+a seed read succeeds. An empty
+result does not establish that no conflict occurred. Browser sessions and API
+credentials retain their existing access; credentialless direct RPC calls are
+rejected.

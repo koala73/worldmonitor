@@ -76,6 +76,20 @@ describe('consumer-price coverage publication', () => {
     expect(JSON.parse(coverageMeta[2]).coverage.retailers).toEqual(coverage.retailers);
   });
 
+  it('publishes each mover range with its own payload and seed metadata', async () => {
+    mockBuildMoversSnapshot.mockImplementation(async (marketCode, days) => ({
+      marketCode, range: `${days}d`, risers: [{ productId: `up-${days}` }], fallers: [],
+    }));
+    await publishAll();
+    const writes = commands();
+    for (const days of [7, 30, 90]) {
+      const payload = writes.find((command) => command[1] === `consumer-prices:movers:ae:${days}d`);
+      expect(JSON.parse(payload[2]).data).toMatchObject({ range: `${days}d`, risers: [{ productId: `up-${days}` }] });
+      const meta = writes.find((command) => command[1] === `seed-meta:consumer-prices:movers:ae:${days}d`);
+      expect(JSON.parse(meta[2]).recordCount).toBe(1);
+    }
+  });
+
   it('skips the movers write without failing the run when every candidate is gated', async () => {
     // seed-consumer-prices-publish, 2026-09-04: market `in` returned one 30d
     // candidate, it was gated, and the throw exited the whole cron 1 while

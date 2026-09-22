@@ -19,7 +19,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 `get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 调用使用专属的每日计数器，每个 UTC 日分别为 **50** 次和 **250** 次消耗配额的 `tools/call` / `resources/read` 调用，每次调用计一个单位。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 与 `get_airspace` 各从两个来源取数，计 3 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
+所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 调用使用专属的每日计数器，每个 UTC 日分别为 **50** 次和 **250** 次消耗配额的 `tools/call` / `resources/read` 调用，每次调用计一个单位。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-登录流程)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -33,9 +33,10 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 | `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS 元数据（RFC 8414） |
 | `https://www.worldmonitor.app/docs/mcp` | 独立的匿名**文档** MCP 服务器（文档搜索 + 只读文档文件系统）——卡片位于 `/.well-known/mcp/docs-server-card.json`；参见[智能体发现](/zh/agent-discovery) |
-| `https://worldmonitor.app/.well-known/oauth-protected-resource` | 资源服务器元数据（RFC 9728） |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource/mcp` | MCP 端点的资源服务器元数据（RFC 9728），其 `resource` 为 `https://worldmonitor.app/mcp`；`401` 质询即指向此文档 |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource` | 源站的资源服务器元数据（RFC 9728），保留给在路径限定文档出现之前已完成发现的客户端 |
 
-服务器标识：`worldmonitor` v1.17.0。
+服务器标识：`worldmonitor` v1.21.0。
 
 注册表登记：该服务器以 `app.worldmonitor/mcp` 之名发布于[官方 MCP 注册表](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) —— 这是一个经过域名验证的命名空间，因此通过注册表解析服务器的客户端获得的端点和元数据与上方的服务器卡片一致 —— 并在 [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) 和 [mcp.so](https://mcp.so/server/world-monitor) 上列出。
 
@@ -47,7 +48,7 @@ WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片
 - 请求 `2025-06-18` 的客户端会得到 `2025-06-18`；固定使用 `2025-03-26` 的客户端继续得到 `2025-03-26`。
 - 设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线；此后请求 `2025-06-18` 的客户端会收到安全默认值 `2025-03-26`。
 
-无论协商出的协议版本如何，工具的 `outputSchema` 元数据都会在 `tools/list` 中发出。较旧的 `2025-03-26` 客户端应忽略未知字段，而较新的客户端可以立即使用该 schema。
+无论协商出的协议版本如何，工具的 `outputSchema` 元数据都会在 `tools/list` 中发出。较旧的 `2025-03-26` 客户端应忽略未知字段，而较新的客户端可以立即使用该 schema。每次成功的 `tools/call` 还会以 `structuredContent` 返回载荷；一旦发布了 schema，严格的客户端就要求如此。投影与软信封的表示方式见[工具参考](/zh/mcp-tools-reference)。
 
 ### Streamable HTTP 响应
 
@@ -65,7 +66,9 @@ WorldMonitor 支持 Streamable HTTP POST 流程，可返回 JSON 或 SSE 响应�
 
 ## 认证
 
-**发现是公开的。** `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 握手都可**无需凭据**提供服务，因此任何 agent（或 agent 就绪性扫描器）都可以连接到 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其匿名路径使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他承载数据的调用需要凭据。每个 `tools/list` 和 `describe_tool` 条目都携带 `_meta["worldmonitor/access"]`：`free` 表示匿名且不计额度，`free-account` 表示已认证免费账户可用（缓存数据调用消耗免费额度，`describe_tool` 不消耗），`subscription` 表示仅 Pro 可用。资源模板携带与其支撑工具相同的标记。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
+**MCP 客户端在连接时登录。** 传输端点会对未认证的 `initialize` 返回 `401`、JSON-RPC `-32001`，以及指向该路径[受保护资源文档](/zh/api-oauth#发现端点)的 `WWW-Authenticate` 质询，并回显请求 id。`initialize` 是所有交互式客户端发出的第一个握手请求，托管连接器（Cursor Agents、Grok、ChatGPT）正是根据它的响应来判断服务器是否需要登录：若得到 `200`，它们会记录为「无需认证」，之后付费工具拒绝调用时便没有可供跳转的授权服务器。免费账户即可完成登录。智能体就绪度扫描器仍可在机器发现别名 `/.well-known/mcp` 与 `/.well-known/mcp.json` 上完成完整的匿名握手；MCP 客户端请指向 `/mcp`。
+
+**无状态的目录读取保持公开。** `tools/list`、`prompts/list`、`prompts/get`、`skills/list`、`skills/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 通知都可**无需凭据**提供服务——无密钥的 [`worldmonitor` CLI](/zh/cli) 与各 SDK 正是这样在从不发送 `initialize` 的情况下列出工具。任何 agent（或 agent 就绪性扫描器）都可以访问 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其匿名路径使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他承载数据的调用需要凭据。每个 `tools/list` 和 `describe_tool` 条目都携带 `_meta["worldmonitor/access"]`：`free` 表示匿名且不计额度，`free-account` 表示已认证免费账户可用（缓存数据调用消耗免费额度，`describe_tool` 不消耗），`subscription` 表示仅 Pro 可用。资源模板携带与其支撑工具相同的标记。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
 
 MCP handler 按优先级顺序接受两种认证模式：
 
@@ -76,13 +79,23 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 
 ### Redirect URI 允许列表
 
-动态客户端注册**不**对任意 HTTPS 重定向开放。仅接受以下前缀：
+动态客户端注册**不**对任意重定向开放。`redirect_uri` 必须是 `http://localhost:<port>` 或 `http://127.0.0.1:<port>`（任意端口、任意路径），或与下表中托管 MCP 客户端实际发送的回调地址完全一致。厂商有官方文档时附上链接。
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>`（任意端口） —— 适用于 Claude Code、MCP Inspector、本地开发
+| 客户端 | 回调地址 |
+|--------|----------|
+| Claude | `https://claude.ai/api/mcp/auth_callback`、`https://claude.com/api/mcp/auth_callback` |
+| Cursor Agents、Cursor 网页版、Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback`、`cursor://anysphere.cursor-mcp/oauth/callback`（[Cursor MCP 文档](https://cursor.com/docs/mcp)） |
+| ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect`（[OpenAI 认证文档](https://developers.openai.com/plugins/build/auth)） |
+| Grok | `https://grok.com/connectors-oauth-exchange-code/`、`https://console.x.ai/connectors-oauth-exchange-code/`（[Grok 客户端元数据](https://grok.com/oauth/mcp-client.json)） |
+| VS Code 网页版 | `https://vscode.dev/redirect`、`https://insiders.vscode.dev/redirect` |
+| Perplexity | `https://www.perplexity.ai/rest/connections/oauth_callback`、`https://enterprise.perplexity.ai/rest/connections/oauth_callback`（[Perplexity 帮助中心](https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors)） |
+| Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
+| Devin | `https://api.devin.ai/mcp/oauth/callback`（[Devin MCP 文档](https://docs.devin.ai/work-with-devin/mcp)） |
+| Google Antigravity | `https://antigravity.google/oauth-callback`（[Antigravity MCP 文档](https://antigravity.google/docs/mcp)） |
 
-其他客户端必须通过这些重定向之一代理，或在本地运行。
+Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、Zed 与 MCP Inspector 使用本地回环形式。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
+
+授权响应携带 `iss`（[RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)），其值为发起流程的主机的 `issuer`。ChatGPT 需要该参数才会使用其固定回调地址。
 
 ### Token 生命周期
 
@@ -100,10 +113,10 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 1. **在 MCP 客户端中添加服务器 URL**。规范入口为：
 
    ```
-   https://api.worldmonitor.app/mcp
+   https://worldmonitor.app/mcp
    ```
 
-   （`https://worldmonitor.app/mcp` 也可用 —— 它代理同一个 handler。）
+   这是唯一的产品 MCP 传输端点。已列出的生产别名（`www`、`api` 以及各仪表盘子域）不是额外的服务器。这些主机上普通 GET/HEAD `/mcp` 与 `/api/mcp` 会 308 到 `https://worldmonitor.app/mcp`；普通 GET/HEAD `/.well-known/mcp` 与 `/.well-known/mcp.json` 会 308 到 `https://worldmonitor.app/.well-known/mcp` 与 `https://worldmonitor.app/.well-known/mcp.json`。查询字符串不会转发。传输层 POST/SSE/replay 会收到 HTTP 410，JSON-RPC `-32000` 提示客户端改用 `https://worldmonitor.app/mcp`。
 
 2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
 
@@ -119,17 +132,17 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 - Pro **每个 UTC 日 50 次消耗配额的调用**，Pro Business 为 **250** 次，在 UTC 00:00 重置。两个套餐都计在专属的 MCP 计数器上，无论工具做什么，每次调用都计一个单位。
 - 承载数据的 `tools/call` 以及对承载数据的 **URI 模板实例化**的 `resources/read` 会消耗 Pro 每日配额，`get_sources` 和元数据辅助工具 `describe_tool` 除外。
-- `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`notifications/initialized`、`ping`、`describe_tool` 和 `get_sources` **不**计入每日上限。对**公开**资源的 `resources/read`（仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）同样豁免 —— 它不承载任何可计费的数据。
+- `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`skills/list`、`skills/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`notifications/initialized`、`ping`、`describe_tool` 和 `get_sources` **不**计入每日上限。对**公开**资源的 `resources/read`（仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）同样豁免 —— 它不承载任何可计费的数据。
 - 达到上限会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。
 - 该上限是硬性限制：接近边界时的并发 `tools/call` 或 `resources/read` 请求使用原子 Redis 预留，因此恰好跨越该上限的那次调用会被拒绝。
 
-需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项，以及大得多的每日额度（每天 1,000 和 10,000 个单位），该额度由它们的 MCP 调用与 REST 请求共享，每分钟突发分别为每用户 60 次和 300 次。缓存读取的 MCP 调用计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 与 `get_airspace` 计 3 个单位，因此批量任务走 REST 仍然更划算。Enterprise 则完全取消每日上限。参见[套餐与限制](#套餐与限制)。
+需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项，以及大得多的每日额度（每天 1,000 和 10,000 个单位），该额度由它们的 MCP 调用与 REST 请求共享，每分钟突发分别为每用户 60 次和 300 次。缓存读取的 MCP 调用计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 计 5 个单位，因此批量任务走 REST 仍然更划算。Enterprise 则完全取消每日上限。参见[套餐与限制](#套餐与限制)。
 
 ### 已连接的 MCP 客户端
 
 每次授权都会生成一条独立记录，因此撤销 Claude Desktop 不会影响 Cursor。
 
-- 在 **[Settings → Connected MCP clients](https://www.worldmonitor.app/settings)** 管理已连接的客户端。
+- 登录[仪表板](https://www.worldmonitor.app/dashboard)。选择 **Settings → MCP Clients** 管理已连接的客户端。
 - 可查看每个 token 的实时 `clientName`（例如 "Claude"、"Cursor"）、`lastUsedAt` 和 `createdAt`。
 - 撤销会在下一次 MCP 请求时生效（无正向缓存）。
 - 每个用户最多 **5 个活跃 token**。超出上限的授权会静默撤销**创建时间最早**的现有 token（按创建顺序，而非最近使用时间；并发授权下的执行是最终一致的）。
@@ -199,6 +212,12 @@ Claude Desktop 会在首次连接时自动处理 OAuth 流程。
   }
 }
 ```
+
+Cursor Agents、Cursor 网页版与 Grok Bot 使用同一 URL，并通过 Cursor 的托管回调完成登录。
+
+### 其他托管客户端
+
+ChatGPT、Grok、Perplexity、Mistral Le Chat、Devin、Google Antigravity 与 VS Code：将 `https://worldmonitor.app/mcp` 添加为自定义连接器或远程 MCP 服务器。注册接受 [Redirect URI 允许列表](#redirect-uri-允许列表) 中列出的回调地址。
 
 ### MCP Inspector（调试）
 
@@ -437,7 +456,8 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 资源 URI | 支撑数据 |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | 仅股票市场数据 bootstrap 的写入年龄：`seed-meta:market:stocks` 的 `cached_at` 与 `stale`。**不**证明板块估值完整度 —— 请用 `get_market_data` 的 `valuationCoverage`（`sourceStatus`、unavailable/last-good/diagnostics）。廉价 seeder 健康探针 —— 无需认证，不计配额。 |
-| `worldmonitor://account/mcp-allowance` | 当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。 |
+
+已认证的 `resources/list` 还会额外公开 `worldmonitor://account/mcp-allowance`：当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。
 
 `resources/templates/list` —— 参数化的 URI 模板。替换占位符，然后 `resources/read` 具体的 URI。客户端必须读取模板的 `_meta["worldmonitor/access"]`：`free-account` 模板允许已认证免费账户使用免费额度，`subscription` 模板需要有效订阅。计量方式与等价的 `tools/call` 对称：
 
@@ -514,7 +534,7 @@ curl -s https://worldmonitor.app/mcp \
     "content": [
       { "type": "text", "text": "{...json payload...}" }
     ],
-    "isError": false
+    "structuredContent": { "...": "the same payload, as an object" }
   }
 }
 ```
@@ -548,7 +568,7 @@ MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、
 
 由外向内分诊：HTTP 状态 → JSON-RPC 错误码 → soft envelope。完整的每种形态参考（触发条件、配对状态、恢复方式、示例 payload）位于 [MCP 错误目录](/zh/mcp-error-catalog)。几个高频要点：
 
-- **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向 `/.well-known/oauth-protected-resource`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
+- **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向你所调用路径对应的文档：`/.well-known/oauth-protected-resource/mcp`，或已部署路由下的 `/api/mcp`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
 - **403 + `-32002`** 是已经发出的终止性权益拒绝。`lapsed-subscription` 只会在罕见竞态中出现：服务方确认的失效在 Pro 调用预检查通过后、执行中途才落地；若预检查时已经确认覆盖期结束，OAuth 身份会改走受限、按额度计量的 `free_account` 路径。`upgrade-required` 表示免费账户调用了订阅工具，或不具备免费账户资格的非免费权益不足。该错误不携带 `WWW-Authenticate`，重新运行 OAuth 无法修复这一次已经发出的拒绝。
 - **429 + `-32029`** 是按套餐解析的每日上限（`Retry-After: <距离 UTC 午夜的秒数>`），因此消息里的数字是实际触发拒绝的那份额度，并不总是 50。每分钟速率限制在 HTTP 200 内返回 `-32029`，而不是 429 —— 区别请见错误目录。
 - **Soft envelope 返回 HTTP 200** 且没有 JSON-RPC `error` 字段 —— 仅检查 JSON-RPC 层的客户端会静默地将它们视为成功。务必解析 `result.content[0].text` 并在将 payload 当作数据消费前检查带前导下划线的判别 key（`_budget_exceeded`、`_jmespath_error`）。

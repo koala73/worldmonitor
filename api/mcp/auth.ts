@@ -19,6 +19,7 @@ import {
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import type { BillingVerificationCode } from './billing-denial';
+import { mcpErrorFingerprint } from './error-fingerprint';
 import {
   buildInternalMcpHeaders,
   signInternalMcpRequest,
@@ -550,7 +551,16 @@ export async function validateProMcpAuthorization(
   try {
     validation = await deps.validateProMcpToken(context.mcpTokenId);
   } catch (err) {
-    captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-token-validate' }, ctx });
+    // Explicit fingerprint: this capture shares the minified edge bundle's
+    // anonymous frames with every other `api/mcp` capture, so Sentry's default
+    // stack grouping merges it into the WORLDMONITOR-T8 catch-all. `threw`
+    // keeps the defect arm in its own group, separable from the fail-soft
+    // `transient` arm below — see api/mcp/error-fingerprint.ts.
+    captureSilentError(err, {
+      tags: { route: 'api/mcp', step: 'pro-token-validate' },
+      fingerprint: mcpErrorFingerprint('pro-token-validate', 'threw', err),
+      ctx,
+    });
     return { ok: false, response: new Response(
       JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
       { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
@@ -575,8 +585,17 @@ export async function validateProMcpAuthorization(
     //
     // The `catch` above stays at `error`: a THROWN validator is an unexpected
     // defect, not this fail-soft path.
-    captureSilentError(new Error('Pro MCP token validation temporarily unavailable'), {
+    //
+    // The explicit fingerprint is what makes "escalates by volume" true. These
+    // frames are the minified edge bundle's anonymous `(vc/edge/function`, so
+    // default stack grouping merged this capture into the T8 catch-all
+    // alongside unrelated tool-execution 4xx — WORLDMONITOR-ZR and T8 held the
+    // SAME message concurrently, and ZR read as drained while the condition was
+    // still firing into T8.
+    const transientError = new Error('Pro MCP token validation temporarily unavailable');
+    captureSilentError(transientError, {
       tags: { route: 'api/mcp', step: 'pro-token-validate' },
+      fingerprint: mcpErrorFingerprint('pro-token-validate', 'transient', transientError),
       level: 'warning',
       ctx,
     });
@@ -794,15 +813,23 @@ export async function runContextPreChecks(
  *  on a PUBLIC method), which errs to the lower of the two ceilings sold.
  *  user_key (#4859) shares the per-USER limiter with pro — the principal is
  *  the key OWNER, so a user with an OAuth connection and a dashboard key gets
- *  one combined budget instead of two stackable ones. */
+ *  one combined budget instead of two stackable ones.
+ *  `id` is the caller's already-validated JSON-RPC request id (#7818). It rides
+ *  down so the denial is a spec-valid `JSONRPCError` a client can correlate
+ *  with its pending request; the MCP schema's `RequestId` union is
+ *  `string | number`, so a null id there fails client-side response validation
+ *  outright. It defaults to null for the GET/SSE replay caller, which is a
+ *  transport-level request carrying no JSON-RPC id to echo. */
 export async function applyPerMinuteLimit(
   context: McpAuthContext,
   headers: Record<string, string> = {},
   perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
+  id: unknown = null,
 ): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
     if (!rl) return null;
+    let denied = false;
     try {
       const { success } = await rl.limit(`key:${context.apiKey}`);
       if (!success) {
@@ -813,9 +840,16 @@ export async function applyPerMinuteLimit(
           limit: MCP_DEFAULT_BURST_PER_MINUTE,
           windowSeconds: 60,
         });
-        return rpcError(null, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, headers);
+        denied = true;
       }
     } catch { /* graceful degradation */ }
+    // Built OUTSIDE the fail-open catch (#7818). `rpcError` JSON-stringifies the
+    // caller-supplied `id`; leaving that inside a catch whose recovery is "allow
+    // the request unmetered" would turn a serialization throw into a silent
+    // rate-limit bypass. The id is validated upstream, so this is defence in
+    // depth for a future caller, not a live bug — but the limiter decision and
+    // the response construction do not belong under one catch-all.
+    if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, headers);
     return null;
   }
   if (context.kind === 'free') {
@@ -829,6 +863,7 @@ export async function applyPerMinuteLimit(
   }
   const rl = getMcpProMinRatelimit(perMinute);
   if (!rl) return null;
+  let denied = false;
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
     if (!success) {
@@ -841,9 +876,11 @@ export async function applyPerMinuteLimit(
         limit: perMinute,
         windowSeconds: 60,
       });
-      return rpcError(null, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per user.`, headers);
+      denied = true;
     }
   } catch { /* graceful degradation */ }
+  // Outside the fail-open catch — see the env_key branch above.
+  if (denied) return rpcError(id, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per user.`, headers);
   return null;
 }
 
@@ -853,14 +890,24 @@ export async function applyPerMinuteLimit(
  *  shared bucket so x-forwarded-for spoofing can't rotate identities). Fail-OPEN
  *  on Upstash error, matching `applyPerMinuteLimit` — the discovery response is a
  *  cheap in-memory payload, so availability beats strict enforcement here.
- *  Returns null on success/skip, a Response on a real 60/min limit hit. */
-export async function applyAnonDiscoveryLimit(req: Request, headers: Record<string, string> = {}): Promise<Response | null> {
+ *  Returns null on success/skip, a Response on a real 60/min limit hit.
+ *  `id` carries the caller's already-validated JSON-RPC request id (#7818) so
+ *  the denial stays correlatable — see `applyPerMinuteLimit` for why a null id
+ *  breaks MCP client-side response validation. */
+export async function applyAnonDiscoveryLimit(
+  req: Request,
+  headers: Record<string, string> = {},
+  id: unknown = null,
+): Promise<Response | null> {
   const rl = getMcpAnonRatelimit();
   if (!rl) return null;
+  let denied = false;
   try {
     const { success } = await rl.limit(`ip:${getClientIp(req)}`);
-    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.', headers);
+    denied = !success;
   } catch { /* graceful degradation */ }
+  // Outside the fail-open catch — see `applyPerMinuteLimit`'s env_key branch.
+  if (denied) return rpcError(id, -32029, 'Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.', headers);
   return null;
 }
 

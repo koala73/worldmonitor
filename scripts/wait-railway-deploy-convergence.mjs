@@ -262,7 +262,16 @@ function runStrictDrift(headSha, environment, timeoutMs, expectedServices) {
   try {
     parsed = JSON.parse(result.stdout);
   } catch (cause) {
-    throw new Error('strict drift returned malformed JSON', { cause });
+    // The subprocess writes its report to stdout and its diagnosis to stderr, so
+    // any crash leaves stdout empty and lands here. Reporting only "malformed
+    // JSON" sends an operator after a contract bug when the real cause — a failed
+    // git fetch, an expired token — was on a stream we discarded. The CLI prints
+    // only { ok, code, disposition }, so this message is the last place the cause
+    // can survive.
+    throw new Error(
+      `strict drift returned malformed JSON (exit ${result.status}): ${String(result.stderr ?? '').trim().slice(0, 500) || '<no stderr>'}`,
+      { cause },
+    );
   }
   if (!parsed?.summary || typeof parsed.summary.ok !== 'boolean') {
     throw new Error('strict drift response has no summary');

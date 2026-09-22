@@ -9,7 +9,12 @@ import seedHealthHandler from '../api/seed-health.js';
 import { atomicPublish, runSeed } from '../scripts/_seed-utils.mjs';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 import { extractRunBundleSectionSource } from './helpers/bundle-section-parser.mjs';
-import { CROSS_STRAIT_ACTIVITY_KEY } from '../scripts/cross-strait-activity/adapters.mjs';
+import {
+  CROSS_STRAIT_ACTIVITY_KEY,
+  buildCrossStraitActivitySnapshot,
+  fetchCrossStraitActivitySnapshot,
+  parseTaiwanMndDetail,
+} from '../scripts/cross-strait-activity/adapters.mjs';
 import {
   CROSS_STRAIT_ACTIVITY_BOOTSTRAP_KEY,
   CROSS_STRAIT_ACTIVITY_BOOTSTRAP_MAX_BYTES,
@@ -24,6 +29,7 @@ import {
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityAfterPublish,
   crossStraitActivityBeforePublish,
+  crossStraitActivityContentMeta,
   projectCrossStraitActivityBootstrap,
   writePublicationCompletion,
   writeSourceHealth,
@@ -50,7 +56,10 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
     generatedAt: '2026-07-25T12:00:00.000Z',
     status: 'degraded',
     sources: [
-      { id: 'taiwan-mnd', transportStatus: 'error' },
+      { id: 'taiwan-mnd', transportStatus: 'error', requestDiagnostics: [{
+        path: '/en/News/PLAAct/87682', purpose: 'detail', attempt: 2,
+        stage: 'response_body', httpStatus: 200, errorCode: 'TIMEOUT', elapsedMs: 20_000,
+      }] },
       {
         id: 'japan-mod',
         transportStatus: 'error',
@@ -104,10 +113,12 @@ test('cross-Strait bootstrap is a bounded current projection, not the durable re
       proxyControlProbe: _proxyControlProbe,
       shadowIndexProbe: _shadowIndexProbe,
       candidates: _candidates,
+      requestDiagnostics: _requestDiagnostics,
       ...publicSource
     } = source;
     return publicSource;
   }));
+  assert.equal(projection.sources.some(source => 'requestDiagnostics' in source), false);
   assert.equal(
     projection.sources.some((source) => 'proxyFailureDetail' in source),
     false,
@@ -171,6 +182,57 @@ test('legacy cross-Strait source errors stay actionable without discarding last-
     assert.equal(entry.records, 91, name);
   }
 });
+
+for (const listState of ['unchanged', 'changed-date', 'empty'] as const) {
+  test(`MND ${listState} list coverage reaches published source health without changing document clocks`, async () => {
+    const retrievedAt = '2026-07-25T08:30:00.000Z';
+    const nextRun = Date.parse('2026-07-25T11:30:00.000Z');
+    const original = parseTaiwanMndDetail(read('tests/fixtures/cross-strait-activity/mnd-detail.html'), {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/90000',
+      retrievedAt, expectedPublicationDay: '2026-07-25',
+    });
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt, previousSnapshot: null,
+      mndOutcome: { ok: true, observations: [original] },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: nextRun, previousSnapshot, mndProxyUrl: '', proxyUrl: '', sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(read('tests/fixtures/cross-strait-activity/jmod-homepage.html'));
+        if (url.includes('plaactlist')) return new Response(listState === 'empty' ? '<html></html>' : `
+          <div class="wrap-page3"><a class="news_list" href="${original.sourceUrl}">
+          <h5 class="date">${listState === 'changed-date' ? '2026.07.26' : '2026.07.25'}</h5></a></div>`);
+        throw new Error('request timeout');
+      },
+    });
+    const stored = new Map<string, unknown>();
+    const writer = async (key: string, value: unknown) => { stored.set(key, value); };
+    const reader = async (key: string) => stored.get(key) ?? null;
+    await writeSourceHealth(previousSnapshot, writer, reader);
+    await writeSourceHealth(snapshot, writer, reader);
+    const { classifyKey, SEED_META, STANDALONE_KEYS } = __testing__;
+    const name = 'crossStraitActivityTaiwanMnd';
+    const key = STANDALONE_KEYS[name];
+    const metaKey = SEED_META[name].key;
+    const entry = classifyKey(name, key, { allowOnDemand: true }, {
+      keyStrens: new Map([[key, JSON.stringify(stored.get(key)).length]]),
+      keyErrors: new Map(), keyMetaErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify(stored.get(metaKey))]]), now: nextRun,
+    });
+    assert.equal(entry.status, listState === 'unchanged' ? 'OK' : 'SEED_ERROR');
+    assert.equal(snapshot.sources[0].lastSuccessAt, listState === 'unchanged' ? new Date(nextRun).toISOString() : retrievedAt);
+    assert.deepEqual(snapshot.observations, previousSnapshot.observations);
+    assert.deepEqual(crossStraitActivityContentMeta(snapshot), crossStraitActivityContentMeta(previousSnapshot));
+    assert.equal(projectCrossStraitActivityBootstrap(snapshot).sources[0].transportStatus,
+      listState === 'unchanged' ? 'fresh' : 'error');
+    if (listState === 'unchanged') {
+      assert.deepEqual(snapshot.sources[0].errorCodes, []);
+      assert.deepEqual(snapshot.sources[0].refreshErrorCodes, ['TIMEOUT']);
+    }
+  });
+}
 
 test('MND metadata counts completed source attempts independently of canonical publication', async () => {
   const { classifyKey, healthStatusBucket, SEED_META, STANDALONE_KEYS } = __testing__;

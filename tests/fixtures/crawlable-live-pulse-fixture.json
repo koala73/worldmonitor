@@ -7120,6 +7120,346 @@
           "updatedAt": "2026-01-15T08:01:01.497Z"
         }
       ]
+    },
+    "lebanon-israel-escalation": {
+      "state": "ready",
+      "eventsTotal": "756",
+      "fatalities": "33",
+      "politicalViolenceEvents": "626",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "IL",
+          "name": "Israel",
+          "events": 113,
+          "fatalities": 0,
+          "political": 6,
+          "demonstrations": 107,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "LB",
+          "name": "Lebanon",
+          "events": 643,
+          "fatalities": 33,
+          "political": 620,
+          "demonstrations": 23,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "hormuz-gulf-security": {
+      "state": "ready",
+      "eventsTotal": "839",
+      "fatalities": "90",
+      "politicalViolenceEvents": "165",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "BH",
+          "name": "Bahrain",
+          "events": 36,
+          "fatalities": 0,
+          "political": 2,
+          "demonstrations": 34,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "IR",
+          "name": "Iran",
+          "events": 518,
+          "fatalities": 51,
+          "political": 65,
+          "demonstrations": 453,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "IQ",
+          "name": "Iraq",
+          "events": 257,
+          "fatalities": 37,
+          "political": 70,
+          "demonstrations": 187,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "KW",
+          "name": "Kuwait",
+          "events": 4,
+          "fatalities": 0,
+          "political": 4,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "OM",
+          "name": "Oman",
+          "events": 13,
+          "fatalities": 2,
+          "political": 13,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "QA",
+          "name": "Qatar",
+          "events": 0,
+          "fatalities": 0,
+          "political": 0,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "SA",
+          "name": "Saudi Arabia",
+          "events": 10,
+          "fatalities": 0,
+          "political": 10,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "AE",
+          "name": "United Arab Emirates",
+          "events": 1,
+          "fatalities": 0,
+          "political": 1,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "sahel-insurgency": {
+      "state": "ready",
+      "eventsTotal": "351",
+      "fatalities": "863",
+      "politicalViolenceEvents": "338",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "BF",
+          "name": "Burkina Faso",
+          "events": 122,
+          "fatalities": 322,
+          "political": 112,
+          "demonstrations": 10,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "ML",
+          "name": "Mali",
+          "events": 156,
+          "fatalities": 371,
+          "political": 156,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "NE",
+          "name": "Niger",
+          "events": 73,
+          "fatalities": 170,
+          "political": 70,
+          "demonstrations": 3,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "horn-of-africa": {
+      "state": "ready",
+      "eventsTotal": "955",
+      "fatalities": "1,522",
+      "politicalViolenceEvents": "891",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "ER",
+          "name": "Eritrea",
+          "events": 0,
+          "fatalities": 0,
+          "political": 0,
+          "demonstrations": 0,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "ET",
+          "name": "Ethiopia",
+          "events": 219,
+          "fatalities": 603,
+          "political": 204,
+          "demonstrations": 15,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "SO",
+          "name": "Somalia",
+          "events": 596,
+          "fatalities": 614,
+          "political": 550,
+          "demonstrations": 46,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        },
+        {
+          "code": "SS",
+          "name": "South Sudan",
+          "events": 140,
+          "fatalities": 305,
+          "political": 137,
+          "demonstrations": 3,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "myanmar-civil-war": {
+      "state": "ready",
+      "eventsTotal": "859",
+      "fatalities": "907",
+      "politicalViolenceEvents": "847",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "MM",
+          "name": "Myanmar (Burma)",
+          "events": 859,
+          "fatalities": 907,
+          "political": 847,
+          "demonstrations": 12,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "haiti-gang-crisis": {
+      "state": "ready",
+      "eventsTotal": "108",
+      "fatalities": "167",
+      "politicalViolenceEvents": "85",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "HT",
+          "name": "Haiti",
+          "events": 108,
+          "fatalities": 167,
+          "political": 85,
+          "demonstrations": 23,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "drc-eastern-conflict": {
+      "state": "ready",
+      "eventsTotal": "315",
+      "fatalities": "317",
+      "politicalViolenceEvents": "291",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "CD",
+          "name": "Congo - Kinshasa",
+          "events": 315,
+          "fatalities": 317,
+          "political": 291,
+          "demonstrations": 24,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "nigeria-security-crisis": {
+      "state": "ready",
+      "eventsTotal": "1,180",
+      "fatalities": "1,851",
+      "politicalViolenceEvents": "1,127",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "NG",
+          "name": "Nigeria",
+          "events": 1180,
+          "fatalities": 1851,
+          "political": 1127,
+          "demonstrations": 53,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "afghanistan-crisis": {
+      "state": "ready",
+      "eventsTotal": "217",
+      "fatalities": "214",
+      "politicalViolenceEvents": "176",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "AF",
+          "name": "Afghanistan",
+          "events": 217,
+          "fatalities": 214,
+          "political": 176,
+          "demonstrations": 41,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
+    },
+    "palestine-gaza-crisis": {
+      "state": "ready",
+      "eventsTotal": "1,489",
+      "fatalities": "163",
+      "politicalViolenceEvents": "1,461",
+      "referencePeriod": "2025-12-09",
+      "asOf": "2026-01-15T03:01:30.380Z",
+      "missingCountries": [],
+      "rows": [
+        {
+          "code": "PS",
+          "name": "Palestinian Territories",
+          "events": 1489,
+          "fatalities": 163,
+          "political": 1461,
+          "demonstrations": 28,
+          "referencePeriod": "2025-12-09",
+          "updatedAt": "2026-01-15T03:01:30.380Z"
+        }
+      ]
     }
   },
   "headlines": [
@@ -7448,7 +7788,7 @@
     "countryErrorCount": 2,
     "chokepointCount": 13,
     "chokepointErrorCount": 0,
-    "crisisCount": 4,
+    "crisisCount": 14,
     "crisisErrorCount": 0,
     "headlineCount": 4,
     "headlineErrorCount": 0,
@@ -7462,7 +7802,11 @@
     "briefMatchedCount": 54,
     "timelineCountryCount": 18,
     "serviceKeyPresent": true,
-    "developmentsErrorCount": 19
+    "developmentsErrorCount": 19,
+    "forecastScorecardCaptured": true,
+    "forecastScorecardRetained": false,
+    "forecastScorecardFailureCode": "",
+    "forecastScorecardScored": 490
   },
   "errors": {
     "countries": [
@@ -7580,6 +7924,268 @@
         "stage": "brief",
         "message": "brief response carried no source citation"
       }
-    ]
+    ],
+    "forecastScorecard": []
+  },
+  "forecastScorecard": {
+    "attemptedAt": "2026-01-15",
+    "attemptedAtMs": 1768510944012,
+    "capturedAt": "2026-01-15",
+    "generatedAt": 1768456944012,
+    "scorecard": {
+      "schemaVersion": 1,
+      "generatedAt": 1768456944012,
+      "rollingWindowDays": 180,
+      "methodology": "Brier/log score over resolved YES/NO published forecast windows; VOID and pending entries are counted for coverage but excluded from accuracy math.",
+      "totals": {
+        "entries": 958,
+        "resolved": 772,
+        "pending": 90,
+        "pendingJudge": 96,
+        "scored": 490,
+        "void": 282,
+        "voidRate": 0.365285,
+        "publicationCoverage": 0.511482
+      },
+      "overall": {
+        "count": 490,
+        "brier": 0.192435,
+        "logScore": 0.558453
+      },
+      "byDomain": [
+        {
+          "domain": "conflict",
+          "resolved": 36,
+          "scored": 12,
+          "void": 24,
+          "voidRate": 0.666667,
+          "brier": 0.27301,
+          "logScore": 0.730444
+        },
+        {
+          "domain": "cyber",
+          "resolved": 146,
+          "scored": 144,
+          "void": 2,
+          "voidRate": 0.013699,
+          "brier": 0.07564,
+          "logScore": 0.27801
+        },
+        {
+          "domain": "energy",
+          "resolved": 24,
+          "scored": 24,
+          "void": 0,
+          "voidRate": 0,
+          "brier": 0.192409,
+          "logScore": 0.566588
+        },
+        {
+          "domain": "geopolitical",
+          "resolved": 6,
+          "scored": 6,
+          "void": 0,
+          "voidRate": 0,
+          "brier": 0.241783,
+          "logScore": 0.644906
+        },
+        {
+          "domain": "infrastructure",
+          "resolved": 89,
+          "scored": 11,
+          "void": 78,
+          "voidRate": 0.876404,
+          "brier": 0.285995,
+          "logScore": 0.763885
+        },
+        {
+          "domain": "macro",
+          "resolved": 5,
+          "scored": 5,
+          "void": 0,
+          "voidRate": 0,
+          "brier": 0.23488,
+          "logScore": 0.661951
+        },
+        {
+          "domain": "market",
+          "resolved": 346,
+          "scored": 272,
+          "void": 74,
+          "voidRate": 0.213873,
+          "brier": 0.241727,
+          "logScore": 0.678734
+        },
+        {
+          "domain": "military",
+          "resolved": 20,
+          "scored": 6,
+          "void": 14,
+          "voidRate": 0.7,
+          "brier": 0.26964,
+          "logScore": 0.731132
+        },
+        {
+          "domain": "political",
+          "resolved": 6,
+          "scored": 0,
+          "void": 6,
+          "voidRate": 1
+        },
+        {
+          "domain": "supply_chain",
+          "resolved": 94,
+          "scored": 10,
+          "void": 84,
+          "voidRate": 0.893617,
+          "brier": 0.236844,
+          "logScore": 0.666046
+        }
+      ],
+      "byGenerationOrigin": [
+        {
+          "generationOrigin": "bet_engine",
+          "resolved": 299,
+          "scored": 299,
+          "void": 0,
+          "voidRate": 0,
+          "brier": 0.235571,
+          "logScore": 0.664496
+        },
+        {
+          "generationOrigin": "legacy_detector",
+          "resolved": 362,
+          "scored": 176,
+          "void": 186,
+          "voidRate": 0.513812,
+          "brier": 0.113943,
+          "logScore": 0.366094
+        },
+        {
+          "generationOrigin": "state_derived",
+          "resolved": 78,
+          "scored": 11,
+          "void": 67,
+          "voidRate": 0.858974,
+          "brier": 0.240823,
+          "logScore": 0.675878
+        },
+        {
+          "generationOrigin": "unknown",
+          "resolved": 33,
+          "scored": 4,
+          "void": 29,
+          "voidRate": 0.878788,
+          "brier": 0.288611,
+          "logScore": 0.772562
+        }
+      ],
+      "calibration": [
+        {
+          "bucket": "0-10",
+          "minProbability": 0,
+          "maxProbability": 0.1,
+          "count": 40,
+          "predictedMean": 0.060425,
+          "realizedRate": 0,
+          "brier": 0.004521
+        },
+        {
+          "bucket": "10-20",
+          "minProbability": 0.1,
+          "maxProbability": 0.2,
+          "count": 53,
+          "predictedMean": 0.142774,
+          "realizedRate": 0.018868,
+          "brier": 0.034119
+        },
+        {
+          "bucket": "20-30",
+          "minProbability": 0.2,
+          "maxProbability": 0.3,
+          "count": 80,
+          "predictedMean": 0.2539,
+          "realizedRate": 0.325,
+          "brier": 0.22695
+        },
+        {
+          "bucket": "30-40",
+          "minProbability": 0.3,
+          "maxProbability": 0.4,
+          "count": 168,
+          "predictedMean": 0.351212,
+          "realizedRate": 0.35119,
+          "brier": 0.226701
+        },
+        {
+          "bucket": "40-50",
+          "minProbability": 0.4,
+          "maxProbability": 0.5,
+          "count": 106,
+          "predictedMean": 0.411604,
+          "realizedRate": 0.367925,
+          "brier": 0.233726
+        },
+        {
+          "bucket": "50-60",
+          "minProbability": 0.5,
+          "maxProbability": 0.6,
+          "count": 29,
+          "predictedMean": 0.530655,
+          "realizedRate": 0.275862,
+          "brier": 0.266429
+        },
+        {
+          "bucket": "60-70",
+          "minProbability": 0.6,
+          "maxProbability": 0.7,
+          "count": 13,
+          "predictedMean": 0.639795,
+          "realizedRate": 0.461538,
+          "brier": 0.273534
+        },
+        {
+          "bucket": "70-80",
+          "minProbability": 0.7,
+          "maxProbability": 0.8,
+          "count": 0
+        },
+        {
+          "bucket": "80-90",
+          "minProbability": 0.8,
+          "maxProbability": 0.9,
+          "count": 0
+        },
+        {
+          "bucket": "90-100",
+          "minProbability": 0.9,
+          "maxProbability": 1,
+          "count": 1,
+          "predictedMean": 0.93,
+          "realizedRate": 1,
+          "brier": 0.0049
+        }
+      ],
+      "vsMarketSkill": {
+        "count": 78,
+        "forecastBrier": 0.154623,
+        "marketBrier": 0.073136,
+        "brierDelta": -0.081487
+      },
+      "skill": {
+        "count": 180,
+        "brier": 0.117824,
+        "logScore": 0.375127,
+        "excludedScored": 310,
+        "excludedOrigins": [
+          "bet_engine",
+          "state_derived"
+        ]
+      },
+      "degraded": false,
+      "stale": false,
+      "error": ""
+    },
+    "failureCode": ""
   }
 }

@@ -215,4 +215,21 @@ describe('Panel base class — unlockPanel restores pre-lock content', () => {
       'never-locked unlock must leave existing content untouched',
     );
   });
+
+  it('refuses to restore a snapshot taken for a different principal', () => {
+    const panel = harness.createPanel();
+    const root = panel.getElement();
+    const secret = document.createElement('div');
+    secret.className = 'prior-user-secret';
+    secret.textContent = 'prior transcript';
+    root.querySelector('.panel-content')?.appendChild(secret);
+
+    panel.bindContentPrincipal('user-a');
+    panel.showGatedCta('free_tier', () => {});
+    panel.bindContentPrincipal('user-b');
+    panel.unlockPanel();
+
+    assert.equal(root.querySelector('.prior-user-secret'), null, 'previous principal DOM is not restored');
+    assert.equal(root.querySelector('.panel-locked-state'), null, 'lock CTA is cleared on unlock');
+  });
 });

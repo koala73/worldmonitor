@@ -40,6 +40,7 @@ paths:
                 content:
                     application/json:
                         example:
+                            "disruptionPct": 1
                             "iso2": "US"
                             "scenarioId": "hormuz-tanker-blockade"
                         schema:
@@ -619,8 +620,14 @@ components:
                     pattern: ^([A-Z]{2})?$
                     description: |-
                         Optional 2-letter ISO country code to scope the impact computation.
-                         When absent, v1 computes only the seeded reporter set:
-                         US, CN, RU, IR, IN, TW.
+                         When absent, use the bounded country/sector manifest in existing seed metadata.
+                         Missing or old manifest means unknown coverage.
+                disruptionPct:
+                    type: integer
+                    maximum: 100
+                    minimum: 0
+                    format: int32
+                    description: Physical scenarios only. Omitted preserves the template default; zero is valid.
             required:
                 - scenarioId
             description: |-
@@ -696,6 +703,17 @@ components:
                         $ref: '#/components/schemas/ScenarioImpactCountry'
                 template:
                     $ref: '#/components/schemas/ScenarioResultTemplate'
+                scenarioId:
+                    type: string
+                    description: Selected catalog template identifier.
+                scopedIso2:
+                    type: string
+                    description: Empty means all countries in the manifest.
+                coverage:
+                    $ref: '#/components/schemas/ScenarioCoverage'
+                computedAt:
+                    type: string
+                    description: Computation time, not source observation time.
             description: |-
                 ScenarioResult is the computed payload the scenario-worker writes back
                  under the `scenario-result:{job_id}` Redis key. Populated only when
@@ -721,6 +739,20 @@ components:
                         Impact as a 0-100 share of max(maxReturnedTotalImpact, 1), capped at 100.
                          Because of the denominator floor, the top country can be below 100 when
                          all returned totalImpact values are below 1.
+                evaluatedRecords:
+                    type: integer
+                    format: int32
+                    description: Country/sector records that actually produced total_impact.
+                requestedRecords:
+                    type: integer
+                    format: int32
+                    description: Country/sector records requested for this country.
+                partialEvidence:
+                    type: boolean
+                    description: |-
+                        True when evaluated_records < requested_records. total_impact is then a LOWER
+                         BOUND over the evidence that was available, not the country's impact, and must
+                         not be read as low exposure.
             description: ScenarioImpactCountry carries a single country's relative scenario impact score.
         ScenarioResultTemplate:
             type: object
@@ -734,19 +766,71 @@ components:
                 disruptionPct:
                     type: integer
                     format: int32
-                    description: 0-100 percent of chokepoint capacity blocked.
+                    description: |-
+                        0-100 percent of chokepoint capacity blocked. The EFFECTIVE severity: the
+                         caller's RunScenarioRequest.disruption_pct when supplied, else the registry default.
                 durationDays:
                     type: integer
                     format: int32
-                    description: Estimated duration of disruption in days.
+                    description: Descriptive duration in days; not an input to the impact calculation.
                 costShockMultiplier:
                     type: number
                     format: double
                     description: Freight cost multiplier applied on top of bypass corridor costs.
             description: |-
-                ScenarioResultTemplate carries template parameters echoed into the worker's
-                 computed result so clients can render them without re-looking up the
-                 template registry.
+                ScenarioResultTemplate carries the EFFECTIVE run parameters, so clients can render
+                 them without re-looking up the template registry. All fields except disruption_pct
+                 are registry values; disruption_pct is the caller's override when one was supplied.
+        ScenarioCoverage:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: complete, partial, or unknown. Complete refers to the bounded manifest only.
+                countryIds:
+                    type: array
+                    items:
+                        type: string
+                        description: 'Requested countries: one selected country or the manifest country universe.'
+                hs2Codes:
+                    type: array
+                    items:
+                        type: string
+                        description: Requested template chapters, or manifest chapters for all-sector templates.
+                records:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScenarioCoverageRecord'
+                manifestFetchedAt:
+                    type: string
+                    description: Seed metadata production time, not trade observation time.
+        ScenarioCoverageRecord:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    description: Requested 2-letter ISO country code; paired with hs2 as the record reference.
+                hs2:
+                    type: string
+                    description: Requested 2-digit HS chapter; paired with iso2 as the record reference.
+                state:
+                    type: string
+                    description: |-
+                        evaluated, missing, malformed, incomplete_routes, or not_seeded.
+                         incomplete_routes means the cached record was well-formed but did not carry an
+                         entry for every chokepoint this scenario disrupts — seeder/template registry
+                         drift, NOT corrupt cache data.
+                basis:
+                    type: string
+                    description: flow_weighted or country_route_fallback, only for evaluated records.
+                rawImpact:
+                    type: number
+                    format: double
+                    description: Relative score units, not currency. Present only for evaluated records.
+                fetchedAt:
+                    type: string
+                    description: Cache production time. Observation date is unknown unless separately supplied.
+            description: One requested country/sector record. Missing evidence never implies zero impact.
         ListScenarioTemplatesRequest:
             type: object
         ListScenarioTemplatesResponse:

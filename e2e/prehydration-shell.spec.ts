@@ -234,7 +234,7 @@ test.describe('pre-hydration dashboard shell', () => {
         '/tools/',
         '/pro#pricing',
         'https://www.worldmonitor.app/blog/',
-        'https://www.worldmonitor.app/docs',
+        'https://www.worldmonitor.app/docs/documentation',
         'https://github.com/koala73/worldmonitor',
       ]) {
         await expect(page.locator(`.site-footer nav a[href="${href}"]`)).toHaveCount(1);
@@ -498,7 +498,7 @@ test.describe('dashboard shell without JavaScript', () => {
       '/crises/',
       '/tools/',
       '/blog/',
-      '/docs',
+      '/docs/documentation',
       '/pro#pricing',
       'https://github.com/koala73/worldmonitor',
     ]) {

@@ -9,6 +9,8 @@ import type {
   ListArxivPapersResponse,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
+import trackedCategories from '../../../../scripts/shared/research-arxiv-categories.json';
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
@@ -19,14 +21,37 @@ export async function listArxivPapers(
   ctx: ServerContext,
   req: ListArxivPapersRequest,
 ): Promise<ListArxivPapersResponse> {
-  try {
-    const category = req.category || 'cs.AI';
-    const pageSize = clampInt(req.pageSize, 50, 1, 100);
-    const seedKey = `${SEED_KEY_PREFIX}:${category}::50`;
-    const result = await getCachedJson(seedKey, true) as ListArxivPapersResponse | null;
-    if (!result?.papers?.length) return markNoStoreFallbackResponse(ctx.request, { papers: [], pagination: undefined });
-    return { papers: result.papers.slice(0, pageSize), pagination: undefined };
-  } catch {
-    return markNoStoreFallbackResponse(ctx.request, { papers: [], pagination: undefined });
+  const category = req.category || '';
+  if (category && !trackedCategories.includes(category)) {
+    throw new ValidationError([{ field: 'category', description: 'Unsupported arXiv category' }]);
   }
+  const categories = category ? [category] : trackedCategories;
+  const pageSize = clampInt(req.pageSize, 50, 1, 100);
+  const snapshots = await Promise.all(categories.map(async (selected) => {
+    try {
+      return await getCachedJson(`${SEED_KEY_PREFIX}:${selected}::50`, true) as ListArxivPapersResponse | null;
+    } catch {
+      return null;
+    }
+  }));
+  const papers = new Map<string, ListArxivPapersResponse['papers'][number]>();
+  let incomplete = false;
+  for (const snapshot of snapshots) {
+    if (!Array.isArray(snapshot?.papers)) {
+      incomplete = true;
+      continue;
+    }
+    for (const paper of snapshot.papers) {
+      if (!paper || typeof paper.id !== 'string' || !Number.isFinite(paper.publishedAt)) {
+        incomplete = true;
+        continue;
+      }
+      if (!papers.has(paper.id)) papers.set(paper.id, paper);
+    }
+  }
+  const result = {
+    papers: [...papers.values()].sort((a, b) => b.publishedAt - a.publishedAt).slice(0, pageSize),
+    pagination: undefined,
+  };
+  return incomplete ? markNoStoreFallbackResponse(ctx.request, result) : result;
 }

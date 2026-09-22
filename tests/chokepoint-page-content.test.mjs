@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import * as corpus from '../scripts/build-crawlable-corpus.mjs';
 
 import {
   CHOKEPOINTS,
@@ -30,6 +31,46 @@ const REGISTRY_IDS = [
 ];
 
 describe('chokepoint page content (#7461)', () => {
+  it('resolves authored country and crisis links by ID and derives inverse links once', () => {
+    const chokepoint = { id: 'hormuz_strait', slug: 'stable-route', displayName: 'Renamed waterway' };
+    const country = { code: 'IR', slug: 'stable-country', name: 'Renamed country' };
+    const crisis = { slug: 'gulf-context', title: 'Renamed crisis' };
+    const input = {
+      chokepoints: [chokepoint], countries: [country], crises: [crisis],
+      content: { hormuz_strait: { countryCodes: ['IR', 'IR'], crisisSlugs: ['gulf-context', 'gulf-context'] } },
+    };
+    const links = corpus.buildChokepointPageLinks(input);
+    assert.deepEqual(links.byChokepointId.get('hormuz_strait'), { countries: [country], crises: [crisis], editorial: [] });
+    assert.deepEqual(links.byCountryCode.get('IR'), [chokepoint]);
+    assert.deepEqual(links.byCrisisSlug.get('gulf-context'), [chokepoint]);
+    assert.equal(links.byCountryCode.has('OM'), false);
+    assert.deepEqual(corpus.buildChokepointPageLinks({ ...input, content: {} }).byCountryCode, new Map());
+    for (const [field, value] of [['countryCodes', ['XX']], ['crisisSlugs', ['unknown-crisis']], ['countryCodes', 'IR']]) {
+      assert.throws(() => corpus.buildChokepointPageLinks({
+        ...input, content: { hormuz_strait: { [field]: value } },
+      }), new RegExp(`hormuz_strait.*${field}`));
+    }
+  });
+  it('accepts canonical blog targets once and rejects missing or noncanonical editorial routes', () => {
+    const href = '/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/';
+    const link = { href, label: 'Energy shock monitoring' };
+    const input = {
+      chokepoints: [{ id: 'hormuz_strait', slug: 'strait-of-hormuz' }],
+      countries: [], crises: [], blogPostPaths: new Set([href]),
+      content: { hormuz_strait: { editorialLinks: [link, link] } },
+    };
+    assert.deepEqual(corpus.buildChokepointPageLinks(input).byChokepointId.get('hormuz_strait').editorial, [link]);
+    for (const invalid of [
+      { href: '/blog/posts/missing/', label: 'Missing article' },
+      { href: `${href}?ref=other`, label: 'Query URL' },
+      { href: `https://other.example${href}`, label: 'External URL' },
+      { href, label: '' },
+    ]) {
+      assert.throws(() => corpus.buildChokepointPageLinks({
+        ...input, content: { hormuz_strait: { editorialLinks: [invalid] } },
+      }), /hormuz_strait.*editorialLinks/);
+    }
+  });
   it('covers every canonical waterway with unique question-shaped copy', () => {
     assert.deepEqual(Object.keys(CHOKEPOINT_CONTENT).sort(), [...REGISTRY_IDS].sort());
     const headings = new Set();

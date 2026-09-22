@@ -71,6 +71,11 @@ describe('prefersAgentNotFound (content negotiation)', () => {
     assert.equal(prefersAgentNotFound('text/markdown'), true);
     assert.equal(prefersAgentNotFound('text/html;q=0.8, text/markdown'), true);
   });
+
+  it('uses explicit media qualities before text wildcards', () => {
+    assert.equal(prefersAgentNotFound('text/*;q=0.8, text/markdown;q=0.1, text/html;q=0.5'), false);
+    assert.equal(prefersAgentNotFound('text/*;q=0.8, text/html;q=0.1, text/markdown;q=0.5'), true);
+  });
 });
 
 describe('agent-friendly 404s (orank agent-friendly-404)', () => {

@@ -190,17 +190,17 @@ test('classifyKey returns STALE_CONTENT when content stale + no other failure mo
     keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
       fetchedAt: NOW - 10 * ONE_MIN_MS,    // fresh seeder run (10 min)
       recordCount: 50,
-      newestItemAt: NOW - 11 * ONE_DAY_MS, // 11d old content
+      newestItemAt: NOW - 15 * ONE_DAY_MS,
       oldestItemAt: NOW - 60 * ONE_DAY_MS,
-      maxContentAgeMin: 12960,             // 9 days
+      maxContentAgeMin: 20160,
     })]]),
   });
 
   const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
-  assert.equal(entry.status, 'STALE_CONTENT', 'fresh seeder run + 11d-old content + 9d budget → STALE_CONTENT');
+  assert.equal(entry.status, 'STALE_CONTENT', 'fresh seeder run with 15-day-old content exceeds the 14-day budget');
   assert.equal(entry.records, 50, 'records still surfaced from metaCount');
-  assert.equal(entry.contentAgeMin, 11 * 24 * 60, 'contentAgeMin in minutes');
-  assert.equal(entry.maxContentAgeMin, 12960);
+  assert.equal(entry.contentAgeMin, 15 * 24 * 60, 'contentAgeMin in minutes');
+  assert.equal(entry.maxContentAgeMin, 20160);
 });
 
 test('classifyKey: opted-in seeder with FRESH content returns OK', () => {
@@ -209,15 +209,16 @@ test('classifyKey: opted-in seeder with FRESH content returns OK', () => {
     keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
       fetchedAt: NOW - 10 * ONE_MIN_MS,
       recordCount: 50,
-      newestItemAt: NOW - 1 * ONE_DAY_MS,   // 1 day, within 9-day budget
+      newestItemAt: NOW - 12 * ONE_DAY_MS,
       oldestItemAt: NOW - 60 * ONE_DAY_MS,
-      maxContentAgeMin: 12960,
+      maxContentAgeMin: 20160,
     })]]),
   });
 
   const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
   assert.equal(entry.status, 'OK', 'fresh content → OK, not STALE_CONTENT');
-  assert.equal(entry.contentAgeMin, 1 * 24 * 60);
+  assert.equal(entry.contentAgeMin, 12 * 24 * 60);
+  assert.equal(entry.maxContentAgeMin, 20160);
 });
 
 test('classifyKey: legacy seeder (no maxContentAgeMin) reaches OK without STALE_CONTENT', () => {
@@ -406,6 +407,7 @@ test('just-over-budget content stays diagnostically stale without making health 
   const counts = { ok: 1, warn: 0, onDemandWarn: 0, staleContent: 1, rolloutPending: 0, crit: 0 };
   assert.deepEqual(computeOverallStatus(counts, 1), {
     overall: 'HEALTHY',
+    diagnosticOverall: 'HEALTHY',
     realWarnCount: 0,
     critCount: 0,
   });

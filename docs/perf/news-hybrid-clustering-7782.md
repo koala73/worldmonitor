@@ -1,15 +1,15 @@
-# Hybrid clustering profiling correction — 2026-09-06 (#7782)
+# Hybrid clustering profiling and worker offload — 2026-09-06 (#7782)
 
-**Status: measurement gate remains open.** The complete production input is
-more expensive than the reduced input in PR #7802. Repeated 6× measurements
-also cross the frame budget in the deterministic high-diversity case. The old
-blanket statement that both cases stay below 16.7 ms is withdrawn.
+**Status: implementation gate met and offload verified.** A production-built
+dashboard selected `clusterNewsHybrid` with local ML available. At 6× CPU
+throttle, its synchronous initial core caused repeatable frame-budget misses on
+both committed inputs. The existing analysis worker removed those misses on the
+same surface, so the hybrid path now uses that worker for its initial stage.
 
-This report establishes isolated execution cost and exact worker output parity.
-It does not yet establish a dashboard interaction improvement or justify a
-production worker migration. Keep #7782 open for that attribution and the
-conditional implementation checks in its issue body. The production algorithm,
-limits, semantic refinement, and worker lifecycle remain unchanged.
+The earlier sections preserve the corrected isolated evidence from PR #7811.
+The dashboard section records the later attribution, implementation decision,
+and same-command before/after results. Limits, source tiers, clustering
+semantics, semantic thresholds, and semantic candidate selection are unchanged.
 
 ## Corrections to the review findings
 
@@ -35,6 +35,8 @@ Its old “warm worker” metric actually spawned a fresh process for each reque
 and returned only a count. It is removed; browser measurements own worker costs.
 
 ## Reproduction
+
+Run the isolated core and exact worker-parity profile:
 
 ```sh
 node scripts/profile-news-hybrid-clustering-7782-browser.mjs \
@@ -93,26 +95,89 @@ long task was observed. Exact full-output parity passed for every measured
 cold and warm request. Faster worker round trips under CDP are not proof of a
 real-device end-to-end speedup.
 
-## Remaining acceptance
+## Production-dashboard attribution
+
+Run the complete dashboard profile:
+
+```sh
+node scripts/profile-news-hybrid-clustering-7782-dashboard.mjs \
+  docs/perf/news-hybrid-clustering-7782.fixture.json \
+  --samples 3 --cpu 1,6
+```
+
+The harness builds the full dashboard with production minification and test-only
+timing marks. It enables the browser model, waits for local ML, verifies the
+actual selected path for every generation, and uses the source-extracted proto
+conversion. Fixture conversion is completed before the measured frame so it
+cannot be attributed to the initial clustering stage. The matching direct path
+uses the production `analysisWorker.clusterNews` lifecycle, not a synthetic
+worker. The two complete reports contain every raw sample:
+
+- [before offload](./news-hybrid-clustering-7782-dashboard.before.json)
+- [after offload](./news-hybrid-clustering-7782-dashboard.after.json)
+
+The 6× results below are warm samples. “Initial” is the synchronous core before
+the change and the full worker result round trip after it. An initial crossing
+has a stage duration or overlapping request-animation-frame interval at or above
+16.7 ms. A path miss requires the overlapping frame interval.
+
+| Input | Build | Initial median | Initial crossings | Full hybrid path misses | Final clusters |
+|---|---|---:|---:|---:|---:|
+| representative, 289 items | before | 16.1 ms | 3/3 | 2/3 | 249 |
+| representative, 289 items | after | 7.9 ms | 0/3 | 0/3 | 249 |
+| high diversity, 1,500 items | before | 16.4 ms | 2/3 | 2/3 | 753 |
+| high diversity, 1,500 items | after | 14.1 ms | 0/3 | 0/3 | 753 |
+
+At 1×, neither build missed a frame. The worker adds a small warm round-trip
+cost there: the representative initial median changed from 3.3 ms to 4.9 ms,
+and the high-diversity median changed from 2.6 ms to 6.0 ms. The dashboard boot
+can warm the shared analysis worker before the explicit samples, so its first
+sample is not a cold-start measure. The isolated real-worker runs record cold
+readiness and result latency separately: at 6×, representative cold readiness
+was 7.1 ms and its first result was 8.7 ms; high diversity was 7.0 ms and
+16.5 ms. The hybrid total includes about 2.1 seconds of semantic model work in
+both builds.
+
+The direct analysis-worker comparison at 6× returned the representative result
+in a 7.2 ms median before the change and 7.3 ms after it. The high-diversity
+medians were 12.8 ms and 14.7 ms. Its renderer `TaskDuration` medians were
+44.1/44.7 ms and 57.5/62.7 ms, respectively. The full hybrid path's broad
+`TaskDuration` counter moved upward in the second run while semantic work was in
+flight, so this report does not claim that noisy whole-path counter improved.
+The verified improvement is narrower: the attributed initial-stage frame misses
+dropped from repeated to zero on both inputs.
+
+## Implementation contracts
 
 DataLoader selects `clusterNewsHybrid` only when local ML is already available
 for that news generation. Otherwise it already uses `analysisWorker.clusterNews`.
-The remaining dashboard probe must enable and verify the local-ML/hybrid path;
-measuring ordinary boot with ML unavailable would exercise a different path.
+The hybrid path now sends the unchanged complete input to that same worker, then
+runs the existing semantic ranking, 250-candidate refinement, overflow merge,
+and final ordering.
 
-Use these same complete inputs in a production-built dashboard. Attribute
-interaction/frame delay to the synchronous initial clustering call, then compare
-main-thread occupancy and result latency with the existing worker under matching
-load. If no repeatable user-facing miss is attributable to clustering, record
-that stop decision. Otherwise, implement the existing issue's bounded fallback,
-supersession/teardown and semantic-parity checks before closing it. Do not treat
-an unavailable worker's empty result as authoritative news data.
+For nonempty input, an unavailable worker's empty result and construction,
+readiness, request, reset, or runtime errors run the local shared core once. A
+superseded generation or app teardown cancels the continuation before fallback
+or semantic work, so worker termination cannot start a fresh main-thread core.
+Genuine empty input remains an authoritative empty result. Tests cover no-merge
+and multi-source semantic results, more than 250 candidates, more than 1,000
+inputs, known and unknown tiers, fallback, supersession, and teardown.
 
 ## Verification
 
 ```sh
-node --test tests/profile-news-hybrid-clustering-7782.test.mjs
+node --test \
+  tests/profile-news-hybrid-clustering-7782.test.mjs \
+  tests/profile-news-hybrid-clustering-7782-dashboard.test.mjs \
+  tests/clustering-cap.test.mjs
+npx vitest run --config vitest.dom.config.mts \
+  tests/dom/news-hybrid-worker-offload.test.mts
+npm run typecheck
+npm run lint:boundaries
+git diff --check
 ```
 
-The browser runs additionally execute the real analysis worker and assert exact
-output parity. No production clustering change or production speedup is claimed.
+The isolated browser runs execute the real analysis worker and assert exact
+full-output parity. The production-dashboard run verifies the local-ML hybrid
+selection and the final semantic cluster counts on both inputs before and after
+the implementation.

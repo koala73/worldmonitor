@@ -15,6 +15,8 @@ import {
   COMPARISON_PAGES,
   writeComparisonPages,
 } from '../scripts/build-comparison-pages.mjs';
+import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
+import { computeStats } from '../scripts/docs-stats.mjs';
 
 /** Empty keyword H2s were 0 following characters. A real paragraph clears this. */
 const MIN_H2_FOLLOWING_CHARS = 80;
@@ -170,6 +172,7 @@ describe('comparison page narrative depth (#7743)', () => {
       outDir,
       baseUrl: 'https://www.worldmonitor.app',
       tpl: stubTpl,
+      snapshotDate: '2026-01-17',
     });
     hubHtml = readFileSync(join(outDir, 'compare', 'index.html'), 'utf8');
     for (const page of COMPARISON_PAGES) {
@@ -192,6 +195,36 @@ describe('comparison page narrative depth (#7743)', () => {
         VS_SLUGS.has(page.slug) || MULTI_SLUGS.has(page.slug),
         page.slug + ' must be classified as vs-* or multi-product',
       );
+    }
+  });
+
+  it('discloses a topic-specific method, coverage, cadence and dated snapshot on all 13 pages (#7868)', () => {
+    const providerCount = computeStats().sourceAttribution.providerCount.toLocaleString('en-US');
+    const methods = new Set();
+    for (const [slug, html] of [['hub', hubHtml], ...pages]) {
+      const main = mainEl(html);
+      const sections = h2Sections(main).filter(({ heading }) => heading === 'How World Monitor measures this');
+      assert.equal(sections.length, 1, `${slug} needs exactly one measurement section`);
+      const copy = sections[0].following;
+      assert.ok(wordCount(copy) >= 120 && wordCount(copy) <= 180, `${slug}: ${wordCount(copy)} method words`);
+      assert.match(copy, /GDELT|UCDP|AISStream|Feodo|USGS/, `${slug} must name upstream feeds`);
+      assert.match(copy, /minute|hour|daily|weekly|monthly|stream/i, `${slug} must describe cadence`);
+      assert.ok(copy.includes(`${providerCount} active providers`), `${slug} must use reconciled coverage`);
+      const heading = [...main.querySelectorAll('h2')].find((node) => node.textContent === sections[0].heading);
+      const firstParagraph = heading.nextElementSibling.textContent;
+      assert.ok(!methods.has(firstParagraph), `${slug} must have its own method explanation`);
+      methods.add(firstParagraph);
+      const snapshot = main.querySelector('[data-measurement-snapshot]');
+      assert.equal(snapshot?.querySelector('time')?.getAttribute('datetime'), '2026-01-17');
+      assert.match(snapshot.textContent, /2026-01-17/, `${slug} must show the capture date, not publication date`);
+      const expectedPath = slug === 'chokepoint-monitoring-tools' ? '/chokepoints/status.json' : '/country-instability-index/cii-ranking.json';
+      assert.equal(snapshot.querySelector('a').getAttribute('href'), expectedPath);
+      assert.ok(main.querySelector('a[href="/sources/"]'), `${slug} must link the source catalog`);
+      if (slug === 'chokepoint-monitoring-tools') {
+        for (const source of ['AISStream', 'IMF PortWatch', 'NGA']) assert.ok(copy.includes(source));
+        assert.ok(copy.includes(`${CHOKEPOINT_REGISTRY.length} maritime chokepoints`));
+        assert.match(copy, /6 hours/);
+      }
     }
   });
 

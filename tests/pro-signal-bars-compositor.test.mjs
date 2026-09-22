@@ -242,6 +242,40 @@ function animateSources(body) {
   return sources;
 }
 
+// Motion only hands an animation to the browser's compositor when the animated
+// value is one it accelerates. `transform` is on that list; the individual
+// `scaleY` shorthand is not, so `animate={{ scaleY: [...] }}` silently drives
+// all 60 bars from Motion's JavaScript frame loop. Matching the bare token
+// `scaleY` anywhere in the body cannot tell those apart -- it is satisfied by
+// the `scaleY(...)` text inside the transform strings either way -- so pin the
+// actual animate keys instead.
+function assertNativeTransformKeyframes(body) {
+  const sources = animateSources(body);
+
+  const animatesTransform = sources.some(({ text }) => /(?:^|[,{]\s*)transform\s*[,:}]/.test(text));
+  assert.ok(
+    animatesTransform,
+    'SignalBars must animate `transform` so Motion uses the browser\'s native animation path.',
+  );
+
+  for (const { label, text } of sources) {
+    assert.doesNotMatch(
+      text,
+      /(?:^|[,{]\s*)scale[XY]?\s*:/,
+      `SignalBars must not animate the scale shorthand in ${label}; `
+      + 'it falls back to Motion\'s JS frame loop. Use complete transform keyframes.',
+    );
+  }
+
+  const transformKeyframes = sources.find(({ label }) => label === 'local transform');
+  assert.ok(transformKeyframes, 'the animate prop must resolve a local `transform` keyframe array');
+  assert.match(
+    transformKeyframes.text,
+    /scaleY\(/,
+    'the transform keyframes must scale on the vertical axis',
+  );
+}
+
 function assertNoAnimatedHeight(body) {
   // This remains a source guard, but it follows local animate={identifier} hoists
   // so a named height keyframe object cannot silently bypass the check.
@@ -258,8 +292,8 @@ test('/pro SignalBars keeps hero animation on compositor-friendly transforms', (
   assert.ok(signalBars, 'SignalBars source block should be present');
   const body = signalBars[0];
 
-  assert.match(body, /scaleY/, 'bars should animate scaleY instead of layout height');
   assert.match(body, /transformOrigin:\s*'bottom'/, 'bars should scale from the baseline');
+  assertNativeTransformKeyframes(body);
   assertNoAnimatedHeight(body);
 });
 

@@ -184,7 +184,7 @@ message PathogenAlert {
 
 | Script | Interval | Key | TTL |
 |--------|----------|-----|-----|
-| `seed-disease-outbreaks.mjs` | Every 6h (existing) | `health:disease-outbreaks:v1` | 72h |
+| `seed-disease-outbreaks.mjs` | Daily bundle member; hourly tick, eligible after 19.2h | `health:disease-outbreaks:v1` | 72h |
 | `seed-vpd-tracker.mjs` | Daily (existing) | `health:vpd-tracker:realtime:v1` | 72h |
 | `seed-epidemic-trends.mjs` | Daily | `health:epidemic-trends:v1` | 24h |
 | `seed-vaccination-coverage.mjs` | Weekly (Sunday 02:00 UTC) | `health:vaccination-coverage:v1` | 7 days |

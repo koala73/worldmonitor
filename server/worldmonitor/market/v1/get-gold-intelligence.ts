@@ -111,7 +111,7 @@ const XAU_FX = [
   { symbol: 'USDJPY=X', label: 'JPY', flag: '\u{1F1EF}\u{1F1F5}', multiply: true },
   { symbol: 'USDCNY=X', label: 'CNY', flag: '\u{1F1E8}\u{1F1F3}', multiply: true },
   { symbol: 'USDINR=X', label: 'INR', flag: '\u{1F1EE}\u{1F1F3}', multiply: true },
-  { symbol: 'USDCHF=X', label: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', multiply: false },
+  { symbol: 'USDCHF=X', label: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', multiply: true },
 ];
 
 function emptyResponse(): GetGoldIntelligenceResponse {

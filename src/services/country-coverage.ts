@@ -6,7 +6,7 @@ import { BRIEF_ONLY_RSS_FETCH_POLICY, fetchFeed } from './rss';
 import {
   clusterCountryTimelineIncidents,
   type CountryTimelineIncident,
-} from './country-timeline-events';
+} from '../../shared/country-timeline-events';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';

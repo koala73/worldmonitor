@@ -7,7 +7,7 @@ import {
   buildCountryStockIndexSnapshotFromCloses,
   countryStockIndexKey,
 } from '../scripts/_country-stock-index.mjs';
-import { loadCountryStockIndexes } from '../scripts/_country-stock-index-registry.mjs';
+import { loadCountryStockIndexes, loadDeclaredCountryStockIndexes } from '../scripts/_country-stock-index-registry.mjs';
 
 const FIXED_AT = '2026-07-14T12:00:00.000Z';
 
@@ -70,8 +70,12 @@ test('the per-country handler keeps no CN-only gate and no legacy single key', (
 
 
 test('the whole-enum work-list is derived from the public country contract', () => {
+  const declared = loadDeclaredCountryStockIndexes();
+  assert.ok(declared.length >= 45, `expected the full country enum, got ${declared.length}`);
+  // #6240: countries whose symbol Yahoo cannot serve stay in the enum but leave
+  // the seed work-list, so the seedable set is the declared set minus the flags.
   const indexes = loadCountryStockIndexes();
-  assert.ok(indexes.length >= 45, `expected the full country enum, got ${indexes.length}`);
+  assert.equal(indexes.length, declared.filter(i => !i.unavailable).length);
   assert.ok(indexes.some(i => i.code === 'CN'), 'CN must remain in the seeded set');
   assert.equal(new Set(indexes.map(i => i.code)).size, indexes.length, 'country codes must be unique');
   assert.equal(countryStockIndexKey('DE'), 'market:stock-index:v1:DE');

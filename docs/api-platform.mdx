@@ -70,20 +70,21 @@ Internal. Invalidates Redis cache keys by explicit list or glob patterns.
 
 ### `GET /api/health`
 
-Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING`, `DEGRADED`, `UNHEALTHY`, or `REDIS_DOWN` in the JSON `status` field.
+Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING`, `DEGRADED`, `UNHEALTHY`, or `REDIS_DOWN` in the JSON `status` field. The top-level status describes user-visible platform availability, so `HEALTHY` can coexist with contained source warnings that still serve usable last-good data.
 
 All states except `REDIS_DOWN` return HTTP 200; `REDIS_DOWN` returns HTTP 503 because Redis was unreachable and the endpoint could not assess seed state. Responses are not cached (`private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`).
 
-Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status other than `HEALTHY`. The full detailed view requires an operator/enterprise API key because it includes canonical cache key names and freshness thresholds.
+Monitor availability via UptimeRobot / Better Stack with `?compact=1` and alert on any status other than `HEALTHY`. Strict data-quality monitors must also inspect `summary.warn` and `problems`, because contained warnings remain visible there. The full detailed view requires an operator/enterprise API key because it includes canonical cache key names and freshness thresholds.
 
 ```json
 {
   "status": "HEALTHY",
   "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
-    "total": 292,
-    "ok": 292,
+    "total": 295,
+    "ok": 295,
     "warn": 0,
+    "containedWarn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
     "rolloutPending": 0,
@@ -95,6 +96,8 @@ Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status
   }
 }
 ```
+
+`summary.warn` is the complete actionable warning census. `summary.containedWarn` is a subset, not an additional bucket. `STALE_SEED`, `SEED_ERROR`, `STALE_CONTENT`, `COVERAGE_PARTIAL`, `COVERAGE_DEGRADED`, and `CHINA_DEGRADED` are eligible for containment when the current sweep finds the served payload, metadata proves positive records, and all required reader diagnostics are structurally usable. Stale age remains visible as diagnostic truth but does not by itself mean that the platform stopped serving data. Availability remains `HEALTHY` while all actionable warnings are contained and the cohort is at or below 3% of probed keys. Missing or unusable data, malformed or unknown evidence, incompatible reader policies or cache state, `REDIS_PARTIAL`, `ROLLOUT_PENDING`, broader impact, and critical failures do not qualify.
 
 ### `GET /api/seed-health`
 

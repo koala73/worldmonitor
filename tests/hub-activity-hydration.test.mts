@@ -156,12 +156,12 @@ describe('late-mounted hub activity wiring', () => {
 
     assert.match(
       source,
-      /this\.ctx\.latestClusters = mlWorker\.isAvailable\n\s*\? await clusterNewsHybrid\(this\.ctx\.allNews\)\n\s*: await analysisWorker\.clusterNews\(this\.ctx\.allNews\);\n(?:\s*\/\/[^\n]*\n)*\s*this\.ctx\.clustersSettled = true;/,
+      /const \{ clusters \} = await this\.clusterNewsForGeneration\(this\.ctx\.allNews, generation\);\n\s*if \(!this\.isCurrentNewsLoad\(generation\)\) return;\n\s*this\.ctx\.latestClusters = clusters;\n(?:\s*\/\/[^\n]*\n)*\s*this\.ctx\.clustersSettled = true;/,
       'clustersSettled must be set immediately after the clustering assignment, never before it',
     );
     assert.doesNotMatch(
       source,
-      /this\.ctx\.clustersSettled = true;[\s\S]{0,200}?this\.ctx\.latestClusters = mlWorker\.isAvailable/,
+      /this\.ctx\.clustersSettled = true;[\s\S]{0,200}?clusterNewsForGeneration/,
       'clustersSettled must not be set ahead of the clustering pass it describes',
     );
   });

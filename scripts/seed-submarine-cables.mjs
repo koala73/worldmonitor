@@ -5,8 +5,8 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const BASE = 'https://www.submarinecablemap.com/api/v3';
-const CANONICAL_KEY = 'infrastructure:submarine-cables:v1';
-const CACHE_TTL = 7 * 24 * 3600; // 7 days — cable infra changes slowly
+export const CANONICAL_KEY = 'infrastructure:submarine-cables:v1';
+export const CACHE_TTL = 21 * 24 * 3600; // 21 days — keeps last-good data through the 17.5-day stale window
 
 // Strategic cable list — TeleGeography slugs organized by region.
 // Find slugs at: https://www.submarinecablemap.com/api/v3/cable/all.json
@@ -337,15 +337,17 @@ export function declareRecords(data) {
   return data?.cables?.length ?? 0;
 }
 
+export const SUBMARINE_CABLES_SEED_OPTIONS = {
+  validateFn: validate,
+  ttlSeconds: CACHE_TTL,
+  sourceVersion: 'telegeography-v3',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 25200,
+};
+
 if (process.argv[1]?.endsWith('seed-submarine-cables.mjs')) {
-  runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, {
-    validateFn: validate,
-    ttlSeconds: CACHE_TTL,
-    sourceVersion: 'telegeography-v3',
-    declareRecords,
-    schemaVersion: 1,
-    maxStaleMin: 25200,
-  }).catch((err) => {
+  runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, SUBMARINE_CABLES_SEED_OPTIONS).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);
   });

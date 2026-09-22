@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { getCachedJsonBatch } from '../server/_shared/redis';
 import { sidecarCacheSet } from '../server/_shared/sidecar-cache';
 import { getFredSeriesBatch } from '../server/worldmonitor/economic/v1/get-fred-series-batch';
+import { runFredRatesSeed } from '../scripts/seed-fred-rates.mjs';
 
 const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
@@ -68,9 +69,20 @@ function stubPipelineFetch(results: Array<{ result?: string }>): Array<{ url: st
   return calls;
 }
 
+async function fredPreserveKeyTtls(): Promise<Map<string, number>> {
+  let options: { preserveKeyTtls?: Array<{ key: string; ttlSeconds: number }> } | undefined;
+  await runFredRatesSeed({
+    runSeedImpl: async (...args: unknown[]) => {
+      options = args[4] as typeof options;
+    },
+  });
+  return new Map(options?.preserveKeyTtls?.map(({ key, ttlSeconds }) => [key, ttlSeconds]));
+}
+
 describe('getFredSeriesBatch', () => {
   it('reads seeded FRED series through one raw Redis pipeline request', async () => {
     configureRemoteRedis();
+    const retainedTtls = await fredPreserveKeyTtls();
 
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -96,6 +108,9 @@ describe('getFredSeriesBatch', () => {
     assert.equal(response.requested, 2);
     assert.equal(response.fetched, 2);
     assert.deepEqual(Object.keys(response.results), ['CPIAUCSL', 'FEDFUNDS']);
+    for (const [, key] of JSON.parse(String(calls[0]!.init?.body))) {
+      assert.ok(retainedTtls.has(key), `FRED consumer GET key ${key} must be retained on a failed seed`);
+    }
     assert.deepEqual(response.results.FEDFUNDS?.observations, [
       { date: '2026-05-01', value: 2 },
       { date: '2026-06-01', value: 3 },

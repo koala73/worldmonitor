@@ -14,10 +14,15 @@ message RunScenarioRequest {
     (buf.validate.field).string.max_len = 128
   ];
   // Optional 2-letter ISO country code to scope the impact computation.
-  // When absent, v1 computes only the seeded reporter set:
-  // US, CN, RU, IR, IN, TW.
+  // When absent, use the bounded country/sector manifest in existing seed metadata.
+  // Missing or old manifest means unknown coverage.
   string iso2 = 2 [
     (buf.validate.field).string.pattern = "^([A-Z]{2})?$"
+  ];
+  // Physical scenarios only. Omitted preserves the template default; zero is valid.
+  optional int32 disruption_pct = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 100
   ];
 }
 

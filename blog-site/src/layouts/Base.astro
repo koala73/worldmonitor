@@ -62,11 +62,15 @@ const proCtaLabel = productFacts.product.primaryCtaLabel;
     <meta property="og:image:height" content="630" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:image:alt" content={resolvedOgImageAlt} />
-    {publishedTime && <meta property="article:published_time" content={publishedTime} />}
-    {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
-    {resolvedOgType === 'article' && <meta property="article:publisher" content="https://www.worldmonitor.app" />}
-    {section && <meta property="article:section" content={section} />}
-    {keywordTags.map(tag => <meta property="article:tag" content={tag} />)}
+    {resolvedOgType === 'article' && (
+      <>
+        {publishedTime && <meta property="article:published_time" content={publishedTime} />}
+        {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
+        <meta property="article:publisher" content="https://www.worldmonitor.app" />
+        {section && <meta property="article:section" content={section} />}
+        {keywordTags.map(tag => <meta property="article:tag" content={tag} />)}
+      </>
+    )}
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
@@ -120,7 +124,7 @@ const proCtaLabel = productFacts.product.primaryCtaLabel;
               Pro
             </TrackedProductLink>
           </li>
-          <li><a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a></li>
+          <li><a href="https://www.worldmonitor.app/docs/documentation" target="_blank" rel="noopener noreferrer">Docs</a></li>
           <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         </ul>
         <TrackedProductLink
@@ -159,10 +163,9 @@ const proCtaLabel = productFacts.product.primaryCtaLabel;
           <TrackedProductLink destination="mcp" placement="footer-mcp" campaign={attributionCampaign}>
             MCP
           </TrackedProductLink>
-          <a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>
+          <a href="https://www.worldmonitor.app/docs/documentation" target="_blank" rel="noopener noreferrer">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener noreferrer">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener noreferrer">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener noreferrer">X</a>
         </div>
         <div class="footer-copy">

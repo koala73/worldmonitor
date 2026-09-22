@@ -1,0 +1,76 @@
+{
+  "tracking-global-trade-routes-chokepoints-freight-costs": [
+    "/chokepoints/strait-of-hormuz/",
+    "/chokepoints/kerch-strait/",
+    "/chokepoints/bab-el-mandeb/",
+    "/chokepoints/suez-canal/",
+    "/chokepoints/bosporus-strait/",
+    "/chokepoints/taiwan-strait/",
+    "/chokepoints/cape-of-good-hope/",
+    "/chokepoints/dover-strait/",
+    "/chokepoints/strait-of-gibraltar/"
+  ],
+  "build-supply-chain-early-warning-system-api": [
+    "/chokepoints/strait-of-hormuz/",
+    "/chokepoints/suez-canal/",
+    "/chokepoints/cape-of-good-hope/",
+    "/chokepoints/bab-el-mandeb/",
+    "/countries/united-arab-emirates/",
+    "/countries/netherlands/",
+    "/countries/egypt/"
+  ],
+  "supply-chain-early-warning-dashboard-worldmonitor-api": [
+    "/chokepoints/strait-of-hormuz/",
+    "/chokepoints/suez-canal/",
+    "/chokepoints/strait-of-malacca/",
+    "/chokepoints/bab-el-mandeb/",
+    "/chokepoints/panama-canal/",
+    "/countries/egypt/",
+    "/countries/singapore/"
+  ],
+  "stress-test-supply-chain-scenario-engine-worldmonitor": [
+    "/chokepoints/taiwan-strait/",
+    "/chokepoints/suez-canal/",
+    "/chokepoints/bab-el-mandeb/",
+    "/chokepoints/panama-canal/",
+    "/chokepoints/strait-of-hormuz/"
+  ],
+  "monitor-global-supply-chains-and-commodity-disruptions": [
+    "/chokepoints/suez-canal/",
+    "/chokepoints/cape-of-good-hope/",
+    "/countries/taiwan/",
+    "/countries/niger/",
+    "/crises/red-sea-security/"
+  ],
+  "country-risk-monitoring-workflow-for-analysts": [
+    "/chokepoints/taiwan-strait/",
+    "/chokepoints/suez-canal/",
+    "/countries/taiwan/",
+    "/countries/mexico/",
+    "/countries/poland/",
+    "/countries/egypt/",
+    "/countries/vietnam/"
+  ],
+  "country-risk-monitoring-due-diligence-worldmonitor": [
+    "/countries/turkey/"
+  ],
+  "track-global-conflicts-in-real-time": [
+    "/chokepoints/strait-of-hormuz/",
+    "/chokepoints/taiwan-strait/",
+    "/countries/iran/",
+    "/countries/ukraine/",
+    "/crises/hormuz-gulf-security/",
+    "/crises/red-sea-security/",
+    "/crises/ukraine-war/"
+  ],
+  "energy-shock-monitoring-chokepoints-worldmonitor": [
+    "/chokepoints/strait-of-hormuz/",
+    "/countries/iran/",
+    "/countries/oman/",
+    "/crises/hormuz-gulf-security/",
+    "/crises/iran-israel-escalation/"
+  ],
+  "ai-forecast-accuracy-brier-scorecard-worldmonitor": [
+    "/accuracy/"
+  ]
+}

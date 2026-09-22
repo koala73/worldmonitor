@@ -42,6 +42,34 @@ message GasImpact {
   string data_source          = 9;
 }
 
+message GasStorageObservation {
+  double fill_pct = 1;
+  double gas_twh = 2;
+  string trend = 3;
+  string date = 4;
+  string scope = 5;
+}
+
+message GasSensitivity {
+  // Fraction, not percent. Absent when the measurement is unavailable.
+  optional double lng_share_of_imports = 1;
+  double lng_imports_tj = 2;
+  // Assumed monthly LNG loss against the route baseline, independent of current shipping flow.
+  double lng_disruption_tj = 3;
+  double total_demand_tj = 4;
+  // Loss as percent of recorded demand. May exceed 100; not a supply-shortage estimate.
+  double deficit_pct = 5;
+  bool data_available = 6;
+  string assessment = 7;
+  // National stock observation only. No operational endurance is estimated.
+  GasStorageObservation storage = 8;
+  string data_source = 9;
+  // JODI observation month (YYYY-MM), or empty when unknown. Availability does not imply freshness.
+  string data_month = 10;
+  // "assumed_route_sensitivity". No country-specific supplier exposure is measured.
+  string model_basis = 11;
+}
+
 message ComputeEnergyShockScenarioResponse {
   string country_code         = 1;
   string chokepoint_id        = 2;
@@ -51,7 +79,7 @@ message ComputeEnergyShockScenarioResponse {
   repeated ProductImpact products = 6;
   int32  effective_cover_days = 7;
   string assessment           = 8;
-  bool   data_available       = 9;  // oil mode: equals jodi_oil_coverage; gas mode: equals gas data available; both mode: true if either has data. Use per-source coverage fields 11-14 for precise checks.
+  bool   data_available       = 9;  // oil mode: requires finite nonnegative observed crude imports; jodi_oil_coverage indicates row presence only. Gas mode: equals gas data available. Both mode: true if either fuel has usable inputs.
 
   // field 10 reserved for future use
 
@@ -65,5 +93,7 @@ message ComputeEnergyShockScenarioResponse {
   bool   degraded              = 17;  // true when PortWatch absent/stale
   string chokepoint_confidence = 18;  // "high" | "low" | "none"
   optional double live_flow_ratio = 19;  // from energy:chokepoint-flows:v1, 0-1.5; absent when portwatch_coverage=false
-  GasImpact gas_impact        = 20;
+  // Deprecated and no longer returned. Use gas_sensitivity for gas scenarios.
+  GasImpact gas_impact        = 20 [deprecated = true];
+  GasSensitivity gas_sensitivity = 21;
 }

@@ -59,10 +59,10 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
   },
   {
     sourceName: 'BNO News',
-    tier: 3,
-    type: 'mainstream',
-    risk: 'medium',
-    note: 'Breaking-news aggregator; useful speed, thinner editorial process than a wire',
+    tier: 1,
+    type: 'wire',
+    risk: 'low',
+    note: 'Independent newsroom and subscription newswire; publisher history: https://bnonews.es/index.php/about-us/',
   },
   {
     sourceName: 'Bloomberg',

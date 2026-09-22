@@ -447,12 +447,25 @@ write canary is green.
 ## Capacity alert
 
 `.github/workflows/umami-storage-monitor.yml` reads the Railway volume list
-without mutating Railway or Postgres. It caches at most 30 days of samples and
+without mutating Railway or Postgres. It keeps the last 3 days of samples and
 reports the following capacity conditions:
 
 - current usage is at least 80% (warning) or 90% (critical); or
-- projected days to full are at most 30 (warning) or 14 (critical), once a
-  24-hour growth baseline exists.
+- projected days to full are at most 30 (warning) or 14 (critical), once the
+  samples span at least 2 days.
+
+Growth is a least-squares fit over those 3 days, not the difference from one
+old sample. Railway refreshes `currentSizeMB` only about every 6 hours, so the
+samples form a staircase. On 2026-09-13, one +1,078 MB refresh measured against
+a 24-hour baseline projected 8 days of headroom and failed the workflow, while
+the 3-day trend gave 17 days.
+
+The history is carried between runs as the `umami-storage-state` workflow
+artifact, not as an Actions cache entry. The repository cache sits at its 10 GB
+limit, and GitHub evicted every cached copy of the history on 2026-09-12, so the
+trend kept starting over. Each run restores the newest artifact from this
+workflow's recent runs on the same branch. When none exists, the run warns and
+starts a new trend.
 
 A warning emits a GitHub annotation but leaves the scheduled workflow green so
 the 15-minute probe does not send repeated failed-run alerts during a bounded

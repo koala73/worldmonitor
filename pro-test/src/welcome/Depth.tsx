@@ -46,7 +46,7 @@ export const Depth = () => (
         title={t('welcome.depth.title')}
         subtitle={t('welcome.depth.sub')}
       />
-      <motion.div
+      <motion.dl
         initial={false}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: '-60px' }}
@@ -54,12 +54,12 @@ export const Depth = () => (
         className="data-grid !grid-cols-2 sm:!grid-cols-3 xl:!grid-cols-5"
       >
         {DEPTH_PROOF_STATS.map(({ value, labelKey }) => (
-          <div key={labelKey} className="data-cell text-center">
-            <div className="text-3xl md:text-4xl font-display font-bold text-wm-green text-glow">{String(value)}</div>
-            <div className="font-mono text-[10px] uppercase tracking-widest text-wm-muted mt-2">{t(labelKey)}</div>
+          <div key={labelKey} className="data-cell text-center flex flex-col">
+            <dt className="font-mono text-[10px] uppercase tracking-widest text-wm-muted mt-2">{t(labelKey)}</dt>
+            <dd className="order-first text-3xl md:text-4xl font-display font-bold text-wm-green text-glow">{String(value)}</dd>
           </div>
         ))}
-      </motion.div>
+      </motion.dl>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
         {NUGGETS.map(({ icon: Icon, n }, i) => (
           <motion.a

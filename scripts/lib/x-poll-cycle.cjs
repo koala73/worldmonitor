@@ -153,18 +153,20 @@ function createXPollCycle(deps = {}) {
     return true;
   }
 
-  async function publish(expectedAccounts, { cycleComplete, listAccepted, lockOwner, state = xState } = {}) {
+  async function publish(expectedAccounts, { cycleComplete, listAccepted, errorCode, lockOwner, state = xState } = {}) {
     const snapshot = xNewsAccounts.buildXFeedSnapshot(state, {
       enabled: X_ENABLED,
       expectedAccounts,
     });
-    const meta = listAccepted ? {
+    const meta = {
       fetchedAt: state.lastPollAt,
+      lastAttemptAt: state.lastAttemptAt,
       recordCount: snapshot.count,
       generation: snapshot.generation,
       coverage: snapshot.coverage,
-      sourceState: cycleComplete ? 'ok' : 'degraded',
-    } : null;
+      sourceState: listAccepted && cycleComplete ? 'ok' : 'degraded',
+      ...(!listAccepted ? { errorCode: errorCode || 'X_LIST_REJECTED' } : {}),
+    };
     const published = await upstashPublishXIfLockOwner({
       lockKey: X_FEED_POLL_LOCK_KEY,
       owner: lockOwner,
@@ -186,10 +188,27 @@ function createXPollCycle(deps = {}) {
 
   async function pollOnce({ generation, signal, retryAfterLeaseConflict = false } = {}) {
     if (!X_ENABLED) return;
+    let backoffRetryAt = 0;
+    const scheduleBackoffRetry = () => {
+      if (!backoffRetryAt) return;
+      setTimer(() => {
+        if (generation === getPollGeneration() && !signal?.aborted) scheduleRetry(false);
+      }, Math.max(1, backoffRetryAt - now()));
+    };
+    const deferBackoff = () => {
+      if (!xState.rateLimitedUntil || now() >= xState.rateLimitedUntil) return false;
+      xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
+      // A response finishes just after the UTC boundary. Wake at its deadline
+      // within this slot instead of turning a 30-minute backoff into 45 minutes.
+      if (xState.rateLimitedUntil < xPollSlot(now(), X_POLL_INTERVAL_MS).endsAt) {
+        backoffRetryAt = xState.rateLimitedUntil;
+      }
+      return true;
+    };
     const initialSlot = xPollSlot(now(), X_POLL_INTERVAL_MS);
     if (xState.lastAttemptSlot === initialSlot.id) return;
-    if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) {
-      xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
+    if (deferBackoff()) {
+      scheduleBackoffRetry();
       return;
     }
 
@@ -278,10 +297,7 @@ function createXPollCycle(deps = {}) {
       // Honour a peer's still-active backoff rather than burning shared quota on a
       // 429 we already know about. The pre-lock check above only saw this
       // process's own state.
-      if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) {
-        xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
-        return;
-      }
+      if (deferBackoff()) return;
       const activeSlot = xPollSlot(now(), X_POLL_INTERVAL_MS);
       if (xState.lastAttemptSlot === activeSlot.id) return;
 
@@ -355,7 +371,7 @@ function createXPollCycle(deps = {}) {
           // completeness: polled/expected/failed freeze together with `complete`,
           // so normalizeCoverage cannot self-correct and the panel's degraded
           // banner (api/x-feed.js -> XIntelPanel) would never render through an
-          // outage. Seed-meta staleness only catches this 3 slots (45min) later.
+          // outage, even while seed metadata reports the rejected attempt.
           ? { ...xState.lastCoverage, complete: false }
           : xState.lastCoverage),
         lastHealthyAt: next.listAccepted && next.cycleComplete ? acceptedSourceAt : xState.lastHealthyAt,
@@ -365,6 +381,9 @@ function createXPollCycle(deps = {}) {
       const usage = next.lastCycleUsage || {};
       const budget = next.postBudget || {};
       log(`[Relay] X poll: ${next.accountsPolled}/${accounts.length} accounts, ${next.newCount} new Posts, ${candidate.items.length} total, ${next.accountsFailed} errors, requests ${usage.requestsUsed || 0}/${usage.requestLimit || 0}, Posts ${usage.postsRead || 0}/${usage.postReadLimit || 0}, day ${budget.dailyUsed || 0}/${budget.dailyLimit || 0}, month ${budget.monthlyUsed || 0}/${budget.monthlyLimit || 0} (${elapsed}s)`);
+      if (!next.listAccepted) {
+        warn(`[Relay] X List rejected: ${next.errorCode || 'X_LIST_REJECTED'}; retained ${candidate.items.length} Posts; last success ${candidate.lastPollAt || 'none'}; backoff until ${candidate.rateLimitedUntil || 'none'}`);
+      }
 
       // Publish BEFORE committing. Advancing xState first left this process's
       // cursors ahead of Redis whenever the lease-guarded EVAL failed, so /x here
@@ -375,6 +394,7 @@ function createXPollCycle(deps = {}) {
       const published = await publish(accounts.length, {
         cycleComplete: next.cycleComplete,
         listAccepted: next.listAccepted,
+        errorCode: next.errorCode,
         lockOwner,
         state: candidate,
       });
@@ -391,6 +411,9 @@ function createXPollCycle(deps = {}) {
       }
     } finally {
       await upstashReleaseLockIfOwner(X_FEED_POLL_LOCK_KEY, lockOwner);
+      // Redis release can outlast the backoff. Arm only after it finishes so
+      // the wake cannot be rejected by this run's still-active poll guard.
+      scheduleBackoffRetry();
       if (retryCurrentSlot) {
         setTimer(() => {
           if (generation === getPollGeneration()) scheduleRetry(false);

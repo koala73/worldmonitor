@@ -6,7 +6,7 @@
  *
  * Authenticates the caller via Clerk JWKS (bearer token), then forwards
  * to the Convex /relay/notification-channels HTTP action using the
- * RELAY_SHARED_SECRET — no Convex-specific JWT template required.
+ * CONVEX_TENANT_RELAY_SECRET — no Convex-specific JWT template required.
  */
 
 export const config = { runtime: 'edge' };
@@ -28,7 +28,7 @@ import { getBillingVerificationDenial, getEntitlements } from '../server/_shared
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const CONVEX_TENANT_RELAY_SECRET = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
@@ -209,7 +209,7 @@ async function convexRelay(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${RELAY_SHARED_SECRET}`,
+      'Authorization': `Bearer ${CONVEX_TENANT_RELAY_SECRET}`,
       'User-Agent': 'worldmonitor-edge/1.0',
     },
     body: JSON.stringify(body),
@@ -336,7 +336,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
   const idempotencyRequest = req.method === 'POST' ? req.clone() : null;
 
-  if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
+  if (!CONVEX_SITE_URL || !CONVEX_TENANT_RELAY_SECRET) {
     return json({ error: 'Service unavailable' }, 503, corsHeaders);
   }
 
@@ -510,6 +510,12 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       const resp = relay.response;
       if (!resp.ok) {
         console.error(`[notification-channels] POST ${relayAction} relay error:`, resp.status);
+        if (welcomeChannelType === 'email' && resp.status === 400) {
+          const failure = await resp.json().catch(() => null);
+          if (failure?.error === 'EMAIL_OWNERSHIP_REQUIRED') {
+            return finish(json({ error: 'EMAIL_OWNERSHIP_REQUIRED' }, 400, corsHeaders));
+          }
+        }
         if (resp.status === 503) {
           return finish(json({ error: 'Service unavailable' }, 503, corsHeaders));
         }

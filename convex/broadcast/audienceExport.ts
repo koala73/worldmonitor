@@ -7,7 +7,7 @@
  *
  * Dedup formula:
  *   registrations
- *     − emailSuppressions (hard bounces, complaints, manual)
+ *     − emailSuppressions (hard bounces, complaints, unsubscribes, manual)
  *     − customers (anyone who has been through Dodo checkout — never pitch
  *       PRO to people who already paid)
  *
@@ -134,6 +134,7 @@ type ExportStats = {
   upserted: number;          // (created + linkedExisting) — landed in segment via this call
   linkedExisting: number;    // pre-existing global contact, attached to our segment by this call
   alreadyExists: number;     // verified already in this segment before this call
+  unsubscribedSkipped: number; // existing Resend contact is globally unsubscribed
   failed: number;
   // Dedup-only counters: shared between live and dry-run (don't depend on Resend).
   suppressedSkipped: number;
@@ -198,6 +199,7 @@ export const exportProLaunchAudience = internalAction({
       upserted: 0,
       linkedExisting: 0,
       alreadyExists: 0,
+      unsubscribedSkipped: 0,
       failed: 0,
       suppressedSkipped: 0,
       paidSkipped: 0,
@@ -255,6 +257,15 @@ export const exportProLaunchAudience = internalAction({
           break;
         case "alreadyInSegment":
           stats.alreadyExists++;
+          break;
+        case "unsubscribed":
+          await ctx.runMutation(internal.emailSuppressions.suppress, {
+            email,
+            reason: "unsubscribe",
+            source: "resend-contact-read",
+          });
+          suppressedSet.add(email);
+          stats.unsubscribedSkipped++;
           break;
         case "failed":
           stats.failed++;

@@ -8,6 +8,13 @@ on:
     - cron: '30 4 * * *'
   workflow_dispatch:
 
+# See test.yml. The nightly audit and any manual dispatch land in a group of
+# one via `github.run_id`, so a PR push can never evict a running scan
+# (#8443).
+concurrency:
+  group: security-audit-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -85,10 +92,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  audit-rust:
+    name: audit-rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned advisory tool
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Audit Cargo.lock
+        env:
+          AUDIT_STATUS_FILE: ${{ runner.temp }}/rust.txt
+          AUDIT_FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        run: node .github/scripts/audit-rust-dependencies.mjs
+      - name: Upload Rust verdict
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: audit-status-rust
+          path: ${{ runner.temp }}/rust.txt
+          if-no-files-found: ignore
+          retention-days: 1
+
   security-audit:
     name: security-audit
     runs-on: ubuntu-latest
-    needs: audit-lockfile
+    needs: [audit-lockfile, audit-rust]
     if: ${{ always() }}
     steps:
       - name: Download audit verdicts
@@ -102,15 +134,37 @@ jobs:
       - name: Verify lockfile audits passed
         env:
           AUDIT_RESULT: ${{ needs.audit-lockfile.result }}
+          RUST_RESULT: ${{ needs.audit-rust.result }}
           # Names must match the audit-lockfile matrix exactly; the
           # ci-workflow-coverage test asserts they do.
           AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime railway-reconcile-control'
           FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: |
+          # On a run this workflow's concurrency group evicted (#8443), this
+          # branch is the expected outcome and it reddens a SHA that has
+          # already been superseded. Branch protection reads the head SHA, so
+          # nothing acts on it. Keep the exit 1: a matrix cancelled for any
+          # other reason has genuinely not audited every lockfile.
           if [ "$AUDIT_RESULT" = "cancelled" ]; then
             echo "::error::The dependency audit matrix was cancelled before every production lockfile was audited."
             exit 1
           fi
+
+          if [ "$RUST_RESULT" = "cancelled" ]; then
+            echo "::error::Rust advisory audit was cancelled."
+            exit 1
+          fi
+          rust_status=$(cat audit-status/rust.txt 2>/dev/null || echo missing)
+          case "$rust_status" in
+            failed) echo "::error::Rust advisory audit failed; see audit-rust."; exit 1 ;;
+            clean) ;;
+            warning) echo "::warning::Rust audit has recorded decisions, no-fix advisories or maintenance notices; see audit-rust." ;;
+            unavailable)
+              echo "::warning::Rust dependencies were NOT audited ($rust_status); see audit-rust."
+              if [ "$FAIL_ON_OUTAGE" = "1" ]; then exit 1; fi ;;
+            missing) echo "::error::Rust audit produced no verdict; inspect tool setup and audit-rust before retrying."; exit 1 ;;
+            *) echo "::error::Unknown Rust audit verdict: $rust_status"; exit 1 ;;
+          esac
 
           missing=""
           failed=""
@@ -141,4 +195,4 @@ jobs:
           if [ "$AUDIT_RESULT" != "success" ]; then
             echo "::warning::The audit matrix reported '${AUDIT_RESULT}', but every lockfile published a passing verdict; the failure was outside the audit step."
           fi
-          echo "Every production lockfile was audited with no blocking advisories."
+          echo "Every npm production lockfile was audited with no blocking advisories; Rust status: $rust_status."

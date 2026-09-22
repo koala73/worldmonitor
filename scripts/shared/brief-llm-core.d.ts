@@ -55,9 +55,14 @@ export function extractProperNounSequences(text: string): string[][];
 export function validateNoHallucinatedProperNouns(
   summary: unknown,
   headline: unknown,
+  options?: { failClosed?: boolean },
 ): { ok: true } | { ok: false; hallucinated: string[] };
 export function extractNumericFacts(text: string): Set<string>;
 export function validateNoHallucinatedFacts(
+  summary: unknown,
+  groundText: unknown,
+): { ok: true } | { ok: false; hallucinated: string[] };
+export function validateNoHallucinatedStatusQualifiers(
   summary: unknown,
   groundText: unknown,
 ): { ok: true } | { ok: false; hallucinated: string[] };

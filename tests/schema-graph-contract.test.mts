@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import middleware from '../middleware';
-import { WORLD_MONITOR_ORG } from '../scripts/build-crawlable-corpus.mjs';
+import { rewriteDocsLocaleHtml } from '../src/config/docs-locale-seo';
+import { DOCS_PAGE_DATES } from '../src/config/docs-page-dates.generated';
+import {
+  buildCorpus,
+  PAGE_TYPES_WITH_ATTRIBUTION,
+  WORLD_MONITOR_ORG,
+} from '../scripts/build-crawlable-corpus.mjs';
 import {
   SOFTWARE_SHARED_PROPERTIES,
   WEBSITE_SHARED_PROPERTIES,
@@ -41,6 +49,56 @@ const PERSON_ENTITY_SAME_AS = [
 ];
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+/**
+ * The generated corpus, built once and shared by every test below. CI does not
+ * prebuild it, so the real generator runs in a temporary directory; the build
+ * costs seconds, so memoize rather than paying it per test.
+ */
+let generatedCorpusPromise: Promise<Map<string, string>> | null = null;
+function generatedCorpusDocuments(): Promise<Map<string, string>> {
+  generatedCorpusPromise ??= (async () => {
+    const documents = new Map<string, string>();
+    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-schema-corpus-'));
+    try {
+      await buildCorpus({ outDir: corpusDir });
+      for (const path of readdirSync(corpusDir, { recursive: true }) as string[]) {
+        if (path.endsWith('.html')) documents.set(`public/${path}`, readFileSync(join(corpusDir, path), 'utf8'));
+      }
+    } finally {
+      rmSync(corpusDir, { recursive: true, force: true });
+    }
+    return documents;
+  })();
+  return generatedCorpusPromise;
+}
+
+/**
+ * Nodes that stand for the page itself, as opposed to the Dataset/Place/
+ * Question nodes hanging off them. Driven from the generator's own set so the
+ * guard cannot drift from what it guards, plus the Article-family types the
+ * docs surface states its page body with (those never reach the corpus).
+ *
+ * A hand-listed set was the first version of this guard and it was already
+ * wrong: it omitted FAQPage, so 227 pages carried an unattributed
+ * rich-result node the guard could not see. Importing the set is what keeps a
+ * newly-attributed type in step; ORPHAN_PAGE_BODY_RE below is what catches a
+ * type nobody attributed at all.
+ */
+const PAGE_BODY_TYPES = [
+  ...PAGE_TYPES_WITH_ATTRIBUTION,
+  'TechArticle',
+  'NewsArticle',
+];
+
+/**
+ * A top-level node whose type NAMES it a page — the escape the imported set
+ * cannot close. If a future family emits `ProfilePage` or `QAPage` and nobody
+ * adds it to PAGE_TYPES_WITH_ATTRIBUTION, importing that set would happily
+ * agree the page is fine. Matching on the name instead fails loudly and asks
+ * for a deliberate decision.
+ */
+const ORPHAN_PAGE_BODY_RE = /Page$/;
 
 // Single quotes, mixed case, and whitespace around `=` are all valid on the
 // type attribute. A double-quote-only matcher lets a conflicting block hide
@@ -102,6 +160,56 @@ function declarationsOf(html: string, id: string): Record<string, any>[] {
   };
   jsonLdBlocks(html).forEach(walk);
   return found;
+}
+
+function assertSelfDescribingAuthor(path: string, author: Record<string, unknown> | undefined): void {
+  assert.ok(author, `${path}: must carry an author`);
+  assert.ok(
+    author['@id'] === ORGANIZATION_ID || author['@id'] === PERSON_ID,
+    `${path}: author must reference the canonical Organization or Person, got ${JSON.stringify(author['@id'])}`,
+  );
+  // A bare `@id` is an unresolvable stub for the naive extractors this
+  // signal is for: no generated page declares the canonical node, and
+  // parsers resolve `@id` within one document (#7459b, #8073).
+  assert.ok(
+    typeof author['@type'] === 'string' && typeof author.name === 'string',
+    `${path}: author reference must carry @type and name so it resolves in-document`,
+  );
+  if (author['@id'] === ORGANIZATION_ID) {
+    assert.deepEqual(
+      author,
+      WORLD_MONITOR_ORG,
+      `${path}: Organization author must be the typed WORLD_MONITOR_ORG stub`,
+    );
+  }
+}
+
+/**
+ * Docs middleware output for every dated slug, both upstream shapes.
+ * Shared by the body-consistency test and the author guard so a new docs
+ * page cannot join one population and skip the other (#8073).
+ */
+let docsMiddlewareDocumentsMemo: Map<string, string> | null = null;
+function docsMiddlewareDocuments(): Map<string, string> {
+  docsMiddlewareDocumentsMemo ??= (() => {
+    const documents = new Map<string, string>();
+    for (const slug of Object.keys(DOCS_PAGE_DATES)) {
+      for (const type of ['WebPage', ['Article', 'TechArticle']]) {
+        const html = `<html><head><script type="application/ld+json">${JSON.stringify({
+          '@context': 'https://schema.org', '@type': type, name: slug, headline: slug,
+          url: `https://www.worldmonitor.app/docs/${slug}`,
+        })}</script></head><body></body></html>`;
+        const rewritten = rewriteDocsLocaleHtml(
+          rewriteDocsLocaleHtml(html, `/docs/${slug}`),
+          `/docs/${slug}`,
+        );
+        assert.equal(collectNodesOfType(rewritten, 'Article').length, 1, `${slug} must emit an Article`);
+        documents.set(`docs/${slug} (${JSON.stringify(type)} middleware output)`, rewritten);
+      }
+    }
+    return documents;
+  })();
+  return docsMiddlewareDocumentsMemo;
 }
 
 /**
@@ -276,8 +384,31 @@ describe('canonical schema graph', () => {
   // entity. Enumerating the properties that were wrong in Sept 2026 would only
   // freeze those; the invariant is "one `@id`, one body", so this asserts the
   // pinned values AND that no unpinned property diverges either.
-  it('serves one set of #software and #website property values across every surface (#7611)', () => {
-    const documents = jsonLdDocumentPaths();
+  it('serves consistent product, Organization and Dataset bodies across every surface (#7611, #7861)', async () => {
+    const documents = new Map(jsonLdDocumentPaths().map((path) => [path, read(path)]));
+    // CI does not prebuild the corpus. Exercise its real generator in isolation.
+    for (const [path, html] of await generatedCorpusDocuments()) documents.set(path, html);
+    const docsOrganization = JSON.parse(read('docs/docs.json')).seo.organization;
+    const { id, logo, ...properties } = docsOrganization;
+    const docsHtml = `<html><head><script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [{ '@type': 'Organization', '@id': id, ...properties, logo: { '@type': 'ImageObject', url: logo } }],
+    })}</script></head><body></body></html>`;
+    documents.set('docs/about (middleware output)', rewriteDocsLocaleHtml(docsHtml, '/docs/about'));
+    for (const [path, html] of docsMiddlewareDocuments()) documents.set(path, html);
+    for (const [path, html] of documents) {
+      const articles = ['Article', 'TechArticle', 'BlogPosting', 'NewsArticle']
+        .flatMap((type) => collectNodesOfType(html, type));
+      for (const article of articles) {
+        for (const field of ['datePublished', 'dateModified']) {
+          assert.equal(typeof article[field], 'string', `${path}: Article must carry ${field}`);
+          assert.ok(Number.isFinite(Date.parse(article[field])), `${path}: invalid ${field}`);
+        }
+      }
+    }
+    const datasetIds = new Set([...documents.values()].flatMap((html) =>
+      collectNodesOfType(html, 'Dataset').map((node) => node['@id']).filter((id): id is string => typeof id === 'string')));
+    assert.ok(datasetIds.size > 0, 'build the corpus before checking Dataset identities');
     const pinned: Array<[string, Record<string, unknown>, string[]]> = [
       [SOFTWARE_ID, SOFTWARE_SHARED_PROPERTIES, withoutUnbuiltProPaths([
         'index.html',
@@ -291,6 +422,13 @@ describe('canonical schema graph', () => {
         'pro-test/welcome.html',
         'public/pro/welcome.html',
       ])],
+      [ORGANIZATION_ID, {}, ['pro-test/welcome.html']],
+      // #7980 put a Person body on the docs middleware output too, so the
+      // "one `@id`, one body" invariant has to cover it: if the canonical
+      // node at /blog/authors/elie-habib/ is ever renamed or retyped, the
+      // docs and product stubs must not silently keep the old name.
+      [PERSON_ID, {}, []],
+      ...[...datasetIds].map((id): [string, Record<string, unknown>, string[]] => [id, {}, []]),
     ];
 
     for (const [id, expected, required] of pinned) {
@@ -298,13 +436,14 @@ describe('canonical schema graph', () => {
       // identity is caught here rather than quietly exempted. The hand-listed
       // paths are the FLOOR -- they also catch a surface dropping the node.
       const emitters = new Map<string, Record<string, any>>();
-      for (const path of documents) {
-        const html = read(path);
+      for (const [path, html] of documents) {
         if (!html.includes(id)) continue;
         const declarations = declarationsOf(html, id);
         if (declarations.length === 0) continue;
-        assert.equal(declarations.length, 1, `${path} must declare ${id} exactly once`);
-        emitters.set(path, declarations[0]);
+        if (id === SOFTWARE_ID || id === WEBSITE_ID) {
+          assert.equal(declarations.length, 1, `${path} must declare ${id} exactly once`);
+        }
+        declarations.forEach((node, index) => emitters.set(index === 0 ? path : `${path} (node ${index + 1})`, node));
       }
       for (const path of required) {
         assert.ok(emitters.has(path), `${path} must still declare ${id}`);
@@ -324,7 +463,8 @@ describe('canonical schema graph', () => {
       const carriers = new Map<string, Array<[string, unknown]>>();
       for (const [path, node] of emitters) {
         for (const [property, value] of Object.entries(node)) {
-          if (MAY_DIVERGE_ACROSS_SURFACES.has(property)) continue;
+          if (property === '@context') continue;
+          if ((id === SOFTWARE_ID || id === WEBSITE_ID) && MAY_DIVERGE_ACROSS_SURFACES.has(property)) continue;
           const seen = carriers.get(property) ?? [];
           seen.push([path, value]);
           carriers.set(property, seen);
@@ -341,6 +481,59 @@ describe('canonical schema graph', () => {
         }
       }
     }
+  });
+
+  // #7980: every generated page publishes a risk score, a ranking, or a
+  // reference claim, and none of them named anyone who stands behind it --
+  // `author` was absent at any depth on all 240. `publisher` alone does not
+  // encode that signal, and the docs family already proves the shape. The
+  // population is DISCOVERED from the generator's own output, so a new page
+  // family cannot ship unattributed.
+  it('attributes every generated page body to a canonical author (#7980)', async () => {
+    const corpus = await generatedCorpusDocuments();
+    assert.ok(corpus.size > 200, 'the generated corpus must be built before checking attribution');
+
+    let checked = 0;
+    for (const [path, html] of corpus) {
+      const bodies = PAGE_BODY_TYPES.flatMap((type) => collectNodesOfType(html, type));
+      assert.ok(bodies.length > 0, `${path}: no page-shaped JSON-LD body to attribute`);
+      // The escape hatch check: a top-level node NAMED a page that no one
+      // taught the generator to attribute. Runs over the raw blocks, not the
+      // type list, so it sees what the list does not.
+      for (const block of jsonLdBlocks(html)) {
+        const declared = block['@type'];
+        const types = Array.isArray(declared) ? declared : declared ? [declared] : [];
+        if (!types.some((type: string) => ORPHAN_PAGE_BODY_RE.test(type))) continue;
+        assert.ok(
+          block.author,
+          `${path}: ${JSON.stringify(declared)} names itself a page but carries no author — `
+            + 'add it to PAGE_TYPES_WITH_ATTRIBUTION or exempt it deliberately',
+        );
+      }
+      for (const body of bodies) {
+        checked += 1;
+        assertSelfDescribingAuthor(`${path}: ${JSON.stringify(body['@type'])}`, body.author);
+      }
+    }
+    assert.ok(checked > 200, `expected the whole generated corpus to be checked, saw ${checked} bodies`);
+  });
+
+  // #8073: the #7980 author guard discovered its population from the corpus
+  // generator, so 465 docs Articles shipped a bare `#organization` reference
+  // the guard could not see. The docs family is synthesized through the real
+  // rewrite, the same way the date and body-consistency tests already do.
+  it('attributes every docs Article to a self-describing canonical author (#8073)', () => {
+    const documents = docsMiddlewareDocuments();
+    assert.equal(documents.size, Object.keys(DOCS_PAGE_DATES).length * 2);
+
+    let checked = 0;
+    for (const [path, html] of documents) {
+      const articles = collectNodesOfType(html, 'Article');
+      assert.equal(articles.length, 1, `${path}: expected one Article`);
+      checked += 1;
+      assertSelfDescribingAuthor(path, articles[0].author);
+    }
+    assert.equal(checked, documents.size, 'every synthesized docs document must contribute an Article author');
   });
 
   it('serves every variant dashboard identically to browsers and AI crawlers', () => {
@@ -441,7 +634,6 @@ describe('canonical schema graph', () => {
         'https://www.npmjs.com/package/worldmonitor',
         'https://x.com/worldmonitorai',
         'https://x.com/eliehabib',
-        'https://discord.gg/re63kWKxaz',
         'https://www.wired.com/story/world-monitor-elie-habib/',
       ],
     });

@@ -4,6 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+
+# See test.yml. The weekly cron is a standalone detection net, so it lands in
+# a group of one via `github.run_id` and is never evicted (#8443).
+concurrency:
+  group: lint-code-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -19,18 +27,53 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
       markdown: ${{ steps.diff.outputs.markdown }}
+      docs: ${{ steps.diff.outputs.docs }}
     steps:
       - id: diff
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          set -euo pipefail
+
+          emit_all_true() {
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "markdown=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          }
+          if [ "${{ github.event_name }}" = "push" ]; then
+            emit_all_true
             exit 0
           fi
-          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-            --paginate --jq '.[].filename')
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            emit_all_true
+            exit 0
+          fi
+          if ! PR_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}") ||
+             ! FILES_JSON=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+               --paginate --slurp | jq -ce 'add | arrays'); then
+            echo "PR file lookup failed; running every gated Lint Code job."
+            emit_all_true
+            exit 0
+          fi
+          FILE_COUNT=$(jq 'length' <<< "$FILES_JSON")
+          if ! jq -e --arg head "${{ github.event.pull_request.head.sha }}" \
+            --arg base "${{ github.event.pull_request.base.sha }}" --argjson count "$FILE_COUNT" \
+            '.head.sha == $head and .base.sha == $base and .changed_files == $count and $count < 3000' <<< "$PR_JSON" >/dev/null; then
+            echo "PR metadata moved or its file list is incomplete; running every gated Lint Code job."
+            emit_all_true
+            exit 0
+          fi
+          # Include both sides of renames. A deleted file remains at filename.
+          if ! FILES=$(jq -er '
+            [.[] | .filename, (.previous_filename // empty)] as $paths
+            | if ($paths | length > 0) and all($paths[]; type == "string" and length > 0 and (explode | all(. != 0 and . != 10 and . != 13)))
+              then $paths[] else error("invalid path listing") end
+          ' <<< "$FILES_JSON"); then
+            echo "Unusable PR file list; running every gated Lint Code job."
+            emit_all_true
+            exit 0
+          fi
           CODE=$(echo "$FILES" | grep -vcE '\.md$|^docs/|^src-tauri/|^CHANGELOG\.md$|^LICENSE$|\.github/workflows/(build-desktop|docker-publish)\.yml$' || echo 0)
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # markdown job: only the lint:md inputs (the markdown, its config, and
@@ -38,6 +81,8 @@ jobs:
           # a code-only PR skips it. LINT_MD_INPUTS in .husky/pre-push plus the lockfile.
           MARKDOWN=$(printf '%s\n' "$FILES" | grep -cE '\.md$|^\.markdownlint|^package(-lock)?\.json$' || true)
           echo "markdown=$( [ "$MARKDOWN" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          DOCS=$(printf '%s\n' "$FILES" | grep -cE '^docs/|^scripts/check-doc-anchors\.mjs$|^scripts/_html-entities\.mjs$|^\.github/workflows/lint-code\.yml$' || true)
+          echo "docs=$( [ "$DOCS" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   biome:
     needs: changes
@@ -57,6 +102,7 @@ jobs:
       - run: npm run sync:bootstrap-tier-keys:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
+      - run: npm run lint:safe-local-storage
       - run: npm run security:vite-env-secrets
       - name: Version sync check
         run: npm run version:check
@@ -101,6 +147,8 @@ jobs:
   doc-anchors:
     # Why this gate exists, and how Mintlify slugs a heading, is documented
     # once in scripts/check-doc-anchors.mjs. Keep it there, not in both.
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0

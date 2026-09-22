@@ -90,9 +90,9 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://www.szse.cn/api/disc/announcement/annList',
     metadataHost: 'www.szse.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SZSE,
-    maxRequestsPerRun: 3,
-    maxDirectRequestsPerRun: 1,
-    maxProxyRequestsPerRun: 2,
+    maxRequestsPerRun: 4,
+    maxDirectRequestsPerRun: 2,
+    maxProxyRequestsPerRun: 3,
     transportRecoverySuccessRuns: SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     // SZSE_PROXY_URL is an optional source-specific override; Railway requires
@@ -101,9 +101,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
-    // Same bounded-first-page policy as SSE; saturation is an explicit health
-    // state, not permission to expand the source request budget automatically.
-    paginationPolicy: 'bounded_first_page',
+    // One extra page plus one transient CONNECT retry fits the bounded
+    // one-direct-plus-three-proxy request ceiling. Counts beyond that hard
+    // bound stay visibly degraded.
+    paginationPolicy: 'bounded_two_pages',
     saturationBehavior: 'degraded_on_page_limit',
     emptyResultPolicy: Object.freeze({
       degradeAfterConsecutive: EMPTY_RESULT_DEGRADE_AFTER,
@@ -176,7 +177,8 @@ const SSE_PAGE_SIZE = 100;
 const SSE_DIRECT_TIMEOUT_MS = 20_000;
 const SSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PAGE_SIZE = 50;
-// Worst case (direct, two proxy attempts all time out) this
+const SZSE_MAX_PAGES = 2;
+// Worst case (direct, three proxy attempts all time out) this
 // source can take about 55s before the bundle moves on. Keep this comfortably
 // inside the per-section timeoutMs configured in seed-bundle-market-backup.mjs.
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
@@ -191,10 +193,19 @@ export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
     OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxProxyRequestsPerRun
     / OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxConcurrentRequests
   ) * SSE_PROXY_TIMEOUT_MS
-  + SZSE_DIRECT_TIMEOUT_MS
-  + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun * SZSE_PROXY_TIMEOUT_MS
-  + (OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun - 1)
-    * SZSE_PROXY_RETRY_DELAY_MS
+  + Math.max(
+    OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun
+      * SZSE_DIRECT_TIMEOUT_MS
+      + (
+        OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun
+        - OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun
+      ) * SZSE_PROXY_TIMEOUT_MS,
+    SZSE_DIRECT_TIMEOUT_MS
+      + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun
+        * SZSE_PROXY_TIMEOUT_MS
+      + (OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun - 1)
+        * SZSE_PROXY_RETRY_DELAY_MS,
+  )
 );
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
@@ -400,6 +411,31 @@ export function normalizeSzseAnnouncements(payload, { retrievedAt = new Date().t
   return normalized;
 }
 
+function assertCompleteSzsePages(pages, total) {
+  if (!Number.isInteger(total) || total < 0) throw sourceError('MALFORMED_RESPONSE');
+
+  const announcementIds = new Set();
+  for (const [index, page] of pages.entries()) {
+    const pageTotal = Number(page.payload.announceCount);
+    const expectedRows = Math.max(
+      0,
+      Math.min(SZSE_PAGE_SIZE, total - index * SZSE_PAGE_SIZE),
+    );
+    if (
+      !Number.isFinite(pageTotal)
+      || pageTotal !== total
+      || page.payload.data.length !== expectedRows
+    ) {
+      throw sourceError('MALFORMED_RESPONSE');
+    }
+    for (const row of page.payload.data) {
+      const announcementId = String(row.annId);
+      if (announcementIds.has(announcementId)) throw sourceError('MALFORMED_RESPONSE');
+      announcementIds.add(announcementId);
+    }
+  }
+}
+
 function dateWindow(now, days = 90) {
   const end = new Date(now);
   const begin = new Date(now - days * 86_400_000);
@@ -529,14 +565,7 @@ async function fetchSzseAnnouncements(fetchFn, now, {
   const issuers = REVIEWED_DISCLOSURE_ISSUERS.filter((issuer) => issuer.exchange === 'SZSE');
   const url = new URL(contract.metadataEndpoint);
   url.searchParams.set('random', '0.5');
-  const body = JSON.stringify({
-    seDate: [begin, end],
-    channelCode: ['listedNotice_disc'],
-    stock: issuers.map((issuer) => issuer.securityCode),
-    pageSize: SZSE_PAGE_SIZE,
-    pageNum: 1,
-  });
-  const requestInit = (timeoutMs) => ({
+  const requestInit = (pageNum, timeoutMs) => ({
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -544,12 +573,18 @@ async function fetchSzseAnnouncements(fetchFn, now, {
       'Content-Type': 'application/json',
       'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
     },
-    body,
+    body: JSON.stringify({
+      seDate: [begin, end],
+      channelCode: ['listedNotice_disc'],
+      stock: issuers.map((issuer) => issuer.securityCode),
+      pageSize: SZSE_PAGE_SIZE,
+      pageNum,
+    }),
     redirect: contract.redirectPolicy,
     signal: AbortSignal.timeout(timeoutMs),
   });
-  const request = async (requestFn, timeoutMs) => {
-    const response = await requestFn(url, requestInit(timeoutMs));
+  const request = async (pageNum, requestFn, timeoutMs) => {
+    const response = await requestFn(url, requestInit(pageNum, timeoutMs));
     assertMetadataResponse(response, contract);
     const payload = await readBoundedJsonResponse(response, contract.maxResponseBytes);
     return {
@@ -558,8 +593,9 @@ async function fetchSzseAnnouncements(fetchFn, now, {
     };
   };
 
-  let fetched;
-  let requestCount = 1;
+  let requestCount = 0;
+  let directRequestCount = 0;
+  let proxyRequestCount = 0;
   let transportPath = 'direct';
   let fallbackReason = null;
   let proxyFailureReason = null;
@@ -567,63 +603,100 @@ async function fetchSzseAnnouncements(fetchFn, now, {
   // credential -- it is what makes "the fix never engaged" distinguishable from
   // "two distinct exits are both blocked" in the decision log.
   const proxyExitPorts = [];
-  try {
-    fetched = await request(fetchFn, SZSE_DIRECT_TIMEOUT_MS);
-  } catch (directError) {
-    fallbackReason = transportFailureReason(directError);
-    if (!shouldProxyExchangeFailure(directError)) throw directError;
+  const fail = (error) => {
+    const failure = sourceError(errorCodeFor(error), error);
+    failure.requestCount = requestCount;
+    failure.transportPath = transportPath;
+    if (fallbackReason) failure.fallbackReason = fallbackReason;
+    if (proxyFailureReason) failure.proxyFailureReason = proxyFailureReason;
+    if (proxyExitPorts.length) failure.proxyExitPorts = [...proxyExitPorts];
+    throw failure;
+  };
+  const requestViaProxy = async (pageNum) => {
     let proxyError = null;
-    if (proxyFetchFn) {
-      transportPath = 'proxy';
-      for (let attempt = 0; attempt < contract.maxProxyRequestsPerRun; attempt += 1) {
-        requestCount += 1;
-        try {
-          fetched = await request(
-            (input, init) => proxyFetchFn(
-              input,
-              init,
-              attempt,
-              (port) => { proxyExitPorts.push(port); },
-            ),
-            SZSE_PROXY_TIMEOUT_MS,
-          );
-          proxyError = null;
-          break;
-        } catch (error) {
-          proxyError = error;
-          if (
-            attempt + 1 < contract.maxProxyRequestsPerRun
-            && shouldRetryExchangeProxyFailure(error)
-          ) {
-            await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
-            continue;
-          }
-          break;
+    while (
+      proxyFetchFn
+      && proxyRequestCount < contract.maxProxyRequestsPerRun
+      && requestCount < contract.maxRequestsPerRun
+    ) {
+      const attempt = proxyRequestCount;
+      proxyRequestCount += 1;
+      requestCount += 1;
+      try {
+        const result = await request(
+          pageNum,
+          (input, init) => proxyFetchFn(
+            input,
+            init,
+            attempt,
+            (port) => { proxyExitPorts.push(port); },
+          ),
+          SZSE_PROXY_TIMEOUT_MS,
+        );
+        proxyFailureReason = null;
+        return result;
+      } catch (error) {
+        proxyError = error;
+        proxyFailureReason = transportFailureReason(error);
+        if (
+          proxyRequestCount < contract.maxProxyRequestsPerRun
+          && requestCount < contract.maxRequestsPerRun
+          && shouldRetryExchangeProxyFailure(error)
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, SZSE_PROXY_RETRY_DELAY_MS));
+          continue;
         }
+        break;
       }
-      proxyFailureReason = proxyError ? transportFailureReason(proxyError) : null;
     }
+    if (proxyError) fail(proxyError);
+    fail(sourceError('REQUEST_BUDGET_EXCEEDED'));
+  };
+  const requestDirect = async (pageNum) => {
+    if (
+      directRequestCount >= contract.maxDirectRequestsPerRun
+      || requestCount >= contract.maxRequestsPerRun
+    ) {
+      fail(sourceError('REQUEST_BUDGET_EXCEEDED'));
+    }
+    directRequestCount += 1;
+    requestCount += 1;
+    return request(pageNum, fetchFn, SZSE_DIRECT_TIMEOUT_MS);
+  };
+  const fetchPage = async (pageNum) => {
+    if (transportPath === 'proxy') return requestViaProxy(pageNum);
+    try {
+      return await requestDirect(pageNum);
+    } catch (directError) {
+      fallbackReason ??= transportFailureReason(directError);
+      if (!proxyFetchFn || !shouldProxyExchangeFailure(directError)) fail(directError);
+      transportPath = 'proxy';
+      return requestViaProxy(pageNum);
+    }
+  };
 
-    if (!fetched && proxyError) {
-      const failure = sourceError(errorCodeFor(proxyError), proxyError);
-      failure.requestCount = requestCount;
-      failure.transportPath = transportPath;
-      failure.fallbackReason = fallbackReason;
-      failure.proxyFailureReason = proxyFailureReason;
-      if (proxyExitPorts.length) failure.proxyExitPorts = [...proxyExitPorts];
-      throw failure;
-    }
-    if (!fetched) throw directError;
+  const fetched = await fetchPage(1);
+  const total = Number(fetched.payload.announceCount);
+  const totalPages = Math.max(1, Math.ceil(total / SZSE_PAGE_SIZE));
+  const pages = [fetched];
+  for (let pageNum = 2; pageNum <= Math.min(totalPages, SZSE_MAX_PAGES); pageNum += 1) {
+    pages.push(await fetchPage(pageNum));
   }
 
-  const contentTruncated = Number(fetched.payload.announceCount) > SZSE_PAGE_SIZE;
+  try {
+    assertCompleteSzsePages(pages, total);
+  } catch (error) {
+    fail(error);
+  }
+
+  const contentTruncated = totalPages > SZSE_MAX_PAGES;
   return {
     sourceId: 'szse',
     ok: !contentTruncated,
     partial: contentTruncated,
     transportOk: true,
     requestCount,
-    announcements: fetched.announcements,
+    announcements: pages.flatMap((page) => page.announcements),
     errorCode: contentTruncated ? 'PAGE_LIMIT_REACHED' : null,
     transportPath,
     ...(fallbackReason ? { fallbackReason } : {}),

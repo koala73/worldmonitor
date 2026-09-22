@@ -6,7 +6,7 @@ keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashb
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-10"
 ---
 
 > **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor combines its canonical waterway registry, freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
@@ -35,18 +35,18 @@ The chart tells the story: tanker and cargo traffic that had been steady at 40-7
 
 The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
-The following table highlights eight of the 13 monitored corridors as of mid-March 2026:
+The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
 | Corridor | Status | Key Risk |
 |----------|--------|----------|
-| **Strait of Hormuz** | Critical | Iran-Israel war, naval blockade, mines |
-| **Kerch Strait** | Red | Russia controls Kerch Bridge, Azov grain exports restricted |
-| **Bab el-Mandeb** | Yellow | Houthi attacks on commercial shipping |
-| **Suez Canal** | Yellow | Red Sea conflict spillover, Iran-Israel war adjacency |
-| **Bosporus Strait** | Elevated | Black Sea grain corridor tensions |
-| **Taiwan Strait** | Yellow | PLA military exercises, semiconductor supply risk |
-| **Cape of Good Hope** | Green | Rerouting destination for Hormuz/Suez diversions |
-| **Dover Strait** | Green | Europe's busiest shipping lane, currently stable |
+| **[Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/)** | Critical | Iran-Israel war, naval blockade, mines |
+| **[Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/)** | Red | Russia controls Kerch Bridge, Azov grain exports restricted |
+| **[Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/)** | Yellow | Houthi attacks on commercial shipping |
+| **[Suez Canal](https://www.worldmonitor.app/chokepoints/suez-canal/)** | Yellow | Red Sea conflict spillover, Iran-Israel war adjacency |
+| **[Bosporus Strait](https://www.worldmonitor.app/chokepoints/bosporus-strait/)** | Elevated | Black Sea grain corridor tensions |
+| **[Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/)** | Yellow | PLA military exercises, semiconductor supply risk |
+| **[Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/)** | Green | Rerouting destination for Hormuz/Suez diversions |
+| **[Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/)** | Green | Europe's busiest shipping lane, currently stable |
 
 Each corridor shows live vessel counts, week-over-week traffic changes, disruption percentages, and risk levels. When you click a corridor, you get the full AI-generated situation assessment with specific shipping recommendations.
 
@@ -148,7 +148,7 @@ About 20% of global petroleum liquids consumption and a major share of LNG trade
 
 **What are the world's most critical shipping chokepoints?**
 
-World Monitor monitors its canonical waterway registry, including Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, Gibraltar, Bosporus, Korea, Dover, Kerch, and Lombok. Entries with EIA-backed oil or gas baselines publish flow estimates; every entry can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the registry and coverage limits.
+World Monitor monitors its canonical waterway registry, including Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, [Gibraltar](https://www.worldmonitor.app/chokepoints/strait-of-gibraltar/), Bosporus, Korea, Dover, Kerch, and Lombok. Entries with EIA-backed oil or gas baselines publish flow estimates; every entry can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the registry and coverage limits.
 
 ---
 

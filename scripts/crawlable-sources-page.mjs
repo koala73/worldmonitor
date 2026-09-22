@@ -2,6 +2,9 @@
 // This stays separate from the shared corpus generator so the large page-specific
 // template does not obscure the corpus orchestration and other page families.
 
+import { createHash } from 'node:crypto';
+import { sourcesBookmarkScript, sourcesSearchScript } from './crawlable-sources-search.mjs';
+
 import {
   catalogCoverageCountryOptions,
   catalogCountryOptions,
@@ -120,6 +123,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['api.usaspending.gov', 'finance'],
   ['api.windy.com', 'environment'],
   ['archive-api.open-meteo.com', 'environment'],
+  ['open-meteo.caseyjhand.com', 'environment'],
   ['British Geological Survey World Mineral Statistics', 'energy'],
   ['Bank of Canada', 'finance'],
   ['bothsidesofthetable.com', 'technology'],
@@ -694,10 +698,116 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
   return catalog.sort((left, right) => left.displayName.localeCompare(right.displayName, 'en', { sensitivity: 'base' }));
 }
 
-export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers }) {
+/**
+ * Stable per-provider fragment ids for the catalog cards (#7869).
+ *
+ * Round 7 of the GEO audit found the page's `ItemList` announcing 748 elements
+ * as bare strings, 43 of the names repeated. The repeats are not duplicates:
+ * they are one publisher reached through several hosts (Yahoo Finance through
+ * three, Euronews through eight language editions), each its own catalog entry.
+ * A name alone cannot tell them apart, so every card gets an id and every
+ * `ListItem` a url pointing at it — which is also what makes the count
+ * `numberOfItems` publishes a count of things a reader can go and look at.
+ *
+ * Keyed on `provider`, the catalog's own unique key, not on the display name,
+ * and every anchor carries a digest of that key. The digest is unconditional on
+ * purpose. Two earlier shapes were tried and both leak the rest of the catalog
+ * into an individual anchor:
+ *
+ *   - An arrival-ordered counter (`-2`, `-3`) depends on iteration order, and
+ *     the catalog is sorted by displayName, so renaming any provider could
+ *     reshuffle which collider owned the bare id.
+ *   - Suffixing only when a base has more than one claimant still depends on
+ *     catalog membership: publish `a.b` alone and it gets the bare
+ *     `provider-a-b`; add `a-b` later and the first one's anchor changes.
+ *
+ * Both silently repoint a citation that has already been crawled and stored.
+ * These fragments are published data — one per ListItem url — so an anchor has
+ * to be a pure function of its own provider key and nothing else.
+ *
+ * A third shape got most of the way there and kept one channel open: it fell
+ * back to an arrival-ordered `-2` when two keys produced the same anchor, so a
+ * digest collision reintroduced the ordering dependence it existed to remove.
+ * That was reachable, not theoretical — `a-b-c-d-e-f.g.h-i-j-k-l-m-n-o-p-com`
+ * and `a.b-c.d-e-f-g-h.i.j.k-l-m-n-o-p-com` share both a slug and a 24-bit
+ * SHA-1 prefix, and reversing them swapped which one owned the bare anchor.
+ * So there is no fallback here any more: the digest is 64 bits, and a genuine
+ * collision between two DIFFERENT catalog keys throws instead of renumbering. A
+ * loud build failure is the right answer to a 2^-64 event; silently handing one
+ * provider's published citation to another is not. `seen` below only detects
+ * that case — it is never an input to the anchor's value — and it compares the
+ * RAW catalog key, not the normalised one, so two entries that normalise alike
+ * (`null` and `undefined` both coerce to the empty string) are caught rather
+ * than quietly rendering one id on two cards.
+ *
+ * The character class reduces every key to `[a-z0-9-]`, which is what lets the
+ * caller interpolate the id into the card markup and the JSON-LD url without
+ * escaping either; tests/crawlable-corpus.test.mjs pins that class so a future
+ * relaxation cannot quietly remove the guarantee.
+ *
+ * An anchor that resolves is not yet an anchor a reader can see, which is why
+ * `.provider-card` carries `scroll-margin-top`. Two sticky bars sit above the
+ * grid — the page header (top: 0, 146px) and .catalog-controls (top: 68px,
+ * bottom 167px) — and a card is 180px tall, so without the offset a
+ * `#provider-*` fragment parks 167 of those 180px under chrome. Measured in
+ * Chromium against the generated page before the offset landed: the card
+ * arrived at viewport y = -0.06. Below 720px .catalog-controls goes static and
+ * only the header stickies, so 176px is generous there rather than wrong.
+ *
+ * The slug transform is spelled out here rather than imported from
+ * build-crawlable-corpus.mjs's exported `slugify`: that module imports THIS one,
+ * so the import would close a cycle. A local slug helper is also what the other
+ * generators in scripts/ do.
+ */
+export function sourceCardAnchors(sourceCatalog) {
+  const slugBase = (key) => String(key ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'source';
+
+  const anchors = new Map();
+  const seen = new Map();
+  for (const provider of sourceCatalog) {
+    const key = String(provider.provider ?? '');
+    const anchor = `provider-${slugBase(key)}-${createHash('sha1').update(key).digest('hex').slice(0, 16)}`;
+    if (seen.has(anchor) && seen.get(anchor) !== provider.provider) {
+      throw new Error(
+        `Source card anchor collision: ${JSON.stringify(seen.get(anchor))} and ${JSON.stringify(provider.provider)} both map to #${anchor}`,
+      );
+    }
+    seen.set(anchor, provider.provider);
+    anchors.set(provider.provider, anchor);
+  }
+  return anchors;
+}
+
+export function buildSourcePages(sourceCatalog) {
+  return SOURCE_DOMAINS.flatMap((domain) => {
+    const providers = sourceCatalog.filter((provider) => provider.domainId === domain.id);
+    const pages = [];
+    for (let offset = 0; offset < providers.length; offset += 60) {
+      const number = offset / 60 + 1;
+      pages.push({
+        path: `/sources/${domain.id}/${number === 1 ? '' : `page/${number}/`}`,
+        name: `${domain.name}${number === 1 ? '' : ` — page ${number}`}`,
+        domainId: domain.id,
+        providers: providers.slice(offset, offset + 60),
+      });
+    }
+    return pages;
+  });
+}
+
+export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
   const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument, withUtmSource } = helpers;
-  const path = '/sources/';
-  const description = `Explore ${sourceStats.providerCount} active providers and ${sourceStats.activeHosts} source hosts across World Monitor's global intelligence, markets, energy, cyber, aviation, climate and news coverage.`;
+  const path = sourcePage?.path || '/sources/';
+  const pageUrl = absoluteUrl(baseUrl, path);
+  const description = sourcePage
+    ? `Browse ${sourceCatalog.length} providers in ${sourcePage.name}, with source hosts, origins and coverage. Part of World Monitor's complete source catalog.`
+    : `Explore ${sourceStats.providerCount} active providers and ${sourceStats.activeHosts} source hosts across World Monitor's global intelligence, markets, energy, cyber, aviation, climate and news coverage.`;
   // Query precedes the fragment — withUtmSource() would append after the
   // anchor and push the query into the fragment, so build these by hand.
   const docsHref = (anchor) => `/docs/data-sources?utm_source=seo-sources${anchor ? `#${anchor}` : ''}`;
@@ -711,19 +821,20 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
     structured: 'Structured data',
     'operational-status': 'Operational status',
   };
-  const domainCards = SOURCE_DOMAINS.map((domain, index) => `        <article class="source-domain-card">
-          <button type="button" data-source-filter="${domain.id}" aria-controls="source-catalog" aria-pressed="false">
+  const domainCards = SOURCE_DOMAINS.filter((domain) => !directoryPages || domainCounts.get(domain.id) > 0).map((domain, index) => `        <article class="source-domain-card">
+          ${directoryPages ? `<a class="domain-browse" href="/sources/${domain.id}/">` : `<button type="button" data-source-filter="${domain.id}" aria-controls="source-catalog" aria-pressed="false">`}
             <span class="domain-index">${String(index + 1).padStart(2, '0')}</span>
             <span class="domain-count">${domainCounts.get(domain.id)} providers</span>
             <strong>${escapeHtml(domain.name)}</strong>
             <span class="domain-blurb">${escapeHtml(domain.blurb)}</span>
             <span class="domain-examples">${domain.providers.slice(0, 4).map((provider) => `<span>${escapeHtml(provider)}</span>`).join('')}</span>
-          </button>
+          ${directoryPages ? '</a>' : '</button>'}
           <a class="domain-docs" href="${docsHref(domain.anchor)}">Methodology &amp; coverage <span aria-hidden="true">↗</span></a>
         </article>`).join('\n');
   const countryOptions = catalogCountryOptions(sourceCatalog);
   const coverageOptions = catalogCoverageCountryOptions(sourceCatalog);
-  const providerCards = sourceCatalog.map((provider) => {
+  const cardAnchors = catalogAnchors;
+  const providerCards = (directoryPages ? [] : sourceCatalog).map((provider) => {
     const domain = domainById.get(provider.domainId);
     const countryLabel = sourceOriginLabel(provider.originCountry);
     const countryFilter = sourceOriginFilterValue(provider.originCountry);
@@ -736,7 +847,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
     const kindBadges = provider.kinds.map((kind) => (
       `<span class="kind-badge">${escapeHtml(kindLabels[kind] || kind)}</span>`
     )).join('');
-    return `        <article class="provider-card" data-provider="${escapeHtml(provider.provider)}" data-provider-name="${escapeHtml(provider.displayName)}" data-source-domain="${provider.domainId}" data-source-kind="${provider.kinds.join(' ')}" data-source-country="${countryFilter}" data-source-coverage="${escapeHtml(coverageFilter)}">
+    return `        <article class="provider-card" id="${cardAnchors.get(provider.provider)}" data-provider="${escapeHtml(provider.provider)}" data-provider-name="${escapeHtml(provider.displayName)}" data-source-domain="${provider.domainId}" data-source-kind="${provider.kinds.join(' ')}" data-source-country="${countryFilter}" data-source-coverage="${escapeHtml(coverageFilter)}">
           <div class="provider-heading">
             <span class="provider-domain">${escapeHtml(domain.name)}</span>
             <h3>${escapeHtml(provider.displayName)}</h3>
@@ -762,13 +873,16 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
       <span><strong>WORLD MONITOR</strong><small>Open-source global intelligence</small></span>
       <span class="source-footer-links"><a href="/sources/">Sources</a><a href="${docsHref('')}">Data docs</a><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Attribution ledger</a><a href="/docs/terms">Terms</a></span>
     </div>`;
+  const catalogNavigation = directoryPages
+    ? `<ul class="source-pages source-directory">${directoryPages.map((page) => `<li><a href="${page.path}">${escapeHtml(page.name)}</a> (${page.providers.length} providers)</li>`).join('')}</ul>`
+    : `<nav class="source-pages" aria-label="Source catalog pages">${siblingPages.map((page) => `<a href="${page.path}"${page.path === path ? ' aria-current="page"' : ''}>${escapeHtml(page.name)}</a>`).join(' ')}</nav>`;
   const body = `      <section class="sources-hero">
         <div class="hero-copy">
           <p class="eyebrow"><span></span> Live provider inventory</p>
-          <h1>See every source behind World Monitor.</h1>
-          <p class="lede">The map is only as useful as the signals behind it. World Monitor combines ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} observed source hosts spanning news, conflict, markets, military, climate, aviation, infrastructure and technology — with every provider listed below.</p>
+          <h1>${sourcePage ? escapeHtml(sourcePage.name) : 'See every source behind World Monitor.'}</h1>
+          <p class="lede">The map is only as useful as the signals behind it. World Monitor combines ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} observed source hosts spanning news, conflict, markets, military, climate, aviation, infrastructure and technology. ${sourcePage ? 'This page lists ' + sourceCatalog.length + ' providers. <a href="/sources/#catalog">Search all providers</a> or browse the pages below.' : 'Browse providers by domain, or search the full inventory below.'}</p>
           <div class="hero-actions">
-            <a class="cta" href="#catalog">Browse all ${sourceStats.providerCount} providers <span aria-hidden="true">↓</span></a>
+            <a class="cta" href="#catalog">${sourcePage ? 'Browse this page' : 'Find a provider'} <span aria-hidden="true">↓</span></a>
             <a class="secondary-cta" href="${withUtmSource('/dashboard', 'sources-hero')}">Open the live dashboard <span aria-hidden="true">→</span></a>
           </div>
           <p class="trust-line"><span>Manifest-derived</span><span>Build-checked</span><span>Source-attributed</span></p>
@@ -791,7 +905,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
         <span><strong>${sourceStats.structuredHosts}</strong><small>Structured endpoints</small></span>
         <span><strong>${sourceStats.feedHosts}</strong><small>News &amp; OSINT feeds</small></span>
       </section>
-      <section class="domain-section" aria-labelledby="domains-heading">
+      ${sourcePage ? '' : `<section class="domain-section" aria-labelledby="domains-heading">
         <div class="section-heading">
           <p class="eyebrow">Coverage architecture</p>
           <h2 id="domains-heading">Ten domains. One operating picture.</h2>
@@ -800,7 +914,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
         <div class="source-domains">
 ${domainCards}
         </div>
-      </section>
+      </section>`}
       <section class="trust-section" aria-labelledby="trust-heading">
         <div><p class="eyebrow">Trust through traceability</p><h2 id="trust-heading">The count follows the code.</h2></div>
         <div>
@@ -812,15 +926,16 @@ ${domainCards}
         <div class="section-heading">
           <p class="eyebrow">Provenance</p>
           <h2 id="provenance-heading">Where does World Monitor get its data?</h2>
-          <p>World Monitor fuses licensed data feeds, official statistics, open-source intelligence, and live sensor networks into one operating picture. Every provider below is named, attributed, and reconciled against the code that queries it, so models and analysts can verify each claim. Counts update at build time from the tracked inventory.</p>
+          <p>World Monitor fuses licensed data feeds, official statistics, open-source intelligence, and live sensor networks into one operating picture. Every listed provider is named, attributed, and reconciled against the code that queries it, so models and analysts can verify each claim. Counts update at build time from the tracked inventory.</p>
         </div>
       </section>
       <section class="catalog-section" id="catalog" aria-labelledby="catalog-heading">
         <div class="section-heading catalog-heading">
           <p class="eyebrow">Complete catalog</p>
-          <h2 id="catalog-heading">All ${sourceStats.providerCount} active providers.</h2>
-          <p>Search by provider or host. Filter by signal domain, source type, country of origin, or country covered. Every provider remains in the static HTML for people, search engines and no-script browsers.</p>
+          <h2 id="catalog-heading">${sourcePage ? escapeHtml(sourcePage.name) : `Search all ${sourceStats.providerCount} providers.`}</h2>
+          <p>${directoryPages ? 'Search by provider or host, with filters for domain, type, origin and coverage. Open a result for its full source details. You can also browse every provider on the linked domain pages without JavaScript.' : 'Filter the providers on this page. For the complete inventory, <a href="/sources/#catalog">search all providers</a>. Every provider on this page is included in the static HTML.'}</p>
         </div>
+        ${directoryPages ? '' : catalogNavigation}
         <div class="catalog-controls">
           <label class="search-control" for="source-search"><span>Search providers</span><input id="source-search" type="search" placeholder="Reuters, USGS, coingecko…" autocomplete="off"></label>
           <label for="source-domain"><span>Domain</span><select id="source-domain"><option value="all">All domains</option>${SOURCE_DOMAINS.map((domain) => `<option value="${domain.id}">${escapeHtml(domain.name)}</option>`).join('')}</select></label>
@@ -829,13 +944,15 @@ ${domainCards}
           <label for="source-coverage"><span>Country covered</span><select id="source-coverage"><option value="all">All coverage</option>${coverageOptions.map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`).join('')}</select></label>
           <button type="button" class="reset-filter" data-source-filter="all">Reset</button>
         </div>
-        <div class="catalog-meta"><p id="source-results" aria-live="polite">${sourceStats.providerCount} providers shown</p><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
+        <div class="catalog-meta"><p id="source-results" aria-live="polite">${directoryPages ? 'Choose a filter or enter a provider name.' : `${sourceCatalog.length} providers shown`}</p><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
         <p class="catalog-country-note" id="source-country-note" aria-live="polite" hidden></p>
         <div class="provider-grid" id="source-catalog" data-source-catalog>
 ${providerCards}
         </div>
         <p class="no-results" id="source-no-results" hidden>No providers match those filters.</p>
-        <noscript><p class="noscript-note">Filtering needs JavaScript. The complete catalog is already shown above.</p></noscript>
+        ${directoryPages ? '<button type="button" class="reset-filter" id="source-more" hidden>Show next results</button>' : ''}
+        <noscript><p class="noscript-note">Filtering needs JavaScript. Use the catalog page links to browse every provider.</p></noscript>
+        ${directoryPages ? '<h3>Browse every source by domain</h3>' + catalogNavigation : ''}
       </section>
       <section class="sources-final-cta">
         <p class="eyebrow">From source to signal</p>
@@ -903,7 +1020,14 @@ ${providerCards}
       .section-heading > p:last-child { margin: 20px 0 0; font-size: 16px; line-height: 1.7; }
       .source-domains { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
       .source-domain-card { position: relative; min-width: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(9,13,11,.55); }
-      .source-domain-card button { width: 100%; min-height: 260px; padding: 20px; display: flex; flex-direction: column; align-items: flex-start; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+      .source-domain-card button, .domain-browse { width: 100%; min-height: 260px; padding: 20px; display: flex; flex-direction: column; align-items: flex-start; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+      .source-pages { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+      .source-pages a { padding: 8px; border: 1px solid var(--line); }
+      .source-directory { list-style: none; padding: 0; }
+      .source-directory a { display: inline-block; }
+      .source-pages [aria-current="page"] { color: var(--accent); }
+      .source-result { padding: 16px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+      .source-result small { display: block; color: var(--muted); }
       .source-domain-card:hover, .source-domain-card:has(button[aria-pressed="true"]) { z-index: 1; background: var(--panel-2); box-shadow: inset 0 0 0 1px rgba(74,222,128,.5); }
       .domain-index, .domain-count { color: #526057; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
       .domain-count { margin: -13px 0 24px auto; color: var(--accent); }
@@ -915,7 +1039,7 @@ ${providerCards}
       .domain-docs:hover { color: var(--accent); text-decoration: none; }
       .trust-section { margin: 0; padding: 100px max(24px, calc((100% - 1192px)/2)); display: grid; grid-template-columns: .8fr 1.2fr; gap: 90px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: linear-gradient(100deg, rgba(74,222,128,.045), transparent 55%); }
       .trust-section p { margin-top: 0; font-size: 15px; line-height: 1.75; }
-      .catalog-section { padding-bottom: 100px; }
+      .catalog-section { padding-bottom: 100px; scroll-margin-top: 146px; }
       .catalog-heading { max-width: 790px; }
       .catalog-controls { position: sticky; top: 68px; z-index: 10; margin-bottom: 0; padding: 18px; display: grid; grid-template-columns: minmax(200px, 1.2fr) minmax(150px, .8fr) minmax(140px, .7fr) minmax(160px, .85fr) minmax(160px, .85fr) auto; gap: 12px; align-items: end; border: 1px solid var(--line); background: rgba(6,9,7,.94); backdrop-filter: blur(18px); }
       .catalog-controls label { display: grid; gap: 7px; color: var(--muted); font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
@@ -928,7 +1052,7 @@ ${providerCards}
       .catalog-meta a { font-size: 12px; }
       .catalog-country-note { margin: 0 2px 15px; color: var(--muted); font-size: 13px; line-height: 1.6; }
       .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
-      .provider-card { min-width: 0; min-height: 180px; padding: 18px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(9,13,11,.48); }
+      .provider-card { min-width: 0; min-height: 180px; padding: 18px; scroll-margin-top: 176px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(9,13,11,.48); }
       .provider-card:hover { background: var(--panel-2); }
       .provider-domain { color: var(--accent); font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; }
       .provider-card h3 { margin: 8px 0 0; font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
@@ -1027,7 +1151,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: 'Data Source Catalog | World Monitor',
+    title: sourcePage ? `${sourcePage.name} sources | World Monitor` : 'Data Source Catalog | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -1036,27 +1160,35 @@ ${providerCards}
         '@type': 'CollectionPage',
         name: 'World Monitor data source catalog',
         description,
-        url: absoluteUrl(baseUrl, path),
+        url: pageUrl,
         inLanguage: 'en-US',
         mainEntity: {
           '@type': 'ItemList',
-          numberOfItems: sourceCatalog.length,
+          numberOfItems: directoryPages ? directoryPages.length : sourceCatalog.length,
           itemListOrder: 'https://schema.org/ItemListUnordered',
-          itemListElement: sourceCatalog.map((provider) => provider.displayName),
+          itemListElement: directoryPages ? directoryPages.map((page, index) => ({
+            '@type': 'ListItem', position: index + 1, name: page.name, url: absoluteUrl(baseUrl, page.path),
+          })) : sourceCatalog.map((provider, index) => ({
+            '@type': 'ListItem',
+            position: index + 1,
+            name: provider.displayName,
+            url: `${pageUrl}#${cardAnchors.get(provider.provider)}`,
+          })),
         },
       },
-      catalogLd,
+      ...(sourcePage ? [] : [catalogLd]),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
-      { name: 'Sources', path },
+      { name: 'Sources', path: '/sources/' },
+      ...(sourcePage ? [{ name: sourcePage.name, path }] : []),
     ]),
     body,
     bodyClass: 'sources-page',
     headerNav: sourceNav,
     footerBody: sourceFooter,
     extraStyles,
-    inlineScript,
+    inlineScript: directoryPages ? sourcesSearchScript : inlineScript + sourcesBookmarkScript,
     ogType: 'website',
   });
 }

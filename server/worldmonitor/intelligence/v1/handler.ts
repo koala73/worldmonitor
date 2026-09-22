@@ -5,6 +5,7 @@ import { getCountryRisk } from './get-country-risk';
 import { getPizzintStatus } from './get-pizzint-status';
 import { classifyEvent } from './classify-event';
 import { getCountryIntelBrief } from './get-country-intel-brief';
+import { getCountryCoverage } from './get-country-coverage';
 import { searchGdeltDocuments } from './search-gdelt-documents';
 import { deductSituation } from './deduct-situation';
 import { getCountryFacts } from './get-country-facts';
@@ -21,6 +22,7 @@ import { listMaterialEvents } from './list-material-events';
 import { getGdeltTopicTimeline } from './get-gdelt-topic-timeline';
 import { listCrossSourceSignals } from './list-cross-source-signals';
 import { listMarketImplications } from './list-market-implications';
+import { listWsbTickers } from './list-wsb-tickers';
 import { getSocialVelocity } from './get-social-velocity';
 import { getCountryEnergyProfile } from './get-country-energy-profile';
 import { computeEnergyShockScenario } from './compute-energy-shock';
@@ -39,6 +41,7 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getPizzintStatus,
   classifyEvent,
   getCountryIntelBrief,
+  getCountryCoverage,
   searchGdeltDocuments,
   deductSituation,
   getCountryFacts,
@@ -56,6 +59,7 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   listCrossSourceSignals,
   listMarketImplications,
   getSocialVelocity,
+  listWsbTickers,
   getCountryEnergyProfile,
   computeEnergyShockScenario,
   getCountryPortActivity,

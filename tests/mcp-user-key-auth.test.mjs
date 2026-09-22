@@ -83,6 +83,26 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
 
   // ── #4859 — user keys accepted, entitlement-gated ──
 
+  it('dashboard OAuth bearer without a plaintext key uses the user quota', async () => {
+    const { deps, pipe } = makeUserKeyDeps({
+      resolveBearerToContext: async () => ({ kind: 'user_key', userId: USER_KEY_USER_ID }),
+      pipelineOpts: { initialCount: 50 },
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 429);
+    assert.equal((await res.json()).error?.code, -32029);
+    assert.equal(pipe.count, 50);
+  });
+
+  it('dashboard OAuth bearer cannot bypass entitlement verification', async () => {
+    const { deps } = makeUserKeyDeps({
+      resolveBearerToContext: async () => ({ kind: 'user_key', userId: USER_KEY_USER_ID }),
+      getEntitlements: async () => { throw new Error('unavailable'); },
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 503);
+  });
+
   it('happy: valid user key + mcpAccess entitlement → describe_tool 200', async () => {
     const { deps, pipe } = makeUserKeyDeps();
     const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);

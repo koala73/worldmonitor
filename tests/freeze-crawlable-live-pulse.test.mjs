@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it } from 'node:test';
 
 import {
@@ -12,16 +13,23 @@ import {
   minimumBriefCaptures,
   mintSession,
   normalizeApiBase,
+  selectFrozenHeadlines,
   selectFrozenQuotes,
   timelineRecord,
   selectCountryHeadlines,
 } from '../scripts/freeze-crawlable-live-pulse.mjs';
 import {
+  dedupeByArticleUrl,
+  duplicateArticleUrls,
+  normalizeArticleUrl,
+} from '../shared/article-identity.js';
+import {
   COUNTRY_INDEX_MAX_AGE_MS,
   selectCountryIndexHeadlines,
 } from '../scripts/crawlable-country-index.mjs';
 import { GDELT_COUNTRY_INDEX_WINDOW_MS } from '../scripts/_gdelt-bulk-materializer.mjs';
-import { COUNTRY_INDEX_ORIGIN, developmentsHasDatedItem } from '../scripts/crawlable-developments.mjs';
+import { briefGroundingGap, COUNTRY_INDEX_ORIGIN, developmentsHasDatedItem } from '../scripts/crawlable-developments.mjs';
+import { SCORECARD_DECLARED_FIELDS, classifyAccuracyState } from '../scripts/build-accuracy-page.mjs';
 
 describe('freeze crawlable live pulse API base routing', () => {
   const originalFetch = globalThis.fetch;
@@ -129,11 +137,21 @@ function countryPayload() {
     };
   }
 
+  const DEFAULT_DIGEST_TITLE = 'Outside forces fuel Sudan war, new report finds';
+
   function digestItem(overrides = {}) {
+    const title = overrides.title ?? DEFAULT_DIGEST_TITLE;
     return {
-      title: 'Outside forces fuel Sudan war, new report finds',
+      title,
       source: 'UN News',
-      link: 'https://news.un.org/feed/view/en/story/2026/09/1168270',
+      // One article is one URL. The strip dedupes by normalized article URL
+      // (#8339), so a fixture reusing a single link across several distinct
+      // stories would collapse to one row and stop exercising ranking at all.
+      // Derive it from the title so every fixture story is its own document,
+      // and keep the canonical Sudan story on its real URL.
+      link: title === DEFAULT_DIGEST_TITLE
+        ? 'https://news.un.org/feed/view/en/story/2026/09/1168270'
+        : `https://news.un.org/feed/view/en/story/2026/09/${encodeURIComponent(title)}`,
       publishedAt: Date.now() - 60 * 60 * 1000,
       importanceScore: 50,
       ...overrides,
@@ -153,6 +171,45 @@ function countryPayload() {
         change: 1.234,
         sparkline: Array.from({ length: 40 }, (_, i) => 100 + i),
       })),
+      ...overrides,
+    };
+  }
+
+  // Fixed, not Date.now(): the freeze copies generatedAt through verbatim and
+  // the assertions compare it exactly.
+  const SCORECARD_GENERATED_AT = 1789020144012;
+
+  /**
+   * Shaped like GET /api/forecast/v1/get-forecast-scorecard, including the
+   * undeclared `betEngine` object the live handler passes through. A stub
+   * without it could not fail when the capture stops whitelisting.
+   */
+  function scorecardPayload(overrides = {}) {
+    return {
+      schemaVersion: 1,
+      generatedAt: SCORECARD_GENERATED_AT,
+      rollingWindowDays: 180,
+      methodology: 'Brier/log score over resolved YES/NO published forecast windows.',
+      totals: { entries: 958, resolved: 772, pending: 90, pendingJudge: 96, scored: 490, void: 282, voidRate: 0.365285, publicationCoverage: 0.511482 },
+      overall: { count: 490, brier: 0.192435, logScore: 0.558453 },
+      byDomain: [
+        { domain: 'cyber', resolved: 146, scored: 144, void: 2, voidRate: 0.013699, brier: 0.07564, logScore: 0.27801 },
+        { domain: 'political', resolved: 6, scored: 0, void: 6, voidRate: 1 },
+      ],
+      byGenerationOrigin: [
+        { generationOrigin: 'legacy_detector', resolved: 362, scored: 176, void: 186, voidRate: 0.513812, brier: 0.113943, logScore: 0.366094 },
+      ],
+      calibration: [
+        { bucket: '0-10', minProbability: 0, maxProbability: 0.1, count: 40, predictedMean: 0.060425, realizedRate: 0, brier: 0.004521 },
+        { bucket: '70-80', minProbability: 0.7, maxProbability: 0.8, count: 0 },
+      ],
+      vsMarketSkill: { count: 78, forecastBrier: 0.154623, marketBrier: 0.073136, brierDelta: -0.081487 },
+      skill: { count: 180, brier: 0.117824, logScore: 0.375127, excludedScored: 310, excludedOrigins: ['bet_engine', 'state_derived'] },
+      degraded: false,
+      stale: false,
+      error: '',
+      judgedLane: 'shadow',
+      betEngine: { count: 299, brier: 0.235571 },
       ...overrides,
     };
   }
@@ -194,6 +251,8 @@ function countryPayload() {
     digestItemsByVariant = null,
     // Variants whose fetch fails with a 503.
     digestFailVariants = [],
+    countryHeadlines = {},
+    countryHeadlineState = 'complete',
     briefStatus = 'ok',
     briefOverrides = {},
     briefFailCodes = [],
@@ -212,6 +271,8 @@ function countryPayload() {
     countryIndexFailCodes = [],
     countryIndexErrorCodes = {},
     countryIndexServeFirst = Infinity,
+    // Forecast scorecard (#6646): 'ok' | 'fail' | 'undated' | 'degraded'.
+    scorecardStatus = 'ok',
     onRequest = null,
     marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
     commoditySymbols = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
@@ -250,6 +311,16 @@ function countryPayload() {
           ? digestItemsByVariant[variant]
           : digestItems;
         return jsonResponse(digestPayload(items, digestCoverage));
+      }
+      if (href.includes('list-country-headlines')) {
+        if (countryHeadlineState === 'fail') return { ok: false, status: 503, text: async () => '{}' };
+        return jsonResponse({ countries: countryHeadlines, feedTotal: 245, feedCached: countryHeadlineState === 'complete' ? 245 : 0, state: countryHeadlineState });
+      }
+      if (href.includes('get-forecast-scorecard')) {
+        if (scorecardStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
+        if (scorecardStatus === 'undated') return jsonResponse(scorecardPayload({ generatedAt: 0 }));
+        if (scorecardStatus === 'degraded') return jsonResponse(scorecardPayload({ degraded: true }));
+        return jsonResponse(scorecardPayload());
       }
       if (href.includes('list-market-quotes')) return jsonResponse(quotePayload(marketSymbols));
       if (href.includes('list-commodity-quotes')) return jsonResponse(quotePayload(commoditySymbols));
@@ -291,7 +362,7 @@ function countryPayload() {
         return jsonResponse({
           countryCode: code,
           countryName: code,
-          brief: override.brief || 'SITUATION NOW\nCalm seas and steady traffic [1].',
+          brief: override.brief || `SITUATION NOW\n${contextSources[0]?.title || 'No report'} [1].`,
           model: 'test-model',
           generatedAt: Object.hasOwn(override, 'generatedAt') ? override.generatedAt : Date.now(),
           sources,
@@ -629,6 +700,137 @@ describe('freeze crawlable live pulse coverage gates', () => {
     const { snapshot } = await runFreeze();
     assert.equal(snapshot.chokepoints.malacca_strait.description, null);
   });
+
+  // The scorecard is published verbatim at /accuracy/ (#6646), and the RPC
+  // handler passes undeclared seeder fields through. The whitelist runs at
+  // capture time so an undeclared surface never reaches the committed snapshot,
+  // which is itself a public repository file.
+  it('captures the forecast scorecard, whitelisted to the proto-declared fields', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    const section = snapshot.forecastScorecard;
+    assert.ok(section, 'the freeze must record a forecast scorecard section');
+    assert.equal(section.attemptedAt, snapshot.capturedAt);
+    assert.equal(section.capturedAt, snapshot.capturedAt);
+    assert.equal(section.attemptedAtMs, snapshot.capturedAtMs);
+    assert.equal(section.failureCode, '');
+    assert.equal(section.generatedAt, SCORECARD_GENERATED_AT);
+    assert.deepEqual(
+      Object.keys(section.scorecard).sort(),
+      [...SCORECARD_DECLARED_FIELDS].sort(),
+      'the committed snapshot must carry the declared surface and nothing else',
+    );
+    assert.doesNotMatch(JSON.stringify(section), /betEngine|judgedLane/);
+    const state = classifyAccuracyState(section);
+    assert.equal(state.availability, 'ok');
+    assert.equal(state.coverage, 'measurable');
+    assert.equal(snapshot.coverage.forecastScorecardCaptured, true);
+    assert.equal(snapshot.coverage.forecastScorecardRetained, false);
+    assert.deepEqual(snapshot.errors.forecastScorecard, []);
+  });
+
+  it('records a scorecard outage as a coded failure instead of discarding the freeze', async () => {
+    stubFetch({ scorecardStatus: 'fail' });
+    const { snapshot } = await runFreeze();
+    assert.ok(Object.keys(snapshot.countries).length > 0, 'the country capture must survive');
+    const section = snapshot.forecastScorecard;
+    assert.equal(section.scorecard, null);
+    assert.equal(section.failureCode, 'http-error');
+    assert.equal(section.capturedAt, null, 'nothing was successfully read this run');
+    assert.equal(classifyAccuracyState(section).availability, 'capture-failed');
+    assert.equal(snapshot.coverage.forecastScorecardCaptured, false);
+    assert.equal(snapshot.coverage.forecastScorecardFailureCode, 'http-error');
+    assert.equal(snapshot.errors.forecastScorecard.length, 1);
+    assert.equal(snapshot.errors.forecastScorecard[0].code, 'http-error');
+  });
+
+  // A fresh outer snapshot timestamp passes the corpus age gate even when the
+  // capture inside it failed, and the workflow prunes the older file afterwards.
+  // Carrying the last good measurement forward with ITS OWN dates is what keeps
+  // the page from republishing old numbers as current.
+  it('retains the previous measurement when the capture fails, with its own dates', async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    try {
+      await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
+      stubFetch();
+      const good = await freezeCrawlableLivePulse({
+        apiBase: STAGING_BASE, requestGapMs: 0, rootDir,
+      });
+      const previousBasename = `crawlable-live-pulse-${good.snapshot.capturedAt}.json`;
+      // Re-date the good capture as an earlier snapshot so the failing run has a
+      // sibling file to retain from, exactly as the weekly cadence leaves one.
+      const earlier = { ...good.snapshot, capturedAt: '2026-01-15' };
+      await writeFile(
+        join(rootDir, 'docs', 'snapshots', 'crawlable-live-pulse-2026-01-15.json'),
+        JSON.stringify(earlier, null, 2),
+      );
+      await rm(join(rootDir, 'docs', 'snapshots', previousBasename));
+
+      stubFetch({ scorecardStatus: 'fail' });
+      const { snapshot } = await freezeCrawlableLivePulse({
+        apiBase: STAGING_BASE, requestGapMs: 0, rootDir,
+      });
+      const section = snapshot.forecastScorecard;
+      assert.equal(section.failureCode, 'http-error');
+      assert.ok(section.scorecard, 'the last good measurement must be retained');
+      assert.equal(section.generatedAt, SCORECARD_GENERATED_AT);
+      assert.equal(section.capturedAt, good.snapshot.capturedAt, 'the retained capture keeps its own date');
+      assert.equal(section.attemptedAt, snapshot.capturedAt, 'the failed attempt keeps this run’s date');
+      assert.equal(snapshot.coverage.forecastScorecardRetained, true);
+      assert.equal(snapshot.coverage.forecastScorecardCaptured, false);
+      const state = classifyAccuracyState(section);
+      assert.equal(state.availability, 'capture-failed');
+      assert.ok(state.scorecard, 'retained numbers stay renderable');
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it('retains the same-day measurement when the capture fails, with its own dates', async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    try {
+      await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
+      stubFetch();
+      const good = await freezeCrawlableLivePulse({
+        apiBase: STAGING_BASE, requestGapMs: 0, rootDir,
+      });
+      stubFetch({ scorecardStatus: 'fail' });
+      const { snapshot } = await freezeCrawlableLivePulse({
+        apiBase: STAGING_BASE, requestGapMs: 0, rootDir,
+      });
+      const section = snapshot.forecastScorecard;
+      assert.equal(section.failureCode, 'http-error');
+      assert.ok(section.scorecard, 'the last good measurement must be retained');
+      assert.equal(section.generatedAt, SCORECARD_GENERATED_AT);
+      assert.equal(section.capturedAt, good.snapshot.capturedAt, 'the retained capture keeps its own date');
+      assert.equal(section.attemptedAt, snapshot.capturedAt, 'the failed attempt keeps this run’s date');
+      assert.equal(snapshot.coverage.forecastScorecardRetained, true);
+      assert.equal(snapshot.coverage.forecastScorecardCaptured, false);
+      const state = classifyAccuracyState(section);
+      assert.equal(state.availability, 'capture-failed');
+      assert.ok(state.scorecard, 'retained numbers stay renderable');
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it('codes a scorecard the page could not date rather than publishing it', async () => {
+    stubFetch({ scorecardStatus: 'undated' });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.forecastScorecard.scorecard, null);
+    assert.equal(snapshot.forecastScorecard.failureCode, 'undated-response');
+    assert.equal(classifyAccuracyState(snapshot.forecastScorecard).availability, 'capture-failed');
+  });
+
+  it('records a degraded scorecard verdict as the payload own, not as a request failure', async () => {
+    stubFetch({ scorecardStatus: 'degraded' });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.forecastScorecard.failureCode, '', 'the fetch itself succeeded');
+    assert.equal(snapshot.forecastScorecard.scorecard.degraded, true);
+    const state = classifyAccuracyState(snapshot.forecastScorecard);
+    assert.equal(state.availability, 'capture-failed');
+    assert.equal(state.failureCode, 'backend-degraded');
+  });
 });
 
 describe('freeze per-country developments selection', () => {
@@ -819,6 +1021,9 @@ describe('freeze per-country developments capture', () => {
     assert.ok(!requested.some((href) => href.includes('/api/wm-session') === false && href.includes('get-country-intel-brief')));
     assert.ok(!requested.some((href) => href.includes('get-intel-timeline')));
     assert.equal(snapshot.coverage.serviceKeyPresent, false);
+    assert.equal(snapshot.coverage.briefEligibleCount, 2);
+    assert.equal(snapshot.coverage.briefMatchedCount, 0);
+    assert.equal(snapshot.coverage.briefCountryCount, 0);
     const sudan = snapshot.countries.SD.developments;
     assert.equal(sudan.headlines.length, 2);
     assert.equal(sudan.headlines[0].source, 'UN News');
@@ -909,6 +1114,7 @@ describe('freeze per-country developments capture', () => {
       'no LLM call is spent on a brief that would be withheld');
     assert.equal(snapshot.coverage.briefThinGroundingCount, 1);
     assert.equal(snapshot.coverage.briefMatchedCount, 2, 'only the two-headline countries are owed a brief');
+    assert.equal(snapshot.coverage.briefEligibleCount, 2);
     // The stub timeline serves every country, so a keyed run has no tail.
     assert.equal(snapshot.coverage.developmentsMissingCount, 0);
     assert.equal(
@@ -1172,6 +1378,81 @@ describe('freeze per-country developments capture', () => {
     assert.deepEqual(selectCountryIndexHeadlines([], 'PWX'), []);
   });
 
+  it('recovers curated country reporting discarded by dashboard category caps', async () => {
+    const headline = digestItem({
+      title: 'Palau approves new maritime surveillance funding',
+      source: 'Island Times (Palau)',
+      link: 'https://islandtimes.org/palau-maritime-funding',
+    });
+    stubFetch({ countryHeadlines: { PW: { items: [headline] } } });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    const palau = snapshot.countries.PW.developments;
+    assert.equal(palau.headlines.length, 1);
+    assert.equal(palau.headlines[0].url, headline.link);
+    assert.equal(palau.headlines[0].origin, undefined, 'registered RSS retains curated provenance');
+    assert.equal(palau.briefSkipped, 'thin-grounding', 'one publisher still cannot support a brief');
+    assert.equal(snapshot.coverage.developmentsCuratedFeeds.recoveredCountryCount, 1);
+  });
+
+  it('combines recovered curated reporting with independent index sources for a cited brief', async () => {
+    const headline = digestItem({
+      title: 'Palau approves new maritime surveillance funding',
+      source: 'Island Times (Palau)',
+      link: 'https://islandtimes.org/palau-maritime-funding',
+    });
+    stubFetch({
+      countryHeadlines: { PW: { items: [headline] } },
+      countryArticles: { PW: palauIndexArticles() },
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    const palau = snapshot.countries.PW.developments;
+    assert.ok(palau.brief, 'recovered curated source plus independent reporting reaches brief capture');
+    assert.equal(palau.briefSkipped, null);
+    assert.equal(palau.brief.sources[0].url, headline.link);
+    assert.equal(palau.brief.sources[0].origin, undefined);
+    assert.ok(palau.brief.sources.slice(1).every(source => source.origin === COUNTRY_INDEX_ORIGIN));
+    assert.equal(snapshot.coverage.briefEligibleCount, 1);
+    assert.equal(snapshot.coverage.briefCountryCount, 1);
+  });
+
+  it('uses the final slot for an independent recovered publisher', async () => {
+    const existing = Array.from({ length: 4 }, (_, i) => digestItem({
+      source: 'Guardian World',
+      link: `https://theguardian.com/sudan-${i}`,
+      publishedAt: 1_700_000_000_000,
+    }));
+    const duplicatePublisher = digestItem({ source: 'Guardian Africa', link: 'https://theguardian.com/sudan-more' });
+    const independent = digestItem({ source: 'BBC News', link: 'https://bbc.com/sudan-report', publishedAt: Date.now() - 2 * 3600_000 });
+    stubFetch({ digestItems: existing, countryHeadlines: { SD: { items: [duplicatePublisher, independent] } } });
+    const { snapshot } = await runFreeze({ serviceKey: '' });
+    const rows = snapshot.countries.SD.developments.headlines;
+    assert.equal(rows.length, 5);
+    assert.deepEqual(rows.slice(0, 4).map(row => row.url), existing.map(row => row.link));
+    assert.equal(rows[4].source, 'BBC News');
+    assert.equal(briefGroundingGap(rows), null);
+  });
+
+  it('retains digest reporting and records a failed curated-cache capture explicitly', async () => {
+    stubFetch({ digestItems: countryDigestItems(), countryHeadlineState: 'fail' });
+    const { snapshot } = await runFreeze({ serviceKey: '' });
+    assert.ok(snapshot.countries.SD.developments.headlines.length > 0);
+    assert.equal(snapshot.coverage.developmentsCuratedFeeds.state, 'unavailable');
+    assert.equal(snapshot.coverage.developmentsCuratedFeeds.recoveredCountryCount, 0);
+    assert.ok(snapshot.errors.developments.some(error => error.stage === 'curated-feeds'));
+  });
+
+  it('ignores unavailable and wrong-country responses without upgrading provenance', async () => {
+    stubFetch({
+      countryHeadlineState: 'unavailable',
+      countryHeadlines: { PW: { items: [digestItem({ title: 'Palau signs a pact' })] } },
+    });
+    const unavailable = await runFreeze();
+    assert.equal(unavailable.snapshot.countries.PW.developments.headlines.length, 0);
+    stubFetch({ countryHeadlines: { PW: { items: [digestItem({ title: 'Sudan signs a pact' })] } } });
+    const mismatched = await runFreeze();
+    assert.equal(mismatched.snapshot.countries.PW.developments.headlines.length, 0);
+  });
+
   it('pools every digest variant for country matching and de-duplicates by URL', async () => {
     const requested = [];
     const [sudanLead] = countryDigestItems();
@@ -1229,10 +1510,10 @@ describe('freeze per-country developments capture', () => {
             '**CLASSIFICATION:** CONFIDENTIAL',
             '',
             '**SITUATION NOW**',
-            'Convoys move under escort [1].',
+            'Sudan aid convoys move under escort [1].',
             '',
             'WHAT THIS MEANS FOR SD',
-            '• **Port Sudan**: closed to traffic [2].',
+            '• **Jeddah**: could host further talks [2].',
           ].join('\n'),
         },
       },
@@ -1245,7 +1526,30 @@ describe('freeze per-country developments capture', () => {
     // The coded heading is the corpus build's to repair with the page's own
     // display name; the freeze has no source for "DR Congo"-style names.
     assert.ok(text.includes('WHAT THIS MEANS FOR SD'));
-    assert.ok(text.includes('• Port Sudan: closed to traffic [2].'));
+    assert.ok(text.includes('• Jeddah: could host further talks [2].'));
+  });
+
+  it('withholds unsupported citations without discarding the dated pulse capture (#7865)', async () => {
+    stubFetch({
+      digestItems: countryDigestItems(),
+      briefOverrides: {
+        SD: { brief: 'SITUATION NOW\nCerrejón faces disruption [1].' },
+        NO: { brief: 'SITUATION NOW\nEl Guri faces disruption [1].' },
+      },
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(snapshot.coverage.briefMatchedCount, 2);
+    assert.equal(snapshot.coverage.briefCountryCount, 0);
+    assert.equal(snapshot.coverage.briefUnsupportedCitationCount, 2);
+    assert.equal(snapshot.coverage.briefEligibleCount, 2, 'withholding does not erase grounding eligibility');
+    for (const code of ['SD', 'NO']) {
+      const row = snapshot.countries[code].developments;
+      assert.equal(row.brief, null);
+      assert.equal(row.briefSkipped, 'unsupported-citation');
+      assert.ok(row.headlines.length > 0);
+      assert.ok(snapshot.errors.developments.some((error) => error.code === code
+        && /source \[1\] does not ground/.test(error.message)));
+    }
   });
 
   it('records a failed sibling digest variant as a state and keeps the strip and the gate intact', async () => {
@@ -1302,7 +1606,7 @@ describe('freeze per-country developments capture', () => {
     assert.equal(snapshot.coverage.briefMatchedCount, 2, 'the withheld attempt is still a requested brief');
     assert.equal(snapshot.coverage.briefThinGroundingCount, 0, 'Sudan had enough headlines to request; it is not pre-request thin');
     assert.ok(snapshot.errors.developments.some((entry) => (
-      entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('publish floor withholds')
+      entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('thin-grounding')
     )));
     // With every attempted brief withheld the gate must fire, not be skipped.
     stubFetch({
@@ -1469,7 +1773,7 @@ describe('freeze per-country developments capture', () => {
     stubFetch({ digestItems: many, briefFailCodes: ['SD', 'NO', 'RO', 'BR', 'BT', 'PW'] });
     await assert.rejects(
       runFreeze({ serviceKey: 'test-key' }),
-      /captured briefs for only 1 of 7 headline-matched countries/,
+      /captured or withheld unsupported briefs for only 1 of 7 headline-matched countries/,
       'a majority brief collapse must fail even when one brief survives',
     );
   });
@@ -1530,5 +1834,232 @@ describe('freeze per-country developments capture', () => {
     assert.ok(snapshot.errors.developments.some((entry) => entry.stage === 'timeline'),
       'timeline failures must be recorded, not swallowed');
     assert.ok(snapshot.countries.SD.developments.brief, 'the brief capture must be unaffected');
+  });
+});
+
+// The tests above prove what the producer emits from a stubbed run. The
+// committed pulse snapshots and the corpus fixture are seed data that nothing
+// re-derives between weekly freezes, so their scorecard sections need their own
+// check or a hand edit can quietly diverge from the contract /accuracy/ reads.
+//
+// This seed is heterogeneous on purpose. The 2026-09-09 snapshot's scorecard
+// section was captured separately from the rest of that file, a day later, so
+// its dates run ahead of the snapshot's own capturedAt. Every field in it is
+// true and the section is self-consistent, which is what the invariants below
+// pin; the first weekly freeze replaces the whole file coherently.
+describe('committed live pulse scorecard sections', () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const declared = new Set(SCORECARD_DECLARED_FIELDS);
+
+  async function seedFiles() {
+    const snapshotDir = join(repoRoot, 'docs', 'snapshots');
+    const entries = await readdir(snapshotDir);
+    const files = entries
+      .filter((filename) => /^crawlable-live-pulse-\d{4}-\d{2}-\d{2}\.json$/.test(filename))
+      .map((filename) => join('docs', 'snapshots', filename));
+    files.push(join('tests', 'fixtures', 'crawlable-live-pulse-fixture.json'));
+    return files;
+  }
+
+  async function sectionsUnderTest() {
+    const found = [];
+    for (const relativePath of await seedFiles()) {
+      const snapshot = JSON.parse(await readFile(join(repoRoot, relativePath), 'utf8'));
+      if (snapshot.forecastScorecard) found.push([relativePath, snapshot]);
+    }
+    assert.ok(found.length > 0, 'at least one committed seed must carry a scorecard section to test');
+    return found;
+  }
+
+  it('never dates a measurement after the read that captured it', async () => {
+    // A scorecard generated after its own attempt would mean the page publishes
+    // numbers the capture could not have seen, and the measured age would be
+    // negative. This holds for a retained section too: the retained numbers are
+    // older still, while attemptedAtMs belongs to the run that failed.
+    for (const [relativePath, snapshot] of await sectionsUnderTest()) {
+      const section = snapshot.forecastScorecard;
+      assert.equal(typeof section.attemptedAtMs, 'number', `${relativePath} must record when it tried`);
+      assert.ok(section.attemptedAtMs > 0, `${relativePath} attemptedAtMs must be a real instant`);
+      if (section.generatedAt === null) continue;
+      assert.ok(
+        section.generatedAt <= section.attemptedAtMs,
+        `${relativePath} publishes numbers generated ${((section.generatedAt - section.attemptedAtMs) / 3_600_000).toFixed(1)}h after the attempt that read them`,
+      );
+    }
+  });
+
+  it('carries numbers whenever it reports no failure, and dates whenever it carries numbers', async () => {
+    for (const [relativePath, snapshot] of await sectionsUnderTest()) {
+      const section = snapshot.forecastScorecard;
+      assert.equal(typeof section.failureCode, 'string', `${relativePath} must carry a failure code field`);
+      if (section.failureCode === '') {
+        assert.ok(section.scorecard, `${relativePath} reports no failure, so it must carry the measurement`);
+      }
+      if (section.scorecard) {
+        assert.match(section.capturedAt, /^\d{4}-\d{2}-\d{2}$/, `${relativePath} must date the capture it carries`);
+        assert.ok(
+          Number.isFinite(section.generatedAt) && section.generatedAt > 0,
+          `${relativePath} must date the numbers it carries`,
+        );
+      }
+      assert.match(section.attemptedAt, /^\d{4}-\d{2}-\d{2}$/, `${relativePath} must date the attempt`);
+    }
+  });
+
+  it('carries only the proto-declared surface, so no undeclared seeder field is committed', async () => {
+    for (const [relativePath, snapshot] of await sectionsUnderTest()) {
+      const { scorecard } = snapshot.forecastScorecard;
+      if (!scorecard) continue;
+      for (const field of Object.keys(scorecard)) {
+        assert.ok(declared.has(field), `${relativePath} commits undeclared scorecard field ${field}`);
+      }
+      assert.doesNotMatch(JSON.stringify(snapshot.forecastScorecard), /betEngine|judgedLane/);
+    }
+  });
+
+  // The coverage block is what the weekly PR and the run summary read. A hand
+  // edited section with a stale coverage block would report a capture that did
+  // not happen, so the two are pinned to each other rather than independently.
+  it('reports coverage that agrees with the section it describes', async () => {
+    for (const [relativePath, snapshot] of await sectionsUnderTest()) {
+      const section = snapshot.forecastScorecard;
+      const { coverage } = snapshot;
+      assert.equal(coverage.forecastScorecardCaptured, section.failureCode === '', relativePath);
+      assert.equal(
+        coverage.forecastScorecardRetained,
+        section.failureCode !== '' && section.scorecard !== null,
+        relativePath,
+      );
+      assert.equal(coverage.forecastScorecardFailureCode, section.failureCode, relativePath);
+      assert.equal(coverage.forecastScorecardScored, section.scorecard?.totals?.scored ?? null, relativePath);
+      assert.deepEqual(snapshot.errors.forecastScorecard, [], `${relativePath} records no scorecard capture error`);
+    }
+  });
+
+  // The classifier is the consumer these seeds feed. Reading them through it
+  // proves the committed envelope resolves to a publishable state, not just
+  // that its fields look well formed.
+  it('classifies every committed section into a publishable state', async () => {
+    for (const [relativePath, snapshot] of await sectionsUnderTest()) {
+      const state = classifyAccuracyState(snapshot.forecastScorecard);
+      assert.ok(state.headline, `${relativePath} must classify to a headline`);
+      if (snapshot.forecastScorecard.failureCode === '') {
+        assert.equal(state.availability, 'ok', relativePath);
+        assert.ok(state.ageHours >= 0, `${relativePath} must not measure a negative age`);
+      }
+    }
+  });
+});
+
+// One wire story reaches the flattened strip selection through several of a
+// publisher's regional feeds. server/worldmonitor/news/v1/_feeds.ts registers
+// France 24's four editions under four different categories, so on 2026-09-14
+// "France 24" (europe) and "France 24 LatAm" (latam) both carried the same
+// article with a byte-identical link, and two of the homepage's four rows went
+// to one story (#8339).
+describe('strip headline article identity (#8339)', () => {
+  const SHARED_URL = 'https://www.france24.com/en/americas/20260914-us-g20-energy-talks-iran-war';
+
+  function digest(entries) {
+    return {
+      categories: Object.fromEntries(
+        entries.map((entry, index) => [`cat${index}`, { items: [entry] }]),
+      ),
+    };
+  }
+
+  function item(overrides = {}) {
+    return {
+      title: 'US hosts G20 energy talks in Texas as Iran war disrupts global fuel markets',
+      source: 'France 24',
+      link: SHARED_URL,
+      publishedAt: Date.parse('2026-09-14T01:42:29.000Z'),
+      importanceScore: 50,
+      ...overrides,
+    };
+  }
+
+  it('publishes one row per article when editions repeat across categories', () => {
+    const { rows, rejections } = selectFrozenHeadlines(digest([
+      item({ source: 'France 24', importanceScore: 60 }),
+      item({ source: 'France 24 LatAm', importanceScore: 55 }),
+    ]), 4);
+
+    assert.equal(rows.length, 1, 'the same article must not occupy two of the four rows');
+    assert.equal(rows[0].source, 'France 24', 'the best-ranked edition survives');
+    assert.equal(rejections.duplicateUrl, 1);
+  });
+
+  it('promotes the next distinct story into the slot a duplicate would have taken', () => {
+    const { rows } = selectFrozenHeadlines(digest([
+      item({ source: 'France 24', importanceScore: 60 }),
+      item({ source: 'France 24 LatAm', importanceScore: 55 }),
+      item({ title: 'A second distinct story', link: 'https://example.com/b', importanceScore: 10 }),
+    ]), 2);
+
+    assert.deepEqual(
+      rows.map((row) => row.title),
+      [
+        'US hosts G20 energy talks in Texas as Iran war disrupts global fuel markets',
+        'A second distinct story',
+      ],
+      'deduping before the cap must fill the freed slot, not ship a short strip',
+    );
+  });
+
+  it('keeps locale editions that are genuinely different documents', () => {
+    const { rows } = selectFrozenHeadlines(digest([
+      item({ link: 'https://www.france24.com/en/americas/20260914-story' }),
+      item({ source: 'France 24 LatAm', link: 'https://www.france24.com/es/americas/20260914-story' }),
+    ]), 4);
+
+    assert.equal(rows.length, 2, 'two locale paths are two documents; collapsing them would lose coverage');
+  });
+
+  it('treats a tracking parameter as the same article but a content parameter as another', () => {
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a?utm_source=x&gclid=y'),
+      normalizeArticleUrl('https://example.com/a'),
+    );
+    assert.notEqual(
+      normalizeArticleUrl('https://example.com/a?id=1'),
+      normalizeArticleUrl('https://example.com/a?id=2'),
+    );
+  });
+
+  it('strips a trailing path slash whether or not a query follows it', () => {
+    // Stripping it off the serialized string only works when there is no
+    // query: 'a/?id=1' does not end in '/', so the same document normalized
+    // two ways as soon as a content parameter was present.
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a/'),
+      normalizeArticleUrl('https://example.com/a'),
+    );
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a/?id=1'),
+      normalizeArticleUrl('https://example.com/a?id=1'),
+    );
+    assert.equal(
+      normalizeArticleUrl('https://example.com/a/b/?id=1&utm_source=x'),
+      normalizeArticleUrl('https://example.com/a/b?id=1'),
+    );
+    // The root path is a single '/' and is not a segment to strip.
+    assert.equal(normalizeArticleUrl('https://example.com/'), normalizeArticleUrl('https://example.com'));
+  });
+
+  it('never merges rows whose URL cannot be compared', () => {
+    const rows = [{ url: 'not a url' }, { url: 'not a url' }, { url: '' }];
+    assert.equal(dedupeByArticleUrl(rows, (row) => row.url).length, 3);
+    assert.deepEqual(duplicateArticleUrls(rows, (row) => row.url), []);
+  });
+
+  it('reports a repeated article so the snapshot can refuse to publish it', () => {
+    assert.deepEqual(
+      duplicateArticleUrls(
+        [{ url: SHARED_URL }, { url: `${SHARED_URL}?utm_medium=rss` }, { url: 'https://example.com/b' }],
+        (row) => row.url,
+      ),
+      [SHARED_URL],
+    );
   });
 });

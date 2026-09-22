@@ -189,7 +189,7 @@ async function readBoundedErrorBody(resp: Response, cap: number): Promise<string
       out += decoder.decode(value, { stream: true });
     }
   } catch { /* best-effort diagnostics only */ } finally {
-    try { void reader.cancel(); } catch { /* already closed */ }
+    try { void reader.cancel().catch(() => {}); } catch { /* already closed */ }
   }
   return out.slice(0, cap);
 }
@@ -498,9 +498,9 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           }
 
           if (!resp.ok || !resp.body) {
+            const errBody = await readBoundedErrorBody(resp, 300).catch(() => '');
             clearTimeout(timeoutId);
-            const errBody = resp.body ? await resp.text().catch(() => '') : '';
-            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
+            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody}`);
             // The body already told us whether the MODEL was rejected; feeding
             // it back is what stops the next request re-sending the prompt.
             recordModelFailure(creds.apiUrl, creds.model, resp.status, errBody);

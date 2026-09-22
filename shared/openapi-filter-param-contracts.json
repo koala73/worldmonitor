@@ -94,7 +94,11 @@
     },
     "RU": {
       "symbol": "IMOEX.ME",
-      "name": "MOEX"
+      "name": "MOEX",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance stopped serving MOEX data after 2022; the chart returns no daily closes"
+      }
     },
     "ZA": {
       "symbol": "^J203.JO",
@@ -118,7 +122,11 @@
     },
     "PL": {
       "symbol": "^WIG20",
-      "name": "WIG 20"
+      "name": "WIG 20",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance returns no daily closes for ^WIG20, and WIG20.WA carries a single close over three months"
+      }
     },
     "NL": {
       "symbol": "^AEX",
@@ -170,15 +178,27 @@
     },
     "EG": {
       "symbol": "^EGX30.CA",
-      "name": "EGX 30"
+      "name": "EGX 30",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance returns no daily closes for ^EGX30.CA and EGX30.CA does not exist"
+      }
     },
     "CL": {
       "symbol": "^IPSA",
-      "name": "IPSA"
+      "name": "IPSA",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance returns one close over three months for ^IPSA, last dated 2026-07-17"
+      }
     },
     "PE": {
       "symbol": "^SPBLPGPT",
-      "name": "S&P Lima"
+      "name": "S&P Lima",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance returns no daily closes for ^SPBLPGPT"
+      }
     },
     "AT": {
       "symbol": "^ATX",
@@ -201,16 +221,24 @@
       "name": "ISEQ Overall"
     },
     "PT": {
-      "symbol": "^PSI20",
-      "name": "PSI 20"
+      "symbol": "PSI20.LS",
+      "name": "PSI"
     },
     "CZ": {
       "symbol": "^PX",
-      "name": "PX Prague"
+      "name": "PX Prague",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance returns no daily closes for ^PX and PX.PR does not exist"
+      }
     },
     "HU": {
       "symbol": "^BUX",
-      "name": "BUX"
+      "name": "BUX",
+      "unavailable": {
+        "checked": "2026-09-13",
+        "reason": "Yahoo Finance returns no daily closes for ^BUX and BUX.BD does not exist"
+      }
     }
   },
   "militaryBaseTypes": [

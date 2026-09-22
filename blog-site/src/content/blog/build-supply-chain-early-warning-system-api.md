@@ -6,7 +6,7 @@ keywords: "supply chain risk API, chokepoint monitoring API, shipping disruption
 audience: "Supply chain engineers, logistics developers, procurement analysts, platform teams, risk managers"
 heroImage: "/blog/images/blog/build-supply-chain-early-warning-system-api.jpg"
 pubDate: "2026-06-08"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-10"
 ---
 
 When the Strait of Hormuz shut down this spring, companies found out in one of two ways. Some read about it in the news and started calling freight forwarders. Others had already received a webhook hours earlier, when the disruption score crossed their alert threshold, and were quoting Cape of Good Hope routings before their competitors knew there was a problem.
@@ -57,13 +57,15 @@ The response tells you everything a routing decision needs:
 }
 ```
 
-Read it like this: this tanker lane is 100% exposed to both Hormuz and Suez, the current disruption score on the primary chokepoint is 68/100, and the documented bypass adds 12 transit days at a 1.35× cost multiplier. `cargoType` matters because bypass options are filtered to corridors suitable for your cargo (`container`, `tanker`, `bulk`, or `roro`), and `hs2` lets you scope by commodity chapter.
+Read it like this: this tanker lane is 100% exposed to both [Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) and [Suez](https://www.worldmonitor.app/chokepoints/suez-canal/), the current disruption score on the primary chokepoint is 68/100, and the documented bypass adds 12 transit days at a 1.35× cost multiplier. `cargoType` matters because bypass options are filtered to corridors suitable for your cargo (`container`, `tanker`, `bulk`, or `roro`), and `hs2` lets you scope by commodity chapter.
+
+The [Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/) alternative avoids Suez and Bab el-Mandeb. A vessel leaving the Persian Gulf still has to clear Hormuz.
 
 Run this once for every lane in your network and you have an exposure matrix: which chokepoints, at what percentage, with what fallback. Most teams discover that 70% of their volume funnels through a small set of waterways.
 
 ## Step 2: Subscribe to Disruption Webhooks
 
-Polling is for prototypes. Register a webhook for the chokepoints your matrix surfaced:
+Polling is for prototypes. Register a webhook for the chokepoints your matrix surfaced. The example also includes [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/), the southern entrance to the Red Sea:
 
 ```bash
 curl -s -X POST 'https://api.worldmonitor.app/api/v2/shipping/webhooks' \
@@ -144,7 +146,7 @@ The `lanesExposedTo()` lookup is your exposure matrix from Step 1. That is what 
 
 ## Step 4: Add Country Context
 
-Chokepoints are not the only failure mode. A supplier country sliding into instability disrupts production before anything reaches a port. Pull structural resilience for your origin countries:
+Chokepoints are not the only failure mode. A supplier country sliding into instability disrupts production before anything reaches a port. Pull structural resilience for your origin countries. For the route example, inspect the [United Arab Emirates](https://www.worldmonitor.app/countries/united-arab-emirates/) and [Netherlands](https://www.worldmonitor.app/countries/netherlands/) profiles. The request below uses [Egypt](https://www.worldmonitor.app/countries/egypt/), the Suez transit country:
 
 ```bash
 curl -s 'https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=EG' \

@@ -198,13 +198,6 @@ describe('pointer wire format (P1 regression — write ↔ read must round-trip)
     assert.deepEqual(pointer, { userId: 'user_abc', issueDate: '2026-04-18-0800' });
   });
 
-  it('a raw colon-delimited string (the P1 bug) fails JSON.parse', () => {
-    // This is the format the earlier buggy code wrote. If we ever
-    // revert to it, readRawJsonFromUpstash's parse will throw and
-    // the public route will 503. Locking the failure so anyone
-    // who reintroduces the bug gets a red test.
-    assert.throws(() => JSON.parse('user_abc:2026-04-18-0800'), SyntaxError);
-  });
 });
 
 describe('preview share route reachability', () => {

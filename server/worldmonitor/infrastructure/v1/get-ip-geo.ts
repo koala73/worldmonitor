@@ -20,7 +20,7 @@ export const getIpGeo: InfrastructureServiceHandler['getIpGeo'] = async (
   
   return {
     country,
-    region: headers['x-vercel-ip-region'] || '',
+    region: headers['x-vercel-ip-country-region'] || '',
     city: headers['x-vercel-ip-city'] || '',
   };
 };

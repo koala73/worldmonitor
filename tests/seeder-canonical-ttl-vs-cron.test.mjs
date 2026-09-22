@@ -90,12 +90,6 @@ const KNOWN_VIOLATIONS = {
   'Reexport-Share:seed-recovery-reexport-share.mjs': '35d TTL vs 30d cron (1.17×)',
   'Sovereign-Wealth:seed-sovereign-wealth.mjs': '35d TTL vs 30d cron (1.17×)',
 
-  // ── Climate (cont.) ──
-  'Ocean-Ice:seed-climate-ocean-ice.mjs': '24h TTL vs 24h cron (1×)',
-
-  // ── Energy ──
-  'JODI-Gas:seed-jodi-gas.mjs': '70d TTL vs 35d cron (2×) — one missed-cycle buffer; 3× would be 105d',
-
   // ── Portwatch ──
   'PW-Disruptions:seed-portwatch-disruptions.mjs': '2h TTL vs 1h cron (2×) — borderline',
   'PW-Main:seed-portwatch.mjs': '12h TTL vs 6h cron (2×) — borderline',
@@ -104,7 +98,6 @@ const KNOWN_VIOLATIONS = {
 
   // ── Other ──
   'USA-Spending:seed-usa-spending.mjs': '2h TTL vs 1h cron (2×) — borderline',
-  'Submarine-Cables:seed-submarine-cables.mjs': '7d TTL vs 7d cron (1×)',
   'Displacement:seed-displacement-summary.mjs': '24h TTL vs 24h cron (1×)',
 };
 

@@ -1121,6 +1121,7 @@ describe('a prolonged relay rejection is visible in /api/health', () => {
 
 describe('a prolonged relay rejection is visible in /api/seed-health', () => {
   const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
+  const CHINA_DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 
   /**
    * Answer every seed-meta GET with a fresh, healthy record so the assertions
@@ -1208,6 +1209,31 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
               poolCounts: { geopolitical: 18, tech: 12, finance: 8 },
             }),
           };
+        }
+        if (key === CHINA_DECISION_META_KEY) {
+          const now = Date.now();
+          return { result: JSON.stringify({
+            fetchedAt: now,
+            recordCount: 6,
+            groupStates: Object.fromEntries([
+              'macro',
+              'policy-enforcement',
+              'cross-strait-activity',
+              'corporate-disclosures',
+              'corridor-conditions',
+              'activity-nowcast',
+            ].map((id) => [id, 'available'])),
+            groupCounts: {
+              populated: 6,
+              partial: 0,
+              stale: 0,
+              unavailable: 0,
+              healthyQuiet: 0,
+              operationallyCovered: 6,
+            },
+            unavailableCauses: {},
+            lastDecisionCoverageSuccessAt: now,
+          }) };
         }
         return { result: JSON.stringify({
           fetchedAt: Date.now(),

@@ -78,6 +78,7 @@ function extractOpen() {
     'track',
     'isMobileDevice',
     'overlayHistory',
+    'safeStorageSet',
     `${js}\nreturn __UnifiedSettingsOpenHarness;`,
   );
 }
@@ -101,6 +102,7 @@ const Harness = extractOpen()(
   () => {},
   () => false,
   { open() {}, replace() {} },
+  () => {},
 );
 
 /**

@@ -21,4 +21,11 @@ describe('get_news_intelligence credibility discovery (#6597)', () => {
     assert.ok(cardTool, 'get_news_intelligence must stay published in the server card');
     assert.equal(cardTool.description, tool.description);
   });
+
+  it('honors GDELT observation age as well as its seeder clock', () => {
+    const gdeltCheck = tool._freshnessChecks.find(
+      ({ key }) => key === 'seed-meta:intelligence:gdelt-intel',
+    );
+    assert.equal(gdeltCheck?.honorContentAge, true);
+  });
 });

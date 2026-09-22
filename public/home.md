@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/home.md"
 
 # World Monitor — By the time it's news, you already knew.
 
-As of 2026-09-04.
+As of 2026-09-08.
 
 World Monitor is a free real-time global intelligence dashboard. It brings ships, aircraft, conflict events, alerts, infrastructure, markets, weather, cyber signals, and curated news onto one live map. Its analysis layer helps users see when separate signals begin to converge into one event that matters.
 

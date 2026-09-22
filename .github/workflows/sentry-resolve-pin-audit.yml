@@ -1,0 +1,45 @@
+name: Sentry Resolve Pin Audit
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sentry-resolve-pin-audit-${{ github.ref }}
+  # A read-only point-in-time probe. A newer reading of the board is more
+  # useful than a stale runner-less job holding the group.
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      # A backstop that skips itself when its credential is missing is the
+      # failure mode this audit exists to catch, so an absent secret is loud.
+      - name: Verify the Sentry token is present
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "::error::SENTRY_AUTH_TOKEN is required. It must be a sntryu_ user token with event:read and project:read; a sntrys_ release-upload token returns 403 on the issues endpoint."
+            exit 1
+          fi
+
+      - name: Audit resolved issues for release pins
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: elie-habib
+          SENTRY_PROJECT: worldmonitor
+        run: node scripts/audit-sentry-resolve-pins.mjs

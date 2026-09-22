@@ -245,6 +245,14 @@ export async function validateBootstrapUserApiKey(key) {
   }
 
   const keyHash = await sha256Hex(key);
+  return validateUserApiKeyHash(keyHash);
+}
+
+// OAuth stores only the key hash. Reuse the same revocation and scope checks.
+export async function validateUserApiKeyHash(keyHash) {
+  if (typeof keyHash !== 'string' || !/^[a-f0-9]{64}$/.test(keyHash)) {
+    return { ok: false, status: 401, error: 'Invalid API key', reason: 'malformed' };
+  }
   return coalesce(userKeyInFlight, keyHash, () => validateBootstrapUserApiKeyHash(keyHash));
 }
 
@@ -394,7 +402,7 @@ async function validateBootstrapUserApiAccessUncached(userId) {
   const cacheKey = `entitlements:${ENTITLEMENT_ENV_PREFIX}:${userId}`;
   const cached = await readCachedJson(cacheKey);
   if (cached.status === 'hit' && cached.value && typeof cached.value === 'object') {
-    if (hasCurrentApiAccess(cached.value)) return { ok: true };
+    if (hasCurrentApiAccess(cached.value)) return { ok: true, entitlement: cached.value };
     const cachedBillingFailure = billingVerificationFailure(cached.value);
     if (cachedBillingFailure) return cachedBillingFailure;
     if (notApplicableVerificationTtlSeconds(cached.value) !== null) {
@@ -430,7 +438,7 @@ async function validateBootstrapUserApiAccessUncached(userId) {
     await writeCachedJson(cacheKey, result.value, entitlementCacheTtlSeconds(result.value));
   }
 
-  if (hasCurrentApiAccess(result.value)) return { ok: true };
+  if (hasCurrentApiAccess(result.value)) return { ok: true, entitlement: result.value };
   const billingFailure = billingVerificationFailure(result.value);
   if (billingFailure) return billingFailure;
 

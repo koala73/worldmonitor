@@ -135,13 +135,19 @@ const MAP = [
   [/^proFresh:/,                             { cap: 'freshness.market_quotes' }],
 
   // ---- API surfaces by domain
-  [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history)$/, { cap: 'markets.stock_analysis' }],
+  [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history|\/api\/market\/v1\/get-insider-transactions)$/, { cap: 'markets.stock_analysis' }],
   [/:(\/api\/market\/v1\/backtest-stock|\/api\/market\/v1\/list-stored-stock-backtests)$/, { cap: 'markets.backtest' }],
   [/:\/api\/intelligence\/v1\/list-market-implications$/, { cap: 'markets.implications' }],
+  // WSB scanner RPC (#8043): same premium surface as panel wsb-ticker-scanner.
+  [/:\/api\/intelligence\/v1\/list-wsb-tickers$/, { cap: 'markets.wsb' }],
   [/:\/api\/intelligence\/v1\/classify-event$/,           { cap: 'news.classification' }],
   [/:\/api\/intelligence\/v1\/deduct-situation$/,         { cap: 'intel.deduction' }],
   [/:\/api\/intelligence\/v1\/(search-intel-history|get-intel-timeline|get-similar-events)$/, { cap: 'intel.memory' }],
-  [/:\/api\/intelligence\/v1\/(get-country-intel-brief|get-regime-history)$/, { cap: 'intel.country_brief' }],
+  // get-country-coverage (#7526) is the agent-facing sibling of the country
+  // brief: same country-intelligence depth, same Pro tier, no UI of its own.
+  // Grouped here rather than given a new user-facing capability label, which
+  // would advertise a paid feature that no panel surfaces.
+  [/:\/api\/intelligence\/v1\/(get-country-intel-brief|get-regime-history|get-country-coverage)$/, { cap: 'intel.country_brief' }],
   [/:\/api\/intelligence\/v1\/(get-regional-snapshot|get-regional-brief)$/,   { cap: 'intel.regional' }],
   [/:\/api\/resilience\/v1\//,                            { cap: 'resilience.scores' }],
   [/:\/api\/scorecard\/v1\//,                             { cap: 'resilience.scores', note: 'five-factor scorecards' }],
@@ -179,7 +185,7 @@ const MAP = [
   [/^panel:\w+\.(regional-intelligence|deduction)$/, { exclude: 'ships enabled:false — gate guards nothing' }],
   // isPanelEntitled(): a 'locked' panel outside apiKeyPanels returns isDesktopRuntime(),
   // so desktop-only markers grant access on desktop and are absent on web. Not a paid gate.
-  [/^panel:\w+\.(forecast|oref-sirens|telegram-intel|x-intel)$/, { exclude: "desktop-only 'locked' — isPanelEntitled returns isDesktopRuntime(); free users are entitled on both surfaces" }],
+  [/^panel:\w+\.(forecast|oref-sirens|x-intel)$/, { exclude: "desktop-only 'locked' — isPanelEntitled returns isDesktopRuntime(); free users are entitled on both surfaces" }],
   [/^panel:\w+\.(cii|strategic-risk|gdelt-intel|supply-chain)$/, { exclude: "desktop-only 'enhanced' — badge only, never blocks a free user" }],
   [/^panel:\w+\.stock-analysis$/,             { cap: 'markets.stock_analysis' }],
   [/^panel:\w+\.stock-backtest$/,             { cap: 'markets.backtest' }],
@@ -200,6 +206,7 @@ const MAP = [
 ];
 
 const SITE_MAP = [
+  [/^src\/components\/TelegramIntelPanel\.ts$/, { cap: 'intel.telegram', note: 'desktop access lifecycle; free web feed remains available', preds: ['hasPremiumAccess'] }],
   // --- capabilities the hand-built ledger never found ---
   [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' , preds: ['tier'] }],
   [/_shared\/direct-llm-quota\.ts/,           { cap: 'llm.direct_quota', note: 'entitlement-derived daily LLM ceiling' , preds: ['tier'] }],
@@ -251,6 +258,7 @@ const SITE_MAP = [
   [/summarization\.ts|summarize-gate/,        { cap: 'news.summarization' }], // NOTE: matches no current gate
   [/panel-layout|settings-window|event-handlers/, { cap: 'limits.panels', note: 'cap + gate CTA plumbing' , preds: ['hasPremiumAccess','isProUser'] }],
   [/widget-store/,                            { cap: 'widgets.custom' }], // NOTE: matches no current gate
+  [/^api\/v2\/shipping\/webhooks\//, { exclude: 'consumer of shipping premium gate — preserves billing verification denial', preds: ['resolvePremiumCallerIdentity'] }],
   [/entitlements|entitlement-check|premium-check|pro-entitlement|billing|payments\//, { exclude: 'entitlement plumbing — resolves/propagates state, gates nothing itself' , preds: ['apiAccess','isCallerPremium','resolvePremiumCallerIdentity','tier'] }],
   [/UnifiedSettings|data-loader|http\.ts|apiPlanLimitUsage|mcpProTokens|gateway\.ts|shipping/, { exclude: 'consumer of a gate mapped elsewhere — renders or forwards, does not define' , preds: ['apiAccess','hasPremiumAccess','isCallerPremium','isProUser','mcpAccess','tier'] }],
 ];
@@ -303,8 +311,8 @@ const SITE_BASELINE = {
   "api/mcp/skill-extension/generated.ts::tier": 1,
   "api/me/entitlement.ts::isCallerPremium": 1,
   "api/notification-channels.ts::tier": 1,
-  "api/v2/shipping/webhooks/[subscriberId].ts::isCallerPremium": 1,
-  "api/v2/shipping/webhooks/[subscriberId]/[action].ts::isCallerPremium": 1,
+  "api/v2/shipping/webhooks/[subscriberId].ts::resolvePremiumCallerIdentity": 1,
+  "api/v2/shipping/webhooks/[subscriberId]/[action].ts::resolvePremiumCallerIdentity": 1,
   "api/widget-agent.ts::tier": 1,
   "convex/alertRules.ts::tier": 1,
   "convex/apiKeys.ts::apiAccess": 1,
@@ -358,6 +366,7 @@ const SITE_BASELINE = {
   "src/app/event-handlers.ts::isProUser": 2,
   "src/app/panel-layout.ts::hasPremiumAccess": 1,
   "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
+  "src/components/TelegramIntelPanel.ts::hasPremiumAccess": 1,
   "src/components/UnifiedSettings.ts::isProUser": 1,
   "src/services/analysis-framework-store.ts::hasPremiumAccess": 1,
   "src/services/correlation-engine/engine.ts::hasPremiumAccess": 1,

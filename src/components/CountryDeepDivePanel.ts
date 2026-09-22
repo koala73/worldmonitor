@@ -21,7 +21,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
 import { STRATEGIC_WATERWAYS } from '@/config/geo';
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { hasPremiumAccess, readClientEntitlementBelief, readPremiumAccessGrant } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { trackGateHit } from '@/services/analytics';
@@ -128,6 +128,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
+  private currentBriefIsFallback = false;
   private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -312,6 +313,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
+    this.currentBriefIsFallback = false;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
@@ -1738,6 +1740,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         .then((r) => r.json() as Promise<ComputeEnergyShockScenarioResponse>)
         .then((result) => {
           resultArea.replaceChildren();
+          if (result.gasImpact || (result.gasSensitivity && result.gasSensitivity.modelBasis !== 'assumed_route_sensitivity')) {
+            resultArea.append(this.el('div', 'cdp-economic-source', 'Gas scenario uses an outdated model. Retry after the cached response expires.'));
+            return;
+          }
           resultArea.append(this.renderShockResult(result));
           const lvl = result.coverageLevel ?? '';
           if (lvl) {
@@ -1767,7 +1773,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private renderShockResult(result: ComputeEnergyShockScenarioResponse): HTMLElement {
     const container = this.el('div', '');
 
-    if (!result.dataAvailable && !(result as any).gasImpact?.dataAvailable) {
+    if (!result.dataAvailable && !result.gasSensitivity?.dataAvailable) {
       container.append(this.el('div', 'cdp-economic-source', result.assessment));
       return container;
     }
@@ -1775,7 +1781,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (result.degraded) {
       const warn = this.el('div', '');
       warn.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#f59e0b;margin-bottom:6px;padding:3px 6px;background:#1c1400;border-radius:3px';
-      warn.textContent = 'Live flow data unavailable — using historical baseline';
+      warn.textContent = result.gasSensitivity && !result.jodiOilCoverage
+        ? 'Shipping flow data unavailable. Gas sensitivity uses an assumed route baseline.'
+        : 'Live flow data unavailable — using historical baseline';
       container.append(warn);
     }
 
@@ -1863,31 +1871,34 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       container.append(details);
     }
 
-    if (result.gasImpact?.dataAvailable) {
-      const gi = result.gasImpact;
+    if (result.gasSensitivity?.dataAvailable) {
+      const gi = result.gasSensitivity;
       const gasSection = this.el('div', '');
       gasSection.style.cssText = 'margin-top:10px;border-top:1px solid #374151;padding-top:8px';
 
       const gasTitle = this.el('div', '');
       gasTitle.style.cssText = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#e5e7eb;margin-bottom:4px';
-      gasTitle.textContent = 'Gas / LNG Impact';
+      gasTitle.textContent = 'Gas / LNG assumed sensitivity';
       gasSection.append(gasTitle);
 
       const metrics = this.el('div', 'cdp-economic-source');
-      metrics.textContent = `LNG share: ${(gi.lngShareOfImports * 100).toFixed(0)}% | Disruption: ${gi.lngDisruptionTj.toFixed(0)} TJ | Deficit: ${gi.deficitPct.toFixed(1)}%`;
+      const lngShare = gi.lngShareOfImports == null ? 'unknown' : `${(gi.lngShareOfImports * 100).toFixed(0)}%`;
+      const loss = gi.lngDisruptionTj > 0 && gi.lngDisruptionTj < 0.1 ? '<0.1' : gi.lngDisruptionTj.toFixed(1);
+      const demandPct = gi.deficitPct > 0 && gi.deficitPct < 0.1 ? '<0.1' : gi.deficitPct.toFixed(1);
+      metrics.textContent = `Recorded LNG share: ${lngShare} | Assumed monthly loss: ${loss} TJ | Share of recorded demand: ${demandPct}%`;
       gasSection.append(metrics);
 
       if (gi.storage) {
         const s = gi.storage;
         const storageDiv = this.el('div', 'cdp-economic-source');
         storageDiv.style.cssText += ';margin-top:4px';
-        storageDiv.textContent = `Gas storage: ${s.fillPct.toFixed(1)}% full (${s.gasTwh.toFixed(0)} TWh), buffer ~${s.bufferDays} days, ${s.trend} (${s.scope})`;
+        storageDiv.textContent = `GIE gas storage: ${s.fillPct.toFixed(1)}% full (${s.gasTwh.toFixed(1)} TWh), observed ${s.date || 'date unknown'}. Operational endurance is not estimated.`;
         gasSection.append(storageDiv);
       }
 
       const srcBadge = this.el('div', '');
       srcBadge.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#9ca3af;margin-top:2px';
-      srcBadge.textContent = `Source: ${gi.dataSource === 'gie_daily' ? 'GIE (daily, Europe)' : 'JODI (monthly, global)'}`;
+      srcBadge.textContent = `Gas inputs: JODI, observation month ${gi.dataMonth || 'unknown'}. Availability does not establish freshness.`;
       gasSection.append(srcBadge);
 
       const gasAssess = this.el('div', '');
@@ -2580,9 +2591,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrapper;
   }
 
+  public isFallbackBrief(): boolean {
+    return this.currentBriefIsFallback;
+  }
+
   public updateScore(score: CountryScore | null, _signals: CountryBriefSignals): void {
     this.currentScore = score;
     this.currentSignals = _signals;
+    if (this.signalsBody) {
+      const chips = this.buildSignalChipsElement(_signals);
+      this.signalsBody.querySelector('.cdp-signal-chips')?.replaceWith(chips);
+      const seeded: CountryDeepDiveSignalDetails = {
+        critical: _signals.criticalNews + Math.max(0, _signals.activeStrikes),
+        high: _signals.militaryFlights + _signals.militaryVessels + _signals.protests,
+        medium: _signals.outages + _signals.cyberThreats + _signals.aisDisruptions + _signals.radiationAnomalies,
+        low: _signals.earthquakes + (_signals.temporalAnomalies ?? 0) + _signals.satelliteFires,
+        recentHigh: [],
+      };
+      this.renderSignalBreakdown(seeded);
+    }
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
     const top = this.scoreCard.firstElementChild as HTMLElement | null;
@@ -2688,6 +2715,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
+      this.currentBriefIsFallback = false;
       this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
@@ -2695,6 +2723,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
+    this.currentBriefIsFallback = data.fallback === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
     const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0);
@@ -2800,7 +2829,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', "legacy direct innerHTML migration"));
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
-      const url = `${window.location.origin}/?c=${encodeURIComponent(this.currentCode)}`;
+      const url = `${window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
       navigator.clipboard.writeText(url).then(() => {
         const orig = shareBtn.innerHTML;
         setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
@@ -2830,7 +2859,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       this.exportEvidenceBundle();
     });
-    right.append(shareBtn, maxBtn, storyButton, exportButton, evidenceButton);
+    const decisionButton = this.el('button', 'cdp-action-btn', t('components.decisionBrief.title')) as HTMLButtonElement;
+    decisionButton.type = 'button';
+    decisionButton.addEventListener('click', () => {
+      if (!hasPremiumAccess(getAuthState())) {
+        trackGateHit('decision-brief');
+        showToast(t('components.decisionBrief.locked'));
+        return;
+      }
+      void this.openDecisionBrief(decisionButton);
+    });
+    const commodityButton = this.el('button', 'cdp-action-btn', t('components.decisionBrief.commodityTitle')) as HTMLButtonElement;
+    commodityButton.type = 'button';
+    commodityButton.addEventListener('click', () => {
+      if (!hasPremiumAccess(getAuthState())) { trackGateHit('decision-brief'); showToast(t('components.decisionBrief.locked')); return; }
+      void this.openDecisionBrief(commodityButton, true);
+    });
+    right.append(shareBtn, maxBtn, storyButton, exportButton, decisionButton, commodityButton, evidenceButton);
     header.append(left, right);
 
     const scoreCard = this.el('section', 'cdp-card cdp-score-card');
@@ -3218,9 +3263,37 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         message: details.message,
         data: { countryCode },
       });
+      // Callers skip cancellations, so anything reaching here is a real load
+      // failure. The `kind` tag claims it for beforeSend: a scorecard deadline
+      // or a network failure arrives with zero frames (`signal timed out`,
+      // `Failed to fetch`) and would otherwise be dropped as extension noise.
+      //
+      // A 401/403 is the one failure this panel cannot diagnose from the event
+      // alone. Every premium widget here fetches only once `hasPremiumAccess()`
+      // is true, so a denial means the client's premium belief and the
+      // credential the premium injector actually attached disagreed — and the
+      // event said nothing about which of the four arms had granted access
+      // (WORLDMONITOR-147). Record the arm and the client's own entitlement
+      // belief; together they separate "a browser-local key unlocked the panel"
+      // from "the Clerk session lapsed mid-flight".
+      //
+      // Denials ONLY. A deadline or a network failure says nothing about the
+      // account, and widening this to every failure would both attach account
+      // state to unrelated events and break the exact tag-shape assertion in
+      // tests/five-factor-scorecard-ui-registration.test.mjs, which is the
+      // preservation control for the deadline capture.
+      const status = (error as { statusCode?: unknown } | null)?.statusCode;
+      const denial = status === 401 || status === 403;
       Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-        tags: { surface: 'country-deep-dive', widget: details.widget },
-        extra: { countryCode },
+        tags: {
+          kind: 'country_deep_dive_load_failed',
+          surface: 'country-deep-dive',
+          widget: details.widget,
+          ...(denial ? { status: String(status), premium_grant: readPremiumAccessGrant(getAuthState()) } : {}),
+        },
+        extra: denial
+          ? { countryCode, entitlementBelief: readClientEntitlementBelief(getAuthState()) }
+          : { countryCode },
       });
     });
   }
@@ -3375,10 +3448,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.replaceChildren();
   }
 
-  private renderInitialSignals(signals: CountryBriefSignals): void {
-    if (!this.signalsBody) return;
-    this.signalsBody.replaceChildren();
-
+  private buildSignalChipsElement(signals: CountryBriefSignals): HTMLElement {
     const chips = this.el('div', 'cdp-signal-chips');
     this.addSignalChip(chips, signals.criticalNews, t('countryBrief.chips.criticalNews'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.protests, t('countryBrief.chips.protests'), '📢', 'protest');
@@ -3388,7 +3458,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
     this.addSignalChip(chips, signals.radiationAnomalies, 'Radiation anomalies', '☢️', 'outage');
-    this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
+    if (signals.temporalAnomalies === null) {
+      chips.append(this.makeSignalChip(`⏱️ ${t('countryBrief.chips.temporalUnavailable')}`, 'outage'));
+    } else {
+      this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
+    }
     this.addSignalChip(chips, signals.cyberThreats, t('countryBrief.chips.cyberThreats'), '🛡️', 'conflict');
     this.addSignalChip(chips, signals.earthquakes, t('countryBrief.chips.earthquakes'), '🌍', 'quake');
     if (signals.displacementOutflow > 0) {
@@ -3410,6 +3484,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.orefHistory24h, t('countryBrief.chips.sirens24h'), '🕓', 'conflict');
     this.addSignalChip(chips, signals.aviationDisruptions, t('countryBrief.chips.aviationDisruptions'), '🚫', 'outage');
     this.addSignalChip(chips, signals.gpsJammingHexes, t('countryBrief.chips.gpsJammingZones'), '📡', 'outage');
+    return chips;
+  }
+
+  private renderInitialSignals(signals: CountryBriefSignals): void {
+    if (!this.signalsBody) return;
+    this.signalsBody.replaceChildren();
+
+    const chips = this.buildSignalChipsElement(signals);
     this.signalsBody.append(chips);
 
     this.signalBreakdownBody = this.el('div', 'cdp-signal-breakdown');
@@ -3420,7 +3502,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       critical: signals.criticalNews + Math.max(0, signals.activeStrikes),
       high: signals.militaryFlights + signals.militaryVessels + signals.protests,
       medium: signals.outages + signals.cyberThreats + signals.aisDisruptions + signals.radiationAnomalies,
-      low: signals.earthquakes + signals.temporalAnomalies + signals.satelliteFires,
+      low: signals.earthquakes + (signals.temporalAnomalies ?? 0) + signals.satelliteFires,
       recentHigh: [],
     };
     this.renderSignalBreakdown(seeded);
@@ -3758,6 +3840,42 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     );
   }
 
+  private async openDecisionBrief(trigger: HTMLButtonElement, commodity = false): Promise<void> {
+    const code = this.currentCode;
+    const name = this.currentName;
+    const signal = this.signal;
+    if (!code || !name || this.outputClose || this.outputRequestSignal === signal) return;
+    this.outputRequestSignal = signal;
+    trigger.disabled = true;
+    try {
+      const [{ createDecisionBriefOutput, createCommodityBriefOutput }, { captureDecisionBrief, captureCommodityBrief }, { buildDecisionBrief, buildCommodityBrief, COMMODITY_BRIEF_OPTIONS }] = await Promise.all([
+        import('./CountryBriefOutput'), import('@/services/decision-brief'), import('@/utils/decision-brief'),
+      ]);
+      if (signal.aborted || this.signal !== signal || this.currentCode !== code || !this.isVisible() || this.outputClose) return;
+      const shell = this.content.querySelector<HTMLElement>('.cdp-shell')!;
+      const scrollTop = this.content.scrollTop;
+      const outputController = new AbortController();
+      const outputSignal = AbortSignal.any([signal, outputController.signal]);
+      const output = commodity ? createCommodityBriefOutput({ code, name }, outputSignal, COMMODITY_BRIEF_OPTIONS,
+        async (selection, requestSignal) => buildCommodityBrief(selection, await captureCommodityBrief(selection, requestSignal)),
+        () => this.outputClose?.()) : createDecisionBriefOutput({ code, name }, outputSignal,
+        async (selection, requestSignal) => buildDecisionBrief(selection, await captureDecisionBrief(selection, requestSignal)),
+        () => this.outputClose?.());
+      this.outputClose = () => {
+        outputController.abort();
+        output.remove(); shell.hidden = false; this.outputClose = null;
+        this.content.scrollTop = scrollTop; trigger.focus({ preventScroll: true });
+      };
+      shell.hidden = true; this.content.append(output); this.content.scrollTop = 0;
+      output.querySelector<HTMLButtonElement>('button')?.focus();
+    } catch {
+      showToast('Could not prepare the decision brief. Please retry.');
+    } finally {
+      if (this.outputRequestSignal === signal) this.outputRequestSignal = null;
+      trigger.disabled = false;
+    }
+  }
+
   private async openOutput(kind: 'story' | 'report', trigger: HTMLButtonElement): Promise<void> {
     const code = this.currentCode;
     const signal = this.signal;
@@ -3847,6 +3965,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         satelliteFires: this.currentSignals.satelliteFires,
         radiationAnomalies: this.currentSignals.radiationAnomalies,
         temporalAnomalies: this.currentSignals.temporalAnomalies,
+        globalTemporalAnomalies: this.currentSignals.globalTemporalAnomalies ?? null,
         cyberThreats: this.currentSignals.cyberThreats,
         earthquakes: this.currentSignals.earthquakes,
         displacementOutflow: this.currentSignals.displacementOutflow,

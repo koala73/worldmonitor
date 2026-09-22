@@ -243,12 +243,9 @@ async function main() {
 
     // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
     //
-    // 9-day budget chosen so the 2026-05-04 incident — where the cache held
-    // 50 outbreaks all 11+ days old — would have correctly tripped STALE_CONTENT
-    // in /api/health. WHO Disease Outbreak News publishes 1-2/week (typical gap
-    // 3-5d), CDC HAN is sporadic but rarely silent for a full week, and TGH
-    // (post-#3593) provides daily ProMED items. 9 days tolerates a single quiet
-    // WHO/CDC week without paging on normal cadence.
+    // TGH releases its bundle about weekly, and the newest event commonly trails
+    // release by 3 to 5 days. Valid content can therefore approach 12 days old
+    // before the next release.
     //
     // diseaseContentMeta + diseasePublishTransform live in
     // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code

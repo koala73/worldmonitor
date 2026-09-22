@@ -230,7 +230,8 @@ export function buildSnapshot({ results, sourceStatuses, fetchedAt = Date.now() 
 
 export function mergeTenderSourceResults({ settled, sourceNames, previousSnapshot, attemptedAt = new Date().toISOString() }) {
   const previousTenders = Array.isArray(previousSnapshot?.tenders) ? previousSnapshot.tenders : [];
-  const previousStatuses = new Map((previousSnapshot?.sourceStatuses || []).map((status) => [status.source, status]));
+  const previousStatuses = new Map((Array.isArray(previousSnapshot?.sourceStatuses) ? previousSnapshot.sourceStatuses : [])
+    .filter((status) => status?.source).map((status) => [status.source, status]));
   const records = [];
   const sourceStatuses = [];
 
@@ -244,15 +245,45 @@ export function mergeTenderSourceResults({ settled, sourceNames, previousSnapsho
         fetchedAt: result.value.status.fetchedAt || attemptedAt,
         lastSuccessfulAt: result.value.status.lastSuccessfulAt || result.value.status.fetchedAt || attemptedAt,
         stale: false,
+        ...(['contracts-finder', 'world-bank'].includes(source) ? { consecutiveFailures: 0, firstFailureAt: '' } : {}),
       });
       continue;
     }
 
     const attemptedAtMs = Date.parse(attemptedAt);
-    const priorRecords = previousTenders.filter((tender) => tender.source === source && isOpenOpportunity(tender, attemptedAtMs));
+    const priorRecords = previousTenders.filter((tender) => tender?.source === source && isOpenOpportunity(tender, attemptedAtMs));
     const priorStatus = previousStatuses.get(source);
     const fulfilledStatus = result.status === 'fulfilled' ? result.value?.status : null;
     const error = string(fulfilledStatus?.error || result.reason?.message || 'upstream request failed').slice(0, 200);
+    if (['contracts-finder', 'world-bank'].includes(source)) {
+      // A bundle success or a failed source attempt is not a source success.
+      const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt,
+        priorStatus?.state === 'ok' ? priorStatus.fetchedAt : '');
+      const successMs = Date.parse(lastSuccessfulAt);
+      const fresh = successMs > 0 && successMs <= attemptedAtMs && attemptedAtMs < successMs + 180 * 60_000;
+      const retained = fresh ? priorRecords.filter((tender) =>
+        string(tender.id) && string(tender.title) && safeOfficialUrl(tender.officialUrl, source)
+        && ['active', 'open'].includes(tender.status)
+        && [tender.categoryCodes, tender.sectors].every((values) => Array.isArray(values) && values.every((value) => typeof value === 'string'))) : [];
+      const confirmedEmpty = fresh && previousSnapshot?.dataAvailable === true
+        && Array.isArray(previousSnapshot.tenders)
+        && previousSnapshot.tenders.every((tender) => tender && tender.source !== source)
+        && previousSnapshot.sourceStatuses.filter((status) => status?.source === source).length === 1
+        && priorStatus?.recordCount === 0
+        && (priorStatus.state === 'ok' ? priorStatus.fetchedAt === lastSuccessfulAt : priorStatus.confirmedEmpty === true);
+      const alreadyFailed = priorStatus && priorStatus.state !== 'ok';
+      const previousFailures = Number.isSafeInteger(priorStatus?.consecutiveFailures) && priorStatus.consecutiveFailures >= 1
+        ? priorStatus.consecutiveFailures : 1;
+      records.push(...retained);
+      sourceStatuses.push({
+        source, state: retained.length ? 'stale' : 'error', recordCount: retained.length,
+        fetchedAt: attemptedAt, lastSuccessfulAt, stale: retained.length > 0, error,
+        ...(confirmedEmpty ? { confirmedEmpty: true } : {}),
+        consecutiveFailures: alreadyFailed ? Math.min(previousFailures + 1, 100) : 1,
+        firstFailureAt: alreadyFailed ? string(priorStatus.firstFailureAt) : attemptedAt,
+      });
+      continue;
+    }
     if (priorRecords.length > 0) {
       const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt,
         isoTimestamp(previousSnapshot?.fetchedAt));

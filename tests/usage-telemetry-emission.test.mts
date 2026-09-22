@@ -120,8 +120,11 @@ const ORIGINAL_CONVEX_SHARED_SECRET = process.env.CONVEX_SERVER_SHARED_SECRET;
 const ORIGINAL_REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const ORIGINAL_REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const ORIGINAL_CF_EDGE_PROOF_SECRET = process.env.CF_EDGE_PROOF_SECRET;
+const ORIGINAL_WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY;
 
 afterEach(() => {
+  if (ORIGINAL_WIDGET_AGENT_KEY == null) delete process.env.WIDGET_AGENT_KEY;
+  else process.env.WIDGET_AGENT_KEY = ORIGINAL_WIDGET_AGENT_KEY;
   globalThis.fetch = ORIGINAL_FETCH;
   if (ORIGINAL_USAGE_FLAG == null) delete process.env.USAGE_TELEMETRY;
   else process.env.USAGE_TELEMETRY = ORIGINAL_USAGE_FLAG;
@@ -139,6 +142,26 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_REDIS_TOKEN;
   if (ORIGINAL_CF_EDGE_PROOF_SECRET == null) delete process.env.CF_EDGE_PROOF_SECRET;
   else process.env.CF_EDGE_PROOF_SECRET = ORIGINAL_CF_EDGE_PROOF_SECRET;
+});
+
+describe('gateway telemetry payload — widget credential', () => {
+  it('omits the validated relay credential from the Axiom payload', async () => {
+    const secret = 'synthetic-widget-relay-secret';
+    process.env.WIDGET_AGENT_KEY = secret;
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+    const handler = createDomainGateway([]);
+    const recorder = makeRecordingCtx();
+    await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      headers: { Origin: 'https://worldmonitor.app', 'x-widget-key': secret },
+    }), recorder.ctx);
+    await recorder.settled;
+    assert.equal(spy.events.length, 1);
+    assert.equal(spy.events[0]!.auth_kind, 'widget_key');
+    assert.equal(spy.events[0]!.customer_id, 'widget');
+    assert.ok(!JSON.stringify(spy.events).includes(secret));
+  });
 });
 
 describe('gateway telemetry payload — domain extraction', () => {
@@ -344,13 +367,19 @@ describe('gateway telemetry payload — trusted client attribution (#5228)', () 
       }),
       recorder.ctx,
     );
-    assert.equal(response.status, 200);
+    // IP-scoped endpoint budgets fail closed on unproven cf-connecting-ip
+    // rather than admitting the request into a shared PoP bucket (#8402).
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get('X-RateLimit-Mode'), 'edge-proof');
     await recorder.settled;
     spy.restore();
 
-    assert.equal(spy.events.length, 1);
-    assert.equal(spy.events[0]!.ip, '192.0.2.5');
-    assert.equal(spy.events[0]!.country, 'ZA');
+    // Gateway telemetry may still observe the 403; never credit the forged CF IP.
+    for (const event of spy.events) {
+      assert.notEqual(event.ip, '203.0.113.7');
+      assert.equal(event.ip, '192.0.2.5');
+      assert.equal(event.country, 'ZA');
+    }
   });
 
   it('never falls back to an unproven Cloudflare country header', () => {

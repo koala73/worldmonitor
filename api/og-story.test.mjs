@@ -46,3 +46,21 @@ test('uses a known level when it is allowlisted', () => {
   assert.match(response.body, /#ef4444/);
 });
 
+test('escapes hostile country text in both SVG text fields', () => {
+  const country = '</text><script>alert("x")</script><text>&';
+  const response = renderOgStory(new URLSearchParams({ c: country, s: '50', t: country }).toString());
+  const escaped = '&lt;/TEXT&gt;&lt;SCRIPT&gt;ALERT(&quot;X&quot;)&lt;/SCRIPT&gt;&lt;TEXT&gt;&amp;';
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.split(escaped).length - 1, 2);
+  assert.doesNotMatch(response.body, /<script/i);
+});
+
+test('retains known country names and finite score geometry for hostile inputs', () => {
+  for (const score of ['<script/>', '9'.repeat(400), '-50', '150']) {
+    const response = renderOgStory(new URLSearchParams({ c: 'us', s: score, l: '__proto__' }).toString());
+    assert.match(response.body, />UNITED STATES<\/text>/);
+    assert.match(response.body, />US<\/text>/);
+    assert.doesNotMatch(response.body, /NaN|Infinity|<script/i);
+    assert.equal(response.headers['content-type'], 'image/svg+xml');
+  }
+});

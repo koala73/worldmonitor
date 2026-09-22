@@ -1118,7 +1118,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }
           setEmailChannel(email, undefined, signal).then(() => {
             if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
-          }).catch(() => {});
+          }).catch((error: unknown) => {
+            if (signal.aborted) return;
+            const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
+            if (rowEl) appendNotificationError(rowEl, error instanceof Error ? error.message : 'Could not connect email. Please try again.');
+          });
           return;
         }
 

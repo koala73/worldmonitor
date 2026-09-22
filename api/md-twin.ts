@@ -22,6 +22,7 @@ export default async function handler(req: Request): Promise<Response> {
       headers: {
         'Content-Type': 'text/markdown; charset=utf-8',
         'Cache-Control': 'no-store',
+        'X-Robots-Tag': 'noindex',
         'Access-Control-Allow-Origin': '*',
       },
     });

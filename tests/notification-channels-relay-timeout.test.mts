@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { afterEach, describe, it, mock } from 'node:test';
 
 const originalEnv = { ...process.env };
@@ -14,7 +15,7 @@ function restoreEnv(): void {
 
 async function importFreshNotificationChannels() {
   process.env.CONVEX_SITE_URL = 'https://convex.test';
-  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  process.env.CONVEX_TENANT_RELAY_SECRET = 'relay-secret';
   process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
   return import(`../api/notification-channels.ts?test=${Date.now()}-${Math.random()}`);
@@ -57,6 +58,7 @@ function makeSetWebPushRequest(): Request {
 }
 
 type RedisCommand = string[];
+
 
 function installInMemoryUpstash() {
   const store = new Map<string, string>();
@@ -121,11 +123,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
       relaySignals.push(signal);
       assert.equal(body.scheduleWelcome, true);
       if (mutationAttempt === 1) {
-        return await new Promise<Response>((_resolve, reject) => {
-          const rejectForAbort = () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError'));
-          if (signal.aborted) rejectForAbort();
-          else signal.addEventListener('abort', rejectForAbort, { once: true });
-        });
+        return hangUntilAbort(signal);
       }
       return Response.json({
         ok: true,
@@ -395,5 +393,29 @@ describe('/api/notification-channels relay timeout recovery', () => {
     assert.deepEqual(await retry.json(), { ok: true });
     assert.equal(waits.length, 0, 'Convex owns the welcome — edge must not enqueue a duplicate');
     assert.equal(relayFetch.mock.calls.length, 3);
+  });
+});
+
+describe('/api/notification-channels email ownership errors', () => {
+  it('preserves the ownership rejection for the browser', async () => {
+    installInMemoryUpstash();
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-email-proof' }),
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 1, apiAccess: true, apiRateLimit: 1_000, maxDashboards: 10, prioritySupport: true, exportFormats: ['json'], mcpAccess: true },
+        validUntil: Date.now() + 60_000,
+      }),
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.action === 'welcome-scheduling-capability') return Response.json({ durableWelcomeScheduling: true });
+        return Response.json({ error: 'EMAIL_OWNERSHIP_REQUIRED' }, { status: 400 });
+      },
+    });
+    const response = await mod.default(makeSetChannelRequest(), { waitUntil() {} });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'EMAIL_OWNERSHIP_REQUIRED' });
+    mod.__setNotificationChannelsDepsForTests(null);
   });
 });

@@ -7,7 +7,7 @@
       "type": "skill-md",
       "description": "Model oil or gas supply shock exposure for a country and chokepoint. Use when the user asks how an energy disruption could affect fuel supply, strategic cover, or product deficits.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md",
-      "digest": "sha256:5c694eab18b0acd0cbf7355f747a7d13edf199a71d4223becd70ebb0a9fea073"
+      "digest": "sha256:b4c52a653498249e38df6c5ffae0d365e778f3226d6ead7a914761a98388c1d4"
     },
     {
       "name": "check-airport-delays",
@@ -56,7 +56,7 @@
       "type": "skill-md",
       "description": "Retrieve the pre-aggregated digest of World Monitor's curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md",
-      "digest": "sha256:fcc131f04ea4ff35c4a80ebefb1a2e76db812c4760e427dbadd003050806365d"
+      "digest": "sha256:4fef85256b45465f53070fd5424a6e5e47a2b9dd5ad53132c1529c495677b57d"
     },
     {
       "name": "fetch-resilience-score",
@@ -91,7 +91,7 @@
       "type": "skill-md",
       "description": "Retrieve disease outbreak alerts and PM2.5 air-quality health warnings. Use when the user asks about current public-health risks in a country, city, or region.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/monitor-health-alerts/SKILL.md",
-      "digest": "sha256:aa8734955c10236da7c44aa5e7b729a331ee0e78c04dc739a6f297309cd9fc31"
+      "digest": "sha256:3fa0d6293260ac960b8ebb6152222c96fb1e7fcadd616db3b515e573d01173c6"
     },
     {
       "name": "monitor-internet-outages",
@@ -168,7 +168,7 @@
       "type": "skill-md",
       "description": "Retrieve seeded protest, riot, strike, and civil unrest events. Use when the user asks whether social unrest is occurring in a country or over a recent time window.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/track-unrest-events/SKILL.md",
-      "digest": "sha256:aa297db6c5ec4707cc3e0a5a0a969106567cee6fe06e5babf942cc6fd6050a81"
+      "digest": "sha256:552b4d132af40fc024c7131eb578f863008c68720473163716f0560add0c80e2"
     },
     {
       "name": "track-vessel-traffic",

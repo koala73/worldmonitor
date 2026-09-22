@@ -303,32 +303,29 @@ test('end-to-end: contentMeta runs on raw data WITH helpers, publishTransform st
   assert.equal((json.match(/_originalPublishedMs/g) || []).length, 0, 'no _originalPublishedMs in JSON');
 });
 
-// ── Pilot threshold sanity (anti-drift on the 9-day budget) ──────────────
-
-test('DISEASE_MAX_CONTENT_AGE_MIN constant is 9 days', () => {
-  assert.equal(DISEASE_MAX_CONTENT_AGE_MIN, 9 * 24 * 60, 'budget is 9 days — chosen so the 2026-05-04 11d incident trips STALE_CONTENT');
+test('DISEASE_MAX_CONTENT_AGE_MIN constant is 14 days', () => {
+  assert.equal(DISEASE_MAX_CONTENT_AGE_MIN, 14 * 24 * 60, 'budget matches the observed weekly release cadence and 3 to 5 day event lag');
 });
 
-test('pilot threshold: 9-day maxContentAgeMin would have tripped on 2026-05-04 incident pattern (11d-old items)', () => {
-  // Simulate the production incident: newest item 11 days old, content-age budget 9 days.
-  const ELEVEN_DAYS_AGO = FIXED_NOW - 11 * 24 * 60 * 60 * 1000;
+test('12-day-old disease content remains within the 14-day budget', () => {
+  const TWELVE_DAYS_AGO = FIXED_NOW - 12 * 24 * 60 * 60 * 1000;
   const data = {
     outbreaks: [
-      { _publishedAtIsSynthetic: false, _originalPublishedMs: ELEVEN_DAYS_AGO },
+      { _publishedAtIsSynthetic: false, _originalPublishedMs: TWELVE_DAYS_AGO },
     ],
   };
   const cm = diseaseContentMeta(data, FIXED_NOW);
   assert.ok(cm, 'contentMeta returns a result');
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
-  assert.ok(ageMin > DISEASE_MAX_CONTENT_AGE_MIN, `${Math.round(ageMin)}min > budget ${DISEASE_MAX_CONTENT_AGE_MIN}min — STALE_CONTENT would fire (ANTI-DRIFT for the pilot threshold)`);
+  assert.ok(ageMin < DISEASE_MAX_CONTENT_AGE_MIN, '12-day-old content remains healthy');
 });
 
-test('pilot threshold: 5-day-old items are within 9-day budget (no false positive)', () => {
-  const FIVE_DAYS_AGO = FIXED_NOW - 5 * 24 * 60 * 60 * 1000;
-  const data = { outbreaks: [{ _publishedAtIsSynthetic: false, _originalPublishedMs: FIVE_DAYS_AGO }] };
+test('15-day-old disease content exceeds the 14-day budget', () => {
+  const FIFTEEN_DAYS_AGO = FIXED_NOW - 15 * 24 * 60 * 60 * 1000;
+  const data = { outbreaks: [{ _publishedAtIsSynthetic: false, _originalPublishedMs: FIFTEEN_DAYS_AGO }] };
   const cm = diseaseContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
-  assert.ok(ageMin < DISEASE_MAX_CONTENT_AGE_MIN, '5d < 9d — STALE_CONTENT does NOT fire on normal upstream rhythm');
+  assert.ok(ageMin > DISEASE_MAX_CONTENT_AGE_MIN, '15-day-old content triggers STALE_CONTENT');
 });
 
 // ── detectAlertLevel — keyword classifier (#3791) ─────────────────────────

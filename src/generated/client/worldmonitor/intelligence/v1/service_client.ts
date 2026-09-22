@@ -144,6 +144,51 @@ export interface BriefSource {
   publishedAt: string;
 }
 
+export interface GetCountryCoverageRequest {
+  countryCode: string;
+  windowHours: number;
+  limit: number;
+}
+
+export interface GetCountryCoverageResponse {
+  countryCode: string;
+  countryName: string;
+  windowHours: number;
+  generatedAt: string;
+  headlines: CountryCoverageHeadline[];
+  events: CountryCoverageEvent[];
+  sources: CountryCoverageSourceStatus[];
+  degraded: boolean;
+  containment: string;
+}
+
+export interface CountryCoverageHeadline {
+  title: string;
+  url: string;
+  source: string;
+  publishedAt: string;
+  publishedAtMs: number;
+}
+
+export interface CountryCoverageEvent {
+  timestampMs: number;
+  occurredAt: string;
+  lane: string;
+  label: string;
+  severity: string;
+  origin: string;
+  source: string;
+}
+
+export interface CountryCoverageSourceStatus {
+  source: string;
+  state: string;
+  detail: string;
+  fetchedAt: string;
+  ageSeconds: number;
+  contributed: number;
+}
+
 export interface SearchGdeltDocumentsRequest {
   query: string;
   maxRecords: number;
@@ -600,6 +645,21 @@ export interface TransmissionNode {
   logic: string;
 }
 
+export interface ListWsbTickersRequest {
+}
+
+export interface ListWsbTickersResponse {
+  tickers: WsbTicker[];
+}
+
+export interface WsbTicker {
+  symbol: string;
+  mentionCount: number;
+  totalScore: number;
+  subreddits: string[];
+  velocityScore: number;
+}
+
 export interface GetSocialVelocityRequest {
 }
 
@@ -717,7 +777,9 @@ export interface ComputeEnergyShockScenarioResponse {
   degraded: boolean;
   chokepointConfidence: string;
   liveFlowRatio?: number;
+  /** @deprecated */
   gasImpact?: GasImpact;
+  gasSensitivity?: GasSensitivity;
 }
 
 export interface ProductImpact {
@@ -743,6 +805,28 @@ export interface GasStorageBuffer {
   fillPct: number;
   gasTwh: number;
   bufferDays: number;
+  trend: string;
+  date: string;
+  scope: string;
+}
+
+export interface GasSensitivity {
+  lngShareOfImports?: number;
+  lngImportsTj: number;
+  lngDisruptionTj: number;
+  totalDemandTj: number;
+  deficitPct: number;
+  dataAvailable: boolean;
+  assessment: string;
+  storage?: GasStorageObservation;
+  dataSource: string;
+  dataMonth: string;
+  modelBasis: string;
+}
+
+export interface GasStorageObservation {
+  fillPct: number;
+  gasTwh: number;
   trend: string;
   date: string;
   scope: string;
@@ -1257,6 +1341,33 @@ export class IntelligenceServiceClient {
     return await resp.json() as GetCountryIntelBriefResponse;
   }
 
+  async getCountryCoverage(req: GetCountryCoverageRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryCoverageResponse> {
+    let path = "/api/intelligence/v1/get-country-coverage";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.windowHours != null && req.windowHours !== 0) params.set("window_hours", String(req.windowHours));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryCoverageResponse;
+  }
+
   async searchGdeltDocuments(req: SearchGdeltDocumentsRequest, options?: IntelligenceServiceCallOptions): Promise<SearchGdeltDocumentsResponse> {
     let path = "/api/intelligence/v1/search-gdelt-documents";
     const params = new URLSearchParams();
@@ -1667,6 +1778,29 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ListMarketImplicationsResponse;
+  }
+
+  async listWsbTickers(_req: ListWsbTickersRequest, options?: IntelligenceServiceCallOptions): Promise<ListWsbTickersResponse> {
+    let path = "/api/intelligence/v1/list-wsb-tickers";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListWsbTickersResponse;
   }
 
   async getSocialVelocity(_req: GetSocialVelocityRequest, options?: IntelligenceServiceCallOptions): Promise<GetSocialVelocityResponse> {

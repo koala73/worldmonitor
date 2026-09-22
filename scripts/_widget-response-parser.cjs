@@ -4,11 +4,13 @@ function parseWidgetAgentResponse(text, maxHtml) {
   const source = String(text ?? '');
   const htmlMatch = source.match(/<!--\s*widget-html\s*-->([\s\S]*?)<!--\s*\/widget-html\s*-->/);
   const titleMatch = source.match(/<!--\s*title:\s*([^\n]+?)\s*-->/);
+  const html = (htmlMatch?.[1] ?? '').slice(0, maxHtml);
 
   return {
-    html: (htmlMatch?.[1] ?? source).slice(0, maxHtml),
+    html,
     title: titleMatch?.[1]?.trim() ?? 'Custom Widget',
     hasHtmlMarkers: Boolean(htmlMatch),
+    isComplete: Boolean(htmlMatch && html.trim()),
   };
 }
 

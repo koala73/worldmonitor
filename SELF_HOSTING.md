@@ -35,6 +35,36 @@ open http://localhost:3000
 
 The dashboard works out of the box with public data sources (earthquakes, weather, conflicts, etc.). API keys unlock additional data feeds.
 
+## Documentation indexing
+
+The bundled documentation identifies `https://www.worldmonitor.app/docs` as its
+original location. `docs/docs.json` sets this canonical base for Mintlify, and
+`src/config/docs-locale-seo.ts` uses `DOCS_PUBLIC_ORIGIN` to produce an absolute,
+page-specific canonical and language links.
+
+Deployments that run `middleware.ts` also return `X-Robots-Tag: noindex` for docs
+HTML on hosts other than the configured public host. This includes preview
+hosts. The policy also applies to HEAD and 304 responses, and preserves existing
+robots restrictions. It does not stop people from reading the docs. Static
+exports and proxies that bypass this middleware must set their own indexing
+headers; they retain the canonical metadata only if they preserve it.
+
+Inspect canonical URLs before publishing a static export. The pinned Mintlify
+CLI currently includes `/src/_props` in local preview and export canonicals;
+that local output does not establish the hosted provider's URL behavior.
+
+For a fork that publishes its own documentation, deliberately update the
+canonical base in `docs/docs.json`, `DOCS_PUBLIC_ORIGIN`, and the docs upstream and
+reverse-proxy routes (`DOCS_UPSTREAM_ORIGIN` and `vercel.json`) together. Configure
+the provider's base path to match. Check the resulting canonical URLs, language
+links, structured data, sitemap, and indexing headers before requesting indexing.
+Do not derive the canonical origin from the incoming request or a forwarded-host
+header. Keep shared caches separated by host and preserve the response's `Vary`
+selectors.
+
+Canonical metadata is a search-engine signal, not a guarantee. A proxy can rewrite
+or remove it, and older deployed copies will not receive changes to this repo.
+
 ## 🔐 Required Environment Variables
 
 These must be set before `docker compose up -d`, or one of the containers will exit on boot.
@@ -52,6 +82,8 @@ These must be set before `docker compose up -d`, or one of the containers will e
 
 Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex entitlement backend. The dashboard still mints an anonymous `wms_` session signed with `WM_SESSION_SECRET`.
 
+Native administration routes under `/api/local-` return `403` in Docker mode, including configuration updates, secret validation, and local status/debug controls. The internal sidecar token does not grant administrator access through nginx. Change operator settings through Compose environment variables or Docker secrets, then recreate the app container. Desktop administration remains available through the native app.
+
 - Only `GET /api/intelligence/v1/get-country-intel-brief` accepts that session as the authentication boundary. The handler still returns the shared (non-premium) brief.
 - Direct-LLM spend on that route is capped at 50 calls per UTC day per client IP. nginx stamps `X-Real-IP` from `$remote_addr`, so a caller cannot rotate the header to reset the cap. Rotating the session token also does not reset spend.
 - Every other premium route still requires an API key or a Clerk entitlement. Cloud deployments do not set `LOCAL_API_MODE=docker` and keep key plus entitlement enforcement on this route too.
@@ -66,6 +98,31 @@ never trust a network that can contain untrusted clients, because those clients
 could then supply a false forwarded address and evade the per-IP quota.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
+
+## 🤖 Using the MCP server
+
+The bundled MCP server is served at `/api/mcp` on your own stack. It authenticates
+with the `X-WorldMonitor-Key` header, validated against `WORLDMONITOR_VALID_KEYS`
+(the OAuth path is hosted-only). Generate a key, put it in `.env`, and restart:
+
+```bash
+YOUR_KEY="wm_$(openssl rand -hex 20)"
+echo "WORLDMONITOR_VALID_KEYS=$YOUR_KEY" >> .env
+docker compose up -d
+```
+
+```bash
+curl -s -X POST http://localhost:3000/api/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H "X-WorldMonitor-Key: $YOUR_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The bundled nginx proxy supplies `X-WorldMonitor-Local-Token` for transport
+between nginx and the sidecar. It preserves the client's `Authorization`
+header. The transport token does not grant MCP access: operator keys still
+use `X-WorldMonitor-Key`, and OAuth requires the hosted identity services.
 
 ## 🔑 API Keys
 

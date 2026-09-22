@@ -98,6 +98,50 @@ describe('ScenarioService handlers', () => {
       );
     });
 
+    it('validates severity presence, range and tariff restrictions before enqueue', async () => {
+      globalThis.fetch = async () => { throw new Error('must not enqueue'); };
+      for (const disruptionPct of [-1, 101, 1.5, NaN, Infinity, null, '50']) {
+        await assert.rejects(() => runScenario(proCtx(), { scenarioId: 'hormuz-tanker-blockade', iso2: 'DE', disruptionPct }),
+          err => err instanceof ValidationError && err.violations[0].field === 'disruptionPct');
+      }
+      await assert.rejects(() => runScenario(proCtx(), { scenarioId: 'us-tariff-escalation-electronics', iso2: 'DE', disruptionPct: 0 }),
+        err => err instanceof ValidationError);
+    });
+
+    it('carries selected controls through enqueue, worker and poll without sharing results', async () => {
+      const { computeScenario } = await import('../scripts/scenario-worker.mjs');
+      const queue = [];
+      const results = new Map();
+      globalThis.fetch = async (url, init) => {
+        if (init?.body) {
+          const commands = JSON.parse(init.body);
+          return Response.json(commands.map(([cmd, key, payload]) => {
+            if (cmd === 'LLEN') return { result: 0 };
+            if (cmd === 'RPUSH') { queue.push(JSON.parse(payload)); return { result: queue.length }; }
+            const [, , iso2, hs2] = key.split(':');
+            return { result: JSON.stringify({ iso2, hs2, coverage: 'flow_weighted',
+              fetchedAt: '2026-09-09T00:00:00Z', exposures: [{ chokepointId: 'hormuz_strait', exposureScore: hs2 === '27' ? 40 : 0 }] }) };
+          }));
+        }
+        const key = decodeURIComponent(String(url).split('/get/')[1]);
+        if (key === 'seed-meta:supply_chain:chokepoint-exposure') return Response.json({ result: JSON.stringify({
+          manifestVersion: 1, status: 'ok', countryIds: ['DE', 'JP'], hs2Codes: ['27', '29'], fetchedAt: 1789000000000,
+        }) });
+        return Response.json({ result: JSON.stringify(results.get(key)) });
+      };
+      const first = await runScenario(proCtx(), { scenarioId: 'hormuz-tanker-blockade', iso2: 'DE', disruptionPct: 50 });
+      const second = await runScenario(proCtx(), { scenarioId: 'hormuz-tanker-blockade', iso2: 'JP', disruptionPct: 0 });
+      assert.notEqual(first.jobId, second.jobId);
+      for (const job of queue) {
+        const result = await computeScenario(job.scenarioId, job.iso2, job.disruptionPct);
+        results.set(`scenario-result:${job.jobId}`, { status: 'done', result });
+        const polled = await getScenarioStatus(proCtx(), { jobId: job.jobId });
+        assert.deepEqual(polled.result, result);
+      }
+      assert.equal((await getScenarioStatus(proCtx(), first)).result.topImpactCountries[0].totalImpact, 42);
+      assert.equal((await getScenarioStatus(proCtx(), second)).result.topImpactCountries[0].totalImpact, 0);
+    });
+
     it('accepts empty iso2 (treated as scope-all)', async () => {
       const calls = [];
       globalThis.fetch = async (url, init) => {
@@ -134,6 +178,7 @@ describe('ScenarioService handlers', () => {
       const payload = JSON.parse(pushed[0][2]);
       assert.equal(payload.scenarioId, 'taiwan-strait-full-closure');
       assert.equal(payload.iso2, null);
+      assert.equal(payload.disruptionPct, undefined);
     });
 
     it('rejects when queue depth exceeds 100 with 429 ApiError', async () => {
@@ -222,7 +267,11 @@ describe('ScenarioService handlers', () => {
         scenarioId: 'taiwan-strait-full-closure',
         template: { name: 'taiwan_strait', disruptionPct: 100, durationDays: 30, costShockMultiplier: 1.45 },
         affectedChokepointIds: ['taiwan_strait'],
+        // Retired field. Still present in results a pre-#7968 worker cached, which stay
+        // readable for their 24h TTL across the rollout — pinned here so the handler
+        // drops it rather than echoing it back.
         currentDisruptionScores: { taiwan_strait: 42 },
+        // No evaluatedRecords/requestedRecords either: an older worker did not emit them.
         topImpactCountries: [{ iso2: 'JP', totalImpact: 1500, impactPct: 100 }],
       };
       globalThis.fetch = async () =>
@@ -240,6 +289,24 @@ describe('ScenarioService handlers', () => {
       assert.equal(res.result.topImpactCountries[0].iso2, 'JP');
       assert.equal(res.result.topImpactCountries[0].impactPct, 100);
       assert.equal(res.result.template?.disruptionPct, 100);
+      assert.equal(res.result.coverage.status, 'unknown');
+      assert.equal('currentDisruptionScores' in res.result, false);
+      // A legacy result carries no per-country evidence counts. They must default to 0
+      // WITHOUT flipping partialEvidence on, which would mark every legacy country as a
+      // lower bound and misreport a complete historical run.
+      assert.equal(res.result.topImpactCountries[0].evaluatedRecords, 0);
+      assert.equal(res.result.topImpactCountries[0].requestedRecords, 0);
+      assert.equal(res.result.topImpactCountries[0].partialEvidence, false);
+    });
+
+    it('marks malformed coverage unknown instead of dropping records from a complete result', async () => {
+      globalThis.fetch = async () => Response.json({ result: JSON.stringify({ status: 'done', result: {
+        coverage: { status: 'complete', countryIds: ['DE'], hs2Codes: ['27'], records: [
+          { iso2: 'DE', hs2: '27', state: 'evaluated', basis: 'flow_weighted', rawImpact: null },
+        ] },
+      } }) });
+      const res = await getScenarioStatus(proCtx(), { jobId: 'scenario:1712345678901:abcdefgh' });
+      assert.equal(res.result.coverage.status, 'unknown');
     });
 
     it('returns failed status with error message', async () => {

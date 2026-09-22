@@ -720,6 +720,35 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     });
   }
 
+  it('resolves focal-point country names and alpha-3 codes before entity matching', async () => {
+    installUpstashStub(analysisPayloads());
+    const tool = findTool('get_focal_points');
+    const expected = await tool._execute({ country_code: 'IR' }, '', {}, {});
+    assert.ok(expected.data.focal_points.length > 0);
+    for (const country_code of ['Iran', 'IRN', ' ir ']) {
+      const actual = await tool._execute({ country_code }, '', {}, {});
+      assert.deepEqual(actual.data, expected.data);
+    }
+  });
+
+  it('reports unsupported focal-point coverage for Iraq instead of an empty calm answer', async () => {
+    installUpstashStub(analysisPayloads());
+    for (const country_code of ['Iraq', 'IQ', 'IRQ']) {
+      await assert.rejects(
+        () => findTool('get_focal_points')._execute({ country_code }, '', {}, {}),
+        (error) => error.name === 'RpcValidationError' && /No focal-point coverage for IQ/.test(error.violations[0].description),
+      );
+    }
+  });
+
+  it('rejects an unresolved focal-point country before reading caches', async () => {
+    globalThis.fetch = async () => { throw new Error('unexpected fetch'); };
+    await assert.rejects(
+      () => findTool('get_focal_points')._execute({ country_code: 'Atlantis' }, '', {}, {}),
+      (error) => error.name === 'RpcValidationError' && error.violations[0].field === 'country_code',
+    );
+  });
+
   it('executes every hybrid success path against producer-shaped cache payloads', async () => {
     installUpstashStub(analysisPayloads());
 
@@ -1071,32 +1100,41 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.cii_available, true);
   });
 
-  it('keeps foreign-presence detections when filtering by theater id', async () => {
-    const payloads = analysisPayloads();
-    payloads['military:flights:v1'].flights = Array.from({ length: 2 }, (_, i) => ({
-      id: `gulf-flight-${i}`,
-      callsign: `GULF${i}`,
-      lat: 26.5,
-      lon: 52,
-      lastSeenMs: Date.now(),
-      operator: 'usaf',
-      aircraftType: 'fighter',
-      sourceMeta: { source: 'wingbits' },
-    }));
-    installUpstashStub(payloads);
+  for (const [theater, regionId, lat, lon] of [
+    ['iran-theater', 'persian-gulf', 26.5, 52],
+    ['korea-theater', 'japan-sea', 40, 135],
+    ['east-med-theater', 'east-med', 34.5, 33],
+    ['israel-gaza-theater', 'east-med', 34.5, 33],
+    ['yemen-redsea-theater', 'horn-africa', 10, 45],
+    ['south-china-sea', 'south-china-sea', 14, 114],
+  ]) {
+    it(`keeps foreign-presence detections when filtering by ${theater}`, async () => {
+      const payloads = analysisPayloads();
+      payloads['military:flights:v1'].flights = Array.from({ length: 2 }, (_, i) => ({
+        id: `gulf-flight-${i}`,
+        callsign: `GULF${i}`,
+        lat,
+        lon,
+        lastSeenMs: Date.now(),
+        operator: 'usaf',
+        aircraftType: 'fighter',
+        sourceMeta: { source: 'wingbits' },
+      }));
+      installUpstashStub(payloads);
 
-    const result = await findTool('get_military_surge')._execute(
-      { theater: 'iran-theater' },
-      '',
-      {},
-      {},
-    );
+      const result = await findTool('get_military_surge')._execute(
+        { theater },
+        '',
+        {},
+        {},
+      );
 
-    assert.deepEqual(
-      result.data.foreign_presence.map((alert) => alert.region_id),
-      ['persian-gulf'],
-    );
-  });
+      assert.deepEqual(
+        result.data.foreign_presence.map((alert) => alert.region_id),
+        [regionId],
+      );
+    });
+  }
 
   it('ranks every producer event before applying the final exposure limit', async () => {
     const payloads = analysisPayloads();

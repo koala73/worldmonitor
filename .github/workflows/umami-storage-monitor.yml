@@ -13,6 +13,8 @@ concurrency:
 
 permissions:
   contents: read
+  # Read the previous run's growth-history artifact.
+  actions: read
 
 jobs:
   monitor:
@@ -31,18 +33,35 @@ jobs:
       - name: Install pinned Railway CLI
         run: npm install --global @railway/cli@5.30.1
 
-      # Split restore/save deliberately. The combined actions/cache action
-      # declares `post-if: success()`, so its save runs only when the whole job
-      # succeeded — and this job can now fail on the retention runner alarm
-      # below. Left combined, the first firing of that alarm would also throw
-      # away this run's growth sample, degrading the projection the workflow
-      # exists for exactly when someone is reading it.
+      # The history travels as an artifact, not an Actions cache entry. The
+      # repository cache sits at its 10 GB cap, and GitHub evicted this history
+      # (on 2026-09-12, every entry) so the growth trend kept restarting. Take
+      # the newest of this workflow's recent runs on the same branch that
+      # uploaded one; cancelled runs upload nothing, so fall through to older.
       - name: Restore bounded storage history
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: .cache/umami-storage-state.json
-          key: umami-storage-${{ github.run_id }}
-          restore-keys: umami-storage-
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cache
+          # A lost history only suspends the projection; the capacity check
+          # itself must still run, so a GitHub API failure warns, not fails.
+          # The branch goes in as a field so gh encodes it; a name containing
+          # `&` would otherwise add its own query parameter.
+          if ! run_ids=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/umami-storage-monitor.yml/runs" \
+            -f "branch=$BRANCH" -F per_page=20 \
+            --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id"); then
+            echo "::warning::Could not list earlier monitor runs; the growth trend starts over."
+            exit 0
+          fi
+          for run_id in $run_ids; do
+            if gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name umami-storage-state --dir .cache 2>/dev/null; then
+              echo "Restored storage history from run $run_id."
+              exit 0
+            fi
+          done
+          echo "::warning::No stored Umami storage history found; the growth trend starts over."
 
       - name: Verify Railway production context
         env:
@@ -77,13 +96,21 @@ jobs:
       # Persist the sample the step above just wrote, before anything that can
       # fail the job runs. check-umami-storage.mjs writes its state file and
       # only then sets a non-zero exit code, so this saves the newest sample
-      # even on a critical-capacity run.
+      # even on a critical-capacity run. That state already carries the whole
+      # trend window, so the artifact only has to outlive the gap until the
+      # next successful run.
       - name: Persist bounded storage history
         if: ${{ !cancelled() }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
+          name: umami-storage-state
           path: .cache/umami-storage-state.json
-          key: umami-storage-${{ github.run_id }}
+          include-hidden-files: true
+          # A re-run keeps the run id, and a second artifact with this name in
+          # the same run is rejected unless it replaces the first attempt's.
+          overwrite: true
+          if-no-files-found: warn
+          retention-days: 7
 
       # Both runner steps run even when an earlier step failed, because
       # capacity is the lagging symptom of a dead runner and a critical volume

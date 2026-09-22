@@ -1,3 +1,5 @@
+import { safeStorageSet } from '@/utils/safe-storage';
+
 const ANON_KEY = 'wm-anon-id';
 const ANON_CLAIM_TOKEN_KEY = 'wm-anon-claim-token';
 const ANON_CLAIM_TOKEN_VERSION = 'v2';
@@ -12,7 +14,7 @@ export function getStoredAnonId(): string | null {
 }
 
 export function saveAnonId(anonId: string): void {
-  localStorage.setItem(ANON_KEY, anonId);
+  safeStorageSet(ANON_KEY, anonId);
 }
 
 export function getStoredAnonClaimToken(): string | null {

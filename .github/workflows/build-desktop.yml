@@ -1,4 +1,5 @@
 name: 'Build Desktop App'
+run-name: Build Desktop App (${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }})
 
 # One published desktop binary (#5908). World Monitor ships as a single build
 # and every variant — tech, finance, commodity, energy, happy — is selected
@@ -40,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Require matching release target
         env:
@@ -121,6 +124,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
 
       - name: Start job timer
         shell: bash
@@ -490,6 +495,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           fetch-depth: 0
 
       - name: Generate and update release notes

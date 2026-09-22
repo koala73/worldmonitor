@@ -77,7 +77,7 @@ export const Agents = () => (
         </div>
         <p className="font-mono text-xs uppercase tracking-wider text-wm-text mb-8">{t('welcome.agents.promise')}</p>
         <a
-          href="https://www.worldmonitor.app/docs"
+          href="https://www.worldmonitor.app/docs/documentation"
           className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-block"
         >
           {t('welcome.agents.cta')}
@@ -110,7 +110,7 @@ export const Agents = () => (
           </p>
           <p className="text-wm-text mb-2"><span className="text-wm-green" aria-hidden="true">✓</span> {t('welcome.agents.termAnswer')}</p>
           <p>
-            <a href="https://www.worldmonitor.app/docs" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
+            <a href="https://www.worldmonitor.app/docs/documentation" className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.agents.termDocs')}</a>
           </p>
         </div>
       </motion.div>

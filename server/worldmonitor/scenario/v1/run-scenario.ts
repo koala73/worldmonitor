@@ -35,8 +35,17 @@ export async function runScenario(
   if (!scenarioId) {
     throw new ValidationError([{ field: 'scenarioId', description: 'scenarioId is required' }]);
   }
-  if (!getScenarioTemplate(scenarioId)) {
+  const template = getScenarioTemplate(scenarioId);
+  if (!template) {
     throw new ValidationError([{ field: 'scenarioId', description: `Unknown scenario: ${scenarioId}` }]);
+  }
+
+  const disruptionPct = req.disruptionPct;
+  if (disruptionPct !== undefined && (
+    !Number.isInteger(disruptionPct) || disruptionPct < 0 || disruptionPct > 100
+    || template.affectedChokepointIds.length === 0
+  )) {
+    throw new ValidationError([{ field: 'disruptionPct', description: 'disruptionPct must be an integer from 0 to 100 for a physical scenario' }]);
   }
 
   const iso2 = req.iso2 ? req.iso2.trim() : '';
@@ -56,6 +65,7 @@ export async function runScenario(
     jobId,
     scenarioId,
     iso2: iso2 || null,
+    disruptionPct,
     enqueuedAt: Date.now(),
   });
 

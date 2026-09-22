@@ -1,7 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 const originalEnv = { ...process.env };
+const originalFetch = globalThis.fetch;
 
 function makeCtx(headers = {}) {
   return {
@@ -51,6 +53,7 @@ describe('LeadsService.registerInterest desktop auth', () => {
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     Object.keys(process.env).forEach((key) => {
       if (!(key in originalEnv)) delete process.env[key];
     });
@@ -154,5 +157,109 @@ describe('LeadsService.registerInterest desktop auth', () => {
       () => registerInterest(makeCtx({ [timestampHeader]: timestamp, [signatureHeader]: signature }), req),
       (err) => err instanceof ApiError && err.statusCode === 503,
     );
+  });
+
+  it('forwards validated signups through the secret-guarded Convex HTTP bridge', async () => {
+    const redis = installRedis({});
+    process.env.CONVEX_SITE_URL = 'https://fake-convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'convex-test-secret';
+    process.env.RESEND_API_KEY = 'fake-resend-key';
+
+    const req = desktopReq({ email: 'bridge@example.com' });
+    const timestamp = String(Date.now());
+    const signature = await createDesktopAuthSignature(
+      process.env.WM_DESKTOP_SHARED_SECRET,
+      timestamp,
+      req,
+    );
+    let captured;
+    let confirmation;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.startsWith('https://redis.example')) {
+        return redis.fetchImpl(input, init);
+      }
+      if (url.startsWith('https://cloudflare-dns.com')) {
+        return new Response(JSON.stringify({ Answer: [{ type: 15, data: '10 mx.example.com.' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/dns-json' },
+        });
+      }
+      if (url === 'https://api.resend.com/emails') {
+        confirmation = JSON.parse(init.body);
+        return new Response('{}', { status: 200 });
+      }
+      captured = { url, init };
+      return new Response(JSON.stringify({
+        status: 'registered',
+        referralCode: 'ref123',
+        referralCount: 0,
+        position: 7,
+        emailSuppressed: false,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const result = await registerInterest(
+      makeCtx({ [timestampHeader]: timestamp, [signatureHeader]: signature }),
+      req,
+    );
+
+    assert.deepEqual(result, {
+      status: 'registered',
+      referralCode: '',
+      referralCount: 0,
+      position: 0,
+      emailSuppressed: false,
+    });
+    assert.equal(captured.url, 'https://fake-convex.site/api/internal-register-interest');
+    assert.equal(captured.init.headers['x-convex-shared-secret'], 'convex-test-secret');
+    assert.equal(captured.init.headers['User-Agent'], 'worldmonitor-leads/1.0');
+    assert.deepEqual(JSON.parse(captured.init.body), {
+      email: 'bridge@example.com',
+      source: 'desktop-settings',
+      appVersion: '2.8.0',
+    });
+    assert.ok(confirmation.html.includes('https://worldmonitor.app/pro?ref=ref123'));
+  });
+
+  it('hides existing-address membership and referral metadata on retries', async () => {
+    const redis = installRedis({});
+    process.env.CONVEX_SITE_URL = 'https://fake-convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'convex-test-secret';
+
+    const req = desktopReq({ email: 'repeat@example.com' });
+    const timestamp = String(Date.now());
+    const signature = await createDesktopAuthSignature(
+      process.env.WM_DESKTOP_SHARED_SECRET,
+      timestamp,
+      req,
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.startsWith('https://redis.example')) return redis.fetchImpl(input, init);
+      if (url.startsWith('https://cloudflare-dns.com')) {
+        return new Response(JSON.stringify({ Answer: [{ type: 15, data: '10 mx.example.com.' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/dns-json' },
+        });
+      }
+      return new Response(JSON.stringify({
+        status: 'already_registered',
+        referralCode: 'secret-referral-code',
+        referralCount: 9,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const result = await registerInterest(
+      makeCtx({ [timestampHeader]: timestamp, [signatureHeader]: signature }),
+      req,
+    );
+    assert.deepEqual(result, {
+      status: 'registered',
+      referralCode: '',
+      referralCount: 0,
+      position: 0,
+      emailSuppressed: false,
+    });
   });
 });

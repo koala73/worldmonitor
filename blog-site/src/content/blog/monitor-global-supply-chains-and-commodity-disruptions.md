@@ -6,10 +6,10 @@ keywords: "supply chain monitoring tool, commodity price dashboard, supply chain
 audience: "Supply chain managers, commodity traders, logistics professionals, procurement teams, risk analysts"
 heroImage: "/blog/images/blog/monitor-global-supply-chains-and-commodity-disruptions.jpg"
 pubDate: "2026-02-26"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-10"
 ---
 
-In March 2021, the Ever Given blocked the Suez Canal for six days. Global trade lost an estimated $9.6 billion per day. Most supply chain teams learned about it from Twitter.
+In March 2021, the Ever Given blocked the [Suez Canal](https://www.worldmonitor.app/chokepoints/suez-canal/) for six days. Global trade lost an estimated $9.6 billion per day. Most supply chain teams learned about it from Twitter.
 
 The companies that recovered fastest were the ones that already had multi-source monitoring in place: ship positions, port congestion data, commodity prices, and alternative route analysis, all visible before the situation hit mainstream news.
 
@@ -19,9 +19,9 @@ World Monitor's Commodity Monitor (commodity.worldmonitor.app) gives every suppl
 
 Modern supply chains are global, interconnected, and fragile. A single disruption can cascade across industries:
 
-- A drought in Taiwan affects semiconductor fabrication water supply
-- A coup in Niger disrupts uranium supply for European nuclear plants
-- Houthi attacks in the Red Sea force rerouting around the Cape of Good Hope
+- A drought in [Taiwan](https://www.worldmonitor.app/countries/taiwan/) affects semiconductor fabrication water supply
+- A coup in [Niger](https://www.worldmonitor.app/countries/niger/) disrupts uranium supply for European nuclear plants
+- Houthi attacks in the [Red Sea](https://www.worldmonitor.app/crises/red-sea-security/) force rerouting around the [Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/)
 - A port strike in Montreal affects grain exports to North Africa
 - GPS jamming in the Baltic disrupts automated shipping navigation
 

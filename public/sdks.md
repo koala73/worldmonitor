@@ -6,7 +6,7 @@ canonical: "https://www.worldmonitor.app/sdks.md"
 
 # World Monitor SDKs
 
-Last updated: July 7, 2026
+Last updated: September 8, 2026
 
 World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every registered [MCP tool](https://www.worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
 
@@ -19,7 +19,17 @@ World Monitor ships official client libraries in four language ecosystems so you
 | Go | [`github.com/koala73/worldmonitor/sdk/go` on pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
 | JavaScript / CLI | [`worldmonitor` on npm](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
 
-Every package sets its homepage to `worldmonitor.app` — that is how you (or your agent) verify it is the official SDK and not a look-alike.
+## Find and verify the official packages
+
+Use the exact package names in the table. npm, PyPI, and RubyGems link to `worldmonitor.app` in their project metadata; compare those links with the source repositories listed here. The Python package is `worldmonitor-sdk`. The PyPI package named `worldmonitor` is an unrelated project.
+
+The Go SDK is the module `github.com/koala73/worldmonitor/sdk/go`, with package name `worldmonitor`. Go modules have no registry homepage field. Verify its module path against the official repository linked above and its product links on pkg.go.dev.
+
+- [Search pkg.go.dev for worldmonitor](https://pkg.go.dev/search?q=worldmonitor).
+- [Read the Go module proxy's latest release metadata](https://proxy.golang.org/github.com/koala73/worldmonitor/sdk/go/@latest).
+- Install with `go get github.com/koala73/worldmonitor/sdk/go` from your Go project.
+
+Go publishes versions through repository tags (`sdk/go/vX.Y.Z`) and the module proxy. A successful proxy lookup confirms release availability; pkg.go.dev search confirms search visibility. See [how pkg.go.dev adds packages](https://pkg.go.dev/about#adding-a-package).
 
 ## Shared design
 

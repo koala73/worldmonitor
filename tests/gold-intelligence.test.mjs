@@ -129,6 +129,12 @@ describe('getGoldIntelligence', () => {
     for (const row of res.crossCurrencyPrices) assert.ok(row.flag.length > 0, `${row.currency} carries a flag`);
   });
 
+  it('converts gold to CHF with the USD-base exchange rate', async () => {
+    seedQuotes([quote('GC=F', 3200), quote('USDCHF=X', 0.8)]);
+    const res = await call();
+    assert.equal(res.crossCurrencyPrices.find(({ currency }) => currency === 'CHF')?.price, 2560);
+  });
+
   it('COT is absent without a GC instrument and maps legacy flat long/short fields into the v2 categories', async () => {
     seedQuotes([quote('GC=F', 3200)]);
     cacheStore.set(COT_KEY, {

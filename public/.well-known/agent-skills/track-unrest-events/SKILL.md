@@ -64,7 +64,7 @@ GET https://api.worldmonitor.app/api/unrest/v1/list-unrest-events
 }
 ```
 
-An empty `events` array can mean no seeded records matched the filters, or that the seed cache is unavailable. Cross-check `/api/health` or retry if the answer depends on completeness.
+An empty `events` array can mean no seeded records matched the filters, or that the seed cache is unavailable. Cross-check `/api/health?compact=1` or retry if the answer depends on completeness. Read `problems` and `summary.warn` there, not the top-level `status`: a source warning that is still serving usable last-good data leaves `status` at `HEALTHY`.
 
 ## Worked example
 
@@ -92,7 +92,7 @@ Use this skill for aggregate situational awareness and source-attributed reporti
 - `401` - missing credential; send `X-WorldMonitor-Key`.
 - `403` - invalid or rejected credential; verify your API key.
 - `429` - rate limited; retry with backoff.
-- Empty `events` with suspected stale data is reported in the `200` response; check `/api/health` or retry before treating it as no unrest.
+- Empty `events` with suspected stale data is reported in the `200` response; check `/api/health?compact=1` or retry before treating it as no unrest. Read `problems` and `summary.warn` there, not the top-level `status`: a source warning that is still serving usable last-good data leaves `status` at `HEALTHY`.
 
 ## When NOT to use
 

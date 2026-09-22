@@ -5,7 +5,7 @@
  * the external Umami service.
  *
  * Railway exposes the current volume size through `railway volume list`. The
- * scheduled workflow supplies that JSON and caches a bounded sample history so
+ * scheduled workflow supplies that JSON and carries a bounded sample history so
  * this check can alert on projected days-to-full as well as absolute usage.
  * It never connects to Postgres and never deletes data.
  */
@@ -27,8 +27,13 @@ const DAY_MS = 24 * HOUR_MS;
 
 export const UMAMI_STORAGE_POLICY = Object.freeze({
   serviceName: 'Postgres Umami',
-  historyDays: 30,
-  minimumProjectionWindowMs: DAY_MS,
+  // Railway refreshes currentSizeMB only every ~6 hours, so the samples form a
+  // staircase. Growth is a least-squares fit over this window (about 12
+  // refreshes) rather than a slope against one old sample: on 2026-09-13 a
+  // single +1,078 MB refresh against a 24-hour baseline projected 8 days of
+  // headroom while the multi-day trend gave 17.
+  trendWindowDays: 3,
+  minimumTrendSpanDays: 2,
   warningUsageRatio: 0.8,
   criticalUsageRatio: 0.9,
   warningHeadroomDays: 30,
@@ -70,7 +75,7 @@ export function normalizeVolumeRows(payload) {
 
 function normalizeSamples(samples, nowMs) {
   if (!Array.isArray(samples)) return [];
-  const cutoff = nowMs - UMAMI_STORAGE_POLICY.historyDays * DAY_MS;
+  const cutoff = nowMs - UMAMI_STORAGE_POLICY.trendWindowDays * DAY_MS;
   return samples
     .map((sample) => {
       const sampledAtMs = timestampMs(sample?.sampledAt);
@@ -114,18 +119,25 @@ export function evaluateUmamiStorage({ volume, samples = [], now = Date.now() })
   if (volume.status !== 'Ready') throw new Error(`Umami volume is not ready: ${volume.status ?? 'unknown'}`);
 
   const usageRatio = currentSizeMB / capacityMB;
-  const history = normalizeSamples(samples, nowMs);
-  const baseline = history
-    .filter((sample) => nowMs - Date.parse(sample.sampledAt) >= UMAMI_STORAGE_POLICY.minimumProjectionWindowMs)
-    .at(-1);
+  const points = normalizeSamples(samples, nowMs)
+    .filter((sample) => Date.parse(sample.sampledAt) !== nowMs)
+    .map((sample) => ({ day: (Date.parse(sample.sampledAt) - nowMs) / DAY_MS, sizeMB: sample.currentSizeMB }));
+  points.push({ day: 0, sizeMB: currentSizeMB });
 
   let growthMBPerDay = null;
   let projectedHeadroomDays = null;
-  if (baseline) {
-    const elapsedDays = (nowMs - Date.parse(baseline.sampledAt)) / DAY_MS;
-    const growthMB = currentSizeMB - baseline.currentSizeMB;
-    if (elapsedDays > 0 && growthMB > 0) {
-      growthMBPerDay = growthMB / elapsedDays;
+  if (-points[0].day >= UMAMI_STORAGE_POLICY.minimumTrendSpanDays) {
+    const meanDay = points.reduce((sum, point) => sum + point.day, 0) / points.length;
+    const meanSizeMB = points.reduce((sum, point) => sum + point.sizeMB, 0) / points.length;
+    let covariance = 0;
+    let variance = 0;
+    for (const point of points) {
+      covariance += (point.day - meanDay) * (point.sizeMB - meanSizeMB);
+      variance += (point.day - meanDay) ** 2;
+    }
+    const slopeMBPerDay = covariance / variance;
+    if (slopeMBPerDay > 0) {
+      growthMBPerDay = slopeMBPerDay;
       const remainingMB = Math.max(0, capacityMB - currentSizeMB);
       projectedHeadroomDays = remainingMB / growthMBPerDay;
     } else {

@@ -636,7 +636,7 @@ function normalizeAuthorizedLineage(result, isOnAuthorizedMainLineage) {
   return {
     ...result,
     verdict: 'AHEAD_LINEAGE_UNPROVEN',
-    detail: 'the running descendant is not proven reachable from the authorized main ref',
+    detail: `running ${result.runningSha ?? 'unknown'}; cannot prove this descendant belongs to refreshed origin/main. Verify the deployment source branch and Git fetch access before redeploying.`,
   };
 }
 
@@ -751,9 +751,10 @@ export function resolveOriginMainRelation(headSha, originMainSha, ancestry) {
 export function resolveComparisonHead(argv, {
   git = runGit,
   ancestry = () => 'unknown',
+  refreshMain = false,
 } = {}) {
   const explicit = readArgument(argv, '--head', null);
-  if (explicit === null) {
+  if (explicit === null || refreshMain) {
     git([
       'fetch',
       '--quiet',
@@ -765,7 +766,12 @@ export function resolveComparisonHead(argv, {
   try {
     originMainSha = git(['rev-parse', '--verify', '--end-of-options', 'origin/main^{commit}']);
   } catch (error) {
-    if (explicit === null) {
+    // Symmetric with the fetch condition above. A refresh call always passes an
+    // explicit --head, so keying this on `explicit === null` alone would swallow
+    // the failure and hand back originMainSha: null — which reads downstream as
+    // "no commit is on authorized main" and blocks the whole fleet with a detail
+    // string blaming the deployment source rather than this resolution failure.
+    if (explicit === null || refreshMain) {
       throw new Error(
         'cannot resolve origin/main for the deploy-drift comparison; fetch main or pass --head explicitly',
         { cause: error },
@@ -802,7 +808,7 @@ function printReport(results, summary, headSha, graceSha, headContext) {
   console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} ${formatComparisonHead(headContext)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
 
   if (summary.blocking.length > 0) {
-    console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) not running the head commit:`);
+    console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) with deployment or source-verification problems:`);
     for (const problem of summary.blocking) {
       console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}`);
     }
@@ -855,8 +861,8 @@ async function main() {
   // "cannot prove it keeps the service reported" behaviour.
   const ancestry = createAncestryResolver({ git: runGit });
   const isAncestor = (ancestor, descendant) => ancestry(ancestor, descendant) === 'yes';
-  const headContext = resolveComparisonHead(process.argv, { git: runGit, ancestry });
-  const { headSha, originMainSha: authorizedMainSha } = headContext;
+  let headContext = resolveComparisonHead(process.argv, { git: runGit, ancestry });
+  const { headSha } = headContext;
   // The newest commit that has been available longer than the build grace.
   // On a checkout too shallow to reach back that far, rev-list answers with
   // nothing and this falls back to head — the stricter reading.
@@ -955,6 +961,33 @@ async function main() {
     deadlineAt: deepPassDeadlineAt,
     monotonicNow: () => performance.now(),
   });
+
+  // Main can advance while Railway is read. Fetch after that observation so a
+  // newly deployed main commit has both its object and lineage available.
+  // Keep the original target: refreshing evidence must not move the goalpost.
+  //
+  // Two guards, both about what sits immediately after this line. The next step
+  // is classifyFleetWithinDeadline, which DISCARDS every history already read
+  // once the deadline has passed — so a refresh that runs past the deadline, or
+  // that spends its 30s git timeout crossing it, converts a fully-read fleet
+  // into a fleet-wide deadline error. That is the same false alarm this refresh
+  // exists to remove. And an unhandled throw here would strand the completed
+  // Railway read with no report at all, which is strictly worse than judging
+  // against a stale ref: a stale authorized main only ever OVER-blocks, so
+  // degrading to the pre-refresh context stays fail-closed.
+  if (performance.now() < deepPassDeadlineAt) {
+    try {
+      headContext = {
+        ...resolveComparisonHead(['--head', headSha], { git: runGit, ancestry, refreshMain: true }),
+        headSource: headContext.headSource,
+      };
+    } catch (error) {
+      console.error(`Could not refresh origin/main after the Railway read; judging lineage against the pre-refresh ref, which can only over-report: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    console.error('Skipped the post-observation origin/main refresh: the run deadline was reached while reading Railway. Lineage is judged against the pre-refresh ref, which can only over-report.');
+  }
+  const { originMainSha: authorizedMainSha } = headContext;
 
   // One classifier closure for both passes: the shallow fleet read and the
   // deep per-service re-read must judge a history identically, or the deepen

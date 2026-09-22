@@ -389,6 +389,18 @@ const SignalBars = () => {
           const scaleY = isSignal
             ? [0.5, 1, 0.65, 0.9]
             : [1, 0.3, 0.7, 0.15, 0.5];
+          // Motion accelerates `transform` but not the individual `scaleY`
+          // shorthand, so complete transform strings keep these 60 forever-
+          // repeating bars on the browser's compositor instead of Motion's
+          // JavaScript frame loop. Collapsing this back to `scaleY: [...]`
+          // looks identical and silently restores that main-thread cost.
+          const transform = scaleY.map((scale) => `scaleY(${scale})`);
+          // Motion's JS path expands a single `ease` into one easing per
+          // keyframe segment; its native path would apply a lone easing across
+          // the whole iteration and interpolate linearly between keyframes.
+          // Passing the array keeps the per-segment curve the bars had before,
+          // and still leaves the animation eligible for the native path.
+          const ease = scaleY.slice(1).map(() => 'easeInOut' as const);
 
           return (
             <div
@@ -405,14 +417,14 @@ const SignalBars = () => {
                     ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` }
                     : null),
                 }}
-                initial={{ scaleY: initialScale, opacity: isSignal ? 0.4 : 0.08 }}
+                initial={{ transform: `scaleY(${initialScale})`, opacity: isSignal ? 0.4 : 0.08 }}
                 animate={isSignal
                   ? {
-                      scaleY,
+                      transform,
                       opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
                     }
                   : {
-                      scaleY,
+                      transform,
                       opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
                     }
                 }
@@ -421,7 +433,7 @@ const SignalBars = () => {
                   repeat: Infinity,
                   repeatType: 'reverse',
                   delay: isSignal ? distFromCenter * 0.07 : jitter(i, 2) * 0.6,
-                  ease: 'easeInOut',
+                  ease,
                 }}
               />
             </div>
@@ -1366,10 +1378,9 @@ const EnterprisePage = () => (
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
           <a href={ABOUT_DOCS_PATH} className="hover:text-wm-text transition-colors">About</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-          <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
+          <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>

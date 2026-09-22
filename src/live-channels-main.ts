@@ -7,8 +7,8 @@ import { initI18n } from '@/services/i18n';
 import { initLiveChannelsWindow } from '@/live-channels-window';
 
 async function main(): Promise<void> {
-  await initI18n();
-  initLiveChannelsWindow();
+  await initI18n({ waitForFullTranslation: true });
+  await initLiveChannelsWindow();
 }
 
 void main().catch(console.error);

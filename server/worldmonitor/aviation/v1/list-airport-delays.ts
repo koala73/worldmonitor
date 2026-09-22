@@ -17,8 +17,12 @@ import {
   buildNotamAlert,
   loadNotamClosures,
   mergeNotamWithExistingAlert,
+  isValidAirportDelayAlert,
+  isValidIntlCoverage,
 } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { readCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 
@@ -27,12 +31,26 @@ const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
 
 const FAA_AIRPORT_SET = new Set(FAA_AIRPORTS);
 const INTL_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
-type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
+
+const ALLOWED_QUERY_PARAMS = new Set(['page_size', 'cursor', 'region', 'min_severity', 'jmespath', '_debug', 'rpc']);
 
 export async function listAirportDelays(
-  _ctx: ServerContext,
-  _req: ListAirportDelaysRequest,
+  ctx: ServerContext,
+  req: ListAirportDelaysRequest,
 ): Promise<ListAirportDelaysResponse> {
+  const seenParams = new Set<string>();
+  for (const [key, value] of new URL(ctx.request.url).searchParams) {
+    if (!ALLOWED_QUERY_PARAMS.has(key)) throw new ApiError(400, `Unsupported airport delay parameter: ${key}`, '');
+    if (seenParams.has(key)) throw new ApiError(400, `Duplicate airport delay parameter: ${key}`, '');
+    seenParams.add(key);
+    if (key === 'page_size' && value !== '0') throw new ApiError(400, 'Airport delay page_size must be 0', '');
+    if (key === 'rpc' && value !== 'list-airport-delays') throw new ApiError(400, 'Invalid airport delay route', '');
+  }
+  if ((req.pageSize ?? 0) !== 0 || req.cursor
+    || (req.region && req.region !== 'AIRPORT_REGION_UNSPECIFIED')
+    || (req.minSeverity && req.minSeverity !== 'FLIGHT_DELAY_SEVERITY_UNSPECIFIED')) {
+    throw new ApiError(400, 'Airport delay filters are not supported', '');
+  }
   // 1. FAA (US) — seed-only read
   // faaSourceCovered = the seed cache hit AND returned a valid alerts array.
   // A miss/parse-error means we have no telemetry for any FAA airport this
@@ -40,14 +58,15 @@ export async function listAirportDelays(
   // PERF: the three inputs below are independent (different Redis keys / an
   // independent fetcher) and merge only afterwards — start them concurrently
   // instead of paying three serial round-trips per request.
-  const faaRead = (async (): Promise<{ faaAlerts: AirportDelayAlert[]; faaSourceCovered: boolean }> => {
+  const faaRead = (async (): Promise<{ faaAlerts: AirportDelayAlert[]; faaSourceCovered: boolean; available: boolean }> => {
     let faaAlerts: AirportDelayAlert[] = [];
     let faaSourceCovered = false;
     try {
-      const seedData = await getCachedJson(FAA_CACHE_KEY, true) as { alerts: AirportDelayAlert[] } | null;
-      if (seedData && Array.isArray(seedData.alerts)) {
+      const seed = await readCachedJson(FAA_CACHE_KEY, true);
+      const seedData = seed.status === 'hit' ? seed.value as { alerts?: unknown[] } | null : null;
+      if (seedData && Array.isArray(seedData.alerts) && seedData.alerts.every(isValidAirportDelayAlert)) {
         faaSourceCovered = true;
-        faaAlerts = seedData.alerts
+        faaAlerts = seedData.alerts!
           .map(a => {
             const airport = MONITORED_AIRPORTS.find(ap => ap.iata === a.iata);
             if (!airport) return null;
@@ -61,25 +80,32 @@ export async function listAirportDelays(
     } catch (err) {
       console.warn(`[Aviation] FAA seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
       void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'faa-seed-read' } });
+      faaSourceCovered = false;
+      faaAlerts = [];
     }
-    return { faaAlerts, faaSourceCovered };
+    return { faaAlerts, faaSourceCovered, available: faaSourceCovered };
   })();
 
   // 2. International — read-only from Redis (Railway relay seeds the cache)
   // A cache hit alone does not prove every configured hub was covered. The
   // seeder records each hub as normal/disruption/omitted/failed so an omitted
   // hub remains UNKNOWN instead of being synthesized as normal.
-  const intlRead = (async (): Promise<{ intlAlerts: AirportDelayAlert[]; intlCoverage: IntlCoverage[]; intlCoveredIatas: Set<string> }> => {
+  const intlRead = (async (): Promise<{ intlAlerts: AirportDelayAlert[]; intlCoveredIatas: Set<string>; available: boolean }> => {
     let intlAlerts: AirportDelayAlert[] = [];
-    let intlCoverage: IntlCoverage[] = [];
     let intlCoveredIatas = new Set<string>();
+    let available = false;
     try {
-      const cached = await getCachedJson(INTL_CACHE_KEY) as { alerts: AirportDelayAlert[]; coverage?: IntlCoverage[] } | null;
-      if (cached && Array.isArray(cached.alerts)) {
-        intlAlerts = cached.alerts;
+      const seed = await readCachedJson(INTL_CACHE_KEY, true);
+      const cached = seed.status === 'hit' ? seed.value as { alerts?: unknown[]; coverage?: unknown[] } | null : null;
+      const validAlerts = Array.isArray(cached?.alerts) && cached.alerts.every(isValidAirportDelayAlert);
+      const validCoverage = cached?.coverage === undefined
+        || (Array.isArray(cached.coverage) && cached.coverage.every(isValidIntlCoverage));
+      if (validAlerts && validCoverage) {
+        available = true;
+        intlAlerts = cached.alerts! as AirportDelayAlert[];
         if (Array.isArray(cached.coverage)) {
-          intlCoverage = cached.coverage;
           intlCoveredIatas = new Set(cached.coverage
+            .filter(isValidIntlCoverage)
             .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
             .map((hub) => hub.iata));
         }
@@ -87,19 +113,21 @@ export async function listAirportDelays(
     } catch (err) {
       console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
       void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'intl-cache-read' } });
+      available = false;
+      intlAlerts = [];
+      intlCoveredIatas = new Set();
     }
-    return { intlAlerts, intlCoverage, intlCoveredIatas };
+    return { intlAlerts, intlCoveredIatas, available };
   })();
 
-  // 3. NOTAM alerts — shared loader (seed-first with live fallback).
-  // loadNotamClosures swallows both the seed-read and live-fetch failures
-  // internally (returns null on error), so no outer try/catch is needed — a
-  // failure degrades cleanly to "no NOTAM merge this tick" rather than
-  // bubbling and tripping every airport to UNKNOWN at the handler boundary.
+  // 3. NOTAM alerts — optional seed-only enrichment. A missing seed is valid;
+  // a read or decode failure keeps the response out of caches.
   const notamRead = loadNotamClosures();
 
-  const [{ faaAlerts, faaSourceCovered }, { intlAlerts, intlCoverage, intlCoveredIatas }, notamResult] =
+  const [{ faaAlerts, faaSourceCovered, available: faaAvailable }, { intlAlerts, intlCoveredIatas, available: intlAvailable }, notamReadResult] =
     await Promise.all([faaRead, intlRead, notamRead]);
+
+  const notamResult = notamReadResult.data;
 
   const allAlerts = [...faaAlerts, ...intlAlerts];
   if (notamResult) {
@@ -188,14 +216,8 @@ export async function listAirportDelays(
     }
   }
 
-  // Write bootstrap key for initial page load hydration. Canonical writer is
-  // scripts/seed-aviation.mjs (BOOTSTRAP_TTL=7200). This RPC-side write is a
-  // courtesy mid-tick refresh — TTL kept in lockstep so a user-triggered RPC
-  // doesn't shorten the seeder's expiry and re-create the EMPTY-on-quiet-traffic
-  // failure mode that motivated the canonical seeder write.
-  try {
-    await setCachedJson('aviation:delays-bootstrap:v2', { alerts: allAlerts, coverage: intlCoverage }, 7200);
-  } catch { /* non-critical */ }
-
-  return { alerts: allAlerts };
+  const response = { alerts: allAlerts };
+  return faaAvailable && intlAvailable && !notamReadResult.unavailable
+    ? response
+    : markNoStoreFallbackResponse(ctx.request, response);
 }

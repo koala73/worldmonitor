@@ -26,7 +26,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
       </openapi.json>; rel="service-desc"; type="application/json",
       </openapi.yaml>; rel="service-desc"; type="application/vnd.oai.openapi",
       </docs/documentation>; rel="service-doc"; type="text/html",
-      </api/health>; rel="status"; type="application/json",
+      </api/health?compact=1>; rel="status"; type="application/json",
       </.well-known/oauth-protected-resource>; rel="...oauth-protected-resource",
       </.well-known/oauth-authorization-server>; rel="...oauth-authorization-server",
       </.well-known/mcp/server-card.json>; rel="mcp-server-card"; anchor="/mcp",
@@ -43,7 +43,8 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | 传输方式（`streamableHttp`）、端点、OAuth 资源、作用域、流式、能力标志 |
 | [`/.well-known/mcp/server.json`](https://worldmonitor.app/.well-known/mcp/server.json) | MCP | 与 `server-card.json` 相同的载荷，使用较新的 well-known 文件名。这**不是**仓库根目录的 MCP 注册表 `server.json` |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 授权服务器元数据（PKCE、DCR、令牌端点） |
-| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | `https://worldmonitor.app/mcp` 的资源元数据 |
+| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | 其 `resource` 为站点源站本身（而非 MCP 端点）的资源元数据 |
+| [`/.well-known/oauth-protected-resource/mcp`](https://worldmonitor.app/.well-known/oauth-protected-resource/mcp) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | MCP 端点的资源元数据，其 `resource` 为 `https://worldmonitor.app/mcp`（已部署的 `/api/mcp` 路由在对应路径下有各自的文档） |
 | [`/.well-known/mcp/docs-server-card.json`](https://worldmonitor.app/.well-known/mcp/docs-server-card.json) | MCP | `/docs/mcp` 处**文档** MCP 服务器的服务器卡片（见下文）——与上面的数据服务器卡片相互独立 |
 | [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | `/a2a` JSON-RPC 接待智能体的 Agent Card（见下文）——传输方式、协议版本、技能，无需认证 |
 | [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 公钥目录（`application/http-message-signatures-directory+json`），供第三方验证源自 WorldMonitor 的签名自动化请求。密钥携带滚动 24 小时 `nbf`/`exp` 窗口；缓存 `public, max-age=3600` |
@@ -51,9 +52,9 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/plugin.json`](https://www.worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | World Monitor 智能体插件清单（`name: worldmonitor`）。GitHub 仓库即插件包：根目录 `plugin.json`、`mcp.json` 与常规 `skills/*/SKILL.md` 文件（不是 git 符号链接——Windows 检出和 zip 解压仍能得到 YAML 前置元数据）。插件配方与 well-known 目录一致，只是 REST 示例使用公开站点源 `https://www.worldmonitor.app` |
 | [`/llms.txt`](https://www.worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
 | [`/llms-full.txt`](https://www.worldmonitor.app/llms-full.txt) | （扩展） | 完整 LLM 语料：产品简报，外加内联的术语表、咽喉点方法论与解说、国家韧性指数方法论、更正日志，以及已发布的排名快照 |
-| [`/api/health`](https://api.worldmonitor.app/api/health) | （自定义） | 按密钥的种子状态、新鲜度、记录计数——智能体可据此门控抓取 |
+| [`/api/health?compact=1`](https://api.worldmonitor.app/api/health?compact=1) | （自定义） | 公开平台可用性，以及按密钥的问题、种子新鲜度和记录计数——智能体可据此门控抓取 |
 
-头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`、`/plugin.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
+头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`、`/plugin.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health?compact=1` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。顶层 `HEALTHY` 表示平台可用，可以与受控的数据源警告同时出现。严格的数据质量门控必须检查 `summary.warn` 和 `problems`，不能只检查顶层状态。
 
 ## 智能体前门
 

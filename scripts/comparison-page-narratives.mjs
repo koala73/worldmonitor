@@ -15,6 +15,65 @@ const CHOKEPOINT_COUNT = CHOKEPOINT_REGISTRY.length;
 // count (#6038 / #7744).
 const PROVIDER_COUNT = computeStats().sourceAttribution.providerCount.toLocaleString('en-US');
 
+// Source contracts: conflict/v1/list-acled-events.ts (15-minute cache),
+// seed-gdelt-bulk-materializer.mjs (15-minute batches), seed-ucdp-events.mjs
+// (annual GED and monthly Candidate releases), seed-bundle-portwatch.mjs
+// (6-hour transit refresh), and supply-chain/v1/get-chokepoint-status.ts.
+export const COMPARISON_MEASUREMENTS = {
+  hub: [
+    'World Monitor combines separate measurements rather than treating every map marker as the same kind of evidence. GDELT supplies news and event data in 15-minute batches; UCDP supplies coded conflict events from annual GED and monthly Candidate releases; AISStream supplies streaming vessel positions. These sources answer different questions: reported attention, recorded violence, and observed traffic. Their timestamps and geographic coverage can differ even when they appear together on the dashboard.',
+    'ACLED event requests use a 15-minute cache, which does not make ACLED publish new events every 15 minutes. Maritime monitoring covers ' + CHOKEPOINT_COUNT + ' maritime chokepoints from the shared registry. Check the country snapshot below for dated risk context; it is not a simultaneous capture of every feed.',
+  ],
+  'liveuamap-alternatives': [
+    'World Monitor places UCDP coded violence and ACLED conflict events alongside GDELT news context. UCDP distinguishes state-based, non-state, and one-sided violence. ACLED requests select event dates and countries, while GDELT provides reported developments. A headline and a coded event can describe the same incident, so adding their totals would not produce a reliable count of unique attacks.',
+    'GDELT ingestion follows 15-minute batches. ACLED responses are cached for 15 minutes; source publication can lag that interval. UCDP annual GED and monthly Candidate releases provide slower historical evidence. The linked country snapshot shows the risk context available at capture time. It does not certify frontline positions or make every report independently verified.',
+  ],
+  'best-geopolitical-risk-dashboards': [
+    'World Monitor presents country instability alongside the evidence that gives a score context. GDELT supplies news and event data, UCDP supplies coded violence, and IMF PortWatch supplies daily vessel-transit history for maritime monitoring. These series measure different activity: news volume is not a count of casualties, and a shipping slowdown is not a probability of conflict. Read the published country score with its method version and observation time.',
+    'GDELT batches arrive on a 15-minute cycle. World Monitor refreshes PortWatch history every 6 hours, while UCDP Candidate releases are monthly. Faster dashboard access cannot remove those source delays. The dated country snapshot below supports a reproducible comparison; missing or partial evidence must remain visible when interpreting a country ranking.',
+  ],
+  'worldmonitor-vs-liveuamap': [
+    'World Monitor builds its conflict view from sources including ACLED and UCDP, then adds GDELT reporting and AISStream vessel observations as separate context. ACLED records events such as battles and violence against civilians. UCDP provides coded violence categories. AIS positions describe reported vessel movements, not confirmation that a nearby conflict caused a disruption. This separation matters when comparing a multi-domain dashboard with a conflict-event map.',
+    'ACLED responses use a 15-minute cache; GDELT ingestion follows 15-minute batches; AISStream sends vessel messages as they arrive. None of these intervals guarantees immediate reporting of an incident. The linked country snapshot records dated risk context, so a reader can distinguish the captured assessment from later live developments.',
+  ],
+  'worldmonitor-vs-acled': [
+    'World Monitor uses ACLED as an upstream conflict source rather than reproducing its coding operation. The event handler requests battles, explosions and remote violence, and violence against civilians, with date and country filters. UCDP supplies a separate coded-violence series. GDELT adds news context. These inputs retain different definitions and publication delays; their presence on one dashboard does not make them a single interchangeable event dataset.',
+    'World Monitor caches ACLED requests for 15 minutes. That is a retrieval interval, not a promise that ACLED releases new records at that speed. UCDP combines annual GED and monthly Candidate releases. The dated country snapshot below documents downstream risk context; it is not an ACLED archive or a substitute for the original event records and license.',
+  ],
+  'worldmonitor-vs-gdelt': [
+    'World Monitor ingests GDELT bulk event and Global Knowledge Graph batches to prepare country news and topic views. The materializer checks that event and GKG batches cover matching time intervals before publishing them. This turns the upstream stream into bounded dashboard results, rather than exposing the complete GDELT archive. A country news count describes reporting activity; it cannot by itself establish how many distinct incidents occurred.',
+    'The ingestion schedule follows 15-minute GDELT batches, and source gaps can delay publication. UCDP coded violence remains a separate source with annual GED and monthly Candidate releases. The linked country snapshot provides a dated downstream reference. Its capture date must not be mistaken for the event date of each GDELT article.',
+  ],
+  'worldmonitor-vs-dataminr': [
+    'World Monitor derives its public monitoring context from named feeds, including GDELT news and event batches, ACLED conflict events, and USGS earthquake observations. The earthquake pipeline also reads Natural Resources Canada. These streams provide reported developments and measured hazards; they do not establish access to a proprietary social-data firehose. A displayed report should be checked against its original source before a team treats it as an operational alert.',
+    'GDELT ingestion runs on a 15-minute cycle, ACLED responses use a 15-minute cache, and the earthquake worker is scheduled every 5 minutes. These are collection schedules, not guaranteed detection times. The dated country snapshot below gives reproducible risk context for comparison with live alerting products, without implying an alert-delivery SLA.',
+  ],
+  'worldmonitor-vs-recorded-future': [
+    'World Monitor uses feeds including abuse.ch Feodo Tracker and URLhaus for cyber indicators, with GDELT reporting and UCDP conflict events providing separate geopolitical context. Feodo identifies reported command-and-control infrastructure; URLhaus supplies reported malicious URLs and requires configured access. An indicator location is not proof of an attacker\'s location or attribution. These feeds do not constitute a complete enterprise investigation record.',
+    'The cyber worker is scheduled every 2 hours; GDELT ingestion follows 15-minute batches and UCDP Candidate releases are monthly. Results depend on source access and successful refresh. Check the observation time on each indicator. The linked country snapshot is dated geopolitical context, not a frozen cyber-indicator archive or a claim about enterprise threat coverage.',
+  ],
+  'worldmonitor-vs-deepstatemap': [
+    'World Monitor uses UCDP coded violence, ACLED conflict events, and GDELT reporting to place Ukraine developments in wider country and regional context. UCDP event locations describe coded incidents; they are not a continuously surveyed front line. News locations likewise indicate where reporting concerns an event, rather than verified control of each settlement. Readers should keep that distinction when comparing event markers with analyst-maintained territorial geometry.',
+    'GDELT ingestion follows 15-minute batches and ACLED requests use a 15-minute cache. UCDP annual GED and monthly Candidate releases have longer publication delays. The dated country snapshot below supports review of the captured instability context. It cannot confirm current unit positions, tactical movement, or territorial control at the time a reader opens this page.',
+  ],
+  'mcp-servers-for-geopolitical-data': [
+    'World Monitor\'s MCP interface exposes source-backed datasets rather than making the language model the original observer. Maritime results draw on AISStream vessel observations and IMF PortWatch transit history; conflict context includes UCDP and ACLED; news views use GDELT. A tool response must be interpreted with the dataset\'s observation time and availability fields. Calling a tool now does not mean that every upstream measurement was made now.',
+    'GDELT ingestion follows 15-minute batches, ACLED requests use a 15-minute cache, and PortWatch transit history refreshes every 6 hours. Coverage differs by tool and source, even though they share an interface. The dated country snapshot below is a reproducible example of published risk context, not a guarantee that every MCP result has the same timestamp.',
+  ],
+  'chokepoint-monitoring-tools': [
+    'World Monitor combines IMF PortWatch daily transit history, AISStream vessel crossings over a rolling 24-hour window, and NGA navigational warnings. Its shared registry defines ' + CHOKEPOINT_COUNT + ' maritime chokepoints. PortWatch supports week-on-week traffic comparisons; AISStream supplies observed crossings; NGA adds safety notices. The disruption score combines traffic anomalies, nearby warnings, AIS disruptions, and threat baselines. A high score signals risk, not verified closure.',
+    'World Monitor refreshes PortWatch history every 6 hours. AISStream messages arrive continuously, while the combined status response uses a 5-minute cache. Upstream reporting can lag those schedules, and missing AIS coverage is not proof of zero traffic. The snapshot below preserves the captured status and source availability for each monitored waterway; it is not a vessel-level archive.',
+  ],
+  'free-geopolitical-risk-dashboards': [
+    'World Monitor\'s free dashboard displays measurements from named public sources, including GDELT news and events, UCDP coded violence, and USGS earthquakes. The earthquake pipeline also uses Natural Resources Canada. Free access does not make every source equally complete: reported news, coded conflict, and instrument-detected seismic events have different observation methods and geographic gaps. A quiet map alone cannot establish that a country has no risk.',
+    'GDELT ingestion follows 15-minute batches and the earthquake worker runs every 5 minutes. UCDP annual GED and monthly Candidate releases provide slower conflict evidence. The dated country snapshot below lets readers inspect published risk context without relying on the current screen. Check its observation times and the source coverage before treating a displayed ranking as current.',
+  ],
+  'travel-risk-intelligence-vs-assistance': [
+    'World Monitor provides travel-risk context from country advisories, conflict reporting, and observed hazards. GDELT supplies news and event data, ACLED supplies conflict events, and the earthquake pipeline reads USGS and Natural Resources Canada. These observations can help a traveler identify a development that needs investigation. They do not establish whether a particular road, hotel, airport, or evacuation route is safe.',
+    'GDELT ingestion follows 15-minute batches, ACLED requests use a 15-minute cache, and earthquake collection runs every 5 minutes. Official advisory publication follows the issuing authority\'s schedule. The dated country snapshot below records captured instability context. Check current official advice before travel; World Monitor does not dispatch assistance, arrange medical evacuation, or manage an emergency case.',
+  ],
+};
+
 function methodology(
   focus,
   recheck = 'Vendors change SKUs, so re-check the linked vendor page before you buy.',

@@ -8,7 +8,7 @@
 # =============================================================================
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS builder
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS builder
 
 WORKDIR /app
 
@@ -53,7 +53,7 @@ RUN npx tsc && npx vite build
 RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
 
 # ── Stage 2: Runtime dependencies ───────────────────────────────────────────
-FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS runtime-deps
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS runtime-deps
 
 WORKDIR /app
 
@@ -67,7 +67,7 @@ COPY docker/runtime-package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --omit=optional --ignore-scripts
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS final
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS final
 
 # nginx + supervisord
 RUN apk add --no-cache nginx supervisor gettext && \

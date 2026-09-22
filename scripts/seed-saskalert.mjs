@@ -7,6 +7,7 @@ import {
   declareSaskAlertRecords,
   fetchSaskAlerts,
   saskAlertAfterPublish,
+  saskAlertBeforePublish,
   saskAlertContentMeta,
   saskAlertPublishTransform,
   validateSaskAlertEnvelope,
@@ -34,6 +35,7 @@ runSeed('alerts', 'saskalert', SOURCE.key, () => (
   contentMeta: saskAlertContentMeta,
   maxContentAgeMin: SASKALERT_MAX_CONTENT_AGE_MIN,
   publishTransform: saskAlertPublishTransform,
+  beforePublish: saskAlertBeforePublish,
   afterPublish: async (data) => {
     const diagnostics = saskAlertAfterPublish(data);
     try {

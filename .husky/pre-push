@@ -479,6 +479,7 @@ PROTO_INPUTS=(
   server/_shared/deprecation-policy.ts
   server/_shared/direct-llm-quota.ts
   server/_shared/entitlement-check.ts
+  server/_shared/entitlement-coverage.ts
   server/_shared/idempotency.ts
   server/_shared/internal-auth.ts
   server/_shared/mcp-internal-hmac.ts
@@ -489,6 +490,8 @@ PROTO_INPUTS=(
   server/_shared/response-headers.ts
   server/_shared/response-projection.ts
   server/_shared/seed-envelope.ts
+  server/_shared/server-sub-request-dispatch.ts
+  server/_shared/sub-request-admission.ts
   server/_shared/usage-identity.ts
   server/_shared/usage.ts
   server/auth-session.ts
@@ -498,6 +501,7 @@ PROTO_INPUTS=(
   server/request-validator.ts
   server/router.ts
   server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts
+  server/worldmonitor/consumer-prices/v1/_selection.ts
   server/worldmonitor/supply-chain/v1/scenario-templates.ts
   shared/attribution-rider.ts
   shared/china-corridor-control-towers.ts
@@ -584,6 +588,11 @@ if changed '^convex/'; then
   # code that reads it. Pre-push is the right gate — these errors surface
   # only at convex deploy time otherwise, deep into a release window.
   npx tsc --noEmit -p convex/tsconfig.json || exit 1
+  # Internal* probe filter list must stay regenerated with convex/ source —
+  # otherwise Sentry ingest drifts back to the name-shaped allowlist treadmill
+  # (#8405). typecheck:api also runs this when scripts/ changes; convex-only
+  # edits still need the gate here.
+  node scripts/sync-sentry-convex-probe-filters.mjs --check || exit 1
 else
   echo "Convex type check skipped (no convex/ changes)."
 fi
@@ -619,9 +628,17 @@ fi
 # catch is "someone changed a panel" — prepush-changed-tests.sh only selects a
 # test file when that test file is itself in the changed set, so a test-only
 # guard would first surface in CI after the PR was already open (#6557).
-if changed '^(src/components/|scripts/enforce-panel-content-writes\.mjs$)'; then
+if changed '^(src/components/|scripts/(enforce-panel-content-writes|lib/source-scan)\.mjs$)'; then
   echo "Running Panel content-write check..."
   npm run lint:panel-content-writes || exit 1
+fi
+
+# Gated on all of src/ (not just components/) because a null localStorage
+# crashes a service, a config leaf or a boot module just as readily as a panel
+# — WORLDMONITOR-122 came in through src/App.ts and src/main.ts (#7833).
+if changed '^(src/|scripts/(enforce-safe-local-storage|lib/source-scan)\.mjs$)'; then
+  echo "Running raw localStorage check..."
+  npm run lint:safe-local-storage || exit 1
 fi
 
 if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then

@@ -6,7 +6,7 @@ keywords: "energy shock monitoring, oil chokepoint dashboard, fuel shortage trac
 audience: "Energy analysts, commodity traders, policy teams, infrastructure risk managers"
 heroImage: "/blog/images/blog/energy-shock-monitoring-chokepoints-worldmonitor.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-10"
 ---
 
 An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
@@ -14,6 +14,10 @@ An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker
 WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 
 This is a practical workflow for monitoring energy-shock risk.
+
+For a worked example, open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) to inspect its latest published transit and disruption readings. The [historical Strait of Hormuz Transit Report for July 2026](https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/) provides a dated comparison with Suez, Bab el-Mandeb, and the Cape of Good Hope. Its figures describe that report's observation period, not current traffic.
+
+For country context, open the [Iran](https://www.worldmonitor.app/countries/iran/) and [Oman](https://www.worldmonitor.app/countries/oman/) profiles. The [Gulf security tracker](https://www.worldmonitor.app/crises/hormuz-gulf-security/) summarizes conflict data for its stated regional coverage. The separate [Iran–Israel escalation tracker](https://www.worldmonitor.app/crises/iran-israel-escalation/) covers those two countries only.
 
 ## What is energy shock monitoring?
 

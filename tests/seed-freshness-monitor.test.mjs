@@ -15,9 +15,13 @@ import {
   findOperationalProblems,
   formatAcceptanceReport,
   formatAcceptanceMarkdown,
+  isChinaCoveragePendingProblem,
   isOnDemandProblem,
   findPendingDiagnostics,
+  isSourceFailurePendingProblem,
   isStaleContentGraceProblem,
+  CHINA_COVERAGE_PENDING_SKEW_SLACK_MS,
+  MAX_CHINA_COVERAGE_PENDING_MS,
   MAX_STALE_CONTENT_GRACE_MS,
   STALE_CONTENT_GRACE_SKEW_SLACK_MS,
   validateAcceptanceBaseline,
@@ -62,6 +66,25 @@ describe('production acceptance summary', () => {
     ]) {
       const invalid = { status: 'HEALTHY', pending: { crossStraitActivityTaiwanMnd: { ...problem, ...over } } };
       assert.equal(findOperationalProblems(invalid, now).length, 1, JSON.stringify(over));
+    }
+  });
+
+  it('softens only recognized bounded NHC recovery metadata', () => {
+    const problem = {
+      status: 'SEED_ERROR', records: 2, seedAgeMin: 1, maxStaleMin: 540,
+      errorCode: 'NHC_POINT_REQUEST_FAILED', lastSourceFailureCode: 'NHC_POINT_REQUEST_FAILED',
+      consecutiveSourceFailures: 1,
+      sourceFailurePendingUntil: new Date(now + 210 * 60_000).toISOString(),
+    };
+    assert.equal(isSourceFailurePendingProblem(problem, now), true);
+    for (const over of [
+      { errorCode: 'NHC_OTHER', lastSourceFailureCode: 'NHC_OTHER' },
+      { sourceFailurePendingUntil: new Date(now + 216 * 60_000).toISOString() },
+      { consecutiveSourceFailures: 2 },
+      { records: 0 },
+      { seedAgeMin: 541 },
+    ]) {
+      assert.equal(isSourceFailurePendingProblem({ ...problem, ...over }, now), false, JSON.stringify(over));
     }
   });
   const observation = (problems, accepted = baseline) => buildAcceptanceObservation({
@@ -142,6 +165,36 @@ globalThis.fetch = async () => {
 });
 
 describe('scheduled seed freshness monitor', () => {
+  it('blocks on contained problems even when public availability is HEALTHY', () => {
+    const observedAt = Date.parse('2026-09-09T08:00:00.000Z');
+    const payload = {
+      status: 'HEALTHY',
+      summary: {
+        total: 292, ok: 291, warn: 1, containedWarn: 1,
+        onDemandWarn: 0, staleContent: 1, crit: 0,
+      },
+      checkedAt: new Date(observedAt).toISOString(),
+      problems: {
+        diseaseOutbreaks: {
+          status: 'STALE_CONTENT', records: 159,
+          seedAgeMin: 5, maxStaleMin: 360,
+          contentAgeMin: 181, maxContentAgeMin: 180,
+        },
+      },
+    };
+
+    validateCompactHealthPayload(payload);
+    assert.deepEqual(findOperationalProblems(payload, observedAt), [{
+      name: 'diseaseOutbreaks',
+      status: 'STALE_CONTENT',
+      records: 159,
+      seedAgeMin: 5,
+      maxStaleMin: 360,
+      contentAgeMin: 181,
+      maxContentAgeMin: 180,
+    }]);
+  });
+
   it('projects stable per-source statuses without putting changing ages in the incident identity', () => {
     const base = {
       blocking: [
@@ -331,6 +384,59 @@ describe('scheduled seed freshness monitor', () => {
           [collection]: { temporalAnomalies: candidate },
         }, now).length, 1, `${collection}: ${label}`);
       }
+    }
+  });
+
+  it('consumes only active bounded China coverage pending entries', () => {
+    const now = Date.parse('2026-09-08T16:01:00.000Z');
+    assert.equal(
+      MAX_CHINA_COVERAGE_PENDING_MS,
+      healthTesting.CHINA_DECISION_SIGNALS_PENDING_MS
+        + CHINA_COVERAGE_PENDING_SKEW_SLACK_MS,
+    );
+    const pendingUntil = new Date(
+      now + healthTesting.CHINA_DECISION_SIGNALS_PENDING_MS,
+    ).toISOString();
+    const problem = {
+      status: 'COVERAGE_PARTIAL',
+      chinaCoveragePendingUntil: pendingUntil,
+    };
+    const compact = healthTesting.healthResponseBody({
+      status: 'HEALTHY',
+      summary: { total: 1, ok: 1, warn: 0, pending: 1, crit: 0 },
+      checkedAt: new Date(now).toISOString(),
+      checks: { chinaDecisionSignals: problem },
+    }, true);
+
+    assert.equal(isChinaCoveragePendingProblem(problem, now), true);
+    assert.equal(
+      isChinaCoveragePendingProblem({ ...problem, status: 'CHINA_DEGRADED' }, now),
+      true,
+    );
+    assert.deepEqual(compact.pending, { chinaDecisionSignals: problem });
+    assert.deepEqual(findOperationalProblems(compact, now), []);
+    assert.deepEqual(findPendingDiagnostics(compact, now), [{
+      name: 'chinaDecisionSignals',
+      status: 'COVERAGE_PARTIAL',
+      graceUntil: pendingUntil,
+    }]);
+
+    for (const [label, candidate] of [
+      ['exact deadline', { ...problem, chinaCoveragePendingUntil: new Date(now).toISOString() }],
+      ['missing deadline', { status: 'COVERAGE_PARTIAL' }],
+      ['malformed deadline', { ...problem, chinaCoveragePendingUntil: 'not-a-date' }],
+      ['non-string deadline', { ...problem, chinaCoveragePendingUntil: [pendingUntil] }],
+      ['excessive deadline', {
+        ...problem,
+        chinaCoveragePendingUntil: new Date(now + MAX_CHINA_COVERAGE_PENDING_MS + 1).toISOString(),
+      }],
+      ['wrong status', { ...problem, status: 'SEED_ERROR' }],
+    ]) {
+      assert.equal(isChinaCoveragePendingProblem(candidate, now), false, label);
+      assert.equal(findOperationalProblems({
+        status: 'HEALTHY',
+        pending: { chinaDecisionSignals: candidate },
+      }, now).length, 1, label);
     }
   });
 

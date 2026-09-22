@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-11",
+  "note": "Origins whose recorded exports are largely re-exports or transshipment. A flagged origin is a possible transit hub, not a disqualified supplier: the brief annotates it and prefers a non-hub origin for its next action. Re-export data (resilience:recovery:reexport-share:v1) covers only AE and PA, so this list is a reviewed judgement, not a measurement.",
+  "hubs": [
+    { "iso2": "AE", "label": "United Arab Emirates", "rationale": "Jebel Ali and Dubai free zones re-export a large share of recorded exports; Comtrade publishes an RX flow for the UAE.", "sourceUrl": "https://comtradeplus.un.org/" },
+    { "iso2": "SG", "label": "Singapore", "rationale": "Entrepot economy; re-exports are roughly half of merchandise exports, and Comtrade returns no RX rows for Singapore.", "sourceUrl": "https://www.singstat.gov.sg/find-data/search-by-theme/trade-and-investment/merchandise-trade/latest-data" },
+    { "iso2": "HK", "label": "Hong Kong SAR", "rationale": "Re-exports dominate recorded exports (mostly of mainland China origin); Comtrade returns no RX rows for Hong Kong.", "sourceUrl": "https://www.censtatd.gov.hk/en/scode230.html" },
+    { "iso2": "NL", "label": "Netherlands", "rationale": "Rotterdam and Schiphol: the Rotterdam effect assigns imports landed for other EU members to the Netherlands as the recorded partner.", "sourceUrl": "https://www.cbs.nl/en-gb/news/2019/38/re-exports-account-for-half-of-dutch-goods-exports" },
+    { "iso2": "BE", "label": "Belgium", "rationale": "Antwerp-Bruges transshipment; a large share of recorded exports are goods in transit for other EU members.", "sourceUrl": "https://www.nbb.be/en/statistics/foreign-trade" },
+    { "iso2": "PA", "label": "Panama", "rationale": "Colon Free Zone re-exports; Comtrade publishes an RX flow for Panama.", "sourceUrl": "https://comtradeplus.un.org/" },
+    { "iso2": "MY", "label": "Malaysia", "rationale": "Port Klang and Tanjung Pelepas transshipment hubs on the Malacca route; Comtrade returns no RX rows for Malaysia.", "sourceUrl": "https://www.dosm.gov.my/" }
+  ]
+}

@@ -1,6 +1,7 @@
 'use strict';
 
 const { assertXPostBudgetAdmission, MAX_RECEIPT_BYTES } = require('./x-post-budget.cjs');
+const { setTimeout: sleepMs } = require('node:timers/promises');
 
 /**
  * Curated X news-account monitoring (Track A / #6654).
@@ -18,6 +19,7 @@ const DEFAULT_MAX_FEED_ITEMS = 200;
 const DEFAULT_MAX_TEXT_CHARS = 800;
 const X_LIST_POST_LIMIT = 5;
 const X_LIST_POLL_INTERVAL_MS = 15 * 60 * 1000;
+const TRANSIENT_HTTP_STATUSES = new Set([408, 500, 502, 503, 504]);
 const MAX_TWEET_LOOKUP_IDS = 100;
 const DELETION_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_DELETION_AUDIT_MAX_POSTS = 25;
@@ -381,10 +383,10 @@ function buildXListReceiptResult({
     || (Array.isArray(body.errors) && body.errors.length > 0)) return reject();
   let rawPosts;
   if (Array.isArray(body.data)) rawPosts = body.data;
-  else if (body.data == null && Number(body.meta?.result_count) === 0) rawPosts = [];
+  else if (body.data == null && body.meta?.result_count === 0) rawPosts = [];
   else return reject();
   if (rawPosts.length > X_LIST_POST_LIMIT
-    || (body.meta?.result_count != null && Number(body.meta.result_count) !== rawPosts.length)) return reject();
+    || (body.meta?.result_count !== undefined && body.meta.result_count !== rawPosts.length)) return reject();
 
   const posts = [];
   for (const tweet of rawPosts) {
@@ -1062,6 +1064,7 @@ async function pollXListFeed({
   verifyMembership = true,
   withReturnedPosts,
   signal,
+  sleep = sleepMs,
 } = {}) {
   const configuredAccounts = Array.isArray(accounts) ? accounts : [];
   const pollCycleNow = now();
@@ -1088,6 +1091,7 @@ async function pollXListFeed({
     lastMembershipCheckAt: Math.max(0, Number(state?.lastMembershipCheckAt) || 0),
     postBudget: normalizePostBudget(state?.postBudget),
     lastError: null,
+    errorCode: null,
     rateLimitedUntil: activeBackoffDeadline,
     rateLimitAttempt: Math.max(0, Math.floor(Number(state?.rateLimitAttempt) || 0)),
     backoffCause: activeBackoffDeadline ? normalizeBackoffCause(state?.backoffCause) : null,
@@ -1157,7 +1161,7 @@ async function pollXListFeed({
 
   try {
     const url = buildXListPostsUrl(listId);
-    const outcome = await executePostRead({
+    const listRequest = {
       operation: 'list-feed',
       requestedPosts: X_LIST_POST_LIMIT,
       coverageId: coverageId.trim(),
@@ -1176,8 +1180,24 @@ async function pollXListFeed({
         return built.receipt;
       },
       execute: (_admission, postBudgetAdmission) => countedFetch(url, { postBudgetAdmission }),
-    });
+    };
+    let outcome = await executePostRead(listRequest);
+    // A completed HTTP failure settles at zero Posts. Retry once with a NEW
+    // admission from spare capacity, leaving all future slot coverage reserved.
+    // Unknown transport/settlement outcomes and malformed 200s may be billable;
+    // never retry those or reuse their one-shot transport admission.
+    if (outcome?.completed === true && TRANSIENT_HTTP_STATUSES.has(outcome.result?.response?.status)) {
+      const delayMs = Math.max(1000, parseRetryAfterMs(outcome.result.response.headers));
+      if (delayMs <= 5000 && now() + delayMs < sourceSlotEndsAt && !signal?.aborted) {
+        await sleep(delayMs, undefined, { signal });
+        if (!signal?.aborted && now() < sourceSlotEndsAt) {
+          const { coverageId: _coverageId, coverageUnitPosts: _coverageUnit, ...retryRequest } = listRequest;
+          outcome = await executePostRead(retryRequest);
+        }
+      }
+    }
     if (outcome?.allowed !== true) {
+      nextState.errorCode = 'X_BUDGET_DEFERRED';
       nextState.lastError = `X Post budget ${outcome?.reason || 'unavailable'}; List page deferred`;
     } else {
       const receipt = normalizeXListReceipt(outcome.receipt, listId, configuredAccounts);
@@ -1194,15 +1214,20 @@ async function pollXListFeed({
           ? { ok: true, status: 200, headers: new Headers() }
           : null);
         if (!response) {
+          nextState.errorCode = 'X_RESPONSE_UNAVAILABLE';
           nextState.lastError = 'X List page response was unavailable';
         } else if (response.status === 429) {
+          nextState.errorCode = 'X_RATE_LIMITED';
           recordRateLimit(nextState, response.headers, now);
           nextState.lastError = 'rate limited polling the X List';
         } else if (isAuthFailureStatus(response.status)) {
+          nextState.errorCode = 'X_AUTH_FAILED';
           recordAuthFailure(nextState, response.status, 'polling the X List', now);
         } else if (isCreditsExhaustedStatus(response.status)) {
+          nextState.errorCode = 'X_CREDITS_EXHAUSTED';
           recordCreditsExhausted(nextState, 'polling the X List', now);
         } else if (!response.ok) {
+          nextState.errorCode = TRANSIENT_HTTP_STATUSES.has(response.status) ? 'X_HTTP_TRANSIENT' : 'X_HTTP_ERROR';
           nextState.lastError = `X List page failed: HTTP ${response.status}`;
         } else {
           nextState.providerSuccess = true;
@@ -1210,11 +1235,17 @@ async function pollXListFeed({
           nextState.providerSuccessSlot = receipt?.sourceSlot || sourceSlot;
           if (outcome.completed !== true) {
             if (listValidationError === 'unknown_author') {
+              nextState.errorCode = 'X_MEMBERSHIP_DRIFT';
               recordMembershipDrift(nextState, 'page contains an author outside the enabled registry', now);
-            } else {
+            } else if (listValidationError || outcome.reason === 'unsettled_response' || outcome.reason === 'invalid_receipt') {
+              nextState.errorCode = 'X_INVALID_PAGE';
               nextState.lastError = 'X List page receipt was invalid; retained the full reservation';
+            } else {
+              nextState.errorCode = 'X_SETTLEMENT_FAILED';
+              nextState.lastError = 'X List page settlement failed; retained the previous feed';
             }
           } else if (!receipt || !outcome.receiptAck) {
+            nextState.errorCode = 'X_RECEIPT_UNAVAILABLE';
             nextState.lastError = 'X List page receipt was unavailable after settlement';
           } else {
             const newItems = listItemsFromReceipt(receipt, configuredAccounts);
@@ -1230,6 +1261,7 @@ async function pollXListFeed({
       }
     }
   } catch (error) {
+    nextState.errorCode = signal?.aborted ? 'X_POLL_ABORTED' : 'X_TRANSPORT_ERROR';
     nextState.lastError = `X List poll failed: ${error?.message || String(error)}`;
   }
 
@@ -1363,7 +1395,7 @@ async function pollXListFeed({
   nextState.requestsUsed = requestsUsed;
   nextState.lastCycleUsage = {
     requestsUsed,
-    requestLimit: 1 + (lookupDeletions ? 1 : 0) + (verifyMembership ? 2 : 0),
+    requestLimit: 2 + (lookupDeletions ? 1 : 0) + (verifyMembership ? 2 : 0),
     postsRead,
     postReadLimit,
   };

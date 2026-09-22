@@ -34,6 +34,7 @@ const {
   await import('../scripts/_seed-utils.mjs');
 
 const originalFetch = globalThis.fetch;
+const originalRetryDelayMs = process.env.WM_SEED_RETRY_DELAY_MS;
 
 /** seed-economy.mjs CRUDE_INVENTORIES_TTL / NAT_GAS_TTL / SPR_TTL / REFINERY_INPUTS_TTL. */
 const EIA_WEEKLY_DATA_TTL = 1_814_400; // 21 days
@@ -51,6 +52,9 @@ function ttlOf(command) {
 beforeEach(() => {
   sets = [];
   transactions = [];
+  // Keep the production retry count and error policy, but do not sleep through
+  // the real Redis backoff in this focused unit suite.
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
   globalThis.fetch = async (url, opts = {}) => {
     const command = opts?.body ? JSON.parse(opts.body) : null;
     if (String(url).endsWith('/multi-exec')) {
@@ -64,6 +68,8 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalRetryDelayMs === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+  else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelayMs;
 });
 
 test('writeExtraKeyWithMeta: seed-meta outlives the data key it vouches for', async () => {
@@ -173,12 +179,37 @@ test('writeExtraKeyWithMetaAtomically: marker and health provenance use one Redi
   });
 });
 
-test('writeExtraKeyWithMetaAtomically: a failed transaction cannot report marker-only success', async () => {
+test('writeExtraKeyWithMetaAtomically: retries a transient transaction failure without splitting the pair', async () => {
+  let calls = 0;
+  globalThis.fetch = async (url, opts) => {
+    calls += 1;
+    assert.match(String(url), /\/multi-exec$/);
+    const commands = JSON.parse(opts.body);
+    transactions.push(commands);
+    if (calls === 1) return new Response('unavailable', { status: 503 });
+    return Response.json(commands.map(() => ({ result: 'OK' })));
+  };
+
+  await writeExtraKeyWithMetaAtomically({
+    key: 'conflict:humanitarian:v1',
+    data: { sourceChannel: 'hapi-api' },
+    ttlSeconds: 259_200,
+    recordCount: 41,
+    metaKey: 'seed-meta:conflict:humanitarian',
+    metaTtlSeconds: 259_200,
+    extra: { sourceChannel: 'hapi-api', sourceState: 'degraded' },
+  });
+
+  assert.equal(calls, 2, 'a transient Redis failure gets one retry before the transaction succeeds');
+  assert.deepEqual(transactions[1], transactions[0], 'every attempt sends the complete atomic pair');
+});
+
+test('writeExtraKeyWithMetaAtomically: every permanent transaction failure does not retry', async () => {
   let calls = 0;
   globalThis.fetch = async (url) => {
     calls += 1;
     assert.match(String(url), /\/multi-exec$/);
-    return new Response('unavailable', { status: 503 });
+    return new Response('method not allowed', { status: 405 });
   };
 
   await assert.rejects(
@@ -189,18 +220,21 @@ test('writeExtraKeyWithMetaAtomically: a failed transaction cannot report marker
       recordCount: 41,
       metaKey: 'seed-meta:conflict:humanitarian',
       metaTtlSeconds: 259_200,
-      extra: { sourceChannel: 'hapi-api', sourceState: 'degraded' },
     }),
-    /HTTP 503/,
+    /HTTP 405/,
   );
-  assert.equal(calls, 1, 'the atomic pair is one failure unit');
+  assert.equal(calls, 1, 'a permanent Redis client error must fail fast');
 });
 
 test('writeExtraKeyWithMetaAtomically: a command error rejects the whole publication result', async () => {
-  globalThis.fetch = async () => Response.json([
-    { result: 'OK' },
-    { error: 'ERR simulated seed-meta failure' },
-  ]);
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return Response.json([
+      { result: 'OK' },
+      { error: 'ERR simulated seed-meta failure' },
+    ]);
+  };
 
   await assert.rejects(
     writeExtraKeyWithMetaAtomically({
@@ -213,6 +247,7 @@ test('writeExtraKeyWithMetaAtomically: a command error rejects the whole publica
     }),
     /1 command result/,
   );
+  assert.equal(calls, 1, 'a command-level failure is explicit and must not be retried');
 });
 
 test('resolveSeedMetaTtl: floor, clamp, and explicit override', () => {

@@ -119,7 +119,8 @@
       "activeSirens": "Còi báo động hoạt động",
       "sirens24h": "Còi báo động / 24h",
       "aviationDisruptions": "Gián đoạn hàng không",
-      "gpsJammingZones": "Vùng nhiễu GPS"
+      "gpsJammingZones": "Vùng nhiễu GPS",
+      "temporalUnavailable": "Quan sát theo thời gian không khả dụng"
     },
     "fallback": {
       "instabilityIndex": "**Chỉ số Bất ổn: {{score}}/100** ({{level}}, {{trend}})",
@@ -852,7 +853,6 @@
   "components": {
     "webcams": {
       "paused": "Webcam đã tạm dừng",
-      "pausedIdle": "Webcam đã tạm dừng — di chuyển chuột để tiếp tục",
       "regions": {
         "all": "TẤT CẢ",
         "mideast": "TRUNG ĐÔNG",
@@ -1175,9 +1175,6 @@
       "base": "Căn cứ",
       "nuclear": "Hạt nhân"
     },
-    "community": {
-      "joinDiscussion": "Đóng góp ý kiến phát triển"
-    },
     "threatLabels": {
       "critical": "N.TRỌNG",
       "high": "CAO",
@@ -1486,7 +1483,10 @@
       "provenanceTitle": "Nguồn gốc bài viết: số lượng bài viết được nhập và các nguồn riêng biệt mà bài viết này được chọn từ đó",
       "compiledFrom": "Được biên soạn từ {{stories}} câu chuyện trên {{sources}} nguồn",
       "briefFreshness": "Được tạo {{minutes}}m trước · nguồn mới nhất {{hours}}h tuổi",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Chi tiết tin tức ({{count}})",
+      "streamIdleStopLabel": "Dừng video trực tiếp khi không hoạt động",
+      "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel.",
+      "streamIdleStopNever": "Không bao giờ"
     },
     "settings": {
       "exportSettings": "Xuất cài đặt",
@@ -1898,6 +1898,7 @@
       "etfs": "ETF",
       "netInflow": "DÒNG VÀO RÒNG",
       "netOutflow": "DÒNG RA RÒNG",
+      "netNeutral": "DÒNG TRUNG LẬP",
       "table": {
         "ticker": "Mã",
         "issuer": "Tổ chức Phát hành",
@@ -2163,7 +2164,7 @@
       "infoTooltip": "<strong>Lịch kinh tế</strong> Các công bố kinh tế vĩ mô theo lịch: CPI, NFP, GDP, PMI và quyết định ngân hàng trung ương. Hiển thị dự báo so với thực tế so với trước đó. Sự kiện tác động cao được đánh dấu. Nguồn: nhà cung cấp dữ liệu kinh tế."
     },
     "fsi": {
-      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Chỉ số căng thẳng tài chính của Fed Kansas City (KCFSI): đo lường căng thẳng trên thị trường tài chính Hoa Kỳ bằng 11 chỉ báo bao gồm chênh lệch lợi suất, biến động và tương quan chéo. Giá trị dương cho thấy căng thẳng trên mức trung bình. Nguồn: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Tỷ lệ WorldMonitor giữa tín dụng lợi suất cao và trái phiếu Kho bạc Mỹ dài hạn, được điều chỉnh theo biến động cổ phiếu và chênh lệch lợi suất cao: (HYG / TLT) / (VIX × HY spread / 100). Đây không phải là Chỉ số Căng thẳng Tài chính của Cục Dự trữ Liên bang Kansas City. Giá trị 1.5 hoặc cao hơn là căng thẳng thấp; dưới 0.3 là căng thẳng cao.",
       "title": "Chỉ Số Áp Lực Tài Chính",
       "usFsiValue": "GIÁ TRỊ FSI CỦA MỸ",
       "cissTitle": "EU CISS (Áp Lực Hệ Thống Vùng Euro)",
@@ -2613,7 +2614,14 @@
       "empty": "Không phát hiện sự hội tụ hoạt động",
       "signals_other": "{{count}} tín hiệu",
       "analyzing": "Đang phân tích...",
-      "viewOnMap": "Xem trên bản đồ"
+      "viewOnMap": "Xem trên bản đồ",
+      "waiting": "Đang chờ lần cập nhật dữ liệu tiếp theo. Bảng này tự động cập nhật.",
+      "offline": "Đang chờ kết nối. Bảng này tự động cập nhật khi bạn trực tuyến trở lại.",
+      "updated": "Đã cập nhật {{time}}",
+      "saved": "Lần cập nhật gần nhất đã biết {{time}} · Đang kiểm tra cập nhật",
+      "savedOffline": "Lần cập nhật gần nhất đã biết {{time}} · Ngoại tuyến",
+      "localSignals": "Dựa trên các tín hiệu đã tải trong bảng điều khiển",
+      "emptySaved": "Không có sự hội tụ trong lần cập nhật gần nhất đã biết."
     },
     "thermalEscalation": {
       "title": "Tăng cường nhiệt độ",
@@ -2770,6 +2778,35 @@
       "succeeded": "Khóa truy cập đã lưu. Bạn có thể sử dụng nó lần tới khi đăng nhập.",
       "retryable": "Quá trình chưa hoàn tất. Bạn có thể thử lại.",
       "failed": "Chúng tôi không thể lưu khóa truy cập trên thiết bị này."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Bản tóm tắt quyết định về hàng hóa",
+      "commodity": "Hàng hóa / sản phẩm",
+      "blockedChokepoint": "Điểm nghẽn giả định bị phong tỏa",
+      "commodityCapture": "Ghi lại so sánh hàng hóa",
+      "title": "Bản tóm tắt quyết định",
+      "fuel": "Nhiên liệu",
+      "chokepoint": "Điểm nghẽn",
+      "baseline": "Gián đoạn cơ sở",
+      "comparison": "Gián đoạn so sánh",
+      "capture": "Lấy / làm mới cả hai",
+      "downloadHtml": "Tải bản tóm tắt HTML",
+      "downloadJson": "Tải bản tóm tắt JSON",
+      "back": "← Về bản tóm tắt quốc gia",
+      "select": "Chọn một gián đoạn năng lượng, rồi lấy cả hai kịch bản.",
+      "changed": "Lựa chọn đã thay đổi. Hãy lấy cả hai kịch bản trước khi xuất.",
+      "loading": "Đang lấy cả hai kịch bản…",
+      "captured": "Đã lấy. Kiểm tra ngày quan sát và các hạn chế trước khi tải xuống.",
+      "failed": "Không thể lấy các kịch bản. Kiểm tra quyền truy cập và thử lại. Không có kết quả để xuất.",
+      "locked": "Bản tóm tắt quyết định có trong Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Tạm dừng do không hoạt động",
+      "idleBody": "Video trực tiếp đã dừng sau {{duration}} không có hoạt động chuột, bàn phím hoặc chạm.",
+      "idleResume": "Tiếp tục",
+      "idleKeepPlaying": "Tiếp tục phát khi không hoạt động",
+      "idleSettingsHint": "Thay đổi bất kỳ lúc nào trong Cài đặt › Media.",
+      "idleKeepPlayingToast": "Video trực tiếp sẽ tiếp tục phát khi không hoạt động. Thay đổi trong Cài đặt › Media."
     }
   },
   "popups": {

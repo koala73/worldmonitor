@@ -20,7 +20,7 @@ service ConsumerPricesService {
     option (sebuf.http.config) = {path: "/get-consumer-price-overview", method: HTTP_METHOD_GET};
   }
 
-  // GetConsumerPriceBasketSeries retrieves the basket index time series.
+  // Retrieve consumer price basket index history by market, basket and date range, with dated observations, currency and snapshot time for price trend analysis.
   rpc GetConsumerPriceBasketSeries(GetConsumerPriceBasketSeriesRequest) returns (GetConsumerPriceBasketSeriesResponse) {
     option (sebuf.http.config) = {path: "/get-consumer-price-basket-series", method: HTTP_METHOD_GET};
   }

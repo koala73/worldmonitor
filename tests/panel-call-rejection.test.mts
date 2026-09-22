@@ -15,7 +15,8 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { invokePanelMethod } from '../src/app/pending-panel-data';
+import { enqueuePanelCall, invokePanelMethod, replayPendingCalls } from '../src/app/pending-panel-data';
+import { _resetSentryDeferStateForTests, _setSentryLoaderForTests, scheduleSentryInit } from '../src/bootstrap/sentry-defer';
 
 /** Let queued microtasks and one macrotask turn so a leak would be flagged. */
 function settle(): Promise<void> {
@@ -48,18 +49,19 @@ describe('invokePanelMethod — async panel rejections must not escape', () => {
   });
 
   it('reports the rejection so the failure stays observable', async () => {
-    const seen: Array<{ key: string; method: string; error: unknown }> = [];
+    const seen: Array<{ key: string; method: string; error: unknown; dispatch: string }> = [];
     const boom = new Error('boom');
     const panel = { updateInsights: async () => { throw boom; } };
 
-    invokePanelMethod(panel, 'insights', 'updateInsights', [], (key, method, error) => {
-      seen.push({ key, method, error });
+    invokePanelMethod(panel, 'insights', 'updateInsights', [], (key, method, error, dispatch) => {
+      seen.push({ key, method, error, dispatch });
     });
     await settle();
 
     assert.equal(seen.length, 1, 'exactly one report per rejected call');
     assert.equal(seen[0]?.key, 'insights');
     assert.equal(seen[0]?.method, 'updateInsights');
+    assert.equal(seen[0]?.dispatch, 'direct');
     assert.equal(seen[0]?.error, boom, 'the original error must reach the reporter');
   });
 
@@ -123,4 +125,36 @@ describe('invokePanelMethod — dispatch contract callPanel depends on', () => {
 
     assert.throws(() => invokePanelMethod(panel, 'giving', 'setData', [], () => {}), /sync boom/);
   });
+});
+
+it('sends distinct dispatch tags through the default Sentry sink', async (t) => {
+  _resetSentryDeferStateForTests();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const captured: Array<{ error: unknown; tags: Record<string, string> }> = [];
+  t.mock.method(console, 'error', () => {});
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { removeEventListener() {} } });
+  _setSentryLoaderForTests(async () => ({
+    captureException(error: unknown, context: { tags: Record<string, string> }) {
+      captured.push({ error, tags: context.tags });
+    },
+  } as never));
+  try {
+    const reason = new DOMException('signal timed out', 'TimeoutError');
+    const panel = { updateInsights: async () => { throw reason; } };
+    invokePanelMethod(panel, 'insights', 'updateInsights', []);
+    enqueuePanelCall('insights', 'updateInsights', []);
+    await replayPendingCalls('insights', panel);
+    const init = scheduleSentryInit();
+    t.mock.timers.tick(10_000);
+    await init;
+    assert.deepEqual(captured, ['direct', 'queued'].map((dispatch) => ({
+      error: reason,
+      tags: { kind: 'panel_call_rejected', panel: 'insights', method: 'updateInsights', dispatch },
+    })));
+  } finally {
+    _resetSentryDeferStateForTests();
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
 });

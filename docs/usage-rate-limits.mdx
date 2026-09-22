@@ -40,7 +40,7 @@ Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP �
 
 - **Per-minute** is a hard burst limit — exceeding it returns 429 immediately.
 - **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are rejected with **429** — the sold plan limit is authoritative, with no overage headroom. Usage is metered against the same counter that enforces, so the Settings notice and the 429 agree.
-- **MCP calls draw on this same daily allowance.** An API plan has one budget covering both REST requests and MCP tool calls; there is no separate MCP allowance to track. An MCP call that answers from cache costs the same as one REST request, one that fetches live data downstream costs two, and `get_country_brief` and `get_airspace` cost three. See [MCP calls against an API plan](#mcp-calls-against-an-api-plan).
+- **MCP calls draw on this same daily allowance.** An API plan has one budget covering both REST requests and MCP tool calls; there is no separate MCP allowance to track. An MCP call that answers from cache costs the same as one REST request, one that fetches live data downstream costs two, `get_country_brief` costs three, and `get_airspace` costs five. See [MCP calls against an API plan](#mcp-calls-against-an-api-plan).
 - The per-minute burst and daily allowance are both **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
 - Need a higher limit? **Contact support** to raise your plan's allowance.
 
@@ -54,7 +54,10 @@ A single MCP tool call is not always one unit, because the tools do not cost the
 |--------------------|---------------|----------|
 | Answers from the cache | **1** | `get_market_data`, `get_conflict_events`, `get_news_intelligence` |
 | Fetches live data downstream | **2** | `get_country_risk`, `get_wto_trade_flows`, `search_intel_history` |
-| Fetches downstream twice | **3** | `get_country_brief`, `get_airspace` |
+| Fetches downstream twice | **3** | `get_country_brief` |
+| Fetches downstream up to four times | **5** | `get_airspace` |
+
+`get_airspace` has a fixed weight of 5, including when only one source or longitude interval is needed. Dateline-crossing countries require two bounded queries per source. Dedicated Pro MCP allowances still charge one unit per call.
 
 A weighted call is all-or-nothing. With 999 of 1,000 units spent, a 2-unit call is rejected rather than partly served. `describe_tool` and `get_sources` charge nothing, as do all the discovery methods.
 
@@ -115,21 +118,29 @@ Routes that fetch a third-party host on our behalf carry their own per-IP budget
 |----------|-------|--------|-------|
 | `POST /api/skills/fetch-agentskills` | 30 | 60 s | Per IP |
 | `GET /api/youtube/live` | 30 | 60 s | Per IP |
+| `GET /api/aviation/v1/track-aircraft` with `icao24` or `callsign` | 30 | 60 s | Per IP; fail-closed |
 | `GET /api/reverse-geocode` | 60 | 60 s | Per IP |
 | `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 s | Per IP |
 
 The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its per-IP budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces its per-IP budget through `checkEndpointRateLimit` (fail-closed on Redis outage). After a shared-cache miss, both reverse-geocode handlers also use one fail-closed provider-wide Redis bucket capped at 1 request per second before they call Nominatim; cache hits do not consume that aggregate budget.
 
+Uncached `/api/symbol-search` requests also require admission to one shared 30 requests/minute Finnhub bucket, independent of query and caller. Cached results do not spend this budget. Exhaustion returns 429 with `Retry-After`; unavailable admission storage returns 503 before Finnhub is called.
+
+Aircraft identifier lookups consume the 30/minute budget before cache access, including cache hits and authenticated API or internal MCP requests. Accounts behind the same trusted client IP share this limit in addition to any account allowance; requests without a trusted IP share one fallback bucket. Bbox-only map requests keep the existing gateway policy. The native sidecar uses a separate 30/minute process-local window after local token authentication; restarting the process resets that window.
+
+ICAO addresses must normalize to six lowercase hexadecimal characters. Callsigns must normalize to 1–8 uppercase alphanumeric characters; substring matching remains supported. Both raw inputs are capped at 16 characters before surrounding whitespace is removed. Invalid identifiers return 400 before cache or provider access. Quota exhaustion returns 429 with the 30-request policy and `Retry-After`; unavailable limiter storage returns 503 with `X-RateLimit-Mode: degraded` and `Retry-After: 5`.
+
 ## Write endpoints
 
 | Endpoint | Limit | Window | Scope |
 |----------|-------|--------|-------|
+| `POST /api/customer-portal` | 5 | 60 s | Per authenticated user; completed idempotent replays excluded; fail-closed |
 | `POST /api/scenario/v1/run-scenario` | 10 | 60 s | Per IP |
 | `POST /api/scenario/v1/run-scenario` (queue depth) | 100 in-flight | — | Global |
 | `POST /api/leads/v1/register-interest` | 5 | 60 min | Per IP + Turnstile (desktop sources require signed HMAC bypass) |
 | `POST /api/leads/v1/submit-contact` | 3 | 60 min | Per IP + Turnstile |
 
-Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, `/api/customer-portal`, etc.) fall back to the default per-IP limit above.
+Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, etc.) fall back to the default per-IP limit above.
 
 ## Bootstrap / health / version
 

@@ -11,6 +11,7 @@
 //   use SHAPE — default CRS is EPSG:3005). Dataset licence: OGL-BC.
 
 import { CHROME_UA } from '../_seed-utils.mjs';
+import { decodeHtmlEntities } from '../_html-entities.mjs';
 
 export const BC_OPENMAPS_HOST = 'openmaps.gov.bc.ca';
 export const BC_FIRE_LAYER = 'PROT_CURRENT_FIRE_PNTS_SP';
@@ -24,6 +25,8 @@ export const BC_FETCH_TIMEOUT_MS = 30_000;
 export const BC_WFS_PAGE_SIZE = 1000;
 export const BC_WFS_MAX_PAGES = 8;
 export const BC_MAX_NETWORKLINK_HOPS = 2;
+export const BC_SNAPSHOT_KEY = 'wildfire:bc-source:v1';
+export const BC_SNAPSHOT_TTL_SECONDS = 7200;
 
 export class BcFirePointsError extends Error {
   constructor(message, { code = 'SEED_ERROR', status } = {}) {
@@ -111,13 +114,7 @@ export function stableBcFireId(props = {}, coords = {}) {
 }
 
 function decodeXml(text) {
-  return String(text || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .trim();
+  return decodeHtmlEntities(text).trim();
 }
 
 function xmlField(block, name) {
@@ -253,6 +250,13 @@ export function parseBcFireGeoJson(payload) {
   if (!doc || typeof doc !== 'object' || doc.type !== 'FeatureCollection' || !Array.isArray(doc.features)) {
     throw new BcFirePointsError('BC wildfire GeoJSON is not a FeatureCollection');
   }
+  for (const [field, value] of [['numberMatched', doc.numberMatched ?? doc.totalFeatures], ['numberReturned', doc.numberReturned]]) {
+    if (value == null || (field === 'numberMatched' && value === 'unknown')) continue;
+    const count = asFiniteNumber(value);
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new BcFirePointsError(`BC wildfire invalid ${field} count`);
+    }
+  }
   const fireDetections = [];
   const seen = new Set();
   const pageRowKeys = [];
@@ -273,7 +277,8 @@ export function parseBcFireGeoJson(payload) {
       if (tail) props.FIRE_NUMBER = tail;
     }
     const normalized = normalizeBcFeature(props, {});
-    if (!normalized || seen.has(normalized.id)) continue;
+    if (!normalized) throw new BcFirePointsError('BC wildfire GeoJSON contains an invalid fire point');
+    if (seen.has(normalized.id)) continue;
     seen.add(normalized.id);
     fireDetections.push(normalized);
   }
@@ -349,6 +354,18 @@ export async function fetchApprovedBcUrl(url, {
   });
   const text = await readBoundedText(response, maxBytes);
   if (!response.ok) {
+    const exceptionCode = text.match(/\bexceptionCode=["']([^"']+)["']/)?.[1];
+    const locator = text.match(/\blocator=["']([^"']+)["']/)?.[1];
+    console.warn(JSON.stringify({
+      event: 'bc_fire_request_failure',
+      request: parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml',
+      startIndex: /^\d{1,6}$/.test(parsed.searchParams.get('startIndex') || '')
+        ? Number(parsed.searchParams.get('startIndex')) : null,
+      status: response.status,
+      exceptionCode: ['InvalidParameterValue', 'MissingParameterValue', 'NoApplicableCode', 'OperationProcessingFailed']
+        .includes(exceptionCode) ? exceptionCode : null,
+      locator: ['sortBy', 'startIndex', 'count', 'typeNames', 'srsName', 'outputFormat'].includes(locator) ? locator : null,
+    }));
     throw new BcFirePointsError(`HTTP_${response.status}`, { status: response.status });
   }
   const result = { text, contentType: response.headers?.get?.('content-type') || '', cacheKey: key };
@@ -403,23 +420,29 @@ async function fetchBcFireKmlTree({ fetchFn, cache, maxHops = BC_MAX_NETWORKLINK
   return fireDetections;
 }
 
-async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, maxPages = BC_WFS_MAX_PAGES } = {}) {
+async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, maxPages = BC_WFS_MAX_PAGES, confirmEmpty = false } = {}) {
   const fireDetections = [];
   const seen = new Set();
   const seenPageRows = new Set();
   let paginationComplete = false;
   let lastProgress = 0;
   let lastMatched = null;
-  for (let page = 0; page < maxPages; page += 1) {
-    const startIndex = page * pageSize;
+  let startIndex = 0;
+  let confirmingEmpty = false;
+  for (let request = 0; request < maxPages; request += 1) {
     const url = buildBcWfsUrl({ startIndex, count: pageSize });
     const response = await fetchApprovedBcUrl(url, {
       fetchFn,
-      cache,
+      cache: confirmingEmpty ? undefined : cache,
       cacheKey: bcFireCacheKey({ kind: 'wfs', startIndex }),
       accept: 'application/json, application/geo+json, */*',
     });
     const parsed = parseBcFireGeoJson(response.text);
+    if (confirmingEmpty || (confirmEmpty && parsed.numberReturned === 0)) {
+      console.warn(JSON.stringify({ event: 'bc_fire_empty_confirmation',
+        confirmation: confirmingEmpty, startIndex,
+        numberMatched: parsed.numberMatched, numberReturned: parsed.numberReturned }));
+    }
     let newPageRows = 0;
     for (const rowKey of parsed.pageRowKeys) {
       if (seenPageRows.has(rowKey)) continue;
@@ -440,12 +463,17 @@ async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, max
     lastProgress = progress;
     lastMatched = matched;
     if ((matched != null && progress >= matched) || (matched == null && returned < pageSize)) {
+      if (confirmEmpty && !confirmingEmpty && fireDetections.length === 0) {
+        confirmingEmpty = true;
+        continue;
+      }
       paginationComplete = true;
       break;
     }
     if (returned === 0) {
       throw new BcFirePointsError(`BC wildfire WFS pagination made no progress at startIndex=${startIndex}`);
     }
+    startIndex += pageSize;
   }
   if (!paginationComplete) {
     const expected = lastMatched == null ? 'unknown' : lastMatched;
@@ -456,11 +484,12 @@ async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, max
   return fireDetections;
 }
 
-export async function fetchBcFirePoints({
+async function fetchCurrentBcFirePoints({
   fetchFn = globalThis.fetch,
   cache,
   pageSize = BC_WFS_PAGE_SIZE,
   maxPages = BC_WFS_MAX_PAGES,
+  confirmEmpty = false,
 } = {}) {
   let kmlDetections = [];
   let kmlError = null;
@@ -474,7 +503,7 @@ export async function fetchBcFirePoints({
   }
 
   try {
-    const wfsDetections = await fetchBcFireWfs({ fetchFn, cache, pageSize, maxPages });
+    const wfsDetections = await fetchBcFireWfs({ fetchFn, cache, pageSize, maxPages, confirmEmpty });
     return { fireDetections: wfsDetections, _bcVia: 'wfs', _bcCount: wfsDetections.length };
   } catch (err) {
     if (kmlError) {
@@ -483,6 +512,45 @@ export async function fetchBcFirePoints({
       );
     }
     throw err;
+  }
+}
+
+function usableBcSnapshot(snapshot, nowMs) {
+  return snapshot?.version === 1 && Number.isSafeInteger(snapshot.fetchedAt)
+    && snapshot.fetchedAt > 0 && snapshot.fetchedAt <= nowMs
+    && nowMs - snapshot.fetchedAt < BC_SNAPSHOT_TTL_SECONDS * 1000
+    && Array.isArray(snapshot.fireDetections)
+    && snapshot.fireDetections.every(row => row?.source === BC_SOURCE
+      && typeof row.id === 'string' && row.id.startsWith(`${BC_SOURCE}:`)
+      && ['active', 'prescribed'].includes(row.kind)
+      && Number.isFinite(row.detectedAt) && row.detectedAt >= 0
+      && Number.isFinite(row.location?.latitude) && Math.abs(row.location.latitude) <= 90
+      && Number.isFinite(row.location?.longitude) && Math.abs(row.location.longitude) <= 180);
+}
+
+export async function fetchBcFirePoints({ previousSnapshot, nowMs = Date.now(), ...options } = {}) {
+  try {
+    const data = await fetchCurrentBcFirePoints({ ...options,
+      confirmEmpty: usableBcSnapshot(previousSnapshot, nowMs) && previousSnapshot.fireDetections.length > 0 });
+    return {
+      ...data,
+      _bcState: 'ok',
+      _bcSnapshot: { version: 1, fetchedAt: nowMs, lastAttemptAt: nowMs,
+        fireDetections: data.fireDetections, errorCode: null },
+    };
+  } catch (error) {
+    const usable = usableBcSnapshot(previousSnapshot, nowMs);
+    const snapshot = { version: 1, fetchedAt: usable ? previousSnapshot.fetchedAt : null,
+      lastAttemptAt: nowMs, fireDetections: usable ? previousSnapshot.fireDetections : [],
+      errorCode: 'BC_WILDFIRE_SOURCE_FAILED' };
+    if (!usable) {
+      error._bcSnapshot = snapshot;
+      throw error;
+    }
+    console.warn(JSON.stringify({ event: 'bc_fire_source_failure',
+      errorCode: 'BC_WILDFIRE_SOURCE_FAILED', retainedFetchedAt: snapshot.fetchedAt }));
+    return { fireDetections: snapshot.fireDetections, _bcCount: snapshot.fireDetections.length,
+      _bcVia: null, _bcState: 'failed', _bcSnapshot: snapshot };
   }
 }
 
@@ -628,9 +696,9 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
     const firmsErr = firmsResult.reason?.message || firmsResult.reason;
     const cwfisErr = cwfisResult.reason?.message || cwfisResult.reason;
     const bcErr = bcResult.reason?.message || bcResult.reason;
-    throw new BcFirePointsError(
+    throw Object.assign(new BcFirePointsError(
       `All wildfire upstreams failed (firms: ${firmsErr}; cwfis: ${cwfisErr}; bc-wildfire: ${bcErr})`,
-    );
+    ), { nonRetryable: true });
   }
   if (!firmsOk) {
     // Distinguish the two failure shapes: a rejected fetch has a reason, a
@@ -651,6 +719,7 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
   const baseline = mergeById(firmsDetections, cwfisDetections);
   const merged = enrichOrAppendBc(baseline, bcDetections);
   const cwfisState = cwfisOk ? (cwfisResult.value?._cwfisState || 'ok') : 'failed';
+  const bcState = bcOk ? (bcResult.value?._bcState || 'ok') : 'failed';
   const cwfisErrorCode = cwfisState === 'ok'
     ? null
     : (cwfisResult.value?._cwfisErrorCode === 'CWFIS_PRESCRIBED_FAILED'
@@ -669,12 +738,14 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
     _cwfisPrescribedCount: cwfisOk ? (cwfisResult.value?._cwfisPrescribedCount ?? null) : null,
     _cwfisState: cwfisState,
     _cwfisErrorCode: cwfisErrorCode,
+    _cwfisSnapshot: cwfisOk ? cwfisResult.value?._cwfisSnapshot : cwfisResult.reason?._cwfisSnapshot,
     _bcCount: bcDetections.length,
     _bcEnrichedCount: merged._bcEnrichedCount,
     _bcAppendedCount: merged._bcAppendedCount,
     _bcVia: bcOk ? (bcResult.value?._bcVia ?? null) : null,
-    _bcState: bcOk ? 'ok' : 'failed',
-    _bcErrorCode: bcOk ? null : 'BC_WILDFIRE_SOURCE_FAILED',
+    _bcState: bcState,
+    _bcErrorCode: bcState === 'ok' ? null : 'BC_WILDFIRE_SOURCE_FAILED',
+    _bcSnapshot: bcOk ? bcResult.value?._bcSnapshot : bcResult.reason?._bcSnapshot,
   };
 }
 
@@ -683,6 +754,11 @@ export function hasCompleteWorldwideWildfireCoverage(data) {
     && data.fireDetections.length > 0
     && data?._firmsState === 'ok'
     && data?._firmsPartial !== true;
+}
+
+export function wildfirePublishData(data) {
+  const { _cwfisSnapshot, _bcSnapshot, ...publicData } = data;
+  return publicData;
 }
 
 function nextIdenticalSourceFailureCount(previousMeta, errorCode) {
@@ -749,11 +825,27 @@ export function canadianWildfireAfterPublish(data, { previousMeta = null } = {})
   } else if (failureCount === 1) {
     errorCode = 'BC_WILDFIRE_SOURCE_FAILED';
   }
+  const snapshot = data?._cwfisSnapshot;
+  const cwfisFailure = errorCode === 'CWFIS_SOURCE_FAILED' && !firmsPartial && snapshot
+    ? {
+        failedSources: ['cwfis'],
+        sourceHealth: {
+          cwfis: {
+            lastSuccessAt: snapshot.fetchedAt,
+            consecutiveFailures: snapshot.consecutiveFailures,
+            firstFailureAt: snapshot.firstFailureAt,
+            retainedUntil: snapshot.retainedUntil,
+          },
+        },
+        lastSourceAttemptAt: snapshot.lastAttemptAt,
+      }
+    : { failedSources: [], sourceHealth: {}, lastSourceAttemptAt: null };
   return {
     freshnessMetaPatch: {
       sourceState: 'degraded',
       errorCode,
       canadaSourceFailureCount: failureCount,
+      ...cwfisFailure,
     },
   };
 }

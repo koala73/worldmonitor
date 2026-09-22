@@ -46,7 +46,8 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, streaming, capability flags |
 | [`/.well-known/mcp/server.json`](https://worldmonitor.app/.well-known/mcp/server.json) | MCP | Same payload as `server-card.json` under the newer well-known filename. This is **not** the MCP registry `server.json` at the repository root |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
-| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
+| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata whose `resource` is the site origin itself, not the MCP endpoint |
+| [`/.well-known/oauth-protected-resource/mcp`](https://worldmonitor.app/.well-known/oauth-protected-resource/mcp) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for the MCP endpoint, naming `https://worldmonitor.app/mcp` (the deployed `/api/mcp` route has its own document at the matching path) |
 | [`/.well-known/mcp/docs-server-card.json`](https://worldmonitor.app/.well-known/mcp/docs-server-card.json) | MCP | Server card for the **documentation** MCP server at `/docs/mcp` (see below) — separate from the data server card above |
 | [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | Agent card for the `/a2a` JSON-RPC concierge (see below) — transport, protocol version, skills, no auth required |
 | [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 public-key directory (`application/http-message-signatures-directory+json`) so third parties can verify WorldMonitor-originated signed automated requests. Keys advertise a rolling 24 h `nbf`/`exp` window; cached `public, max-age=3600` |
@@ -54,15 +55,17 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/plugin.json`](https://www.worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | Manifest for the World Monitor agent plugin (`name: worldmonitor`). The GitHub repository is the plugin package: root `plugin.json`, `mcp.json`, and regular `skills/*/SKILL.md` files (not git symlinks — Windows checkouts and zip extracts still get YAML frontmatter). Plugin recipes match the well-known catalog except REST examples use the public site origin `https://www.worldmonitor.app` |
 | [`/llms.txt`](https://www.worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM-friendly markdown briefing — overview, capabilities, links |
 | [`/llms-full.txt`](https://www.worldmonitor.app/llms-full.txt) | (extension) | Full LLM corpus: product brief plus inlined glossary, chokepoint methodology and explainers, Country Resilience Index methodology, corrections log, and the published ranking snapshot |
-| [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
+| [`/api/health?compact=1`](https://api.worldmonitor.app/api/health?compact=1) | (custom) | Public platform availability plus per-key seed problems, freshness, and record counts — agents can gate fetches on this |
 
-The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`, `/openapi.json`, `/plugin.json`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
+The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`, `/openapi.json`, `/plugin.json`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health?compact=1` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability. Top-level `HEALTHY` means the platform is available and can coexist with contained source warnings. Strict data-quality gates must inspect `summary.warn` and `problems`, not the top-level status alone.
 
 ## Agent front doors
 
 Beyond static discovery documents, several live endpoints exist specifically for agents. All of them are anonymous and quota-free. `/ask`, `/a2a`, and `/docs/mcp` each enforce their documented 60/min/IP policy; `/agent/auth` and the markdown twins do not claim an endpoint-specific per-IP limit.
 
 ### `GET|POST /ask` — natural-language routing (NLWeb)
+
+POST bodies are limited to 16 KiB before JSON or form parsing. Oversized bodies return 413, including streamed bodies and bodies with an understated `Content-Length`.
 
 An [NLWeb](https://github.com/microsoft/NLWeb)-style front door: send a question, get back the MCP tools that answer it. Accepts `query` (max 2048 chars) as JSON body, form body, or `?query=`; optional `mode` (default `"list"`), `query_id`, and `streaming` (also triggered by `Accept: text/event-stream`).
 
@@ -87,7 +90,7 @@ A second, separate MCP server for the documentation itself (card at `/.well-know
 
 ### Markdown twins — `<any-page>.md`
 
-Every page on the site has an agent-readable markdown twin: append `.md` to the path (`/pricing.md`, `/countries/tw.md`, `/home.md` for the front page). Curated twins are static and cached `public, max-age=3600` with `Access-Control-Allow-Origin: *`; everything else is rendered on demand by the twin service (HTML becomes heading-led markdown, JSON becomes a fenced block, output capped at 80 KB) with a `Link: <sibling>; rel="canonical"` header. `GET`/`HEAD` on `.md` twins bypasses the API bot gate, so plain `curl` works without a browser User-Agent.
+Every page on the site has an agent-readable markdown twin: append `.md` to the path (`/pricing.md`, `/countries/tw.md`, `/home.md` for the front page). Curated twins are static and cached `public, max-age=3600` with `Access-Control-Allow-Origin: *`; everything else is rendered on demand by the twin service, which asks the sibling page for `text/markdown` and serves what it gets back (HTML becomes heading-led markdown, JSON becomes a fenced block, output capped at 512 KB). The twin follows same-origin redirects and inherits the target's status, so a `.md` path with no page behind it answers `404`, not a stub. A twin carrying a document sends `Link: <sibling>; rel="canonical"` naming the HTML page; anything else sends `X-Robots-Tag: noindex` and no canonical. `GET`/`HEAD` on `.md` twins bypasses the API bot gate, so plain `curl` works without a browser User-Agent.
 
 ## Agent walkthroughs
 

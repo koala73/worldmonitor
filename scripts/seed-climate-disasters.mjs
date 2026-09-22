@@ -45,11 +45,15 @@ for (const [name, iso2] of Object.entries(COUNTRY_NAMES_RAW)) {
 const COUNTRY_CODES_BY_BBOX_AREA = Object.entries(COUNTRY_BBOXES)
   .filter(([, bbox]) => Array.isArray(bbox) && bbox.length === 4)
   .sort(([, a], [, b]) => {
-    const areaA = Math.abs((Number(a[2]) - Number(a[0])) * (Number(a[3]) - Number(a[1])));
-    const areaB = Math.abs((Number(b[2]) - Number(b[0])) * (Number(b[3]) - Number(b[1])));
+    const areaA = (a[2] - a[0]) * longitudeSpan(a);
+    const areaB = (b[2] - b[0]) * longitudeSpan(b);
     return areaA - areaB;
   })
   .map(([code]) => code);
+
+function longitudeSpan([, west, , east]) {
+  return west > east ? 360 - west + east : east - west;
+}
 
 function asArray(value) {
   if (Array.isArray(value)) return value;
@@ -97,9 +101,11 @@ function getNaturalSourceMeta(event) {
   const name = String(event?.sourceName || '').toLowerCase();
   const url = String(event?.sourceUrl || '').toLowerCase();
   const id = String(event?.id || '');
-  if (name === 'nasa firms' || name.startsWith('firms') || url.includes('firms.modaps.')) return { source: 'NASA FIRMS' };
-  if (name === 'gdacs' || name.startsWith('gdacs') || url.includes('gdacs.org') || id.startsWith('gdacs-')) return { source: 'GDACS' };
-  if (url.includes('eonet.') || id.startsWith('EONET_') || name.startsWith('eonet')) return { source: 'EONET' };
+  let hostname = '';
+  try { hostname = new URL(url).hostname; } catch { /* source name/id may still identify the provider */ }
+  if (name === 'nasa firms' || name.startsWith('firms') || hostname === 'firms.modaps.eosdis.nasa.gov') return { source: 'NASA FIRMS' };
+  if (name === 'gdacs' || name.startsWith('gdacs') || (hostname === 'gdacs.org' || hostname.endsWith('.gdacs.org')) || id.startsWith('gdacs-')) return { source: 'GDACS' };
+  if (hostname === 'eonet.gsfc.nasa.gov' || id.startsWith('EONET_') || name.startsWith('eonet')) return { source: 'EONET' };
   if (name || url) return { source: 'OTHER' };
   return null;
 }
@@ -163,7 +169,7 @@ function getCountryCenter(countryCode) {
   if (!Array.isArray(bbox) || bbox.length !== 4) return { lat: 0, lng: 0 };
   return {
     lat: (Number(bbox[0]) + Number(bbox[2])) / 2,
-    lng: (Number(bbox[1]) + Number(bbox[3])) / 2,
+    lng: ((Number(bbox[1]) + longitudeSpan(bbox) / 2 + 180) % 360) - 180,
   };
 }
 
@@ -189,7 +195,8 @@ function findCountryCodeByCoordinates(lat, lng) {
     const bbox = COUNTRY_BBOXES[code];
     if (!Array.isArray(bbox) || bbox.length !== 4) continue;
     const [minLat, minLng, maxLat, maxLng] = bbox.map(Number);
-    if (latNum >= minLat && latNum <= maxLat && lngNum >= minLng && lngNum <= maxLng) {
+    const inLongitude = minLng > maxLng ? lngNum >= minLng || lngNum <= maxLng : lngNum >= minLng && lngNum <= maxLng;
+    if (latNum >= minLat && latNum <= maxLat && lngNum >= -180 && lngNum <= 180 && inLongitude) {
       return code;
     }
   }

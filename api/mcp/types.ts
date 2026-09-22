@@ -22,7 +22,8 @@ export type McpAuthContext =
   // way env_key does). Downstream `_execute` fetches sign as this userId via
   // the same internal HMAC as the OAuth door, so the gateway does not
   // increment the shared daily account meter a second time.
-  | { kind: 'user_key'; apiKey: string; userId: string }
+  // OAuth resolves the stored hash without recovering the plaintext key.
+  | { kind: 'user_key'; apiKey?: string; userId: string }
   // U7 (R7): an uncredentialed caller admitted to the always-free tool subset.
   // Carries NO identity by construction — it is the absence of a principal,
   // modelled as its own kind rather than a synthesised `env_key`/`pro` so every
@@ -87,11 +88,13 @@ export interface BaseToolDef {
   // throws rather than signing. In practice that means `_apiPaths: []` and a
   // committed-registry or cache read. Enforced by test, not by convention.
   _freeTier?: true;
+  // Cache-backed tools can require the same paid access as their REST route.
+  _subscriptionOnly?: true;
   // Budget units this tool charges, overriding the class default in
   // `registry/index.ts::toolWeight`. Set it only when the tool's downstream
-  // fan-out differs from its class — the two tools that fetch twice. A tool
-  // that grows a second fetch and forgets this is undercharging, which
-  // `tests/mcp-tool-weight.test.mjs` catches by re-deriving fan-out from source.
+  // maximum downstream fan-out differs from its class. A tool that adds a
+  // fetch and forgets this undercharges; `tests/mcp-tool-weight.test.mjs`
+  // checks source call sites and measures input-dependent airspace requests.
   _weight?: number;
   // Spec-defined `Tool.outputSchema` (MCP 2025-06-18+). JSON Schema fragment
   // describing the tool's normal (non-envelope) response shape so a compliant
@@ -302,8 +305,13 @@ export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 
 // emit in `content[0].text`. `failed` is set only on a soft-failure path,
 // and its value is the same enum string used as the `_jmespath_error`
 // envelope prefix (no drift).
+//
+// `value` is the document `text` serializes — the projected value, the
+// unprojected payload on the identity path, or the soft-fail envelope — so the
+// dispatcher can build `structuredContent` without parsing `text` back.
 export interface ApplyJmespathResult {
   text: string;
+  value: unknown;
   failed?: JmespathFailKind;
 }
 

@@ -21,7 +21,8 @@ const approved = new Map([
     endpoints: ['/2/lists/${encodeURIComponent(id)}/tweets', '/2/tweets'],
     wrappers: [
       /async function xFetchJson[\s\S]{0,300}assertXPostBudgetAdmission\(/,
-      /buildXListPostsUrl\([\s\S]{0,1600}executePostRead\(\{/,
+      /buildXListPostsUrl\([\s\S]{0,1600}executePostRead\(listRequest\)/,
+      /\.\.\.retryRequest \} = listRequest;\s*outcome = await executePostRead\(retryRequest\)/,
       /buildTweetsLookupUrl\([\s\S]{0,1200}executePostRead\(\{/,
     ],
   }],

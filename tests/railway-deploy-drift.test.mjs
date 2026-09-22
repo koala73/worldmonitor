@@ -836,6 +836,88 @@ describe('strict terminal reconciliation drift', () => {
     assert.equal(formatComparisonHead(result), 'source=--head vs-origin-main=behind');
   });
 
+  it('refreshes main after deployment observation without moving the comparison head', () => {
+    let main = HEAD;
+    // One resolver for the whole test, answering the way git does — including
+    // `--is-ancestor X X`, which exits 0. A stub that only knows HEAD..NEWER
+    // silently answers 'no' to self-ancestry, and then the lineage check below
+    // passes only because it was hand-written to compare SHAs instead of asking
+    // about ancestry at all.
+    const ancestry = (a, b) => (a === b || (a === HEAD && b === NEWER) ? 'yes' : 'no');
+    const context = resolveComparisonHead(['--head', HEAD], {
+      refreshMain: true,
+      git: (args) => {
+        if (args[0] === 'fetch') { main = NEWER; return ''; }
+        return args.at(-1) === 'origin/main^{commit}' ? main : HEAD;
+      },
+      ancestry,
+    });
+    assert.equal(context.headSha, HEAD);
+    assert.equal(context.originMainSha, NEWER);
+    assert.equal(context.originMainRelation, 'behind');
+    const result = classify([deployment('SUCCESS', { sha: NEWER })], {
+      isAncestor: (a, b) => ancestry(a, b) === 'yes',
+    });
+    // Built exactly as main() builds it, so a wiring regression between the
+    // refreshed authorized main and the ancestry resolver reaches this assertion.
+    const authorizedMainSha = context.originMainSha;
+    assert.equal(summarizeDeployDrift([result], {
+      isOnAuthorizedMainLineage: (runningSha) => authorizedMainSha !== null
+        && ancestry(runningSha, authorizedMainSha) === 'yes',
+    }).ok, true);
+  });
+
+  it('blocks the fleet when the refreshed authorized main could not be resolved', () => {
+    // The null case main() can reach: a refresh whose fetch succeeded but whose
+    // rev-parse did not. Nothing had exercised the real closure's null guard.
+    const authorizedMainSha = null;
+    const ancestry = (a, b) => (a === b || (a === HEAD && b === NEWER) ? 'yes' : 'no');
+    const result = classify([deployment('SUCCESS', { sha: NEWER })], {
+      isAncestor: (a, b) => ancestry(a, b) === 'yes',
+    });
+    const summary = summarizeDeployDrift([result], {
+      isOnAuthorizedMainLineage: (runningSha) => authorizedMainSha !== null
+        && ancestry(runningSha, authorizedMainSha) === 'yes',
+    });
+    assert.equal(summary.ok, false);
+    assert.equal(summary.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
+  });
+
+  // The bug was never in resolveComparisonHead — it was WHERE main() calls it.
+  // main() is not exported, so the two unit tests around it stay green with the
+  // whole refresh block deleted or moved back above the fleet read, which is
+  // exactly the regression. Pin the ordering against the source until main()
+  // grows an injectable seam, using the same read-the-script idiom as
+  // tests/railway-deploy-convergence.test.mjs.
+  it('refreshes authorized main only after the fleet deployment read', () => {
+    const source = readFileSync(new URL('../scripts/check-railway-deploy-drift.mjs', import.meta.url), 'utf8');
+    const fleetRead = source.indexOf('await readDeploymentsForFleet(');
+    const refresh = source.indexOf('refreshMain: true');
+    // The call site, not the export a few hundred lines above it.
+    const classification = source.indexOf('const shallowResults = classifyFleetWithinDeadline(');
+    assert.ok(fleetRead > 0, 'the fleet deployment read must exist');
+    assert.ok(refresh > 0, 'the post-observation refresh must exist');
+    assert.ok(classification > 0, 'the fleet classification pass must exist');
+    assert.ok(
+      refresh > fleetRead,
+      'authorized main must be refreshed AFTER the Railway fleet observation, or a commit merged during that read is judged against a stale ref',
+    );
+    assert.ok(
+      refresh < classification,
+      'the refresh must precede classification, or the fetched lineage is not yet available when verdicts are decided',
+    );
+  });
+
+  it('fails closed when the post-observation main refresh fails with a pinned head', () => {
+    assert.throws(() => resolveComparisonHead(['--head', HEAD], {
+      refreshMain: true,
+      git: args => {
+        if (args[0] === 'fetch') throw new Error('main refresh failed');
+        return HEAD;
+      },
+    }), /main refresh failed/);
+  });
+
   it('fails a manual comparison when main cannot be refreshed', () => {
     const calls = [];
     assert.throws(

@@ -1,7 +1,8 @@
-import type {
-  ServerContext,
-  GetTemporalBaselineRequest,
-  GetTemporalBaselineResponse,
+import {
+  ApiError,
+  type ServerContext,
+  type GetTemporalBaselineRequest,
+  type GetTemporalBaselineResponse,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
@@ -22,9 +23,11 @@ export async function getTemporalBaseline(
   _ctx: ServerContext,
   req: GetTemporalBaselineRequest,
 ): Promise<GetTemporalBaselineResponse> {
+  const region = req.region || 'global';
+  if (region !== 'global') throw new ApiError(400, 'Invalid region: only global is supported', '');
+
   try {
     const { type, count } = req;
-    const region = req.region || 'global';
 
     if (!type || !VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || Number.isNaN(count)) {
       return {

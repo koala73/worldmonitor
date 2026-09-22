@@ -36,7 +36,6 @@ export const DEMOTED_FAST_KEYS = Object.freeze([
   'forecasts',
   'correlationCards',
   'flightDelays',
-  'wsbTickers',
 ]);
 
 export const FAST_FIRST_PAINT_JUSTIFICATION = Object.freeze({

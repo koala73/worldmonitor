@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
+import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
   WEB_DASHBOARD_VARIANTS,
@@ -929,10 +930,10 @@ export default defineConfig(({ mode }) => {
     || process.env.VERCEL_ENV === 'preview';
   // Sentry source-map upload. Gated on the token so a build without it (local,
   // fork, CI) behaves exactly as before rather than failing. Matching is by
-  // debug ID — the plugin stamps the same id into the bundle and its map — so
-  // it does not depend on the browser SDK's static `worldmonitor@x.y.z`
-  // release name, which would otherwise collide across deploys.
+  // debug ID — the plugin stamps the same id into the bundle and its map.
   const uploadSourceMapsToSentry = Boolean(process.env.SENTRY_AUTH_TOKEN);
+  const sentryBuild = getSentryBuildMetadata(pkg.version, process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev');
+  const publishSentryRelease = process.env.VERCEL_ENV === 'production' && Boolean(sentryBuild.dist);
 
   return {
     html: {
@@ -959,6 +960,17 @@ export default defineConfig(({ mode }) => {
             project: 'worldmonitor',
             authToken: process.env.SENTRY_AUTH_TOKEN,
             telemetry: false,
+            release: {
+              name: sentryBuild.release,
+              inject: false,
+              dist: sentryBuild.dist,
+              // Preview/local uploads must not resolve shared production issues.
+              create: publishSentryRelease,
+              finalize: publishSentryRelease,
+              // Preserve the plugin's Vercel-aware commit detection in production.
+              setCommits: publishSentryRelease ? undefined : false,
+              deploy: publishSentryRelease ? undefined : false,
+            },
             sourcemaps: {
               // Previews deliberately serve public maps (emitPublicSourceMaps);
               // leave those in place and only sweep them when production built
@@ -1211,6 +1223,24 @@ export default defineConfig(({ mode }) => {
           // DeckGLMap boundary.
           onlyExplicitManualChunks: true,
           manualChunks(id) {
+            // Keep the existing secondary-flow chunk stable when standalone
+            // entries stop sharing panel dependencies with the dashboard.
+            if (id.endsWith('/src/services/checkout.ts')) {
+              return 'checkout';
+            }
+            // Give the layered dashboard stylesheet a CSS-only chunk. Vite folds a
+            // CSS-only chunk into each importing entry's own CSS, so dashboard.html
+            // links it. Left inside a shared JavaScript chunk it inherited that
+            // chunk's name (debugbear-rum-*.css) and could lose its link: Vite 6
+            // caches each chunk's CSS list across HTML entries, and the main entry
+            // chunk is also imported by App and live-channels, so the cached list
+            // can omit CSS another entry reached first. The preload helper then
+            // fetched the stylesheet for import('./App'), and a failed download
+            // aborted the dashboard boot (WORLDMONITOR-XT). Guarded by
+            // tests/dashboard-critical-css.test.mjs.
+            if (id.endsWith('/src/styles/base-layer.css')) {
+              return 'dashboard-styles';
+            }
             if (id.includes('node_modules')) {
               if (id.includes('/@xenova/transformers/')) {
                 return 'transformers';

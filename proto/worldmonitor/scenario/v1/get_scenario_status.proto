@@ -18,19 +18,28 @@ message ScenarioImpactCountry {
   // Because of the denominator floor, the top country can be below 100 when
   // all returned totalImpact values are below 1.
   int32 impact_pct = 3;
+  // Country/sector records that actually produced total_impact.
+  int32 evaluated_records = 4;
+  // Country/sector records requested for this country.
+  int32 requested_records = 5;
+  // True when evaluated_records < requested_records. total_impact is then a LOWER
+  // BOUND over the evidence that was available, not the country's impact, and must
+  // not be read as low exposure.
+  bool partial_evidence = 6;
 }
 
-// ScenarioResultTemplate carries template parameters echoed into the worker's
-// computed result so clients can render them without re-looking up the
-// template registry.
+// ScenarioResultTemplate carries the EFFECTIVE run parameters, so clients can render
+// them without re-looking up the template registry. All fields except disruption_pct
+// are registry values; disruption_pct is the caller's override when one was supplied.
 message ScenarioResultTemplate {
   // Worker-derived template key, not a display name. Physical scenarios join
   // affected_chokepoint_ids with `+`; tariff-type scenarios may use
   // `tariff_shock` when no physical chokepoint is affected.
   string name = 1;
-  // 0-100 percent of chokepoint capacity blocked.
+  // 0-100 percent of chokepoint capacity blocked. The EFFECTIVE severity: the
+  // caller's RunScenarioRequest.disruption_pct when supplied, else the registry default.
   int32 disruption_pct = 2;
-  // Estimated duration of disruption in days.
+  // Descriptive duration in days; not an input to the impact calculation.
   int32 duration_days = 3;
   // Freight cost multiplier applied on top of bypass corridor costs.
   double cost_shock_multiplier = 4;
@@ -44,8 +53,52 @@ message ScenarioResult {
   repeated string affected_chokepoint_ids = 1;
   // Top 20 countries by aggregated impact, sorted desc by total_impact.
   repeated ScenarioImpactCountry top_impact_countries = 2;
-  // Template parameters echoed from the registry.
+  // Effective run parameters. disruption_pct is the caller override when supplied,
+  // otherwise the registry default; the remaining fields come from the registry.
   ScenarioResultTemplate template = 3;
+  // Selected catalog template identifier.
+  string scenario_id = 4;
+  // Empty means all countries in the manifest.
+  string scoped_iso2 = 5;
+  // Bounded country/sector evidence and gaps used for this run.
+  ScenarioCoverage coverage = 6;
+  // Computation time, not source observation time.
+  string computed_at = 7;
+}
+
+// One requested country/sector record. Missing evidence never implies zero impact.
+message ScenarioCoverageRecord {
+  // Requested 2-letter ISO country code; paired with hs2 as the record reference.
+  string iso2 = 1;
+  // Requested 2-digit HS chapter; paired with iso2 as the record reference.
+  string hs2 = 2;
+  // evaluated, missing, malformed, incomplete_routes, or not_seeded.
+  // incomplete_routes means the cached record was well-formed but did not carry an
+  // entry for every chokepoint this scenario disrupts — seeder/template registry
+  // drift, NOT corrupt cache data.
+  string state = 3;
+  // flow_weighted or country_route_fallback, only for evaluated records.
+  string basis = 4;
+  // Relative score units, not currency. Present only for evaluated records.
+  optional double raw_impact = 5;
+  // Cache production time. Observation date is unknown unless separately supplied.
+  string fetched_at = 6;
+}
+
+message ScenarioCoverage {
+  // complete, partial, or unknown. Complete refers to the bounded manifest only.
+  string status = 1;
+  // Requested countries: one selected country or the manifest country universe.
+  repeated string country_ids = 2;
+  // Requested template chapters, or manifest chapters for all-sector templates.
+  repeated string hs2_codes = 3;
+  // One entry per requested country/chapter pair when the manifest is known, so
+  // len(country_ids) x len(hs2_codes) entries — 197 x 17 = 3,349 (~450 KB) at current
+  // seeded cardinality for an all-sector template, or len(hs2_codes) for a scoped
+  // country. Empty when status is "unknown".
+  repeated ScenarioCoverageRecord records = 4;
+  // Seed metadata production time, not trade observation time.
+  string manifest_fetched_at = 5;
 }
 
 // GetScenarioStatusRequest polls the worker result for an enqueued job id.

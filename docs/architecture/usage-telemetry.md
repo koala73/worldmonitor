@@ -31,21 +31,22 @@ Two event types in dataset `wm_api_usage`:
 | `domain`           | `"market"`                                | strips leading `vN` for `/api/v2/<svc>/…`    |
 | `method`, `status` | `"GET"`, `200`                            |                                              |
 | `duration_ms`      | `412`                                     | wall-clock at the gateway                    |
-| `req_bytes`, `res_bytes` |                                     | response counted only on 200/304 GET         |
-| `customer_id`      | Clerk user ID, org ID, enterprise slug, or widget key | `null` only for anon                |
+| `req_bytes`, `res_bytes` |                                     | `res_bytes` is null when Content-Length is absent (chunked/SSE); never coerce missing → 0 (#8403) |
+| `rpc_method`, `tool_name` | `"tools/call"`, `"get_market_data"` | MCP only (#8403). Served JSON-RPC methods only (`_unregistered` otherwise) + registry-bounded tool; null on REST and on MCP rows that never parsed a body |
+| `customer_id`      | Clerk user ID, org ID, enterprise slug, or static `widget` label | `null` only for anon                |
 | `principal_id`     | user ID or **hash** of API/widget key     | never the raw secret                         |
-| `auth_kind`        | `clerk_jwt` \| `user_api_key` \| `enterprise_api_key` \| `widget_key` \| `anon` | |
+| `auth_kind`        | `clerk_jwt` \| `user_api_key` \| `enterprise_api_key` \| `widget_key` \| `mcp_oauth` \| `anon` | MCP OAuth bearer (`api/mcp`) is distinct from dashboard `clerk_jwt` |
 | `tier`             | `0` free / `1` pro / `2` api / `3` enterprise | `0` if unknown                          |
 | `cache_tier`       | `fast` \| `medium` \| `slow` \| `slow-browser` \| `static` \| `daily` \| `no-store` | only on 200/304 |
-| `ip`                 | `"203.0.113.7"`                         | Cloudflare client IP only when the edge-proof header is valid; otherwise Vercel's peer IP |
+| `ip`                 | `"203.0.113.7"`                         | Cloudflare client IP only when the edge-proof header is valid; otherwise Vercel's peer IP. IP-scoped endpoint budgets reject unproven `cf-connecting-ip` with 403 (`X-RateLimit-Mode: edge-proof`) rather than sharing a PoP bucket — see `scripts/cloudflare-edge-proof-rule.mjs` for the Transform Rule expression (#8402). |
 | `country`            | `"US"`                                  | Cloudflare client country only when edge transit is proven; otherwise Vercel connection country |
 | `ip_city`, `ip_region` | `"Johannesburg"`, `"WC"`            | Vercel connection/edge geography, not verified client location |
 | `execution_region`   | `"iad1"`                                | Vercel execution region                      |
 | `execution_plane`  | `"vercel-edge"`                           |                                              |
-| `origin_kind`      | `api-key` \| `oauth` \| `browser-same-origin` \| `browser-cross-origin` \| `null` | derived from headers by `deriveOriginKind()` — `mcp` and `internal-cron` exist in the `OriginKind` type for upstream/future use but are not currently emitted on the request path |
+| `origin_kind`      | `api-key` \| `oauth` \| `browser-same-origin` \| `browser-cross-origin` \| `mcp` \| `null` | Gateway rows use `deriveOriginKind()` from request headers. Direct MCP emission (`emitMcpRequestEvent` / mcp-proxy) sets `mcp` explicitly — not via `deriveOriginKind()`. `internal-cron` exists in the type for upstream/future use |
 | `ua_hash`          | SHA-256 of the UA                         | hashed so PII doesn't land in Axiom          |
 | `sentry_trace_id`  | `"abc123…"`                               | join key into Sentry                         |
-| `reason`           | `ok` \| `origin_403` \| `rate_limit_429` \| `rate_limit_429_endpoint` \| `rate_limit_429_global` \| `rate_limit_429_direct_llm` \| `rate_limit_degraded` \| `preflight` \| `auth_401` \| `auth_403` \| `tier_403` \| `hmac_secret_unconfigured` | Scoped 429 reasons identify the rejecting limiter directly; `auth_*` distinguishes auth-rejection paths from genuine successes when filtering on `status` alone is ambiguous. `hmac_secret_unconfigured` is the 500 CONFIGURATION path when `MCP_INTERNAL_HMAC_SECRET` is unset on a signed internal-MCP request — a deploy/config incident, not caller authentication failure |
+| `reason`           | `ok` \| `origin_403` \| `rate_limit_429` \| `rate_limit_429_endpoint` \| `rate_limit_429_global` \| `rate_limit_429_direct_llm` \| `rate_limit_degraded` \| `preflight` \| `auth_401` \| `auth_403` \| `tier_403` \| `hmac_secret_unconfigured` \| `internal_mcp_no_user` \| `internal_mcp_malformed_sig` \| `internal_mcp_bad_nonce` \| `internal_mcp_ts_window` \| `internal_mcp_bad_request` \| `internal_mcp_sig_mismatch` \| `internal_mcp_replay` | Scoped 429 reasons identify the rejecting limiter directly; `auth_*` distinguishes auth-rejection paths from genuine successes when filtering on `status` alone is ambiguous. `hmac_secret_unconfigured` is the 500 CONFIGURATION path when `MCP_INTERNAL_HMAC_SECRET` is unset on a signed internal-MCP request — a deploy/config incident, not caller authentication failure. The `internal_mcp_*` reasons split a signed-request rejection by which check failed: the caller still receives one indistinguishable 401 (telling a forge probe which piece failed is the oracle that path must not be), so this field is the only place the modes are separable — query it when a signed MCP call is failing and you need to tell clock skew from a real mismatch from a spent nonce. `internal_mcp_bad_nonce` means the nonce header is missing or invalid; `internal_mcp_replay` means a valid signed nonce was already used |
 
 ### `upstream` (one per outbound fetch from a request handler)
 
@@ -303,6 +304,36 @@ add an entry to `RPC_CACHE_TIER` in `server/gateway.ts`.
 | where n > 100
 | order by n desc
 ```
+
+### Authorization-failure fan-out per identity (#8406)
+
+Volumetric rate limits do not catch a slow scanner that fans out across many
+routes under the global ceiling. Watch **distinct routes** with
+`tier_403` / `auth_401` per authenticated `principal_id` instead. Thresholds are
+**split by `auth_kind`** (JWT paywall browsing ≠ free API-key fan-out). Full
+decision, measured baseline, and operator runbook:
+[`docs/operations/authz-failure-signal.md`](../operations/authz-failure-signal.md).
+
+```kusto
+['wm_api_usage']
+| where event_type == "request"
+  and reason in ("tier_403", "auth_401")
+  and isnotnull(principal_id)
+  and _time > ago(1h)
+| summarize distinct_routes = dcount(route),
+            failures = count(),
+            sample_routes = make_set(route, 20),
+            customer_ids = make_set(customer_id)
+            by principal_id, auth_kind
+| where (auth_kind in ("clerk_jwt", "mcp_oauth") and distinct_routes >= 8)
+     or (auth_kind in ("user_api_key", "enterprise_api_key", "widget_key") and distinct_routes >= 40)
+| order by distinct_routes desc
+```
+
+Group by `principal_id` + `auth_kind` only — `customer_id` can be the Clerk org
+or the user for the same JWT principal, and grouping on it would split one
+identity across rows. Anon traffic has `principal_id == null`; use the optional
+IP secondary query in the runbook if needed.
 
 ### Upstream cost per customer (provider attribution)
 

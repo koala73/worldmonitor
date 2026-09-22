@@ -123,7 +123,7 @@ export function parseWhyMatters(text) {
 }
 
 /**
- * Deterministic 16-char hex hash of the SIX story fields that flow
+ * Deterministic SHA-256 hex digest of the SIX story fields that flow
  * into the whyMatters prompt (5 core + description). Also consumed by
  * server/worldmonitor/intelligence/v1/get-country-intel-brief.ts
  * (citation verification + grounding telemetry, #4921). Cache identity
@@ -155,7 +155,7 @@ export function parseWhyMatters(text) {
  * @returns {Promise<string>}
  */
 export async function hashBriefStory(story) {
-  const material = [
+  const material = JSON.stringify([
     story.headline ?? '',
     story.source ?? '',
     story.threatLevel ?? '',
@@ -166,7 +166,7 @@ export async function hashBriefStory(story) {
     // empty string → deterministic; same-story-same-description pairs
     // still collide on purpose, different descriptions don't.
     story.description ?? '',
-  ].join('||');
+  ]);
   const bytes = new TextEncoder().encode(material);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   let hex = '';
@@ -174,7 +174,7 @@ export async function hashBriefStory(story) {
   for (let i = 0; i < view.length; i++) {
     hex += view[i].toString(16).padStart(2, '0');
   }
-  return hex.slice(0, 16);
+  return hex;
 }
 
 // ── Analyst-path prompt v2 (multi-sentence, grounded) ──────────────────────
@@ -351,6 +351,7 @@ const PROPER_NOUN_JOINER = new Set(['of', 'the', 'for', 'de', 'du', 'der', 'van'
 // its canonical key for equivalence.
 const ACRONYM_EXPANSIONS = [
   ['WHO', 'World Health Organization'],
+  ['ICC', 'International Criminal Court'],
   ['UN', 'United Nations'],
   ['US', 'USA', 'United States', 'United States of America', 'America'],
   ['UK', 'United Kingdom', 'Britain', 'Great Britain'],
@@ -421,7 +422,7 @@ const DEMONYM_TO_NATION = new Map([
   ['Danish', 'Denmark'], ['Danes', 'Denmark'],
   ['Belgian', 'Belgium'], ['Belgians', 'Belgium'],
   ['Austrian', 'Austria'], ['Austrians', 'Austria'],
-  ['Filipino', 'Philippines'], ['Filipinos', 'Philippines'],
+  ['Philippine', 'Philippines'], ['Filipino', 'Philippines'], ['Filipinos', 'Philippines'],
   ['Thai', 'Thailand'], ['Thais', 'Thailand'],
   ['Indonesian', 'Indonesia'], ['Indonesians', 'Indonesia'],
   ['Nigerian', 'Nigeria'], ['Nigerians', 'Nigeria'],
@@ -496,6 +497,7 @@ const SENTENCE_START_AMBIGUOUS = new Set([
   'no', 'not', 'yes',
   'breaking', 'live', 'updated', 'latest', 'exclusive', 'just',
   'meanwhile', 'however', 'moreover', 'additionally', 'furthermore', 'still',
+  'simultaneously', 'concurrently', 'domestically',
   'with', 'without', 'on', 'in', 'at', 'by', 'for', 'over', 'under', 'about',
 ]);
 
@@ -524,7 +526,7 @@ function normalizeDottedAcronyms(text) {
 }
 
 function properNounTokenValue(token) {
-  if (typeof token !== 'string' || token.length < 2 || !/^[A-Z]/.test(token)) return null;
+  if (typeof token !== 'string' || token.length < 2 || !/[\p{Lu}\p{Lt}]/u.test(token)) return null;
   const stripped = token.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
   return (stripped || token).toLowerCase();
 }
@@ -574,7 +576,7 @@ function extractProperNounSequencesWithMeta(text) {
 
   // Normalize dotted acronyms BEFORE sentence-splitting so "U.S." isn't
   // misread as a sentence boundary or split into ['U', 'S'].
-  const preprocessed = normalizeDottedAcronyms(text);
+  const preprocessed = normalizeDottedAcronyms(text).replace(/[\u2010\u2011]/g, '-');
 
   // Split into sentences so sentence-start handling can run per-sentence.
   const sentences = preprocessed.split(/[.!?]+\s+|\n+/);
@@ -609,13 +611,14 @@ function extractProperNounSequencesWithMeta(text) {
       const tokenForLookup = stripped || token;
       const isTitlePrefix = TITLE_PREFIX_STOP.has(stripped);
       const isJoiner = PROPER_NOUN_JOINER.has(token.toLowerCase());
-      // Capitalized: at least 2 chars long. Single-letter capitalized
+      // Name casing can occur after a digit or lowercase prefix (3M, eBay).
+      // Require at least 2 chars. Single-letter capitalized
       // tokens are sentence-final initials ("...J.D. Vance was met by Smith
       // and J."), middle initials in names, or "I" (the pronoun, already
       // handled by SENTENCE_START_AMBIGUOUS). None should register as
       // a standalone proper noun.
-      const isCapitalized = token.length >= 2 && /^[A-Z]/.test(token);
-      const isAllCapsAcronym = /^[A-Z]{2,6}$/.test(token);
+      const isCapitalized = token.length >= 2 && /[\p{Lu}\p{Lt}]/u.test(token);
+      const isAllCapsAcronym = /^(?=.*\p{Lu})[\p{Lu}\p{N}]{2,6}$/u.test(token);
       const isAmbiguousSentenceStart = firstToken
         && !isAllCapsAcronym
         && SENTENCE_START_AMBIGUOUS.has(token.toLowerCase());
@@ -828,8 +831,8 @@ function normalizeSequence(sequence) {
  * normalization). The validator catches LLM-introduced invention.
  *
  * Returns `{ ok: true }` when every summary proper-noun sequence is
- * grounded in the headline, OR when either input is malformed (defensive
- * default — ship the LLM output rather than fall back on confusion).
+ * grounded in the headline. Malformed inputs fail open by default;
+ * public citation callers opt into failClosed to withhold unvalidated text.
  *
  * Returns `{ ok: false, hallucinated: [...] }` when at least one
  * summary sequence has no matching contiguous subsequence in the
@@ -838,14 +841,15 @@ function normalizeSequence(sequence) {
  *
  * @param {string} summary - the LLM-rewritten brief paragraph
  * @param {string} headline - the source headline the LLM was given
+ * @param {{ failClosed?: boolean }} [options] - Reject unavailable validation on public citation surfaces.
  * @returns {{ ok: boolean, hallucinated?: string[] }}
  */
-export function validateNoHallucinatedProperNouns(summary, headline) {
-  // Defensive: malformed inputs return ok (ship the LLM output rather
-  // than fall back on confusion). Catches null, undefined, empty
-  // string, non-string, and weird unicode.
-  if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
-  if (typeof headline !== 'string' || headline.length === 0) return { ok: true };
+export function validateNoHallucinatedProperNouns(summary, headline, { failClosed = false } = {}) {
+  // Preserve the legacy default; citation publication must opt into rejection.
+  const unavailable = () => failClosed ? { ok: false, hallucinated: [] } : { ok: true };
+  if (typeof summary !== 'string' || summary.length === 0) return unavailable();
+  if (typeof headline !== 'string' || headline.length === 0) return unavailable();
+  if (failClosed && (!summary.trim() || !headline.trim())) return unavailable();
 
   let summaryEntries, headlineSequences, headlineTokens;
   try {
@@ -867,8 +871,8 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
     // included, with nothing in the log. A dead gate and a healthy gate looked
     // identical. Warn so the difference is visible, matching the pattern used
     // by checkLeadGrounding below.
-    console.warn(`[brief_grounding] proper-noun extraction threw (${err?.message ?? err}) — accepting unvalidated`);
-    return { ok: true };
+    console.warn(`[brief_grounding] proper-noun extraction threw (${err?.message ?? err}) — ${failClosed ? 'rejecting unvalidated' : 'accepting unvalidated'}`);
+    return unavailable();
   }
 
   if (summaryEntries.length === 0) return { ok: true };
@@ -945,7 +949,7 @@ const NUMBER_FACT_WORD_SEQUENCE_RE = new RegExp(
   `\\b(?:${NUMBER_FACT_WORD_PATTERN})(?:[- ](?:${NUMBER_FACT_WORD_PATTERN}|and))*\\b(?:\\s+percent\\b)?`,
   'gi',
 );
-const DIGIT_FACT_RE = /\d[\d,]*(?:\.\d+)?(?:\s*(?:%|percent|thousands?|millions?|billions?|trillions?))?/gi;
+const DIGIT_FACT_RE = /\d[\d,]*(?:\.\d+)?(?:\s*(?:%|percent|thousands?|millions?|billions?|bil\b|trillions?))?/gi;
 const DATE_MONTH_PATTERN = 'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
 const DATE_EXPRESSION_RE = new RegExp(
   `\\b(?:\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?|(?:${DATE_MONTH_PATTERN})\\.?\\s+\\d{1,2}(?:,?\\s+\\d{4})?|\\d{1,2}\\s+(?:${DATE_MONTH_PATTERN})\\.?\\s*(?:\\d{4})?)\\b`,
@@ -964,7 +968,7 @@ function formatNumericFact(value) {
 
 function normalizeDigitFact(raw) {
   const match = raw.trim().toLowerCase().replace(/,/g, '').match(
-    /^(\d+(?:\.\d+)?)(?:\s*(%|percent|thousands?|millions?|billions?|trillions?))?$/,
+    /^(\d+(?:\.\d+)?)(?:\s*(%|percent|thousands?|millions?|billions?|bil\b|trillions?))?$/,
   );
   if (!match) return `number:${raw.trim().toLowerCase()}`;
   const value = Number(match[1]);
@@ -972,7 +976,7 @@ function normalizeDigitFact(raw) {
   const unit = match[2];
   if (!unit) return `number:${formatNumericFact(value)}`;
   if (unit === '%' || unit === 'percent') return `number:${formatNumericFact(value)}%`;
-  const scale = NUMBER_FACT_WORD_VALUES.get(unit.replace(/s$/, ''));
+  const scale = NUMBER_FACT_WORD_VALUES.get(unit === 'bil' ? 'billion' : unit.replace(/s$/, ''));
   return scale ? `number:${formatNumericFact(value * scale)}` : `number:${formatNumericFact(value)} ${unit}`;
 }
 
@@ -1104,6 +1108,66 @@ export function validateNoHallucinatedFacts(summary, groundText) {
     if (!groundFacts.has(fact)) return { ok: false, hallucinated: [fact] };
   }
   return { ok: true };
+}
+
+const STATUS_QUALIFIER_CLASSES = [
+  ['former', 'ex', 'erstwhile', 'one-time', 'onetime', 'then-', 'outgoing', 'retired'],
+  ['acting', 'interim', 'caretaker'],
+  ['incoming'],
+  ['late'],
+];
+const STATUS_QUALIFIER_CLASS_OF = new Map(
+  STATUS_QUALIFIER_CLASSES.flatMap((cls) => cls.map((q) => [q.replace(/-$/, ''), cls])),
+);
+const PERSON_TITLE_WORDS =
+  'president|prime minister|vice president|premier|chancellor|minister|secretary|senator|governor|mayor|'
+  + 'chairman|chairwoman|chairperson|chair|chief|ceo|cfo|ambassador|envoy|speaker|king|queen|pope|leader|'
+  + 'commander|general|admiral|director|prosecutor|judge|justice|adviser|advisor|aide|spokesman|spokeswoman|'
+  + 'spokesperson|head|official|lawmaker|congressman|congresswoman|representative|pm';
+// No `i` flag: under `i`, \p{Lu} also matches lowercase, so "Former officials said" reads as a named person.
+const anyCase = (/** @type {string} */ word) => word.replace(/\p{L}/gu, (c) => `[${c.toUpperCase()}${c}]`);
+const STATUS_QUALIFIER_RE = new RegExp(
+  `\\b(${STATUS_QUALIFIER_CLASSES.flat().map((q) => (q.endsWith('-') ? `${anyCase(q.slice(0, -1))}(?=-)` : anyCase(q))).join('|')})[-\\s]+`
+  + `(?:[\\p{L}'’-]+\\s+){0,3}?(?:${PERSON_TITLE_WORDS.split('|').map(anyCase).join('|')})s?\\b[-\\s]+(?:(?:of|the|for|to|and)\\s+)?(\\p{Lu}[\\p{L}'’-]+)`,
+  'gu',
+);
+
+/**
+ * @param {{ text: string; tokens: Set<string> }} ground
+ * @param {string} word
+ */
+function groundHasWord(ground, word) {
+  if (word.includes('-')) return ground.text.includes(word);
+  return ground.tokens.has(word);
+}
+
+/**
+ * Validate that every status qualifier the summary attaches to a titled,
+ * named person is carried by the ground text. `groundText` may be one string
+ * or one string per source story; with an array, the qualifier class and the
+ * name must appear in the SAME story. Malformed inputs accept, matching the
+ * sibling validators.
+ *
+ * @param {unknown} summary
+ * @param {unknown} groundText
+ * @returns {{ ok: boolean, hallucinated?: string[] }}
+ */
+export function validateNoHallucinatedStatusQualifiers(summary, groundText) {
+  if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
+  const grounds = (Array.isArray(groundText) ? groundText : [groundText])
+    .filter((g) => typeof g === 'string' && g.trim().length > 0)
+    .map((g) => normalizeDottedAcronyms(g).toLowerCase())
+    .map((text) => ({ text, tokens: new Set(text.split(/[^\p{L}\p{N}]+/u)) }));
+  if (grounds.length === 0) return { ok: true };
+  const hallucinated = [];
+  for (const match of normalizeDottedAcronyms(summary).matchAll(STATUS_QUALIFIER_RE)) {
+    const qualifier = match[1].toLowerCase();
+    const name = match[2].replace(/['’]s$/i, '').toLowerCase();
+    const cls = STATUS_QUALIFIER_CLASS_OF.get(qualifier) ?? [qualifier];
+    const grounded = grounds.some((g) => cls.some((q) => groundHasWord(g, q)) && groundHasWord(g, name));
+    if (!grounded) hallucinated.push(match[0].trim());
+  }
+  return hallucinated.length === 0 ? { ok: true } : { ok: false, hallucinated };
 }
 
 /**

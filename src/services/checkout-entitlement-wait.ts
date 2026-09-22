@@ -32,8 +32,7 @@
  *
  * Shape: pure DI module. Entitlement access and every timer are injected so the
  * state machine is testable without a DOM, a network, or `checkout.ts`'s
- * dependency graph (which pulls `dodopayments-checkout`). Same shape and same
- * reason as `entitlement-watchdog.ts`.
+ * browser UI dependency graph.
  *
  * See tests/checkout-entitlement-wait.test.mts.
  */

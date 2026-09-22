@@ -8,6 +8,7 @@ import {
   PRO_USER_ID,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -97,13 +98,13 @@ describe('get_defense_industrial_base MCP tool', () => {
     const tool = (await listed.json()).result.tools.find((entry) => entry.name === 'get_defense_industrial_base');
     assert.ok(tool, 'tool must be discoverable through tools/list');
     assert.deepEqual(tool.inputSchema.required, ['country_code']);
-    assert.deepEqual(tool.outputSchema.properties.expenditurePctGdp.required, [
+    assert.deepEqual(documentedOutputSchema(tool).properties.expenditurePctGdp.required, [
       'available', 'value', 'year', 'previousValue', 'previousYear', 'source',
     ]);
-    assert.equal(tool.outputSchema.properties.expenditurePctGdp.properties.year.type, 'integer');
-    assert.equal(tool.outputSchema.properties.suppliers.items.properties.tivShare.maximum, 1);
-    assert.equal(tool.outputSchema.properties.supplierHhi.maximum, 1);
-    assert.equal(tool.outputSchema.properties.supplierMappingCoverage.maximum, 1);
+    assert.equal(documentedOutputSchema(tool).properties.expenditurePctGdp.properties.year.type, 'integer');
+    assert.equal(documentedOutputSchema(tool).properties.suppliers.items.properties.tivShare.maximum, 1);
+    assert.equal(documentedOutputSchema(tool).properties.supplierHhi.maximum, 1);
+    assert.equal(documentedOutputSchema(tool).properties.supplierMappingCoverage.maximum, 1);
 
     requests = [];
     const { deps } = makeProDeps();

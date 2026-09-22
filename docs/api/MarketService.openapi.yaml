@@ -13,7 +13,7 @@ paths:
             tags:
                 - MarketService
             summary: ListMarketQuotes
-            description: ListMarketQuotes retrieves stock and index quotes.
+            description: Retrieve stock and index quotes for requested symbols, with prices, price changes, display names, sparklines and snapshot metadata for market monitoring.
             operationId: ListMarketQuotes
             parameters:
                 - name: symbols
@@ -2396,7 +2396,7 @@ paths:
             tags:
                 - MarketService
             summary: GetFearGreedIndex
-            description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+            description: Review the composite Fear & Greed sentiment index with available survey, market breadth and component inputs, including degraded-data flags for market context.
             operationId: GetFearGreedIndex
             parameters:
                 - name: jmespath
@@ -2759,8 +2759,12 @@ paths:
             tags:
                 - MarketService
             summary: GetInsiderTransactions
-            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub.
+            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetInsiderTransactions
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbol
                   in: query
@@ -2805,7 +2809,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -2878,7 +2882,7 @@ paths:
             tags:
                 - MarketService
             summary: GetMarketBreadthHistory
-            description: GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
+            description: Review historical S&P 500 market breadth, including the percentage of stocks above 20, 50 and 200-day moving averages, with current readings and dated history.
             operationId: GetMarketBreadthHistory
             parameters:
                 - name: jmespath

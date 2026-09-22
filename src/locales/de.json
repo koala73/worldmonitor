@@ -129,7 +129,8 @@
       "activeSirens": "Aktive Sirenen",
       "sirens24h": "Sirenen / 24h",
       "aviationDisruptions": "Luftfahrtstörungen",
-      "gpsJammingZones": "GPS-Störzonen"
+      "gpsJammingZones": "GPS-Störzonen",
+      "temporalUnavailable": "Zeitliche Beobachtungen nicht verfügbar"
     },
     "countryFacts": "Länderfakten",
     "loadingFacts": "Länderfakten werden geladen...",
@@ -872,7 +873,6 @@
         "space": "WELTRAUM"
       },
       "paused": "Webcams pausiert",
-      "pausedIdle": "Webcams pausiert — Maus bewegen zum Fortsetzen",
       "play": "Abspielen",
       "previewStatus": "Live-Vorschau"
     },
@@ -1294,9 +1294,6 @@
       "datacenter": "Rechenzentrum",
       "base": "Basis",
       "nuclear": "Nuklear"
-    },
-    "community": {
-      "joinDiscussion": "Gestalten Sie mit, was als Nächstes kommt"
     },
     "threatLabels": {
       "critical": "KRIT",
@@ -1838,7 +1835,10 @@
       "provenanceTitle": "Herkunft der Berichterstattung: Anzahl der erfassten Meldungen und unterschiedlichen Quellen, aus denen dieser Lagebericht ausgewählt wurde",
       "compiledFrom": "Zusammengestellt aus {{stories}} Meldungen aus {{sources}} Quellen",
       "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt",
-      "briefStoryDetails": "Story-Details ({{count}})"
+      "briefStoryDetails": "Details zur Meldung ({{count}})",
+      "streamIdleStopLabel": "Live-Video bei Inaktivität stoppen",
+      "streamIdleStopDesc": "Stoppt Live News und Live Webcams nach dieser Zeit ohne Aktivität und zeigt einen Hinweis im Panel an.",
+      "streamIdleStopNever": "Nie"
     },
     "etfFlows": {
       "unavailable": "ETF-Daten vorübergehend nicht verfügbar",
@@ -1849,6 +1849,7 @@
       "etfs": "ETFs",
       "netInflow": "NETTO-ZUFLUSS",
       "netOutflow": "NETTO-ABFLUSS",
+      "netNeutral": "NETTO-NEUTRAL",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emittent",
@@ -2172,7 +2173,7 @@
       "infoTooltip": "<strong>Wirtschaftskalender</strong> Geplante makroökonomische Veröffentlichungen: CPI, NFP, GDP, PMI und Zentralbankentscheidungen. Zeigt Prognose vs. Ist vs. Vorwert. Ereignisse mit hoher Auswirkung hervorgehoben. Quelle: Wirtschaftsdatenanbieter."
     },
     "fsi": {
-      "infoTooltip": "<strong>Finanzstress-Indikator</strong> Kansas City Fed Financial Stress Index (KCFSI): misst Stress an US-Finanzmärkten anhand von 11 Indikatoren, darunter Renditespreads, Volatilität und Kreuzkorrelationen. Positive Werte zeigen überdurchschnittlichen Stress an. Quelle: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Finanzstressindikator</strong> WorldMonitor-Verhältnis von Hochzinsanleihen zu langfristigen US-Staatsanleihen, bereinigt um Aktienvolatilität und den Hochzins-Spread: (HYG / TLT) / (VIX × HY spread / 100). Dies ist nicht der Financial Stress Index der Federal Reserve Bank von Kansas City. Ein Wert von 1.5 oder höher bedeutet niedrigen Stress; unter 0.3 bedeutet hohen Stress.",
       "title": "Finanzstress-Indikator",
       "usFsiValue": "US-FSI-WERT",
       "cissTitle": "EU CISS (systemischer Stressindikator Euroraum)",
@@ -2627,7 +2628,14 @@
       "signals_one": "{{count}} Signal",
       "signals_other": "{{count}} Signale",
       "analyzing": "Wird analysiert...",
-      "viewOnMap": "Auf Karte anzeigen"
+      "viewOnMap": "Auf Karte anzeigen",
+      "waiting": "Warten auf die nächste Datenaktualisierung. Dieses Panel wird automatisch aktualisiert.",
+      "offline": "Warten auf eine Verbindung. Dieses Panel wird automatisch aktualisiert, sobald Sie wieder online sind.",
+      "updated": "Aktualisiert {{time}}",
+      "saved": "Letzte bekannte Aktualisierung {{time}} · Suche nach Aktualisierungen",
+      "savedOffline": "Letzte bekannte Aktualisierung {{time}} · Offline",
+      "localSignals": "Basierend auf geladenen Dashboard-Signalen",
+      "emptySaved": "Keine Konvergenz in der letzten bekannten Aktualisierung."
     },
     "thermalEscalation": {
       "title": "Thermische Eskalation",
@@ -2789,6 +2797,35 @@
       "succeeded": "Passkey gespeichert. Sie können ihn beim nächsten Anmelden verwenden.",
       "retryable": "Das konnte nicht abgeschlossen werden. Sie können es erneut versuchen.",
       "failed": "Wir konnten keinen Passkey auf diesem Gerät speichern."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Entscheidungsvorlage für Rohstoffe",
+      "commodity": "Rohstoff / Produkt",
+      "blockedChokepoint": "Als blockiert angenommener Engpass",
+      "commodityCapture": "Rohstoffvergleich erfassen",
+      "title": "Entscheidungsbrief",
+      "fuel": "Brennstoff",
+      "chokepoint": "Engpass",
+      "baseline": "Unterbrechung im Ausgangsszenario",
+      "comparison": "Unterbrechung im Vergleichsszenario",
+      "capture": "Beide erfassen / aktualisieren",
+      "downloadHtml": "Entscheidungsbrief als HTML herunterladen",
+      "downloadJson": "Entscheidungsbrief als JSON herunterladen",
+      "back": "← Zurück zum Länderbrief",
+      "select": "Wählen Sie eine Energieunterbrechung und erfassen Sie dann beide Szenarien.",
+      "changed": "Auswahl geändert. Erfassen Sie vor dem Export beide Szenarien.",
+      "loading": "Beide Szenarien werden erfasst…",
+      "captured": "Erfasst. Prüfen Sie vor dem Download die Beobachtungsdaten und Einschränkungen.",
+      "failed": "Die Szenarien konnten nicht erfasst werden. Prüfen Sie Ihren Zugang und versuchen Sie es erneut. Es ist kein Ergebnis zum Exportieren verfügbar.",
+      "locked": "Der Entscheidungsbrief ist mit Pro verfügbar."
+    },
+    "liveMedia": {
+      "idleStatus": "Wegen Inaktivität angehalten",
+      "idleBody": "Live-Video nach {{duration}} ohne Maus-, Tastatur- oder Touch-Aktivität gestoppt.",
+      "idleResume": "Fortsetzen",
+      "idleKeepPlaying": "Live-Video bei Inaktivität weiterspielen",
+      "idleSettingsHint": "Dies können Sie jederzeit unter Einstellungen › Medien ändern.",
+      "idleKeepPlayingToast": "Live-Video wird bei Inaktivität weitergespielt. Ändern Sie dies unter Einstellungen › Medien."
     }
   },
   "popups": {

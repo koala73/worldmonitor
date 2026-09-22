@@ -26,7 +26,7 @@ const stepNamed = (name) => {
   return matches[0];
 };
 const activeLookup =
-  'api repos/fixture/repository/actions/workflows/build-desktop.yml/runs?branch=v2.10.0&per_page=100 --paginate --slurp';
+  'api repos/fixture/repository/actions/workflows/build-desktop.yml/runs?per_page=100 --paginate --slurp';
 const clientEnv = Object.fromEntries([
   'VITE_CLERK_PUBLISHABLE_KEY', 'VITE_WS_RELAY_URL', 'VITE_PMTILES_URL_PUBLIC', 'CONVEX_URL',
 ].map((key) => [key, 'fixture-configured']));
@@ -44,6 +44,10 @@ function runPreparation({ env = clientEnv, runs = [], apiExit = 0, response = [{
       '  printf \'%s\\n\' "$FAKE_RUNS"',
       'else',
       '  printf \'%s\\n\' "$*" >> "$FAKE_CALLS"',
+      '  if [ "$7" = "$TAG" ]; then',
+      '    echo \'HTTP 422: Unexpected inputs provided: ["release_tag"]\' >&2',
+      '    exit 1',
+      '  fi',
       'fi',
     ].join('\n'));
     chmodSync(join(bin, 'gh'), 0o755);
@@ -64,6 +68,7 @@ function runPreparation({ env = clientEnv, runs = [], apiExit = 0, response = [{
         GITHUB_REPOSITORY: 'fixture/repository',
         GITHUB_OUTPUT: join(temp, 'output'),
         TAG: 'v2.10.0',
+        WORKFLOW_REF: 'main',
         FAKE_CALLS: join(temp, 'calls'),
         FAKE_API_EXIT: String(apiExit),
         FAKE_RUNS: JSON.stringify(response),
@@ -93,7 +98,7 @@ test('preparation refuses every missing release secret before tag creation or di
 test('preparation skips active builds and permits a configured retry after a completed failure', () => {
   assert.equal(stepNamed('Check for an active desktop build').if, "steps.release.outputs.action == 'release'");
   for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
-    const result = runPreparation({ runs: [{ status }] });
+    const result = runPreparation({ runs: [{ status, head_branch: 'v2.10.0' }] });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.calls, [activeLookup]);
   }
@@ -102,7 +107,7 @@ test('preparation skips active builds and permits a configured retry after a com
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.calls, [
       activeLookup,
-      'workflow run build-desktop.yml --repo fixture/repository --ref v2.10.0 -f draft=false -f release_tag=v2.10.0',
+      'workflow run build-desktop.yml --repo fixture/repository --ref main -f draft=false -f release_tag=v2.10.0',
     ]);
   }
   const failedRead = runPreparation({ apiExit: 1 });
@@ -111,6 +116,34 @@ test('preparation skips active builds and permits a configured retry after a com
   const incompleteRead = runPreparation({ response: [{ message: 'unavailable' }] });
   assert.notEqual(incompleteRead.status, 0);
   assert.deepEqual(incompleteRead.calls, [activeLookup]);
+});
+
+test('preparation recognizes current-workflow builds by release target', () => {
+  const active = runPreparation({ runs: [{ status: 'in_progress', head_branch: 'main', display_title: 'Build Desktop App (v2.10.0)' }] });
+  assert.equal(active.status, 0, active.stderr);
+  assert.deepEqual(active.calls, [activeLookup]);
+  const other = runPreparation({ runs: [{ status: 'in_progress', head_branch: 'main', display_title: 'Build Desktop App (v2.9.0)' }] });
+  assert.equal(other.status, 0, other.stderr);
+  assert.equal(other.calls.length, 2);
+});
+
+test('dispatch avoids the legacy tag workflow that rejects release_tag', () => {
+  const legacy = runPreparation({ env: { ...clientEnv, WORKFLOW_REF: 'v2.10.0' } });
+  assert.notEqual(legacy.status, 0);
+  assert.match(legacy.stderr, /HTTP 422: Unexpected inputs/);
+  const current = runPreparation();
+  assert.equal(current.status, 0, current.stderr);
+  assert.match(current.calls.at(-1), /--ref main .*release_tag=v2\.10\.0$/);
+});
+
+test('current workflow builds and publishes only the selected tag source', () => {
+  const desktop = loadYaml(readFileSync(resolve(root, '.github/workflows/build-desktop.yml'), 'utf8'));
+  assert.equal(desktop['run-name'], "Build Desktop App (${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }})");
+  for (const job of Object.values(desktop.jobs)) {
+    for (const checkout of job.steps.filter((step) => step.uses?.startsWith('actions/checkout@'))) {
+      assert.equal(checkout.with.ref, "${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.ref }}");
+    }
+  }
 });
 
 test('direct builds validate client configuration once before matrix expansion and preserve draft policy', () => {
@@ -259,7 +292,8 @@ test('the workflow creates only a compatible main-history tag and dispatches the
   const dispatch = stepNamed('Dispatch desktop build');
   assert.equal(dispatch.if, "steps.release.outputs.action == 'release' && steps.active.outputs.running == 'false'");
   assert.match(dispatch.run, /gh workflow run build-desktop\.yml/);
-  assert.match(dispatch.run, /--ref "\$TAG"/);
+  assert.match(dispatch.run, /--ref "\$WORKFLOW_REF"/);
+  assert.equal(dispatch.env.WORKFLOW_REF, "${{ github.event.repository.default_branch }}");
   assert.match(dispatch.run, /-f draft=false/);
   assert.match(dispatch.run, /-f release_tag="\$TAG"/);
   assert.doesNotMatch(workflowSource, /gh release create/);

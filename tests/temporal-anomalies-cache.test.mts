@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { fetchAllFirmsRegions } from '../scripts/wildfire/firms-area.mjs';
+import { hasCompleteWorldwideWildfireCoverage, mergeWildfireSourcesWithBc } from '../scripts/wildfire/bc-fire-points.mjs';
+import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from '../scripts/_wildfire-dashboard.mjs';
 
 import { __testing__ } from '../api/health.js';
 import { evaluateFreshness } from '../api/mcp/freshness.ts';
@@ -1140,6 +1144,36 @@ describe('temporal anomalies content-age extractor (#7141)', () => {
 });
 
 describe('temporal anomalies frozen-but-200 feed (#7141)', () => {
+  it('dates global satellite coverage across midnight through the real producer and reader', async (t) => {
+    const now = Date.parse('2026-09-07T02:41:00Z');
+    t.mock.method(Date, 'now', () => now);
+    const csv = readFileSync(new URL('./fixtures/wildfire/firms-ukraine-2026-09-06.csv', import.meta.url), 'utf8');
+    const header = `${csv.split('\n')[0]}\n`;
+    const firms = await fetchAllFirmsRegions('test-key', {
+      fetchFn: async (url: string) => new Response(url.includes('/VIIRS_SNPP_NRT/22,44,40,53/2') ? csv : header),
+      sleepFn: async () => {},
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    const merged = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => firms,
+      fetchCwfis: async () => ({ fireDetections: [{ id: 'agency', source: 'cwfis', detectedAt: now }] }),
+      fetchBcWildfire: async () => ({ fireDetections: [] }),
+    });
+    assert.equal(hasCompleteWorldwideWildfireCoverage(merged), true);
+    const payload = compactWildfireDashboardPayload(merged, WILDFIRE_CANONICAL_DETECTION_LIMIT);
+    const { calls } = await runWithRedisStub({
+      'news:insights:v1': liveNews(now),
+      'wildfire:fires:v1': payload,
+      ...altSourcesLiveRedis(now),
+    });
+    const meta = seedMetaStamp(calls)?.value as Record<string, unknown> | undefined;
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, Date.parse('2026-09-06T23:44:00Z'));
+    assert.equal(classifyTemporalMeta(meta, now).status, 'OK');
+    assert.equal(evaluateFreshness([temporalAnomaliesCheck()], [meta], now).stale, false);
+    assert.equal(merged._firmsCount, 2);
+  });
+
   it('stamps content age from the payloads, not the rebuild clock', async () => {
     const now = Date.now();
     const frozenAge = 72 * HOUR_MS;

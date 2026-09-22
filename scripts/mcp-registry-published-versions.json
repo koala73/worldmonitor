@@ -12,6 +12,14 @@
     "1.19.0": {
       "tools": 74,
       "manifestSha256": "cce31fc35eb392a49394ea38321d52ed0136122af0d9e95137da873c3717e71c"
+    },
+    "1.20.0": {
+      "tools": 75,
+      "manifestSha256": "ae38d1237ffd4b03fc37679f67304d03677dcd4ee8751096eaa5044336f8932f"
+    },
+    "1.21.0": {
+      "tools": 75,
+      "manifestSha256": "10721ab9326c8cbee651aa6da67034fbe67d8d38cee37628ec336f01345b46bb"
     }
   }
 }

@@ -64,6 +64,7 @@ describe("grantComplimentaryEntitlement", () => {
         },
         validUntil: longUntil,
         compUntil: longUntil,
+        compPlanKey: "pro_monthly",
         updatedAt: Date.now(),
       });
     });

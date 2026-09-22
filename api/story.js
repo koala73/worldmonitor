@@ -29,7 +29,10 @@ export default function handler(req, res) {
   res.setHeader('Vary', 'User-Agent');
 
   const baseUrl = 'https://worldmonitor.app';
-  const spaUrl = `${baseUrl}/?c=${countryCode}&t=${type}${ts ? `&ts=${ts}` : ''}`;
+  const storyParams = new URLSearchParams({ c: countryCode, t: type });
+  if (ts) storyParams.set('ts', ts);
+  const dashboardUrl = 'https://www.worldmonitor.app/dashboard';
+  const spaUrl = `${dashboardUrl}?${storyParams}`;
 
   // Real users → redirect to SPA
   if (!isBot) {
@@ -45,9 +48,11 @@ export default function handler(req, res) {
   const countryName = COUNTRY_NAMES[countryCode] || countryCode || 'Global';
   const title = `${countryName} Intelligence Brief | World Monitor`;
   const description = `Real-time instability analysis for ${countryName}. Country Instability Index, military posture, threat classification, and prediction markets. Free, open-source geopolitical intelligence.`;
-  const imageParams = `c=${countryCode}&t=${type}${score ? `&s=${score}` : ''}${level ? `&l=${level}` : ''}`;
+  const imageParams = new URLSearchParams({ c: countryCode, t: type });
+  if (score) imageParams.set('s', score);
+  if (level) imageParams.set('l', level);
   const imageUrl = `${baseUrl}/api/og-story?${imageParams}`;
-  const storyUrl = `${baseUrl}/api/story?c=${countryCode}&t=${type}${ts ? `&ts=${ts}` : ''}`;
+  const storyUrl = `${baseUrl}/api/story?${storyParams}`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -71,7 +76,7 @@ export default function handler(req, res) {
   <meta name="twitter:description" content="${esc(description)}"/>
   <meta name="twitter:image" content="${esc(imageUrl)}"/>
 
-  <link rel="canonical" href="${esc(storyUrl)}"/>
+  <link rel="canonical" href="${esc(dashboardUrl)}"/>
 </head>
 <body>
   <h1>${esc(title)}</h1>

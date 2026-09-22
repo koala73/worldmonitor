@@ -19,7 +19,7 @@ Looking for tools that operate the dashboard already open in a Chrome tab? See [
 OAuth is not needed for `get_sources`: it is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10 requests/minute/IP. Other data tools require a user-bound credential. Tools marked `free-account` (direct cache reads) can use the small confirmed-free allowance; tools marked `subscription` (everything with server-side execute logic — live fetches, plus a few local-compute tools) require Pro.
 </Info>
 
-All paid tiers share the same MCP server and tool inventory, but they are metered two different ways. **Pro and Pro Business** have no REST allowance, so their MCP calls use a dedicated daily counter of **50** and **250** quota-consuming `tools/call` / `resources/read` calls per UTC day, one unit per call. **API Starter and API Business** carry no separate MCP allowance. Their MCP calls draw on the same daily budget as their REST requests (1,000 and 10,000/day), charged at a per-tool weight of 1 for a cached read, 2 for a live downstream fetch, and 3 for `get_country_brief` and `get_airspace`, which each fetch downstream twice. Both the OAuth and `wm_…` doors resolve the same budget, so the credential you use does not change the cap. Enterprise OAuth can be unlimited, and only legacy operator keys explicitly allowlisted by the deployment skip the daily reservation. Every authenticated context also passes a per-minute burst limiter, set by plan: **60 requests/minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. `get_sources` and the metadata helper `describe_tool` are exempt from the daily quota. Full weight table: [MCP calls against an API plan](/usage-rate-limits#mcp-calls-against-an-api-plan).
+All paid tiers share the same MCP server and tool inventory, but they are metered two different ways. **Pro and Pro Business** have no REST allowance, so their MCP calls use a dedicated daily counter of **50** and **250** quota-consuming `tools/call` / `resources/read` calls per UTC day, one unit per call. **API Starter and API Business** carry no separate MCP allowance. Their MCP calls draw on the same daily budget as their REST requests (1,000 and 10,000/day), charged at a per-tool weight of 1 for a cached read, 2 for a live downstream fetch, 3 for `get_country_brief`, and 5 for `get_airspace` (up to four downstream requests across the dateline). Both the OAuth and `wm_…` doors resolve the same budget, so the credential you use does not change the cap. Enterprise OAuth can be unlimited, and only legacy operator keys explicitly allowlisted by the deployment skip the daily reservation. Every authenticated context also passes a per-minute burst limiter, set by plan: **60 requests/minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. `get_sources` and the metadata helper `describe_tool` are exempt from the daily quota. Full weight table: [MCP calls against an API plan](/usage-rate-limits#mcp-calls-against-an-api-plan).
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -33,9 +33,10 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://worldmonitor.app/oauth/token` | Token endpoint (authorization_code + refresh_token) |
 | `https://worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414; the endpoints it advertises mirror the request host, so the `api.` subdomain works too) |
 | `https://www.worldmonitor.app/docs/mcp` | Separate anonymous **documentation** MCP server (docs search + read-only docs filesystem) — card at `/.well-known/mcp/docs-server-card.json`; see [Agent Discovery](/agent-discovery#agent-front-doors) |
-| `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource/mcp` | Resource server metadata for the MCP endpoint (RFC 9728), naming `https://worldmonitor.app/mcp`. This is where the `401` challenge points |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata for the origin (RFC 9728), kept for clients that discovered it before the path-scoped document existed |
 
-Server identifier: `worldmonitor` v1.17.0.
+Server identifier: `worldmonitor` v1.21.0.
 
 Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
 
@@ -47,7 +48,7 @@ WorldMonitor's static server card at `/.well-known/mcp/server-card.json` adverti
 - Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
 - Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
 
-Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately.
+Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately. Every successful `tools/call` also returns the payload as `structuredContent`, which strict clients require once a schema is advertised; the [tools reference](/mcp-tools-reference) describes how projections and soft envelopes are represented.
 
 ### Streamable HTTP responses
 
@@ -65,7 +66,9 @@ The replay buffer is in-memory and bounded per edge instance — 128 KB per resp
 
 ## Authentication
 
-**Discovery is public.** `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `ping`, `logging/setLevel`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool, prompt, and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). These methods return only public catalog metadata (names, descriptions, URIs / URI templates, static workflow-template prose — no data, no quota); every capability advertised by the anonymous `initialize` is anonymously exercisable, so a strict MCP client (Claude Desktop, `mcp-remote`, the reference SDKs) completes its full post-connect enumeration without stalling on an auth wall. `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. `get_sources` is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Other data-bearing calls require credentials. Every `tools/list` and `describe_tool` entry carries `_meta["worldmonitor/access"]`: `"free"` means anonymous and quota-free, `"free-account"` means available to a signed-in free account (cache-backed data calls spend its allowance; `describe_tool` does not), and `"subscription"` means Pro-only. Resource templates carry the same marker as their backing tool. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
+**An MCP client signs in when it connects.** The transport answers an unauthenticated `initialize` with `401`, JSON-RPC `-32001`, and a `WWW-Authenticate` challenge naming the [protected-resource document](/api-oauth#discovery) for that path, with the request id echoed. `initialize` is the handshake every interactive client opens with, and hosted connectors (Cursor Agents, Grok, ChatGPT) decide from its answer whether a server needs sign-in: answered with `200`, they record "nothing to authenticate" and have no authorization server to send you to when a paid tool later refuses the call. A free account is enough to sign in. A full anonymous handshake remains available to agent-readiness scanners on the machine-discovery aliases `/.well-known/mcp` and `/.well-known/mcp.json`; point MCP clients at `/mcp`.
+
+**Stateless catalog reads stay public.** `tools/list`, `prompts/list`, `prompts/get`, `skills/list`, `skills/get`, `resources/list`, `resources/templates/list`, `ping`, `logging/setLevel`, and the `notifications/initialized` notification are servable **without credentials**, which is how the keyless [`worldmonitor` CLI](/cli) and the SDKs list tools without ever sending `initialize`. Any agent (or agent-readiness scanner) can reach `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool, prompt, and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). These methods return only public catalog metadata (names, descriptions, URIs / URI templates, static workflow-template prose — no data, no quota); every capability advertised by the anonymous `initialize` is anonymously exercisable, so a strict MCP client (Claude Desktop, `mcp-remote`, the reference SDKs) completes its full post-connect enumeration without stalling on an auth wall. `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. `get_sources` is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Other data-bearing calls require credentials. Every `tools/list` and `describe_tool` entry carries `_meta["worldmonitor/access"]`: `"free"` means anonymous and quota-free, `"free-account"` means available to a signed-in free account (cache-backed data calls spend its allowance; `describe_tool` does not), and `"subscription"` means Pro-only. Resource templates carry the same marker as their backing tool. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
 
 The MCP handler accepts two auth modes, in priority order:
 
@@ -76,13 +79,23 @@ OAuth bearer requests re-check the resolved MCP token, user binding, and entitle
 
 ### Redirect URI allowlist
 
-Dynamic Client Registration is **not** open to arbitrary HTTPS redirects. Only these prefixes are accepted:
+Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_uri` must be `http://localhost:<port>` or `http://127.0.0.1:<port>` (any port, any path), or exactly match a hosted MCP client callback below, as the client sends it. Links point to the vendor's own documentation where one exists.
 
-- `https://claude.ai/api/mcp/auth_callback`
-- `https://claude.com/api/mcp/auth_callback`
-- `http://localhost:<port>` / `http://127.0.0.1:<port>` (any port) — for Claude Code, MCP Inspector, local development
+| Client | Callback |
+|--------|----------|
+| Claude | `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` |
+| Cursor Agents, Cursor web, Grok Bot | `https://www.cursor.com/agents/mcp/oauth/callback`, `cursor://anysphere.cursor-mcp/oauth/callback` ([Cursor MCP docs](https://cursor.com/docs/mcp)) |
+| ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect` ([OpenAI auth docs](https://developers.openai.com/plugins/build/auth)) |
+| Grok | `https://grok.com/connectors-oauth-exchange-code/`, `https://console.x.ai/connectors-oauth-exchange-code/` ([Grok client metadata](https://grok.com/oauth/mcp-client.json)) |
+| VS Code for the Web | `https://vscode.dev/redirect`, `https://insiders.vscode.dev/redirect` |
+| Perplexity | `https://www.perplexity.ai/rest/connections/oauth_callback`, `https://enterprise.perplexity.ai/rest/connections/oauth_callback` ([Perplexity help](https://www.perplexity.ai/help-center/en/articles/13915507-adding-custom-remote-connectors)) |
+| Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
+| Devin | `https://api.devin.ai/mcp/oauth/callback` ([Devin MCP docs](https://docs.devin.ai/work-with-devin/mcp)) |
+| Google Antigravity | `https://antigravity.google/oauth-callback` ([Antigravity MCP docs](https://antigravity.google/docs/mcp)) |
 
-Other clients must proxy via one of these redirects or run locally.
+Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, Zed, and MCP Inspector use the loopback form. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Clients with per-user or per-tenant callbacks, such as Gemini custom apps and Microsoft Copilot Studio, cannot be exact-matched and are not supported.
+
+The authorization response carries `iss` ([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)), set to the `issuer` of the host where the flow started. ChatGPT requires it to use its stable callback.
 
 ### Token lifetimes
 
@@ -100,10 +113,10 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
 1. **Add the server URL** in your MCP client. The canonical entrypoint is:
 
    ```
-   https://api.worldmonitor.app/mcp
+   https://worldmonitor.app/mcp
    ```
 
-   (`https://worldmonitor.app/mcp` works too — it proxies the same handler.)
+   This is the only product MCP transport endpoint. Listed production aliases (`www`, `api`, and the dashboard variants) are not additional servers. Ordinary GET/HEAD `/mcp` and `/api/mcp` on those hosts redirect (308) to `https://worldmonitor.app/mcp`; ordinary GET/HEAD `/.well-known/mcp` and `/.well-known/mcp.json` redirect (308) to `https://worldmonitor.app/.well-known/mcp` and `https://worldmonitor.app/.well-known/mcp.json`. Query is not forwarded. A transport POST/SSE/replay receives HTTP 410 with JSON-RPC `-32000` telling the client to use `https://worldmonitor.app/mcp`.
 
 2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
 
@@ -119,17 +132,17 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 
 - **50 quota-consuming calls per UTC day** on Pro and **250** on Pro Business, reset at 00:00 UTC. Both plans meter on a dedicated MCP counter and every call costs one unit, whatever the tool does.
 - Data-bearing `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** consume the Pro daily quota, except `get_sources` and the metadata helper `describe_tool`.
-- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, `describe_tool`, and `get_sources` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) and the authenticated account status resource `worldmonitor://account/mcp-allowance` are likewise exempt.
+- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `skills/list`, `skills/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, `describe_tool`, and `get_sources` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) and the authenticated account status resource `worldmonitor://account/mcp-allowance` are likewise exempt.
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard. Concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses the limit rejects.
 
-Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus a much larger daily budget (1,000 and 10,000 units/day) that their MCP calls and REST requests share, at 60 and 300 requests/minute/user. A cached MCP read costs 1 unit and a live downstream fetch costs 2, and `get_country_brief` and `get_airspace` cost 3, so batch workloads still go further over REST. Enterprise lifts the daily cap entirely. See [Plans & limits](#plans-&-limits).
+Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus a much larger daily budget (1,000 and 10,000 units/day) that their MCP calls and REST requests share, at 60 and 300 requests/minute/user. A cached MCP read costs 1 unit and a live downstream fetch costs 2, `get_country_brief` costs 3, and `get_airspace` costs 5, so batch workloads still go further over REST. Enterprise lifts the daily cap entirely. See [Plans & limits](#plans-&-limits).
 
 ### Connected MCP clients
 
 Each authorization mints a separate row, so revoking Claude Desktop does not affect Cursor.
 
-- Manage connected clients in **[Settings → Connected MCP clients](https://www.worldmonitor.app/settings)**.
+- Sign in to the [dashboard](https://www.worldmonitor.app/dashboard). Select **Settings → MCP Clients** to manage connected clients.
 - See the live `clientName` (e.g. "Claude", "Cursor"), `lastUsedAt`, and `createdAt` per token.
 - A revoke takes effect on the next MCP request (no positive cache).
 - Up to **5 active tokens per user**. Authorizing beyond the cap silently revokes the **oldest-created** existing token (creation order, not recency of use; enforcement is eventually consistent under concurrent authorizations).
@@ -199,6 +212,12 @@ Add via **Settings → Connectors → Add custom connector**:
   }
 }
 ```
+
+Cursor Agents, Cursor web, and Grok Bot take the same URL and sign in through Cursor's hosted callback.
+
+### Other hosted clients
+
+ChatGPT, Grok, Perplexity, Mistral Le Chat, Devin, Google Antigravity, and VS Code: add `https://worldmonitor.app/mcp` as a custom connector or remote MCP server. Registration accepts the callbacks listed in [Redirect URI allowlist](#redirect-uri-allowlist).
 
 ### MCP Inspector (debugging)
 
@@ -537,7 +556,8 @@ Tool responses use the standard MCP content block format:
   "result": {
     "content": [
       { "type": "text", "text": "{...json payload...}" }
-    ]
+    ],
+    "structuredContent": { "...": "the same payload, as an object" }
   }
 }
 ```
@@ -571,7 +591,7 @@ The MCP handler signals failure on three independent layers — **HTTP status**,
 
 Triage from the outside in: HTTP status → JSON-RPC code → soft envelope. The full per-shape reference (trigger, paired status, recovery, example payload) lives in the [MCP Error Catalog](/mcp-error-catalog). A few high-frequency callouts:
 
-- **401 + `-32001`** carries a `WWW-Authenticate` header with `resource_metadata` pointing at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients re-run the OAuth flow on this header automatically.
+- **401 + `-32001`** carries a `WWW-Authenticate` header with `resource_metadata` pointing at the document for the path you called — `/.well-known/oauth-protected-resource/mcp`, or `/api/mcp` under the deployed route. RFC 9728-aware clients re-run the OAuth flow on this header automatically.
 - **429 + `-32029`** is the plan-resolved daily cap (`Retry-After: <seconds-until-UTC-midnight>`), so the number in the message is whichever budget rejected, not always 50. The per-minute rate limit returns `-32029` inside HTTP 200, not 429 — see the catalog for the distinction.
 - **Soft envelopes return HTTP 200** with no JSON-RPC `error` field — clients that inspect only the JSON-RPC layer will silently treat them as successes. Always parse `result.content[0].text` and check for a leading-underscore discriminator key (`_budget_exceeded`, `_jmespath_error`) before consuming the payload as data.
 

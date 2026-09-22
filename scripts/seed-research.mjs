@@ -8,6 +8,8 @@
  * - listTrendingRepos (python, javascript, typescript daily)
  */
 
+import ARXIV_CATEGORIES from './shared/research-arxiv-categories.json' with { type: 'json' };
+
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -25,7 +27,6 @@ const TRENDING_TTL = 3600;
 
 // ─── arXiv Papers ───
 
-const ARXIV_CATEGORIES = ['cs.AI', 'cs.CL', 'cs.CR'];
 
 // Parse arXiv Atom XML into paper records. Pure — split out so the fetch path stays testable.
 function parseArxivEntries(xml) {
@@ -100,50 +101,54 @@ export async function fetchArxivPapers({ fetchFn = fetch, retries = 1, sleepFn =
 
 // ─── Hacker News ───
 
-async function fetchHackerNews() {
-  const feeds = ['top', 'best'];
+export async function fetchHackerNews() {
+  const feeds = ['top', 'new', 'best', 'ask', 'show', 'job'];
   const results = {};
 
   for (const feed of feeds) {
-    const idsResp = await fetch(`https://hacker-news.firebaseio.com/v0/${feed}stories.json`, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!idsResp.ok) { console.warn(`  HN ${feed}: HTTP ${idsResp.status}`); continue; }
-    const allIds = await idsResp.json();
-    if (!Array.isArray(allIds)) continue;
+    try {
+      const idsResp = await fetch(`https://hacker-news.firebaseio.com/v0/${feed}stories.json`, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!idsResp.ok) { console.warn(`  HN ${feed}: HTTP ${idsResp.status}`); continue; }
+      const allIds = await idsResp.json();
+      if (!Array.isArray(allIds)) continue;
 
-    const ids = allIds.slice(0, 30);
-    const items = [];
+      const ids = allIds.slice(0, 30);
+      const items = [];
 
-    for (let i = 0; i < ids.length; i += 10) {
-      const batch = ids.slice(i, i + 10);
-      const batchResults = await Promise.all(
-        batch.map(async (id) => {
-          try {
-            const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, {
-              headers: { 'User-Agent': CHROME_UA },
-              signal: AbortSignal.timeout(5_000),
-            });
-            if (!res.ok) return null;
-            const raw = await res.json();
-            if (!raw || raw.type !== 'story') return null;
-            return {
-              id: raw.id || 0, title: raw.title || '', url: raw.url || '',
-              score: raw.score || 0, commentCount: raw.descendants || 0,
-              by: raw.by || '', submittedAt: (raw.time || 0) * 1000,
-            };
-          } catch { return null; }
-        }),
-      );
-      items.push(...batchResults.filter(Boolean));
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = ids.slice(i, i + 10);
+        const batchResults = await Promise.all(
+          batch.map(async (id) => {
+            try {
+              const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, {
+                headers: { 'User-Agent': CHROME_UA },
+                signal: AbortSignal.timeout(5_000),
+              });
+              if (!res.ok) return null;
+              const raw = await res.json();
+              if (!raw || (raw.type !== 'story' && raw.type !== 'job')) return null;
+              return {
+                id: raw.id || 0, title: raw.title || '', url: raw.url || '',
+                score: raw.score || 0, commentCount: raw.descendants || 0,
+                by: raw.by || '', submittedAt: (raw.time || 0) * 1000,
+              };
+            } catch { return null; }
+          }),
+        );
+        items.push(...batchResults.filter(Boolean));
+      }
+
+      const cacheKey = `research:hackernews:v1:${feed}:30`;
+      if (items.length > 0) {
+        results[cacheKey] = { items, pagination: undefined };
+      }
+      console.log(`  HN ${feed}: ${items.length} stories`);
+    } catch (error) {
+      console.warn(`  HN ${feed} failed: ${error?.message || error}`);
     }
-
-    const cacheKey = `research:hackernews:v1:${feed}:30`;
-    if (items.length > 0) {
-      results[cacheKey] = { items, pagination: undefined };
-    }
-    console.log(`  HN ${feed}: ${items.length} stories`);
   }
   return results;
 }

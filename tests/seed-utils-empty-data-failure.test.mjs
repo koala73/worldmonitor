@@ -565,7 +565,7 @@ test('Sprint 1: validation failure with canonical contentAge MIRRORS newestItemA
     contentAge: {
       newestItemAt: FROZEN_NEWEST_AT,
       oldestItemAt: FROZEN_OLDEST_AT,
-      maxContentAgeMin: 12960,    // 9 days, matching disease-outbreaks pilot
+      maxContentAgeMin: 12960,
     },
   });
 

@@ -8,6 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import {
   cachedFetchJsonWithMeta,
   getCachedJson,
@@ -50,6 +51,7 @@ import {
   INTEL_SOURCES,
   type ServerFeed,
 } from './_feeds';
+import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import {
   buildDigestCoverage,
@@ -76,6 +78,11 @@ import {
   parseForecastEvidenceCoverage,
 } from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
+import {
+  feedPublisherHost,
+  isPublisherLink,
+  linkHostname,
+} from '../../../../shared/publisher-link-gate.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -107,6 +114,7 @@ import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
 import {
   MIN_CORROBORATING_PUBLISHERS,
   PUBLISHER_FAMILIES,
+  PUBLISHER_FAMILY_DOMAIN_TABLE,
   publisherFamilyFor,
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
@@ -114,8 +122,10 @@ import {
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+const DIGEST_LANGUAGES = new Set(['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
+const COUNTRY_ITEMS_PER_FEED = 20;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
@@ -363,31 +373,6 @@ function markFallbackCoverageStale(
   };
 }
 
-// U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
-// Items older than this are dropped before scoring. The 24h `recencyScore`
-// component already treats anything older than 24h as zero recency, so the
-// freshness floor is purely a "don't surface week-old news" guard, not a
-// scoring input.
-//
-// 2026-05-03: bumped 48 → 96 after a production incident where every
-// single-source category panel (GitHub Trending: github.blog/feed/, Product
-// Hunt: producthunt.com/feed) went UNAVAILABLE over a weekend. Both feeds
-// publish on a weekday cadence; over a Sat-Sun window their newest item
-// sits at ~50-70h old, which the 48h floor wholesale dropped → category
-// renders zero items → panel reads "UNAVAILABLE". 96h covers a Fri→Mon
-// weekend with margin so we don't flip empty on Sunday-night dashboard
-// checks. The 24h recencyScore still naturally de-ranks 48-96h items vs
-// anything fresher, so the visible-but-de-ranked outcome is correct:
-// better than "no news" but lower priority than today.
-//
-// Out-of-range / unparseable env values fall back to the default silently.
-// See R3 in docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
-function resolveMaxAgeMs(): number {
-  const raw = Number.parseInt(process.env.NEWS_MAX_AGE_HOURS ?? '', 10);
-  const hours = Number.isInteger(raw) && raw > 0 ? raw : 96;
-  return hours * 60 * 60 * 1000;
-}
-
 const LEVEL_TO_PROTO: Record<ThreatLevel, ProtoThreatLevel> = {
   critical: 'THREAT_LEVEL_CRITICAL',
   high: 'THREAT_LEVEL_HIGH',
@@ -476,7 +461,7 @@ const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES = 3;
 
 
-interface ParsedItem {
+export interface ParsedItem {
   source: string;
   // Originating publisher from the RSS <source> element ('' when absent).
   // Google News feeds — which back 154 of the 366 server digest labels —
@@ -805,10 +790,12 @@ async function fetchRssText(
  * an unrecognized date dialect — see U2 in
  * docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md).
  */
-interface ParseResult {
+export interface ParseResult {
   items: ParsedItem[];
-  parsedTotal: number;     // count of <item>/<entry> blocks attempted
-  droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
+  // Lightweight entries after the dashboard cap, for full-variant country snapshots.
+  countryItems?: Pick<ParsedItem, 'source' | 'title' | 'link' | 'publishedAt' | 'originPublisher' | 'originPublisherTrusted'>[];
+  parsedTotal: number;     // titled blocks attempted within the dashboard cap
+  droppedUndated: number;  // dashboard entries with empty/unparseable/future dates
   droppedFeedCap?: number; // #4920: items beyond ITEMS_PER_FEED, previously uncounted
   // #7083: how the fetch leg of this attempt actually ended. Absent on
   // cache entries written before the field existed.
@@ -824,7 +811,18 @@ interface ParseResult {
 const CACHE_TTL_HEALTHY_S = 3600;
 const CACHE_TTL_EMPTY_S = 300;
 
-async function fetchAndParseRss(
+/**
+ * Fetch one feed and parse it: direct, then the relay when direct is blocked,
+ * with a Cloudflare-challenge body sniff and a strict date gate.
+ *
+ * Exported since #7526 so the country-coverage RPC uses this transport instead
+ * of standing up a second RSS fetcher. Its cache key already carries the whole
+ * feed URL, so a per-country query is keyed per country for free. Note that
+ * `item.level` / `item.category` are stamped by the DIGEST classifier
+ * (`./_classifier`); a caller that must agree with the browser re-labels the
+ * title with shared/threat-keyword-classifier instead of reading those fields.
+ */
+export async function fetchAndParseRss(
   feed: ServerFeed,
   variant: string,
   signal: AbortSignal,
@@ -855,7 +853,10 @@ async function fetchAndParseRss(
   // v8→v9 (#7083): ParseResult gained the `attempt` field. Warm v8 rows
   // lack it, so zero-item entries could not be classified between
   // negative-cache and fresh-failure; force a cold parse on rollout.
-  const cacheKey = `rss:feed:v9:${variant}:${feed.url}`;
+  // v9→v10 (#7748): retain a bounded country headline pool beyond entry five.
+  // v10→v11 (#8398): items gained the publisher-link ingest gate. Warm v10
+  // rows carry un-gated links, so force a cold parse to gate every link.
+  const cacheKey = rssFeedCacheKey(variant, feed.url);
 
   try {
     // Read cache unconditionally — the v5 prefix guarantees pre-fix
@@ -989,9 +990,6 @@ const DATE_TAG_PRIORITY = {
   atom: ['published', 'updated', 'dc:date', 'dc:Date.Issued'] as const,
 };
 
-// Future-dated guard: items > 1h ahead of now are clock-skew or malformed.
-const FUTURE_DATE_TOLERANCE_MS = 60 * 60 * 1000;
-
 // RSS <source> is upstream-provided text. Only these server-configured
 // aggregator endpoints are allowed to vouch for it as publisher provenance;
 // ordinary feeds remain anchored to their configured `feed.name` label.
@@ -1019,6 +1017,8 @@ function extractFirstDateTag(block: string, isAtom: boolean): string {
 
 function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
+  const countryItems: NonNullable<ParseResult['countryItems']> = [];
+  const retainCountryItems = variant === 'full';
   let parsedTotal = 0;
   let droppedUndated = 0;
 
@@ -1028,18 +1028,21 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   let matches = [...xml.matchAll(itemRegex)];
   const isAtom = matches.length === 0;
   if (isAtom) matches = [...xml.matchAll(entryRegex)];
+  const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
 
   // #4920 coverage ledger: items beyond the per-feed cap were previously
   // dropped with no counter anywhere — fully invisible.
   const droppedFeedCap = Math.max(0, matches.length - ITEMS_PER_FEED);
 
-  for (const match of matches.slice(0, ITEMS_PER_FEED)) {
+  const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
+  for (const [index, match] of matches.slice(0, parseLimit).entries()) {
     const block = match[1]!;
+    const forDigest = index < ITEMS_PER_FEED;
 
     const title = extractTag(block, 'title');
     if (!title) continue;
 
-    parsedTotal++;
+    if (forDigest) parsedTotal++;
 
     let link: string;
     if (isAtom) {
@@ -1051,30 +1054,33 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
 
+    // #8398: ingest-side publisher-link gate — an item whose link leaves its
+    // own publisher's domain is the suspicious case. The expected set is
+    // composed below (after the origin publisher is known); the check itself
+    // runs per branch so a rejected link never reaches the item builders.
+    // `link` is NOT cleared here: clearing would conflate "rejected" with
+    // "absent" for the counters below. Each branch drops-or-blanks.
+
     // Strict date gate (R2): walk the dialect-specific tag priority list and
     // require at least one non-empty, parseable, non-future timestamp. Items
     // that fail the gate are dropped — never silently stamped with Date.now()
     // (which is the bug that let static institutional pages reach the brief).
     const pubDateStr = extractFirstDateTag(block, isAtom);
     if (!pubDateStr) {
-      droppedUndated++;
+      if (forDigest) droppedUndated++;
       continue;
     }
     const parsedDate = new Date(pubDateStr);
     const parsedMs = parsedDate.getTime();
     if (Number.isNaN(parsedMs)) {
-      droppedUndated++;
+      if (forDigest) droppedUndated++;
       continue;
     }
     if (parsedMs > Date.now() + FUTURE_DATE_TOLERANCE_MS) {
-      droppedUndated++;
+      if (forDigest) droppedUndated++;
       continue;
     }
     const publishedAt = parsedMs;
-
-    const threat = classifyByKeyword(title, variant);
-    const isAlert = threat.level === 'critical' || threat.level === 'high';
-    const description = extractDescription(block, isAtom, title);
 
     // RSS 2.0 <source url="...">Name</source> — the originating publisher,
     // emitted per item by Google News. Atom's <source> is a metadata
@@ -1082,12 +1088,73 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // dialect is read; extractTag's [^<]* body would not match a container
     // anyway, but skipping Atom keeps that an invariant rather than a
     // regex accident.
-    const originPublisher = isAtom ? '' : extractTag(block, 'source');
+    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source');
+    // Ordinary feeds cannot vouch for RSS <source>. The country reader already
+    // ignores untrusted origin metadata, so keep those late headlines and store
+    // an empty publisher. Trusted aggregators still have the 200-character
+    // identity bound.
+    const originPublisher = originPublisherTrusted ? extractedOriginPublisher : '';
+    if (!forDigest) {
+
+      // #8398: country-pool branch. parseRssXml is feed-scoped (it knows
+      // `feed`), so the ingest gate runs here — the per-category assembly
+      // below is item-scoped and no longer knows which feed an item came
+      // from (it only carries `source`, the feed label). A rejected link
+      // drops the item: the row never reaches the pool (the pool has its own
+      // link-length cap below, which a hostile link would otherwise satisfy).
+      if (
+        link &&
+        !isItemLinkAllowed(
+          link,
+          { source: feed.name, originPublisher, originPublisherTrusted },
+          feed,
+        )
+      ) {
+        console.warn(
+          `[digest] publisher-link-gate drop feed="${feed.name}" variant=${variant} ` +
+            `host="${linkHostnameForLog(link)}"`,
+        );
+        continue;
+      }
+      if (title.length <= 1000 && link.length <= 2048 && originPublisher.length <= 200) {
+        countryItems.push({
+          source: feed.name, title, link, publishedAt,
+          originPublisher, originPublisherTrusted,
+        });
+        continue;
+      }
+      continue;
+    }
+
+    const threat = classifyByKeyword(title, variant);
+    const isAlert = threat.level === 'critical' || threat.level === 'high';
+    const description = extractDescription(block, isAtom, title);
+
+    // #8398: digest branch — same ingest gate as the country-pool branch
+    // above (this is the last feed-scoped point before items lose their feed;
+    // see the comment there for why the gate cannot run later). The link is
+    // blanked rather than the item dropped: the title still carries
+    // corroboration/brief signal while no hostile link can be persisted to
+    // story:track or fanned out by the relay.
+    if (
+      link &&
+      !isItemLinkAllowed(
+        link,
+        { source: feed.name, originPublisher: extractedOriginPublisher, originPublisherTrusted },
+        feed,
+      )
+    ) {
+      console.warn(
+        `[digest] publisher-link-gate blank feed="${feed.name}" variant=${variant} ` +
+          `host="${linkHostnameForLog(link)}"`,
+      );
+      link = '';
+    }
 
     items.push({
       source: feed.name,
-      originPublisher,
-      originPublisherTrusted: !isAtom && isTrustedOriginAggregator(feed.url),
+      originPublisher: extractedOriginPublisher,
+      originPublisherTrusted,
       title,
       link,
       publishedAt,
@@ -1126,23 +1193,15 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     );
   }
 
-  // Two cases:
-  //
-  // (a) parsedTotal > 0 — we recognized at least one <item>/<entry> block in
-  //     the XML, so the stats are meaningful (whether all dropped, partially
-  //     dropped, or none dropped). Return the struct so cachedFetchJson
-  //     positive-caches it for the full TTL and the 'all-undated' branch in
-  //     buildDigest's caller can fire (parsedTotal>0 ∧ items=[] ∧ dropped>0).
-  //
-  // (b) parsedTotal === 0 — the XML body had no recognizable items at all.
-  //     This covers genuinely empty feeds (channel exists, no items),
-  //     malformed XML responses, transient block pages, and Cloudflare
-  //     interstitials that don't match the item/entry regexes. Return null
-  //     so cachedFetchJson writes NEG_SENTINEL with the short negativeTtl
-  //     (default 120s) — the feed retries quickly instead of being pinned
-  //     empty for the full 3600s TTL.
-  if (parsedTotal === 0) return null;
-  return { items, parsedTotal, droppedUndated, droppedFeedCap };
+  // Keep dashboard health counters even when its dated items are empty.
+  // Later country entries can survive an untitled first-five window; retain
+  // them while preserving the digest's empty-result counters and short TTL.
+  if (parsedTotal === 0 && countryItems.length === 0) return null;
+  return {
+    items, parsedTotal, droppedUndated,
+    ...(parsedTotal > 0 ? { droppedFeedCap } : {}),
+    ...(retainCountryItems ? { countryItems } : {}),
+  };
 }
 
 /**
@@ -1886,7 +1945,10 @@ export async function listFeedDigest(
   req: ListFeedDigestRequest,
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
-  const lang = req.lang || 'en';
+  const lang = req.lang === undefined || req.lang === '' ? 'en' : req.lang;
+  if (typeof lang !== 'string' || !DIGEST_LANGUAGES.has(lang)) {
+    throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
+  }
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
@@ -2233,6 +2295,7 @@ function shouldPruneAccumulator(options: {
       options.nowMs,
     );
 }
+
 /**
  * Build the HSET field list for a story:track:v1 row.
  *
@@ -2247,7 +2310,110 @@ function shouldPruneAccumulator(options: {
  * empty is the authoritative signal that the current mention has no body;
  * consumers then fall back to the cleaned headline (R6) honestly, and the
  * next mention with a body re-populates the field naturally.
+ *
+ * #8398: log-safe host of a rejected link. Never logs the full URL — a
+ * hostile link may carry a phishing path/query worth no free print.
  */
+function linkHostnameForLog(link: string): string {
+  return linkHostname(link) || 'unparseable';
+}
+
+/**
+ * #8398: expected publisher hosts for a parsed feed item's link.
+ *
+ * A story link must resolve to the publisher the item claims. The expected
+ * set is unioned from three server-known signals so one missing registry
+ * cannot wedge a whole publisher:
+ *   1. the configured feed URL's own host (`feedPublisherHost`) — the
+ *      publisher domain as registered for this feed;
+ *   2. the curated family table (`PUBLISHER_FAMILY_DOMAINS` behind
+ *      `publisherFamilyForDomain`-style lookup) via `PUBLISHER_FAMILIES` —
+ *      covers the edition/CDN split where the article host differs from the
+ *      feed host (e.g. `amp.` editions);
+ *   3. the trusted-aggregator origin publisher (RSS `<source>`, only when the
+ *      parser marked this feed trusted) — a wire syndicated through Google
+ *      News is still the wire's article, not the aggregator's.
+ *
+ * The RSS `<source>` element on an UNTRUSTED feed is upstream text and never
+ * enters the set (same rule as `publisherFamilyForItem`): a hostile feed
+ * cannot self-attest an arbitrary publisher domain. Returns an empty array
+ * when no server-known signal exists — `isPublisherLink` then fails closed
+ * and the item's link is dropped at ingest.
+ */
+function expectedPublisherHostsForItem(
+  item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+  feed: Pick<ServerFeed, 'url'>,
+): string[] {
+  const hosts = new Set<string>();
+  const feedHost = feedPublisherHost(feed?.url);
+  if (feedHost) hosts.add(feedHost);
+  const sourceFamily = publisherFamilyFor(item?.source ?? '');
+  const familyDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[sourceFamily];
+  if (Array.isArray(familyDomains)) for (const domain of familyDomains) hosts.add(domain);
+  // Trusted-aggregator origin: map the origin NAME to its family the same
+  // way corroboration does, then add that family's domains.
+  if (item?.originPublisherTrusted === true) {
+    const originFamily = publisherFamilyFor(item?.originPublisher ?? '');
+    const originDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[originFamily];
+    if (Array.isArray(originDomains)) for (const domain of originDomains) hosts.add(domain);
+  }
+  return [...hosts];
+}
+
+// Persistence no longer has the feed object. Recover its host from the
+// server-owned registry, never from upstream item metadata. Build once so
+// each story lookup stays independent of the number of configured feeds.
+const registeredFeedHostsBySource = new Map<string, Set<string>>();
+for (const categories of Object.values(VARIANT_FEEDS)) {
+  for (const feeds of Object.values(categories)) {
+    for (const feed of feeds) {
+      const host = feedPublisherHost(feed.url);
+      if (!host) continue;
+      const hosts = registeredFeedHostsBySource.get(feed.name) ?? new Set<string>();
+      hosts.add(host);
+      registeredFeedHostsBySource.set(feed.name, hosts);
+    }
+  }
+}
+
+/**
+ * #8398: ingest-side publisher-link gate.
+ *
+ * Defense in depth behind the parse-time gate in `parseRssXml`: that gate
+ * covers items parsed from a feed, but `buildStoryTrackHsetFields` is also
+ * reachable with reconstructed items (tests, backfills, residue replays).
+ * Persisting happens here, so the check happens here too — a stored
+ * hostile link is harder to contain than a rejected one, and the relay
+ * fans stored rows out to every matching user.
+ *
+ * Recheck against the configured feed hosts, curated family domains, and
+ * trusted-aggregator origin publisher. Unknown sources without a curated
+ * publisher still fail closed. Item-supplied feed URLs cannot extend the
+ * expected host set.
+ */
+function storyTrackLinkForPersist(
+  item: Pick<ParsedItem, 'link' | 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+): string {
+  const link = typeof item.link === 'string' ? item.link : '';
+  if (!link) return '';
+  const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
+  for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
+  if (isPublisherLink(link, hosts)) return link;
+  console.warn(
+    `[digest] publisher-link-gate persist-blank source="${item?.source ?? ''}" ` +
+      `host="${linkHostnameForLog(link)}"`,
+  );
+  return '';
+}
+
+function isItemLinkAllowed(
+  link: string,
+  item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+  feed: Pick<ServerFeed, 'url'>,
+): boolean {
+  return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
+}
+
 function buildStoryTrackHsetFields(
   item: ParsedItem,
   nowStr: string,
@@ -2261,7 +2427,9 @@ function buildStoryTrackHsetFields(
     // eligibility stamp is present. Legacy rows without it fail closed.
     'anchorEligible', anchorEligible ? '1' : '0',
     'title', item.title,
-    'link', item.link,
+    // #8398: never persist a link that fails the publisher gate (see
+    // storyTrackLinkForPersist above — fail-closed, blank on rejection).
+    'link', storyTrackLinkForPersist(item),
     'severity', item.level,
     'lang', item.lang,
     'description', item.description ?? '',
@@ -2450,12 +2618,15 @@ async function writeStoryTracking(
         // evidence archive member is self-contained (title/link/description
         // ride on the member; no story:track dependency) and only the
         // full/English scope that judging actually reads is archived.
+        // #8398: the evidence link rides the same persist-time gate as
+        // story:track — the member is a second stored copy of the link, so
+        // it must not carry a hostile URL the track row blanks.
         if (evidenceEligible) {
           const evidenceMember = buildForecastEvidenceMember(
             {
               hash,
               title: representative.title,
-              link: representative.link,
+              link: storyTrackLinkForPersist(representative),
               description: representative.description,
               publishedAt: representative.publishedAt,
             },
@@ -3138,7 +3309,7 @@ async function buildDigest(
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
     // spraying arbitrary values cannot inflate the keyspace.
-    if (VARIANT_FEEDS[variant] && /^[a-z]{2}$/.test(lang)) {
+    if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
       await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
@@ -3200,6 +3371,9 @@ export const __testing__ = {
   extractRawTagBody,
   extractFirstDateTag,
   buildStoryTrackHsetFields,
+  storyTrackLinkForPersist,
+  isItemLinkAllowed,
+  expectedPublisherHostsForItem,
   isAnchorEligible,
   isIdentityAnchorEligible,
   computeImportanceScore,

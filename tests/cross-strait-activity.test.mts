@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { describe, it } from 'node:test';
+import { PassThrough } from 'node:stream';
+import { beforeEach, describe, it } from 'node:test';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 import {
   DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS,
@@ -38,6 +42,7 @@ import {
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityContentMeta,
   fetchCrossStraitActivitySeedSnapshot,
+  projectCrossStraitActivityBootstrap,
   writeSourceHealth,
 } from '../scripts/seed-cross-strait-activity.mjs';
 import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary';
@@ -45,6 +50,7 @@ import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-ac
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity');
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
 const retrievedAt = '2026-07-25T08:30:00.000Z';
+const { proxyFetch } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 const usableJapanEnglishIndex = `
   <dl>
     <dd><a href="../pdf/2026/p20260724_05e.pdf">Chinese and Russian Military Activities</a></dd>
@@ -147,6 +153,15 @@ function mndObservationForDay(day: number, aircraft = day) {
 }
 
 describe('quantified cross-Strait activity (#5575)', () => {
+  beforeEach((t) => {
+    const previous = process.env.PROXY_URL;
+    delete process.env.PROXY_URL;
+    t.after(() => {
+      if (previous === undefined) delete process.env.PROXY_URL;
+      else process.env.PROXY_URL = previous;
+    });
+  });
+
   it('records the admitted source and Railway transport contracts without widening collection', () => {
     assert.equal(CROSS_STRAIT_ACTIVITY_KEY, 'military:cross-strait-activity:v1');
     assert.deepEqual(Object.keys(CROSS_STRAIT_SOURCE_CONTRACTS), ['taiwanMnd', 'japanMod']);
@@ -2626,6 +2641,12 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
     assert.equal(mnd?.transportStatus, 'error');
     assert.ok(mnd?.errorCodes.includes('MND_LIST_ROWS_MISSING'));
+    assert.deepEqual(mnd.requestDiagnostics.filter(row => row.purpose === 'list')
+      .map(({ elapsedMs, ...failure }) => failure), [{
+      path: '/en/news/plaactlist', purpose: 'list', attempt: 1,
+      stage: 'parse', httpStatus: 200, errorCode: 'MND_LIST_ROWS_MISSING',
+    }]);
+    assert.equal(mnd.lastSuccessAt, retrievedAt);
     assert.ok(mnd?.refreshErrorCodes.includes('MND_PUBLICATION_METADATA_MISSING'));
     assert.match(mndRequests[0] ?? '', /plaactlist/i);
     assert.equal(mndRequests.length, 1 + MND_REFRESH_DETAIL_REQUESTS_PER_RUN * 2);
@@ -2634,6 +2655,29 @@ describe('quantified cross-Strait activity (#5575)', () => {
       snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
       MND_REQUIRED_REPORTING_DAYS,
     );
+  });
+
+  it('records empty MND backfill pages without retrying or stopping pagination', async () => {
+    const requested: string[] = [];
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), proxyUrl: '', sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+        requested.push(url);
+        return new Response('<html><body>no activity rows</body></html>');
+      },
+    });
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+    assert.equal(requested.length, MND_MAX_LIST_PAGES_PER_BACKFILL_RUN);
+    assert.equal(new Set(requested).size, requested.length);
+    assert.equal(mnd.requestCount, requested.length);
+    assert.deepEqual(mnd.requestDiagnostics.map(row => row.path), requested.map(url => new URL(url).pathname));
+    assert.ok(mnd.requestDiagnostics.every(row => row.purpose === 'list' && row.attempt === 1
+      && row.stage === 'parse' && row.httpStatus === 200 && row.errorCode === 'MND_LIST_ROWS_MISSING'
+      && Number.isInteger(row.elapsedMs) && row.elapsedMs >= 0));
+    assert.equal(mnd.transportStatus, 'error');
+    assert.equal(mnd.lastSuccessAt, null);
   });
 
   it('separates the three index-presence claims by whether the index covers the series', () => {
@@ -2858,7 +2902,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(snapshot.sources[0].requestCount, mndCalls.length);
   });
 
-  it('uses remaining time for correction first attempts after slow list discovery', async () => {
+  it('uses remaining time for required details after slow list discovery', async () => {
     const correctionDetails = new Map([21, 22, 23].map((day) => [
       `https://www.mnd.gov.tw/en/News/PLAAct/${99_000 + day}`,
       fixture('mnd-detail.html')
@@ -2910,16 +2954,16 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
       assert.equal(listCalls, MND_MAX_LIST_PAGES_PER_BACKFILL_RUN);
       assert.equal(detailCalls.length, expectedDetails);
-      assert.ok(detailCalls.every((url) => correctionDetails.has(url)));
+      assert.ok(detailCalls.every((url) => !correctionDetails.has(url)));
       assert.ok(clock <= MND_OUTBOUND_BUDGET_MS);
       assert.equal(mnd?.requestCount, listCalls + detailCalls.length);
-      assert.equal(mnd?.transportStatus, 'fresh');
-      assert.equal(mnd?.lastSuccessAt, retrievedAt);
-      assert.deepEqual(mnd?.errorCodes, ['OUTBOUND_BUDGET_EXHAUSTED']);
+      assert.equal(mnd?.transportStatus, 'error');
+      assert.equal(mnd?.lastSuccessAt, previousSnapshot.sources[0].lastSuccessAt);
+      assert.ok(mnd?.errorCodes.includes('OUTBOUND_BUDGET_EXHAUSTED'));
     }
   });
 
-  it('keeps a partial MND collection fresh when only the outbound budget stops more work', async () => {
+  it('keeps incomplete current-list coverage hard when the outbound budget stops required work', async () => {
     let budgetCheck = 0;
     const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
     const fetchFn = async (input: string | URL | Request) => {
@@ -2940,13 +2984,575 @@ describe('quantified cross-Strait activity (#5575)', () => {
     });
     const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
 
-    assert.equal(mnd?.transportStatus, 'fresh');
-    assert.ok(mnd?.errorCodes.includes('OUTBOUND_BUDGET_EXHAUSTED'));
+    assert.equal(mnd?.transportStatus, 'error');
+    assert.deepEqual(mnd?.errorCodes, ['OUTBOUND_BUDGET_EXHAUSTED', 'MND_CURRENT_LIST_INCOMPLETE']);
     assert.equal(
       snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
       1,
     );
   });
+
+  for (const failureMessage of ['request timeout', 'fetch failed']) {
+  for (const failure of ['none', 'list', 'detail'] as const) {
+    it(`uses MND proxy after ${failureMessage} (${failure}) and resets the route each run`, async () => {
+      const direct: string[] = [];
+      const proxied: string[] = [];
+      const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+      const options = {
+        now: Date.parse(retrievedAt), proxyUrl: '',
+        mndProxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          direct.push(url);
+          if (failure === 'list' || (failure === 'detail' && !url.includes('plaactlist'))) {
+            throw new TypeError(failureMessage);
+          }
+          return new Response(url.includes('plaactlist') ? list : fixture('mnd-detail.html'));
+        },
+        proxyRequestFn: async (url: string, config, init) => {
+          proxied.push(url);
+          assert.equal(config.host, 'proxy.test');
+          assert.equal(init.timeoutMs, 20_000);
+          assert.equal(init.maxResponseBytes, CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.maxResponseBytes);
+          assert.ok(init.signal instanceof AbortSignal);
+          assert.match(init.headers['User-Agent'], /WorldMonitor/);
+          return { status: 200, buffer: Buffer.from(url.includes('plaactlist') ? list : fixture('mnd-detail.html')) };
+        },
+      };
+      for (let run = 0; run < 2; run += 1) {
+        direct.length = 0;
+        proxied.length = 0;
+        const snapshot = await fetchCrossStraitActivitySnapshot(options);
+        const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+        assert.equal(mnd.transportStatus, failure === 'detail' ? 'error' : 'fresh');
+        assert.deepEqual(mnd.errorCodes, failure === 'detail' ? ['MND_CURRENT_LIST_INCOMPLETE'] : []);
+        assert.equal(mnd.lastSuccessAt, failure === 'detail' ? null : retrievedAt);
+        assert.equal(mnd.requestCount, direct.length + proxied.length);
+        assert.equal(direct.length, failure === 'none' ? 21 : failure === 'list' ? 1 : 2);
+        assert.equal(proxied.length, failure === 'none' ? 0 : failure === 'list' ? 21 : 19);
+        assert.equal(direct[0], CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl);
+        assert.ok([...direct, ...proxied].filter(url => !url.includes('plaactlist')).length <= MND_MAX_DETAIL_REQUESTS_PER_RUN);
+        assert.equal(JSON.stringify(snapshot).includes('proxy-secret'), false);
+        assert.equal(projectCrossStraitActivityBootstrap(snapshot).sources.some(source => 'requestDiagnostics' in source), false);
+      }
+    });
+  }
+  }
+
+  it('uses direct retry when a preferred proxy later times out on an MND list page', async () => {
+    const transports: string[] = [];
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+      sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        transports.push(`direct:${new URL(url).pathname}`);
+        if (url === CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl) {
+          throw new TypeError('fetch failed');
+        }
+        if (url.endsWith('/plaactlist/2')) return new Response(mndListWithCount(1, 90_100));
+        return new Response(fixture('mnd-detail.html'));
+      },
+      proxyRequestFn: async (url: string) => {
+        transports.push(`proxy:${new URL(url).pathname}`);
+        if (url.endsWith('/plaactlist/2')) throw new Error('proxy timeout');
+        return {
+          status: 200,
+          buffer: Buffer.from(url.includes('plaactlist')
+            ? mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN - 1)
+            : fixture('mnd-detail.html')),
+        };
+      },
+    });
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+
+    assert.deepEqual(transports.slice(0, 5), [
+      'direct:/en/news/plaactlist',
+      'proxy:/en/news/plaactlist',
+      'proxy:/en/news/plaactlist/2',
+      'direct:/en/news/plaactlist/2',
+      'direct:/en/News/PLAAct/90000',
+    ]);
+    assert.equal(mnd.transportStatus, 'fresh');
+    assert.equal(mnd.requestDiagnostics[1].recoveredVia, 'direct');
+  });
+
+  it('uses direct retry when a preferred proxy later times out on an MND detail', async () => {
+    const transports: string[] = [];
+    const secondDetailUrl = 'https://www.mnd.gov.tw/en/News/PLAAct/90001';
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+      sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        transports.push(`direct:${new URL(url).pathname}`);
+        if (url.includes('plaactlist')) throw new Error('request timeout');
+        return new Response(fixture('mnd-detail.html'));
+      },
+      proxyRequestFn: async (url: string) => {
+        transports.push(`proxy:${new URL(url).pathname}`);
+        if (url === secondDetailUrl) throw new Error('proxy timeout');
+        return {
+          status: 200,
+          buffer: Buffer.from(url.includes('plaactlist')
+            ? mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN)
+            : fixture('mnd-detail.html')),
+        };
+      },
+    });
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+
+    assert.deepEqual(transports.slice(0, 6), [
+      'direct:/en/news/plaactlist',
+      'proxy:/en/news/plaactlist',
+      'proxy:/en/News/PLAAct/90000',
+      'proxy:/en/News/PLAAct/90001',
+      'direct:/en/News/PLAAct/90001',
+      'direct:/en/News/PLAAct/90002',
+    ]);
+    assert.equal(mnd.transportStatus, 'error');
+    assert.deepEqual(mnd.errorCodes, ['MND_CURRENT_LIST_INCOMPLETE']);
+    assert.equal(mnd.requestDiagnostics[1].recoveredVia, 'direct');
+  });
+
+  for (const mndProxyUrl of ['', 'not-a-proxy', 'proxy.test:99999:user:pass']) {
+    it(`keeps bounded direct MND retries with proxy configuration ${JSON.stringify(mndProxyUrl)}`, async () => {
+      let directCalls = 0;
+      let proxyCalls = 0;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl,
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          directCalls += 1;
+          throw new Error('request timeout');
+        },
+        proxyRequestFn: async () => { proxyCalls += 1; throw new Error('must not proxy'); },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.equal(directCalls, 2);
+      assert.equal(proxyCalls, 0);
+      assert.equal(mnd.transportStatus, 'error');
+      assert.equal(mnd.requestCount, 2);
+    });
+  }
+
+  it('keeps MND on PROXY_URL rather than the Japan-specific proxy', async () => {
+    process.env.PROXY_URL = 'https://mnd-proxy.test';
+    const hosts: string[] = [];
+    await fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), proxyUrl: 'https://japan-only.test',
+      sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        throw new Error('request timeout');
+      },
+      proxyRequestFn: async (url, config) => {
+        if (new URL(url).hostname === 'www.mnd.gov.tw') hosts.push(config.host);
+        throw new Error('proxy timeout');
+      },
+    });
+    assert.deepEqual(hosts, ['mnd-proxy.test']);
+  });
+
+  for (const mndListUrl of ['http://www.mnd.gov.tw/en/news/plaactlist', 'https://attacker.test/en/news/plaactlist']) {
+    it(`rejects unsafe MND URL ${mndListUrl} before either transport`, async () => {
+      let mndCalls = 0;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test', mndListUrl,
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          mndCalls += 1;
+          throw new Error('must not fetch');
+        },
+        proxyRequestFn: async () => { mndCalls += 1; throw new Error('must not proxy'); },
+      });
+      assert.equal(mndCalls, 0);
+      assert.ok(snapshot.sources.find(source => source.id === 'taiwan-mnd').errorCodes.includes('UNSAFE_SOURCE_URL'));
+    });
+  }
+
+  it('counts MND proxy backfill requests inside the existing 11-list-attempt cap', async () => {
+    let listRequests = 0;
+    let detailRequests = 0;
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+      sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        listRequests += 1;
+        throw new Error('request timeout');
+      },
+      proxyRequestFn: async (url: string) => {
+        if (url.includes('plaactlist')) listRequests += 1;
+        else detailRequests += 1;
+        return { status: 200, buffer: Buffer.from(url.includes('plaactlist')
+          ? mndListWithCount(1) : fixture('mnd-detail.html')) };
+      },
+    });
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+    assert.equal(listRequests, MND_MAX_LIST_PAGES_PER_BACKFILL_RUN);
+    assert.equal(detailRequests, 1);
+    assert.equal(mnd.requestCount, listRequests + detailRequests);
+    assert.equal(mnd.transportStatus, 'fresh');
+    assert.equal(mnd.requestDiagnostics[0].recoveredVia, 'proxy');
+  });
+
+  it('does not select an empty MND proxy list as the preferred correction route', async () => {
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt,
+      mndOutcome: { ok: true, observations: [mndObservationForDay(1)] },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const direct: string[] = [];
+    const proxied: string[] = [];
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      previousSnapshot, now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+      sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        direct.push(url);
+        if (url.includes('plaactlist')) throw new Error('request timeout');
+        return new Response(fixture('mnd-detail.html'));
+      },
+      proxyRequestFn: async (url: string) => {
+        proxied.push(url);
+        return { status: 200, buffer: Buffer.from('<html>Unavailable</html>') };
+      },
+    });
+    assert.ok(proxied.length > 0);
+    assert.ok(proxied.every(url => url.includes('plaactlist')));
+    assert.deepEqual(direct.slice(0, proxied.length), proxied);
+    assert.ok(direct.some(url => url.endsWith('/86001')));
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+    assert.ok(mnd.errorCodes.includes('MND_LIST_ROWS_MISSING'));
+    assert.ok(mnd.requestDiagnostics.every(row => row.recoveredVia === undefined));
+  });
+
+  for (const [failure, code, status] of [
+    ['timeout', 'TIMEOUT'], ['metadata', 'MND_PUBLICATION_METADATA_MISSING'],
+    ['redirect', 'HTTP_302', 302], ['oversized', 'RESPONSE_TOO_LARGE'],
+    ['invalid', 'MND_PROXY_RESPONSE_INVALID'], ['invalid-status', 'MND_PROXY_RESPONSE_INVALID', 700],
+    ['no-content-204', 'MND_PUBLICATION_METADATA_MISSING', 204],
+    ['no-content-205', 'MND_PUBLICATION_METADATA_MISSING', 205],
+  ] as const) {
+    it(`rejects MND proxy ${failure} without selecting the invalid route or adding a third attempt`, async () => {
+      const direct: string[] = [];
+      const proxied: string[] = [];
+      const firstUrl = 'https://www.mnd.gov.tw/en/News/PLAAct/90000';
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '',
+        mndProxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          direct.push(url);
+          if (url === firstUrl) throw new Error('request timeout SECRET');
+          return new Response(url.includes('plaactlist')
+            ? mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN) : fixture('mnd-detail.html'));
+        },
+        proxyRequestFn: async (url: string) => {
+          proxied.push(url);
+          if (failure === 'timeout') throw new Error('proxy timeout proxy-secret');
+          let buffer: Buffer | string = Buffer.from(fixture('mnd-detail.html'));
+          if (failure === 'invalid') buffer = 'not a buffer';
+          else if (failure === 'metadata') buffer = Buffer.from(mndDetailWithoutPublicationMetadata());
+          else if (failure === 'oversized') buffer = Buffer.alloc(CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.maxResponseBytes + 1);
+          return {
+            status: status ?? 200,
+            location: 'https://attacker.test/SECRET',
+            buffer,
+          };
+        },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.deepEqual(proxied, [firstUrl]);
+      assert.equal(direct.filter(url => url === firstUrl).length, 1);
+      assert.equal(mnd.requestCount, 21);
+      assert.equal(mnd.transportStatus, 'error');
+      assert.ok(mnd.errorCodes.includes(code), JSON.stringify(mnd.errorCodes));
+      assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
+      assert.equal(JSON.stringify(snapshot).includes('proxy-secret'), false);
+    });
+  }
+
+  it('bounds MND proxy CONNECT and body together to one 20-second attempt', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.method(AbortSignal, 'timeout', (ms: number) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('request timeout', 'TimeoutError')), ms);
+      return controller.signal;
+    });
+    let clock = 0;
+    let connectSignal: AbortSignal | undefined;
+    let proxyCalls = 0;
+    let destroyed = 0;
+    const body = new PassThrough();
+    Object.assign(body, { headers: {}, statusCode: 200 });
+    const connected = Promise.withResolvers<void>();
+    const readingBody = Promise.withResolvers<void>();
+    const result = fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), nowFn: () => clock, proxyUrl: '',
+      mndProxyUrl: 'https://proxy.test', sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        throw new Error('request timeout');
+      },
+      proxyRequestFn: (url, config, options) => {
+        proxyCalls += 1;
+        return proxyFetch(url, config, {
+          ...options,
+          connectTunnel: async (_host, _config, { signal }) => {
+            connectSignal = signal;
+            connected.resolve();
+            await new Promise(resolve => setTimeout(resolve, 19_000));
+            return { socket: {}, destroy: () => { destroyed += 1; body.destroy(); } };
+          },
+          requestFn: (_options, onResponse) => Object.assign(new EventEmitter(), {
+            end: () => { onResponse(body); readingBody.resolve(); },
+          }),
+        });
+      },
+    });
+    await connected.promise;
+    clock += 19_000;
+    t.mock.timers.tick(19_000);
+    await readingBody.promise;
+    assert.equal(connectSignal?.aborted, false);
+    clock += 1_000;
+    t.mock.timers.tick(1_000);
+    const snapshot = await result;
+    assert.equal(connectSignal?.aborted, true);
+    assert.equal(proxyCalls, 1);
+    assert.equal(destroyed, 1);
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+    assert.equal(mnd.requestCount, 2);
+    assert.equal(mnd.transportStatus, 'error');
+    assert.deepEqual(mnd.errorCodes, ['TIMEOUT']);
+    assert.equal(mnd.requestDiagnostics.at(-1).transport, 'proxy');
+    assert.equal(clock, 20_000);
+  });
+
+  it('does not retry a buffered MND proxy body failure as a direct header failure', async () => {
+    const direct: string[] = [];
+    const proxied: string[] = [];
+    const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+      sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+        direct.push(url);
+        throw new TypeError('fetch failed');
+      },
+      proxyRequestFn: (url, config, options) => {
+        proxied.push(url);
+        return proxyFetch(url, config, {
+          ...options,
+          connectTunnel: async () => ({ socket: {}, destroy: () => {} }),
+          requestFn: (_options, onResponse) => Object.assign(new EventEmitter(), {
+            end() {
+              const body = Object.assign(new PassThrough(), { headers: {}, statusCode: 200 });
+              onResponse(body);
+              if (url.includes('plaactlist')) body.end(list);
+              else body.destroy(Object.assign(new Error('response stream reset'), { code: 'ECONNRESET' }));
+            },
+          }),
+        });
+      },
+    });
+    const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+    assert.deepEqual(direct, [CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl]);
+    assert.equal(proxied.length, 1 + MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(new Set(proxied).size, proxied.length);
+    assert.equal(mnd.transportStatus, 'error');
+    assert.equal(mnd.lastSuccessAt, null);
+    assert.deepEqual(mnd.errorCodes, ['SOURCE_ERROR']);
+    assert.equal(mnd.requestDiagnostics.filter(row => row.purpose === 'detail').length,
+      MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    for (const diagnostic of mnd.requestDiagnostics.filter(row => row.purpose === 'detail')) {
+      assert.equal(diagnostic.stage, 'response_body');
+      assert.equal(diagnostic.httpStatus, 200);
+      assert.equal(diagnostic.proxyConnectStatus, null);
+      assert.equal(diagnostic.transportErrorCode, 'ECONNRESET');
+    }
+  });
+
+  it('keeps unknown MND proxy failures unknown and excludes untrusted diagnostic fields', async () => {
+    const secret = 'proxy-user:proxy-secret@proxy.test';
+    for (const details of [undefined, {
+      stage: secret, httpStatus: 999, proxyConnectStatus: '407', message: secret,
+    }, {
+      stage: 'proxy_connect', httpStatus: 407, proxyConnectStatus: 407, message: secret,
+    }]) {
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: `https://${secret}`,
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw new TypeError('fetch failed');
+        },
+        proxyRequestFn: async () => {
+          throw Object.assign(new Error(secret), { proxyFailure: details });
+        },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      const diagnostic = mnd.requestDiagnostics.find(row => row.transport === 'proxy');
+      assert.equal(diagnostic.stage, details?.stage === 'proxy_connect' ? 'proxy_connect' : 'unknown');
+      assert.equal(diagnostic.httpStatus, null);
+      assert.equal(diagnostic.proxyConnectStatus, details?.stage === 'proxy_connect' ? 407 : null);
+      assert.equal(diagnostic.errorCode, 'SOURCE_ERROR');
+      assert.equal(mnd.requestCount, 2);
+      assert.equal(mnd.lastSuccessAt, null);
+      assert.equal(JSON.stringify(snapshot).includes('proxy-secret'), false);
+    }
+  });
+
+  it('retains only allowlisted native MND transport codes without changing failure policy', async (t) => {
+    for (const nativeCode of ['CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'ERR_TLS_CERT_ALTNAME_INVALID',
+      'EPROTO', 'ECONNRESET', 'ENOTFOUND', 'UNRECOGNIZED_SECRET', 123, undefined]) {
+      const expected = typeof nativeCode === 'string' && nativeCode !== 'UNRECOGNIZED_SECRET'
+        ? nativeCode : undefined;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'http://proxy.test',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw new TypeError('fetch failed SECRET', { cause: Object.assign(new Error('SECRET'), { code: nativeCode }) });
+        },
+        proxyRequestFn: async () => {
+          throw Object.assign(new Error('TLS failure SECRET'), {
+            code: nativeCode,
+            proxyFailure: { stage: 'target_tls', proxyConnectStatus: 200 },
+          });
+        },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.equal(mnd.requestCount, 2);
+      assert.equal(mnd.lastSuccessAt, null);
+      assert.equal(mnd.lastAttemptAt, retrievedAt);
+      assert.deepEqual(mnd.errorCodes, ['SOURCE_ERROR']);
+      assert.deepEqual(mnd.requestDiagnostics.map(row => row.transportErrorCode), [expected, expected]);
+      assert.ok(mnd.requestDiagnostics.every(row => row.httpStatus === null));
+      assert.equal(mnd.requestDiagnostics[1].stage, 'target_tls');
+      assert.equal(mnd.requestDiagnostics[1].proxyConnectStatus, 200);
+      assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
+      assert.equal(JSON.stringify(projectCrossStraitActivityBootstrap(snapshot)).includes('transportErrorCode'), false);
+      const stored = new Map();
+      const logs: unknown[][] = [];
+      const logMock = t.mock.method(console, 'warn', (...args: unknown[]) => { logs.push(args); });
+      await fetchCrossStraitActivitySeedSnapshot({
+        readSnapshot: async () => null, fetchSnapshot: async () => snapshot,
+        writeHealth: value => writeSourceHealth(value, async (key, row) => { stored.set(key, row); }, async key => stored.get(key) ?? null),
+      });
+      assert.deepEqual(logs, [['[cross-strait] MND request failures', JSON.stringify({
+        attemptedAt: retrievedAt, failures: mnd.requestDiagnostics,
+      })]]);
+      assert.deepEqual(stored.get(healthTesting.STANDALONE_KEYS.crossStraitActivityTaiwanMnd).requestDiagnostics,
+        mnd.requestDiagnostics);
+      logMock.mock.restore();
+    }
+  });
+
+  it('does not let hostile native-code properties replace an MND failure', async () => {
+    for (const property of ['code', 'cause']) {
+      const failure = new Error('transport failed');
+      Object.defineProperty(failure, property, { get() { throw new Error('diagnostic getter SECRET'); } });
+      Object.freeze(failure);
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'http://proxy.test',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw failure;
+        },
+        proxyRequestFn: async () => { throw failure; },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.equal(mnd.requestCount, 2);
+      assert.deepEqual(mnd.errorCodes, ['SOURCE_ERROR']);
+      assert.ok(mnd.requestDiagnostics.every(row => !('transportErrorCode' in row)));
+      assert.equal(failure.message, 'transport failed');
+      assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
+    }
+  });
+
+  it('recovers MND header failures and keeps repeated unusable coverage actionable', async () => {
+    const stored = new Map();
+    const writer = async (key, value) => { stored.set(key, value); };
+    const reader = async key => stored.get(key) ?? null;
+    const { classifyKey, healthStatusBucket, SEED_META, STANDALONE_KEYS } = healthTesting;
+    const name = 'crossStraitActivityTaiwanMnd';
+    const dataKey = STANDALONE_KEYS[name];
+    const metaKey = SEED_META[name].key;
+    let previousSnapshot = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const now = Date.parse(retrievedAt) + attempt * 30 * 60_000;
+      const recovers = attempt === 0 || attempt === 3;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        previousSnapshot, now, proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw new TypeError('fetch failed');
+        },
+        proxyRequestFn: async (url: string) => {
+          if (!recovers) throw new Error('proxy timeout');
+          return { status: 200, buffer: Buffer.from(url.includes('plaactlist')
+            ? mndListWithCount(20) : fixture('mnd-detail.html')) };
+        },
+      });
+      await writeSourceHealth(snapshot, writer, reader);
+      const meta = stored.get(metaKey);
+      assert.equal(meta.fetchedAt, recovers ? now : Date.parse(retrievedAt));
+      assert.equal(meta.consecutiveSourceFailures, recovers ? 0 : attempt);
+      assert.equal(snapshot.sources.find(source => source.id === 'taiwan-mnd')
+        .requestDiagnostics[0].errorCode, 'SOURCE_ERROR');
+      assert.ok(snapshot.observations.some(row => row.sourceId === 'taiwan-mnd'));
+      const entry = classifyKey(name, dataKey, { allowOnDemand: true }, {
+        keyStrens: new Map([[dataKey, Buffer.byteLength(JSON.stringify(stored.get(dataKey)))]]),
+        keyErrors: new Map(), keyMetaErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify(meta)]]), now,
+      });
+      assert.equal(entry.status, recovers ? 'OK' : 'SEED_ERROR');
+      assert.equal(healthStatusBucket(entry, now), attempt === 2 ? 'warn' : 'ok');
+      previousSnapshot = snapshot;
+    }
+  });
+
+  for (const response of ['http-error', 'body-error', 'empty-list'] as const) {
+    it(`does not retry an MND ${response} as a header transport failure`, async () => {
+      let directCalls = 0;
+      let proxyCalls = 0;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          directCalls += 1;
+          if (response === 'http-error') return new Response('unavailable', { status: 503 });
+          if (response === 'body-error') return new Response(new ReadableStream({
+            start(controller) { controller.error(new TypeError('terminated')); },
+          }));
+          return new Response('<html></html>');
+        },
+        proxyRequestFn: async () => { proxyCalls += 1; throw new Error('must not proxy'); },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.equal(directCalls, response === 'empty-list' ? MND_MAX_LIST_PAGES_PER_BACKFILL_RUN : 1);
+      assert.equal(proxyCalls, 0);
+      assert.equal(mnd.transportStatus, 'error');
+      assert.equal(mnd.lastSuccessAt, null);
+    });
+  }
 
   for (const failure of ['metadata', 'timeout'] as const) it(`retries transient MND detail ${failure} within the detail request cap`, async () => {
     const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
@@ -2980,14 +3586,15 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(firstUrlAttempts, 2);
     assert.ok(detailCalls.length <= MND_MAX_DETAIL_REQUESTS_PER_RUN);
     assert.equal(mnd?.requestCount, detailCalls.length + 1);
-    assert.equal(mnd?.transportStatus, 'fresh');
-    assert.deepEqual(mnd?.errorCodes, []);
+    assert.equal(mnd?.transportStatus, 'error');
+    assert.deepEqual(mnd?.errorCodes, ['MND_CURRENT_LIST_INCOMPLETE']);
   });
 
   it('retries an MND list timeout once and counts the actual requests', async () => {
     let listAttempts = 0;
     let detailAttempts = 0;
     const snapshot = await fetchCrossStraitActivitySnapshot({
+      mndListUrl: 'https://www.mnd.gov.tw/en/news/plaactlist?token=SECRET#SECRET',
       now: Date.parse(retrievedAt),
       proxyUrl: '',
       sleepFn: async () => {},
@@ -3008,7 +3615,12 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(mnd?.transportStatus, 'fresh');
     assert.deepEqual(mnd?.errorCodes, []);
     assert.equal(mnd?.requestCount, listAttempts + detailAttempts);
+    assert.deepEqual(mnd?.requestDiagnostics?.map(({ elapsedMs, ...failure }) => failure), [{
+      path: '/en/news/plaactlist', purpose: 'list', attempt: 1,
+      stage: 'response_headers', httpStatus: null, errorCode: 'TIMEOUT',
+    }]);
     assert.ok(detailAttempts <= MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(JSON.stringify(mnd.requestDiagnostics).includes('SECRET'), false);
   });
 
   for (const [failure, expectedAttempts, expectedCode] of [
@@ -3032,6 +3644,8 @@ describe('quantified cross-Strait activity (#5575)', () => {
       assert.equal(mnd?.requestCount, attempts);
       assert.equal(mnd?.transportStatus, 'error');
       assert.ok(mnd?.errorCodes.includes(expectedCode));
+      assert.equal(mnd?.requestDiagnostics?.length, expectedAttempts);
+      assert.ok(mnd.requestDiagnostics.every(row => row.errorCode === expectedCode));
     });
   }
 
@@ -3058,14 +3672,93 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(total, MND_MAX_LIST_PAGES_PER_BACKFILL_RUN);
     assert.ok([...listAttempts.values()].every(count => count <= 2));
     assert.equal(mnd?.requestCount, total + detailAttempts);
+    assert.ok(mnd.requestDiagnostics.length <= MND_MAX_LIST_PAGES_PER_BACKFILL_RUN);
+    assert.equal(mnd.requestDiagnostics.at(-1).path, '/en/news/plaactlist/6');
   });
+
+  for (const purpose of ['detail', 'refresh'] as const) {
+    it(`identifies MND ${purpose} body timeouts without leaking response or error text`, async (t) => {
+      const previousSnapshot = buildCrossStraitActivitySnapshot({
+        generatedAt: retrievedAt,
+        mndOutcome: { ok: true, observations: [mndObservationForDay(1)] },
+        japanOutcome: { ok: true, availableDocumentUrls: [] },
+      });
+      let clock = 0;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt) + 60_000, nowFn: () => clock,
+        previousSnapshot, proxyUrl: '', sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+          if (url.includes('plaactlist')) return new Response(mndListWithCount(purpose === 'refresh' ? 1 : 20));
+          if (purpose === 'detail' ? url.endsWith('/90000') : url.includes('/86001')) {
+            return new Response(new ReadableStream({
+              pull(controller) {
+                clock += 20_000;
+                controller.error(Object.assign(new Error('timeout SECRET upstream body'), { code: 'UND_ERR_BODY_TIMEOUT' }));
+              },
+            }), { status: 206 });
+          }
+          return new Response(fixture('mnd-detail.html'));
+        },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      const failures = mnd.requestDiagnostics.filter(row => row.stage === 'response_body');
+      assert.ok(failures.length > 0);
+      assert.ok(failures.every(row => row.purpose === purpose && row.httpStatus === 206
+        && row.errorCode === 'TIMEOUT' && Number.isInteger(row.elapsedMs) && row.elapsedMs >= 0));
+      assert.ok(failures.every(row => row.attempt <= 2));
+      assert.ok(failures.every(row => row.transportErrorCode === 'UND_ERR_BODY_TIMEOUT'));
+      assert.ok(mnd.requestDiagnostics.length <= mnd.requestCount);
+      assert.equal(JSON.stringify(mnd.requestDiagnostics).includes('SECRET'), false);
+      assert.ok(snapshot.observations.some(row => row.sourceUrl.endsWith('/86001')));
+      assert.equal(mnd.lastSuccessAt, purpose === 'detail' ? retrievedAt : snapshot.generatedAt);
+      assert.equal(mnd.transportStatus, purpose === 'detail' ? 'error' : 'fresh');
+      assert.ok((purpose === 'detail' ? mnd.errorCodes : mnd.refreshErrorCodes).includes('TIMEOUT'));
+      const stored = new Map();
+      const writer = async (key, value) => { stored.set(key, value); };
+      const reader = async key => stored.get(key) ?? null;
+      await writeSourceHealth(previousSnapshot, writer, reader);
+      await writeSourceHealth(snapshot, writer, reader);
+      const { classifyKey, SEED_META, STANDALONE_KEYS } = healthTesting;
+      const name = 'crossStraitActivityTaiwanMnd';
+      const dataKey = STANDALONE_KEYS[name];
+      const metaKey = SEED_META[name].key;
+      assert.deepEqual(stored.get(dataKey).requestDiagnostics, mnd.requestDiagnostics);
+      assert.equal(stored.get(metaKey).fetchedAt, Date.parse(mnd.lastSuccessAt));
+      const entry = classifyKey(name, dataKey, { allowOnDemand: true }, {
+        keyStrens: new Map([[dataKey, Buffer.byteLength(JSON.stringify(stored.get(dataKey)))]]),
+        keyErrors: new Map(), keyMetaErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify(stored.get(metaKey))]]),
+        now: Date.parse(snapshot.generatedAt),
+      });
+      assert.equal(entry.status, purpose === 'detail' ? 'SEED_ERROR' : 'OK');
+      assert.equal(projectCrossStraitActivityBootstrap(snapshot).sources
+        .some(source => 'requestDiagnostics' in source), false);
+      const logs: unknown[][] = [];
+      t.mock.method(console, 'warn', (...args: unknown[]) => { logs.push(args); });
+      await fetchCrossStraitActivitySeedSnapshot({
+        readSnapshot: async () => previousSnapshot,
+        fetchSnapshot: async () => snapshot,
+      });
+      assert.deepEqual(logs, [['[cross-strait] MND request failures', JSON.stringify({
+        attemptedAt: snapshot.generatedAt, failures: mnd.requestDiagnostics,
+      })]]);
+      await fetchCrossStraitActivitySeedSnapshot({
+        readSnapshot: async () => snapshot,
+        fetchSnapshot: async () => previousSnapshot,
+      });
+      assert.equal(logs.length, 1, 'a clean run does not log request failures');
+    });
+  }
 
   for (const failures of [['timeout', 'metadata'], ['metadata', 'timeout'], ['timeout', 'timeout']]) {
     it(`limits mixed MND detail failures ${failures.join('/')} to two attempts`, async () => {
       let attempts = 0;
+      let proxyCalls = 0;
       const currentUrl = 'https://www.mnd.gov.tw/en/News/PLAAct/90000';
       const snapshot = await fetchCrossStraitActivitySnapshot({
-        now: Date.parse(retrievedAt), proxyUrl: '', sleepFn: async () => {},
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'https://proxy.test', sleepFn: async () => {},
         fetchFn: async (input: string | URL | Request) => {
           const url = String(input);
           if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
@@ -3077,17 +3770,35 @@ describe('quantified cross-Strait activity (#5575)', () => {
           }
           return new Response(fixture('mnd-detail.html'));
         },
+        proxyRequestFn: async (url: string) => {
+          proxyCalls += 1;
+          assert.equal(url, currentUrl);
+          const failure = failures[attempts++];
+          if (failure === 'timeout') throw new Error('proxy timeout');
+          return { status: 200, buffer: Buffer.from(mndDetailWithoutPublicationMetadata()) };
+        },
       });
       const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
       assert.equal(attempts, 2);
+      assert.equal(proxyCalls, failures[0] === 'timeout' ? 1 : 0);
       assert.equal(mnd?.transportStatus, 'error');
       assert.ok(mnd?.errorCodes.includes(failures[1] === 'timeout' ? 'TIMEOUT' : 'MND_PUBLICATION_METADATA_MISSING'));
       assert.ok(mnd?.requestCount <= 21);
+      assert.deepEqual(mnd?.requestDiagnostics?.filter(row => row.path.endsWith('/90000'))
+        .map(({ elapsedMs, ...failure }) => failure), failures.map((failure, index) => ({
+        path: '/en/News/PLAAct/90000', purpose: 'detail', attempt: index + 1,
+        stage: failure === 'timeout'
+          ? (index === 1 && failures[0] === 'timeout' ? 'unknown' : 'response_headers') : 'parse',
+        httpStatus: failure === 'timeout' ? null : 200,
+        ...(failure === 'timeout' && index === 1 && failures[0] === 'timeout' ? { proxyConnectStatus: null } : {}),
+        errorCode: failure === 'timeout' ? 'TIMEOUT' : 'MND_PUBLICATION_METADATA_MISSING',
+        ...(index === 1 && failures[0] === 'timeout' ? { transport: 'proxy' } : {}),
+      })));
     });
   }
 
   for (const failure of ['metadata', 'timeout']) {
-  it(`preserves reserved correction refreshes when a primary detail needs a ${failure} retry`, async () => {
+  it(`spends the detail cap on required rows before corrections after a ${failure} retry`, async () => {
     const previousSnapshot = buildCrossStraitActivitySnapshot({
       generatedAt: retrievedAt,
       previousSnapshot: null,
@@ -3126,12 +3837,12 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
     const correctionRefreshes = detailCalls.filter((url) => /\/PLAAct\/860\d{2}$/.test(url));
     assert.equal(firstPrimaryAttempts, 2);
-    assert.equal(correctionRefreshes.length, MND_REFRESH_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(correctionRefreshes.length, 0);
     assert.equal(detailCalls.length, MND_MAX_DETAIL_REQUESTS_PER_RUN);
   });
   }
 
-  it('preserves correction refresh wall-clock headroom when a primary detail needs a retry', async () => {
+  for (const route of ['direct', 'proxy'] as const) it(`spends wall-clock headroom on required rows with a ${route} retry`, async () => {
     const previousSnapshot = buildCrossStraitActivitySnapshot({
       generatedAt: retrievedAt,
       previousSnapshot: null,
@@ -3155,22 +3866,33 @@ describe('quantified cross-Strait activity (#5575)', () => {
       detailCalls.push(url);
       if (url === firstPrimaryUrl) {
         firstPrimaryAttempts += 1;
-        if (firstPrimaryAttempts === 1) return new Response(mndDetailWithoutPublicationMetadata());
+        if (firstPrimaryAttempts === 1) {
+          if (route === 'proxy') throw new Error('request timeout');
+          return new Response(mndDetailWithoutPublicationMetadata());
+        }
       }
       return new Response(fixture('mnd-detail.html'));
     };
 
+    let proxyCalls = 0;
     await fetchCrossStraitActivitySnapshot({
       fetchFn,
       now: Date.parse(retrievedAt),
       nowFn: () => clock,
       previousSnapshot,
       sleepFn: async (ms) => { clock += ms; },
+      mndProxyUrl: route === 'proxy' ? 'https://proxy.test' : '',
+      proxyRequestFn: async (url: string) => {
+        proxyCalls += 1;
+        return { status: 200, buffer: Buffer.from(await (await fetchFn(url)).text()) };
+      },
     });
 
     const correctionRefreshes = detailCalls.filter((url) => /\/PLAAct\/860\d{2}$/.test(url));
     assert.equal(firstPrimaryAttempts, 2);
-    assert.equal(correctionRefreshes.length, MND_REFRESH_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(proxyCalls > 0, route === 'proxy');
+    assert.equal(correctionRefreshes.length, 0);
+    assert.ok(detailCalls.length <= MND_MAX_DETAIL_REQUESTS_PER_RUN);
     assert.ok(clock <= MND_OUTBOUND_BUDGET_MS);
   });
 
@@ -3181,11 +3903,11 @@ describe('quantified cross-Strait activity (#5575)', () => {
       mndOutcome: {
         ok: true,
         requestCount: 0,
-        observations: Array.from({ length: 28 }, (_, index) => mndObservationForDay(index + 1)),
+        observations: Array.from({ length: MND_REQUIRED_REPORTING_DAYS }, (_, index) => mndObservationForDay(index + 1)),
       },
       japanOutcome: { ok: true, requestCount: 0, availableDocumentUrls: [] },
     });
-    const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    const list = mndListWithCount(1);
     const detailCalls: string[] = [];
     let firstCorrectionUrl = '';
     let clock = 0;
@@ -3196,7 +3918,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       detailCalls.push(url);
       const isCorrection = /\/PLAAct\/860\d{2}$/.test(url);
       if (isCorrection && firstCorrectionUrl === '') firstCorrectionUrl = url;
-      clock += url === firstCorrectionUrl ? 15_000 : 13_000;
+      clock += isCorrection ? (url === firstCorrectionUrl ? 15_000 : 13_000) : 130_000;
       return new Response(
         url === firstCorrectionUrl
           ? mndDetailWithoutPublicationMetadata()
@@ -3219,10 +3941,212 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.ok(detailCalls.length <= MND_MAX_DETAIL_REQUESTS_PER_RUN);
     assert.ok(clock <= MND_OUTBOUND_BUDGET_MS);
     assert.equal(mnd?.transportStatus, 'fresh');
-    assert.deepEqual(mnd?.errorCodes, ['OUTBOUND_BUDGET_EXHAUSTED']);
+    assert.deepEqual(mnd?.errorCodes, []);
     assert.ok(mnd?.refreshErrorCodes.includes('MND_PUBLICATION_METADATA_MISSING'));
     assert.ok(mnd?.refreshErrorCodes.includes('OUTBOUND_BUDGET_EXHAUSTED'));
   });
+
+  for (const failure of ['timeout', 'budget'] as const) {
+  it(`keeps complete retained current-list coverage through optional refresh ${failure}`, async () => {
+    const original = parseTaiwanMndDetail(fixture('mnd-detail.html'), {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/90000',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt, previousSnapshot: null,
+      mndOutcome: { ok: true, observations: [original, ...Array.from(
+        { length: MND_REQUIRED_REPORTING_DAYS }, (_, index) => mndObservationForDay(index + 1),
+      )] },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const detailCalls: string[] = [];
+    const nextRun = '2026-07-25T11:30:00.000Z';
+    let clock = 0;
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      previousSnapshot, now: Date.parse(nextRun), nowFn: () => clock, sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+        if (url.includes('plaactlist')) {
+          if (failure === 'budget') clock = MND_OUTBOUND_BUDGET_MS;
+          return new Response(mndListWithCount(1));
+        }
+        detailCalls.push(url);
+        throw new Error('request timeout');
+      },
+    });
+    const mnd = snapshot.sources[0];
+    assert.equal(mnd.transportStatus, 'fresh');
+    assert.equal(mnd.lastSuccessAt, nextRun);
+    assert.deepEqual(mnd.errorCodes, []);
+    assert.deepEqual(mnd.refreshErrorCodes, [failure === 'timeout' ? 'TIMEOUT' : 'OUTBOUND_BUDGET_EXHAUSTED']);
+    if (failure === 'timeout') assert.equal(detailCalls[0], original.sourceUrl);
+    assert.equal(new Set(detailCalls).size, failure === 'timeout' ? MND_REFRESH_DETAIL_REQUESTS_PER_RUN : 0);
+    assert.ok(mnd.requestDiagnostics.every((row: { purpose: string }) => row.purpose === 'refresh'));
+    assert.deepEqual(snapshot.observations, previousSnapshot.observations);
+  });
+  }
+
+  for (const invalid of ['changed-date', 'different-url', 'period', 'counts', 'category-keys', 'revision', 'provenance', 'publication'] as const) {
+    it(`requires current detail work for retained ${invalid} evidence`, async () => {
+      const original = parseTaiwanMndDetail(fixture('mnd-detail.html'), {
+        sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/90000',
+        retrievedAt, expectedPublicationDay: '2026-07-25',
+      });
+      const previousSnapshot = buildCrossStraitActivitySnapshot({
+        generatedAt: retrievedAt, previousSnapshot: null,
+        mndOutcome: { ok: true, observations: [original] },
+        japanOutcome: { ok: true, availableDocumentUrls: [] },
+      });
+      const row = previousSnapshot.observations[0];
+      if (invalid === 'different-url') row.sourceUrl += '1';
+      if (invalid === 'period') row.reportingPeriod.end = row.reportingPeriod.start;
+      if (invalid === 'counts') row.categories.planShips = -1;
+      if (invalid === 'category-keys') {
+        delete row.categories.planShips;
+        row.categories.unknown = 1;
+      }
+      if (invalid === 'revision') row.revision.sequence = 0;
+      if (invalid === 'provenance') row.provenance.familyId = 'unknown';
+      if (invalid === 'publication') row.publicationTime = 'invalid';
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        previousSnapshot, now: Date.parse('2026-07-26T08:30:00.000Z'), sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+          if (url.includes('plaactlist')) return new Response(invalid === 'changed-date'
+            ? mndListWithCount(1).replaceAll('2026.07.25', '2026.07.26') : mndListWithCount(1));
+          throw new Error('request timeout');
+        },
+      });
+      assert.equal(snapshot.sources[0].transportStatus, 'error');
+      assert.equal(snapshot.sources[0].lastSuccessAt, retrievedAt);
+      assert.ok(snapshot.sources[0].errorCodes.includes('TIMEOUT'));
+      assert.ok(snapshot.sources[0].requestDiagnostics.some(d => d.purpose === 'detail' && d.path.endsWith('/90000')));
+    });
+  }
+
+  it('fetches a required row beyond twenty covered list entries before deterministic current corrections', async () => {
+    const retained = Array.from({ length: MND_REQUIRED_REPORTING_DAYS }, (_, index) => mndObservationForDay(index + 1));
+    const current = retained.slice(0, 21);
+    const knownList = current.map(row => `<a class="news_list" href="${row.sourceUrl}">
+      <h5 class="date">${row.publicationTime.slice(0, 10).replaceAll('-', '.')}</h5></a>`).join('');
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt, previousSnapshot: null,
+      mndOutcome: { ok: true, observations: retained },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const run = async (now: number) => {
+      const calls: string[] = [];
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now, previousSnapshot, sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+          if (url.includes('plaactlist')) return new Response(`<div class="wrap-page3">${knownList}</div>${mndListWithCount(1)}`);
+          calls.push(url);
+          if (url.endsWith('/90000')) return new Response(fixture('mnd-detail.html'));
+          throw new Error('request timeout');
+        },
+      });
+      assert.equal(calls[0], 'https://www.mnd.gov.tw/en/News/PLAAct/90000');
+      assert.equal(new Set(calls).size, 1 + MND_REFRESH_DETAIL_REQUESTS_PER_RUN);
+      assert.equal(snapshot.sources[0].transportStatus, 'fresh');
+      assert.deepEqual(snapshot.sources[0].errorCodes, []);
+      const expected = current[Math.floor(now / (3 * 60 * 60_000)) % current.length].sourceUrl;
+      assert.equal(calls[1], expected);
+      return calls;
+    };
+    const now = Date.parse(retrievedAt);
+    assert.deepEqual(await run(now), await run(now));
+    assert.notEqual((await run(now + 3 * 60 * 60_000))[1], (await run(now))[1]);
+  });
+
+  it('continues staged backfill discovery when twenty current rows already have retained coverage', async () => {
+    const retained = Array.from({ length: 20 }, (_, index) => mndObservationForDay(index + 1));
+    const knownList = `<div class="wrap-page3">${retained.map(row => `<a href="${row.sourceUrl}">
+      <h5 class="date">${row.publicationTime.slice(0, 10).replaceAll('-', '.')}</h5></a>`).join('')}</div>`;
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt, previousSnapshot: null,
+      mndOutcome: { ok: true, observations: retained },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const details: string[] = [];
+    await fetchCrossStraitActivitySnapshot({
+      previousSnapshot, now: Date.parse(retrievedAt), sleepFn: async () => {},
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+        if (url.endsWith('/plaactlist')) return new Response(knownList);
+        if (url.includes('plaactlist')) return new Response(mndListWithCount(20));
+        details.push(url);
+        return new Response(fixture('mnd-detail.html'));
+      },
+    });
+    assert.equal(details.length, MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    assert.ok(details.every(url => /\/900\d{2}$/.test(url)));
+  });
+
+  it('rotates through every historical report when a current correction uses one of three slots', async () => {
+    const currentUrl = 'https://www.mnd.gov.tw/en/News/PLAAct/90000';
+    const current = parseTaiwanMndDetail(fixture('mnd-detail.html'), {
+      sourceUrl: currentUrl, retrievedAt, expectedPublicationDay: '2026-07-25',
+    });
+    const historical = [1, 2, 3].map(day => mndObservationForDay(day));
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt, previousSnapshot: null,
+      mndOutcome: { ok: true, observations: [current, ...historical] },
+      japanOutcome: { ok: true, availableDocumentUrls: [] },
+    });
+    const refreshed = new Set<string>();
+    for (let run = 0; run < 3; run += 1) {
+      await fetchCrossStraitActivitySnapshot({
+        previousSnapshot, now: Date.parse(retrievedAt) + run * 3 * 60 * 60_000, sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+          if (url.includes('plaactlist')) return new Response(mndListWithCount(1));
+          if (url !== currentUrl) refreshed.add(url);
+          throw new Error('request timeout');
+        },
+      });
+    }
+    assert.deepEqual(refreshed, new Set(historical.map(row => row.sourceUrl)));
+  });
+
+  for (const correction of ['unchanged-day', 'advanced-day'] as const) {
+    it(`merges a successful current correction with ${correction} through the existing revision path`, async () => {
+      const sourceUrl = 'https://www.mnd.gov.tw/en/News/PLAAct/90000';
+      const original = parseTaiwanMndDetail(fixture('mnd-detail.html'), {
+        sourceUrl, retrievedAt, expectedPublicationDay: '2026-07-25',
+      });
+      const previousSnapshot = buildCrossStraitActivitySnapshot({
+        generatedAt: retrievedAt, previousSnapshot: null,
+        mndOutcome: { ok: true, observations: [original] },
+        japanOutcome: { ok: true, availableDocumentUrls: [] },
+      });
+      const corrected = fixture('mnd-detail-corrected.html');
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        previousSnapshot, now: Date.parse('2026-07-26T09:00:00.000Z'), sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+          if (url.includes('plaactlist')) return new Response(correction === 'advanced-day'
+            ? mndListWithCount(1).replaceAll('2026.07.25', '2026.07.26') : mndListWithCount(1));
+          return new Response(correction === 'advanced-day' ? corrected : corrected.replace('2026.07.26', '2026.07.25'));
+        },
+      });
+      const row = snapshot.observations[0];
+      assert.equal(snapshot.sources[0].transportStatus, 'fresh');
+      assert.equal(row.categories.plaAircraftSorties, 30);
+      assert.equal(row.reportingDay, original.reportingDay);
+      assert.equal(row.revision.sequence, 2);
+      assert.equal(row.history.length, 1);
+      assert.equal(row.history[0].revision.vintageId, original.revision.vintageId);
+      assert.equal(row.provenance.familyId, original.provenance.familyId);
+    });
+  }
 
   it('keeps current MND health fresh when an optional correction stays malformed after retry', async () => {
     const previousSnapshot = buildCrossStraitActivitySnapshot({
@@ -3554,7 +4478,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
     );
     assert.equal(knownUrlRows.length, 1);
     assert.equal(knownUrlRows[0].reportingDay, '2026-07-25');
-    assert.ok(snapshot.sources[0].errorCodes.includes('MND_REPORTING_DAY_MISMATCH'));
+    assert.ok(snapshot.sources[0].refreshErrorCodes.includes('MND_REPORTING_DAY_MISMATCH'));
   });
 
   it('publishes long-lived history with freshness anchored to the latest reporting window', () => {

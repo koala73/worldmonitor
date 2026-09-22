@@ -1,6 +1,7 @@
 import { SITE_VARIANT } from '@/config/variant';
+import { safeStorageGet } from '@/utils/safe-storage';
 import { getClerkToken } from '@/services/clerk';
-import { withBillingVerificationRetry } from '@/services/billing-retry';
+import { sleepBeforeRetry, withBillingVerificationRetry } from '@/services/billing-retry';
 import { hasExplicitDesktopSignals, isDesktopRuntime } from './desktop-runtime';
 
 // The detector lives in a dependency-free leaf (#5911) so consumers that need
@@ -323,6 +324,13 @@ function isKeyFreeApiTarget(target: string): boolean {
     || target.startsWith('/api/version');
 }
 
+function canRetryRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const request = input instanceof Request ? input : undefined;
+  const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+  const signal = init?.signal === undefined ? request?.signal : init.signal;
+  return (method === 'GET' || method === 'HEAD') && !signal?.aborted;
+}
+
 async function fetchLocalWithStartupRetry(
   target: string,
   input: RequestInfo | URL,
@@ -330,7 +338,7 @@ async function fetchLocalWithStartupRetry(
 ): Promise<Response> {
   const maxAttempts = 4;
   let lastError: unknown = null;
-  const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+  const signal = init?.signal === undefined ? (input instanceof Request ? input.signal : undefined) : init.signal;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -339,8 +347,7 @@ async function fetchLocalWithStartupRetry(
     } catch (error) {
       lastError = error;
 
-      // Preserve caller intent for aborted requests.
-      if (signal?.aborted) {
+      if (!canRetryRequest(input, init)) {
         throw error;
       }
 
@@ -348,7 +355,7 @@ async function fetchLocalWithStartupRetry(
         break;
       }
 
-      await sleep(125 * attempt);
+      await sleepBeforeRetry(125 * attempt, signal ?? null);
     }
   }
 
@@ -371,7 +378,7 @@ export function installRuntimeFetchPatch(): void {
   const nativeFetch = window.fetch.bind(window);
   const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
-    const debug = localStorage.getItem('wm-debug-log') === '1';
+    const debug = safeStorageGet('wm-debug-log') === '1';
 
     if (!target?.startsWith('/api/')) {
       if (debug) {
@@ -382,7 +389,7 @@ export function installRuntimeFetchPatch(): void {
     }
 
     if (debug) console.log(`[fetch] intercept → ${target}`);
-    let allowCloudFallback = !isLocalOnlyApiTarget(target);
+    let allowCloudFallback = !isLocalOnlyApiTarget(target) && canRetryRequest(input, init);
 
     if (allowCloudFallback && !isKeyFreeApiTarget(target)) {
       try {
@@ -398,12 +405,12 @@ export function installRuntimeFetchPatch(): void {
     }
 
     const cloudFallback = async () => {
-      if (!allowCloudFallback) {
+      if (!allowCloudFallback || !canRetryRequest(input, init)) {
         throw new Error(`Cloud fallback blocked for ${target}`);
       }
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
-      return nativeFetch(cloudUrl, init);
+      return nativeFetch(input instanceof Request ? new Request(cloudUrl, input) : cloudUrl, init);
     };
 
     try {
@@ -422,7 +429,7 @@ export function installRuntimeFetchPatch(): void {
       return response;
     } catch (error) {
       if (debug) console.warn(`[runtime] Local API unavailable for ${target}`, error);
-      if (!allowCloudFallback) {
+      if (!allowCloudFallback || !canRetryRequest(input, init)) {
         throw error;
       }
       return cloudFallback();
@@ -520,9 +527,10 @@ export function installWebApiRedirect(): void {
     ): Promise<Response> => {
       try {
         const redirectedResponse = await nativeFetch(redirectedInput, originalInit);
-        if (!shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
+        if (!canRetryRequest(originalInput, originalInit) || !shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
         return nativeFetch(originalInput, originalInit);
       } catch (error) {
+        if (!canRetryRequest(originalInput, originalInit)) throw error;
         try {
           return await nativeFetch(originalInput, originalInit);
         } catch {
@@ -542,17 +550,11 @@ export function installWebApiRedirect(): void {
         // rely on the relative-path branch above for origin recovery. Keep the
         // same fallback here: browser extensions and network policy can block
         // api.worldmonitor.app while the page's own /api/ route remains usable.
-        // Only idempotent methods may retry automatically: replaying a mutation
-        // whose response was lost could enqueue or apply it twice server-side.
         if (input.startsWith(`${API_BASE}/api/`)) {
           const pathAndSearch = input.slice(API_BASE.length);
-          const method = (init?.method ?? 'GET').toUpperCase();
           const enriched = await enrichInitForPremium(pathAndSearch, init);
           const initWithCredentials = enriched ? withCredentials(enriched) : withCredentials(init);
-          if (method === 'GET' || method === 'HEAD') {
-            return fetchWithRedirectFallback(input, pathAndSearch, initWithCredentials);
-          }
-          return nativeFetch(input, initWithCredentials);
+          return fetchWithRedirectFallback(input, pathAndSearch, initWithCredentials);
         }
       }
       if (input instanceof URL) {

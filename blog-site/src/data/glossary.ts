@@ -34,11 +34,13 @@ export interface GlossaryTerm {
   category: GlossaryCategory;
   /**
    * Standalone definition (≤25 words). Used verbatim as the DefinedTerm
-   * `description`, the list-page blurb, the meta description, and the
-   * FAQPage answer — so it must read as a complete answer ("X is …")
+   * `description`, the list-page blurb, and the FAQPage answer — so it
+   * must read as a complete answer ("X is …")
    * before the body elaborates.
    */
   short: string;
+  /** Optional search summary when the short definition needs more context. */
+  metaDescription?: string;
   /** Body paragraphs. First paragraph should restate the crisp definition. */
   body: string[];
   /** Slugs of related terms (must resolve to another entry). */
@@ -218,6 +220,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     slug: 'strait-of-hormuz',
+    metaDescription: 'Learn what the Strait of Hormuz is, how it connects the Persian Gulf to world shipping, and why oil, gas flows and maritime disruption matter to energy markets.',
     term: 'Strait of Hormuz',
     category: 'Maritime & Chokepoints',
     short:
@@ -228,6 +231,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
     related: ['maritime-chokepoint', 'ais', 'chokepoint-congestion'],
     learnMore: [
+      { label: 'Strait of Hormuz tracker', href: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' },
       { label: 'Energy shock monitoring (blog)', href: 'https://www.worldmonitor.app/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/' },
     ],
   },
@@ -242,6 +246,9 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
       'Its width and traffic density make it a textbook chokepoint: alternative routes exist but are longer and lower-capacity, so congestion or disruption in Malacca reverberates through Asian supply chains and freight costs.',
     ],
     related: ['maritime-chokepoint', 'suez-canal', 'ais'],
+    learnMore: [
+      { label: 'Strait of Malacca tracker', href: 'https://www.worldmonitor.app/chokepoints/strait-of-malacca/' },
+    ],
   },
   {
     slug: 'suez-canal',
@@ -255,6 +262,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
     related: ['maritime-chokepoint', 'strait-of-malacca', 'chokepoint-congestion'],
     learnMore: [
+      { label: 'Suez Canal tracker', href: 'https://www.worldmonitor.app/chokepoints/suez-canal/' },
       { label: 'Tracking global trade routes (blog)', href: 'https://www.worldmonitor.app/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/' },
     ],
   },

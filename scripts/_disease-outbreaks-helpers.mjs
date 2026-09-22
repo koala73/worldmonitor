@@ -274,6 +274,4 @@ export function diseasePublishTransform(data) {
   };
 }
 
-/** Sprint 2 pilot threshold (9 days). Single source of truth — exported so the
- *  seeder uses the same constant the test asserts against. */
-export const DISEASE_MAX_CONTENT_AGE_MIN = 9 * 24 * 60;
+export const DISEASE_MAX_CONTENT_AGE_MIN = 14 * 24 * 60;

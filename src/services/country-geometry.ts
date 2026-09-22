@@ -275,8 +275,8 @@ async function ensureLoaded(): Promise<void> {
         return;
       }
 
-      loadedGeoJson = data;
       rebuildCountryIndex(data);
+      loadedGeoJson = data;
       markLcpDebug('wm:data:country-geometry-fetch-ready', { features: data.features.length });
 
       // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
@@ -294,12 +294,17 @@ async function ensureLoaded(): Promise<void> {
         // Overrides optional; ignore fetch/parse errors
       }
     } catch (err) {
+      rebuildCountryIndex({ type: 'FeatureCollection', features: [] });
       markLcpDebug('wm:data:country-geometry-fetch-error');
       console.warn('[country-geometry] Failed to load countries.geojson:', err);
     }
   })();
 
-  await loadPromise;
+  try {
+    await loadPromise;
+  } finally {
+    loadPromise = null;
+  }
 }
 
 export async function preloadCountryGeometry(): Promise<void> {

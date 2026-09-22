@@ -286,6 +286,36 @@ function makeReq(grantType, params) {
   });
 }
 
+it('preserves dashboard key identity through code exchange and refresh', async () => {
+  const { redis, deps } = makeDeps();
+  const keyHash = await sha256Hex(`wm_${'a'.repeat(40)}`);
+  redis.store.set('oauth:code:dashboard', {
+    kind: 'user_key', api_key_hash: keyHash, client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI, code_challenge: CODE_CHALLENGE, scope: 'mcp',
+  });
+  redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+  const response = await tokenHandler(makeReq('authorization_code', {
+    code: 'dashboard', code_verifier: CODE_VERIFIER,
+    client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
+  }), deps);
+  assert.equal(response.status, 200);
+  const tokens = await response.json();
+  assert.deepEqual(JSON.parse(redis.store.get(`oauth:token:${tokens.access_token}`)), {
+    kind: 'user_key', api_key_hash: keyHash,
+  });
+  const refresh = JSON.parse(redis.store.get(`oauth:refresh:${tokens.refresh_token}`));
+  assert.equal(refresh.kind, 'user_key');
+  const rotated = await tokenHandler(makeReq('refresh_token', {
+    refresh_token: tokens.refresh_token, client_id: CLIENT_ID,
+  }), deps);
+  assert.equal(rotated.status, 200);
+  const next = await rotated.json();
+  assert.deepEqual(JSON.parse(redis.store.get(`oauth:token:${next.access_token}`)), {
+    kind: 'user_key', api_key_hash: keyHash,
+  });
+  assert.equal(JSON.parse(redis.store.get(`oauth:refresh:${next.refresh_token}`)).family_id, refresh.family_id);
+});
+
 describe('OAuth Redis refresh-attempt production contract', () => {
   it('atomically consumes a refresh token and creates a short-lived attempt', async () => {
     const realFetch = globalThis.fetch;
@@ -669,6 +699,22 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.match(body.error_description, /invalid, expired, or already used/);
   });
 
+  it('refresh client lookup failure returns Retry-After and preserves the refresh token', async () => {
+    const { redis, deps } = makeDeps();
+    const refresh = { kind: 'pro', client_id: CLIENT_ID, userId: USER_ID, mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro', family_id: 'fam' };
+    redis.store.set('oauth:refresh:rt-client-failure', refresh);
+    const get = deps.redisGet;
+    deps.redisGet = async key => {
+      if (key === `oauth:client:${CLIENT_ID}`) throw new Error('Controlled client lookup failure');
+      return get(key);
+    };
+    const response = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-client-failure', client_id: CLIENT_ID }), deps);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '5');
+    const restored = redis.store.get('oauth:refresh:rt-client-failure');
+    assert.deepEqual(typeof restored === 'string' ? JSON.parse(restored) : restored, refresh);
+  });
+
   it('F3: Pro refresh on Convex transient → 503 + Retry-After + refresh token preserved', async () => {
     await ensureFixtures();
     const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
@@ -687,6 +733,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       deps,
     );
     assert.equal(resp.status, 503, 'transient Convex failure → 503');
+    assert.equal(resp.headers.get('Retry-After'), '5');
     const body = await resp.json();
     assert.equal(body.error, 'server_error');
     // F3: refresh token must be restored to Redis with the original payload.
@@ -922,6 +969,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal((await resp.json()).error, 'server_error');
   });
 
@@ -940,6 +988,28 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     );
     assert.equal(resp.status, 400);
     assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
+  it('client lookup failure returns retry guidance and restores the refresh token', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    redis.store.set('oauth:refresh:rt-client-read', {
+      kind: 'pro', client_id: CLIENT_ID, userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro', family_id: 'fam_client_read',
+    });
+    const originalRedisGet = deps.redisGet;
+    deps.redisGet = async (key) => {
+      if (key === `oauth:client:${CLIENT_ID}`) throw new Error('redis unavailable');
+      return originalRedisGet(key);
+    };
+    const resp = await tokenHandler(makeReq('refresh_token', {
+      refresh_token: 'rt-client-read', client_id: CLIENT_ID,
+    }), deps);
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
+    assert.equal((await resp.json()).error, 'server_error');
+    assert.equal((await originalRedisGet('oauth:refresh:rt-client-read')).kind, 'pro');
+    assert.equal([...redis.store.keys()].some(key => key.startsWith('oauth:token:')), false);
   });
 
   it('revocation-state read failure restores the consumed token and does not rotate', async () => {
@@ -964,6 +1034,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     _uuidCounter = 950;
     const resp = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-live', client_id: CLIENT_ID }), deps);
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal((await resp.json()).error, 'server_error');
     const restored = redis.store.get('oauth:refresh:rt-live');
     assert.ok(restored, 'refresh token is restored when revocation state is unknown');
@@ -997,6 +1068,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal(JSON.parse(redis.store.get('oauth:famptr:rt-read-fail')).kind, 'refresh_recovery_failed');
     assert.equal(JSON.parse(redis.store.get('oauth:famattempt:rt-read-fail')).state, 'failed');
     assert.deepEqual(restoreFailures, [
@@ -1028,6 +1100,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.equal(redis.store.has('oauth:refresh:rt-backfill-fail'), true);
     assert.equal(redis.store.has('oauth:famptr:rt-backfill-fail'), true);
     assert.deepEqual(restoreFailures, []);
@@ -1052,6 +1125,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
       deps,
     );
     assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('Retry-After'), '5');
     assert.ok(redis.store.has('oauth:refresh:rt-transient'));
     assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-transient', FAMILY, REFRESH_TTL_SECONDS);
   });
@@ -1762,6 +1836,84 @@ describe('U6 tokenHandler — client_credentials (regression guard)', () => {
 // ---------------------------------------------------------------------------
 // Rate-limit degradation observability (#7270)
 // ---------------------------------------------------------------------------
+
+describe('oauth/token trusted-IP abuse budget', () => {
+  for (const grantType of ['client_credentials', 'authorization_code', 'refresh_token']) {
+    it(`${grantType}: rotating identifiers cannot bypass the IP limit`, async () => {
+      const { Ratelimit } = await import('@upstash/ratelimit');
+      const { Redis } = await import('@upstash/redis');
+      const originalFetch = globalThis.fetch;
+      const counts = new Map();
+      globalThis.fetch = async (input, init) => {
+        assert.ok(String(input).startsWith('https://redis.test/'));
+        const body = JSON.parse(init.body);
+        const pipeline = Array.isArray(body[0]);
+        const results = (pipeline ? body : [body]).map((command) => {
+          assert.ok(['eval', 'evalsha'].includes(command[0].toLowerCase()));
+          // Ignore the sliding-window suffix so the fixture is stable across a minute boundary.
+          const key = command[3].replace(/:[0-9]+$/, '');
+          const count = (counts.get(key) ?? 0) + 1;
+          counts.set(key, count);
+          return { result: [10 - count, 10] };
+        });
+        return Response.json(pipeline ? results : results[0]);
+      };
+      try {
+        __setOAuthTokenRatelimitForTest(new Ratelimit({
+          redis: new Redis({ url: 'https://redis.test', token: 'test-token' }),
+          limiter: Ratelimit.slidingWindow(10, '60 s'),
+          prefix: 'rl:oauth-token', analytics: false,
+        }));
+        const { deps, redis } = makeDeps();
+        const request = (i, ip = '192.0.2.1') => {
+          const req = makeReq(grantType, {
+            client_secret: `invalid-secret-${i}`, client_id: `client-${i}`,
+            code: `missing-code-${i}`, code_verifier: CODE_VERIFIER,
+            redirect_uri: REDIRECT_URI, refresh_token: `missing-refresh-${i}`,
+          });
+          req.headers.set('x-real-ip', ip);
+          req.headers.set('x-forwarded-for', `198.51.100.${i}`);
+          req.headers.set('cf-connecting-ip', `198.51.100.${i}`);
+          return req;
+        };
+        const invalidStatus = grantType === 'client_credentials' ? 401 : 400;
+        for (let i = 0; i < 10; i++) {
+          assert.equal((await tokenHandler(request(i), deps)).status, invalidStatus);
+        }
+        const previousOps = redis.ops.length;
+        const blocked = await tokenHandler(request(10), deps);
+        assert.equal(blocked.status, 429);
+        assert.equal((await blocked.json()).error, 'rate_limit_exceeded');
+        assert.equal(redis.ops.length, previousOps, 'blocked request must not process the grant');
+        assert.equal((await tokenHandler(request(10, '192.0.2.2'), deps)).status, invalidStatus);
+        assert.deepEqual([...counts.keys()].sort(), [
+          'rl:oauth-token:ip:192.0.2.1', 'rl:oauth-token:ip:192.0.2.2',
+        ]);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  }
+
+  it('grant switching and missing trusted IP use one stable fallback bucket', async () => {
+    const keys = [];
+    __setOAuthTokenRatelimitForTest({
+      limit: async (key) => {
+        keys.push(key);
+        return { success: false };
+      },
+    });
+    const { deps, redis } = makeDeps();
+    for (const grantType of ['client_credentials', 'authorization_code', 'refresh_token', 'unsupported']) {
+      const req = makeReq(grantType, { client_id: grantType, client_secret: grantType });
+      req.headers.set('x-forwarded-for', '198.51.100.1');
+      req.headers.set('cf-connecting-ip', '198.51.100.2');
+      assert.equal((await tokenHandler(req, deps)).status, 429);
+    }
+    assert.deepEqual(keys, Array(4).fill('ip:unknown'));
+    assert.deepEqual(redis.ops, []);
+  });
+});
 
 describe('oauth/token rate-limit degradation (#7270)', () => {
   const originalEnv = { ...process.env };

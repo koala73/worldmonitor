@@ -7,6 +7,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
+import { Ratelimit } from '@upstash/ratelimit';
 
 import {
   HMAC_SECRET,
@@ -15,6 +16,7 @@ import {
   PRO_USER_ID,
   makeProDeps,
 } from './helpers/mcp-pro-deps.mjs';
+import { assertJsonRpcError, assertJsonRpcResult } from './helpers/mcp-jsonrpc-schema.mjs';
 
 const originalEnv = { ...process.env };
 
@@ -386,6 +388,10 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     });
     assert.equal(initialize.status, 200);
     assert.match(initialize.headers.get('content-type') ?? '', /text\/event-stream/i);
+    // #8403: jsonResponse advertises Content-Length for the bare JSON body.
+    // SSE framing is larger — the converted stream must not keep that length
+    // or the wire truncates mid-JSON (Unterminated string).
+    assert.equal(initialize.headers.get('content-length'), null);
 
     const events = await readAllSseEvents(initialize);
     assert.ok(events.length >= 1, 'stream must contain at least one event');
@@ -874,5 +880,114 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     });
     assert.equal(res.status, 405);
     assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
+  });
+});
+
+// #7818 — a rate-limit denial has to survive the WIRE, not just the handler
+// return value. An MCP client parses whatever comes back through the spec's
+// `JSONRPCMessage` union (`RequestId = string | number`), so an `id: null`
+// error envelope is rejected as `invalid_union` before the client can see the
+// -32029 at all. `assertJsonRpcError` applies that union rule to the parsed
+// HTTP body, which is why this check belongs at the transport layer rather than
+// beside the in-process handler cases in
+// tests/mcp-rate-limit-request-id.test.mjs.
+//
+// Keep this block LAST in the file. It is the only one that ENABLES the Upstash
+// env; the blocks above delete it, so `getMcpAnonRatelimit()` returns null up
+// there and never memoizes. auth.ts's limiter singletons are module-scoped and
+// the `?t=` cache-bust below does not reach them (api/mcp.ts re-exports
+// ./mcp/auth by a plain specifier), so a describe appended after this one that
+// also enables the env would silently inherit this block's stubbed limiter.
+describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#7818)', () => {
+  const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
+  let server;
+  let denyLimiter;
+  let limiterKeys;
+
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+    denyLimiter = false;
+    limiterKeys = [];
+    // `denyLimiter` is read at CALL time, not captured at construction time.
+    // That matters because auth.ts memoizes its limiter singletons, so the
+    // instance built during the first test survives into the next one; a stub
+    // that closed over a value would freeze the first test's verdict for the
+    // whole describe. `limiterKeys` is what keeps the allowed case honest —
+    // without it, an unstubbed or unconfigured limiter would return null and
+    // the read would pass for the wrong reason.
+    Ratelimit.slidingWindow = (tokens, window) => () => ({
+      async limit(_ctx, key) {
+        limiterKeys.push(key);
+        return {
+          success: !denyLimiter,
+          limit: tokens,
+          remaining: denyLimiter ? 0 : tokens - 1,
+          reset: Date.now() + 60_000,
+          pending: Promise.resolve(),
+          window,
+        };
+      },
+    });
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}-rl`);
+    server = await startMcpServer(mod.mcpHandler, makeProDeps().deps);
+  });
+
+  afterEach(async () => {
+    Ratelimit.slidingWindow = ORIGINAL_SLIDING_WINDOW;
+    if (server) await server.close();
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('an over-limit anonymous resources/read parses as a spec-valid JSONRPCError carrying the request id', async () => {
+    denyLimiter = true;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'ora-agent',
+        'x-real-ip': '198.51.100.77',
+      },
+      body: JSON.stringify(rpcBody('ora-read-7818', 'resources/read', { uri: 'ui://worldmonitor/country-risk.html' })),
+    });
+
+    assert.equal(res.status, 200, 'a JSON-RPC rate-limit denial rides HTTP 200 on this surface');
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assertJsonRpcError(await res.json(), {
+      id: 'ora-read-7818',
+      code: -32029,
+      label: 'over-the-wire anonymous denial',
+    });
+    assert.ok(
+      limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
+      'the real anonymous discovery limiter must be what rejected, not a stubbed-out no-op',
+    );
+  });
+
+  it('the same read succeeds and correlates once the window recovers', async () => {
+    denyLimiter = false;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'ora-agent',
+        'x-real-ip': '198.51.100.77',
+      },
+      body: JSON.stringify(rpcBody(9001, 'resources/read', { uri: 'ui://worldmonitor/country-risk.html' })),
+    });
+
+    assert.equal(res.status, 200);
+    assertJsonRpcResult(await res.json(), { id: 9001, label: 'recovered anonymous read' });
+    assert.ok(
+      limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
+      'the recovered read must still have been metered — otherwise this control proves nothing',
+    );
   });
 });

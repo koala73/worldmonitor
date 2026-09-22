@@ -52,19 +52,17 @@ export interface CountryIntelCacheKeyOpts {
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
-  // v5 to v6 removes cached briefs that could describe missing import data as 0%.
-  // v6 to v7 removes briefs generated with the ISO code as the country name
-  // ("WHAT THIS MEANS FOR NO", #7738) and grounded by the code-token matcher.
+  // v8 retires briefs generated with forced impacts and forecasts beyond their source titles.
   const energyTag = opts.energyYear ? `:e${opts.energyYear}` : '';
   const energyImportTag = opts.energyImportYear ? `:i${opts.energyImportYear}` : '';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:v7:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
+    return `ci-sebuf:v8:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
   }
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
-  return `ci-sebuf:v7:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}${energyImportTag}`;
+  return `ci-sebuf:v8:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}${energyImportTag}`;
 }
 
 interface DigestItemForBrief {

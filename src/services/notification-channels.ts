@@ -260,7 +260,13 @@ export async function setEmailChannel(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-channel', channelType: 'email', email }),
   }, expectedUserId, signal);
-  if (!res.ok) throw new Error(`set email channel: ${res.status}`);
+  if (!res.ok) {
+    const failure = await res.json().catch(() => null);
+    if (failure?.error === 'EMAIL_OWNERSHIP_REQUIRED') {
+      throw new Error('Verify your account email, then try again.');
+    }
+    throw new Error('Could not connect email. Please try again.');
+  }
 }
 
 export async function setSlackChannel(

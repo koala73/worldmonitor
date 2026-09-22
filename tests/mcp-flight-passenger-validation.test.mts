@@ -53,7 +53,7 @@ describe('MCP Google Flights passenger validation', () => {
       { passengers: Number.NaN, expected: '1' },
       { passengers: 0, expected: '1' },
       { passengers: 10, expected: '9' },
-      { passengers: 1.5, expected: '1.5' },
+      { passengers: 1.5, expected: '1' },
     ]) {
       it(`${name} normalizes passengers=${String(passengers)} to ${expected}`, async () => {
         let capturedUrl = '';

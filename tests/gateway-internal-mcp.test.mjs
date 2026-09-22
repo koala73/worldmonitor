@@ -918,6 +918,7 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
         'Content-Type': 'application/json',
         [INTERNAL_MCP_SIG_HEADER]: 'notanumber.AAAA',
         [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+        [INTERNAL_MCP_NONCE_HEADER]: 'malformed_signature_nonce',
       },
       body: JSON.stringify({ x: 1 }),
     });
@@ -1002,7 +1003,9 @@ describe('gateway internal-MCP — usage telemetry reasons', () => {
     );
   });
 
-  it('malformed signature still emits auth_401', async () => {
+  // Was `auth_401`. Split so a malformed signature envelope is separable from
+  // clock skew and from a real mismatch — the caller-facing 401 is unchanged.
+  it('malformed signature emits internal_mcp_malformed_sig, not a generic auth_401', async () => {
     enableGatewayTelemetry();
     const handler = makeGateway();
     const recorder = makeRecordingCtx();
@@ -1012,6 +1015,7 @@ describe('gateway internal-MCP — usage telemetry reasons', () => {
         'Content-Type': 'application/json',
         [INTERNAL_MCP_SIG_HEADER]: 'notanumber.AAAA',
         [INTERNAL_MCP_USER_ID_HEADER]: PRO_USER_ID,
+        [INTERNAL_MCP_NONCE_HEADER]: 'malformed_signature_nonce',
       },
       body: JSON.stringify({ x: 1 }),
     });
@@ -1021,7 +1025,7 @@ describe('gateway internal-MCP — usage telemetry reasons', () => {
     await recorder.settled();
     assert.equal(axiomEvents.length, 1, 'exactly one request event');
     assert.equal(axiomEvents[0].status, 401);
-    assert.equal(axiomEvents[0].reason, 'auth_401');
+    assert.equal(axiomEvents[0].reason, 'internal_mcp_malformed_sig');
   });
 });
 
@@ -1395,5 +1399,142 @@ describe('gateway internal-MCP — F8: body size cap', () => {
     assert.equal(res.status, 413);
     const j = await res.json();
     assert.equal(j.error, 'payload_too_large');
+  });
+});
+
+// ===========================================================================
+// FAILURE-MODE TELEMETRY
+//
+// A rare internal-MCP 401 showed up on three routes with nothing to reproduce
+// from: the gateway collapsed "clock skew", "forged signature" and "already
+// spent nonce" into one opaque reply, so production could not say which had
+// happened. The reply MUST stay opaque — it is the anti-oracle. The telemetry
+// must not.
+// ===========================================================================
+describe('gateway internal-MCP HMAC verify — failure-mode telemetry', () => {
+  const URL_UNDER_TEST = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+  const BODY = JSON.stringify({ provider: 'auto', mode: 'brief' });
+
+  function lastRequestEvent() {
+    const requests = axiomEvents.filter((e) => e.event_type === 'request');
+    return requests[requests.length - 1] ?? null;
+  }
+
+  async function runMode(mode) {
+    enableGatewayTelemetry();
+    const handler = makeGateway();
+    const recorder = makeRecordingCtx();
+    const send = async (req) => {
+      const res = await handler(req, recorder.ctx);
+      await recorder.settled();
+      return res;
+    };
+    if (mode === 'no_user') {
+      const signedReq = await buildSignedRequest({ url: URL_UNDER_TEST });
+      const headers = new Headers(signedReq.headers);
+      headers.delete(INTERNAL_MCP_USER_ID_HEADER);
+      return send(new Request(URL_UNDER_TEST, { method: 'POST', headers, body: BODY }));
+    }
+    if (mode === 'malformed_sig') {
+      return send(await buildSignedRequest({
+        url: URL_UNDER_TEST,
+        extraHeaders: { [INTERNAL_MCP_SIG_HEADER]: 'not-a-dot-separated-signature' },
+      }));
+    }
+    if (mode === 'missing_nonce' || mode === 'invalid_nonce') {
+      const signedReq = await buildSignedRequest({ url: URL_UNDER_TEST });
+      const headers = new Headers(signedReq.headers);
+      if (mode === 'missing_nonce') headers.delete(INTERNAL_MCP_NONCE_HEADER);
+      else headers.set(INTERNAL_MCP_NONCE_HEADER, 'invalid-nonce!');
+      return send(new Request(URL_UNDER_TEST, { method: 'POST', headers, body: BODY }));
+    }
+    if (mode === 'ts_window') {
+      // Signed well outside the ±30s acceptance span.
+      const staleNow = Math.floor(Date.now() / 1000) - 600;
+      return send(await buildSignedRequest({ url: URL_UNDER_TEST, now: staleNow }));
+    }
+    if (mode === 'sig_mismatch') {
+      return send(await buildSignedRequest({ url: URL_UNDER_TEST, secret: `${HMAC_SECRET}-WRONG` }));
+    }
+    if (mode === 'bad_request') {
+      const signedReq = await buildSignedRequest({ url: URL_UNDER_TEST });
+      const body = new ReadableStream({
+        start(controller) { controller.error(new Error('synthetic body read failure')); },
+      });
+      return send(new Request(URL_UNDER_TEST, {
+        method: 'POST', headers: signedReq.headers, body, duplex: 'half',
+      }));
+    }
+    if (mode === 'replay') {
+      const signed = await signInternalMcpRequest({
+        method: 'POST', url: URL_UNDER_TEST, body: BODY,
+        userId: PRO_USER_ID, secret: HMAC_SECRET, nonce: 'telemetry_replay_nonce_01',
+      });
+      const headers = {
+        'Content-Type': 'application/json',
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+        [INTERNAL_MCP_NONCE_HEADER]: signed.nonce,
+      };
+      const first = await send(new Request(URL_UNDER_TEST, { method: 'POST', headers, body: BODY }));
+      assert.equal(first.status, 200, 'the nonce must be spent by a real success first');
+      return send(new Request(URL_UNDER_TEST, { method: 'POST', headers, body: BODY }));
+    }
+    throw new Error(`unknown mode: ${mode}`);
+  }
+
+  const MODES = [
+    ['no_user', 'internal_mcp_no_user'],
+    ['malformed_sig', 'internal_mcp_malformed_sig'],
+    ['missing_nonce', 'internal_mcp_bad_nonce'],
+    ['invalid_nonce', 'internal_mcp_bad_nonce'],
+    ['ts_window', 'internal_mcp_ts_window'],
+    ['sig_mismatch', 'internal_mcp_sig_mismatch'],
+    ['bad_request', 'internal_mcp_bad_request'],
+    ['replay', 'internal_mcp_replay'],
+  ];
+
+  for (const [mode, expectedReason] of MODES) {
+    it(`reports ${expectedReason} to telemetry for the ${mode} rejection`, async () => {
+      const res = await runMode(mode);
+      assert.equal(res.status, 401);
+      const event = lastRequestEvent();
+      assert.ok(event, 'a request event must be emitted for a rejected call');
+      assert.equal(event.reason, expectedReason);
+    });
+  }
+
+  it('returns a byte-identical 401 for every rejection mode', async () => {
+    const seen = [];
+    for (const [mode] of MODES) {
+      const res = await runMode(mode);
+      seen.push({
+        mode,
+        status: res.status,
+        body: await res.text(),
+        contentType: res.headers.get('Content-Type'),
+        // Anything that varies per mode would be the oracle, including a
+        // header a future branch adds only to one path.
+        headers: [...res.headers.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      });
+    }
+    const [first, ...rest] = seen;
+    assert.equal(first.body, '{"error":"invalid_internal_mcp_signature"}');
+    for (const other of rest) {
+      assert.equal(other.status, first.status, `${other.mode} status must match ${first.mode}`);
+      assert.equal(other.body, first.body, `${other.mode} body must match ${first.mode}`);
+      assert.equal(other.contentType, first.contentType, `${other.mode} content-type must match ${first.mode}`);
+      assert.deepEqual(other.headers, first.headers, `${other.mode} headers must match ${first.mode}`);
+    }
+  });
+
+  it('keeps every emitted reason distinct so the modes stay separable in Axiom', async () => {
+    const reasons = [];
+    for (const [mode] of MODES) {
+      await runMode(mode);
+      reasons.push(lastRequestEvent()?.reason);
+    }
+    const expectedReasons = new Set(MODES.map(([, reason]) => reason));
+    assert.equal(new Set(reasons).size, expectedReasons.size, `reasons collapsed: ${reasons.join(', ')}`);
   });
 });

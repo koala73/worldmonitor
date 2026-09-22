@@ -458,7 +458,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListTechEvents
-            description: ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
+            description: Find technology events from Techmeme, dev.events and curated sources, filtering by type, map availability, result limit and upcoming days for event discovery.
             operationId: ListTechEvents
             parameters:
                 - name: type

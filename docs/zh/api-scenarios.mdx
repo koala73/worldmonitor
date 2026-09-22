@@ -1,9 +1,9 @@
 ---
 title: "场景 API"
-description: "针对指定国家或 v1 种子报告器集合运行预定义供应链中断场景，并轮询后台 worker 计算结果的 Scenarios API 完整端点参考，涵盖场景触发、参数配置、任务状态查询、中间进度事件、结果导出、历史回放与订阅通知端点，适用于风险推演、桌面演习与压力测试。"
+description: "针对指定国家或种子元数据中有界的国家/行业清单运行预定义供应链中断场景，并轮询后台 worker 计算结果的 Scenarios API 完整端点参考，涵盖场景触发、参数配置、任务状态查询、中间进度事件、结果导出、历史回放与订阅通知端点，适用于风险推演、桌面演习与压力测试。"
 ---
 
-The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之上的 PRO 专属、作业排队接口。调用方将命名的场景模板加入队列（可选国家），然后轮询 job-id 直到 worker 完成。若未提供国家，v1 仅在种子报告集上计算：`US`、`CN`、`RU`、`IR`、`IN` 和 `TW`。
+The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之上的 PRO 专属、作业排队接口。调用方将命名的场景模板加入队列（可选国家），然后轮询 job-id 直到 worker 完成。若未提供国家，worker 使用最新成功种子清单中明确列出的国家和 HS2 范围；清单不可用时返回未知覆盖范围。
 
 <Info>
 本服务由 proto 支持并已纳入已发布的 OpenAPI 包 — 参见 `proto/worldmonitor/scenario/v1/service.proto` 和 `/api/ScenarioService.openapi.yaml`。本页在生成的参考文档之上补充迁移说明和示例。
@@ -66,7 +66,9 @@ The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之�
 ```
 
 - `scenarioId` — 来自 `/list-scenario-templates` 的 id。必填。
-- `iso2` — 可选的 ISO-3166-1 alpha-2（大写）。将场景限定于某个国家。空字符串表示 worker 使用 v1 种子报告集：`US`、`CN`、`RU`、`IR`、`IN` 和 `TW`。
+- `iso2` — 可选的 ISO-3166-1 alpha-2（大写）。将场景限定于某个国家。空字符串表示使用成功种子清单中的国家范围。
+
+- `disruptionPct` — 可选的 0–100 整数，仅适用于物理中断场景。省略时使用模板默认值；0 是有效值。关税场景不接受此覆盖参数。持续时间仅用于说明，不参与分数计算。
 
 **响应（`202 Accepted`）**：
 ```json
@@ -174,3 +176,9 @@ The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之�
 - 后续轮询：指数退避（1s → 2s → 4s，上限 10s）。
 - Worker 通常在 5-30 秒内完成，具体取决于场景复杂度。
 - 如果 2 分钟后仍处于 pending，作业可能已失效 — 请重新入队。
+
+## 结果覆盖证据
+
+`result` 返回 `scenarioId`、`scopedIso2`、`computedAt` 和 `coverage`。`coverage.status` 为 `complete`（仅清单范围内）、`partial` 或 `unknown`。`countryIds`、`hs2Codes`、`manifestFetchedAt` 标明清单范围与缓存时间。`records` 按国家/HS2 区分 `evaluated`、`missing`、`malformed`、`not_seeded`；已计算记录包含 `rawImpact` 和 `basis`（`flow_weighted` 或 `country_route_fallback`）。缺失记录不是零；有效零影响仍保留。旧结果没有覆盖信息时按未知处理。
+
+`totalImpact` 是模型分数，不是货币或贸易损失。`impactPct` 是相对分数。`fetchedAt` 是缓存日期，不能充当贸易观察日期；观察日期未知时明确标为未知。浏览器 JSON 导出使用已捕获的同一份结果。

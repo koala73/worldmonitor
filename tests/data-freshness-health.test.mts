@@ -360,6 +360,35 @@ describe('health freshness ingestion', () => {
     assert.equal(weather?.lastUpdate?.toISOString(), new Date(checkedAtMs).toISOString());
   });
 
+  it('degrades only the mapped source when HEALTHY availability contains a problem', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        status: 'HEALTHY',
+        summary: {
+          total: 292, ok: 291, warn: 1, containedWarn: 1,
+          onDemandWarn: 0, staleContent: 0, crit: 0,
+        },
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        problems: {
+          gdeltIntel: {
+            status: 'COVERAGE_PARTIAL', records: 12,
+            seedAgeMin: 1, maxStaleMin: 420,
+          },
+        },
+      }),
+    });
+
+    const mappedSources = new Set(Object.values(HEALTH_CHECK_SOURCE_MAP).flat());
+    assert.equal(applied, mappedSources.size);
+    assert.equal(dataFreshness.getSource('gdelt')?.status, 'stale');
+    assert.equal(dataFreshness.getSource('gdelt')?.healthStatus, 'COVERAGE_PARTIAL');
+    assert.equal(dataFreshness.getSource('weather')?.status, 'fresh');
+    assert.equal(dataFreshness.getSource('weather')?.healthStatus, 'OK');
+  });
+
   it('preserves stale content and its vintage from a pending-only compact payload', async () => {
     __resetHealthFreshnessForTests();
     const checkedAtMs = Date.now();

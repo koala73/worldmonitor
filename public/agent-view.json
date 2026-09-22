@@ -34,23 +34,34 @@
     },
     "sdks": {
       "javascript": {
+        "package": "worldmonitor",
+        "registry": "npm",
         "install": "npm install worldmonitor",
         "url": "https://www.npmjs.com/package/worldmonitor"
       },
       "python": {
+        "package": "worldmonitor-sdk",
+        "registry": "PyPI",
         "install": "pip install worldmonitor-sdk",
         "url": "https://pypi.org/project/worldmonitor-sdk/"
       },
       "ruby": {
+        "package": "worldmonitor",
+        "registry": "RubyGems",
         "install": "gem install worldmonitor",
         "url": "https://rubygems.org/gems/worldmonitor"
       },
       "go": {
+        "package": "github.com/koala73/worldmonitor/sdk/go",
+        "registry": "Go modules",
         "install": "go get github.com/koala73/worldmonitor/sdk/go",
-        "url": "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go"
+        "url": "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go",
+        "searchUrl": "https://pkg.go.dev/search?q=worldmonitor",
+        "moduleProxyUrl": "https://proxy.golang.org/github.com/koala73/worldmonitor/sdk/go/@latest",
+        "source": "https://github.com/koala73/worldmonitor/tree/main/sdk/go"
       },
       "guide": "https://www.worldmonitor.app/docs/sdks",
-      "note": "Official zero-dependency SDK packages; every registry entry sets its homepage to worldmonitor.app for provenance."
+      "note": "Use the exact package names above. npm, PyPI and RubyGems link to worldmonitor.app in their project metadata. Go modules have no homepage field: verify the module path in the official koala73/worldmonitor repository and its product links on pkg.go.dev. The Python package is worldmonitor-sdk; the PyPI package named worldmonitor is unrelated."
     },
     "docsMcp": {
       "url": "https://www.worldmonitor.app/docs/mcp",

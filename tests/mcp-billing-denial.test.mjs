@@ -8,6 +8,7 @@ import {
   assertToolFetchOk,
   BillingDenialError,
   RpcValidationError,
+  ToolBackoffError,
   throwIfBillingDenial,
 } from '../api/mcp/billing-denial.ts';
 
@@ -78,6 +79,18 @@ describe('billing-denial propagation helpers', () => {
       () => assertToolFetchOk(bare, 'tool'),
       (err) => !(err instanceof BillingDenialError) && err.message === 'tool HTTP 503',
     );
+  });
+
+  it('preserves backoff only when the caller opts in', async () => {
+    for (const status of [429, 503]) {
+      for (const retryAfter of [null, '5', 'Wed, 21 Oct 2026 07:28:00 GMT']) {
+        const res = response(status, retryAfter === null ? {} : { 'Retry-After': retryAfter });
+        await assert.rejects(() => assertToolFetchOk(res, 'other-tool'),
+          (err) => !(err instanceof ToolBackoffError) && err.message === `other-tool HTTP ${status}`);
+        await assert.rejects(() => assertToolFetchOk(res, 'search-google-dates', { preserveBackoff: true }),
+          (err) => err instanceof ToolBackoffError && err.status === status && err.retryAfter === retryAfter);
+      }
+    }
   });
 
   it('missing Retry-After yields undefined, not 0', () => {
@@ -214,5 +227,44 @@ describe('assertToolFetchOk RPC validation 400s', () => {
       () => assertToolFetchOk(res, 'tool'),
       (err) => err instanceof BillingDenialError && err.billingCode === 'subscription_lapsed',
     );
+  });
+});
+
+describe('internal signature failure classification', () => {
+  it('preserves confirmed signature failures across tools for fingerprinting', async () => {
+    const { mcpErrorFingerprint } = await import('../api/mcp/error-fingerprint.ts');
+    for (const operation of ['list-global-tenders', 'get-country-risk', 'deduct-situation']) {
+      await assert.rejects(
+        () => assertToolFetchOk(new Response(JSON.stringify({ error: 'invalid_internal_mcp_signature' }), {
+          status: 401, headers: { 'Content-Type': 'application/json' },
+        }), operation),
+        (error) => {
+          assert.deepEqual(mcpErrorFingerprint('tool-execution', operation, error), ['mcp-internal-auth-401']);
+          return true;
+        },
+      );
+    }
+  });
+
+  it('keeps entitlement, unknown, malformed and empty 401s out of the signature group', async () => {
+    const { mcpErrorFingerprint } = await import('../api/mcp/error-fingerprint.ts');
+    for (const body of [
+      JSON.stringify({ error: 'insufficient_entitlement' }),
+      JSON.stringify({ error: 'invalid_api_key' }),
+      JSON.stringify({ error: 'unknown' }),
+      JSON.stringify({ error: 'invalid_internal_mcp_signature_extra' }),
+      JSON.stringify({ code: 'insufficient_entitlement', error: 'invalid_internal_mcp_signature' }),
+      'null', '', '{broken',
+      JSON.stringify({ padding: 'x'.repeat(4096), error: 'invalid_internal_mcp_signature' }),
+    ]) {
+      await assert.rejects(
+        () => assertToolFetchOk(new Response(body, { status: 401 }), 'tool'),
+        (error) => {
+          assert.equal(error.message, 'tool HTTP 401');
+          assert.deepEqual(mcpErrorFingerprint('tool-execution', 'tool', error), ['mcp-tool-execution', 'tool', 'tool:401']);
+          return true;
+        },
+      );
+    }
   });
 });

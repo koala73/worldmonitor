@@ -4,11 +4,14 @@
 // snapshot frozen before a rule existed renders under the same rule as one
 // frozen after it.
 //
-// Plain .mjs importing only plain-JS shared modules: the freeze runs under
-// bare `node`.
+// The freeze imports this module under bare Node.js.
 
 import { publisherFamilyFor, publisherFamilyForDomain } from '../shared/publisher-families.js';
-const BRIEF_SECTION_HEADERS = ['SITUATION NOW', 'WHAT THIS MEANS FOR', 'KEY RISKS', 'OUTLOOK', 'WATCH ITEMS'];
+import { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl } from '../shared/article-url.js';
+export { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl };
+import { validateNoHallucinatedProperNouns } from '../shared/brief-llm-core.js';
+import { resolveIso2 } from './_country-resolver.mjs';
+const BRIEF_SECTION_HEADERS = ['SITUATION NOW', 'KEY RISKS', 'OUTLOOK', 'WATCH ITEMS'];
 
 // Provenance stamp on a headline row the freeze took from the per-country
 // GDELT article index (#7748) rather than the curated digest feeds. Carried
@@ -16,14 +19,6 @@ const BRIEF_SECTION_HEADERS = ['SITUATION NOW', 'WHAT THIS MEANS FOR', 'KEY RISK
 // such rows with rel="nofollow" (an uncurated host earns no link equity from
 // an indexed page) and the brief floor requires at least one curated row.
 export const COUNTRY_INDEX_ORIGIN = 'country-index';
-
-// Aggregator hosts whose article links are opaque, expiring redirects rather
-// than the publisher's own URL. A frozen row is published for up to
-// MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS, and "verifiable" has to mean a reader can
-// see the outlet in the URL and still reach the piece next week. Shared by
-// the freeze's capture rule, the welcome strip's publish-time re-check and
-// the brief floor (a redirect host is not a site two labels can share).
-export const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
 
 function hostnameOf(url) {
   try {
@@ -33,18 +28,14 @@ function hostnameOf(url) {
   }
 }
 
-/** True for an https URL on a publisher's own host (never an aggregator redirect). */
-export function isVerifiableArticleUrl(url) {
-  const value = String(url || '').trim();
-  const parsed = URL.parse(value);
-  if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname) return false;
-  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
-  return hostname.length > 0 && !AGGREGATOR_LINK_HOSTS.has(hostname);
-}
-
-function isBriefSectionHeader(line) {
-  const upper = String(line || '').trim().toUpperCase();
-  return BRIEF_SECTION_HEADERS.some((header) => upper.startsWith(header));
+export function isBriefSectionHeader(line, { countryCode = '', countryName = '' } = {}) {
+  const upper = String(line || '').trim().toUpperCase().replace(/:\s*$/, '');
+  if (BRIEF_SECTION_HEADERS.includes(upper)) return true;
+  const country = upper.match(/^WHAT THIS MEANS FOR (.+)$/)?.[1];
+  return Boolean(country && (/^[A-Z]{2}$/.test(country)
+    || country === String(countryCode).trim().toUpperCase()
+    || country === String(countryName).trim().toUpperCase()
+    || resolveIso2({ name: country }) === String(countryCode).trim().toUpperCase()));
 }
 
 // Briefs need grounding from at least this many DISTINCT PUBLISHERS before
@@ -146,10 +137,7 @@ export function hasBriefGrounding(rows) {
   return Array.isArray(rows) && briefGroundingGap(rows) === null;
 }
 
-// "WHAT THIS MEANS FOR NO" — the server interpolated the ISO code where the
-// name belongs (#7738). Repaired only when the code is this page's own code,
-// so a brief that genuinely discusses another country is left alone.
-const BARE_CODE_HEADING_RE = /^(WHAT THIS MEANS FOR)\s+([A-Z]{2})\s*:?$/i;
+const COUNTRY_HEADING_RE = /^(WHAT THIS MEANS FOR)\s+(.+?)\s*:?$/i;
 // Markdown the model emits and the corpus injects as text: bold/italic
 // marker pairs and ATX heading hashes. Kept as a list so the next marker is
 // one entry, not a new guard (the first round pinned `**` alone).
@@ -164,7 +152,7 @@ const MARKDOWN_HEADING_RE = /^#{1,6}\s+/;
  * - any preamble before the first contract section dropped ("INTELLIGENCE
  *   BRIEF: GE (GEORGIA) / CLASSIFICATION: CONFIDENTIAL" is model theatre, not
  *   content, and must not reach a public page);
- * - the "WHAT THIS MEANS FOR <CODE>" heading repaired to the country name.
+ * - exact country-code and country-alias headings repaired to the page name.
  * Idempotent: normalizing normalized text is a no-op.
  */
 export function normalizeBriefText(text, { countryCode = '', countryName = '' } = {}) {
@@ -174,7 +162,7 @@ export function normalizeBriefText(text, { countryCode = '', countryName = '' } 
     .replace(MARKDOWN_MARKERS_RE, '')
     .split('\n')
     .map((line) => line.replace(/\s+$/, '').replace(MARKDOWN_HEADING_RE, ''));
-  const firstHeader = lines.findIndex((line) => isBriefSectionHeader(line));
+  const firstHeader = lines.findIndex((line) => isBriefSectionHeader(line, { countryCode: code, countryName: name }));
   // Theatre carries no citations. A lead the model wrote under its own
   // header name ("CURRENT SITUATION ... [1]") is content, so a preamble with
   // a [n] citation anywhere is kept whole rather than guessed at.
@@ -182,11 +170,49 @@ export function normalizeBriefText(text, { countryCode = '', countryName = '' } 
     && !lines.slice(0, firstHeader).some((line) => /\[\d+\]/.test(line));
   const body = preambleIsTheatre ? lines.slice(firstHeader) : lines;
   const repaired = body.map((line) => {
-    const match = line.trim().match(BARE_CODE_HEADING_RE);
-    if (!match || !code || !name || match[2].toUpperCase() !== code) return line;
+    const match = line.trim().match(COUNTRY_HEADING_RE);
+    if (!match || !code || !name) return line;
+    if (match[2].toUpperCase() !== code && resolveIso2({ name: match[2] }) !== code) return line;
     return `${match[1].toUpperCase()} ${name.toUpperCase()}`;
   });
   return repaired.join('\n').trim();
+}
+
+// The snapshot retains source titles, not article bodies. Never use a URL,
+// outlet label, sibling headline or model-supplied context as citation evidence.
+// Check whole paragraphs/bullets against EACH cited source: this deliberately
+// withholds mixed-source paragraphs when per-sentence attribution is ambiguous.
+// Uncited lines must still ground their names in the retained source set.
+export function briefCitationGroundingGap(brief, country = {}) {
+  if (typeof brief?.text !== 'string' || !brief.text.trim()) return 'missing text';
+  if (!Array.isArray(brief.sources) || !brief.sources.length
+    || brief.sources.some((source) => typeof source?.title !== 'string' || !source.title.trim())) {
+    return 'missing source titles';
+  }
+  const comparable = (text) => text.normalize('NFKD').replace(/\p{M}/gu, '');
+  const titles = brief.sources.map((source) => comparable(stripMarkdownMarkers(source.title)));
+  let citationCount = 0;
+  for (const rawLine of normalizeBriefText(brief.text, country).split('\n')) {
+    const line = rawLine.trim();
+    if (!line || isBriefSectionHeader(line, country)) continue;
+    const indexes = [...line.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]));
+    citationCount += indexes.length;
+    if (indexes.some((index) => index < 1 || index > titles.length)) return 'out-of-range citation';
+    const claim = comparable(line.replace(/\[\d+\]/g, '')
+      .replace(/^(?:[•-]\s*|\*\s+)/, '')
+      .replace(/^NEXT \d+H:\s*/i, '')
+      .replace(/^WHAT THIS MEANS FOR\s+/i, '').trim());
+    if (!claim) return 'empty cited claim';
+    const evidence = indexes.length ? indexes.map((index) => titles[index - 1]) : [titles.join('\n')];
+    for (const [position, title] of evidence.entries()) {
+      const result = validateNoHallucinatedProperNouns(claim, title, { failClosed: true });
+      if (!result.ok) {
+        const source = indexes.length ? `source [${indexes[position]}]` : 'source set';
+        return `${source} does not ground ${JSON.stringify(result.hallucinated || [])}`;
+      }
+    }
+  }
+  return citationCount > 0 ? null : 'missing citations';
 }
 
 // True when the frozen developments carry at least one dated, sourced item:
@@ -242,6 +268,9 @@ export function normalizeFrozenDevelopments(developments, { countryCode = '', co
   const gap = briefGroundingGap(brief.sources);
   if (gap) {
     return { ...cleaned, brief: null, briefSkipped: gap };
+  }
+  if (briefCitationGroundingGap(brief, { countryCode, countryName })) {
+    return { ...cleaned, brief: null, briefSkipped: 'unsupported-citation' };
   }
   return {
     ...cleaned,

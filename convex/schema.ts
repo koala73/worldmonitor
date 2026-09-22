@@ -141,6 +141,7 @@ export default defineSchema({
         channelType: v.literal("telegram"),
         chatId: v.string(),
         verified: v.boolean(),
+        telegramOwnership: v.optional(v.literal("verified_callback")),
         linkedAt: v.number(),
       }),
       v.object({
@@ -157,6 +158,7 @@ export default defineSchema({
         userId: v.string(),
         channelType: v.literal("email"),
         email: v.string(),
+        emailOwnership: v.optional(v.literal("verified_account")),
         verified: v.boolean(),
         linkedAt: v.number(),
       }),
@@ -331,6 +333,7 @@ export default defineSchema({
     variant: v.optional(v.string()),
   })
     .index("by_token", ["token"])
+    .index("by_expiresAt", ["expiresAt"])
     .index("by_user", ["userId"]),
 
   registrations: defineTable({
@@ -459,7 +462,7 @@ export default defineSchema({
   // budget at any wave size.
   //
   // `waveRuns` is the per-run state row. `wavePickedContacts` is the
-  // per-contact tri-state row that the push pipeline drains in batches.
+  // per-contact state row that the push pipeline drains in batches.
   // Together they are the durable source of truth for an in-flight wave;
   // `broadcastRampConfig.lastWave*` is updated atomically by
   // `_finalizeWaveRun` only when the whole pipeline succeeds.
@@ -498,11 +501,15 @@ export default defineSchema({
     requestedCount: v.number(),
     // = picked.length after reservoir sampling. Finalization gates on
     // "zero `pending` rows for this runId", NOT on pushedCount === totalCount —
-    // failed contacts are tolerated up to the 5% threshold.
+    // failed contacts are tolerated up to the 5% threshold after remote
+    // unsubscribe rows are excluded.
     totalCount: v.number(),
     underfilled: v.boolean(),
     pushedCount: v.number(),
     failedCount: v.number(),
+    // Optional so runs created before remote-unsubscribe handling retain a
+    // zero count when they are read or resumed.
+    suppressedCount: v.optional(v.number()),
     batchSize: v.number(),
     // Updated by every successful batch + by lease-revalidating recovery
     // mutations. Used (with createdAt/updatedAt fallback) by `runDailyRamp`'s
@@ -535,8 +542,9 @@ export default defineSchema({
     .index("by_runId", ["runId"])
     .index("by_status", ["status"]),
 
-  // Per-contact tri-state row written by `_persistPickedBatch` during pick
-  // and patched atomically by `_markContactPushed` / `_markContactFailed`
+  // Per-contact state row written by `_persistPickedBatch` during pick
+  // and patched atomically by `_markContactPushed`, `_markContactFailed`,
+  // or `_markContactSuppressed`
   // during push. The CAS guard on those mutations (no-op unless
   // status==='pending') makes them idempotent under overlapping
   // pushBatchAction invocations or operator-resume-while-original-still-running.
@@ -552,10 +560,12 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("pushed"),
       v.literal("failed"),
+      v.literal("suppressed"),
     ),
     pushedAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
     failedReason: v.optional(v.string()),
+    suppressedAt: v.optional(v.number()),
   })
     .index("by_runId", ["runId"])
     .index("by_runId_status", ["runId", "status"]),
@@ -584,7 +594,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_referrer", ["referrerUserId"])
-    .index("by_referrer_email", ["referrerUserId", "refereeEmail"]),
+    .index("by_referrer_email", ["referrerUserId", "refereeEmail"])
+    .index("by_refereeEmail", ["refereeEmail"]),
 
   contactMessages: defineTable({
     name: v.string(),
@@ -841,6 +852,9 @@ export default defineSchema({
     // subscription.expired events skip the normal downgrade-to-free so
     // goodwill credits outlive Dodo subscription cancellations.
     compUntil: v.optional(v.number()),
+    // Independent goodwill source; never derive this from a paid effective plan.
+    // Legacy rows without it require an audited source before migration.
+    compPlanKey: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -899,6 +913,15 @@ export default defineSchema({
     // list) query this instead of scanning all per-(user,state) history and
     // filtering `current` in memory -- bounds the hot path to live rows.
     .index("by_user_dimension_current", ["userId", "dimension", "current"]),
+
+  // Subscription cleanup must not erase customer-wide invoice ownership.
+  // Rows are retained after deletion and move with a verified anonymous claim.
+  deletedSubscriptionCustomers: defineTable({
+    userId: v.string(),
+    dodoCustomerId: v.string(),
+  })
+    .index("by_customer_user", ["dodoCustomerId", "userId"])
+    .index("by_userId", ["userId"]),
 
   customers: defineTable({
     userId: v.string(),
@@ -967,6 +990,66 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])
     .index("by_localePrimary", ["localePrimary"]),
+
+  // Durable DSAR tombstone for a Clerk subject. Personal Convex rows are
+  // deleted or anonymized by `convex/accountDeletion`; Company Monitoring
+  // still uses `markOwnerDeleted` / `advanceAccountPurge` for its own fence.
+  // `verifiedEmail` is captured for waitlist/contact deletes and cleared
+  // when status becomes complete so the tombstone is not a second email index.
+  accountDeletions: defineTable({
+    userId: v.string(),
+    userIdHash: v.string(),
+    source: v.union(
+      v.literal("self"),
+      v.literal("support"),
+      v.literal("clerk_webhook"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("external"),
+      v.literal("complete"),
+    ),
+    personalTableIndex: v.optional(v.number()),
+    verifiedEmail: v.optional(v.string()),
+    dodoSubscriptionIds: v.optional(v.array(v.string())),
+    subscriptionDocIds: v.optional(v.array(v.id("subscriptions"))),
+    cancelledDodoSubscriptionIds: v.optional(v.array(v.string())),
+    keyHashes: v.optional(v.array(v.string())),
+    embedKeyHashes: v.optional(v.array(v.string())),
+    mcpTokenIds: v.optional(v.array(v.string())),
+    redisClearedAt: v.optional(v.number()),
+    clerkDeletedAt: v.optional(v.number()),
+    fenceAppliedAt: v.optional(v.number()),
+    // Set when the email-keyed step ran with no verified proof of the account
+    // email — the webhook path never has one, because Clerk deleted the user
+    // before we were told. Waitlist, contact-form and invitee-email-keyed rows
+    // are then left alone rather than matched on a cached address we cannot
+    // trust. Recorded so the gap is visible and repairable instead of silent;
+    // `accountDeletion/batches:completeEmailKeyedErasure` clears it.
+    emailKeyedSkipped: v.optional(v.boolean()),
+    externalAttempts: v.optional(v.number()),
+    // Consecutive failures of the Convex-side batch stepper. A write conflict
+    // on a globally shared aggregate row is routine, so a batch failure is
+    // retried a bounded number of times before the row goes terminal.
+    // Reset whenever a batch commits progress.
+    batchAttempts: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userIdHash", ["userIdHash"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
@@ -1114,6 +1197,13 @@ export default defineSchema({
     .index("by_dodoPaymentId", ["dodoPaymentId"])
     .index("by_reconciledAt", ["reconciledAt"]),
 
+  // One reusable admission counter per account, independent of provider alarms.
+  checkoutAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
+
   // One row per checkout that exhausted the #6027 provider-429 retry ladder
   // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This
   // is the rate signal the alarm in `payments/checkoutRateLimitAlarm.ts`
@@ -1135,6 +1225,13 @@ export default defineSchema({
     // needs no pre-seeded singleton document — there is no state row whose
     // absence could silently disarm it.
     alertedAt: v.optional(v.number()),
+  }).index("by_occurredAt", ["occurredAt"]),
+
+  // Terminal session-creation timeouts, kept separate from the 429 alarm.
+  checkoutTimeoutEvents: defineTable({
+    userId: v.string(),
+    productId: v.string(),
+    occurredAt: v.number(),
   }).index("by_occurredAt", ["occurredAt"]),
 
   productPlans: defineTable({
@@ -1711,7 +1808,14 @@ export default defineSchema({
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
-    reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
+    // unsubscribe withdraws broadcast and marketing consent. The other
+    // reasons suppress broadcast, marketing, and transactional delivery.
+    reason: v.union(
+      v.literal("bounce"),
+      v.literal("complaint"),
+      v.literal("manual"),
+      v.literal("unsubscribe"),
+    ),
     suppressedAt: v.number(),
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),

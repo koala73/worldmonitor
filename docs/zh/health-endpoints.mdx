@@ -21,8 +21,8 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 
 | HTTP 状态 | 总体状态 | 含义 |
 |-------------|---------------|---------|
-| `200` | `HEALTHY` | 所有检查正常，无警告 |
-| `200` | `WARNING` | 某些键过期或按需键为空，但无严重故障 |
+| `200` | `HEALTHY` | 用户可见平台可用。所有检查正常，或不超过探测键 3% 的受控警告仍提供可用的最后一次正常数据 |
+| `200` | `WARNING` | 至少一个警告影响可用性，或受控警告超过所有探测键的 3% |
 | `200` | `DEGRADED` | 关键键为空，但 ≤3% 的所有探测键 |
 | `200` | `UNHEALTHY` | 关键键为空，>3% 的所有探测键 |
 | `401` | - | 无有效运维/企业 API 密钥时请求详细健康检查或历史记录 |
@@ -30,15 +30,18 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 
 > 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。除 `REDIS_DOWN` 外的每种状态都返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。
 
+顶层 `status` 表示用户可见平台的可用性，而不是所有数据源都完全正常。因此，当警告由可用的最后一次正常数据控制时，`HEALTHY` 可以与 `summary` 和 `problems` 中的警告同时出现。
+
 ### 响应体
 
 ```json
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 292,
-    "ok": 292,
+    "total": 295,
+    "ok": 295,
     "warn": 0,
+    "containedWarn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
     "rolloutPending": 0,
@@ -56,9 +59,11 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 }
 ```
 
-`summary` 字段：`total` 是每个探测键的一个条目，并随面板增加而增长 —— 请以你自己响应中的数值为准，而非本页示例。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 统计所有 `STALE_CONTENT` 诊断。在数据源处于三小时的 `staleContentGraceUntil` 宽限期内时，该值可以大于 `warn`。数据源仍显示在 `problems` 中，但在截止时间前计入 `ok`。`rolloutPending` 是 `warn` 的一个**子集**（新部署的 schema 仍处于其有界的「部署先于定时任务」窗口内）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
+`summary` 字段：`total` 是每个探测键的一个条目，并随面板增加而增长 —— 请以你自己响应中的数值为准，而非本页示例。`warn` 是完整的可操作警告总数，但**不包括**按需为空的键；这些键在 `onDemandWarn` 中单独显示。`containedWarn` 是 `warn` 的子集，不是额外的计数桶。`STALE_SEED`、`SEED_ERROR`、`STALE_CONTENT`、`COVERAGE_PARTIAL`、`COVERAGE_DEGRADED` 和 `CHINA_DEGRADED` 有资格受控，但当前健康检查必须找到正在提供的负载，元数据必须证明记录数为正，而且所有必需的读取诊断都必须在结构上可用。陈旧时间仍作为诊断事实显示，但它本身不表示平台已停止提供数据。只要所有可操作警告都受到控制，并且受控警告不超过所有探测键的 3%，可用性就保持 `HEALTHY`。
 
-使用 `?compact=1` 时，`checks` 对象会被 `problems` 替换，仅包含非 OK 的键。
+受控判断会独立检查所有必需的诊断证据，并且没有针对特定数据源的允许或拒绝列表。缺失或不可用的数据、格式错误或未知的证据、不兼容的读取策略或缓存状态、`REDIS_PARTIAL`、`ROLLOUT_PENDING`、任何未受控警告、超过 3% 的受控警告，以及所有严重故障都会影响可用性。`EMPTY_ON_DEMAND` 和待处理诊断保留现有语义。`staleContent` 统计所有 `STALE_CONTENT` 诊断。在数据源处于三小时的 `staleContentGraceUntil` 宽限期内时，该值可以大于 `warn`。数据源在截止时间前计入 `ok` 和可选的 `pending`。`rolloutPending` 是 `warn` 的一个**子集**。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
+
+使用 `?compact=1` 时，`checks` 对象会被 `problems` 替换。`problems` 保留所有可操作故障，包括不影响顶层可用性判定的受控警告；`pending` 保留有效宽限期内的诊断。严格的数据质量监控必须检查 `summary.warn` 和 `problems`，不能只检查顶层可用性状态。
 
 ### 消费价格来源覆盖率
 
@@ -91,6 +96,9 @@ consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `con
 | `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |
 | `EMPTY` | 严重 | Bootstrap 或种子填充的独立键无数据 |
 | `EMPTY_DATA` | 严重 | 键存在但包含零条记录（且 0 对它来说不是有效状态） |
+| `RELAY_GATE_MISCONFIGURED` | 严重 | 提供 `/api/health` 的生产构建看不到 `CONVEX_TENANT_RELAY_SECRET` 或中继站点 URL（`CONVEX_SITE_URL`，或网关同样接受的 `CONVEX_URL`），或者解析得到的 URL 格式错误或不是 `https:`；在所有这些情况下，判定都在发送任何请求之前得出，租户密钥绝不会以明文传输。在缺少环境变量的情形下，结账、客户门户和通知渠道在到达 Convex 之前就返回 503。该状态出现在 `relayGatewayGate` 存活性条目上；它不是数据键，但在生产构建上会计入 `summary.total` 一次，因此那里的 `total` 等于键注册表大小加一，`ok + warn + onDemandWarn + crit` 的分区关系仍然成立。设置变量（`CONVEX_SITE_URL`，或网关同样接受的 `CONVEX_URL`）后必须推送一个新的提交：同一提交的重新部署会被忽略构建步骤取消 |
+| `RELAY_GATE_REJECTED` | 严重 | 已部署的 Convex 租户中继网关对本构建的网关凭据（无请求体的 `POST /relay/create-checkout`）返回 `401`。任一侧都可能过期：在上一次 `convex deploy` 之后写入的变量在下一次推送之前，在已部署函数内读取为 undefined。探测每个判定快照（60 秒）只运行一次，而不是每次轮询 |
+| `RELAY_GATE_UNREACHABLE` | 宽限期后为警告 | 网关探测没有得到可分类的回答（网络错误、超时、5xx，或除 `401` / `400 MISSING_FIELDS` 之外的任何响应）。这是传输层判定，不是凭据判定。首次出现时带有三分钟的 `transportGraceUntil`：在此期间计入 `ok`、出现在紧凑响应的 `pending` 中，且不是运维问题；截止时间过后仍然存在的故障会移入 `problems` 并计入 `summary.warn`。该截止时间跨扫描保存在 Redis 中，包括仅等待其他扫描探测结果的扫描（它以 `probed: false` 保存其回退判定，下一次扫描会重新探测而不是复用），因此探测扫描在发布前崩溃不会重新开始宽限期——但这仅在有另一个扫描正在等待时成立，因为该回退判定只由未抢到探测租约的扫描写入。如果唯一的计划任务调用者抢到租约后在发布前崩溃，则不会保存任何内容，下一次运行将是首次出现。截止时间过后，连续状态改由 `transportGraceExpiredAt` 承载：继续发布已过期的宽限截止时间会使每份判定快照都不可复用，使每次轮询都退化为完整扫描而不是热读取。中继本身不会以该频率被重新探测：只要缓存中存在可复用的网关判定，无论端点被轮询多少次，每个新鲜度窗口大约只联系网关一次。有两条路径不会留下可复用的判定——仅等待的扫描所保存的回退判定（`probed: false`），以及发布失败的探测——这两种情况之后的扫描都会重新探测。连续多次扫描持续出现意味着 Convex 故障或 `CONVEX_SITE_URL` 错误 |
 
 ### 级联组
 
@@ -396,9 +404,11 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 - `503` = `REDIS_DOWN`（Redis 不可达 —— 真正的硬中断）
 - `200` = 其他所有状态，包括 `DEGRADED` 和 `UNHEALTHY`
 
-因此，仅基于 HTTP 状态的监控器能捕获完全的后端中断，但**不能**捕获降级/不健康的数据。对于这些情况，请添加关键字监控器。
+因此，仅基于 HTTP 状态的监控器能捕获完全的后端中断，但**不能**捕获降级/不健康的可用性。对于这些情况，请添加关键字监控器。
 
 将关键字监控器指向 `https://api.worldmonitor.app/api/health?compact=1`，并在紧凑令牌 `"status":"HEALTHY"`（冒号后无空格）从响应体中**缺失**时告警。紧凑模式序列化时不带缩进，因此无论格式如何，此确切令牌都是稳定的。
+
+此关键字监控器测量可用性。`HEALTHY` 响应仍可能包含受控警告。严格的数据质量监控还必须在 `summary.warn` 大于零时告警，并检查 `problems` 以确定受影响的数据源。
 
 > 裸 `/api/health` URL 现在是运维视图，无 API 密钥时返回 `401`。公开监控应始终使用 `?compact=1`。
 

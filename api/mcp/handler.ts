@@ -1,5 +1,6 @@
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
+import { resolveMetadataOrigin } from '../_agent-metadata';
 import {
   applyAnonDiscoveryLimit,
   applyFreeTierLimit,
@@ -43,13 +44,24 @@ import {
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { hashKeySync } from '../../server/_shared/usage-identity';
-import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
-import { utf8ByteLength } from './utils';
+import { createMcpUsage, emitMcpRequestEvent, setUsageContext, setUsageRpc, type McpUsage } from './usage';
+import { safeJsonRpcId, utf8ByteLength } from './utils';
+import {
+  isMcpAliasRequest,
+  MCP_CANONICAL_ENDPOINT_ERROR_CODE,
+  MCP_CANONICAL_ENDPOINT_ERROR_DATA,
+  MCP_CANONICAL_ENDPOINT_ERROR_MESSAGE,
+  MCP_CANONICAL_LINK,
+  mcpCanonicalLocation,
+} from '../../shared/mcp-host-policy';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 import type { McpBudget } from './quota';
 
-// MCP methods servable WITHOUT authentication. These are the zero-data
-// discovery surface an agent (or an agent-readiness scanner) needs to learn
+// MCP methods servable WITHOUT authentication — on the machine-discovery
+// aliases only (WELL_KNOWN_MCP_PATHS). The transport paths (`/mcp`, `/api/mcp`)
+// challenge every unauthenticated request before this set is consulted; see
+// the connect-time challenge in mcpHandler for why. On the aliases, these are
+// the zero-data discovery surface an agent-readiness scanner needs to learn
 // what this server is and what it exposes BEFORE authenticating — exactly the
 // metadata already published in the static server-card.json and the public
 // docs. `tools/list`, `resources/list`, `resources/templates/list`,
@@ -119,8 +131,7 @@ type JsonRpcRequest = {
 
 function validJsonRpcId(id: unknown): id is string | number | null | undefined {
   if (id === null || id === undefined) return true;
-  if (typeof id === 'number') return Number.isFinite(id);
-  return typeof id === 'string' && utf8ByteLength(id) <= MAX_JSON_RPC_ID_BYTES;
+  return safeJsonRpcId(id) !== null;
 }
 
 // Spec-correct 401 for the fail-closed guards on data methods. These guards are
@@ -165,7 +176,6 @@ const MCP_CACHE_CONTROL = 'no-store, no-transform';
 // JSON-RPC IDs are client-controlled and get echoed in every success/error
 // envelope. Keep ordinary scalar IDs correlatable, but reject IDs that could
 // turn an error path (and its optional SSE replay) into an amplification sink.
-const MAX_JSON_RPC_ID_BYTES = 256;
 // Replay is a best-effort convenience for a stateless edge route. A large
 // response still reaches the current SSE client; it is not retained for a
 // later Last-Event-ID replay.
@@ -379,6 +389,13 @@ function sseHeadersFrom(headers: Headers): Headers {
   // no-store the JSON branches carry; no-transform stays load-bearing for SSE (it
   // blocks proxy gzip/buffering that would corrupt the event-stream framing).
   out.set('Cache-Control', MCP_CACHE_CONTROL);
+  // jsonResponse may advertise Content-Length for the bare JSON body (#8403).
+  // SSE framing (`id:` / `data:` lines) is larger than that byte count — keeping
+  // the header would truncate the stream at the wire (unterminated JSON in the
+  // first event). Drop length/encoding; the stream is chunked.
+  out.delete('Content-Length');
+  out.delete('content-length');
+  out.delete('Transfer-Encoding');
   return out;
 }
 
@@ -496,6 +513,9 @@ async function handleAuthenticatedSseReplay(
     usage.phase = getPreCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
     return getPreCheck.response;
   }
+  // No `id` argument on purpose (#7818): the SSE replay channel is a GET with
+  // no JSON-RPC body, so there is no request id to echo and the denial keeps
+  // the spec's null. Every POST caller below passes the parsed `body.id`.
   const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
   if (getLimited) {
     usage.phase = 'limit';
@@ -529,6 +549,27 @@ async function handleAuthenticatedSseReplay(
 // unchanged.
 const WELL_KNOWN_MCP_PATHS = new Set(['/.well-known/mcp', '/.well-known/mcp.json']);
 const MCP_TRANSPORT_PATH = '/mcp';
+const MCP_ALLOW = 'POST, GET, HEAD, OPTIONS';
+
+function mcpMigrationHeaders(corsHeaders: Record<string, string>): Record<string, string> {
+  return withMcpNoStore({
+    'Content-Type': 'application/json; charset=utf-8',
+    Link: MCP_CANONICAL_LINK,
+    Vary: DISCOVERY_VARY,
+    ...corsHeaders,
+  });
+}
+
+function mcpAliasRpcError(id: unknown, corsHeaders: Record<string, string>): Response {
+  return rpcError(
+    id,
+    MCP_CANONICAL_ENDPOINT_ERROR_CODE,
+    MCP_CANONICAL_ENDPOINT_ERROR_MESSAGE,
+    mcpMigrationHeaders(corsHeaders),
+    { ...MCP_CANONICAL_ENDPOINT_ERROR_DATA },
+    410,
+  );
+}
 
 // These URLs content-negotiate on request headers: a plain GET gets a
 // discovery document, an `Accept: text/event-stream` GET gets the transport
@@ -678,9 +719,60 @@ async function mcpHandlerInner(
     return new Response(null, { status: 204, headers: withMcpNoStore(corsHeaders) });
   }
 
-  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
-  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
-  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
+  // The challenge must name a document we actually serve, so the origin comes
+  // from the same validated resolver the metadata handlers use — a spoofed Host
+  // would otherwise be reflected back as the discovery origin.
+  // Path-scoped (RFC 9728 §3.1), and scoped to the transport path the client
+  // actually called: the MCP SDK accepts an advertised resource only when the
+  // requested path starts with it, so a caller on the deployed `/api/mcp` route
+  // must be pointed at that document rather than the one describing `/mcp`.
+  // The advertised resource must cover the URL the caller used, so it is chosen
+  // by the request's own path — never by a query parameter, which the caller
+  // controls. `/mcp` and the well-known aliases are rewritten to `/api/mcp`,
+  // and this function still observes the original path: the dual-role branches
+  // below serve markdown at `/mcp` and the JSON card at `/.well-known/mcp` by
+  // reading that pathname. The aliases sit under neither transport path, so
+  // they take the origin-wide document, which covers every path on the host.
+  const requestUrl = new URL(req.url);
+  const requestPathname = requestUrl.pathname;
+  const aliasRequest = isMcpAliasRequest(requestUrl.hostname, requestPathname)
+    || isMcpAliasRequest(req.headers.get('host') ?? '', requestPathname);
+
+  // The middleware catches ordinary browser discovery, but rewritten and
+  // dotted well-known requests can bypass it. Keep the enforcement boundary
+  // here too, before authentication, quota, sessions, Redis, or dispatch.
+  if (aliasRequest && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (!req.headers.get('last-event-id') && !clientAcceptsSse(req)) {
+      usage.phase = 'migration';
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: mcpCanonicalLocation(requestPathname),
+          Link: MCP_CANONICAL_LINK,
+          Vary: DISCOVERY_VARY,
+          ...corsHeaders,
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    usage.phase = 'migration';
+    return req.method === 'HEAD'
+      ? new Response(null, { status: 410, headers: mcpMigrationHeaders(corsHeaders) })
+      : mcpAliasRpcError(null, corsHeaders);
+  }
+
+  if (aliasRequest && req.method !== 'POST') {
+    usage.phase = 'migration';
+    return new Response(null, {
+      status: 405,
+      headers: withMcpNoStore({ Allow: MCP_ALLOW, Link: MCP_CANONICAL_LINK, ...corsHeaders }),
+    });
+  }
+
+  const transportSuffix = WELL_KNOWN_MCP_PATHS.has(requestPathname)
+    ? ''
+    : requestPathname.startsWith('/api/mcp') ? '/api/mcp' : '/mcp';
+  const resourceMetadataUrl = `${resolveMetadataOrigin(req)}/.well-known/oauth-protected-resource${transportSuffix}`;
 
   if (req.method === 'HEAD') {
     // HEAD is GET without a response body. Preserve transport-shaped GET
@@ -692,7 +784,7 @@ async function mcpHandlerInner(
       usage.phase = 'transport';
       return new Response(null, {
         status: 405,
-        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+        headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }),
       });
     }
 
@@ -744,7 +836,7 @@ async function mcpHandlerInner(
 
   if (req.method !== 'POST' && req.method !== 'GET') {
     usage.phase = 'transport';
-    return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }) });
+    return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }) });
   }
 
   // GET has three roles on the MCP endpoint:
@@ -768,7 +860,7 @@ async function mcpHandlerInner(
       usage.phase = 'transport';
       return new Response(null, {
         status: 405,
-        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+        headers: withMcpNoStore({ Allow: MCP_ALLOW, ...corsHeaders }),
       });
     }
     return handleAuthenticatedSseReplay(req, deps, resourceMetadataUrl, corsHeaders, usage, ctx);
@@ -820,6 +912,47 @@ async function mcpHandlerInner(
 
   const { id, method } = body;
 
+  // #8403 — attribute JSON-RPC method (and registry-bounded tool name) before
+  // any auth/limit return so Axiom can tell initialize / tools/list /
+  // tools/call apart even when the call is refused.
+  const toolCallName = method === 'tools/call'
+    ? ((body.params as { name?: unknown } | null)?.name)
+    : undefined;
+  setUsageRpc(usage, method, toolCallName);
+
+  if (aliasRequest) {
+    usage.phase = 'migration';
+    // JSON-RPC notifications deliberately have no response body. Any valid
+    // request id, including 0 and the empty string, is echoed by rpcError.
+    return id === undefined
+      ? new Response(null, { status: 410, headers: mcpMigrationHeaders(corsHeaders) })
+      : mcpAliasRpcError(id, corsHeaders);
+  }
+
+  // Connect-time challenge. An unauthenticated `initialize` on the transport is
+  // refused with the same structured 401 + `WWW-Authenticate` an unauthenticated
+  // tool call gets. `initialize` is the handshake every interactive MCP client
+  // must open with, and hosted connectors (Cursor's agent backend,
+  // grok-connectors-manager) decide whether a server needs sign-in from how it
+  // is answered: a 200 recorded "connected, nothing to authenticate", and the
+  // 401 a paid call later returned had no authorization server behind it, so
+  // their sign-in control never worked. The JSON-RPC id is echoed so an SDK
+  // transport correlates the refusal instead of waiting out its timeout.
+  //
+  // Only the handshake is challenged. Stateless callers never send it — the
+  // published `worldmonitor` CLI and the SDKs POST `tools/list` and
+  // `tools/call get_sources` directly, with no key — so keyless catalog reads
+  // and the free tool keep working for every version already installed. A full
+  // anonymous handshake remains available on the machine-discovery aliases,
+  // which is where agent-readiness scanners POST theirs.
+  if (method === 'initialize' && !hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
+    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
+    if (!denied.ok) {
+      usage.phase = 'auth';
+      return denied.response;
+    }
+  }
+
   // Anonymous-servable resources/read promotions. Two kinds of resource carry
   // NO data and spend NO quota, so they are served on the anonymous discovery
   // path (like tools/list / resources/list) — an unauthenticated MCP-Apps host
@@ -851,9 +984,6 @@ async function mcpHandlerInner(
   // `isPublicResourceUri` already uses for metadata-only resource reads.
   // Exact-matched against the registry's own `_freeTier` flag, so a tool
   // outside the roster is never promoted and stays fully gated.
-  const toolCallName = method === 'tools/call'
-    ? ((body.params as { name?: unknown } | null)?.name)
-    : undefined;
   const isFreeTierToolCall = typeof toolCallName === 'string'
     && FREE_TIER_TOOL_NAMES.has(toolCallName);
 
@@ -898,8 +1028,9 @@ async function mcpHandlerInner(
       // hand to read a plan burst from. `applyPerMinuteLimit` defaults to the
       // common ceiling rather than fetching one: these are metadata and
       // free-tier methods, and the tighter of the two sold thresholds is the
-      // defensible guess.
-      const limited = await applyPerMinuteLimit(context, corsHeaders);
+      // defensible guess. `undefined` for `perMinute` selects that default
+      // explicitly; `id` after it keeps the denial correlatable (#7818).
+      const limited = await applyPerMinuteLimit(context, corsHeaders, undefined, id);
       if (limited) {
         usage.phase = 'limit';
         return limited;
@@ -911,7 +1042,7 @@ async function mcpHandlerInner(
       // existing limiter unchanged.
       const anonLimited = isFreeTierToolCall
         ? await applyFreeTierLimit(req, corsHeaders, id)
-        : await applyAnonDiscoveryLimit(req, corsHeaders);
+        : await applyAnonDiscoveryLimit(req, corsHeaders, id);
       if (anonLimited) {
         usage.phase = 'limit';
         return anonLimited;
@@ -944,7 +1075,7 @@ async function mcpHandlerInner(
     // entitlement row and fall back to the defaults.
     budget = preCheck.budget;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
-    const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute);
+    const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
     if (limited) {
       usage.phase = 'limit';
       return limited;

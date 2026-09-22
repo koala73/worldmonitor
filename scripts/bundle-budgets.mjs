@@ -31,7 +31,10 @@
  *   dashboard (default) — JS assets referenced by dist/dashboard.html: the
  *     initial /dashboard payload the issue's DebugBear evidence observes. This
  *     includes the entry module and Vite's modulepreload links, but not lazy
- *     chunks that are only fetched after the page starts.
+ *     chunks that are only fetched after the page starts. The one exception is
+ *     the application itself: the entry loads it through a dynamic
+ *     `import('./App')` on every visit, so that import's JS graph is gated in a
+ *     separate `deferred` section with the same tolerances.
  *   pro — every dist/pro/assets/*.js chunk emitted by `npm run build:pro`
  *     (pro-test/) and copied into dist/ by the root vite build.
  *   embed — the dist-root embed.js partner loader (public/embed.js).
@@ -52,7 +55,11 @@
  *     so code-splitting changes surface as a reviewable JSON diff in the PR.
  *   - The initial-payload total is gated with its own tighter tolerance,
  *     max(TOTAL_TOLERANCE_BYTES, 0.25%). Legitimate growth requires the
- *     re-seed that makes it visible in the PR diff.
+ *     re-seed that makes it visible in the PR diff. The deferred App total is
+ *     gated the same way.
+ *   - A deferred App import that appears in or disappears from the build fails
+ *     until the snapshot is regenerated, so moving the application between the
+ *     initial and deferred payloads is always a reviewable snapshot diff.
  *   - Tolerances are code constants. The snapshot records them for reader
  *     context, and check mode REJECTS a snapshot whose recorded tolerances
  *     disagree with the constants — a hand-edited "tolerancePct": 50 must red
@@ -140,30 +147,92 @@ export function chunkNameFromFileName(fileName) {
   return match ? match[1] : null;
 }
 
-export function initialDashboardAssetNames(distDir) {
+/** '/assets/main-x.js', 'assets/main-x.js?v=1' -> 'main-x.js'; null outside assets/. */
+function assetFileNameFromUrl(url) {
+  const path = url.split(/[?#]/, 1)[0];
+  const marker = path.lastIndexOf('/assets/');
+  const fileName = marker >= 0
+    ? path.slice(marker + '/assets/'.length)
+    : path.startsWith('assets/')
+      ? path.slice('assets/'.length)
+      : null;
+  return fileName && !fileName.includes('/') ? fileName : null;
+}
+
+function readDashboardHtml(distDir) {
   const dashboardPath = join(distDir, 'dashboard.html');
-  let html;
   try {
-    html = readFileSync(dashboardPath, 'utf8');
+    return { dashboardPath, html: readFileSync(dashboardPath, 'utf8') };
   } catch (error) {
     throw new Error(`cannot read ${dashboardPath} — run: ${BUILD_COMMANDS.dashboard}: ${error.message}`);
   }
+}
 
+export function initialDashboardAssetNames(distDir) {
+  const { dashboardPath, html } = readDashboardHtml(distDir);
   const assets = new Set();
   for (const match of html.matchAll(/(?:src|href)=["']([^"']+\.js(?:[?#][^"']*)?)["']/gi)) {
-    const url = match[1].split(/[?#]/, 1)[0];
-    const marker = url.lastIndexOf('/assets/');
-    const fileName = marker >= 0
-      ? url.slice(marker + '/assets/'.length)
-      : url.startsWith('assets/')
-        ? url.slice('assets/'.length)
-        : null;
-    if (fileName && !fileName.includes('/')) assets.add(fileName);
+    const fileName = assetFileNameFromUrl(match[1]);
+    if (fileName) assets.add(fileName);
   }
   if (assets.size === 0) {
     throw new Error(`no initial JS assets referenced by ${dashboardPath} — run: ${BUILD_COMMANDS.dashboard}`);
   }
   return [...assets].sort();
+}
+
+/**
+ * The asset files Vite preloads for the dashboard entry's deferred
+ * `import('./App-<hash>.js')`, in preload-list order and including CSS, or
+ * null when the entry has no such import (App is then in the initial payload).
+ *
+ * Vite emits the loader as `P(() => import('./App-x.js')…, __vite__mapDeps([…]))`,
+ * where the indices point into one `m.f=[…]` table and the list starts with
+ * the imported chunk itself. Anything that breaks that shape throws: a parser
+ * that silently measured the wrong list would let the application graph grow
+ * unseen.
+ */
+export function deferredDashboardAppDependencies(distDir) {
+  const { dashboardPath, html } = readDashboardHtml(distDir);
+  const entryUrl = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']([^"']+\.js(?:[?#][^"']*)?)["']/i
+    .exec(html)?.[1];
+  const entryName = entryUrl ? assetFileNameFromUrl(entryUrl) : null;
+  if (!entryName) {
+    throw new Error(`no module entry script in ${dashboardPath} — run: ${BUILD_COMMANDS.dashboard}`);
+  }
+  const entryPath = join(distDir, 'assets', entryName);
+  let source;
+  try {
+    source = readFileSync(entryPath, 'utf8');
+  } catch (error) {
+    throw new Error(`cannot read dashboard entry ${entryPath}: ${error.message}`);
+  }
+
+  const appImport = /import\(\s*["']\.\/(App-[A-Za-z0-9_-]{8}\.js)["']\s*\)/.exec(source);
+  if (!appImport) return null;
+  const appFile = appImport[1];
+  const unsupported = (reason) => new Error(
+    `${entryPath}: ${reason} for the deferred ./${appFile} import — the Vite loader shape changed; `
+    + 'update deferredDashboardAppDependencies in scripts/bundle-budgets.mjs',
+  );
+
+  const afterImport = source.slice(appImport.index + appImport[0].length);
+  const depsCall = /__vite__mapDeps\(\[([\d,\s]*)\]\)/.exec(afterImport);
+  if (!depsCall || afterImport.slice(0, depsCall.index).includes('import(')) {
+    throw unsupported('no Vite preload list');
+  }
+  const tableSource = /m\.f=\[([^\]]*)\]/.exec(source)?.[1];
+  let table;
+  try {
+    table = JSON.parse(`[${tableSource}]`);
+  } catch {
+    throw unsupported('no readable Vite preload table');
+  }
+  const dependencies = depsCall[1].split(',').map((index) => index.trim()).filter(Boolean)
+    .map((index) => (typeof table[Number(index)] === 'string' ? assetFileNameFromUrl(table[Number(index)]) : null));
+  if (dependencies.some((name) => !name)) throw unsupported('a preload index outside assets/');
+  if (dependencies[0] !== appFile) throw unsupported('a preload list that does not start with the imported chunk');
+  return dependencies;
 }
 
 export function listJsAssetFileNames(assetsDir) {
@@ -246,7 +315,28 @@ export function measureDistChunks(distDir) {
   // same-name chunks aggregate: sizes sum and the file count is tracked, and a
   // count change forces a re-seed just like a renamed chunk does. Stale mixed
   // dist/ trees are not a concern — vite empties outDir on every build.
-  return measureChunkFiles(assetsDir, entries, 'dashboard entry');
+  const initial = measureChunkFiles(assetsDir, entries, 'dashboard entry');
+
+  // Chunks the HTML already loads are counted once, in the initial payload.
+  const appDependencies = deferredDashboardAppDependencies(distDir);
+  const initialNames = new Set(entries);
+  const deferred = appDependencies
+    ? measureChunkFiles(
+      assetsDir,
+      [...new Set(appDependencies.filter((name) => name.endsWith('.js') && !initialNames.has(name)))].sort(),
+      'deferred App import',
+    )
+    : null;
+  return { ...initial, deferred };
+}
+
+function sortedChunkBudgets(chunks) {
+  const sorted = Object.create(null);
+  for (const name of Object.keys(chunks).sort()) {
+    const { raw, files } = chunks[name];
+    sorted[name] = { raw, files };
+  }
+  return sorted;
 }
 
 export function buildBudgetSnapshot(measured, surface = DEFAULT_SURFACE) {
@@ -256,7 +346,8 @@ export function buildBudgetSnapshot(measured, surface = DEFAULT_SURFACE) {
     dashboard:
       'Initial /dashboard bundle-size budgets (#7111). Gated on raw bytes: per chunk '
       + `±max(${tolerances.toleranceBytes} B, ${tolerances.tolerancePct}%), total `
-      + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%). Tolerance fields here are `
+      + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%). The "deferred" section gates `
+      + 'the application graph the entry imports on every visit with the same tolerances. Tolerance fields here are '
       + 'informational — the gate enforces its own constants and rejects a snapshot that disagrees. '
       + `Regenerate after "${buildCommand}" with: ${reseedCommandForSurface(surface)}`,
     pro:
@@ -273,18 +364,21 @@ export function buildBudgetSnapshot(measured, surface = DEFAULT_SURFACE) {
       + `Regenerate after "${buildCommand}" with: ${reseedCommandForSurface(surface)}`,
   };
   const variants = { dashboard: 'full', pro: 'pro', embed: 'embed' };
-  const chunks = Object.create(null);
-  for (const name of Object.keys(measured.chunks).sort()) {
-    const { raw, files } = measured.chunks[name];
-    chunks[name] = { raw, files };
-  }
   return {
     comment: comments[surface] ?? comments.dashboard,
     surface,
     variant: variants[surface] ?? variants.dashboard,
     ...tolerances,
     total: { raw: measured.total.raw },
-    chunks,
+    chunks: sortedChunkBudgets(measured.chunks),
+    ...(measured.deferred
+      ? {
+        deferred: {
+          total: { raw: measured.deferred.total.raw },
+          chunks: sortedChunkBudgets(measured.deferred.chunks),
+        },
+      }
+      : {}),
   };
 }
 
@@ -296,6 +390,32 @@ function slackFor(budgetRaw, tolerancePct, toleranceBytes) {
 
 const isByteCount = (value) => Number.isSafeInteger(value) && value >= 0;
 
+function validateChunkSection(section, { chunkLabel, totalPath }) {
+  const problems = [];
+  let chunkSum = 0;
+  for (const [name, entry] of Object.entries(section.chunks)) {
+    if (!entry || !isByteCount(entry.raw) || !Number.isSafeInteger(entry.files) || entry.files < 1) {
+      problems.push(`${chunkLabel} "${name}" needs a non-negative integer "raw" and a positive integer "files"`);
+      continue;
+    }
+    chunkSum += entry.raw;
+  }
+  if (!isByteCount(section.total.raw)) {
+    problems.push(`"${totalPath}" must be a non-negative integer`);
+  } else if (problems.length === 0 && section.total.raw !== chunkSum) {
+    problems.push(
+      `"${totalPath}" (${section.total.raw}) does not equal the sum of ${chunkLabel} raw sizes (${chunkSum})`,
+    );
+  }
+  return problems;
+}
+
+const hasChunkSections = (section) => Boolean(
+  section && typeof section === 'object'
+  && section.chunks && typeof section.chunks === 'object'
+  && section.total && typeof section.total === 'object',
+);
+
 /**
  * Structural validation of the committed snapshot, run before any comparison.
  * A snapshot the gate cannot fully trust must be a loud failure, never a
@@ -305,25 +425,21 @@ const isByteCount = (value) => Number.isSafeInteger(value) && value >= 0;
  * it claims to sum. Returns a list of problems; empty means trustworthy.
  */
 export function validateBudgetSnapshot(budget, surface = budget?.surface ?? DEFAULT_SURFACE) {
-  const problems = [];
-  if (!budget || typeof budget !== 'object' || !budget.chunks || typeof budget.chunks !== 'object'
-    || !budget.total || typeof budget.total !== 'object') {
+  if (!hasChunkSections(budget)) {
     return ['snapshot is missing its "chunks" and/or "total" sections'];
   }
-  let chunkSum = 0;
-  for (const [name, entry] of Object.entries(budget.chunks)) {
-    if (!entry || !isByteCount(entry.raw) || !Number.isSafeInteger(entry.files) || entry.files < 1) {
-      problems.push(`chunk "${name}" needs a non-negative integer "raw" and a positive integer "files"`);
-      continue;
+  const problems = validateChunkSection(budget, { chunkLabel: 'chunk', totalPath: 'total.raw' });
+  if (budget.deferred !== undefined) {
+    if (surface !== DEFAULT_SURFACE) {
+      problems.push(`only the dashboard snapshot may have a "deferred" section, not "${surface}"`);
+    } else if (!hasChunkSections(budget.deferred)) {
+      problems.push('"deferred" is missing its "chunks" and/or "total" sections');
+    } else {
+      problems.push(...validateChunkSection(budget.deferred, {
+        chunkLabel: 'deferred App chunk',
+        totalPath: 'deferred.total.raw',
+      }));
     }
-    chunkSum += entry.raw;
-  }
-  if (!isByteCount(budget.total.raw)) {
-    problems.push('"total.raw" must be a non-negative integer');
-  } else if (problems.length === 0 && budget.total.raw !== chunkSum) {
-    problems.push(
-      `"total.raw" (${budget.total.raw}) does not equal the sum of chunk raw sizes (${chunkSum})`,
-    );
   }
   if (!SURFACES.includes(surface)) {
     problems.push(`snapshot has an unknown surface "${surface}"`);
@@ -346,38 +462,30 @@ export function validateBudgetSnapshot(budget, surface = budget?.surface ?? DEFA
   return problems;
 }
 
-export function compareBundleBudgets(measured, budget, surface = budget?.surface ?? DEFAULT_SURFACE) {
+function compareChunkSection(measured, budget, { tolerances, reseed, chunkLabel, totalLabel }) {
   const failures = [];
   const warnings = [];
-  const reseed = `rerun the build above, then \`${reseedCommandForSurface(surface)}\`, and commit the snapshot diff`;
-  const tolerances = toleranceForSurface(surface);
-
-  for (const problem of validateBudgetSnapshot(budget, surface)) {
-    failures.push(`snapshot invalid: ${problem} — ${reseed}`);
-  }
-  if (failures.length > 0) return { ok: false, failures, warnings };
-
   for (const [name, budgeted] of Object.entries(budget.chunks)) {
     const built = Object.hasOwn(measured.chunks, name) ? measured.chunks[name] : undefined;
     if (!built) {
-      failures.push(`chunk "${name}" is in the budget but missing from the build — if it was renamed or removed, ${reseed}`);
+      failures.push(`${chunkLabel} "${name}" is in the budget but missing from the build — if it was renamed or removed, ${reseed}`);
       continue;
     }
     if (built.files !== budgeted.files) {
       failures.push(
-        `chunk "${name}" is now ${built.files} file(s), budgeted as ${budgeted.files} — code splitting changed; ${reseed}`,
+        `${chunkLabel} "${name}" is now ${built.files} file(s), budgeted as ${budgeted.files} — code splitting changed; ${reseed}`,
       );
     }
     const slack = slackFor(budgeted.raw, tolerances.tolerancePct, tolerances.toleranceBytes);
     const delta = built.raw - budgeted.raw;
     if (delta > slack) {
       failures.push(
-        `chunk "${name}" grew ${kb(delta)}: ${kb(budgeted.raw)} budgeted -> ${kb(built.raw)} built `
+        `${chunkLabel} "${name}" grew ${kb(delta)}: ${kb(budgeted.raw)} budgeted -> ${kb(built.raw)} built `
         + `(allowed drift ${kb(slack)}). If the growth is intended, ${reseed}`,
       );
     } else if (-delta > slack) {
       warnings.push(
-        `chunk "${name}" shrank ${kb(-delta)}: ${kb(budgeted.raw)} budgeted -> ${kb(built.raw)} built. `
+        `${chunkLabel} "${name}" shrank ${kb(-delta)}: ${kb(budgeted.raw)} budgeted -> ${kb(built.raw)} built. `
         + `Ratchet the budget down so the headroom cannot silently refill — ${reseed}`,
       );
     }
@@ -386,7 +494,7 @@ export function compareBundleBudgets(measured, budget, surface = budget?.surface
   for (const name of Object.keys(measured.chunks)) {
     if (!Object.hasOwn(budget.chunks, name)) {
       failures.push(
-        `chunk "${name}" (${kb(measured.chunks[name].raw)}) is in the build but not in the budget — ${reseed}`,
+        `${chunkLabel} "${name}" (${kb(measured.chunks[name].raw)}) is in the build but not in the budget — ${reseed}`,
       );
     }
   }
@@ -399,14 +507,55 @@ export function compareBundleBudgets(measured, budget, surface = budget?.surface
   const totalDelta = measured.total.raw - budget.total.raw;
   if (totalDelta > totalSlack) {
     failures.push(
-      `total JS payload grew ${kb(totalDelta)}: ${kb(budget.total.raw)} budgeted -> `
+      `${totalLabel} grew ${kb(totalDelta)}: ${kb(budget.total.raw)} budgeted -> `
       + `${kb(measured.total.raw)} built (allowed drift ${kb(totalSlack)}) — ${reseed}`,
     );
   } else if (-totalDelta > totalSlack) {
     warnings.push(
-      `total JS payload shrank ${kb(-totalDelta)}: ${kb(budget.total.raw)} budgeted -> `
+      `${totalLabel} shrank ${kb(-totalDelta)}: ${kb(budget.total.raw)} budgeted -> `
       + `${kb(measured.total.raw)} built (allowed drift ${kb(totalSlack)}) — Ratchet the budget down — ${reseed}`,
     );
+  }
+  return { failures, warnings };
+}
+
+export function compareBundleBudgets(measured, budget, surface = budget?.surface ?? DEFAULT_SURFACE) {
+  const failures = [];
+  const warnings = [];
+  const reseed = `rerun the build above, then \`${reseedCommandForSurface(surface)}\`, and commit the snapshot diff`;
+  const tolerances = toleranceForSurface(surface);
+
+  for (const problem of validateBudgetSnapshot(budget, surface)) {
+    failures.push(`snapshot invalid: ${problem} — ${reseed}`);
+  }
+  if (failures.length > 0) return { ok: false, failures, warnings };
+
+  const sections = [compareChunkSection(measured, budget, {
+    tolerances,
+    reseed,
+    chunkLabel: 'chunk',
+    totalLabel: 'total JS payload',
+  })];
+  if (budget.deferred && !measured.deferred) {
+    failures.push(
+      `the budget gates a deferred App import, but the dashboard entry no longer has one — if App loading changed, ${reseed}`,
+    );
+  } else if (!budget.deferred && measured.deferred) {
+    failures.push(
+      `the dashboard entry defers the App import (${kb(measured.deferred.total.raw)} of JS), `
+      + `but the budget has no "deferred" section — ${reseed}`,
+    );
+  } else if (budget.deferred) {
+    sections.push(compareChunkSection(measured.deferred, budget.deferred, {
+      tolerances,
+      reseed,
+      chunkLabel: 'deferred App chunk',
+      totalLabel: 'deferred App JS payload',
+    }));
+  }
+  for (const section of sections) {
+    failures.push(...section.failures);
+    warnings.push(...section.warnings);
   }
 
   return { ok: failures.length === 0, failures, warnings };
@@ -449,6 +598,10 @@ function parseArgs(argv) {
   return args;
 }
 
+const deferredSummary = (section) => (
+  section ? `, deferred App ${kb(section.total.raw)} raw in ${Object.keys(section.chunks).length} chunks` : ''
+);
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -475,7 +628,7 @@ function main() {
     writeFileSync(resolve(args.budget), `${JSON.stringify(snapshot, null, 2)}\n`);
     console.log(
       `bundle-budgets: wrote ${Object.keys(snapshot.chunks).length} chunk budgets `
-      + `(initial payload ${kb(snapshot.total.raw)} raw) to ${args.budget}`,
+      + `(initial payload ${kb(snapshot.total.raw)} raw${deferredSummary(snapshot.deferred)}) to ${args.budget}`,
     );
     return;
   }
@@ -511,7 +664,8 @@ function main() {
   console.log(
     `bundle:check OK — ${Object.keys(budget.chunks).length} chunks within `
     + `±max(${tolerances.toleranceBytes} B, ${tolerances.tolerancePct}%), total within `
-    + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%) (${kb(measured.total.raw)} raw)`,
+    + `±max(${tolerances.totalToleranceBytes} B, ${tolerances.totalTolerancePct}%) `
+    + `(${kb(measured.total.raw)} raw${deferredSummary(measured.deferred)})`,
   );
 }
 

@@ -492,7 +492,6 @@
         "space": "RUIMTE"
       },
       "paused": "Webcams gepauzeerd",
-      "pausedIdle": "Webcams gepauzeerd — beweeg de muis om te hervatten",
       "play": "Afspelen",
       "previewStatus": "Livevoorbeeld"
     },
@@ -758,9 +757,6 @@
       "datacenter": "Datacentrum",
       "base": "Basis",
       "nuclear": "Nucleair"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "KRIT",
@@ -1316,7 +1312,10 @@
       "provenanceTitle": "Dekking herkomst: hoeveel opgenomen verhalen en verschillende bronnen deze samenvatting is geselecteerd uit",
       "compiledFrom": "Samengesteld uit {{stories}} verhalen uit {{sources}} bronnen",
       "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Details van het bericht ({{count}})",
+      "streamIdleStopLabel": "Livevideostream stoppen bij inactiviteit",
+      "streamIdleStopDesc": "Stopt Live News en Live Webcams na deze periode zonder activiteit en toont een melding in het paneel.",
+      "streamIdleStopNever": "Nooit"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."
@@ -1377,6 +1376,7 @@
       "etfs": "ETF's",
       "netInflow": "NETTO INSTROOM",
       "netOutflow": "NETTO UITSTROOM",
+      "netNeutral": "NETTO NEUTRAAL",
       "table": {
         "ticker": "Ticker",
         "issuer": "Uitgever",
@@ -1792,7 +1792,7 @@
       "infoTooltip": "<strong>Economische kalender</strong> Geplande macro-economische publicaties: CPI, NFP, GDP, PMI en centrale bankbesluiten. Toont prognose vs. werkelijk vs. vorig. Gebeurtenissen met hoge impact zijn gemarkeerd. Bron: economische dataproviders."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financiële-stressindicator</strong> WorldMonitor-verhouding van hoogrentend krediet tot langlopende Amerikaanse staatsobligaties, gecorrigeerd voor aandelenvolatiliteit en de hoogrentende spread: (HYG / TLT) / (VIX × HY spread / 100). Dit is niet de Financial Stress Index van de Federal Reserve Bank of Kansas City. Een waarde van 1.5 of hoger betekent lage stress; onder 0.3 betekent hoge stress.",
       "title": "Financiële stressindicator",
       "usFsiValue": "US FSI-WAARDE",
       "cissTitle": "EU CISS (systeemstress eurozone)",
@@ -2247,7 +2247,14 @@
       "signals_one": "{{count}} signaal",
       "signals_other": "{{count}} signalen",
       "analyzing": "Analyseren...",
-      "viewOnMap": "Bekijken op kaart"
+      "viewOnMap": "Bekijken op kaart",
+      "waiting": "Wachten op de volgende gegevensupdate. Dit paneel wordt automatisch bijgewerkt.",
+      "offline": "Wachten op een verbinding. Dit paneel wordt automatisch bijgewerkt zodra je weer online bent.",
+      "updated": "Bijgewerkt {{time}}",
+      "saved": "Laatst bekende update {{time}} · Controleren op updates",
+      "savedOffline": "Laatst bekende update {{time}} · Offline",
+      "localSignals": "Gebaseerd op geladen dashboardsignalen",
+      "emptySaved": "Geen convergentie in de laatst bekende update."
     },
     "thermalEscalation": {
       "title": "Thermische escalatie",
@@ -2409,6 +2416,35 @@
       "succeeded": "Wachtsleutel opgeslagen. Je kunt deze gebruiken wanneer je volgende keer inlogt.",
       "retryable": "Dit is niet afgerond. Je kunt het opnieuw proberen.",
       "failed": "We konden geen wachtsleutel op dit apparaat opslaan."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Beslisnotitie voor grondstoffen",
+      "commodity": "Grondstof / product",
+      "blockedChokepoint": "Verondersteld geblokkeerde doorgang",
+      "commodityCapture": "Grondstoffenvergelijking vastleggen",
+      "title": "Beslisnotitie",
+      "fuel": "Brandstof",
+      "chokepoint": "Knelpunt",
+      "baseline": "Verstoring in basisscenario",
+      "comparison": "Verstoring in vergelijkingsscenario",
+      "capture": "Beide vastleggen / vernieuwen",
+      "downloadHtml": "Beslisnotitie downloaden als HTML",
+      "downloadJson": "Beslisnotitie downloaden als JSON",
+      "back": "← Terug naar landenoverzicht",
+      "select": "Selecteer een energieverstoring en leg beide scenario’s vast.",
+      "changed": "Selectie gewijzigd. Leg beide scenario’s vast voordat u exporteert.",
+      "loading": "Beide scenario’s worden vastgelegd…",
+      "captured": "Vastgelegd. Controleer de observatiedatums en beperkingen voordat u downloadt.",
+      "failed": "De scenario’s konden niet worden vastgelegd. Controleer uw toegang en probeer opnieuw. Er is geen resultaat om te exporteren.",
+      "locked": "De beslisnotitie is beschikbaar met Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Gepauzeerd wegens inactiviteit",
+      "idleBody": "Livevideostream gestopt na {{duration}} zonder muis-, toetsenbord- of aanraakactiviteit.",
+      "idleResume": "Hervatten",
+      "idleKeepPlaying": "Videostream afspelen bij inactiviteit",
+      "idleSettingsHint": "Wijzig dit op elk moment in Instellingen › Media.",
+      "idleKeepPlayingToast": "Livevideostream blijft afspelen bij inactiviteit. Wijzigen in Instellingen › Media."
     }
   },
   "popups": {
@@ -3276,7 +3312,8 @@
       "activeSirens": "Actieve sirenes",
       "sirens24h": "Sirenes / 24u",
       "aviationDisruptions": "Luchtvaartverstoringen",
-      "gpsJammingZones": "GPS-storingszones"
+      "gpsJammingZones": "GPS-storingszones",
+      "temporalUnavailable": "Temporele waarnemingen niet beschikbaar"
     },
     "countryFacts": "Landenfeiten",
     "loadingFacts": "Landenfeiten laden...",

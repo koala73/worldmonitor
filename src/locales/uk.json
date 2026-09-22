@@ -241,7 +241,8 @@
       "activeSirens": "Active Sirens",
       "sirens24h": "Sirens / 24h",
       "aviationDisruptions": "Aviation Disruptions",
-      "gpsJammingZones": "GPS Jamming Zones"
+      "gpsJammingZones": "GPS Jamming Zones",
+      "temporalUnavailable": "Дані часових спостережень недоступні"
     },
     "fallback": {
       "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
@@ -930,7 +931,6 @@
   "components": {
     "webcams": {
       "paused": "Webcams paused",
-      "pausedIdle": "Webcams paused — move mouse to resume",
       "play": "Play",
       "previewStatus": "Live preview",
       "regions": {
@@ -1327,9 +1327,6 @@
       "base": "Base",
       "nuclear": "Nuclear"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "HIGH",
@@ -1639,9 +1636,12 @@
       "compiledFrom": "Compiled from {{stories}} stories across {{sources}} sources",
       "provenanceTitle": "Coverage provenance: how many ingested stories and distinct sources this brief was selected from",
       "briefFreshness": "Generated {{minutes}}m ago · newest source {{hours}}h old",
-      "briefStoryDetails": "Story details ({{count}})",
+      "briefStoryDetails": "Подробиці новини ({{count}})",
       "sources_few": "{{count}} джерела",
-      "sources_many": "{{count}} джерел"
+      "sources_many": "{{count}} джерел",
+      "streamIdleStopLabel": "Зупинити пряму трансляцію відео при бездіяльності",
+      "streamIdleStopDesc": "Зупиняє Live News і Live Webcams після цього часу без активності та показує повідомлення на панелі.",
+      "streamIdleStopNever": "Ніколи"
     },
     "settings": {
       "exportSettings": "Export Settings",
@@ -2056,6 +2056,7 @@
       "etfs": "ETFs",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "ЧИСТИЙ НЕЙТРАЛ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Issuer",
@@ -2402,7 +2403,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Індикатор фінансового стресу</strong> Співвідношення WorldMonitor високодохідного кредиту до довгострокових казначейських облігацій США, скориговане на волатильність акцій і спред високодохідних облігацій: (HYG / TLT) / (VIX × HY spread / 100). Це не Індекс фінансового стресу Федерального резервного банку Канзас-Сіті. Значення 1.5 або вище означає низький стрес; нижче 0.3 — високий стрес.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
@@ -2743,7 +2744,14 @@
       "analyzing": "Analyzing...",
       "viewOnMap": "View on map",
       "signals_few": "{{count}} сигнали",
-      "signals_many": "{{count}} сигналів"
+      "signals_many": "{{count}} сигналів",
+      "waiting": "Очікування наступного оновлення даних. Ця панель оновлюється автоматично.",
+      "offline": "Очікування з’єднання. Ця панель оновиться автоматично після відновлення з’єднання.",
+      "updated": "Оновлено {{time}}",
+      "saved": "Останнє відоме оновлення {{time}} · Перевірка оновлень",
+      "savedOffline": "Останнє відоме оновлення {{time}} · Немає з’єднання",
+      "localSignals": "На основі завантажених сигналів панелі моніторингу",
+      "emptySaved": "В останньому відомому оновленні конвергенції не виявлено."
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2896,6 +2904,35 @@
       "succeeded": "Пропуск збережено. Ви можете використовувати його при наступному вході.",
       "retryable": "Це не завершилось. Ви можете спробувати ще раз.",
       "failed": "Нам не вдалося зберегти пропуск на цьому пристрої."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Довідка для рішень щодо сировини",
+      "commodity": "Сировина / продукт",
+      "blockedChokepoint": "Імовірно заблокований прохід",
+      "commodityCapture": "Зафіксувати порівняння сировини",
+      "title": "Зведення для ухвалення рішення",
+      "fuel": "Паливо",
+      "chokepoint": "Вузьке місце",
+      "baseline": "Базове порушення постачання",
+      "comparison": "Порівнюване порушення постачання",
+      "capture": "Завантажити / оновити обидва",
+      "downloadHtml": "Завантажити зведення в HTML",
+      "downloadJson": "Завантажити зведення в JSON",
+      "back": "← Назад до зведення про країну",
+      "select": "Виберіть порушення енергопостачання, потім завантажте обидва сценарії.",
+      "changed": "Вибір змінено. Завантажте обидва сценарії перед експортом.",
+      "loading": "Завантаження обох сценаріїв…",
+      "captured": "Завантажено. Перед збереженням перевірте дати спостережень та обмеження.",
+      "failed": "Не вдалося завантажити сценарії. Перевірте доступ і повторіть спробу. Немає результату для експорту.",
+      "locked": "Зведення для ухвалення рішення доступне в Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Призупинено через бездіяльність",
+      "idleBody": "Пряму трансляцію відео зупинено після {{duration}} без активності миші, клавіатури чи сенсора.",
+      "idleResume": "Відновити",
+      "idleKeepPlaying": "Продовжити відтворення при бездіяльності",
+      "idleSettingsHint": "Змінити це можна будь-коли в Параметри › Медіа.",
+      "idleKeepPlayingToast": "Пряма трансляція відео продовжиться при бездіяльності. Змініть у Параметри › Медіа."
     }
   },
   "popups": {

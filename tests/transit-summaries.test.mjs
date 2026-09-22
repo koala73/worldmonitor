@@ -395,6 +395,77 @@ describe('seedTransitSummaries (relay)', () => {
     assert.ok(checked >= 13, `expected every canonical chokepoint compared, got ${checked}`);
   });
 
+  it('ingests generated prose without publishing it in corridor, transit or notification payloads', async () => {
+    const capture = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/chokepoints-routing-advice-2026-09-10.json'), 'utf8'));
+    const captured = capture.body.chokepoints.find(cp => cp.id === 'hormuz_strait').transitSummary;
+    const corridorBody = relaySrc.match(/async function seedCorridorRisk\(\)\s*\{([\s\S]*?)\n\}/)?.[1];
+    assert.ok(corridorBody);
+    const source = [
+      extractConstLine('CORRIDOR_RISK_BASE_URL'),
+      extractConstLine('CORRIDOR_RISK_TTL'),
+      'let corridorRiskSeedInFlight = false;',
+      `async function seedCorridorRisk() {${corridorBody}\n}`,
+      seedHarnessSrc.replace('return seedTransitSummaries;', 'return { seedCorridorRisk, seedTransitSummaries };'),
+    ].join('\n');
+    for (const advice of [captured.riskReportAction, undefined, null, { route: 'Suez', cost: '$50-80K' }]) {
+      const writes = new Map();
+      const notifications = [];
+      const seed = new Function(
+        'fetch', 'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED',
+        'chokepointCrossings', 'detectTrafficAnomaly', 'CHOKEPOINT_THREAT_LEVELS',
+        'CORRIDOR_RISK_NAME_MAP', 'deriveCorridorRiskLevel', 'CHROME_UA', 'publishNotificationEvent',
+        source,
+      )(
+        async () => Response.json([{ name: 'Strait of Hormuz', score: 80, incident_count_7d: 628,
+          disruption_pct: 100, risk_summary: advice, risk_report: { action: advice } }]),
+        async key => key === 'supply_chain:portwatch:v1'
+          ? Object.fromEntries(ALL_CANONICAL_IDS.map(id => [id, { history: [], wowChangePct: -26.7 }]))
+          : null,
+        async (key, data) => { writes.set(key, data); return true; },
+        async () => {}, { log() {}, warn(message) { assert.fail(message); } }, true,
+        new Map(), detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS,
+        CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel, 'test-agent',
+        async event => { notifications.push(event); },
+      );
+      await seed.seedCorridorRisk();
+      await seed.seedTransitSummaries();
+      const corridor = writes.get('supply_chain:corridorrisk:v1').hormuz_strait;
+      const summary = writes.get('supply_chain:transit-summaries:v1').summaries.hormuz_strait;
+      for (const entry of [corridor, summary]) {
+        assert.equal(entry.riskSummary, '');
+        assert.equal(entry.riskReportAction, '');
+        assert.equal(entry.riskLevel, 'critical');
+        assert.equal(entry.incidentCount7d, 628);
+        assert.equal(entry.disruptionPct, 100);
+      }
+      assert.equal(summary.todayTotal, null);
+      assert.equal(summary.dataAvailable, true);
+      assert.equal(notifications.length, 1);
+      assert.doesNotMatch(JSON.stringify([...writes.values(), notifications]), /REROUTE|50-80K|Salalah/);
+    }
+  });
+
+  it('withholds legacy corridor prose on restart while retaining structured risk and absent counts', async () => {
+    const capture = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/chokepoints-routing-advice-2026-09-10.json'), 'utf8'));
+    const risk = capture.body.chokepoints.find(cp => cp.id === 'hormuz_strait').transitSummary;
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => key === 'supply_chain:portwatch:v1'
+        ? { hormuz_strait: { history: [], wowChangePct: -26.7 } }
+        : { hormuz_strait: risk },
+      envelopeWrite: async (key, data) => { writes.push({ key, data }); return true; },
+      upstashSet: async () => {},
+    });
+    await seed();
+    const summary = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data.summaries.hormuz_strait;
+    assert.equal(summary.riskReportAction, '');
+    assert.equal(summary.riskSummary, '');
+    assert.equal(summary.riskLevel, 'critical');
+    assert.equal(summary.incidentCount7d, 628);
+    assert.equal(summary.todayTotal, null);
+    assert.equal(summary.dataAvailable, true);
+  });
+
   it('still publishes a real Panama disruptionPct of 0 from corridor risk', async () => {
     const fakePortwatch = {
       panama: { history: makeDays(40, 30, 0), wowChangePct: -10.1 },

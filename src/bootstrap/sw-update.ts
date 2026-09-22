@@ -10,7 +10,7 @@ interface DocumentLike {
   querySelector: (sel: string) => Element | null;
   querySelectorAll: (sel: string) => Iterable<Element & VisibleElementLike>;
   createElement: (tag: string) => HTMLElement;
-  body: { appendChild: (el: Element) => void; contains: (el: Element | null) => boolean };
+  body: { appendChild: (el: Element) => void; contains: (el: Element | null) => boolean } | null;
   addEventListener: (type: string, cb: () => void) => void;
   removeEventListener: (type: string, cb: () => void) => void;
 }
@@ -154,6 +154,9 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
     }
     doc.querySelector('.update-toast')?.remove();
 
+    const body = doc.body;
+    if (!body) return;
+
     const toast = doc.createElement('div');
     toast.className = 'update-toast';
     setTrustedHtml(toast, trustedHtml(`
@@ -205,7 +208,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         logSw('dwell-timer-cancelled-on-hide');
       }
       logSw('visibility-hidden', { autoReloadAllowed, dismissed });
-      if (!dismissed && autoReloadAllowed && doc.body.contains(toast)) {
+      if (!dismissed && autoReloadAllowed && doc.body?.contains(toast)) {
         // Don't interrupt an in-flight modal flow (Clerk email-code wait,
         // Settings, ⌘K search, etc.). The reload stays armed — next tab-hide
         // after the modal closes will fire it. User can also click Reload
@@ -243,7 +246,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
     currentOnHidden = onHidden;
     currentDwellCancel = () => { clearTimer(dwellTimerId); dwellTimerId = null; };
     doc.addEventListener('visibilitychange', onHidden);
-    doc.body.appendChild(toast);
+    body.appendChild(toast);
     raf(() => toast.classList.add('visible'));
   };
 

@@ -19,12 +19,22 @@ async function check(name, path, headers, verify) {
   }
 }
 
-function markdown(response, body) {
+function assertMarkdownResponse(response, body) {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /text\/markdown/);
+  assert.doesNotMatch(body.slice(0, 1000), /<!doctype html|<html/i);
+}
+
+function markdown(response, body) {
+  assertMarkdownResponse(response, body);
   assert.match(body, /^---\n[\s\S]*?\btitle:[\s\S]*?\n---\n/);
   assert.match(body, /^canonical: /m);
-  assert.doesNotMatch(body.slice(0, 1000), /<!doctype html|<html/i);
+}
+
+function authMarkdown(response, body) {
+  assertMarkdownResponse(response, body);
+  assert.match(body, /^# WorldMonitor — Agent Authentication \(auth\.md\)\n/);
+  assert.match(response.headers.get('link') ?? '', /<https:\/\/www\.worldmonitor\.app\/auth\.md>;\s*rel="canonical"/);
 }
 
 await check('JSON agent mode', '/?mode=agent', { Accept: 'application/json' }, (response, body) => {
@@ -35,9 +45,12 @@ await check('JSON agent mode', '/?mode=agent', { Accept: 'application/json' }, (
   assert.ok(view.endpoints.rest.openapi && view.authentication.apiKey && view.capabilities.length);
 });
 
-const docs = readdirSync(new URL('../public/', import.meta.url)).filter((name) => name.endsWith('.md'));
+const docs = readdirSync(new URL('../public/', import.meta.url)).filter(
+  (name) => name.endsWith('.md') && name !== 'auth.md',
+);
 docs.push('api/download.md', 'countries.md', 'sources.md', 'contact.md');
 for (const document of docs) await check(document, `/${document}`, {}, markdown);
+await check('auth.md', '/auth.md', {}, authMarkdown);
 for (const ua of policy.userAgents) {
   await check(`${ua} homepage`, '/', { 'User-Agent': `${ua}/1.0`, Accept: 'text/html' }, markdown);
 }

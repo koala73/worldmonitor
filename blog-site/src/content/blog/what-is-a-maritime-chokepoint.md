@@ -6,7 +6,7 @@ keywords: "maritime chokepoint, shipping chokepoint, Strait of Hormuz, Suez Cana
 audience: "Logistics teams, maritime analysts, commodity traders, students, geopolitical risk readers"
 heroImage: "/blog/images/blog/what-is-a-maritime-chokepoint.jpg"
 pubDate: "2026-06-13"
-modifiedDate: "2026-09-04"
+modifiedDate: "2026-09-10"
 ---
 
 A maritime chokepoint is a narrow passage where a large share of global trade, energy, food, or military movement must pass through a small physical space.
@@ -41,19 +41,19 @@ WorldMonitor's canonical chokepoint registry includes:
 
 | Canonical id | Public name |
 |---|---|
-| `hormuz_strait` | Strait of Hormuz |
-| `malacca_strait` | Strait of Malacca |
-| `suez` | Suez Canal / SUMED |
-| `bab_el_mandeb` | Bab el-Mandeb |
-| `panama` | Panama Canal |
-| `taiwan_strait` | Taiwan Strait |
-| `cape_of_good_hope` | Cape of Good Hope |
-| `gibraltar` | Strait of Gibraltar |
-| `bosphorus` | Bosporus Strait |
-| `korea_strait` | Korea Strait |
-| `dover_strait` | Dover Strait |
-| `kerch_strait` | Kerch Strait |
-| `lombok_strait` | Lombok Strait |
+| `hormuz_strait` | [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) |
+| `malacca_strait` | [Strait of Malacca](https://www.worldmonitor.app/chokepoints/strait-of-malacca/) |
+| `suez` | [Suez Canal / SUMED](https://www.worldmonitor.app/chokepoints/suez-canal/) |
+| `bab_el_mandeb` | [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/) |
+| `panama` | [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/) |
+| `taiwan_strait` | [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/) |
+| `cape_of_good_hope` | [Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/) |
+| `gibraltar` | [Strait of Gibraltar](https://www.worldmonitor.app/chokepoints/strait-of-gibraltar/) |
+| `bosphorus` | [Bosporus Strait](https://www.worldmonitor.app/chokepoints/bosporus-strait/) |
+| `korea_strait` | [Korea Strait](https://www.worldmonitor.app/chokepoints/korea-strait/) |
+| `dover_strait` | [Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/) |
+| `kerch_strait` | [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/) |
+| `lombok_strait` | [Lombok Strait](https://www.worldmonitor.app/chokepoints/lombok-strait/) |
 
 All 13 can receive status, threat classification, warning context, AIS-disruption matching, disruption score, and war-risk tier.
 

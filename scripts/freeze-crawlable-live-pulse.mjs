@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Freeze last-known-good crawlable live-pulse values for country risk,
 // chokepoint status, crisis HAPI summaries, the top news headlines,
-// the market tape, and
-// per-country recent developments (digest headlines matched per country,
-// topped up from the per-country GDELT article index where the digest
+// the market tape, the forecast resolution scorecard published at /accuracy/, and
+// per-country recent developments (digest and cached RSS headlines matched per country,
+// topped up from the per-country GDELT article index where the curated pool
 // leaves a country short, plus the intel brief and timeline where a service
 // key unlocks the tier-gated routes). Writes
 // docs/snapshots/crawlable-live-pulse-<YYYY-MM-DD>.json.
@@ -32,7 +32,9 @@ import {
 } from './crawlable-live-tools.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
+  briefCitationGroundingGap,
   briefGroundingGap,
+  briefGroundingPublisherCount,
   COUNTRY_INDEX_ORIGIN,
   developmentsHasDatedItem,
   hasBriefGrounding,
@@ -41,7 +43,9 @@ import {
   normalizeFrozenDevelopments,
 } from './crawlable-developments.mjs';
 import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.mjs';
+import { selectDeclaredScorecardFields } from './build-accuracy-page.mjs';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -261,6 +265,7 @@ function firstCaptureCause(errors) {
 }
 
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
+const LIVE_PULSE_SNAPSHOT_RE = /^crawlable-live-pulse-(\d{4}-\d{2}-\d{2})\.json$/;
 const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
 function sleep(ms) {
@@ -522,6 +527,7 @@ function timelineRecord(record) {
 }
 
 // `briefSkipped` states, published as-is in the corpus dataset download:
+//   'unsupported-citation' a claim names entities absent from its cited source
 //   null              a brief was requested and captured
 //   'no-service-key'  keyless run; tier-gated routes not attempted
 //   'no-grounding'    no digest or index headline named the country
@@ -565,7 +571,7 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
 // would leave a shortfall with no recorded cause, since the request itself
 // succeeded -- the operator would see a count and no reason.
 export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
-  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0 };
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0 };
   const categories = payload && typeof payload === 'object' ? payload.categories : null;
   if (!categories || typeof categories !== 'object') return { rows: [], rejections };
   const rows = Object.values(categories)
@@ -590,10 +596,16 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
       || a.row.title.localeCompare(b.row.title)
-    ))
-    .slice(0, limit)
-    .map((entry) => entry.row);
-  return { rows, rejections };
+    ));
+
+  // Dedupe BEFORE the cap so a second edition of one story never occupies a
+  // slot the next distinct story could fill — the same ordering the digest uses
+  // for its own revoked-URL suppression. Ranked input means the surviving copy
+  // is the best-ranked one (#8339).
+  const deduped = dedupeByArticleUrl(rows, (entry) => entry.row.url);
+  rejections.duplicateUrl = rows.length - deduped.length;
+
+  return { rows: deduped.slice(0, limit).map((entry) => entry.row), rejections };
 }
 
 // Country matching is the shared matcher (shared/country-mention.js), the
@@ -711,6 +723,87 @@ function signalConvergenceReference(capturedAt) {
     ],
     capturedAt,
   };
+}
+
+// The newest committed pulse snapshot that carried a usable scorecard. Read only
+// when the current capture fails: the alternative is publishing nothing, and a
+// dated older measurement is more useful than a blank page as long as the page
+// ages it on its own clock. The weekly workflow prunes superseded snapshots
+// AFTER this runs, so the previous week's file is still on disk here.
+async function retainedForecastScorecard(rootDir) {
+  let entries = [];
+  try {
+    entries = await fs.readdir(path.join(rootDir, 'docs', 'snapshots'));
+  } catch {
+    return null;
+  }
+  const candidates = entries
+    .filter((filename) => LIVE_PULSE_SNAPSHOT_RE.test(filename))
+    .sort()
+    .reverse();
+  for (const filename of candidates) {
+    try {
+      const snapshot = JSON.parse(
+        await fs.readFile(path.join(rootDir, 'docs', 'snapshots', filename), 'utf8'),
+      );
+      const previous = snapshot?.forecastScorecard;
+      const scorecard = selectDeclaredScorecardFields(previous?.scorecard);
+      const generatedAt = Number(previous?.generatedAt);
+      if (scorecard && Number.isFinite(generatedAt) && generatedAt > 0) {
+        return { scorecard, generatedAt, capturedAt: previous.capturedAt ?? null };
+      }
+    } catch {
+      // A malformed sibling snapshot is not this run's problem; keep looking.
+    }
+  }
+  return null;
+}
+
+/** Failure codes are a fixed vocabulary because /accuracy/ publishes them. */
+function scorecardFailureCode(error) {
+  if (error?.code) return error.code;
+  if (Number.isFinite(error?.status)) return 'http-error';
+  return 'request-failed';
+}
+
+async function captureForecastScorecard({
+  token, base, authOpts, capturedAt, attemptedAtMs, rootDir, errors,
+}) {
+  try {
+    const payload = await authedGet('/api/forecast/v1/get-forecast-scorecard', token, base, authOpts);
+    // The RPC handler strips only `judgedLane` before spreading the seeder
+    // value, so undeclared fields reach the response. Whitelisting at capture
+    // keeps them out of the committed snapshot, which is a public repo file,
+    // and not only out of the rendered page.
+    const scorecard = selectDeclaredScorecardFields(payload);
+    if (!scorecard) {
+      throw Object.assign(new Error('forecast scorecard response was not an object'), { code: 'malformed-response' });
+    }
+    if (!Number.isFinite(scorecard.generatedAt) || scorecard.generatedAt <= 0) {
+      throw Object.assign(new Error('forecast scorecard response carried no usable generatedAt'), { code: 'undated-response' });
+    }
+    return {
+      attemptedAt: capturedAt,
+      attemptedAtMs,
+      capturedAt,
+      generatedAt: scorecard.generatedAt,
+      scorecard,
+      failureCode: '',
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const failureCode = scorecardFailureCode(error);
+    errors.push({ id: '*', code: failureCode, message });
+    const retained = await retainedForecastScorecard(rootDir);
+    return {
+      attemptedAt: capturedAt,
+      attemptedAtMs,
+      capturedAt: retained?.capturedAt ?? null,
+      generatedAt: retained?.generatedAt ?? null,
+      scorecard: retained?.scorecard ?? null,
+      failureCode,
+    };
+  }
 }
 
 export async function freezeCrawlableLivePulse({
@@ -925,6 +1018,45 @@ export async function freezeCrawlableLivePulse({
     headlinesByCode.set(code, selectCountryHeadlines(digestItems, code, COUNTRY_HEADLINE_LIMIT));
   }
 
+  // Country reporting is useful even when it falls below the dashboard's
+  // category cap. Read the already-acquired RSS pool once before GDELT top-up.
+  const curatedFeeds = { state: 'unavailable', feedTotal: 0, feedCached: 0, recoveredCountryCount: 0, addedHeadlineCount: 0 };
+  const curatedFeedErrors = [];
+  const curatedFeedUrls = new Set();
+  try {
+    const query = new URLSearchParams();
+    for (const code of Object.keys(countries)) query.append('country_codes', code);
+    const payload = await authedGet(`/api/news/v1/list-country-headlines?${query}`, token, base, authOpts);
+    if (!['complete', 'partial', 'unavailable'].includes(payload?.state)
+      || !payload.countries || typeof payload.countries !== 'object') {
+      throw new Error('country headline response did not report cache coverage');
+    }
+    curatedFeeds.state = payload.state;
+    curatedFeeds.feedTotal = Number.isInteger(payload.feedTotal) ? payload.feedTotal : 0;
+    curatedFeeds.feedCached = Number.isInteger(payload.feedCached) ? payload.feedCached : 0;
+    if (payload.state === 'unavailable') throw new Error('country headline caches or revocation controls unavailable');
+    for (const code of Object.keys(countries)) {
+      const existing = headlinesByCode.get(code);
+      const candidates = selectCountryHeadlines(payload.countries[code]?.items, code)
+        .filter(row => !existing.some(headline => headline.url === row.url));
+      const rows = [];
+      while (existing.length + rows.length < COUNTRY_HEADLINE_LIMIT && candidates.length) {
+        const selected = [...existing, ...rows];
+        const publishers = briefGroundingPublisherCount(selected);
+        const independent = candidates.findIndex(row => briefGroundingPublisherCount([...selected, row]) > publishers);
+        rows.push(candidates.splice(Math.max(0, independent), 1)[0]);
+      }
+      if (rows.length === 0) continue;
+      if (existing.length === 0) curatedFeeds.recoveredCountryCount++;
+      curatedFeeds.addedHeadlineCount += rows.length;
+      for (const row of rows) curatedFeedUrls.add(row.url);
+      headlinesByCode.set(code, [...existing, ...rows]);
+    }
+  } catch (error) {
+    curatedFeedErrors.push({ code: '*', stage: 'curated-feeds', message: error instanceof Error ? error.message : String(error) });
+  }
+  await sleep(requestGapMs);
+
   // Per-country index top-up (#7748): every country the pool leaves short
   // asks the index; digest rows keep precedence and index rows fill the
   // remaining slots. The top-up is never a reason to lose the capture — its
@@ -943,12 +1075,12 @@ export async function freezeCrawlableLivePulse({
 
   // Provenance cross-check (#7615): a brief source renders headline-grade on
   // the page, so its URL must have been in this run's frozen grounding pool —
-  // the pooled digest generation plus the index rows accepted above. The
-  // server re-grounds from its own live digest read at brief time; anything
-  // outside the pool (rotation, hallucination) rejects the entire brief
+  // the pooled digest, recovered RSS headlines and index rows accepted above.
+  // The brief request passes those rows as numbered Source lines; anything
+  // returned outside the pool rejects the entire brief
   // rather than being removed and shifting citation indexes. Both sides use
   // the same HTTPS-only URL serialization.
-  const groundingUrls = new Set(countryIndexUrls);
+  const groundingUrls = new Set([...countryIndexUrls, ...curatedFeedUrls]);
   for (const item of digestItems) {
     const url = normalizeHttpsUrl(item?.link);
     if (url) groundingUrls.add(url);
@@ -1049,13 +1181,32 @@ export async function freezeCrawlableLivePulse({
       developmentsErrors.push({
         code,
         stage: 'brief',
-        message: `response carried ${developments.brief.sources.length} grounding source(s) from fewer than `
-          + `${MIN_BRIEF_GROUNDING_PUBLISHERS} distinct publishers; the publish floor withholds it`,
+        message: normalized.briefSkipped === 'unsupported-citation'
+          ? `brief withheld: ${briefCitationGroundingGap(developments.brief)}`
+          : `brief withheld: ${normalized.briefSkipped} (${developments.brief.sources.length} grounding sources; `
+            + `requires ${MIN_BRIEF_GROUNDING_PUBLISHERS} distinct publishers and a curated source)`,
       });
     }
     countries[code].developments = normalized;
   }
-  developmentsErrors.push(...digestVariantErrors, ...countryIndexErrors);
+  developmentsErrors.push(...digestVariantErrors, ...curatedFeedErrors, ...countryIndexErrors);
+
+  // Forecast resolution scorecard (#6646), published at /accuracy/. Guarded and
+  // never throwing, like every other step: a scoring outage must cost the page
+  // its numbers, not discard the country work or arm the corpus staleness fuse.
+  // The section is always written, so the page names the failure instead of
+  // silently omitting itself.
+  const scorecardErrors = [];
+  const forecastScorecard = await captureForecastScorecard({
+    token,
+    base,
+    authOpts,
+    capturedAt,
+    attemptedAtMs: freezeStartedAt,
+    rootDir,
+    errors: scorecardErrors,
+  });
+  await sleep(requestGapMs);
 
   const geoLeaders = Object.entries(countries)
     .filter(([, row]) => Number.isFinite(row.geoConvergence) && row.geoConvergence > 0)
@@ -1084,6 +1235,7 @@ export async function freezeCrawlableLivePulse({
       ...signalConvergenceReference(capturedAt),
       ciiGeoConvergenceLeaders: geoLeaders,
     },
+    forecastScorecard,
     coverage: {
       countryCount: Object.keys(countries).length,
       countryErrorCount: countryErrors.length,
@@ -1102,10 +1254,14 @@ export async function freezeCrawlableLivePulse({
         .filter((row) => (row.developments?.headlines?.length || 0) > 0).length,
       briefCountryCount: Object.values(countries)
         .filter((row) => row.developments?.brief != null).length,
+      // Grounding eligibility is independent of credentials or request outcome.
+      briefEligibleCount: [...headlinesByCode.values()].filter(hasBriefGrounding).length,
+      briefUnsupportedCitationCount: Object.values(countries)
+        .filter((row) => row.developments?.briefSkipped === 'unsupported-citation').length,
       // Countries a brief was requested for: keyed, and grounded on at least
       // MIN_BRIEF_GROUNDING_PUBLISHERS distinct publishers. The gate below is
-      // measured against this request-time set, so a brief withheld after the
-      // response still counts against the capture.
+      // measured against this request-time set. Only explicit citation
+      // suppression is counted as completed validation rather than an outage.
       briefMatchedCount: briefAttemptedCodes.size,
       // Countries whose grounding was too thin to request a brief at all.
       briefThinGroundingCount: Object.values(countries)
@@ -1126,6 +1282,7 @@ export async function freezeCrawlableLivePulse({
         .filter((row) => !developmentsHasDatedItem(row.developments)).length,
       developmentsDigestVariants: digestVariantStates,
       developmentsDigestItemCount: digestItems.length,
+      developmentsCuratedFeeds: curatedFeeds,
       // The per-country index top-up (#7748): whether the route served,
       // how many countries were asked, and how many gained at least one
       // index row. The corpus build raises its coverage floor when the
@@ -1134,6 +1291,13 @@ export async function freezeCrawlableLivePulse({
       developmentsCountryIndex: countryIndex,
       serviceKeyPresent: keyed,
       developmentsErrorCount: developmentsErrors.length,
+      // Captured means THIS run read the scorecard. A retained older payload
+      // still publishes, so `retained` distinguishes the two rather than
+      // letting a carried-forward measurement look like a fresh read.
+      forecastScorecardCaptured: forecastScorecard.failureCode === '',
+      forecastScorecardRetained: forecastScorecard.failureCode !== '' && forecastScorecard.scorecard !== null,
+      forecastScorecardFailureCode: forecastScorecard.failureCode,
+      forecastScorecardScored: forecastScorecard.scorecard?.totals?.scored ?? null,
     },
     errors: {
       countries: countryErrors,
@@ -1142,6 +1306,7 @@ export async function freezeCrawlableLivePulse({
       headlines: headlineErrors,
       quotes: quoteErrors,
       developments: developmentsErrors,
+      forecastScorecard: scorecardErrors,
     },
   };
 
@@ -1185,20 +1350,39 @@ export async function freezeCrawlableLivePulse({
   // Without a key there is nothing to gate: briefSkipped=no-service-key is
   // the documented degraded state, not a failure.
   if (keyed && snapshot.coverage.briefMatchedCount > 0) {
-    if (snapshot.coverage.briefCountryCount === 0) {
+    // A valid response withheld for unsupported names is a completed check,
+    // not an upstream outage. Publish its headlines and explicit gap without
+    // making the other pulse datasets age out. Empty/failed/thin responses
+    // still count against the existing capture floor.
+    const checkedBriefs = snapshot.coverage.briefCountryCount + snapshot.coverage.briefUnsupportedCitationCount;
+    if (checkedBriefs === 0) {
       throw new Error(
         `Pulse freeze captured briefs for 0 of ${snapshot.coverage.briefMatchedCount} headline-matched countries`
         + firstCaptureCause(developmentsErrors),
       );
     }
     const minBriefs = minimumBriefCaptures(snapshot.coverage.briefMatchedCount);
-    if (snapshot.coverage.briefCountryCount < minBriefs) {
+    if (checkedBriefs < minBriefs) {
       throw new Error(
-        `Pulse freeze captured briefs for only ${snapshot.coverage.briefCountryCount} of ${snapshot.coverage.briefMatchedCount} headline-matched countries; `
+        `Pulse freeze captured or withheld unsupported briefs for only ${checkedBriefs} of ${snapshot.coverage.briefMatchedCount} headline-matched countries; `
         + `expected at least ${minBriefs}`
         + firstCaptureCause(developmentsErrors),
       );
     }
+  }
+
+  // Strip invariant (#8339): the four published headlines must be four distinct
+  // articles. selectFrozenHeadlines already dedupes by normalized URL, so a
+  // duplicate here is a defect in that dedupe rather than an upstream
+  // condition, and it would put one story in two of the homepage's four rows.
+  // Unlike the coverage gates above this cannot be caused by a news outage, so
+  // it throws instead of recording a partial.
+  const duplicateHeadlineUrls = duplicateArticleUrls(snapshot.headlines, (row) => row?.url);
+  if (duplicateHeadlineUrls.length > 0) {
+    throw new Error(
+      `Pulse freeze selected ${snapshot.headlines.length} headlines carrying a repeated article: `
+      + `${duplicateHeadlineUrls.join(', ')}`,
+    );
   }
 
   const basename = OUTPUT_BASENAME || `crawlable-live-pulse-${capturedAt}.json`;
@@ -1220,15 +1404,32 @@ if (isMain) {
         + `quotes=${snapshot.coverage.quoteCount} `
         + `headlineCountries=${snapshot.coverage.headlineCountryCount} `
         + `briefCountries=${snapshot.coverage.briefCountryCount} `
+        + `briefEligible=${snapshot.coverage.briefEligibleCount} `
+        + `briefUnsupportedCitations=${snapshot.coverage.briefUnsupportedCitationCount} `
         + `briefThinGrounding=${snapshot.coverage.briefThinGroundingCount} `
         + `timelineCountries=${snapshot.coverage.timelineCountryCount} `
         + `developmentsCountries=${snapshot.coverage.developmentsCountryCount} `
         + `developmentsMissing=${snapshot.coverage.developmentsMissingCount} `
         + `digestPool=${snapshot.coverage.developmentsDigestItemCount} `
+        + `curatedFeeds=${snapshot.coverage.developmentsCuratedFeeds.state}`
+        + `:${snapshot.coverage.developmentsCuratedFeeds.feedCached}/${snapshot.coverage.developmentsCuratedFeeds.feedTotal} `
+        + `curatedRecovered=${snapshot.coverage.developmentsCuratedFeeds.recoveredCountryCount} `
         + `countryIndex=${snapshot.coverage.developmentsCountryIndex.state}`
         + `:${snapshot.coverage.developmentsCountryIndex.countryCount} `
-        + `keyed=${snapshot.coverage.serviceKeyPresent}`,
+        + `keyed=${snapshot.coverage.serviceKeyPresent} `
+        + `forecastScorecard=${snapshot.coverage.forecastScorecardCaptured}`
+        + `:${snapshot.coverage.forecastScorecardScored ?? 'none'}`,
       );
+      if (!snapshot.coverage.forecastScorecardCaptured) {
+        // /accuracy/ reports the failed capture and, when an older measurement
+        // was retained, ages it on its own clock. Either way the page publishes
+        // the state rather than a number it did not read, so the run continues.
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: forecast scorecard capture failed (${snapshot.coverage.forecastScorecardFailureCode}); `
+          + `/accuracy/ will report the failure and ${snapshot.coverage.forecastScorecardRetained ? 'publish the retained measurement, dated' : 'publish no figures'}. `
+          + `Cause: ${snapshot.errors.forecastScorecard[0]?.message || 'unrecorded'}`,
+        );
+      }
       if (snapshot.coverage.developmentsMissingCount > 0) {
         // The remaining tail is the countries neither the digest pool nor the
         // per-country index named this week. Logged so every weekly PR

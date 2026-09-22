@@ -197,7 +197,7 @@ describe('cloud prefs panel sync guardrails', () => {
     const authBody = appSrc.slice(authStart, authEnd);
     assert.match(
       authBody,
-      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(\);/,
+      /const userId = session\.user\?\.id \?\? null;[\s\S]*?this\.freeTierGate\.resetForAuthTransition\(\);[\s\S]*?firePremiumLoaders\(accountTransition\);/,
       'a new account must receive a fresh grace window before auth enforcement runs',
     );
   });
@@ -278,7 +278,11 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudSyncSrc,
-      /if \(_dirtyKeys\.size === 0\) \{[\s\S]*Storage\.prototype\.removeItem\.call\(localStorage, KEY_DIRTY_KEYS\);[\s\S]*return;[\s\S]*\}[\s\S]*if \(!_dirtyKeysUserId\) return;/,
+      // Accessor-agnostic on purpose: #7833 moved this module onto
+      // safeStorageRemove, and pinning a spelling just re-breaks on the next
+      // migration. What this pins is the ORDER — the empty-set delete has to
+      // happen before the ownerless bail.
+      /if \(_dirtyKeys\.size === 0\) \{[\s\S]*(?:safeStorageRemove|rawRemove|Storage\.prototype\.removeItem\.call)\([^)]*KEY_DIRTY_KEYS[^)]*\);[\s\S]*return;[\s\S]*\}[\s\S]*if \(!_dirtyKeysUserId\) return;/,
       'ownerless dirty writes before sign-in must not delete the previous persisted dirty-key marker',
     );
     assert.match(

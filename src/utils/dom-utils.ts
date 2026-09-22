@@ -105,14 +105,18 @@ export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const walk = (parent: Element | DocumentFragment) => {
-    const children = Array.from(parent.childNodes);
-    for (const node of children) {
+    let index = 0;
+    while (index < parent.childNodes.length) {
+      const node = parent.childNodes[index];
+      if (!node) break;
       if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
         if (!SAFE_TAGS.has(el.tagName.toLowerCase())) {
           // Unwrap: keep children, remove the element itself
           while (el.firstChild) parent.insertBefore(el.firstChild, el);
           parent.removeChild(el);
+          // Promoted children now occupy this index. Visit them before moving
+          // on so nested rejected wrappers cannot hide unsafe descendants.
           continue;
         }
         // Strip unsafe attributes
@@ -143,6 +147,7 @@ export function safeHtml(html: string): DocumentFragment {
         }
         walk(el);
       }
+      index += 1;
     }
   };
   walk(tpl.content);

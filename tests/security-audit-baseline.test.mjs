@@ -391,7 +391,7 @@ describe('introduced-vs-inherited split', () => {
 });
 
 describe('security audit baseline', () => {
-  it('allows a currently baselined high advisory', () => {
+  it('does not baseline a high advisory after its dependency is patched', () => {
     const report = auditReportWith({
       name: 'shell-quote',
       severity: 'high',
@@ -399,7 +399,15 @@ describe('security audit baseline', () => {
       url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
     });
 
-    assert.deepEqual(collectUnbaselinedFindings(report, 'pro-test/package-lock.json'), []);
+    assert.deepEqual(collectUnbaselinedFindings(report, 'pro-test/package-lock.json'), [
+      {
+        id: 'GHSA-395f-4hp3-45gv',
+        name: 'shell-quote',
+        severity: 'high',
+        title: 'shell-quote DoS',
+        url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
+      },
+    ]);
   });
 
   it('ignores moderate production advisories for the high-severity gate', () => {
@@ -491,19 +499,9 @@ describe('security audit baseline', () => {
 
   it('flags a baseline entry that no longer matches any current advisory', () => {
     // Every advisory currently baselined for pro-test must be present in the
-    // report for the no-stale case — one package (image-size) carries two.
+    // report for the no-stale case — image-size carries two.
     const withAllBaselined = {
       vulnerabilities: {
-        'shell-quote': {
-          name: 'shell-quote',
-          severity: 'high',
-          via: [{
-            name: 'shell-quote',
-            severity: 'high',
-            title: 'shell-quote DoS',
-            url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
-          }],
-        },
         'image-size': {
           name: 'image-size',
           severity: 'high',
@@ -527,7 +525,6 @@ describe('security audit baseline', () => {
 
     assert.deepEqual(collectStaleBaselineEntries(withAllBaselined, 'pro-test/package-lock.json'), []);
     assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'pro-test/package-lock.json'), [
-      'GHSA-395f-4hp3-45gv',
       'GHSA-5p2g-fcmc-qvqq',
       'GHSA-w3rx-r6r6-pgpr',
     ]);

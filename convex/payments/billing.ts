@@ -9,6 +9,8 @@
  * - claimSubscription: mutation to migrate entitlements from anon ID to authed user
  */
 
+import { assertAccountWritable } from "../accountDeletion/guard";
+import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -21,6 +23,7 @@ import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { proActivationStepIdValidator } from "../constants";
 import {
+  billingDeletionForUser,
   isCoveringAt,
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
@@ -416,9 +419,9 @@ function normalizeRemoteSubscription(
  * race. Tier 3 only kicks in when both sub-side tiers miss AND the
  * customers row's `userId` happens to match the requester.
  *
- * Result: every Clerk account with a valid subscription opens the
- * right portal regardless of how many other Clerk accounts share the
- * same Dodo customer. No Clerk REST lookup needed.
+ * A per-user subscription identifies a candidate, not exclusive customer
+ * ownership. The resolver rejects customers linked to another user before
+ * this action creates a customer-wide portal session.
  *
  * WORLDMONITOR-R5: the original opaque `[Request ID: X] Server Error`
  * came from this path throwing on a missing customers row when both
@@ -700,6 +703,7 @@ export const claimProActivationPresentation = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const now = Date.now();
     const subscription = await ctx.db.get(args.activationKey);
     if (
@@ -756,6 +760,7 @@ export const confirmProActivationPresentation = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     // Retro cohort only: presentation confirmation is the lease handshake, and
     // the day-0 path has no lease to confirm.
     const presentation = await activationPresentationForCohort(ctx, args.activationKey, undefined);
@@ -820,6 +825,7 @@ export const openProActivationDay0Presentation = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const subscription = await ctx.db.get(args.activationKey);
     // Ownership and plan identity only. Deliberately NOT gated on
     // isFirstBillingCycle/isCoveringAt like the retro claim is: those decide
@@ -961,6 +967,7 @@ export const recordProActivationOutcome = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const presentation = await activationPresentationForCohort(
       ctx,
       args.activationKey,
@@ -1048,6 +1055,48 @@ export const getCustomerByUserId = internalQuery({
   },
 });
 
+async function requireExclusivePortalCustomer(
+  ctx: QueryCtx,
+  userId: string,
+  customerId: string,
+): Promise<string> {
+  const deletedOwner = await ctx.db.query("deletedSubscriptionCustomers")
+    .withIndex("by_customer_user", (q) => q.eq("dodoCustomerId", customerId))
+    .filter((q) => q.neq(q.field("userId"), userId))
+    .first();
+  if (deletedOwner) {
+    throw new ConvexError({ kind: "NO_CUSTOMER", reason: "SHARED_CUSTOMER" });
+  }
+  const linkedSubscription = await ctx.db.query("subscriptions")
+    .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customerId))
+    .filter((q) => q.neq(q.field("userId"), userId))
+    .first();
+  const linkedCustomer = await ctx.db.query("customers")
+    .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customerId))
+    .filter((q) => q.neq(q.field("userId"), userId))
+    .first();
+  if (linkedSubscription || linkedCustomer) {
+    throw new ConvexError({ kind: "NO_CUSTOMER", reason: "SHARED_CUSTOMER" });
+  }
+
+  // Legacy rows can identify the customer only in rawPayload. Keep this
+  // check until all legacy customer IDs have been backfilled; never limit
+  // by subscription status because ended subscriptions still expose invoices.
+  for (const missingId of [undefined, ""] as const) {
+    const legacyOwner = await ctx.db.query("subscriptions")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", missingId))
+      .filter((q) => q.and(
+        q.neq(q.field("userId"), userId),
+        q.eq(q.field("rawPayload.customer.customer_id"), customerId),
+      ))
+      .first();
+    if (legacyOwner) {
+      throw new ConvexError({ kind: "NO_CUSTOMER", reason: "SHARED_CUSTOMER" });
+    }
+  }
+  return customerId;
+}
+
 /**
  * Resolve the Dodo customer_id this user's "Manage Billing" click
  * should open a portal session for.
@@ -1078,7 +1127,8 @@ export const getCustomerByUserId = internalQuery({
  *
  * Returns null only when all three tiers fail (no subs at all OR no
  * customer_id anywhere across subs/customers). Caller throws
- * NO_CUSTOMER → client surfaces the "contact support" toast.
+ * NO_CUSTOMER → client surfaces the "contact support" toast. A candidate
+ * linked to another user throws NO_CUSTOMER with reason SHARED_CUSTOMER.
  */
 export const getDodoCustomerIdForUserPortal = internalQuery({
   args: { userId: v.string() },
@@ -1097,7 +1147,7 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       for (const sub of sorted) {
         // Tier 1: stable column populated by the webhook handler.
         if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
-          return sub.dodoCustomerId;
+          return requireExclusivePortalCustomer(ctx, args.userId, sub.dodoCustomerId);
         }
         // Tier 2: rawPayload fallback for pre-schema-change rows whose
         // rawPayload still carries the customer field.
@@ -1106,7 +1156,9 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
           | null
           | undefined;
         const id = payload?.customer?.customer_id;
-        if (typeof id === "string" && id.length > 0) return id;
+        if (typeof id === "string" && id.length > 0) {
+          return requireExclusivePortalCustomer(ctx, args.userId, id);
+        }
       }
     }
 
@@ -1126,7 +1178,7 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       typeof customer.dodoCustomerId === "string" &&
       customer.dodoCustomerId.length > 0
     ) {
-      return customer.dodoCustomerId;
+      return requireExclusivePortalCustomer(ctx, args.userId, customer.dodoCustomerId);
     }
 
     return null;
@@ -1608,6 +1660,7 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
     // every cycle with a fresh clean slate.
     const stillStaleAfterPatch =
       args.remote.status === "active" && args.remote.currentPeriodEnd < args.observedAt;
+    const deletion = await billingDeletionForUser(ctx, existing.userId);
     await ctx.db.patch(existing._id, {
       status: args.remote.status,
       dodoProductId: args.remote.productId,
@@ -1615,7 +1668,8 @@ export const applyDodoSubscriptionReconciliation = internalMutation({
       currentPeriodStart: args.remote.currentPeriodStart,
       currentPeriodEnd: args.remote.currentPeriodEnd,
       dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
-      rawPayload: args.remote.rawPayload,
+      ...(deletion ? { userId: tombstoneUserId(deletion.userIdHash) } : {}),
+      rawPayload: deletion ? redactBillingPayload(args.remote.rawPayload) : args.remote.rawPayload,
       updatedAt: args.observedAt,
       // A successful lookup proves the sub EXISTS in Dodo → any 404 streak is
       // broken (reset to 0 while still stale, cleared once it leaves the set).
@@ -2588,6 +2642,7 @@ export const inspectCustomerOwnership = internalQuery({
 export const repairCustomerFromSubscriptionPayload = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    if (await billingDeletionForUser(ctx, args.userId)) return null;
     const subs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
@@ -2715,6 +2770,7 @@ export const backfillMissingCustomers = internalMutation({
     const summary = {
       usersInspected: userIds.size,
       alreadyHadCustomer: 0,
+      skippedDeleted: 0,
       repaired: 0,
       couldNotRepair: 0,
       // userIds that need manual support touch — rawPayload didn't carry
@@ -2723,6 +2779,10 @@ export const backfillMissingCustomers = internalMutation({
     };
 
     for (const userId of userIds) {
+      if (await billingDeletionForUser(ctx, userId)) {
+        summary.skippedDeleted++;
+        continue;
+      }
       const existing = await ctx.db
         .query("customers")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -3346,10 +3406,15 @@ export const claimStuckPaymentReconciliation = internalMutation({
       return { action: "already_terminal" as const };
     }
 
+    const deletion = await billingDeletionForUser(ctx, args.userId);
+    const retainedUserId = deletion ? tombstoneUserId(deletion.userIdHash) : args.userId;
+    if (deletion && !isTerminalPaymentStatus(args.observedStatus)) {
+      return { action: "account_deleted" as const };
+    }
     const now = Date.now();
     if (isTerminalPaymentStatus(args.observedStatus)) {
       await ctx.db.insert("paymentEvents", {
-        userId: args.userId,
+        userId: retainedUserId,
         dodoPaymentId: args.dodoPaymentId,
         type: "charge",
         amount: args.amount,
@@ -3357,12 +3422,12 @@ export const claimStuckPaymentReconciliation = internalMutation({
         status: args.observedStatus,
         dodoSubscriptionId: args.dodoSubscriptionId,
         planKey: args.planKey,
-        rawPayload: args.rawPayload,
+        rawPayload: deletion ? redactBillingPayload(args.rawPayload) : args.rawPayload,
         occurredAt: now,
       });
       await ctx.db.insert("paymentReconciliationAttempts", {
         dodoPaymentId: args.dodoPaymentId,
-        userId: args.userId,
+        userId: retainedUserId,
         planKey: args.planKey,
         action: "terminal_reconciled",
         observedStatus: args.observedStatus,
@@ -3376,7 +3441,7 @@ export const claimStuckPaymentReconciliation = internalMutation({
       // never-activated sub (#4794's renewal reconciler only scans active
       // rows). Silently closing the case here would bury it. Page ops when a
       // succeeded charge has a subscription id but no subscription row at all.
-      if (args.observedStatus === "succeeded" && args.dodoSubscriptionId) {
+      if (!deletion && args.observedStatus === "succeeded" && args.dodoSubscriptionId) {
         const sub = await ctx.db
           .query("subscriptions")
           .withIndex("by_dodoSubscriptionId", (q) =>
@@ -3401,7 +3466,7 @@ export const claimStuckPaymentReconciliation = internalMutation({
     // would be a false alarm.
     await ctx.db.insert("paymentReconciliationAttempts", {
       dodoPaymentId: args.dodoPaymentId,
-      userId: args.userId,
+      userId: retainedUserId,
       planKey: args.planKey,
       action: "ops_notified",
       observedStatus: args.observedStatus,
@@ -3720,6 +3785,7 @@ export const claimSubscription = mutation({
   args: { anonId: v.string(), claimToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const realUserId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, realUserId);
 
     // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
     // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
@@ -3733,18 +3799,20 @@ export const claimSubscription = mutation({
     }
 
     // Parallel reads for all anonId data — bounded to prevent runaway memory
-    const [subs, anonEntitlement, customers, payments] = await Promise.all([
+    const [subs, anonEntitlement, customers, payments, deletedCustomers] = await Promise.all([
       ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(50),
       ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).first(),
       ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(10),
       ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(1000),
+      ctx.db.query("deletedSubscriptionCustomers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).collect(),
     ]);
 
     const hasClaimableRows =
       subs.length > 0 ||
       anonEntitlement !== null ||
       customers.length > 0 ||
-      payments.length > 0;
+      payments.length > 0 ||
+      deletedCustomers.length > 0;
     if (!hasClaimableRows) {
       return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
     }
@@ -3753,6 +3821,10 @@ export const claimSubscription = mutation({
       throw new ConvexError({ kind: "ANON_CLAIM_PROOF_REQUIRED" });
     }
 
+    // Transfer retained ownership only after the same proof used for live rows.
+    for (const deletedCustomer of deletedCustomers) {
+      await ctx.db.patch(deletedCustomer._id, { userId: realUserId });
+    }
     // Reassign subscriptions
     for (const sub of subs) {
       await ctx.db.patch(sub._id, { userId: realUserId });
@@ -3771,7 +3843,26 @@ export const claimSubscription = mutation({
       if (existingEntitlement) {
         const anonCompUntil = anonEntitlement.compUntil ?? 0;
         const existingCompUntil = existingEntitlement.compUntil ?? 0;
-        if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
+        const anonCompActive = anonCompUntil > recomputeTimestamp;
+        const existingCompActive = existingCompUntil > recomputeTimestamp;
+        if (anonCompActive && existingCompActive
+          && Boolean(anonEntitlement.compPlanKey) !== Boolean(existingEntitlement.compPlanKey)) {
+          throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
+        }
+        if (anonEntitlement.compPlanKey && anonCompUntil > recomputeTimestamp) {
+          const existingCompIsStronger = existingEntitlement.compPlanKey
+            && existingCompUntil > recomputeTimestamp
+            && compareEntitlementPlans(
+              { planKey: existingEntitlement.compPlanKey, validUntil: existingCompUntil },
+              { planKey: anonEntitlement.compPlanKey, validUntil: anonCompUntil },
+            ) >= 0;
+          await ctx.db.patch(existingEntitlement._id, {
+            compPlanKey: existingCompIsStronger
+              ? existingEntitlement.compPlanKey
+              : anonEntitlement.compPlanKey,
+            compUntil: Math.max(existingCompUntil, anonCompUntil),
+          });
+        } else if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
           const realSubscriptions = await ctx.db
             .query("subscriptions")
             .withIndex("by_userId", (q) => q.eq("userId", realUserId))
@@ -3806,15 +3897,17 @@ export const claimSubscription = mutation({
               { planKey: anonEntitlement.planKey, validUntil: anonEntitlement.validUntil },
               strongestCurrentCoverage,
             ) >= 0;
-          if (anonCompOutranksCurrentCoverage) {
-            await ctx.db.patch(existingEntitlement._id, {
-              planKey: anonEntitlement.planKey,
-              features: anonEntitlement.features,
-              validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
-              compUntil: anonCompUntil,
-              updatedAt: recomputeTimestamp,
-            });
+          if (!anonCompOutranksCurrentCoverage) {
+            throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
           }
+          await ctx.db.patch(existingEntitlement._id, {
+            planKey: anonEntitlement.planKey,
+            features: anonEntitlement.features,
+            validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
+            compUntil: anonCompUntil,
+            compPlanKey: undefined,
+            updatedAt: recomputeTimestamp,
+          });
         }
         await ctx.db.delete(anonEntitlement._id);
       } else {
@@ -3885,11 +3978,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Grants a complimentary entitlement to a user.
  *
- * Extends both validUntil and compUntil to max(existing, now + days). Never
- * shrinks — calling twice with small durations won't accidentally shorten an
- * existing longer comp. compUntil is an independent floor that
- * handleSubscriptionExpired honours, so Dodo cancellations/expirations don't
- * wipe the comp before it runs out.
+ * Records the goodwill source independently of the effective paid plan.
+ * Repeated grants retain the stronger comp plan and longest comp duration.
+ * Paid coverage is recomputed so a lower goodwill grant cannot downgrade it.
  *
  * Typical usage (CLI):
  *   npx convex run 'payments/billing:grantComplimentaryEntitlement' \
@@ -3903,6 +3994,7 @@ export const grantComplimentaryEntitlement = internalMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
     if (args.days <= 0 || !Number.isFinite(args.days)) {
       throw new Error(`grantComplimentaryEntitlement: days must be a positive finite number, got ${args.days}`);
     }
@@ -3918,15 +4010,23 @@ export const grantComplimentaryEntitlement = internalMutation({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
     const features = getFeaturesForPlan(args.planKey);
-    const validUntil = Math.max(existing?.validUntil ?? 0, until);
-    const compUntil = Math.max(existing?.compUntil ?? 0, until);
+    const existingCompUntil = existing?.compUntil ?? 0;
+    if (existingCompUntil > now && !existing?.compPlanKey) {
+      throw new ConvexError({ kind: "LEGACY_COMP_SOURCE_REQUIRES_AUDIT" });
+    }
+    const compUntil = Math.max(existingCompUntil, until);
+    const compPlanKey = existing?.compPlanKey && existingCompUntil > now
+      && compareEntitlementPlans(
+        { planKey: existing.compPlanKey, validUntil: existingCompUntil },
+        { planKey: args.planKey, validUntil: until },
+      ) > 0
+      ? existing.compPlanKey
+      : args.planKey;
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        planKey: args.planKey,
-        features,
-        validUntil,
         compUntil,
+        compPlanKey,
         updatedAt: now,
       });
     } else {
@@ -3934,32 +4034,25 @@ export const grantComplimentaryEntitlement = internalMutation({
         userId: args.userId,
         planKey: args.planKey,
         features,
-        validUntil,
+        validUntil: until,
         compUntil,
+        compPlanKey,
         updatedAt: now,
       });
     }
 
-    // Company Monitoring is provisioned on first use, not from entitlement
-    // writes (#6256).
+    await recomputeEntitlementFromAllSubs(ctx, args.userId, now);
+    const effective = await ctx.db.query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
 
     console.log(
-      `[billing] grantComplimentaryEntitlement userId=${args.userId} planKey=${args.planKey} days=${args.days} validUntil=${new Date(validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
+      `[billing] grantComplimentaryEntitlement userId=${args.userId} compPlanKey=${compPlanKey} effectivePlanKey=${effective!.planKey} days=${args.days} validUntil=${new Date(effective!.validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
     );
-
-    // Sync Redis cache so edge gateway sees the comp without waiting for TTL.
-    if (process.env.UPSTASH_REDIS_REST_URL) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.cacheActions.syncEntitlementCache,
-        { userId: args.userId, planKey: args.planKey, features, validUntil },
-      );
-    }
 
     return {
       userId: args.userId,
-      planKey: args.planKey,
-      validUntil,
+      planKey: effective!.planKey,
+      validUntil: effective!.validUntil,
       compUntil,
     };
   },
@@ -4146,7 +4239,9 @@ export const endSubscriptionCoverageNow = internalMutation({
  * Recomputes the entitlement from the user's remaining active subs after
  * deletion. If none remain, downgrades to free.
  *
- * The audit trail (paymentEvents, webhookEvents) is preserved.
+ * The audit trail (paymentEvents, webhookEvents) is preserved. Resolvable
+ * customer ownership is retained separately so cleanup cannot reopen a
+ * customer-wide portal previously blocked by this subscription's owner.
  *
  * Typical usage (CLI):
  *   npx convex run 'payments/billing:deleteSubscriptionByDodoId' \
@@ -4171,6 +4266,24 @@ export const deleteSubscriptionByDodoId = internalMutation({
     }
 
     const userId = sub.userId;
+    const rawCustomerId = (sub.rawPayload as { customer?: { customer_id?: unknown } } | null)
+      ?.customer?.customer_id;
+    const customerId = sub.dodoCustomerId ||
+      (typeof rawCustomerId === "string" ? rawCustomerId : "");
+    // A user's current customer mapping does not prove this subscription's
+    // customer: shared customer rows are reassigned by later webhooks. Preserve
+    // the subscription until its customer can be repaired from provider/audit evidence.
+    if (!customerId.trim()) {
+      throw new ConvexError({ kind: "CUSTOMER_PROVENANCE_REQUIRED" });
+    }
+    if (customerId) {
+      const retainedOwner = await ctx.db.query("deletedSubscriptionCustomers")
+        .withIndex("by_customer_user", (q) => q.eq("dodoCustomerId", customerId).eq("userId", userId))
+        .first();
+      if (!retainedOwner) {
+        await ctx.db.insert("deletedSubscriptionCustomers", { userId, dodoCustomerId: customerId });
+      }
+    }
     // Index prefix — deliberately unfiltered by cohort so deleting a
     // subscription reaps BOTH its day-0 and retro presentation rows.
     const presentations = await ctx.db

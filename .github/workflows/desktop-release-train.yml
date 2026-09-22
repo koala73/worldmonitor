@@ -110,9 +110,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RUNNING=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-desktop.yml/runs?branch=$TAG&per_page=100" --paginate --slurp |
-            jq -er 'if type == "array" and length > 0 and all(.[]; (.workflow_runs | type) == "array")
-              then any(.[].workflow_runs[]; .status != "completed") | tostring
+          RUNNING=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-desktop.yml/runs?per_page=100" --paginate --slurp |
+            jq -er --arg tag "$TAG" 'if type == "array" and length > 0 and all(.[]; (.workflow_runs | type) == "array")
+              then any(.[].workflow_runs[]; .status != "completed" and
+                (.head_branch == $tag or .display_title == ("Build Desktop App (" + $tag + ")"))) | tostring
               else error("Incomplete desktop workflow-run response") end')
           echo "running=$RUNNING" >> "$GITHUB_OUTPUT"
           if [ "$RUNNING" = "true" ]; then
@@ -152,16 +153,19 @@ jobs:
           echo "Created release tag $TAG at $RELEASE_SHA."
 
       - name: Dispatch desktop build
+        # Existing tags can contain an older dispatch schema. The current
+        # workflow checks out TAG explicitly for validation, builds and notes.
         if: steps.release.outputs.action == 'release' && steps.active.outputs.running == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
+          WORKFLOW_REF: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
           gh workflow run build-desktop.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$TAG" \
+            --ref "$WORKFLOW_REF" \
             -f draft=false \
             -f release_tag="$TAG"
           echo "::notice::Dispatched Build Desktop App for $TAG."

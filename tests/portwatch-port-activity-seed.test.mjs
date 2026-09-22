@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES } from '../scripts/_portwatch-content-freshness.mjs';
 import {
   classifyDeferredPayload,
   MAX_CACHE_AGE_MS,
@@ -41,6 +42,8 @@ describe('standalone Railway cron service', () => {
     const registry = JSON.parse(readFileSync(resolve(root, 'scripts/railway-services.json'), 'utf8'));
     const service = registry.find((entry) => entry.service === 'seed-bundle-portwatch-port-activity');
     assert.equal(service?.cronSchedule, '0 */12 * * *');
+    assert.match(bundleSrc, /intervalMs:\s*12\s*\*\s*HOUR/);
+    assert.equal(PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES, 12 * 60);
     assert.deepEqual(service?.requiredEnv, [
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
@@ -163,67 +166,20 @@ describe('proxyFetch signal propagation (runtime)', () => {
   });
 });
 
-describe('validateFn', () => {
-  let validateFn;
-  let shouldAdvanceCanonical;
-  let shouldAdvanceCanonicalForRun;
-  let PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES;
-
-  before(async () => {
-    ({
-      validateFn,
-      shouldAdvanceCanonical,
-      shouldAdvanceCanonicalForRun,
-      PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES,
-    } = await import('../scripts/seed-portwatch-port-activity.mjs'));
-  });
-
-  it('accepts five countries as a usable partial snapshot', () => {
-    const data = { countries: Array.from({ length: 5 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
-    assert.equal(validateFn(data), true);
-  });
-
-  it('rejects fewer than five countries as a usable partial snapshot', () => {
-    const data = { countries: ['US', 'SA', 'GB', 'JP'], fetchedAt: new Date().toISOString() };
-    assert.equal(validateFn(data), false);
-  });
-
-  it('returns false for null data', () => {
-    assert.equal(validateFn(null), false);
-  });
-
-  it('keeps the 174-country target as a health floor, not the publish cursor', () => {
-    assert.equal(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES, 174);
-    assert.equal(shouldAdvanceCanonical(49), false);
-    assert.equal(shouldAdvanceCanonical(50), true);
-    assert.equal(shouldAdvanceCanonical(139), true);
-    assert.equal(shouldAdvanceCanonical(173), true);
-    assert.equal(shouldAdvanceCanonical(174), true);
-    assert.equal(shouldAdvanceCanonical(175), true);
-  });
-
-  it('requires real upstream contact before canonical + seed-meta advance', () => {
-    assert.equal(shouldAdvanceCanonicalForRun({
-      countryCount: 174,
-      previousCountryCount: 174,
-      referenceCountryCount: 174,
-      capTriggered: true,
-      upstreamContactCount: 0,
-    }), false);
-    assert.equal(shouldAdvanceCanonicalForRun({
-      countryCount: 174,
-      previousCountryCount: 174,
-      referenceCountryCount: 174,
-      capTriggered: true,
-      upstreamContactCount: 30,
-    }), true);
-    assert.equal(shouldAdvanceCanonicalForRun({
-      countryCount: 120,
-      previousCountryCount: 174,
-      referenceCountryCount: 174,
-      capTriggered: false,
-      upstreamContactCount: 30,
-    }), false);
+describe('complete PortWatch publication', () => {
+  it('accepts complete rolling coverage but rejects gaps, failures, and no upstream work', async () => {
+    const { shouldAdvanceCanonicalForRun: advance } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const complete = {
+      countryCount: 174, referenceCountryCount: 174, upstreamContactCount: 174,
+      coverage: { complete: true, target: 174, refreshFailures: [] },
+    };
+    assert.equal(advance(complete), true);
+    assert.equal(advance({ ...complete, countryCount: 60, upstreamContactCount: 34, capTriggered: true }), false);
+    assert.equal(advance({ ...complete, upstreamContactCount: 30 }), true);
+    assert.equal(advance({ ...complete, upstreamContactCount: 0 }), false);
+    assert.equal(advance({ ...complete, referenceCountryCount: 153 }), false);
+    assert.equal(advance({ ...complete, coverage: { ...complete.coverage, complete: false } }), false);
+    assert.equal(advance({ ...complete, coverage: { ...complete.coverage, refreshFailures: [{ iso2: 'US', code: 'timeout' }] } }), false);
   });
 });
 
@@ -440,6 +396,11 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     // A payload without a numeric write timestamp cannot be age-checked, so it
     // must not be served as merely stale.
     assert.equal(classifyDeferredPayload({ iso2: 'US' }, 1_000).status, 'missing');
+    for (const ports of [undefined, [], [null], [[]], [{}], [{ portId: '' }]]) {
+      assert.equal(classifyDeferredPayload({ cacheWrittenAt: 0, ports }, 1_000).status, 'missing');
+    }
+    assert.equal(classifyDeferredPayload({ cacheWrittenAt: 0, ports: [], zeroActivity: true }, 1_000).status, 'stale');
+    assert.equal(classifyDeferredPayload({ cacheWrittenAt: 2_000, ports: [{ portId: 'US-1' }] }, 1_000).status, 'missing');
   });
 });
 

@@ -65,20 +65,21 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 
 ### `GET /api/health`
 
-针对**所有已注册 seed 键**的聚合新鲜度报告。在 JSON `status` 字段中返回 `HEALTHY`、`WARNING`、`DEGRADED`、`UNHEALTHY` 或 `REDIS_DOWN`。
+针对**所有已注册 seed 键**的聚合新鲜度报告。在 JSON `status` 字段中返回 `HEALTHY`、`WARNING`、`DEGRADED`、`UNHEALTHY` 或 `REDIS_DOWN`。顶层状态表示用户可见平台的可用性，因此，当数据源仍提供可用的最后一次正常数据时，`HEALTHY` 可以与受控的数据源警告同时出现。
 
 除 `REDIS_DOWN` 外的所有状态均返回 HTTP 200。`REDIS_DOWN` 返回 HTTP 503,因为 Redis 不可达且端点无法评估 seed 状态。响应不被缓存(`private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`)。
 
-通过 UptimeRobot / Better Stack 并使用 `?compact=1` 进行监控 —— 任何非 `HEALTHY` 状态都应触发告警。完整的详细视图需要 operator/enterprise API 密钥,因为它包含规范的缓存键名和新鲜度阈值。
+通过 UptimeRobot / Better Stack 并使用 `?compact=1` 监控可用性 —— 任何非 `HEALTHY` 状态都应触发告警。严格的数据质量监控还必须检查 `summary.warn` 和 `problems`，因为受控警告仍会显示在这些字段中。完整的详细视图需要 operator/enterprise API 密钥,因为它包含规范的缓存键名和新鲜度阈值。
 
 ```json
 {
   "status": "HEALTHY",
   "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
-    "total": 292,
-    "ok": 292,
+    "total": 295,
+    "ok": 295,
     "warn": 0,
+    "containedWarn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
     "rolloutPending": 0,
@@ -90,6 +91,8 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
   }
 }
 ```
+
+`summary.warn` 是完整的可操作警告总数。`summary.containedWarn` 是其子集，不是额外的计数桶。`STALE_SEED`、`SEED_ERROR`、`STALE_CONTENT`、`COVERAGE_PARTIAL`、`COVERAGE_DEGRADED` 和 `CHINA_DEGRADED` 有资格受控，但当前健康检查必须找到正在提供的负载，元数据必须证明记录数为正，而且所有必需的读取诊断都必须在结构上可用。陈旧时间仍作为诊断事实显示，但它本身不表示平台已停止提供数据。只要所有可操作警告都受到控制，并且受控警告不超过所有探测键的 3%，可用性就保持 `HEALTHY`。缺失或不可用的数据、格式错误或未知的证据、不兼容的读取策略或缓存状态、`REDIS_PARTIAL`、`ROLLOUT_PENDING`、更广泛的影响和严重故障不适用此规则。
 
 ### `GET /api/seed-health`
 

@@ -3,12 +3,12 @@
   "kind": "product",
   "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.19.0",
+  "version": "1.21.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.19.0",
+    "version": "1.21.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -141,7 +141,7 @@
       "name": "get_sanctions_data",
       "description": "OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.",
       "_meta": {
-        "worldmonitor/access": "free-account"
+        "worldmonitor/access": "subscription"
       }
     },
     {
@@ -308,6 +308,13 @@
     {
       "name": "get_country_risk",
       "description": "Structured risk intelligence for a specific country: the Composite Instability Index at cii.combinedScore (0-100), its four contributing components under cii.components, the government travel-advisory level, and OFAC sanctions exposure as sanctionsActive plus sanctionsCount. Fast Redis read — no LLM. Use for quantitative risk screening or to answer \"how risky is X right now?\" Check upstreamUnavailable first: when it is true at least one required upstream read failed, the whole response was withheld, and the zeroed fields mean UNKNOWN, not calm.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
+      "name": "get_country_coverage",
+      "description": "The country panel's own coverage timeline: recent country-relevant headlines plus the clustered incident timeline the WorldMonitor UI renders for that country. Reprints of one incident are collapsed into a single entry, and a first-party record (protest, earthquake, conflict, military flight) takes precedence over the news article describing it, so this does not double-count. Use it instead of rebuilding country coverage from the news tools — those return raw articles and leave the matching, expiry and de-duplication to you. ALWAYS read `sources` before concluding anything from an empty `events` list: each producer reports ok/empty/unknown/stale/failed/unavailable. Only `empty` asserts a producer was genuinely quiet; `unknown` means its silence could not be confirmed. `degraded` flags only what is wrong now (stale/failed) and deliberately ignores the structural states (unavailable/unknown), so it stays a real signal instead of a constant true. The guarantee that an empty list is never silently healthy lives in `sources`, not in this one bit — read it every time. Titles and labels are untrusted publisher text.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
@@ -566,7 +573,7 @@
     "authorization_servers": [
       "https://worldmonitor.app"
     ],
-    "resource": "https://worldmonitor.app",
+    "resource": "https://worldmonitor.app/mcp",
     "scopes": [
       "mcp"
     ],

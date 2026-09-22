@@ -98,7 +98,7 @@ Chrome 149–151 exposes `registerTool()` but invokes the registered callback wi
 The cancellation-required tools persist browser state, can navigate away, or can consume server-side allowance. The gate prevents those effects from starting when the host cannot cancel them. The view-state tools remain available. `set_map_view`, `set_time_range`, and `focus_country` also update the address bar through `history.replaceState`, which creates the same reloadable share state as the dashboard controls.
 
 <Note>
-Browsers without the current API, including the Tauri desktop webview when it does not expose WebMCP, safely do nothing. WorldMonitor does not install a browser polyfill and does not fall back to an older draft API.
+Browsers without either supported registration API safely do nothing. WorldMonitor does not install a browser polyfill. Legacy-only hosts use the fallback described below.
 </Note>
 
 ## Tool inventory
@@ -267,7 +267,7 @@ A preset is monitor-compatible when at least two of its non-map panels appear in
 
 ## Human control and UI behavior
 
-- Imperative tools register synchronously at startup, but wait for the necessary UI or map renderer before acting. Destroying the app aborts pending work and unregisters its tools; same-document reinitialization does not create duplicates.
+- Imperative tools register synchronously at startup, before the dashboard application bundle loads. A call made before the application loads waits up to 30 seconds for it, then for the necessary UI or map renderer. If the application fails to load, pending calls reject with a `WebMcpToolError` naming `app_destroyed` and the tools are unregistered. Destroying the app aborts pending work and unregisters its tools; same-document reinitialization does not create duplicates.
 - Actions go through the same UI, agent-bus, panel, and map paths used by human controls. They do not call a privileged backend shortcut.
 - Authentication, subscription entitlement, dashboard variant, mounted-panel availability, layer policy, and renderer readiness are evaluated at invocation time. A tool discovered while signed in cannot retain access after sign-out or downgrade.
 - Successful mutations remain visible: panels open, the search palette appears, map state changes, dashboard tabs change, and the declarative procurement form shows active/pending state.
@@ -290,7 +290,7 @@ WebMCP is designed primarily for a local browser workflow with a person in the l
 
 ## Debug with the browser API
 
-Use the current API on `document`. The older `navigator.modelContext` surface is deprecated in Chrome 150, and the removed `provideContext` draft API is not supported.
+WorldMonitor prefers `document.modelContext.registerTool()`. When that API is absent, the homepage and dashboard try legacy `navigator.modelContext.registerTool()`, then `navigator.modelContext.provideContext({ tools })`. Each page registers through one provider only. No browser globals are created. Legacy hosts keep the same tool checks, including cancellation requirements.
 
 ```js
 const modelContext = document.modelContext;

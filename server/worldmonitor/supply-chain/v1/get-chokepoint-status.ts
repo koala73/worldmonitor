@@ -393,6 +393,9 @@ function narrowServedSources(response: GetChokepointStatusResponse): GetChokepoi
     ...response,
     chokepoints: response.chokepoints.map((cp) => ({
       ...cp,
+      ...(cp.transitSummary ? {
+        transitSummary: { ...cp.transitSummary, riskSummary: '', riskReportAction: '' },
+      } : {}),
       navigationalWarningsAvailable: cp.navigationalWarningsAvailable === true,
       aisSnapshotAvailable: cp.aisSnapshotAvailable === true,
       ...(cp.flowEstimate
@@ -506,8 +509,8 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         riskLevel: ts.riskLevel,
         incidentCount7d: ts.incidentCount7d,
         disruptionPct: ts.disruptionPct,
-        riskSummary: ts.riskSummary,
-        riskReportAction: ts.riskReportAction,
+        riskSummary: '',
+        riskReportAction: '',
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
         dataAvailable: transitMovementAvailable,

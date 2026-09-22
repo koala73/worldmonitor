@@ -72,6 +72,12 @@ const CHOKEPOINT_REGISTRY = [
 /** @type {Record<string, {nearestRouteIds: string[], coastSide: string}>} */
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');
 
+// The country universe this seeder writes for. Derived from static config, so it is
+// knowable even when a run fails — writeMeta() publishes it on every path so a failed
+// seed cannot erase the manifest the scenario worker depends on.
+const SEEDED_COUNTRY_IDS = Object.keys(COUNTRY_PORT_CLUSTERS)
+  .filter(k => k !== '_comment' && k.length === 2);
+
 // ── Exposure computation ──────────────────────────────────────────────────────
 
 /**
@@ -252,8 +258,7 @@ export async function main() {
   const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
 
   if (lock.skipped) {
-    const allKeys = Object.keys(COUNTRY_PORT_CLUSTERS)
-      .filter(k => k !== '_comment' && k.length === 2)
+    const allKeys = SEEDED_COUNTRY_IDS
       .flatMap(iso2 => HS2_CODES.map(hs2 => `${KEY_PREFIX}${iso2}:${hs2}:v1`));
     await extendExistingTtl([...allKeys, META_KEY], TTL_SECONDS)
       .catch(e => console.warn('[chokepoint-exposure] TTL extension (skipped) failed:', e.message));
@@ -264,9 +269,25 @@ export async function main() {
     return;
   }
 
-  /** @param {number} count @param {string} [status] */
+  /**
+   * Publish seed metadata. The manifest fields describe the country/sector UNIVERSE,
+   * which comes from static config and is therefore still true after a failed run —
+   * so they are emitted on every path. Only `status` and `recordCount` report the run.
+   * Dropping them on the error path would blank the scenario worker (which gates all
+   * computation on manifestVersion) even though the exposure keys it reads are
+   * deliberately TTL-extended by the same catch block.
+   *
+   * @param {number} count @param {string} [status]
+   */
   const writeMeta = async (count, status = 'ok') => {
-    const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: count, status });
+    const meta = JSON.stringify({
+      fetchedAt: Date.now(),
+      recordCount: count,
+      status,
+      manifestVersion: 1,
+      countryIds: SEEDED_COUNTRY_IDS,
+      hs2Codes: HS2_CODES,
+    });
     await redisPipeline([['SET', META_KEY, meta, 'EX', TTL_SECONDS * 3]])
       .catch(e => console.warn('[chokepoint-exposure] Failed to write seed-meta:', e.message));
   };
@@ -275,7 +296,7 @@ export async function main() {
     const countries = Object.entries(COUNTRY_PORT_CLUSTERS).filter(
       ([k]) => k !== '_comment' && k.length === 2,
     );
-    const iso2List = countries.map(([iso2]) => iso2);
+    const iso2List = SEEDED_COUNTRY_IDS;
 
     console.log(`[chokepoint-exposure] Loading Comtrade bilateral data for ${iso2List.length} countries...`);
     const comtradeMap = await loadComtradeData(iso2List);
@@ -334,7 +355,7 @@ export async function main() {
 
     commands.push([
       'SET', META_KEY,
-      JSON.stringify({ fetchedAt: Date.now(), recordCount: writtenCount, status: 'ok' }),
+      JSON.stringify({ fetchedAt: Date.now(), recordCount: writtenCount, status: 'ok', manifestVersion: 1, countryIds: SEEDED_COUNTRY_IDS, hs2Codes: HS2_CODES }),
       'EX', TTL_SECONDS * 3,
     ]);
 
@@ -355,8 +376,7 @@ export async function main() {
     console.log(`[chokepoint-exposure] Seeded ${writtenCount} keys (${flowWeightedCount} flow-weighted, ${fallbackCount} fallback)`);
   } catch (err) {
     console.error('[chokepoint-exposure] Seed failed:', err.message || err);
-    const existingKeys = Object.keys(COUNTRY_PORT_CLUSTERS)
-      .filter(k => k !== '_comment' && k.length === 2)
+    const existingKeys = SEEDED_COUNTRY_IDS
       .flatMap(iso2 => HS2_CODES.map(hs2 => `${KEY_PREFIX}${iso2}:${hs2}:v1`));
     await extendExistingTtl([...existingKeys, META_KEY], TTL_SECONDS)
       .catch(e => console.warn('[chokepoint-exposure] TTL extension failed:', e.message));

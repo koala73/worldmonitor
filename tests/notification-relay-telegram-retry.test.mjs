@@ -29,7 +29,7 @@ const require = createRequire(import.meta.url);
 process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
 process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
 process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
-process.env.RELAY_SHARED_SECRET ??= 'stub-secret';
+process.env.CONVEX_NOTIFICATION_RELAY_SECRET ??= 'stub-secret';
 process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
 
 // The relay's runtime deps (`resend`, `convex/browser`) live in

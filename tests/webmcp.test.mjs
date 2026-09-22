@@ -295,10 +295,8 @@ function createRegistrationRuntime(provider) {
 }
 
 describe('webmcp.ts: current API contract', () => {
-  it('uses document.modelContext and removes both navigator and provideContext paths', () => {
+  it('keeps the current document API as the preferred registration path', () => {
     assert.match(src, /runtimeDocument\.modelContext/);
-    assert.doesNotMatch(src, /navigator\.modelContext/);
-    assert.doesNotMatch(src, /provideContext/);
   });
 
   it('keeps every registration same-origin and never delegates tools to an iframe', () => {
@@ -2683,10 +2681,10 @@ const homepageSourceScript = findHomepageWebMcpScript(homepageSrc);
 const homepageIife = homepageSourceScript?.body
   .match(/\(function \(\) \{[\s\S]*?\}\)\(\);/)?.[0];
 const runHomepageInline = homepageIife
-  ? new Function('window', 'document', homepageIife)
+  ? new Function('window', 'document', 'navigator', homepageIife)
   : null;
 
-function runHomepage(providerFactory) {
+function runHomepage(providerFactory, navigator = {}) {
   const registered = [];
   const documentListeners = new Map();
   const windowListeners = new Map();
@@ -2699,7 +2697,7 @@ function runHomepage(providerFactory) {
     location: { assign: (url) => { navigatedTo = url; } },
     addEventListener: (event, listener) => windowListeners.set(event, listener),
   };
-  runHomepageInline(window, document);
+  runHomepageInline(window, document, navigator);
   return {
     registered,
     document,
@@ -2718,9 +2716,8 @@ const collectingHomepageProvider = (registered) => ({
 
 describe('homepage WebMCP source registration', () => {
 
-  it('uses only the current document API and observes registerTool promises', () => {
+  it('observes registerTool promises', () => {
     assert.ok(homepageSourceScript);
-    assert.doesNotMatch(homepageSourceScript.body, /navigator\.modelContext|provideContext/);
     assert.match(homepageSourceScript.body, /Promise\.resolve\(provider\.registerTool\(tools\[i\]\)\)/);
     assert.match(homepageSourceScript.body, /function \(\) \{ return false; \}/);
   });
@@ -2800,7 +2797,7 @@ describe('homepage WebMCP built CSP copy', { skip: shouldSkipProBuiltOutput() },
     const builtScript = findHomepageWebMcpScript(welcomeBuilt);
     assert.ok(builtScript);
     assert.match(builtScript.attrs, /\bnonce="wm-static-bootstrap"/);
-    assert.doesNotMatch(builtScript.body, /navigator\.modelContext|provideContext/);
+    assert.match(builtScript.body, /navigator\.modelContext/);
   });
 });
 
@@ -2869,9 +2866,28 @@ describe('webmcp App.ts binding invariants', () => {
   }
 
   const initMethod = appMember('init');
-  const registerCall = callByExpression(initMethod, appFile, 'registerWebMcpTools');
-  const bindings = registerCall.arguments[0];
-  assert.ok(ts.isObjectLiteralExpression(bindings), 'registerWebMcpTools must receive bindings inline');
+  const mainSrc = readFileSync(resolve(ROOT, 'src/main.ts'), 'utf-8');
+  const mainFile = ts.createSourceFile(
+    'src/main.ts',
+    mainSrc,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  function nearestAncestor(node, predicate) {
+    for (let current = node.parent; current; current = current.parent) {
+      if (predicate(current)) return current;
+    }
+    return undefined;
+  }
+  const bindingsMethod = appMember('getWebMcpBindings');
+  const bindings = findNode(
+    bindingsMethod,
+    (node) => ts.isReturnStatement(node) && node.parent === bindingsMethod.body,
+    'App.getWebMcpBindings return',
+  ).expression;
+  assert.ok(ts.isObjectLiteralExpression(bindings), 'App.getWebMcpBindings must return the binding object');
 
   function objectPropertyInitializer(object, sourceFile, name) {
     assert.ok(ts.isObjectLiteralExpression(object), `${name} owner must be an object literal`);
@@ -2887,31 +2903,85 @@ describe('webmcp App.ts binding invariants', () => {
     assert.deepEqual(call.arguments.map((argument) => argument.getText(sourceFile)), expected);
   }
 
-  it('is imported statically and called before the first init await', () => {
-    const serviceImport = findNode(
-      appFile,
-      (node) => (
-        ts.isImportDeclaration(node)
-        && ts.isStringLiteral(node.moduleSpecifier)
-        && node.moduleSpecifier.text === '@/services/webmcp'
-      ),
-      'static @/services/webmcp import',
+  it('registers in src/main.ts before the deferred App import and hands that controller to App.init', () => {
+    const registerCall = callByExpression(mainFile, mainFile, 'registerWebMcpTools');
+    assert.equal(
+      nearestAncestor(registerCall, ts.isFunctionLike),
+      undefined,
+      'Registration must run synchronously in the entry, not inside a callback',
     );
-    const importedNames = serviceImport.importClause?.namedBindings?.elements
-      .map(({ name }) => name.text) ?? [];
-    assert.ok(importedNames.includes('registerWebMcpTools'));
+    const declaration = registerCall.parent;
+    assert.ok(
+      ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name),
+      'registerWebMcpTools must initialize a named controller',
+    );
+    const registerStatement = nearestAncestor(declaration, ts.isVariableStatement);
+    const appImport = findNode(
+      mainFile,
+      (node) => (
+        ts.isCallExpression(node)
+        && node.expression.kind === ts.SyntaxKind.ImportKeyword
+        && node.arguments[0]?.getText(mainFile) === "'./App'"
+      ),
+      "import('./App')",
+    );
+    const importStatement = nearestAncestor(appImport, ts.isExpressionStatement);
+    assert.equal(
+      importStatement?.parent,
+      registerStatement?.parent,
+      'Registration and the deferred App import must share one startup block',
+    );
+    assert.ok(
+      registerStatement.getStart(mainFile) < importStatement.getStart(mainFile),
+      'WebMCP must register before the App bundle starts loading',
+    );
+    const initCall = findNode(
+      importStatement,
+      (node) => (
+        ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === 'init'
+        && node.expression.expression.getText(mainFile) === 'app'
+      ),
+      'app.init call',
+    );
+    assertCallArguments(initCall, mainFile, [declaration.name.text]);
+  });
+
+  it('makes App.init own the entry controller before its first await instead of registering again', () => {
+    assert.equal(
+      initMethod.parameters[0]?.questionToken,
+      undefined,
+      'App.init must require the controller registered by the entry',
+    );
     assert.equal(
       findNodes(appFile, (node) => (
         ts.isCallExpression(node)
-        && node.expression.kind === ts.SyntaxKind.ImportKeyword
-        && node.arguments[0]?.getText(appFile) === "'@/services/webmcp'"
+        && (
+          node.expression.getText(appFile) === 'registerWebMcpTools'
+          || (
+            node.expression.kind === ts.SyntaxKind.ImportKeyword
+            && node.arguments[0]?.getText(appFile) === "'@/services/webmcp'"
+          )
+        )
       )).length,
       0,
+      'App must neither register a second tool set nor load WebMCP lazily',
     );
+    const ownership = findNode(
+      initMethod,
+      (node) => (
+        ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && node.left.getText(appFile) === 'this.webMcpController'
+      ),
+      'this.webMcpController assignment',
+    );
+    assert.equal(ownership.right.getText(appFile), initMethod.parameters[0].name.getText(appFile));
     const firstAwait = findNode(initMethod, ts.isAwaitExpression, 'first App.init await');
     assert.ok(
-      registerCall.getStart(appFile) < firstAwait.getStart(appFile),
-      'WebMCP registration must remain synchronous at the start of App.init',
+      ownership.getStart(appFile) < firstAwait.getStart(appFile),
+      'A failed init must be able to unregister the entry tools through destroy()',
     );
   });
 
@@ -3344,5 +3414,107 @@ describe('webmcp App.ts binding invariants', () => {
     const dashboardSrc = readFileSync(resolve(ROOT, 'src/app/webmcp-dashboard.ts'), 'utf-8');
     assert.doesNotMatch(appSrc, /from '@\/app\/agent-bus-applier'/);
     assert.match(dashboardSrc, /await import\('\.\/agent-bus-applier'\)/);
+  });
+});
+
+describe('legacy WebMCP compatibility', () => {
+  for (const batch of [false, true]) {
+    it(`registers dashboard tools once through legacy ${batch ? 'provideContext' : 'registerTool'} and disables them on teardown`, async () => {
+      const registered = [];
+      const removed = [];
+      let calls = 0;
+      const provider = batch ? {
+        provideContext({ tools }) { calls++; registered.push(...tools); },
+        clearContext() { removed.push('all'); },
+      } : {
+        registerTool(tool) { calls++; registered.push(tool); },
+        unregisterTool(name) { removed.push(name); },
+      };
+      const harness = createRegistrationRuntime(undefined);
+      harness.runtime.navigator = {};
+      const controller = registerWebMcpTools(createBindings(), harness.runtime);
+      harness.runtime.navigator.modelContext = provider;
+      harness.listeners.get('DOMContentLoaded')();
+      harness.windowListeners.get('load')();
+      assert.deepEqual(registered.map(tool => tool.name), DASHBOARD_TOOL_NAMES);
+      assert.equal(calls, batch ? 1 : DASHBOARD_TOOL_NAMES.length);
+      await settlePromises();
+      const read = registered.find(tool => tool.name === 'get_dashboard_context');
+      assert.equal((await read.execute({})).variant, 'full');
+      assert.equal(harness.events.find(({ event }) => event === 'webmcp-registered').data.api,
+        batch ? 'navigator-batch' : 'navigator-register');
+      controller.abort();
+      assert.deepEqual(removed, batch ? ['all'] : DASHBOARD_TOOL_NAMES);
+      assert.throws(() => read.execute({}), { name: 'AbortError' });
+    });
+
+    it(`registers the homepage once through legacy ${batch ? 'provideContext' : 'registerTool'}`, async () => {
+      const registered = [];
+      let calls = 0;
+      const navigator = {};
+      const result = runHomepage(undefined, navigator);
+      navigator.modelContext = batch ? {
+        provideContext({ tools }) { calls++; registered.push(...tools); },
+      } : {
+        registerTool(tool) { calls++; registered.push(tool); },
+      };
+      result.documentListeners.get('DOMContentLoaded')();
+      result.windowListeners.get('load')();
+      assert.deepEqual(registered.map(tool => tool.name), WEBMCP_HOMEPAGE_TOOL_NAMES);
+      assert.equal(calls, batch ? 1 : 2);
+      assert.equal(registered[1].execute({}).endpoint, 'https://worldmonitor.app/mcp');
+      await settlePromises();
+    });
+  }
+
+  it('does not read the legacy provider when the current API is available', () => {
+    const navigator = { get modelContext() { throw new Error('legacy provider accessed'); } };
+    const registered = [];
+    const harness = createRegistrationRuntime({ registerTool(tool) { registered.push(tool); } });
+    harness.runtime.navigator = navigator;
+    registerWebMcpTools(createBindings(), harness.runtime);
+    assert.deepEqual(registered.map(tool => tool.name), DASHBOARD_TOOL_NAMES);
+    assert.equal(runHomepage(collectingHomepageProvider, navigator).registered.length, 2);
+  });
+
+  it('contains rejected legacy batch registrations on both pages', async () => {
+    const navigator = { modelContext: { provideContext() { return Promise.reject(new Error('unavailable')); } } };
+    const harness = createRegistrationRuntime(undefined);
+    harness.runtime.navigator = navigator;
+    registerWebMcpTools(createBindings(), harness.runtime);
+    runHomepage(undefined, navigator);
+    await settlePromises();
+    assert.equal(harness.events.some(({ event }) => event === 'webmcp-registered'), false);
+    assert.equal(harness.events.filter(({ event }) => event === 'webmcp-registration-failed').length, DASHBOARD_TOOL_NAMES.length);
+  });
+
+  it('cleans up a batch that resolves after dashboard teardown', async () => {
+    let resolveRegistration;
+    let clears = 0;
+    const harness = createRegistrationRuntime(undefined);
+    harness.runtime.navigator = { modelContext: {
+      provideContext() { return new Promise(resolve => { resolveRegistration = resolve; }); },
+      clearContext() { clears++; },
+    } };
+    const controller = registerWebMcpTools(createBindings(), harness.runtime);
+    controller.abort();
+    assert.equal(clears, 1);
+    resolveRegistration();
+    await settlePromises();
+    assert.equal(clears, 2);
+    assert.equal(harness.events.some(({ event }) => event === 'webmcp-registered'), false);
+  });
+
+  it('prefers legacy registerTool over provideContext on both pages', () => {
+    const registered = [];
+    const navigator = { modelContext: {
+      registerTool(tool) { registered.push(tool.name); },
+      provideContext() { assert.fail('batch registration must not run'); },
+    } };
+    const harness = createRegistrationRuntime(undefined);
+    harness.runtime.navigator = navigator;
+    registerWebMcpTools(createBindings(), harness.runtime);
+    runHomepage(undefined, navigator);
+    assert.deepEqual(registered, [...DASHBOARD_TOOL_NAMES, ...WEBMCP_HOMEPAGE_TOOL_NAMES]);
   });
 });

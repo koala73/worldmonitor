@@ -6,10 +6,11 @@
 //   node scripts/build-welcome-teasers.mjs            # write
 //   node scripts/build-welcome-teasers.mjs --check    # fail if stale
 //
-// The generator owns two committed artifacts: pro-test/src/generated/teasers.json
+// The generator owns pro-test/src/generated/teasers.json
 // (the strip rows plus the capture date the Published-pulse badge names) and
 // the date metadata in pro-test/welcome.html (`lastmod` + `dateModified`).
-// Both refresh on this one command so a new freeze can never leave the strip
+// pro-test/index.html declares the same software entity, so its dateModified
+// must agree. All three refresh on this one command so a new freeze cannot leave the strip
 // publishing a newer capture under an older page date (#7654).
 //
 // Why this file is generated rather than hand-curated
@@ -48,6 +49,7 @@ const REPO_ROOT = resolve(dirname(__filename), '..');
 
 export const TEASERS_OUTPUT_PATH = 'pro-test/src/generated/teasers.json';
 export const WELCOME_HTML_PATH = 'pro-test/welcome.html';
+export const PRO_HTML_PATH = 'pro-test/index.html';
 
 // The strip renders five rows per data card and four headlines.
 const CHOKEPOINT_STATUSES = new Set(['green', 'yellow', 'red']);
@@ -255,6 +257,15 @@ export function renderWelcomeHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
     .replace(/"dateModified": "\d{4}-\d{2}-\d{2}"/, `"dateModified": "${capturedAt}"`);
 }
 
+export function renderProHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
+  const html = readFileSync(join(rootDir, PRO_HTML_PATH), 'utf8');
+  const dates = html.match(/"dateModified": "\d{4}-\d{2}-\d{2}"/g) || [];
+  if (dates.length !== 1) {
+    throw new Error(`${PRO_HTML_PATH} must carry exactly one dateModified node (found ${dates.length})`);
+  }
+  return html.replace(/"dateModified": "\d{4}-\d{2}-\d{2}"/, `"dateModified": "${capturedAt}"`);
+}
+
 const isMain = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMain) {
   const check = process.argv.includes('--check');
@@ -263,21 +274,25 @@ if (isMain) {
   const teasers = buildWelcomeTeasers(snapshot, snapshotPath);
   const expectedTeasers = `${JSON.stringify({ _comment: comment(snapshotPath, snapshot.capturedAt), ...teasers }, null, 2)}\n`;
   const expectedHtml = renderWelcomeHtml({ rootDir: REPO_ROOT, capturedAt: teasers.capturedAt });
+  const expectedProHtml = renderProHtml({ rootDir: REPO_ROOT, capturedAt: teasers.capturedAt });
   const outPath = join(REPO_ROOT, TEASERS_OUTPUT_PATH);
   const htmlPath = join(REPO_ROOT, WELCOME_HTML_PATH);
+  const proHtmlPath = join(REPO_ROOT, PRO_HTML_PATH);
   if (check) {
     const stale = [];
     if (readFileSync(outPath, 'utf8') !== expectedTeasers) stale.push(TEASERS_OUTPUT_PATH);
     if (readFileSync(htmlPath, 'utf8') !== expectedHtml) stale.push(WELCOME_HTML_PATH);
+    if (readFileSync(proHtmlPath, 'utf8') !== expectedProHtml) stale.push(PRO_HTML_PATH);
     if (stale.length > 0) {
       console.error(`[build-welcome-teasers] stale: ${stale.join(', ')}. Run \`npm run teasers:welcome\`.`);
       process.exitCode = 1;
     } else {
-      console.log(`[build-welcome-teasers] ${TEASERS_OUTPUT_PATH} and ${WELCOME_HTML_PATH} are current`);
+      console.log(`[build-welcome-teasers] ${TEASERS_OUTPUT_PATH}, ${WELCOME_HTML_PATH}, and ${PRO_HTML_PATH} are current`);
     }
   } else {
     writeFileSync(outPath, expectedTeasers, 'utf8');
     writeFileSync(htmlPath, expectedHtml, 'utf8');
-    console.log(`[build-welcome-teasers] wrote ${TEASERS_OUTPUT_PATH} and ${WELCOME_HTML_PATH}`);
+    writeFileSync(proHtmlPath, expectedProHtml, 'utf8');
+    console.log(`[build-welcome-teasers] wrote ${TEASERS_OUTPUT_PATH}, ${WELCOME_HTML_PATH}, and ${PRO_HTML_PATH}`);
   }
 }

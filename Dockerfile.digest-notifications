@@ -17,7 +17,8 @@
 #   UPSTASH_REDIS_REST_URL
 #   UPSTASH_REDIS_REST_TOKEN
 #   CONVEX_URL                    (or CONVEX_SITE_URL)
-#   RELAY_SHARED_SECRET
+#   CONVEX_NOTIFICATION_RELAY_SECRET
+#   RELAY_SHARED_SECRET (analyst enrichment only)
 #   RESEND_API_KEY
 #   TELEGRAM_BOT_TOKEN
 #   BRIEF_URL_SIGNING_SECRET      (brief compose disabled without this)
@@ -28,7 +29,7 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81
 
 WORKDIR /app
 

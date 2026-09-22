@@ -629,9 +629,14 @@ a service has no stable active-deployment baseline.
 The job runs only for the literal `refs/heads/main`. It freezes the event SHA
 against the checkout SHA, uses full Git history with a blobless filter, and
 fails if the exact comparison commit cannot be fetched. It passes that
-immutable commit with `--head`; a local manual
-invocation without `--head` first refreshes the explicit `origin/main`
-tracking ref and then resolves it, never the current feature-branch `HEAD`.
+immutable commit with `--head`. Every invocation refreshes the explicit
+`origin/main` tracking ref again after the Railway fleet read, so lineage is
+judged against current ancestry without moving the comparison head; a merge
+landing mid-read is therefore recognized rather than reported as drift. That
+refresh is skipped when the run deadline has already passed, and a failure to
+refresh degrades to the pre-refresh ref, which can only over-report. A local
+manual invocation without `--head` additionally resolves that refreshed ref as
+the head, never the current feature-branch `HEAD`.
 
 The workflow maps `RAILWAY_PRODUCTION_VIEWER_API_TOKEN` to
 `RAILWAY_API_TOKEN` only on the combined read step. The

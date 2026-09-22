@@ -117,6 +117,19 @@ describe('gateway HMAC configuration telemetry (#7277)', () => {
     assert.equal(res.status, 401, 'a bad signature is still an authentication failure');
     const event = events.find((e) => e.route === PATH);
     assert.ok(event, 'the gateway must emit a usage event for the 401');
-    assert.equal(event.reason, 'auth_401', 'caller-auth failures keep the auth reason');
+    // The point of this case is the contrast with the one above: a configured
+    // secret means a bad signature is the CALLER's failure, never the deploy's.
+    // The reason was `auth_401` until the internal-MCP rejections were split by
+    // failing check; the split must not blur that line.
+    assert.notEqual(
+      event.reason,
+      'hmac_secret_unconfigured',
+      'a caller-auth failure must never be classified as a server-side config incident',
+    );
+    assert.equal(
+      event.reason,
+      'internal_mcp_malformed_sig',
+      'caller-auth failures keep a caller-auth reason, now named by failing check',
+    );
   });
 });

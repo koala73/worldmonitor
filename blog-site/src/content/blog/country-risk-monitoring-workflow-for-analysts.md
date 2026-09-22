@@ -6,7 +6,7 @@ keywords: "country risk monitoring, geopolitical risk assessment workflow, polit
 audience: "Risk analysts, corporate security teams, procurement and supply chain managers, investors, NGO security officers"
 heroImage: "/blog/images/blog/country-risk-monitoring-workflow-for-analysts.jpg"
 pubDate: "2026-06-06"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-10"
 ---
 
 Most organizations monitor country risk the same way: an annual PDF from a consultancy, a quarterly review meeting, and then a frantic scramble when something actually happens. The PDF was accurate the day it was written. Risk is not.
@@ -66,10 +66,10 @@ Developers can go further: poll country scores on a schedule via the REST API, o
 
 ## A Worked Example: Five-Country Supplier Footprint
 
-Say your exposure is Taiwan (semiconductors), Mexico (assembly), Poland (logistics hub), Egypt (Suez transit and cable landings), and Vietnam (electronics).
+Say your exposure is [Taiwan](https://www.worldmonitor.app/countries/taiwan/) (semiconductors), [Mexico](https://www.worldmonitor.app/countries/mexico/) (assembly), [Poland](https://www.worldmonitor.app/countries/poland/) (logistics hub), [Egypt](https://www.worldmonitor.app/countries/egypt/) (Suez transit and cable landings), and [Vietnam](https://www.worldmonitor.app/countries/vietnam/) (electronics). Open each profile for its published evidence and observation dates.
 
 - **Baseline:** Taiwan has moderate CII and very high resilience, but a single chokepoint (Taiwan Strait) dominates the risk picture. Egypt sits in an elevated CII band with mid-table resilience: the fragile-calm quadrant. Vietnam has low instability; your watch there is purely infrastructure and weather.
-- **Dossier signals:** for Taiwan, PLA exercise activity and Taiwan Strait transit changes; for Egypt, Suez disruption score and internet outages; for Mexico, cartel-related unrest events near your specific corridors, not the national average.
+- **Dossier signals:** for Taiwan, PLA exercise activity and [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/) transit changes; for Egypt, [Suez](https://www.worldmonitor.app/chokepoints/suez-canal/) disruption score and internet outages; for Mexico, cartel-related unrest events near your specific corridors, not the national average.
 - **Daily watch:** CII deltas plus a keyword monitor per supplier city.
 - **Automation:** chokepoint webhooks on Taiwan Strait and Suez at threshold 60; weekly resilience-change report on all five.
 

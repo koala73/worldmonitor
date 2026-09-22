@@ -7,17 +7,22 @@
 //   - startCommand: node seed-fire-detections.mjs
 //   - Cron schedule: "*/10 * * * *" (every 10min UTC)
 
-import { loadEnvFile, runSeed, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
+import { loadEnvFile, readSeedSnapshot, runSeed, writeExtraKey, MAX_PAYLOAD_BYTES } from './_seed-utils.mjs';
 import { buildEnvelope } from './_seed-envelope-source.mjs';
 import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
 import {
   fetchCwfisFires,
+  CWFIS_SNAPSHOT_TTL_SECONDS,
+  CWFIS_SNAPSHOT_KEY,
 } from './wildfire/cwfis-wfs.mjs';
 import {
+  BC_SNAPSHOT_KEY,
+  BC_SNAPSHOT_TTL_SECONDS,
   canadianWildfireAfterPublish,
   fetchBcFirePoints,
   hasCompleteWorldwideWildfireCoverage,
   mergeWildfireSourcesWithBc,
+  wildfirePublishData,
 } from './wildfire/bc-fire-points.mjs';
 import {
   fetchAllFirmsRegions,
@@ -56,6 +61,7 @@ function measureCanonicalPublishBytes(data) {
 }
 
 function capCanonicalPayload(data) {
+  data = wildfirePublishData(data);
   const capped = compactWildfireDashboardPayload(data, WILDFIRE_CANONICAL_DETECTION_LIMIT, {
     maxBytes: MAX_PAYLOAD_BYTES,
     measureBytes: measureCanonicalPublishBytes,
@@ -82,11 +88,47 @@ async function fetchMergedWildfires() {
     process.exit(1);
   }
   console.log('  FIRMS key configured');
-  return mergeWildfireSourcesWithBc({
+  const data = await mergeWildfireSourcesWithBc({
     fetchFirms: () => fetchAllFirmsRegions(apiKey),
-    fetchCwfis: () => fetchCwfisFires({ fetchFn: globalThis.fetch, cache }),
-    fetchBcWildfire: () => fetchBcFirePoints({ fetchFn: globalThis.fetch, cache }),
+    fetchCwfis: async () => fetchCwfisFires({
+      fetchFn: globalThis.fetch, cache,
+      previousSnapshot: await readSeedSnapshot(CWFIS_SNAPSHOT_KEY),
+    }),
+    fetchBcWildfire: async () => fetchBcFirePoints({
+      fetchFn: globalThis.fetch, cache,
+      previousSnapshot: await readSeedSnapshot(BC_SNAPSHOT_KEY, { strict: true }),
+    }),
   });
+  if (data.fireDetections.length === 0) {
+    await persistSourceSnapshots(data).catch(error => {
+      throw Object.assign(error, { nonRetryable: true });
+    });
+  }
+  return data;
+}
+
+async function persistSourceSnapshots(data) {
+  const snapshot = data._cwfisSnapshot;
+  if (!snapshot) throw new Error('CWFIS recovery snapshot is missing');
+  await writeExtraKey(CWFIS_SNAPSHOT_KEY, snapshot, CWFIS_SNAPSHOT_TTL_SECONDS);
+  await writeExtraKey('seed-meta:wildfire:cwfis-source', {
+    fetchedAt: snapshot.fetchedAt,
+    recordCount: snapshot.fireDetections.length,
+    lastAttemptAt: snapshot.lastAttemptAt,
+    sourceState: snapshot.consecutiveFailures ? 'degraded' : 'ok',
+    sourceVersion: 'cwfis-recovery-v1',
+  }, CWFIS_SNAPSHOT_TTL_SECONDS);
+  const bcSnapshot = data._bcSnapshot;
+  if (!bcSnapshot) throw new Error('BC recovery snapshot is missing');
+  await writeExtraKey(BC_SNAPSHOT_KEY, bcSnapshot, BC_SNAPSHOT_TTL_SECONDS);
+  await writeExtraKey('seed-meta:wildfire:bc-source', {
+    fetchedAt: bcSnapshot.fetchedAt,
+    recordCount: bcSnapshot.fireDetections.length,
+    lastAttemptAt: bcSnapshot.lastAttemptAt,
+    sourceState: bcSnapshot.errorCode ? 'degraded' : 'ok',
+    errorCode: bcSnapshot.errorCode,
+    sourceVersion: 'bc-fire-points-v1',
+  }, BC_SNAPSHOT_TTL_SECONDS);
 }
 
 async function main() {
@@ -116,17 +158,19 @@ async function main() {
     sourceVersion: CANONICAL_SOURCE_VERSION,
     extraKeys: [{
       key: BOOTSTRAP_KEY,
-      transform: compactWildfireDashboardPayload,
+      transform: (data) => compactWildfireDashboardPayload(wildfirePublishData(data)),
       declareRecords,
       metaKey: 'seed-meta:wildfire:fires-bootstrap',
     }],
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 360,
+    beforePublish: persistSourceSnapshots,
     afterPublish: canadianWildfireAfterPublish,
-    afterValidationSkip: (data, { existingSeedMeta }) => canadianWildfireAfterPublish(data, {
-      previousMeta: existingSeedMeta,
-    }),
+    afterValidationSkip: async (data, { existingSeedMeta }) => {
+      await persistSourceSnapshots(data);
+      return canadianWildfireAfterPublish(data, { previousMeta: existingSeedMeta });
+    },
   });
 }
 

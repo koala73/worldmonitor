@@ -48,7 +48,9 @@ const CANADA_SECTIONS = [
   { label: 'Provincial-511', script: 'seed-provincial-511.mjs', seedMetaKey: 'seed-meta:infra:ontario-511', canonicalKey: 'infra:ontario-511:v1', completionMetaKey: 'seed-completion:infra:ontario-511', intervalMs: 15 * MIN, timeoutMs: 240_000 },
   // 3.62MB body, not strictly valid JSON, sanitized then parsed. Road
   // restrictions are construction permits, not live incidents.
-  { label: 'Toronto-Roads', script: 'seed-toronto-road-restrictions.mjs', seedMetaKey: 'seed-meta:infra:toronto-roads', canonicalKey: 'infra:toronto-roads:v1', intervalMs: 2 * HOUR, timeoutMs: 180_000 },
+  // A slow run published at 179.5s, then hit the old 180s limit in cleanup.
+  // Fetch has its own 135s deadline; leave time for Redis retries and exit.
+  { label: 'Toronto-Roads', script: 'seed-toronto-road-restrictions.mjs', seedMetaKey: 'seed-meta:infra:toronto-roads', canonicalKey: 'infra:toronto-roads:v1', intervalMs: 2 * HOUR, timeoutMs: 300_000 },
   // Open511 spec with next_url pagination; DriveBC returned the full active set
   // in one page, so budget one request per tick, not MAX_PAGES.
   { label: 'BC-Open511', script: 'seed-open511.mjs', seedMetaKey: 'seed-meta:infra:bc-open511', canonicalKey: 'infra:bc-open511:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },

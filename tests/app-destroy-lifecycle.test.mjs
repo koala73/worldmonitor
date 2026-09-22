@@ -97,21 +97,37 @@ describe('App.destroy lifecycle cleanup contract', () => {
     );
 
     const slowTierAwait = appSrc.indexOf('await slowTierReady;');
-    const readyTimestamp = appSrc.indexOf('this.viewportHydrationReadyAt = typeof performance');
-    const readyFlag = appSrc.indexOf('this.viewportHydrationReady = true;', readyTimestamp);
-    const scrollRegistration = appSrc.indexOf("window.addEventListener('scroll', this.handleViewportPrime");
+    const settledGate = appSrc.indexOf('if (!settled)', slowTierAwait);
+    const fanoutFn = appSrc.indexOf('private async runVisibleDataFanout(): Promise<void> {');
+    const readyFlag = appSrc.indexOf('this.viewportHydrationReady = true;', fanoutFn);
+    const scrollRegistration = appSrc.indexOf("window.addEventListener('scroll', this.handleViewportPrime", fanoutFn);
+    const fanoutComplete = appSrc.indexOf("markLcpDebug('wm:data:initial-fanout-complete');", scrollRegistration);
+    const readyTimestamp = appSrc.indexOf('this.viewportHydrationReadyAt = typeof performance', fanoutComplete);
+    const armedFlag = appSrc.indexOf('this.viewportTriggersArmed = true;', readyTimestamp);
     assert.notEqual(slowTierAwait, -1, 'could not locate the slow-tier readiness checkpoint');
     assert.ok(
-      scrollRegistration > slowTierAwait,
-      'captured descendant scrolls must not trigger hydration before the slow tier settles',
+      settledGate > slowTierAwait,
+      'a timed-out slow-tier wait must keep the mount-callback gate closed',
     );
     assert.ok(
-      readyTimestamp > slowTierAwait && readyTimestamp < scrollRegistration,
-      'viewport hydration must stamp the readiness time before registering scroll listeners',
+      appSrc.includes('this.completePendingSlowTierFanout()'),
+      'a late slow-tier settle must still open viewport hydration',
     );
     assert.ok(
-      readyFlag > readyTimestamp && readyFlag < scrollRegistration,
-      'viewport hydration readiness must open after the readiness timestamp is captured',
+      fanoutFn > -1 && fanoutFn < slowTierAwait,
+      'visible-data fan-out must stay behind the shared helper, not inline after a forced ready flag',
+    );
+    assert.ok(
+      readyFlag > fanoutFn && readyFlag < scrollRegistration,
+      'viewport hydration readiness must open before registering scroll listeners',
+    );
+    assert.ok(
+      fanoutComplete > scrollRegistration,
+      'scroll listeners register before the initial fan-out completes',
+    );
+    assert.ok(
+      readyTimestamp > fanoutComplete && armedFlag > readyTimestamp,
+      'viewport triggers must stamp readiness and arm only after the initial fan-out',
     );
   });
 
@@ -128,14 +144,16 @@ describe('App.destroy lifecycle cleanup contract', () => {
       'repeated scrolls in one frame must share one hydration callback',
     );
     assert.match(handler, /if \(!this\.viewportHydrationReady \|\| this\.state\.isDestroyed\) return;/);
+    assert.match(handler, /if \(!this\.viewportTriggersArmed\) return;/);
     assert.match(handler, /event\?\.type === 'scroll'/);
     assert.match(handler, /event\.target instanceof Element/);
     assert.match(handler, /!event\.target\.matches\('\.main-content, \.panels-grid'\)/);
+    const armedGuard = handler.indexOf('if (!this.viewportTriggersArmed) return;');
     const staleEventGuard = handler.indexOf('event.timeStamp < this.viewportHydrationReadyAt');
     const rafSchedule = handler.indexOf('this.visiblePanelPrimeRaf = window.requestAnimationFrame(');
     assert.ok(
-      staleEventGuard >= 0 && staleEventGuard < rafSchedule,
-      'scroll events created before slow-tier readiness must not replay viewport hydration afterward',
+      armedGuard >= 0 && armedGuard < staleEventGuard && staleEventGuard < rafSchedule,
+      'scroll events must stay disarmed through fan-out and ignore pre-arm timestamps afterward',
     );
     assert.match(handler, /this\.visiblePanelPrimeRaf = window\.requestAnimationFrame\(/);
     assert.match(handler, /this\.visiblePanelPrimeRaf = null;/);
@@ -150,8 +168,8 @@ describe('App.destroy lifecycle cleanup contract', () => {
     );
     assert.match(
       body,
-      /this\.viewportHydrationReady = false;\s*this\.viewportHydrationReadyAt = 0;/,
-      'destroy() must reset the viewport hydration readiness timestamp',
+      /this\.viewportHydrationReady = false;\s*this\.viewportHydrationReadyAt = 0;\s*this\.viewportTriggersArmed = false;/,
+      'destroy() must reset viewport hydration readiness and arming',
     );
 
     const afterPanelMounted = methodBody(panelLayoutSrc, 'private afterPanelMounted(key: string, panel: Panel): void');

@@ -226,6 +226,61 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('coalesces concurrent misses after asynchronous admission', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${String(url)}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      let admissionCalls = 0;
+      const admissionReached = Promise.withResolvers();
+      const admission = Promise.withResolvers();
+      const shouldFetch = async () => {
+        admissionCalls += 1;
+        if (admissionCalls === 3) admissionReached.resolve();
+        return admission.promise;
+      };
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        return { value: 42 };
+      };
+
+      const results = [
+        redis.cachedFetchJsonWithMeta('webcam:test:admission', 60, fetcher, 120, { shouldFetch }),
+        redis.cachedFetchJsonWithMeta('webcam:test:admission', 60, fetcher, 120, { shouldFetch }),
+        redis.cachedFetchJsonWithMeta('webcam:test:admission', 60, fetcher, 120, { shouldFetch }),
+      ];
+      await admissionReached.promise;
+      admission.resolve(true);
+
+      const [a, b, c] = await Promise.all(results);
+      assert.equal(fetcherCalls, 1, 'admitted callers should share one upstream fetch');
+      assert.equal(a.leader, true);
+      assert.equal(b.leader, false);
+      assert.equal(c.leader, false);
+      assert.deepEqual(a.data, { value: 42 });
+      assert.deepEqual(b.data, { value: 42 });
+      assert.deepEqual(c.data, { value: 42 });
+      assert.equal(a.source, 'fresh');
+      assert.equal(b.source, 'fresh');
+      assert.equal(c.source, 'fresh');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('does not positive-cache no-store fallback payloads', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
@@ -397,7 +452,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
-  it('skips a gated cache miss without hiding positive cache hits or writing a sentinel', async () => {
+  it('awaits a gated cache miss without hiding positive cache hits or writing a sentinel', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -436,7 +491,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
         60,
         fetcher,
         120,
-        { shouldFetch: () => false },
+        { shouldFetch: async () => false },
       );
       assert.deepEqual(hit, {
         data: { value: 'cached-data' },
@@ -449,7 +504,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
         60,
         fetcher,
         120,
-        { shouldFetch: () => false },
+        { shouldFetch: async () => false },
       );
       assert.deepEqual(skipped, { data: null, source: 'skipped', leader: false });
       assert.equal(fetcherCalls, 0, 'the provider-local fetcher must remain gated');
@@ -2084,7 +2139,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     return { request: new Request(url) };
   }
 
-  function installIntelFetchMock({ store, setKeys, userPrompts, counters, revoked = [] }) {
+  function installIntelFetchMock({ store, setKeys, userPrompts, counters, revoked = [], systemPrompts = [], completion }) {
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
       if (raw === 'https://api.groq.com') {
@@ -2104,7 +2159,12 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         counters.groqCalls += 1;
         const body = JSON.parse(String(init.body || '{}'));
         userPrompts.push(body.messages?.[1]?.content || '');
-        return jsonResponse({ choices: [{ message: { content: `brief-${counters.groqCalls}` } }] });
+        systemPrompts.push(body.messages?.[0]?.content || '');
+        const title = body.messages?.[1]?.content.match(/^\[1\] (.+)$/m)?.[1];
+        const content = title ? JSON.stringify({
+          situation: [{ text: title, source: 1 }], implications: [], risks: [], outlook: [], watch: [],
+        }) : `brief-${counters.groqCalls}`;
+        return jsonResponse({ choices: [{ message: { content: completion ?? content } }] });
       }
       if (raw.includes('/get/')) {
         const key = parseRedisKey(raw, 'get');
@@ -2132,6 +2192,84 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     VERCEL_ENV: undefined,
     VERCEL_GIT_COMMIT_SHA: undefined,
   };
+
+  it('bounds sourced briefs to numbered titles instead of forcing infrastructure forecasts', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+    const userPrompts = [];
+    const systemPrompts = [];
+    const setKeys = [];
+    installIntelFetchMock({ store, setKeys, userPrompts, systemPrompts, counters: { groqCalls: 0 } });
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'Finland completes border fence', source: 'Reuters', url: 'https://reuters.com/finland' })
+      + '\nUnnumbered context: invented 30% increase at Tamar';
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FI&context=${encodeURIComponent(context)}`),
+        { countryCode: 'FI' },
+      );
+      assert.match(userPrompts[0], /Brief source articles:/);
+      assert.match(userPrompts[0], /\[1\].*Finland completes border fence/);
+      assert.doesNotMatch(userPrompts[0], /Tamar|30%|Net energy import dependency/);
+      assert.match(systemPrompts[0], /one factual sentence, no newlines/i);
+      assert.match(systemPrompts[0], /do not invent.*forecasts/i);
+      assert.doesNotMatch(systemPrompts[0], /\[Risk 3\]|\[Named entity\]: \[mechanism\]/);
+      assert.equal(out.sources[0].title, 'Finland completes border fence');
+      assert.ok(setKeys.some(key => key.includes('ci-sebuf:v8:')));
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('negative-caches a validation failure without storing the rejected brief', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const setKeys = [];
+    const store = new Map();
+    installIntelFetchMock({ store, setKeys, userPrompts: [], counters: { groqCalls: 0 }, completion: JSON.stringify({
+      situation: [{ text: 'Tamar output increases 30%', source: 1 }], implications: [], risks: [], outlook: [], watch: [],
+    }) });
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'Finland completes border fence', source: 'Reuters', url: 'https://reuters.com/finland' });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FI&context=${encodeURIComponent(context)}`),
+        { countryCode: 'FI' },
+      );
+      assert.equal(out.brief, '');
+      assert.equal(setKeys.length, 1);
+      assert.equal(JSON.parse(store.get(setKeys[0])), '__WM_NEG__', 'only a failure sentinel may be cached');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
+
+  it('keeps translated requests on the existing language-aware prompt', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+    const systemPrompts = [];
+    installIntelFetchMock({ store: new Map(), setKeys: [], userPrompts: [], systemPrompts, counters: { groqCalls: 0 } });
+    const context = 'Source [1]: ' + JSON.stringify({ title: 'France signs agreement', source: 'Reuters', url: 'https://reuters.com/france' });
+    try {
+      const out = await module.getCountryIntelBrief(
+        makeCtx(`https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=FR&lang=fr&context=${encodeURIComponent(context)}`),
+        { countryCode: 'FR' },
+      );
+      assert.match(systemPrompts[0], /ENTIRELY in French/);
+      assert.doesNotMatch(systemPrompts[0], /Return only JSON/);
+      assert.equal(out.brief, 'brief-1');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      await cleanup?.();
+    }
+  });
 
   it('an operator-revoked URL never reaches the country brief (#7084)', async () => {
     // The digest body is stored UNFILTERED on purpose (a lifted revocation has
@@ -2262,13 +2400,13 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v7:IL:en:shared'), `anon key should use the shared v7 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v8:IL:en:shared'), `anon key should use the shared v7 namespace, got ${setKeys[0]}`);
       assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
-      assert.equal(alpha.brief, 'brief-1');
-      assert.equal(beta.brief, 'brief-1', 'second anon caller must be served from cache');
+      assert.match(alpha.brief, /Israel announces new security framework \[1\]/);
+      assert.equal(beta.brief, alpha.brief, 'second anon caller must be served from cache');
       assert.ok(!userPrompts[0]?.includes('alpha'), 'anon caller context must not reach the prompt');
       assert.match(userPrompts[0], /Israel announces new security framework/, 'prompt should be grounded on the server-side digest');
-      assert.match(userPrompts[0], /Net energy import dependency \(2023, World Bank Open Data\): -9\.001%\./);
+      assert.doesNotMatch(userPrompts[0], /Net energy import dependency/, 'uncited energy data must not contaminate numbered source claims');
       assert.ok(!userPrompts[0]?.includes('Unrelated commodity report'), 'digest grounding should be country-filtered');
       assert.equal(alpha.sources[0]?.url, 'https://example.com/il-1', 'sources should be server-derived');
       assert.deepEqual(beta.sources, alpha.sources, 'cached sources are shared');
@@ -2299,7 +2437,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v7:IL:'), 'cache key should use the v7 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v8:IL:'), 'cache key should use the v8 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
@@ -2364,7 +2502,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(groqCalls, 1, 'blank context should reuse the shared cache entry');
       assert.equal(setKeys.length, 1);
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v7:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v8:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
       assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when digest grounding is unavailable');
       assert.match(userPrompts[0], /Net energy import dependency: unavailable from audited sources\./);
       assert.equal(first.brief, 'base-brief');
@@ -2379,12 +2517,22 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
 describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
   async function importTrackAircraft() {
-    return importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
+    // Provider-priority tests isolate admission; aircraft-input-boundary tests
+    // exercise the real scoped limiter through the generated gateway.
+    const stubDir = createTempDir('wm-aircraft-rate-');
+    const rateStub = join(stubDir, 'rate.mjs');
+    writeFileSync(rateStub, `export const getClientIp = () => 'test';
+export const checkScopedRateLimit = async () => ({ allowed: true, degraded: false });
+export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Retry-After': '5' };`);
+    const imported = await importPatchedTsModule('server/worldmonitor/aviation/v1/track-aircraft.ts', {
       './_shared': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
       '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
+      '../../../_shared/rate-limit': rateStub,
     });
+    return { module: imported.module, cleanup() { imported.cleanup(); removeTempDir(stubDir); } };
   }
 
   it('serves a bbox from Wingbits without spending an OpenSky request', async () => {
@@ -2417,7 +2565,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 10,
         swLon: 10,
         neLat: 11,
@@ -2465,13 +2613,13 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const quiet = await module.trackAircraft({}, {
+      const quiet = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 10,
         swLon: 10,
         neLat: 11,
         neLon: 11,
       });
-      const recovered = await module.trackAircraft({}, {
+      const recovered = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 20,
         swLon: 20,
         neLat: 21,
@@ -2525,7 +2673,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '4b1805',
         swLat: 0,
         swLon: 0,
@@ -2569,7 +2717,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '4b1805',
         swLat: 0,
         swLon: 0,
@@ -2615,7 +2763,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '4b1805',
         swLat: 0,
         swLon: 0,
@@ -2698,13 +2846,13 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
       const raw = String(url);
       if (raw.includes('/wingbits/track') && raw.includes('lamin=')) {
         wingbitsCalls += 1;
-        return jsonResponse({ positions: [{ icao24: 'abc', lat: 20.5, lon: 10.5 }], source: 'wingbits' }, true);
+        return jsonResponse({ positions: [{ icao24: 'abc', lat: 10, lon: 10.5 }], source: 'wingbits' }, true);
       }
       return jsonResponse({}, false);
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         icao24: '',
         callsign: '',
         swLat: 10,
@@ -2743,7 +2891,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.trackAircraft({}, {
+      const result = await module.trackAircraft({ request: new Request('https://api.worldmonitor.app/api/aviation/v1/track-aircraft') }, {
         swLat: 10,
         swLon: 10,
         neLat: 11,
@@ -4034,7 +4182,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(openskyCalls, 1, 'a snapshot miss must cache and reuse request-specific recovery');
       assert.deepEqual(
         providerCacheWrites,
-        ['military:flights:v1:10:10:11:11::'],
+        ['military:flights:v1:10:10:11:11'],
         'provider recovery must remain under the exact quantized bbox key',
       );
       assert.deepEqual(first.flights.map((flight) => flight.id), ['OUTSIDE-REGION']);
@@ -4097,7 +4245,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(openskyCalls, 2, 'each bbox must recover independently after a seed miss');
       assert.deepEqual(
         providerCacheWrites,
-        ['military:flights:v1:10:10:11:11::', 'military:flights:v1:40:-100:41:-99::'],
+        ['military:flights:v1:10:10:11:11', 'military:flights:v1:40:-100:41:-99'],
         'a bbox-independent key would poison the second viewport with the first recovery payload',
       );
     } finally {
@@ -4294,7 +4442,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
-  it('filters before pagination and reuses one cached result across page sizes and cursors', async () => {
+  it('ignores public filter values while coalescing recovery cache entries across page sizes and cursors', async () => {
     const { module, cleanup } = await importListMilitaryFlights();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -4341,23 +4489,52 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         ...request,
         pageSize: 2,
         cursor: '',
-        operator: '',
-        aircraftType: '',
+        operator: 'MILITARY_OPERATOR_USAF',
+        aircraftType: 'MILITARY_AIRCRAFT_TYPE_FIGHTER',
       });
       const second = await module.listMilitaryFlights(ctx, {
         ...request,
         pageSize: 1,
         cursor: first.pagination?.nextCursor ?? '',
-        operator: '',
-        aircraftType: '',
+        operator: 'MILITARY_OPERATOR_RAF',
+        aircraftType: 'MILITARY_AIRCRAFT_TYPE_TANKER',
+      });
+      const ignoredFilterReplay = await module.listMilitaryFlights(ctx, {
+        ...request,
+        pageSize: 2,
+        cursor: '',
+        operator: 'MILITARY_OPERATOR_NATO',
+        aircraftType: 'MILITARY_AIRCRAFT_TYPE_DRONE',
       });
 
       assert.deepEqual(first.flights.map((flight) => flight.id), ['FIRST', 'SECOND']);
       assert.deepEqual(first.pagination, { nextCursor: '2', totalCount: 3 });
       assert.deepEqual(second.flights.map((flight) => flight.id), ['THIRD']);
       assert.deepEqual(second.pagination, { nextCursor: '', totalCount: 3 });
-      assert.equal(openskyCalls, 1, 'page size and cursor must not create new upstream/cache results');
-      assert.equal(new Set(liveCacheKeys).size, 1, 'all pages must read the same unpaginated bbox cache key');
+      assert.deepEqual(
+        ignoredFilterReplay.flights.map((flight) => flight.id),
+        first.flights.map((flight) => flight.id),
+        'operator and aircraft type remain accepted public no-ops',
+      );
+      assert.deepEqual(ignoredFilterReplay.pagination, first.pagination);
+      assert.equal(openskyCalls, 1, 'ignored filter values, page size, and cursor must not create new upstream results');
+      assert.deepEqual(
+        [...new Set(liveCacheKeys)],
+        ['military:flights:v1:10:10:11:11'],
+        'all callers in one quantized bbox must share an unpaginated recovery cache key',
+      );
+
+      const apiResult = await module.listMilitaryFlights({
+        request: new Request('https://wm.test/api/military/v1/list-military-flights', {
+          headers: { 'X-Api-Key': 'wm_customer-key' },
+        }),
+      }, { ...request, operator: 'MILITARY_OPERATOR_RAF', aircraftType: 'MILITARY_AIRCRAFT_TYPE_TANKER' });
+      assert.deepEqual(apiResult, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
+      assert.equal(openskyCalls, 1, 'API callers must neither reuse nor refresh the browser OpenSky snapshot');
+      assert.deepEqual([...new Set(liveCacheKeys)], [
+        'military:flights:v1:10:10:11:11',
+        'military:flights:v1:10:10:11:11:redistributable',
+      ]);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -4970,7 +5147,11 @@ describe('allowlisted Redis transactions', { concurrency: 1 }, () => {
       ]);
       const proxy = readFileSync(resolve(root, 'docker/redis-rest-proxy.mjs'), 'utf8');
       assert.match(proxy, /req\.url === '\/multi-exec'/);
-      assert.match(proxy, /'GET', 'SET', 'DEL'/);
+      const allowlist = proxy.match(/const ALLOWED_COMMANDS = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? '';
+      const commands = new Set([...allowlist.matchAll(/'([A-Z]+)'/g)].map((match) => match[1]));
+      for (const command of ['GET', 'GETDEL', 'SET', 'DEL']) {
+        assert.ok(commands.has(command), `${command} must be allowed by the Redis proxy`);
+      }
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();

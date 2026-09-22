@@ -411,3 +411,15 @@ test('serve=slow keeps the unserved fast tier on the shadow path', async () => {
     assert.deepEqual(events.map((event) => event.event_type), ['bootstrap_kv_shadow']);
   } finally { restore(); }
 });
+
+test('old schema with premium market cards falls back to origin', async () => {
+  const restore = installFetch();
+  try {
+    const kvValue = JSON.stringify({ schemaVersion: 1, tier: 'slow', generatedAt: Date.now(), payload: { data: { marketImplications: { cards: [{ title: 'old-premium-card' }] } }, missing: [] } });
+    const { ctx, waits } = makeCtx();
+    const response = await worker.fetch(req(SLOW_URL), makeEnv({ kvValue }), ctx);
+    assert.equal(response.headers.get('X-Origin'), 'vercel');
+    assert.doesNotMatch(await response.text(), /marketImplications|old-premium-card/);
+    await Promise.all(waits);
+  } finally { restore(); }
+});

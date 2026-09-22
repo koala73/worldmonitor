@@ -623,9 +623,10 @@ describe('portwatchPortActivity classification', () => {
   });
 
   // The anonymous `?compact=1` projection echoes whole check entries for every
-  // problem status. `chinaDecisionSignals` is already stripped there because
-  // China source freshness is operator-only; a named stale-country list is the
-  // same class of detail and must not ride out on the public status endpoint.
+  // problem status. `chinaDecisionSignals` is reduced to its public verdict
+  // because China source freshness is operator-only; a named stale-country
+  // list is the same class of detail and must not ride out on the public status
+  // endpoint.
   it('keeps named stale countries out of the anonymous compact projection', () => {
     const entry = classifyPortwatch(completeRun(contentFreshnessOf({
       freshCount: 173,
@@ -659,7 +660,10 @@ describe('portwatchPortActivity classification', () => {
         assert.equal(publicEntry?.contentFreshness, undefined, 'the per-country detail does not');
         assert.equal(publicEntry?.decisionGroups, undefined);
         assert.equal(publicEntry?.chinaRow, undefined);
-        assert.equal(compact[collection]?.chinaDecisionSignals, undefined);
+        assert.deepEqual(compact[collection]?.chinaDecisionSignals, {
+          status: 'STALE_CONTENT',
+          ...(inGrace ? { staleContentGraceUntil: diagnostic.staleContentGraceUntil } : {}),
+        });
         assert.doesNotMatch(JSON.stringify(compact), /"CN"/);
         assert.deepEqual(healthResponseBody(compact, true), compact);
       }

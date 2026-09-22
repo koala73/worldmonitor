@@ -49,7 +49,8 @@ function freshHelper() {
 describe('fetchFollowedCountries', () => {
   beforeEach(() => {
     process.env.CONVEX_SITE_URL = 'https://test.convex.site';
-    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'test-secret';
+    process.env.RELAY_SHARED_SECRET = 'ingestion-must-not-be-used';
   });
 
   afterEach(() => {
@@ -172,8 +173,8 @@ describe('fetchFollowedCountries', () => {
     assert.equal(attempted, false, 'no fetch attempted when env missing');
   }));
 
-  it('missing RELAY_SHARED_SECRET → [] (no fetch attempted)', withMutedWarn(async () => {
-    delete process.env.RELAY_SHARED_SECRET;
+  it('missing CONVEX_NOTIFICATION_RELAY_SECRET → [] (no fetch attempted)', withMutedWarn(async () => {
+    delete process.env.CONVEX_NOTIFICATION_RELAY_SECRET;
     let attempted = false;
     globalThis.fetch = async () => { attempted = true; return new Response('', { status: 200 }); };
     const { fetchFollowedCountries } = freshHelper();

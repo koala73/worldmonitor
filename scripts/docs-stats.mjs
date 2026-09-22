@@ -1694,7 +1694,7 @@ function validateHealthSummaryDocs(stats, docs = null) {
         return m ? Number(m[1]) : null;
       };
       const counts = {};
-      for (const name of ['total', 'ok', 'warn', 'onDemandWarn', 'staleContent', 'rolloutPending', 'crit']) {
+      for (const name of ['total', 'ok', 'warn', 'containedWarn', 'onDemandWarn', 'staleContent', 'rolloutPending', 'crit']) {
         counts[name] = field(name);
         if (counts[name] === null) failures.push(`${where}: /api/health summary example is missing "${name}"`);
       }
@@ -1712,6 +1712,15 @@ function validateHealthSummaryDocs(stats, docs = null) {
       if (counts.rolloutPending > counts.warn) {
         failures.push(
           `${where}: rolloutPending (${counts.rolloutPending}) is documented as a subset of warn (${counts.warn})`,
+        );
+      }
+      // Same rule as rolloutPending: the pages state containedWarn is a subset
+      // of warn, not an additional bucket, so it must never exceed it. Without
+      // this the partition check above stays silent, because containedWarn is
+      // deliberately absent from that sum.
+      if (counts.containedWarn > counts.warn) {
+        failures.push(
+          `${where}: containedWarn (${counts.containedWarn}) is documented as a subset of warn (${counts.warn})`,
         );
       }
       // staleContent is no longer a subset of warn (a graced entry counts in

@@ -21,11 +21,16 @@ const { readSeedSnapshot, verifySeedKey } = await import('../scripts/_seed-utils
 const originalFetch = globalThis.fetch;
 
 function mockFetch(upstashResult) {
-  globalThis.fetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ result: upstashResult == null ? null : JSON.stringify(upstashResult) }),
-  });
+  const requests = [];
+  globalThis.fetch = async (_url, options) => {
+    requests.push(options);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ result: upstashResult == null ? null : JSON.stringify(upstashResult) }),
+    };
+  };
+  return requests;
 }
 
 function mockUpstashBody(body) {
@@ -40,11 +45,12 @@ beforeEach(() => { /* per-test mock set inside test body */ });
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 test('readSeedSnapshot: envelope-wrapped value returns inner data only', async () => {
-  mockFetch({
+  const requests = mockFetch({
     _seed: { fetchedAt: 1, recordCount: 3, sourceVersion: 'v1', schemaVersion: 1, state: 'OK' },
     data: { countries: [{ code: 'US' }, { code: 'GB' }, { code: 'MY' }] },
   });
   const snap = await readSeedSnapshot('economic:bigmac:v1');
+  assert.ok(new Headers(requests[0].headers).get('User-Agent'));
   assert.deepEqual(snap, { countries: [{ code: 'US' }, { code: 'GB' }, { code: 'MY' }] });
   assert.equal(snap._seed, undefined);
 });

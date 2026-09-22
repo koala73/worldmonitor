@@ -158,12 +158,28 @@ export const FAMILY_EXCLUSIONS = Object.freeze({
 const FAMILIES_WITHOUT_BARE_RULE = new Set(['docs']);
 
 /**
- * Root-level agent-facing text files: single-representation static files in
- * public/ that vercel.json already serves `public, max-age=3600` with a canonical
- * Link. Their extensions (.txt, .md) are not in Cloudflare's default-cacheable
- * list and two of them are named in the bypass rule outright, so they need the
+ * Root-level agent- and crawler-facing files: single-representation static files
+ * in public/. What they share is the property this rule turns on — one body for
+ * every Accept value and for `RSC: 1` — not one cache policy: the .txt and .md
+ * files carry vercel.json's `public, max-age=3600` with a canonical Link, while
+ * the two sitemaps keep their own `public, max-age=3600, must-revalidate` and no
+ * Link. Membership is decided by single-representation-ness plus a vercel.json
+ * rule advertising the shared CDN-Cache-Control, which
+ * tests/deploy-config.test.mjs checks per file.
+ *
+ * Their extensions (.txt, .md, .xml) are not in Cloudflare's default-cacheable
+ * list and three of them are named in the bypass rule outright, so they need the
  * claim as much as the HTML does. /llms.txt and /world-monitor.md are the
  * AI-crawler entry points; the rest are the markdown pages those files link to.
+ *
+ * The sitemaps joined in #7869. Round 7 of the GEO audit measured them
+ * `cf-cache-status: DYNAMIC` under a GET while every other corpus route hit —
+ * the bypass rule names /sitemap.xml, and /sitemap-main.xml has an extension
+ * Cloudflare does not cache by default. Measured 2026-09-08: both answer
+ * `application/xml` for `Accept: text/markdown`, `RSC: 1` and an AI-crawler UA,
+ * and middleware.ts cannot see them at all — its matcher excludes every path
+ * with a file extension. So they sit here with the other single-representation
+ * files rather than behind the HTML representation guard.
  */
 export const AGENT_TEXT_FILES = Object.freeze([
   'llms.txt',
@@ -181,6 +197,8 @@ export const AGENT_TEXT_FILES = Object.freeze([
   'pricing.md',
   'sdks.md',
   'support.md',
+  'sitemap.xml',
+  'sitemap-main.xml',
 ]);
 
 /** Request headers whose presence makes Mintlify answer with an RSC flight instead of the document. */

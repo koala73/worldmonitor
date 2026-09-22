@@ -36,6 +36,7 @@ export const HUMAN_NOT_FOUND_LINKS = {
 export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/a2a',
   '/about',
+  '/accuracy',
   '/agent',
   '/api-reference',
   '/ask',
@@ -110,25 +111,32 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function acceptQuality(header: string | null | undefined, type: string): number | null {
+// Catch-all ranges are opt-in: the agent 404 treats curl's */* as no HTML preference.
+export function acceptQuality(header: string | null | undefined, type: string, includeWildcard = false): number | null {
   if (header == null) return null;
   const trimmed = header.trim();
   if (!trimmed) return null;
   const wanted = type.toLowerCase();
   const [wantedMain] = wanted.split('/');
   let best: number | null = null;
+  let specificity = -1;
   for (const rawPart of trimmed.split(',')) {
     const tokens = rawPart.split(';').map((part) => part.trim().toLowerCase()).filter(Boolean);
     const media = tokens[0];
     if (!media) continue;
-    // curl's default Accept is */* — do not treat that as text/html.
-    if (media === '*/*') continue;
+    const wildcard = media === '*/*' && includeWildcard;
     const [main, sub] = media.split('/');
-    if (media !== wanted && !(main === wantedMain && sub === '*')) continue;
+    if (media !== wanted && !(main === wantedMain && sub === '*') && !wildcard) continue;
     const qToken = tokens.find((token) => token.startsWith('q='));
     const q = qToken ? Number(qToken.slice(2)) : 1;
     if (!Number.isFinite(q) || q < 0) continue;
-    if (best === null || q > best) best = q;
+    const matchSpecificity = media === wanted ? 2 : wildcard ? 0 : 1;
+    if (matchSpecificity > specificity) {
+      best = q;
+      specificity = matchSpecificity;
+    } else if (matchSpecificity === specificity && (best === null || q > best)) {
+      best = q;
+    }
   }
   return best;
 }

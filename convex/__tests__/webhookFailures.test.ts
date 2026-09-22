@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { PRODUCT_CATALOG } from "../config/productCatalog";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -570,6 +571,13 @@ describe("Dodo webhook failure tracking", () => {
     });
 
     expect(response.status).toBe(200);
+    // #7900: this existing signed fixture uses an unmapped product. It proves
+    // the authenticated fallback, not that a buyer can purchase that product.
+    const entitlement = await t.query(internal.entitlements.getEntitlementsByUserId, {
+      userId: "user_http_recovery",
+    });
+    expect(entitlement.planKey).toBe("enterprise");
+    expect(entitlement.features).toEqual(PRODUCT_CATALOG.enterprise.features);
     const rows = await t.run(async (ctx) =>
       ctx.db.query("paymentWebhookFailures").collect(),
     );
@@ -771,6 +779,8 @@ describe("Dodo webhook failure tracking", () => {
 
     expect(response.status).toBe(401);
     expect(await response.text()).toBe("Invalid webhook signature");
+    expect(await t.run((ctx) => ctx.db.query("entitlements").collect())).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("subscriptions").collect())).toEqual([]);
     const rows = await t.run(async (ctx) =>
       ctx.db.query("paymentWebhookFailures").collect(),
     );

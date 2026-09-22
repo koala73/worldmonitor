@@ -1,22 +1,12 @@
-/**
- * Pinned regression tests for shared/brief-llm-core.js.
- *
- * The module replaces the pre-extract sync `hashBriefStory` (which used
- * `node:crypto.createHash`) with a Web Crypto `crypto.subtle.digest`
- * implementation. A drift in either the hash algorithm, the joining
- * delimiter ('||'), or the field ordering would silently invalidate
- * every cached `brief:llm:whymatters:*` entry at deploy time.
- *
- * These fixtures were captured from the pre-extract implementation and
- * pinned here so any future refactor must ship a cache-version bump
- * alongside.
- */
+/** Story cache identity and shared editorial behavior contracts. */
 
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
 import {
+  validateNoHallucinatedFacts,
+  validateNoHallucinatedProperNouns,
   WHY_MATTERS_SYSTEM,
   WHY_MATTERS_V1_MAX_CHARS,
   WHY_MATTERS_V1_MIN_CHARS,
@@ -29,19 +19,16 @@ import {
   parseWhyMatters,
 } from '../shared/brief-llm-core.js';
 
-// Mirror impl (sync `node:crypto`) — kept inline so a drift between
-// the Web Crypto implementation and this sentinel fails the parity
-// test here first. Must include `description` to match v5 semantics.
-function legacyHashBriefStory(story) {
-  const material = [
+function nodeHashBriefStory(story) {
+  const material = JSON.stringify([
     story.headline ?? '',
     story.source ?? '',
     story.threatLevel ?? '',
     story.category ?? '',
     story.country ?? '',
     story.description ?? '',
-  ].join('||');
-  return createHash('sha256').update(material).digest('hex').slice(0, 16);
+  ]);
+  return createHash('sha256').update(material).digest('hex');
 }
 
 const FIXTURE = {
@@ -94,17 +81,17 @@ describe('whyMatters character bounds — shared parser contracts', () => {
   });
 });
 
-describe('hashBriefStory — Web Crypto parity with legacy node:crypto', () => {
-  it('returns the exact hash the pre-extract implementation emitted', async () => {
-    const expected = legacyHashBriefStory(FIXTURE);
+describe('hashBriefStory — Web Crypto parity with node:crypto', () => {
+  it('matches the full SHA-256 digest of the ordered JSON tuple', async () => {
+    const expected = nodeHashBriefStory(FIXTURE);
     const actual = await hashBriefStory(FIXTURE);
     assert.equal(actual, expected);
   });
 
-  it('is 16 hex chars, case-insensitive match', async () => {
+  it('is 64 lowercase hex characters', async () => {
     const h = await hashBriefStory(FIXTURE);
-    assert.equal(h.length, 16);
-    assert.match(h, /^[0-9a-f]{16}$/);
+    assert.equal(h.length, 64);
+    assert.match(h, /^[0-9a-f]{64}$/);
   });
 
   it('is stable across multiple invocations', async () => {
@@ -150,7 +137,7 @@ describe('hashBriefStory — Web Crypto parity with legacy node:crypto', () => {
 
   it('treats missing fields as empty strings (backcompat)', async () => {
     const partial = { headline: FIXTURE.headline };
-    const expected = legacyHashBriefStory(partial);
+    const expected = nodeHashBriefStory(partial);
     const actual = await hashBriefStory(partial);
     assert.equal(actual, expected);
   });
@@ -392,6 +379,21 @@ describe('parseWhyMattersV2 — multi-sentence, analyst-path only', () => {
 });
 
 describe('validateNoHallucinatedProperNouns — May 19 regression + class', () => {
+  it('does not treat sentence-opening connective adverbs as invented names', async () => {
+    const { validateNoHallucinatedProperNouns: validate } = await import('../shared/brief-llm-core.js');
+    for (const adverb of ['Simultaneously', 'Concurrently', 'Domestically']) {
+      assert.equal(validate(`${adverb}, Finland faces disruption.`, 'Finland faces disruption.', { failClosed: true }).ok, true);
+      assert.equal(validate(`${adverb}, Tamar faces disruption.`, 'Finland faces disruption.', { failClosed: true }).ok, false);
+      assert.equal(validate(`The company ${adverb} faces disruption.`, 'Finland faces disruption.', { failClosed: true }).ok, false);
+    }
+  });
+  it('treats typographic hyphens in the same source name as equivalent', async () => {
+    const { validateNoHallucinatedProperNouns: validate } = await import('../shared/brief-llm-core.js');
+    for (const hyphen of ['\u2010', '\u2011']) {
+      assert.equal(validate(`The El Niño${hyphen}related flooding continues.`, 'El Niño-related flooding', { failClosed: true }).ok, true);
+      assert.equal(validate(`The El Niño${hyphen}related flooding continues.`, 'Tamar operations resume', { failClosed: true }).ok, false);
+    }
+  });
   let validateNoHallucinatedProperNouns;
   let extractProperNounSequences;
   before(async () => {
@@ -508,6 +510,15 @@ describe('validateNoHallucinatedProperNouns — May 19 regression + class', () =
     assert.equal(r.ok, true);
   });
 
+  it('recognizes Unicode capitals, including non-decomposing Latin initials', () => {
+    for (const name of ['Ørsted', 'Łódź', 'ΔΕΗ', 'Роскосмос', '3M', '7-Eleven', 'eBay', 'iPhone']) {
+      assert.deepEqual(extractProperNounSequences(`${name} resumes operations.`), [[name.toLowerCase()]]);
+      assert.equal(validateNoHallucinatedProperNouns(`${name} faces disruption.`, 'Talks resume.').ok, false);
+      assert.equal(validateNoHallucinatedProperNouns(`${name} faces disruption.`, `${name} resumes operations.`).ok, true);
+    }
+    assert.equal(validateNoHallucinatedProperNouns('3M faces disruption.', 'a 3m barrier was installed.').ok, false);
+  });
+
   it('out-of-scope: headline already contains a wrong name → validator does NOT fact-check', () => {
     // Source-level errors are explicitly out of scope (see plan Scope Boundaries).
     // The validator catches LLM invention only — if the headline ships the
@@ -516,6 +527,13 @@ describe('validateNoHallucinatedProperNouns — May 19 regression + class', () =
     const summary = "Michel Aoun pledged action today.";
     const r = validateNoHallucinatedProperNouns(summary, headline);
     assert.equal(r.ok, true);
+  });
+
+  it('fails closed on missing evidence when used for public citations', () => {
+    for (const headline of [null, undefined, '', '   ', 42]) {
+      assert.equal(validateNoHallucinatedProperNouns('Tamar closed.', headline, { failClosed: true }).ok, false);
+      assert.equal(validateNoHallucinatedProperNouns('Tamar closed.', headline).ok, headline !== '   ');
+    }
   });
 
   it('headline has "Trump", summary adds "Mar-a-Lago" not in headline → flagged', () => {
@@ -856,5 +874,114 @@ describe('coordinating and is grammar, not a name joiner', () => {
       ).ok,
       false,
     );
+  });
+});
+
+describe('captured country headline spelling', () => {
+  it('grounds Philippine adjectives and the ICC expansion without licensing other countries or courts', () => {
+    assert.equal(validateNoHallucinatedProperNouns('The Philippine defense chief called out China.', 'Philippines defence chief calls out China', { failClosed: true }).ok, true);
+    assert.equal(validateNoHallucinatedProperNouns('The International Criminal Court hears calls for reparations.', 'ICC hears calls for reparations', { failClosed: true }).ok, true);
+    assert.equal(validateNoHallucinatedProperNouns('The International Court of Justice hears calls for reparations.', 'ICC hears calls for reparations', { failClosed: true }).ok, false);
+    assert.equal(validateNoHallucinatedProperNouns('The Philippine defense chief called out China.', 'Sudan defence chief calls out China', { failClosed: true }).ok, false);
+  });
+  it('normalizes the captured bil abbreviation while rejecting a different amount', () => {
+    assert.equal(validateNoHallucinatedFacts('The plan costs US$34 billion.', 'Plan costs US$34bil').ok, true);
+    assert.equal(validateNoHallucinatedFacts('The plan costs US$35 billion.', 'Plan costs US$34bil').ok, false);
+    assert.equal(validateNoHallucinatedFacts('The plan costs US$34 billion.', 'Plan costs US$34').ok, false);
+  });
+});
+
+describe('validateNoHallucinatedStatusQualifiers — Sep 20 "former President Trump" regression + class', () => {
+  let validate;
+  before(async () => {
+    ({ validateNoHallucinatedStatusQualifiers: validate } = await import('../shared/brief-llm-core.js'));
+  });
+
+  const SEP_20_HEADLINE = 'Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints';
+  const SEP_20_CARD =
+    'Former President Trump returned to the UN General Assembly amidst escalating maritime tensions as Iranian-linked attacks on shipping chokepoints intensified globally.';
+  const SEP_20_LEAD_TAIL =
+    'This development comes as former President Trump returns to the UN, with the ongoing conflict in the Persian Gulf spreading to critical shipping chokepoints.';
+
+  it('REGRESSION (captured card): "Former President Trump" against a headline naming only Trump → flagged', () => {
+    const r = validate(SEP_20_CARD, SEP_20_HEADLINE);
+    assert.equal(r.ok, false);
+    assert.match(r.hallucinated[0], /former president trump/i);
+  });
+
+  it('REGRESSION (captured lead): lowercase mid-sentence "former" is flagged too', () => {
+    assert.equal(validate(SEP_20_LEAD_TAIL, SEP_20_HEADLINE).ok, false);
+  });
+
+  it('CLASS: interleaved nationality and dotted acronyms still resolve to the claim', () => {
+    assert.equal(validate('This comes as former US President Trump prepares to address the UN.', SEP_20_HEADLINE).ok, false);
+    assert.equal(validate('This comes as former U.S. President Trump prepares to address the UN.', SEP_20_HEADLINE).ok, false);
+    assert.equal(validate('Former Lebanese Prime Minister Hariri returned to Beirut.', 'Hariri returns to Beirut').ok, false);
+  });
+
+  it('CLASS: every qualifier class is caught when the source lacks it', () => {
+    const cases = [
+      ['Ex-President Yoon appeared in court.', 'Yoon appears in court'],
+      ['The then-Senator Obama backed the bill.', 'Obama backed the bill'],
+      ['The late Queen Elizabeth opened the session.', 'Elizabeth opens the session'],
+      ['Acting Prime Minister Vance chaired the meeting.', 'Vance chairs the meeting'],
+      ['Interim head of Mossad Barnea briefed the cabinet.', 'Barnea briefs the cabinet'],
+      ['Outgoing Chancellor Scholz met the delegation.', 'Scholz meets the delegation'],
+      ['Retired General Petraeus warned of escalation.', 'Petraeus warns of escalation'],
+      ['Incoming Governor Shapiro named his cabinet.', 'Shapiro names his cabinet'],
+    ];
+    for (const [summary, headline] of cases) {
+      assert.equal(validate(summary, headline).ok, false, summary);
+    }
+  });
+
+  it('grounded: the source itself carries the qualifier → ok', () => {
+    assert.equal(validate(SEP_20_CARD, 'Former President Trump returns to UN as Iran war spreads').ok, true);
+    assert.equal(validate('Former President Bolsonaro was sentenced.', 'Ex-president Bolsonaro sentenced to 27 years').ok, true);
+    assert.equal(validate('Interim Prime Minister Bennett resigned.', 'Acting PM Bennett resigns').ok, true);
+  });
+
+  it('classes are not synonyms of each other: summary "acting", source "former" → flagged', () => {
+    assert.equal(validate('Acting President Trump addressed the UN.', 'Former President Trump addresses the UN').ok, false);
+  });
+
+  it('per-story ground: the qualifier must sit in the SAME story as the name', () => {
+    const pool = ['Former President Bolsonaro sentenced to 27 years', SEP_20_HEADLINE];
+    assert.equal(validate(SEP_20_CARD, pool).ok, false);
+    assert.equal(validate(SEP_20_CARD, ['Former President Trump to address UN', 'Bolsonaro sentenced']).ok, true);
+  });
+
+  it('not our claim: qualifier without a person title, or a title without a capitalized name → ok', () => {
+    assert.equal(validate('The former Soviet republic of Georgia held elections.', 'Georgia holds elections').ok, true);
+    assert.equal(validate('Former officials said the deal was near.', 'Deal nears, officials say').ok, true);
+    assert.equal(validate('The two leaders met late Tuesday, President Trump said.', 'Trump comments on the meeting').ok, true);
+  });
+
+  it('a lowercase word after the title is not the name; the engine backtracks to the capitalized one', () => {
+    const r = validate('Former official adviser John Smith warned of escalation.', 'Smith warns of escalation');
+    assert.equal(r.ok, false);
+    assert.match(r.hallucinated[0], /John$/);
+  });
+
+  it('a hyphenated "then-" in the source grounds "then-President"; the bare adverb does not', () => {
+    assert.equal(validate('The senator, then-President Obama, backed it.', 'then-President Obama backs it').ok, true);
+    assert.equal(validate('The senator, then-President Obama, backed it.', 'and then President Obama backed it').ok, false);
+  });
+
+  it('adverb "then" without a hyphen is not a qualifier', () => {
+    assert.equal(validate('Talks stalled, and then President Trump left the summit.', 'Trump leaves the summit').ok, true);
+  });
+
+  it('a sentence boundary ends the bridge between qualifier and title', () => {
+    assert.equal(validate('Former officials met. President Trump then spoke.', 'Trump speaks after officials meet').ok, true);
+  });
+
+  it('malformed inputs accept without throwing', () => {
+    for (const bad of [null, undefined, '', 42, {}]) {
+      assert.equal(validate(bad, SEP_20_HEADLINE).ok, true);
+      assert.equal(validate(SEP_20_CARD, bad).ok, true);
+    }
+    assert.equal(validate(SEP_20_CARD, []).ok, true);
+    assert.equal(validate(SEP_20_CARD, ['', null]).ok, true);
   });
 });

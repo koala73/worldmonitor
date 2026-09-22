@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.10.0 · Last updated: 2026-09-05
+> Version: 2.10.0 · Last updated: 2026-09-10
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people live in 190+ countries, with structural resilience ranked for 170, with press references in the [product identity document](https://www.worldmonitor.app/world-monitor.md). It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
@@ -12,7 +12,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 ## Product identity and press references
 
-- [Product identity and press references](https://www.worldmonitor.app/world-monitor.md): Official name, canonical domain, contact details, and external reporting.
+- [Product identity and press references](https://www.worldmonitor.app/world-monitor.md): Official name, canonical domain, contact details, and the press list — WIRED, The Atlantic, El País, The Economic Times, Arabian Business, Entrepreneur Middle East, Silicon Canals and L'Orient Today — each linked to its article.
 - [Human about page](https://www.worldmonitor.app/docs/about)
 
 ## When to Use World Monitor (Agent Guidance)
@@ -32,7 +32,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
 - [Docs MCP server card](https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json): public Streamable HTTP search and retrieval over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
-- [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 2,863,317 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
+- [REST API guide](https://www.worldmonitor.app/openapi.md): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 2,951,181 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
 - [worldmonitor CLI](https://www.worldmonitor.app/docs/cli): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command. `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks): official zero-dependency clients for Python ([PyPI](https://pypi.org/project/worldmonitor-sdk/)), Ruby ([RubyGems](https://rubygems.org/gems/worldmonitor)), Go ([pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go)), and JavaScript via the npm package.
 - [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor).
@@ -112,6 +112,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - [Extended LLM Documentation](https://www.worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
 - [Global Intelligence Glossary](https://www.worldmonitor.app/blog/glossary/): Definitions of the scoring indices (CII, CRI), detection signals (geographic convergence, focal points), maritime chokepoints, and OSINT methodology terms — one citable DefinedTerm page per concept
 - [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
+- [Forecast Accuracy Scorecard](https://www.worldmonitor.app/accuracy/): The standing record of how well World Monitor forecasts have scored — Brier and log scores, calibration buckets, per-domain and per-origin breakdowns, void rates, and the sample size behind every published figure, with a machine-readable JSON distribution
 - [Machine-Readable Pricing](https://www.worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
 - [Support & Contact](https://www.worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations
@@ -121,7 +122,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - Interactive 3D WebGL globe with deck.gl rendering and a shared map-layer catalog (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
 - AI-powered intelligence: source-attributed world briefs, hybrid threat classification, focal point detection, CII v8 instability scores for 31 Tier-1 countries, CRI resilience scores for the 196-country public rankable universe, trending keyword spike detection, and strategic posture assessment
 - Curated RSS feeds across geopolitics, defense, energy, tech, and finance with a domain-allowlisted proxy
-- Live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
+- Live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNN, Al Arabiya)
 - Live webcams from geopolitical hotspots across regions
 - Multilingual UI with RTL support
 - 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index

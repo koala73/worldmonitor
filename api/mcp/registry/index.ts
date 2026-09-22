@@ -1,5 +1,6 @@
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
+import { advertisedOutputSchema } from '../structured-content';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
@@ -37,11 +38,10 @@ export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
  * per-account meter for internal-MCP callers — so the edge has to charge that
  * work here or it goes unbilled entirely.
  *
- * The measured spread is 1-2 downstream calls per tool, not the 10x an
- * "MCP call = many API calls" intuition suggests, so the table is two values
- * plus per-tool overrides for the pair that genuinely fetch twice. Deriving the
- * class from `_execute` rather than a hand-maintained list means a new tool
- * inherits the right weight by construction.
+ * Most execution tools make one downstream call. Per-tool overrides cover
+ * the maximum fan-out of country briefs (two) and airspace (four when split
+ * at the dateline). The weight is fixed before execution, including when a
+ * request selects fewer sources or needs only one longitude interval.
  */
 export function toolWeight(tool: ToolDef): number {
   if (tool._weight !== undefined) return tool._weight;
@@ -50,6 +50,7 @@ export function toolWeight(tool: ToolDef): number {
 
 /** Single access classifier used by tools/list, describe_tool, and resources. */
 export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._subscriptionOnly) return 'subscription';
   if (tool._freeTier === true) return 'free';
   // Local metadata escape hatch: authenticated free accounts may call it and
   // dispatch exempts it from both the allowance and Pro daily quota.
@@ -143,7 +144,10 @@ export function buildPublicTool(
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.
-    outputSchema: structuredClone(tool.outputSchema),
+    // Advertised as `anyOf [documented shape, projection / soft-envelope
+    // shapes]` so the `structuredContent` every call returns validates in a
+    // strict client whatever the response kind (api/mcp/structured-content.ts).
+    outputSchema: advertisedOutputSchema(structuredClone(tool.outputSchema)),
     // Per-tool annotations declared on each registry entry (v1.7.0).
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.

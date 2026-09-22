@@ -1,9 +1,9 @@
 ---
 title: "Scenarios API"
-description: "Run pre-defined supply-chain disruption scenarios against a scoped country or the v1 seeded reporter set, then poll for worker-computed results."
+description: "Run pre-defined supply-chain disruption scenarios against a scoped country or the bounded country/sector seed manifest, then poll for worker-computed results."
 ---
 
-The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes. If no country is supplied, v1 computes across the seeded reporter set only: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
+The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes. If no country is supplied, v1 computes across the bounded country/sector manifest in existing seed metadata.
 
 <Info>
 This service is proto-backed and included in the published OpenAPI bundle — see `proto/worldmonitor/scenario/v1/service.proto` and `/api/ScenarioService.openapi.yaml`. This page adds migration notes and examples on top of the generated reference.
@@ -61,12 +61,14 @@ Enqueues a job. Returns the assigned `jobId` the caller must poll.
 ```json
 {
   "scenarioId": "hormuz-tanker-blockade",
-  "iso2": "US"
+  "iso2": "US",
+  "disruptionPct": 60
 }
 ```
 
 - `scenarioId` — id from `/list-scenario-templates`. Required.
-- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string means the worker uses the v1 seeded reporter set: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
+- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string means the worker uses the bounded country/sector manifest in existing seed metadata.
+- `disruptionPct` — optional integer 0-100, physical scenarios only. Omitting it keeps the template default; `0` is a valid explicit value meaning "no closure". Tariff scenarios reject this override with a 400. Duration is descriptive and never affects the score.
 
 **Response (`202 Accepted`)**:
 ```json
@@ -92,6 +94,7 @@ Treat any `2xx` as enqueue success. The interim guidance to branch on response b
 |--------|-----------|-------|
 | 400 | — (body is `{"violations":[…]}`, no `message`; violations include `scenarioId`) | Missing or unknown `scenarioId` |
 | 400 | — (body is `{"violations":[…]}`; violations include `iso2`) | Malformed `iso2` |
+| 400 | — (body is `{"violations":[…]}`; violations include `disruptionPct`) | `disruptionPct` outside 0-100, non-integer, or supplied for a tariff scenario |
 | 403 | `Pro subscription required` | Not Pro |
 | 405 | — | Method other than `POST` (enforced by sebuf service-config) |
 | 429 | `Too many requests` | Per-IP 10/min gateway rate limit |
@@ -184,3 +187,12 @@ Poll loop: treat `pending` and `processing` as non-terminal; only `done` and `fa
 - Subsequent polls: exponential backoff (1s → 2s → 4s, cap 10s).
 - Workers typically complete in 5-30 seconds depending on scenario complexity.
 - If still pending after 2 minutes, the job is probably dead — re-enqueue.
+
+
+## Scenario coverage and export
+
+A missing, old or invalid seed manifest produces **unknown coverage**. The worker does not fall back to a guessed country list or scan Redis. It reads exposure keys in bounded batches (see `EXPOSURE_BATCH_SIZE` in `scripts/scenario-worker.mjs`). A complete result means complete within the bounded seed scope, not global trade coverage.
+
+`coverage.records` identifies each requested country and HS2 chapter as `evaluated`, `missing`, `malformed`, or `not_seeded`. Evaluated records retain `flow_weighted` or `country_route_fallback` basis and raw impact, including valid zero. Partial totals exclude unavailable records and must not be read as low exposure. Flow-weighted scores use recorded trade shares with modeled routes; fallback scores use geographic routes. Cache production dates are not trade observation dates; an unknown observation date remains unknown.
+
+The panel allows country selection and physical closure severity (0–100%). Duration remains descriptive metadata. Download scenario JSON preserves the captured inputs, raw score units, coverage records and dates. Raw impact is not currency or lost trade. Relative `impactPct` rankings need not double when severity doubles because the denominator also changes.

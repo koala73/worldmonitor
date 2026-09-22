@@ -377,7 +377,7 @@ describe('correlation-engine lazy boot failure handling', () => {
     const src = readFileSync(resolve(repoRoot, 'src/App.ts'), 'utf-8');
     const methodStart = src.indexOf('private async loadInitialCorrelationEngine(): Promise<void>');
     assert.notEqual(methodStart, -1, 'App should isolate correlation-engine lazy boot in loadInitialCorrelationEngine');
-    const methodEnd = src.indexOf('public async init(): Promise<void>', methodStart);
+    const methodEnd = src.indexOf('public async init(', methodStart);
     assert.notEqual(methodEnd, -1, 'loadInitialCorrelationEngine should be declared before init()');
     const method = src.slice(methodStart, methodEnd);
 

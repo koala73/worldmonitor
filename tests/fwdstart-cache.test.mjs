@@ -123,6 +123,20 @@ test('an upstream failure with no cache still returns 502, not a fake empty feed
   assert.equal(store.size, 0, 'a failed scrape must not write anything to the cache');
 });
 
+test('keeps unexpected scrape details in server logs only', async (t) => {
+  t.after(restoreEnvironment);
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  const error = new Error('fetch failed https://internal.example/?key=synthetic-secret');
+  const log = t.mock.method(console, 'error', () => {});
+  globalThis.fetch = async () => { throw error; };
+  const { default: handler } = await import('../api/fwdstart.js');
+  const response = await handler(request(), undefined);
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: 'Failed to fetch FwdStart archive' });
+  assert.ok(log.mock.calls.some(({ arguments: args }) => args[1] === error));
+});
+
 test('an empty extraction is not cached, so a broken parser cannot persist a hollow feed', async (t) => {
   t.after(restoreEnvironment);
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';

@@ -215,6 +215,11 @@ describe('physical premium seed', () => {
     assert.equal(silver[0].unit, 'kilogram');
   });
 
+  it('does not interpret a nested entity as a benchmark contract character', () => {
+    const html = '<table><tr><th>Trade Date</th><th>Contract</th><th>Benchmark Price AM</th><th>Benchmark Price PM</th></tr><tr><td>20260818</td><td>SH&amp;quot;AU</td><td>953.79</td><td>953.88</td></tr></table>';
+    assert.throws(() => parseSgeBenchmarkHtml(html, { contract: 'SH"AU', unit: 'gram' }), /No valid/);
+  });
+
   it('labels an AM fallback as AM when the PM print is absent', () => {
     const html = `
       <table>

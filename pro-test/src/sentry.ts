@@ -1,4 +1,6 @@
 import * as Sentry from '@sentry/react';
+import { sanitizeSentryTelemetry, sentryPrivacyOptions } from '../../shared/sentry-privacy';
+import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import {
@@ -20,12 +22,15 @@ import { collectRemoveChildEvidence, decorateRemoveChildEvent } from './services
 export function initSentry(): void {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
   const servedLanguage = document.documentElement.getAttribute('lang') ?? 'en';
+  const environment = (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
+    : location.hostname.includes('vercel.app') ? 'preview'
+    : 'development';
 
   Sentry.init({
+    ...sentryPrivacyOptions,
     dsn: sentryDsn || undefined,
-    environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
-      : location.hostname.includes('vercel.app') ? 'preview'
-      : 'development',
+    ...getSentryBuildMetadata(__APP_VERSION__, __BUILD_HASH__, environment),
+    environment,
     enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost'),
     allowUrls: SENTRY_ALLOW_URLS,
     tracesSampleRate: 0.1,
@@ -33,18 +38,19 @@ export function initSentry(): void {
     beforeSend: (event) => {
       const filteredEvent = marketingBeforeSend(event);
       if (!filteredEvent) return null;
+      isolateNonProductionSentryEvent(filteredEvent, environment);
       if (filteredEvent.request?.url) {
         const safeRequestUrl = sanitizeMarketingRequestUrl(filteredEvent.request.url);
         filteredEvent.request.url = safeRequestUrl;
       }
-      return decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
+      return sanitizeSentryTelemetry(decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
         document,
         location,
         servedLanguage,
         applicationLanguage: currentLanguageBase(),
         browserLanguage: navigator.language,
         browserLanguages: [...navigator.languages],
-      }));
+      })));
     },
   });
 }

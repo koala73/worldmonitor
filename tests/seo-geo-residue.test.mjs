@@ -81,6 +81,31 @@ describe('GEO residue #7463', () => {
     assert.match(committed, /product-facts\.json.*capabilities\.localeCodes/);
   });
 
+  it('llms-full inlines the generated forecast-accuracy record, not only an index link', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
+    const skill = snapshot.forecastScorecard?.scorecard?.skill;
+    const section = generated.split(/^## Forecast accuracy$/m)[1]?.split(/^## /m)[0] ?? '';
+    assert.match(generated, /^## Forecast accuracy$/m);
+    assert.match(section, /does not publish/i);
+    assert.match(section, /https:\/\/www\.worldmonitor\.app\/accuracy\//);
+    assert.ok(
+      Number.isFinite(skill?.brier) && skill.count > 0,
+      'the committed pulse snapshot must carry a measurable headline cohort so this section cannot be a hardcoded stub',
+    );
+    assert.match(section, new RegExp(`Brier of ${Number(skill.brier).toFixed(3)}`));
+    assert.match(section, new RegExp(`${Number(skill.count).toLocaleString('en-US')} scored forecasts`));
+    assert.match(
+      section,
+      new RegExp(`${Number(snapshot.forecastScorecard.scorecard.rollingWindowDays).toLocaleString('en-US')}-day window`),
+    );
+    assert.doesNotMatch(
+      section,
+      /issue #\d+/,
+      'the corpus section must state the negative scope without a tracker-only sentence',
+    );
+  });
+
   // "Usable" was previously read as "not redacted", and the URL this pinned —
   // https://api.worldmonitor.app/resilience/v1/get-runtime-manifest — 404s: the
   // route is /api/resilience/v1/..., and the link had been published without the
@@ -216,19 +241,17 @@ describe('GEO residue #7463', () => {
     assert.doesNotMatch(useCases[1], /livePulse/);
   });
 
-  it('homepage source has a YYYY-MM-DD as-of date in JSON-LD and visible copy', () => {
-    const index = read('pro-test/index.html');
+  it('homepage editorial copy retains its reviewed as-of date', () => {
     const hero = read('pro-test/src/welcome/Hero.tsx');
     const home = read('public/home.md');
     const en = readJson('pro-test/src/locales/en.json');
 
-    assert.match(index, /"dateModified": "2026-09-04"/);
-    assert.match(hero, /dateTime="2026-09-04"/);
-    assert.match(home, /2026-09-04/);
-    assert.match(String(en.welcome?.hero?.asOf || ''), /2026-09-04|4 September 2026/);
+    assert.match(hero, /dateTime="2026-09-08"/);
+    assert.match(home, /2026-09-08/);
+    assert.match(String(en.welcome?.hero?.asOf || ''), /2026-09-08|8 September 2026/);
   });
 
-  it('homepage welcome.html dates track the teaser strip snapshot (#7654)', () => {
+  it('homepage and Pro software dates track the teaser strip snapshot (#7654)', () => {
     // The strip reads docs/snapshots/crawlable-live-pulse-*.json, so the host
     // page's crawler-facing dates come from the same freeze — refreshed by
     // `npm run teasers:welcome`, never hand-maintained.
@@ -236,6 +259,7 @@ describe('GEO residue #7463', () => {
     const welcome = read('pro-test/welcome.html');
     assert.match(welcome, new RegExp(`<meta name="lastmod" content="${snapshot.capturedAt}"`));
     assert.match(welcome, new RegExp(`"dateModified": "${snapshot.capturedAt}"`));
+    assert.match(read('pro-test/index.html'), new RegExp(`"dateModified": "${snapshot.capturedAt}"`));
   });
 
   it('does not add well-known server.json to the MCP registry publish path filter', () => {
@@ -251,6 +275,13 @@ describe('GEO residue #7463', () => {
     const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
     assert.match(workflow, /npm run build:llms-full/);
     assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
+  });
+
+  it('regenerates llms-full when the weekly pulse snapshot refreshes', () => {
+    const workflow = read('.github/workflows/crawlable-pulse-refresh.yml');
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
+    assert.match(workflow, /tests\/seo-geo-residue\.test\.mjs/);
   });
 });
 

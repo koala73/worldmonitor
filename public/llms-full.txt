@@ -3,7 +3,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.10.0 · Last updated: 2026-09-05
+> Version: 2.10.0 · Last updated: 2026-09-10
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170.
 
@@ -37,9 +37,11 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Key Features Summary](#corpus-key-features-summary)
 - [Optional](#corpus-optional)
 - [Generated corpus](#corpus-generated-corpus)
+- [Source provider directory](#corpus-source-provider-directory)
 - [Comparisons](#corpus-comparisons)
 - [Glossary](#corpus-glossary)
 - [Monitored chokepoints](#corpus-monitored-chokepoints)
+- [Forecast accuracy](#corpus-forecast-accuracy)
 - [Chokepoint methodology](#corpus-chokepoint-methodology)
 - [Start here](#corpus-start-here)
 - [What we track](#corpus-what-we-track)
@@ -288,8 +290,8 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 
 - **RSS feeds** across categories: World/Geopolitical (BBC, Reuters, AP, Guardian), Middle East (Al Jazeera, Al Arabiya, Times of Israel), Africa (BBC Africa, News24), Latin America, Asia-Pacific (SCMP), Energy & Resources, Technology (Hacker News, Ars Technica), AI/ML (ArXiv, VentureBeat), Finance (CNBC, MarketWatch, FT), Government (White House, Pentagon, Treasury, Fed, SEC, UN, CISA), Intel Feed (Defense One, Breaking Defense, Bellingcat, Krebs, Janes), Think Tanks (Foreign Policy, Atlantic Council, CSIS, RAND, Brookings, Carnegie), Crisis Watch (ICG, IAEA, WHO, UNHCR), Regional (Xinhua, TASS, Kyiv Independent)
 - **Source tiering**: Tier 1 (wire services, government), Tier 2 (major outlets), Tier 3 (specialized), Tier 4 (aggregators/blogs) — with propaganda risk ratings and state affiliation flags
-- **Live video streams**: Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya — with automatic live detection scraping YouTube channel pages every 5 minutes
-- **Live webcams**: Geopolitical hotspots across regions — Middle East (Jerusalem, Tehran, Tel Aviv, Mecca), Europe (Kyiv, Odessa, Paris, London), Americas (Washington DC, New York, LA, Miami), Asia-Pacific (Taipei, Shanghai, Tokyo, Seoul, Sydney)
+- **Live video streams**: Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNN, Al Arabiya — official HLS streams where broadcasters publish them, otherwise curated YouTube live streams checked with the official YouTube player
+- **Live webcams**: Geopolitical hotspots across regions — Middle East (Jerusalem, a multi-city Middle East feed, Mecca, Istanbul, Medina), Europe (Ukraine, Paris, St. Petersburg, London), Americas (Washington DC, New York, LA, Miami), Asia-Pacific (Taipei, Shanghai, Tokyo, Seoul, Sydney), and ISS Earth views
 - **Custom keyword monitors**: User-defined keyword alerts with word-boundary matching, auto color-coding, and multi-keyword support
 - **Entity extraction**: Auto-links countries, leaders, organizations across headlines
 - **Virtual scrolling**: Custom virtual list renderer with DOM pooling for panels with 15+ items
@@ -424,7 +426,30 @@ Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirror
 <a id="corpus-generated-corpus"></a>
 ## Generated corpus
 
-The sections below are produced by `npm run build:llms-full` from the comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.
+The sections below are produced by `npm run build:llms-full` from the source catalog, comparison-page registry, glossary terms, chokepoint methodology, published chokepoint explainers, the forecast accuracy snapshot, the Country Resilience Index methodology, the corrections log, and the current published ranking snapshot.
+
+<a id="corpus-source-provider-directory"></a>
+## Source provider directory
+
+World Monitor publishes 750 named providers across 17 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+
+- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 41 providers.
+- [Military & Strategic](https://www.worldmonitor.app/sources/military/): 21 providers.
+- [News & OSINT](https://www.worldmonitor.app/sources/news/): 60 providers.
+- [News & OSINT — page 2](https://www.worldmonitor.app/sources/news/page/2/): 60 providers.
+- [News & OSINT — page 3](https://www.worldmonitor.app/sources/news/page/3/): 60 providers.
+- [News & OSINT — page 4](https://www.worldmonitor.app/sources/news/page/4/): 60 providers.
+- [News & OSINT — page 5](https://www.worldmonitor.app/sources/news/page/5/): 60 providers.
+- [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
+- [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
+- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 44 providers.
+- [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 49 providers.
+- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
+- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 44 providers.
+- [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
+- [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 30 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons
@@ -698,8 +723,21 @@ The Kerch Strait connects the Black Sea to the Sea of Azov and is the only sea r
 
 The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the Malacca–Singapore route. It is favoured by the largest, deepest-draft bulk carriers and serves as a relief valve when Malacca is congested or disrupted.
 
+<a id="corpus-forecast-accuracy"></a>
+## Forecast accuracy
+
+The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
+
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.115 across 200 scored forecasts, against 0.25 for answering 0.5 to everything.
+
+Captured 2026-09-21.
+
+This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
+
 <a id="corpus-chokepoint-methodology"></a>
 ## Chokepoint methodology
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
 
 <a id="corpus-start-here"></a>
 ## Start here
@@ -714,6 +752,8 @@ here, and who would feel it?**
 
 <a id="corpus-what-a-chokepoint-row-tells-you"></a>
 ### What a chokepoint row tells you
+
+Open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) for a worked example. Read its published disruption score, available inputs, and observation dates alongside the method below.
 
 Each waterway carries four separate readings, and it is worth keeping them
 apart:
@@ -1012,19 +1052,19 @@ WorldMonitor's canonical chokepoint registry includes:
 
 | Canonical id | Public name |
 |---|---|
-| `hormuz_strait` | Strait of Hormuz |
-| `malacca_strait` | Strait of Malacca |
-| `suez` | Suez Canal / SUMED |
-| `bab_el_mandeb` | Bab el-Mandeb |
-| `panama` | Panama Canal |
-| `taiwan_strait` | Taiwan Strait |
-| `cape_of_good_hope` | Cape of Good Hope |
-| `gibraltar` | Strait of Gibraltar |
-| `bosphorus` | Bosporus Strait |
-| `korea_strait` | Korea Strait |
-| `dover_strait` | Dover Strait |
-| `kerch_strait` | Kerch Strait |
-| `lombok_strait` | Lombok Strait |
+| `hormuz_strait` | [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) |
+| `malacca_strait` | [Strait of Malacca](https://www.worldmonitor.app/chokepoints/strait-of-malacca/) |
+| `suez` | [Suez Canal / SUMED](https://www.worldmonitor.app/chokepoints/suez-canal/) |
+| `bab_el_mandeb` | [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/) |
+| `panama` | [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/) |
+| `taiwan_strait` | [Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/) |
+| `cape_of_good_hope` | [Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/) |
+| `gibraltar` | [Strait of Gibraltar](https://www.worldmonitor.app/chokepoints/strait-of-gibraltar/) |
+| `bosphorus` | [Bosporus Strait](https://www.worldmonitor.app/chokepoints/bosporus-strait/) |
+| `korea_strait` | [Korea Strait](https://www.worldmonitor.app/chokepoints/korea-strait/) |
+| `dover_strait` | [Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/) |
+| `kerch_strait` | [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/) |
+| `lombok_strait` | [Lombok Strait](https://www.worldmonitor.app/chokepoints/lombok-strait/) |
 
 All 13 can receive status, threat classification, warning context, AIS-disruption matching, disruption score, and war-risk tier.
 
@@ -1132,18 +1172,18 @@ The chart tells the story: tanker and cargo traffic that had been steady at 40-7
 
 The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
-The following table highlights eight of the 13 monitored corridors as of mid-March 2026:
+The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
 | Corridor | Status | Key Risk |
 |----------|--------|----------|
-| **Strait of Hormuz** | Critical | Iran-Israel war, naval blockade, mines |
-| **Kerch Strait** | Red | Russia controls Kerch Bridge, Azov grain exports restricted |
-| **Bab el-Mandeb** | Yellow | Houthi attacks on commercial shipping |
-| **Suez Canal** | Yellow | Red Sea conflict spillover, Iran-Israel war adjacency |
-| **Bosporus Strait** | Elevated | Black Sea grain corridor tensions |
-| **Taiwan Strait** | Yellow | PLA military exercises, semiconductor supply risk |
-| **Cape of Good Hope** | Green | Rerouting destination for Hormuz/Suez diversions |
-| **Dover Strait** | Green | Europe's busiest shipping lane, currently stable |
+| **[Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/)** | Critical | Iran-Israel war, naval blockade, mines |
+| **[Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/)** | Red | Russia controls Kerch Bridge, Azov grain exports restricted |
+| **[Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/)** | Yellow | Houthi attacks on commercial shipping |
+| **[Suez Canal](https://www.worldmonitor.app/chokepoints/suez-canal/)** | Yellow | Red Sea conflict spillover, Iran-Israel war adjacency |
+| **[Bosporus Strait](https://www.worldmonitor.app/chokepoints/bosporus-strait/)** | Elevated | Black Sea grain corridor tensions |
+| **[Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/)** | Yellow | PLA military exercises, semiconductor supply risk |
+| **[Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/)** | Green | Rerouting destination for Hormuz/Suez diversions |
+| **[Dover Strait](https://www.worldmonitor.app/chokepoints/dover-strait/)** | Green | Europe's busiest shipping lane, currently stable |
 
 Each corridor shows live vessel counts, week-over-week traffic changes, disruption percentages, and risk levels. When you click a corridor, you get the full AI-generated situation assessment with specific shipping recommendations.
 
@@ -1252,7 +1292,7 @@ About 20% of global petroleum liquids consumption and a major share of LNG trade
 
 **What are the world's most critical shipping chokepoints?**
 
-World Monitor monitors its canonical waterway registry, including Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, Gibraltar, Bosporus, Korea, Dover, Kerch, and Lombok. Entries with EIA-backed oil or gas baselines publish flow estimates; every entry can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the registry and coverage limits.
+World Monitor monitors its canonical waterway registry, including Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, [Gibraltar](https://www.worldmonitor.app/chokepoints/strait-of-gibraltar/), Bosporus, Korea, Dover, Kerch, and Lombok. Entries with EIA-backed oil or gas baselines publish flow estimates; every entry can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the registry and coverage limits.
 
 ---
 
@@ -1266,6 +1306,10 @@ An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker
 WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 
 This is a practical workflow for monitoring energy-shock risk.
+
+For a worked example, open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) to inspect its latest published transit and disruption readings. The [historical Strait of Hormuz Transit Report for July 2026](https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/) provides a dated comparison with Suez, Bab el-Mandeb, and the Cape of Good Hope. Its figures describe that report's observation period, not current traffic.
+
+For country context, open the [Iran](https://www.worldmonitor.app/countries/iran/) and [Oman](https://www.worldmonitor.app/countries/oman/) profiles. The [Gulf security tracker](https://www.worldmonitor.app/crises/hormuz-gulf-security/) summarizes conflict data for its stated regional coverage. The separate [Iran–Israel escalation tracker](https://www.worldmonitor.app/crises/iran-israel-escalation/) covers those two countries only.
 
 <a id="corpus-what-is-energy-shock-monitoring"></a>
 ## What is energy shock monitoring?
@@ -1448,6 +1492,8 @@ No. Price moves are confirmation, not diagnosis. Pair them with route, supply, p
 
 <a id="corpus-country-resilience-index-methodology"></a>
 ## Country Resilience Index methodology
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
 
 <a id="corpus-start-here-country-resilience-index-methodology"></a>
 ## Start here (Country Resilience Index methodology)
@@ -1671,7 +1717,7 @@ historical continuity.
 
 For the full construct rationale and the rejected alternatives (program-
 weight categorization, transit-hub exclusion lists), see
-[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions--tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
+[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions-%E2%86%92-tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -2628,7 +2674,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **Acceptance gates.** Spearman must be at least 0.85, at least 60% of countries must move by less than 3 overall points, and no non-sanctions country may move by more than 12 points. Headline-eligibility changes and finance source-failure rows remain explicit in the artifact.
 - **Issue state.** #6461 is already closed by #6515, which landed the residual absence-as-strength fix. No issue reprioritization mutation is required.
 
-See [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
+See [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
 
 <a id="corpus-editorial-notes"></a>
 ### Editorial notes
@@ -2654,6 +2700,7 @@ return empty arrays, and there is no automated correction-intake path.
 
 | Effective date | Product | Revision | Published effect |
 | --- | --- | --- | --- |
+| 2026-09-08 | Country pages / country brief | **Unsupported brief citations withheld.** The September 7 audit reported 20 of 50 sampled "What this means" bullets naming assets absent from their grounding headlines, including Cerrejón, Caño Limón-Coveñas, Tamar, Leviathan and El Guri. A citation index alone did not prove that its source named the entities in the claim. The freeze and page build now check each paragraph or bullet against every source it cites and withhold the whole brief when the check fails. Uncited lines must also ground their names in the retained source set. | A local replay of the 2026-09-04 snapshot with this rule withholds all 22 briefs that survived the earlier publisher floor, leaving 0 published briefs from that capture. These are precautionary withdrawals, not a claim that all their statements are false. Dated headlines and timelines remain. The same rule applies to the downloadable datasets and future freezes; the historical snapshot is preserved. Only source titles are retained, so the check cannot rely on article bodies and can reject legitimate paraphrases or mixed-source paragraphs. This checks named-entity presence, not factual entailment. See [issue #7865](https://github.com/koala73/worldmonitor/issues/7865). |
 | 2026-09-05 | Country pages / country brief | **Single-publisher briefs withheld; brief text and grounding corrected.** A generated country brief is now published only when its grounding headlines come from at least two distinct publishers; a 24/48/72h outlook synthesised from one outlet is withheld and the page keeps its dated headlines. The country matcher that selected grounding headlines matched bare ISO codes as words, so a few briefs were grounded on another country's news (an "African Union (AU)" story on the Australia page); one shared matcher now grounds the pages, the dashboard and the MCP tool. Briefs also rendered raw markdown markers and, for countries outside the tier-1 table, the ISO code in place of the country name in the "What this means for" heading. | Applies to every indexed country page, its dataset download and the weekly frozen snapshot. On the 2026-09-04 snapshot 18 of 40 published briefs are withdrawn (including the wrong-country ones and one grounded on three articles from a single newsroom) and the remaining 22 render as structured text with the country name in the heading. New briefs are grounded and named correctly from the first refresh after this change. See [PR #7762](https://github.com/koala73/worldmonitor/pull/7762) for [issue #7748](https://github.com/koala73/worldmonitor/issues/7748) and [issue #7738](https://github.com/koala73/worldmonitor/issues/7738). |
 | 2026-09-02 | Chokepoint status | **Source availability separated.** NGA navigational warnings, the AIS snapshot, relay transit counts and PortWatch movement are now four independent availability domains, so one missing source no longer hides another's valid values and an unavailable reading is never shown as a measured zero or a calm level. The combined warnings row was split into navigational warnings and AIS disruptions, and congestion is labelled AIS congestion. | Applies to all 13 chokepoint pages, dashboard panels, frozen snapshots, OpenAPI clients and the public agent skill. Cached payloads and frozen snapshots predating the new source flags fail closed, so warnings, AIS disruptions and AIS congestion stay withheld until a fresh capture replaces them. See [PR #7535](https://github.com/koala73/worldmonitor/pull/7535) for [issue #7529](https://github.com/koala73/worldmonitor/issues/7529). |
 | 2026-09-01 | Chokepoint status | **Derived metrics withheld without a transit count.** Week-over-week movement, navigational-warning counts and AIS-derived congestion were published even when the day's transit count was unavailable, contradicting the page's own transit disclaimer. A shared coverage rule now withholds every metric that depends on a missing transit count. | Applies to all 13 chokepoint pages and the live browser refresh path. Withheld values render as an em dash or are hidden; complete transit coverage is unchanged. See [PR #7515](https://github.com/koala73/worldmonitor/pull/7515) for [issue #7503](https://github.com/koala73/worldmonitor/issues/7503). |

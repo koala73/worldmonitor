@@ -4,6 +4,8 @@ import type { GetChokepointStatusResponse } from '@/generated/client/worldmonito
 import { ChokepointStripPanel } from '@/components/ChokepointStripPanel';
 import { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { mountEmbedChokepointStrip } from '@/embed/panels/chokepoint-strip';
+import { getChokepointStatus } from '../../server/worldmonitor/supply-chain/v1/get-chokepoint-status';
+import capture from '../fixtures/chokepoints-routing-advice-2026-09-10.json';
 import { initTestI18n } from './helpers/i18n.mts';
 
 const partialResponse = {
@@ -40,6 +42,36 @@ afterEach(() => {
 });
 
 describe('chokepoint partial coverage', () => {
+  it('renders critical Hormuz status without advice or an observed zero after a legacy cache read', async () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.test');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'synthetic');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = String(input);
+      if (url.startsWith('https://redis.test/get/')) return Response.json({ result: JSON.stringify(capture.body) });
+      return Response.json({});
+    });
+    try {
+      const response = await getChokepointStatus({} as never, {});
+      for (const data of [capture.body as unknown as GetChokepointStatusResponse, response]) {
+        const panel = new SupplyChainPanel();
+        panel.updateChokepointStatus(data);
+        await vi.advanceTimersByTimeAsync(151);
+        panel.getElement().querySelector<HTMLElement>('[data-cp-id="Strait of Hormuz"] .trade-restriction-header')!.click();
+        await vi.advanceTimersByTimeAsync(151);
+        const card = panel.getElement().querySelector('[data-cp-id="Strait of Hormuz"]')!;
+        expect(card.querySelector('.trade-restriction-header')?.getAttribute('aria-expanded')).toBe('true');
+        expect(card.textContent).toContain('critical');
+        expect(card.textContent).toContain('628');
+        expect(card.textContent).toContain('red');
+        expect(card.textContent).not.toMatch(/REROUTE|50-80K|Salalah|0 vessels/);
+        expect(card.querySelector('.sc-routing-advisory')).toBeNull();
+        panel.destroy();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('shows the warning in the full supply-chain panel when rows remain available', async () => {
     const panel = new SupplyChainPanel();
     panel.updateChokepointStatus(partialResponse);

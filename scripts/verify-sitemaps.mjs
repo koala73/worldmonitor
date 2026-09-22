@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 import { XMLValidator } from 'fast-xml-parser';
 
-import { getHtmlAttribute } from './discover-content-corpus-pages.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 
 const DEFAULT_ORIGIN = 'https://www.worldmonitor.app';
 const DEFAULT_TIMEOUT_MS = 15_000;
+const REQUIRED_DOCS_PATHS = ['/docs/country-instability-index', '/docs/zh/country-instability-index'];
 const EXPECTED_PAGE_HOSTS = new Set([
   'worldmonitor.app',
   'www.worldmonitor.app',
@@ -66,42 +67,98 @@ export function classifySitemapUrl(value) {
   return 'other';
 }
 
+function getHtmlAttribute(tag, name) {
+  for (const match of tag.matchAll(/\s+([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+    if (match[1].toLowerCase() === name) return decodeHtmlEntities(match[2] ?? match[3] ?? match[4]);
+  }
+  return null;
+}
+
 export function inspectIndexability({ url, headers, body }) {
   const headerRobots = headers.get('x-robots-tag') ?? '';
   const linkHeader = headers.get('link') ?? '';
-  const headerCanonical = linkHeader.match(
-    /<([^>]+)>\s*;\s*rel=(?:"canonical"|'canonical'|canonical)/i,
-  )?.[1] ?? null;
   const contentType = headers.get('content-type') ?? '';
+  const isHtml = /text\/html|application\/xhtml\+xml/i.test(contentType);
+  const isDocs = classifySitemapUrl(url) === 'docs';
+  const canonicalDeclarations = [];
+  const canonicalErrors = [];
+  const metaRobots = [];
 
-  let htmlCanonical = null;
-  let metaRobots = '';
-  if (/text\/html|application\/xhtml\+xml/i.test(contentType)) {
-    const linkTags = String(body).match(/<link\b[^>]*>/gi) ?? [];
-    for (const tag of linkTags) {
-      const rel = getHtmlAttribute(tag, 'rel')?.toLowerCase().split(/\s+/) ?? [];
-      if (rel.includes('canonical')) {
-        htmlCanonical = getHtmlAttribute(tag, 'href');
-        break;
+  const addCanonical = (source, href) => {
+    let resolved = null;
+    if (!href?.trim()) {
+      canonicalErrors.push(`${source} canonical has missing href`);
+    } else {
+      try {
+        const target = new URL(href, url);
+        if (!/^https?:$/.test(target.protocol) || target.username || target.password || target.hash) {
+          throw new Error('invalid canonical URL');
+        }
+        resolved = target.href;
+        if (isDocs && !/^https?:\/\//i.test(href)) {
+          canonicalErrors.push(`${source} docs canonical must be absolute: ${href}`);
+        }
+      } catch {
+        canonicalErrors.push(`${source} canonical has invalid URL: ${href}`);
       }
     }
+    canonicalDeclarations.push({ source, href, url: resolved });
+  };
 
-    const metaTags = String(body).match(/<meta\b[^>]*>/gi) ?? [];
-    for (const tag of metaTags) {
-      if (getHtmlAttribute(tag, 'name')?.toLowerCase() === 'robots') {
-        metaRobots = getHtmlAttribute(tag, 'content') ?? '';
-        break;
+  for (const entry of linkHeader.match(/(?:<[^>]*>|"(?:\\.|[^"\\])*"|'[^']*'|[^,])+/g) ?? []) {
+    const target = entry.match(/^\s*<([^>]*)>([\s\S]*)$/);
+    const rel = [...(target?.[2] ?? entry).matchAll(/;\s*([\w-]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|'([^']*)'|([^;\s,]+))/g)]
+      .find((parameter) => parameter[1].toLowerCase() === 'rel');
+    if (!(rel?.[2] ?? rel?.[3] ?? rel?.[4] ?? '').toLowerCase().split(/\s+/).includes('canonical')) continue;
+    addCanonical('http', target?.[1] ?? null);
+  }
+
+  if (isHtml) {
+    const markup = String(body).replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+    const head = /<head\b[^>]*>([\s\S]*?)<\/head\s*>/i.exec(markup);
+    for (const match of markup.matchAll(/<(?:link|meta)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+      const tag = match[0];
+      const inHead = head && match.index >= head.index && match.index < head.index + head[0].length;
+      if (/^<link\b/i.test(tag)) {
+        const rel = getHtmlAttribute(tag, 'rel')?.toLowerCase().split(/\s+/) ?? [];
+        if (!rel.includes('canonical')) continue;
+        if (!inHead) {
+          canonicalErrors.push('HTML canonical is outside the head');
+          continue;
+        }
+        const href = getHtmlAttribute(tag, 'href');
+        addCanonical('html', href);
+      } else if (inHead && ['robots', 'googlebot'].includes(getHtmlAttribute(tag, 'name')?.toLowerCase())) {
+        metaRobots.push(getHtmlAttribute(tag, 'content') ?? '');
       }
     }
   }
 
-  let canonical = null;
-  if (headerCanonical) canonical = new URL(headerCanonical, url).href;
-  else if (htmlCanonical) canonical = new URL(htmlCanonical, url).href;
+  for (const source of ['html', 'http']) {
+    const count = canonicalDeclarations.filter(entry => entry.source === source).length;
+    if (count > 1) canonicalErrors.push(`duplicate ${source} canonical declarations: ${count}`);
+    if (source === 'html' && isHtml && isDocs && count === 0) {
+      canonicalErrors.push('missing HTML canonical in docs head');
+    }
+  }
+  const targets = new Set(canonicalDeclarations.map(entry => entry.url).filter(Boolean));
+  if (targets.size > 1) canonicalErrors.push(`conflicting canonical targets: ${[...targets].join(', ')}`);
+  if (canonicalDeclarations.length === 0) canonicalErrors.push('missing canonical');
+
+  let robot = '*';
+  const effectiveRobots = [...metaRobots];
+  for (const part of headerRobots.split(',')) {
+    const scope = /^\s*([\w-]+):\s*(.*)$/.exec(part);
+    const scoped = scope && !/^(?:unavailable_after|max-image-preview|max-snippet|max-video-preview)$/i.test(scope[1]);
+    if (scoped) robot = scope[1].toLowerCase();
+    if (robot === '*' || robot === 'googlebot') effectiveRobots.push(scoped ? scope[2] : part);
+  }
   return {
-    canonical,
-    indexable: !/\bnoindex\b/i.test(`${headerRobots},${metaRobots}`),
-    robots: [headerRobots, metaRobots].filter(Boolean).join(', ') || null,
+    canonical: canonicalErrors.length === 0 ? [...targets][0] ?? null : null,
+    canonicalDeclarations,
+    canonicalErrors,
+    indexable: !effectiveRobots.some(value => value.split(',').some(directive => /^(?:noindex|none)$/i.test(directive.trim()))),
+    robots: [headerRobots, ...metaRobots].filter(Boolean).join(', ') || null,
   };
 }
 
@@ -318,9 +375,10 @@ function selectSamples(urls, samplePerFamily) {
   for (const url of [...urls].sort()) {
     const family = classifySitemapUrl(url);
     const count = counts.get(family) ?? 0;
-    if (count >= samplePerFamily) continue;
+    const ciiDocs = REQUIRED_DOCS_PATHS.includes(new URL(url).pathname);
+    if (count >= samplePerFamily && !ciiDocs) continue;
     selected.add(url);
-    counts.set(family, count + 1);
+    if (count < samplePerFamily) counts.set(family, count + 1);
   }
   return selected;
 }
@@ -366,6 +424,10 @@ export async function verifyProductionSitemaps({
   );
   errors.push(...inventoryErrors);
   const allUrls = [...urls.keys()];
+  for (const path of REQUIRED_DOCS_PATHS) {
+    const requiredUrl = `${normalizedOrigin}${path}`;
+    if (!urls.has(requiredUrl)) errors.push(`required docs page missing from sitemap: ${requiredUrl}`);
+  }
   const samples = selectSamples(allUrls, samplePerFamily);
   errors.push(...ownershipOverlaps.map(
     ({ url, sitemaps }) => `${url} is owned by multiple sitemap documents: ${sitemaps.join(', ')}`,
@@ -393,11 +455,12 @@ export async function verifyProductionSitemaps({
       const inspection = sampled
         ? inspectIndexability({ url, headers: response.headers, body })
         : null;
-      const canonicalMatches = !sampled || inspection.canonical === url;
+      const canonicalMatches = !sampled || (inspection.canonical === url && inspection.canonicalErrors.length === 0);
       const indexable = !sampled || inspection.indexable;
       if (!direct) errors.push(`${url} returned ${response.status}, expected direct HTTP 200`);
       if (!canonicalMatches) {
         errors.push(`${url} canonical mismatch: ${inspection.canonical ?? '(missing)'}`);
+        errors.push(...inspection.canonicalErrors.map(error => `${url} ${error}`));
       }
       if (!indexable) errors.push(`${url} is noindex`);
 
@@ -409,6 +472,8 @@ export async function verifyProductionSitemaps({
         status: response.status,
         location: response.headers.get('location'),
         canonical: inspection?.canonical ?? null,
+        canonicalDeclarations: inspection?.canonicalDeclarations ?? null,
+        canonicalErrors: inspection?.canonicalErrors ?? null,
         indexable: inspection?.indexable ?? null,
         robots: inspection?.robots ?? null,
         ok: direct && canonicalMatches && indexable,

@@ -224,7 +224,8 @@
       "activeSirens": "Ving'ora vinavyotumika",
       "sirens24h": "Ving'ora / 24h",
       "aviationDisruptions": "Usumbufu wa Anga",
-      "gpsJammingZones": "Maeneo ya Kuvurugwa kwa GPS"
+      "gpsJammingZones": "Maeneo ya Kuvurugwa kwa GPS",
+      "temporalUnavailable": "Uchunguzi wa wakati haupatikani"
     },
     "fallback": {
       "instabilityIndex": "**Kielezo cha Kutoimarika: {{score}}/100** ({{level}}, {{trend}})",
@@ -924,7 +925,6 @@
   "components": {
     "webcams": {
       "paused": "Kamera za wavuti zimesitishwa",
-      "pausedIdle": "Kamera za wavuti zimesitishwa - sogeza kipanya ili uendelee",
       "play": "Cheza",
       "previewStatus": "Onyesho la kukagua moja kwa moja",
       "regions": {
@@ -1319,9 +1319,6 @@
       "base": "Msingi",
       "nuclear": "Nyuklia"
     },
-    "community": {
-      "joinDiscussion": "Msaada Kuunda Kinachofuata"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "JUU",
@@ -1631,7 +1628,10 @@
       "compiledFrom": "Imekusanywa kutoka kwa hadithi {{stories}} kwenye vyanzo {{sources}}",
       "provenanceTitle": "Utangulizi wa habari: ni hadithi ngapi zilizomezwa na vyanzo tofauti muhtasari huu ulichaguliwa kutoka",
       "briefFreshness": "Ilizalishwa dakika {{minutes}} zilizopita · chanzo kipya zaidi cha saa {{hours}}",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Maelezo ya habari ({{count}})",
+      "streamIdleStopLabel": "Simamisha video moja kwa moja wakati umekaa bila kufanya kitu",
+      "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli.",
+      "streamIdleStopNever": "Kamwe"
     },
     "settings": {
       "exportSettings": "Hamisha Mipangilio",
@@ -2046,6 +2046,7 @@
       "etfs": "ETFs",
       "netInflow": "NET",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "MTIRIRIKO SAWA",
       "table": {
         "ticker": "Ticker",
         "issuer": "Mtoaji",
@@ -2382,7 +2383,7 @@
       "infoTooltip": "<strong>Kalenda ya Kiuchumi</strong> Matoleo yaliyoratibiwa ya uchumi mkuu: CPI, NFP, GDP, PMI na maamuzi ya benki kuu. Inaonyesha utabiri dhidi ya halisi dhidi ya awali. Matukio yenye athari ya juu yameangaziwa. Chanzo: watoa data za kiuchumi."
     },
     "fsi": {
-      "infoTooltip": "<strong>Kiashiria cha Mfadhaiko wa Kifedha</strong> Kielezo cha Mfadhaiko wa Kifedha cha Kansas City Fed Financial Stress (KCFSI): hupima dhiki katika masoko ya fedha ya Marekani kwa kutumia viashirio 11 ikiwa ni pamoja na kuenea kwa mavuno, tete na uwiano tofauti. Thamani chanya zinaonyesha dhiki ya juu ya wastani. Chanzo: Benki ya Hifadhi ya Shirikisho ya Kansas City.",
+      "infoTooltip": "<strong>Kiashiria cha Mkazo wa Kifedha</strong> Uwiano wa WorldMonitor wa mikopo yenye mavuno makubwa kwa dhamana za Hazina ya Marekani za muda mrefu, uliorekebishwa kwa mabadiliko ya bei ya hisa na tofauti ya mavuno makubwa: (HYG / TLT) / (VIX × HY spread / 100). Hiki si Kielezo cha Mkazo wa Kifedha cha Benki ya Akiba ya Shirikisho ya Kansas City. Kipimo cha 1.5 au zaidi ni mkazo mdogo; chini ya 0.3 ni mkazo mkubwa.",
       "title": "Kiashiria cha Dhiki ya Kifedha",
       "usFsiValue": "THAMANI ya FSI ya Marekani",
       "cissTitle": "EU CISS (Mfadhaiko wa Mfumo wa Eneo la Euro)",
@@ -2609,7 +2610,14 @@
       "signals_one": "{{count}} mawimbi",
       "signals_other": "Ishara {{count}}",
       "analyzing": "Inachanganua...",
-      "viewOnMap": "Tazama kwenye ramani"
+      "viewOnMap": "Tazama kwenye ramani",
+      "waiting": "Inasubiri sasisho linalofuata la data. Paneli hii husasishwa kiotomatiki.",
+      "offline": "Inasubiri muunganisho. Paneli hii husasishwa kiotomatiki unapounganishwa tena mtandaoni.",
+      "updated": "Imesasishwa {{time}}",
+      "saved": "Sasisho la mwisho linalojulikana {{time}} · Inatafuta masasisho",
+      "savedOffline": "Sasisho la mwisho linalojulikana {{time}} · Nje ya mtandao",
+      "localSignals": "Kulingana na ishara zilizopakiwa kwenye dashibodi",
+      "emptySaved": "Hakukuwa na muunganiko katika sasisho la mwisho linalojulikana."
     },
     "thermalEscalation": {
       "title": "Kuongezeka kwa joto",
@@ -2858,6 +2866,35 @@
       "succeeded": "Passkey imehifadhiwa. Unaweza kuitumia wakati wa kuingia inayofuata.",
       "retryable": "Hiyo haikumalizia. Unaweza kujaribu tena.",
       "failed": "Hatuwezi kuhifadhi passkey kwenye kifaa hiki."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Muhtasari wa uamuzi wa bidhaa",
+      "commodity": "Bidhaa / zao",
+      "blockedChokepoint": "Njia inayodhaniwa kuzuiwa",
+      "commodityCapture": "Hifadhi ulinganisho wa bidhaa",
+      "title": "Muhtasari wa uamuzi",
+      "fuel": "Nishati ya mafuta",
+      "chokepoint": "Njia nyembamba",
+      "baseline": "Usumbufu wa msingi",
+      "comparison": "Usumbufu wa kulinganisha",
+      "capture": "Pata / sasisha zote mbili",
+      "downloadHtml": "Pakua muhtasari wa HTML",
+      "downloadJson": "Pakua muhtasari wa JSON",
+      "back": "← Rudi kwenye muhtasari wa nchi",
+      "select": "Chagua usumbufu wa usambazaji wa nishati, kisha upate hali zote mbili.",
+      "changed": "Chaguo limebadilika. Pata hali zote mbili kabla ya kuhamisha matokeo.",
+      "loading": "Inapata hali zote mbili…",
+      "captured": "Imepatikana. Kagua tarehe za uchunguzi na vikwazo kabla ya kupakua.",
+      "failed": "Imeshindwa kupata hali hizo. Kagua ruhusa yako ya kufikia na ujaribu tena. Hakuna matokeo ya kuhamisha.",
+      "locked": "Muhtasari wa uamuzi unapatikana kwa Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Iliyotegezwa kwa sababu ya kutokuwepo na kufanya kitu",
+      "idleBody": "Video moja kwa moja ilisimamishwa baada ya {{duration}} bila shughuli ya kipanya, kibodi au kugusa.",
+      "idleResume": "Endelea",
+      "idleKeepPlaying": "Endelea kumweka video moja kwa moja ikicheza wakati umekaa bila kufanya kitu",
+      "idleSettingsHint": "Badilisha hii wakati wowote katika Mipangilio › Media.",
+      "idleKeepPlayingToast": "Video moja kwa moja itaendelea kumweka ikicheza wakati umekaa bila kufanya kitu. Badilisha katika Mipangilio › Media."
     }
   },
   "popups": {

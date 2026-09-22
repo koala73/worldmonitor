@@ -158,7 +158,7 @@ test('allows legitimate apex to www RSS canonical redirects', async () => {
   const res = await handler(makeRequest('https://techcrunch.com/feed'));
 
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('content-type'), 'application/rss+xml');
+  assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
   assert.match(await res.text(), /<rss>/);
   assert.deepEqual(calls.map((call) => call.url), [
     'https://techcrunch.com/feed',
@@ -296,7 +296,8 @@ test('keeps legacy plain STALE relay responses non-cacheable during rollout', as
   assert.equal(calls.length, 2);
 });
 
-test('preserves the original direct-fetch error when the relay fallback itself throws (#5398)', async () => {
+test('preserves the original direct-fetch diagnostic when the relay fallback itself throws (#5398)', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
   // Both legs fail, but the relay's throw must not replace directError as the
   // reported failure — the #5378 suite only ever covered relay returning
   // null/Response, never throwing.
@@ -318,7 +319,8 @@ test('preserves the original direct-fetch error when the relay fallback itself t
 
     assert.equal(res.status, 502);
     assert.equal(body.error, 'Failed to fetch feed');
-    assert.equal(body.details, 'boom direct fetch');
+    assert.deepEqual(body, { error: 'Failed to fetch feed', url: feedUrl });
+    assert.ok(log.mock.calls.some(({ arguments: args }) => args[2] === 'boom direct fetch'));
     assert.equal(calls.length, 2);
   }
 });
@@ -730,7 +732,7 @@ test('retries through the relay when the direct fetch returns a non-2xx status',
   ]);
 });
 
-test('falls back to application/xml when upstream sends no content-type', async () => {
+test('uses inert text when upstream sends no content-type', async () => {
   const calls = spyFetch(() => {
     const res = new Response('<rss><channel/></rss>', { status: 200 });
     res.headers.delete('content-type');
@@ -740,7 +742,7 @@ test('falls back to application/xml when upstream sends no content-type', async 
   const res = await handler(makeRequest('https://techcrunch.com/feed'));
 
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('Content-Type'), 'application/xml');
+  assert.equal(res.headers.get('Content-Type'), 'text/plain; charset=utf-8');
   assert.equal(calls.length, 1);
 });
 
@@ -761,23 +763,25 @@ test('maps a direct-fetch AbortError to 504 Feed timeout', async () => {
   const body = await res.json();
 
   assert.equal(res.status, 504);
-  assert.equal(body.error, 'Feed timeout');
-  assert.equal(body.url, 'https://techcrunch.com/feed');
+  assert.deepEqual(body, { error: 'Feed timeout', url: 'https://techcrunch.com/feed' });
   assert.equal(calls.length, 1);
 });
 
-test('maps a generic direct-fetch error to 502 Failed to fetch feed when no relay is configured', async () => {
+test('maps a generic direct-fetch error to 502 Failed to fetch feed when no relay is configured', async (t) => {
+  const log = t.mock.method(console, 'error', () => {});
   // Non-Abort throw + WS_RELAY_URL unset -> fetchViaRailway returns null ->
   // directError rethrows into the outer catch: the handler's generic-failure
   // branch and the ONLY captureSilentError call site. Untested before this.
-  const calls = spyFetch(() => { throw new Error('boom direct fetch'); });
+  const message = 'fetch failed https://internal.example/?key=synthetic-secret';
+  const calls = spyFetch(() => { throw new Error(message); });
 
   const res = await handler(makeRequest('https://techcrunch.com/feed'));
   const body = await res.json();
 
   assert.equal(res.status, 502);
   assert.equal(body.error, 'Failed to fetch feed');
-  assert.equal(body.details, 'boom direct fetch');
+  assert.deepEqual(body, { error: 'Failed to fetch feed', url: 'https://techcrunch.com/feed' });
+  assert.ok(log.mock.calls.some(({ arguments: args }) => args[2] === message));
   assert.equal(body.url, 'https://techcrunch.com/feed');
 });
 
@@ -791,16 +795,14 @@ test('maps a relay-only host to 502 when the relay is unavailable', async () => 
 
   assert.equal(res.status, 502);
   assert.equal(body.error, 'Failed to fetch feed');
-  assert.match(body.details, /Railway relay unavailable for relay-only domain: rss\.cnn\.com/);
+  assert.deepEqual(body, { error: 'Failed to fetch feed', url: 'https://rss.cnn.com/rss/edition.rss' });
   // No relay configured and direct fetch is skipped for relay-only hosts, so
   // nothing was ever fetched.
   assert.deepEqual(calls, []);
 });
 
 test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
-  // The timeout is only observable through the AbortSignal that
-  // fetchWithTimeout arms, and it is cleared as soon as fetch settles — so the
-  // fetch is held pending while the fake clock is advanced across each
+  // Hold fetch pending while the fake clock is advanced across each
   // boundary. Fake timers keep this deterministic (no real waiting).
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
@@ -820,8 +822,13 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
       // Yield until the handler has entered fetch and armed the signal — BOUNDED
       // so a regression that stops the handler from reaching fetch fails fast
       // with a clear message instead of spinning until the runner's timeout.
-      // (setImmediate is unfaked here; only setTimeout is mocked.)
-      for (let i = 0; !signal && i < 1000; i += 1) {
+      // (setImmediate and performance.now are unfaked here; only setTimeout is
+      // mocked.) The bound is wall-clock, not a turn count: the API-key check
+      // awaits crypto.subtle.digest, which completes on the libuv threadpool,
+      // and on a contended CI runner that took longer than 1000 turns, so the
+      // handler reached fetch after the assertion and leaked into the next test.
+      const armDeadline = performance.now() + 2_000;
+      while (!signal && performance.now() < armDeadline) {
         await new Promise((resolve) => setImmediate(resolve));
       }
       assert.ok(signal, `${label} feed: handler never reached fetch (signal never armed)`);
@@ -838,7 +845,6 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
     mock.timers.reset();
   }
 });
-
 
 // ---------------------------------------------------------------------------
 // Browser User-Agent on the RSS proxy (#6624)
@@ -920,4 +926,126 @@ test('does not treat an upstream CBC 403 as a cacheable success (#6624)', async 
   assert.equal(res.headers.get('cache-control'), 'private, max-age=180');
   assert.equal(res.headers.get('cdn-cache-control'), null);
   assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
+});
+
+for (const relay of [false, true]) {
+  for (const mime of ['text/html', 'application/xhtml+xml', 'image/svg+xml', 'application/xml', 'application/rss+xml']) {
+    test(`serves hostile ${mime} as inert text through ${relay ? 'relay' : 'direct'} fetch`, async () => {
+      if (relay) process.env.WS_RELAY_URL = 'wss://relay.example.com';
+      const body = '<?xml-stylesheet href="https://attacker.invalid/style.xsl"?><html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>';
+      const calls = spyFetch(() => new Response(body, { headers: {
+        'Content-Type': mime,
+        'X-Cache': 'STALE',
+        'X-Relay-Stale': '1',
+      } }));
+      const response = await handler(makeRequest(relay ? 'https://www.cisa.gov/feed' : 'https://techcrunch.com/feed'));
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), body);
+      assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=utf-8');
+      assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+      assert.equal(response.headers.get('Content-Security-Policy'), "sandbox; default-src 'none'");
+      assert.equal(response.headers.get('Cache-Control'), 'private, max-age=180');
+      assert.equal(response.headers.get('X-Relay-Stale'), relay ? '1' : null);
+      assert.equal(response.headers.get('X-Cache'), relay ? 'STALE' : null);
+      assert.equal(calls.length, 1);
+      assert.equal(new URL(calls[0].url).hostname, relay ? 'relay.example.com' : 'techcrunch.com');
+    });
+  }
+}
+
+test('keeps upstream HTML errors inert while preserving their status', async () => {
+  const body = '<html><script>alert(1)</script></html>';
+  spyFetch(() => new Response(body, { status: 403, headers: { 'Content-Type': 'text/html' } }));
+  const response = await handler(makeRequest('https://techcrunch.com/feed'));
+  assert.equal(response.status, 403);
+  assert.equal(await response.text(), body);
+  assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=utf-8');
+  assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(response.headers.get('Content-Security-Policy'), "sandbox; default-src 'none'");
+});
+
+// ─── WORLDMONITOR-ZR: an oversized feed must degrade, not vanish ─────────────
+//
+// #8273 bounded the body read with a hard `throw new Error('Feed body too
+// large')` once the decoded body passed 5 MB. That turned an unbounded read
+// into a total failure for any feed above the cap: the throw unwinds to the
+// outer catch, which captures to Sentry and returns 502 `Failed to fetch
+// feed`. "20VC Episodes" (src/config/feeds.ts, an allowlisted host) measures
+// 11.92 MB across 1423 episodes, so it 502s on every fetch.
+//
+// Nothing downstream wanted 11.92 MB. src/services/rss.ts renders
+// `Array.from(items).slice(0, 5)`, and src/services/country-coverage.ts caps
+// lower still. The read should stop once it has enough items.
+//
+// Truncating at an arbitrary byte is not an option. src/services/rss.ts parses
+// with `DOMParser(text, 'text/xml')` and treats a `<parsererror>` document as a
+// total feed failure, falling back to stale cache — a silently stale panel
+// rather than a visible error. So the read must stop on an ITEM boundary and
+// close the document so it stays well-formed.
+
+/**
+ * Build a syntactically valid feed of `items` entries, each padded to force the
+ * body over a byte threshold. `dialect` picks RSS 2.0 (`<item>`/`</channel>
+ * </rss>`) or Atom (`<entry>`/`</feed>`), the two shapes src/services/rss.ts
+ * branches on via `items.length === 0 ? 'entry' : 'item'`.
+ */
+function buildFeed({ items, padBytes = 0, dialect = 'rss' }) {
+  const pad = 'x'.repeat(padBytes);
+  if (dialect === 'atom') {
+    const entries = Array.from({ length: items }, (_, i) =>
+      `<entry><title>Episode ${i}</title><summary>${pad}</summary></entry>`).join('');
+    return `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Show</title>${entries}</feed>`;
+  }
+  const body = Array.from({ length: items }, (_, i) =>
+    `<item><title>Episode ${i}</title><description>${pad}</description></item>`).join('');
+  return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>Show</title>${body}</channel></rss>`;
+}
+
+function countTags(xml, tag) {
+  return {
+    open: (xml.match(new RegExp(`<${tag}[\\s>]`, 'g')) || []).length,
+    close: (xml.match(new RegExp(`</${tag}>`, 'g')) || []).length,
+  };
+}
+
+test('returns the newest items of an oversized RSS feed instead of failing it (WORLDMONITOR-ZR)', async () => {
+  const feed = buildFeed({ items: 600, padBytes: 10 * 1024 });
+  assert.ok(feed.length > 5 * 1024 * 1024, 'fixture must exceed the 5 MB byte cap to exercise the bound');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200, 'an oversized feed degrades to its newest items, it does not 502');
+  const items = countTags(text, 'item');
+  assert.ok(items.close >= 1, 'at least one complete item survives the bound');
+  assert.ok(items.close <= 20, `item bound caps the payload, got ${items.close}`);
+  assert.equal(items.open, items.close, 'every retained <item> is closed — a half-item yields <parsererror>');
+  assert.ok(text.endsWith('</channel></rss>'), `document must close its open elements, got tail ${JSON.stringify(text.slice(-40))}`);
+  assert.ok(text.length < feed.length, 'the response is actually bounded');
+});
+
+test('returns the newest entries of an oversized Atom feed instead of failing it', async () => {
+  const feed = buildFeed({ items: 600, padBytes: 10 * 1024, dialect: 'atom' });
+  assert.ok(feed.length > 5 * 1024 * 1024, 'fixture must exceed the 5 MB byte cap');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/atom+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200);
+  const entries = countTags(text, 'entry');
+  assert.ok(entries.close >= 1 && entries.close <= 20, `entry bound caps the payload, got ${entries.close}`);
+  assert.equal(entries.open, entries.close, 'every retained <entry> is closed');
+  assert.ok(text.endsWith('</feed>'), `Atom closes its root, got tail ${JSON.stringify(text.slice(-40))}`);
+});
+
+test('leaves a feed inside both bounds byte-identical', async () => {
+  const feed = buildFeed({ items: 3, padBytes: 32 });
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
 });

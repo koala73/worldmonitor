@@ -7,7 +7,7 @@ WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) �
 
 ## 1. 选择免费来源发现或订阅
 
-任何人都可以连接 MCP 服务器，并在不提供凭据的情况下调用 `get_sources`。它是唯一无需凭据且不消耗每日配额的数据工具，并使用独立的失败关闭上限：每个 IP 每分钟 10 次匿名调用。其他所有数据工具都需要订阅。要使用这些工具，你需要以下其中之一：
+任何人都可以在不提供凭据的情况下调用 `get_sources`——[`worldmonitor` CLI](/zh/cli) 与各 SDK 正是这样做的。Claude、Cursor 或 Grok 这类 MCP 客户端则在连接时登录：服务器会对其首个握手请求返回质询，从而弹出登录窗口，免费账户即可完成。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具，并使用独立的失败关闭上限：每个 IP 每分钟 10 次匿名调用。其他所有数据工具都需要订阅。要使用这些工具，你需要以下之一：
 
 - **Pro**——使用你的 WorldMonitor 账户登录，无需管理密钥。每个 UTC 日 50 次配额消耗调用。
 - **API Starter / Business / Enterprise**——在你的客户端中粘贴用户签发的 `wm_…` 密钥，或使用与 Pro 相同的 OAuth 流程。控制面板签发的密钥共享每用户每分钟 60 次的限流桶，并使用每个 UTC 日 50 次配额消耗调用的默认值。OAuth 额度按套餐解析；API Starter 和 API Business 当前使用相同默认值，企业 OAuth 可以不设上限。REST/API 套餐额度保持独立。
@@ -51,8 +51,8 @@ Cursor、Claude 网页版和 MCP Inspector 使用相同的 URL。每个客户端
 
 此设置有两点需要注意：
 
-- **为订阅工具显式附带凭据。** 服务器按设计匿名完成连接及所有发现（tools/prompts/resources 列表），因此 `mcp-remote` 在连接时永远不会看到 401 挑战，也不会自行启动其 OAuth 流程。若不带该头，`get_sources` 仍可工作，但其他所有承载数据的 `tools/call` 都会以 `401` 失败。请使用单参数形式 `X-WorldMonitor-Key:wm_…`，冒号后**不留空格** —— 它可规避 `args` 中带空格的客户端 / `npx` 参数转义 bug（`mcp-remote` 在 Windows 上的 Cursor 和 Claude Desktop 中有此记录）。
-- **偏好 OAuth？** 省略 `--header`：你的首次工具调用会返回触发 `mcp-remote` 浏览器同意流的 401 挑战（动态客户端注册在 `worldmonitor.app` 和 `www.worldmonitor.app` 上均可用）。较旧的 `mcp-remote` 版本处理这种会话中流程不如连接时那般可靠，因此若同意窗口始终未出现，上述显式密码头是确定性路径。
+- **使用 API key 时，通过请求头传递。** 携带有效 key 的请求不会被质询；无效、过期或已撤销的 key 会得到 `401`。请使用单参数形式 `X-WorldMonitor-Key:wm_…`，**冒号后不要有空格**——这可以避开客户端/`npx` 对 `args` 中空格的转义问题（`mcp-remote` 已针对 Windows 上的 Cursor 与 Claude Desktop 记录该问题）。
+- **偏好 OAuth？** 省略 `--header`。服务器会对 `mcp-remote` 的首个 `initialize` 返回 `401` 质询，从而在连接时就打开其浏览器授权流程——这是 `mcp-remote` 处理得最可靠的路径（动态客户端注册在 `worldmonitor.app` 与 `www.worldmonitor.app` 上均可用）。免费账户即可完成该流程；订阅工具则取决于你的套餐。
 
 ## 3. 提出你的第一个问题
 
@@ -143,10 +143,10 @@ MCP 握手在聊天侧是不可见的，但以下是序列，以便你在出现�
 
 ## 服务端 curl
 
-如果你更愿意跳过 OAuth 流程并从脚本驱动 MCP：
+使用 API Starter 或更高套餐的账户登录[仪表板](https://www.worldmonitor.app/dashboard)。选择 **Settings → API Keys** 为脚本创建密钥。
 
 ```bash
-export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # API Starter+ key from worldmonitor.app/settings
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # 替换为你的 API 密钥
 
 # 1. List tools (compressed descriptions)
 curl -s https://worldmonitor.app/mcp \

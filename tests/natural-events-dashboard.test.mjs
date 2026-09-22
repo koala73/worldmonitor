@@ -27,7 +27,7 @@ function circleRing(count, lon0, lat0, radiusDeg) {
 
 describe('natural-events dashboard cone compact', () => {
   it('packages the helper with the publisher and keeps the Edge mirror in sync', () => {
-    const publisher = readFileSync(new URL('../scripts/publish-bootstrap-tiers.mjs', import.meta.url), 'utf8');
+    const publisher = readFileSync(new URL('../scripts/_bootstrap-public-payload.mjs', import.meta.url), 'utf8');
     const edge = readFileSync(new URL('../api/bootstrap.js', import.meta.url), 'utf8');
     const scriptsHelper = readFileSync(new URL('../scripts/_natural-events-dashboard.mjs', import.meta.url), 'utf8');
     const edgeHelper = readFileSync(new URL('../api/_natural-events-dashboard.js', import.meta.url), 'utf8');

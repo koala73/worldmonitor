@@ -18,9 +18,10 @@
 //      feedback_railway_dockerfile_autodetect_overrides_builder.md)
 //   4. Cron schedule: "0 */12 * * *" (twice daily, UTC). Each run caps
 //      cold refreshes at 30 countries to stay inside the ArcGIS and container
-//      budgets. A 12h trigger lets a 54-country upstream advance recover in
-//      two runs (~24h) instead of two daily runs (~48h), while the interval
-//      gate below still prevents rapid-fire manual retriggers.
+//      budgets. Publish complete rolling coverage using validated country
+//      caches below the seven-day hard expiry, without requiring every country
+//      to match today's upstream date. This lets a sweep finish in about three
+//      days without quadrupling daily activity or proxy fallback work.
 //   5. Env vars (copy from existing seed services):
 //      UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN,
 //      PROXY_URL (for 429 fallback)

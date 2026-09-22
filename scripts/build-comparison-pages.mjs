@@ -16,12 +16,13 @@ import { join } from 'node:path';
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
 import {
   COMPARE_HUB_NARRATIVE,
+  COMPARISON_MEASUREMENTS,
   COMPARISON_NARRATIVES,
 } from './comparison-page-narratives.mjs';
 import { computeStats } from './docs-stats.mjs';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const COMPARISONS_CONTENT_VERSION = '2026-09-06';
+export const COMPARISONS_CONTENT_VERSION = '2026-09-10';
 
 /**
  * Universal comparison-matrix columns. Engines lift these cells verbatim, so
@@ -77,6 +78,7 @@ export const COMPARISON_HUB_MATRIX_ROWS = [
 const COMPARISON_PAGE_SEEDS = [
   {
     slug: 'liveuamap-alternatives',
+    metaDescription: 'Compare Liveuamap alternatives for conflict mapping and global intelligence, with a feature matrix covering pricing, data coverage, API access and licensing.',
     path: '/compare/liveuamap-alternatives/',
     title: 'Liveuamap Alternatives | World Monitor',
     h1: 'Liveuamap Alternatives',
@@ -573,12 +575,28 @@ function comparisonWebPageLd({ name, description, url, lastmod, faqId, baseUrl }
   };
 }
 
-function renderComparePage(page, { tpl, baseUrl, lastmod }) {
+function renderMeasurement(slug, snapshotDate, escapeHtml) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate ?? '')) {
+    throw new Error('Comparison measurement requires the captured snapshot date');
+  }
+  const paragraphs = COMPARISON_MEASUREMENTS[slug];
+  if (!paragraphs?.length) throw new Error(slug + ' needs a World Monitor measurement explanation');
+  const maritime = slug === 'chokepoint-monitoring-tools';
+  const snapshotPath = maritime ? '/chokepoints/status.json' : '/country-instability-index/cii-ranking.json';
+  return [
+    '      <h2>How World Monitor measures this</h2>',
+    ...renderParagraphs(paragraphs, escapeHtml),
+    '      <p>Coverage: the <a href="/sources/">source catalog</a> lists ' + escapeHtml(formatCount(WORLD_MONITOR_PROVIDER_COUNT)) + ' active providers across the product, not per metric. Availability varies by source and location.</p>',
+    '      <p data-measurement-snapshot><a href="' + snapshotPath + '">Published ' + (maritime ? 'chokepoint status' : 'country instability') + ' snapshot</a>, captured <time datetime="' + escapeHtml(snapshotDate) + '">' + escapeHtml(snapshotDate) + '</time>. This reference remains dated when live values change.</p>',
+  ];
+}
+
+function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const pageUrl = new URL(page.path, baseUrl).href;
-  const description = page.h1
+  const description = page.metaDescription ?? (page.h1
     + ' - ' + page.claim
-    + '. Full comparison matrix, honest concessions, and FAQs.';
+    + '. Full comparison matrix, honest concessions, and FAQs.');
   assertMetaDescription(description, page.slug);
 
   const jsonLd = [];
@@ -622,6 +640,8 @@ function renderComparePage(page, { tpl, baseUrl, lastmod }) {
     '',
     '      <h2>Comparison matrix</h2>',
     renderMatrix(page.matrixRows, escapeHtml),
+    '',
+    ...renderMeasurement(page.slug, snapshotDate, escapeHtml),
     '',
     '      <h2>When to choose them instead</h2>',
     '      <p>' + escapeHtml(page.concessionIntro) + '</p>',
@@ -715,7 +735,7 @@ export function comparisonDiscoveryEntries(baseUrl) {
   return [hub, ...pages];
 }
 
-function renderCompareHub({ tpl, baseUrl, lastmod }) {
+function renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }) {
   const { escapeHtml, breadcrumbLd, pageDocument } = tpl;
   const path = COMPARE_HUB_PATH;
   const description = COMPARE_HUB_DESCRIPTION;
@@ -737,6 +757,8 @@ function renderCompareHub({ tpl, baseUrl, lastmod }) {
     '',
     '      <h2>Master comparison matrix</h2>',
     renderMatrix(COMPARISON_HUB_MATRIX_ROWS, escapeHtml),
+    '',
+    ...renderMeasurement('hub', snapshotDate, escapeHtml),
     '',
     ...renderHeadingSection(
       COMPARE_HUB_NARRATIVE.concessions.heading,
@@ -784,17 +806,17 @@ function renderCompareHub({ tpl, baseUrl, lastmod }) {
   });
 }
 
-export function writeComparisonPages({ outDir, baseUrl, tpl, lastmod = COMPARISONS_CONTENT_VERSION }) {
+export function writeComparisonPages({ outDir, baseUrl, tpl, snapshotDate, lastmod = COMPARISONS_CONTENT_VERSION }) {
   mkdirSync(join(outDir, 'compare'), { recursive: true });
   writeFileSync(
     join(outDir, 'compare', 'index.html'),
-    renderCompareHub({ tpl, baseUrl, lastmod }),
+    renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate }),
   );
   for (const page of COMPARISON_PAGES) {
     mkdirSync(join(outDir, 'compare', page.slug), { recursive: true });
     writeFileSync(
       join(outDir, 'compare', page.slug, 'index.html'),
-      renderComparePage(page, { tpl, baseUrl, lastmod }),
+      renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate }),
     );
   }
 }

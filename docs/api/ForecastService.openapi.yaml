@@ -450,10 +450,15 @@ paths:
                        - No match anywhere → falls back to :latest with a 'note' describing
                          expiry-or-mismatch.
                      If runId is empty: returns :latest (existing behavior).
+                     Nonempty IDs contain an epoch in milliseconds, a hyphen and a 1-64 character
+                     alphanumeric or hyphen suffix. Maximum total length is 128 characters.
                   required: false
-                  example: "example-id"
-                  schema:
-                    type: string
+                  "schema":
+                      "type": "string"
+                      "maxLength": 128
+                      "pattern": "^([0-9]{13,}-[A-Za-z0-9-]{1,64})?$"
+                      "example": "1789387200000-abc123"
+                  example: "1789387200000-abc123"
                 - name: jmespath
                   in: query
                   description: |-
@@ -1476,6 +1481,10 @@ components:
             properties:
                 runId:
                     type: string
+                    examples:
+                        - 1789387200000-abc123
+                    maxLength: 128
+                    pattern: ^([0-9]{13,}-[A-Za-z0-9-]{1,64})?$
                     description: |-
                         Filter is active for outcomes within the 24h retention window (#3734).
                          If runId is supplied:
@@ -1486,6 +1495,9 @@ components:
                            - No match anywhere → falls back to :latest with a 'note' describing
                              expiry-or-mismatch.
                          If runId is empty: returns :latest (existing behavior).
+                         Nonempty IDs contain an epoch in milliseconds, a hyphen and a 1-64 character
+                         alphanumeric or hyphen suffix. Maximum total length is 128 characters.
+                    example: 1789387200000-abc123
         GetSimulationOutcomeResponse:
             type: object
             properties:

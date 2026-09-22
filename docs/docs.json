@@ -11,6 +11,7 @@
   "favicon": "/favicon.png",
   "seo": {
     "metatags": {
+      "canonical": "https://www.worldmonitor.app/docs",
       "og:image": "https://www.worldmonitor.app/favico/og-image.png",
       "og:site_name": "World Monitor Documentation",
       "og:type": "website",
@@ -29,7 +30,6 @@
         "https://www.npmjs.com/package/worldmonitor",
         "https://x.com/worldmonitorai",
         "https://x.com/eliehabib",
-        "https://discord.gg/re63kWKxaz",
         "https://www.wired.com/story/world-monitor-elie-habib/"
       ]
     }
@@ -121,6 +121,9 @@
                   "methodology/country-resilience-index",
                   "methodology/resilience-indicators",
                   "methodology/resilience-indicator-licensing",
+                  "methodology/known-limitations",
+                  "methodology/financial-system-exposure",
+                  "methodology/swf-classification-rubric",
                   "methodology/five-factor-scorecard",
                   "methodology/demographics-capability",
                   "methodology/food-stocks",
@@ -507,7 +510,6 @@
         "footer": {
           "socials": {
             "github": "https://github.com/koala73/worldmonitor",
-            "discord": "https://discord.gg/re63kWKxaz",
             "x": "https://x.com/worldmonitorai"
           },
           "links": [
@@ -534,10 +536,6 @@
                 {
                   "label": "GitHub",
                   "href": "https://github.com/koala73/worldmonitor"
-                },
-                {
-                  "label": "Discord",
-                  "href": "https://discord.gg/re63kWKxaz"
                 },
                 {
                   "label": "X",
@@ -584,6 +582,7 @@
                   "zh/features",
                   "zh/pro-intelligence-suite",
                   "zh/data-sources",
+                  "zh/global-procurement-intelligence",
                   "zh/hotspots"
                 ]
               },
@@ -964,7 +963,6 @@
   "footer": {
     "socials": {
       "github": "https://github.com/koala73/worldmonitor",
-      "discord": "https://discord.gg/re63kWKxaz",
       "x": "https://x.com/worldmonitorai"
     },
     "links": [
@@ -991,10 +989,6 @@
           {
             "label": "GitHub",
             "href": "https://github.com/koala73/worldmonitor"
-          },
-          {
-            "label": "Discord",
-            "href": "https://discord.gg/re63kWKxaz"
           },
           {
             "label": "X",

@@ -3,10 +3,54 @@ import { internal } from "./_generated/api";
 import { requireEnv } from "./lib/env";
 import { BROADCAST_TRACKED_EVENT_TYPES } from "./broadcast/metrics";
 
-const HANDLED_EVENTS = new Set(["email.bounced", "email.complained"]);
 const BROADCAST_TRACKED_SET: ReadonlySet<string> = new Set(
   BROADCAST_TRACKED_EVENT_TYPES,
 );
+
+type SuppressionReason = "bounce" | "complaint" | "unsubscribe";
+
+type ResendWebhookEvent = {
+  type: string;
+  created_at?: string;
+  data?: {
+    to?: string[];
+    email?: string;
+    id?: string;
+    email_id?: string;
+    broadcast_id?: string;
+    unsubscribed?: boolean;
+  };
+};
+
+function maskEmail(email: string): string {
+  const trimmed = email.trim();
+  const at = trimmed.indexOf("@");
+  if (at <= 0) return "***";
+  return `${trimmed.slice(0, 1)}***${trimmed.slice(at)}`;
+}
+
+function getSuppressionDetails(
+  event: ResendWebhookEvent,
+): { recipients: string[]; reason: SuppressionReason } | null {
+  if (event.type === "email.bounced" || event.type === "email.complained") {
+    const recipients = event.data?.to;
+    if (!Array.isArray(recipients) || recipients.length === 0) return null;
+    return {
+      recipients,
+      reason: event.type === "email.bounced" ? "bounce" : "complaint",
+    };
+  }
+
+  if (event.type !== "contact.updated" || event.data?.unsubscribed !== true) {
+    return null;
+  }
+  const email = event.data.email;
+  if (typeof email !== "string" || email.trim().length === 0) return null;
+
+  // Resend reports global contact consent through contact.updated. A false
+  // value must not remove or weaken any local suppression.
+  return { recipients: [email], reason: "unsubscribe" };
+}
 
 async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
@@ -82,15 +126,7 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
     return new Response("Invalid signature", { status: 401 });
   }
 
-  let event: {
-    type: string;
-    created_at?: string;
-    data?: {
-      to?: string[];
-      email_id?: string;
-      broadcast_id?: string;
-    };
-  };
+  let event: ResendWebhookEvent;
   try {
     event = JSON.parse(rawBody);
   } catch {
@@ -132,27 +168,21 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
     });
   }
 
-  if (!HANDLED_EVENTS.has(event.type)) {
+  const suppression = getSuppressionDetails(event);
+  if (!suppression) {
     return new Response(null, { status: 200 });
   }
 
-  const recipients = event.data?.to;
-  if (!Array.isArray(recipients) || recipients.length === 0) {
-    return new Response(null, { status: 200 });
-  }
-
-  const reason = event.type === "email.bounced" ? "bounce" : "complaint";
-
-  for (const email of recipients) {
+  for (const email of suppression.recipients) {
     try {
       await ctx.runMutation(internal.emailSuppressions.suppress, {
         email,
-        reason: reason as "bounce" | "complaint",
-        source: `resend-webhook:${event.data?.email_id ?? "unknown"}`,
+        reason: suppression.reason,
+        source: `resend-webhook:${event.data?.email_id ?? event.data?.id ?? "unknown"}`,
       });
-      console.log(`[resend-webhook] Suppressed ${email} (${reason})`);
-    } catch (err) {
-      console.error(`[resend-webhook] Failed to suppress ${email}:`, err);
+      console.log(`[resend-webhook] Suppressed ${maskEmail(email)} (${suppression.reason})`);
+    } catch {
+      console.error(`[resend-webhook] Failed to suppress ${maskEmail(email)}`);
       return new Response("Internal processing error", { status: 500 });
     }
   }

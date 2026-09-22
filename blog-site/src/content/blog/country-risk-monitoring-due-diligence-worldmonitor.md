@@ -6,7 +6,7 @@ keywords: "country risk monitoring, country risk API, geopolitical due diligence
 audience: "Risk teams, investors, security managers, compliance analysts, consultants"
 heroImage: "/blog/images/blog/country-risk-monitoring-due-diligence-worldmonitor.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-10"
 ---
 
 Country risk due diligence is the process of asking: "What could go wrong because this deal, supplier, shipment, facility, or trip depends on a country?"
@@ -93,7 +93,7 @@ Group countries by exposure type:
 
 ### 2. Pull country risk
 
-With MCP, start with:
+For the Turkish logistics example below, start with the [Turkey country profile](https://www.worldmonitor.app/countries/turkey/) and check its observation dates. With MCP, use:
 
 ```json
 {

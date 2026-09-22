@@ -33,6 +33,7 @@ import {
 } from '../scripts/seed-cross-source-signals.mjs';
 import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
 import { jsonResponse } from '../api/_json-response.js';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
@@ -521,7 +522,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       'tools/list names must match TOOL_REGISTRY exactly',
     );
     const missing = tools.filter(t => !t.outputSchema || typeof t.outputSchema !== 'object'
-      || !t.outputSchema.properties || Object.keys(t.outputSchema.properties).length === 0)
+      || !documentedOutputSchema(t).properties || Object.keys(documentedOutputSchema(t).properties).length === 0)
       .map(t => t.name);
     assert.deepEqual(missing, [], `tools on the wire missing outputSchema:\n  ${missing.join('\n  ')}`);
   });
@@ -624,6 +625,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   const VERBATIM_PASSTHROUGH_TOOLS = [
     'analyze_situation',
     'get_chokepoint_dependencies',
+    'get_country_coverage',
     'get_country_risk',
     'get_defense_industrial_base',
     'get_demographics_capability',

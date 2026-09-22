@@ -194,6 +194,18 @@ afterEach(() => {
 });
 
 describe('UnifiedSettings billing status colour (#7315)', () => {
+  it('shows neutral support guidance when Manage Billing has no safe portal', async () => {
+    mockSubscription = subscription();
+    settings.open('billing');
+    const button = document.querySelector<HTMLButtonElement>('.manage-billing-btn');
+    expect(button).not.toBeNull();
+    button!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[role="status"]')?.textContent)
+        .toBe('Billing portal unavailable. Email support@worldmonitor.app for help.');
+    });
+  });
+
   it('paints a paid-through cancellation non-red and keeps the access-until copy', () => {
     mockSubscription = subscription({
       status: 'cancelled',

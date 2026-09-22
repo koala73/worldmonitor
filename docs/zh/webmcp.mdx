@@ -1,6 +1,6 @@
 ---
 title: "WebMCP：WorldMonitor 浏览器工具"
-description: "在 ChatGPT 桌面应用的内置浏览器或 Chrome 中使用 WorldMonitor 的实验性站点工具，检查其 schema，并验证可见 UI 与安全契约。"
+description: "了解如何在可见的 WorldMonitor 页面使用实验性 WebMCP 站点工具，发现工具结构、操作仪表盘并检查返回结果。查看浏览器可用性、工具清单、会话权限、人工控制、安全边界、调试步骤与故障排除，区分当前标签页工具、托管 MCP 服务器和嵌入式 MCP 应用，为浏览器智能体选择适合的接口与使用方式。"
 ---
 
 WebMCP 让浏览器智能体发现并调用当前标签页中 WorldMonitor 页面暴露的工具。这些工具操作现有首页或仪表板 UI，并不是一套独立的数据 API。
@@ -98,7 +98,7 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 需要取消能力的工具会持久化浏览器状态、离开当前页面，或消耗服务器端额度。宿主无法取消时，门禁会阻止这些效果开始。视图状态工具仍可用。`set_map_view`、`set_time_range` 与 `focus_country` 还会通过 `history.replaceState` 更新地址栏，生成与仪表板控件相同、刷新后可恢复的分享状态。
 
 <Note>
-如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
+如果浏览器没有任何受支持的注册 API，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill。仅支持旧版 API 的宿主使用下文所述的回退路径。
 </Note>
 
 ## 工具清单
@@ -267,7 +267,7 @@ WebMCP 返回原生 JavaScript 值。它不使用托管 MCP 服务器的 `{ cont
 
 ## 人工控制与 UI 行为
 
-- 命令式工具在启动时同步注册，但会等待所需 UI 或地图渲染器。销毁应用会中止待处理工作并注销工具；同文档重新初始化不会产生重复注册。
+- 命令式工具在启动时、仪表板应用包加载之前同步注册。应用加载前发起的调用最多等待 30 秒以完成应用加载，然后等待所需 UI 或地图渲染器。如果应用加载失败，待处理的调用会以带有原因 `app_destroyed` 的 `WebMcpToolError` 拒绝，并注销工具。销毁应用会中止待处理工作并注销工具；同文档重新初始化不会产生重复注册。
 - 动作经过与人工控件相同的 UI、agent-bus、面板和地图路径，不调用具有额外权限的后端捷径。
 - 每次调用时都会评估认证、订阅权益、仪表板变体、面板挂载状态、图层策略和渲染器就绪状态。登录时发现的工具不能在退出或降级后保留访问权。
 - 成功变更保持可见：面板打开、搜索界面出现、地图状态变化、仪表板标签页变化，声明式采购表单显示激活/等待状态。
@@ -290,7 +290,7 @@ WebMCP 主要面向本地、有人参与的浏览器工作流。即使某些浏�
 
 ## 使用浏览器 API 调试
 
-使用 `document` 上的当前 API。旧的 `navigator.modelContext` 从 Chrome 150 起已弃用，已移除的 `provideContext` 草案 API 不受支持。
+WorldMonitor 优先使用 `document.modelContext.registerTool()`。当该 API 不存在时，首页和仪表盘依次尝试旧版 `navigator.modelContext.registerTool()` 和 `navigator.modelContext.provideContext({ tools })`。每个页面只通过一个提供者注册，不创建浏览器全局对象。旧版宿主保留相同的工具检查，包括取消要求。
 
 ```js
 const modelContext = document.modelContext;

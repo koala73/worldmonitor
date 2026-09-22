@@ -17,6 +17,7 @@ public/research/
 public/use-cases/
 public/compare/
 public/sources/
+public/accuracy/
 public/crawlable-corpus.json
 # Volatile inventory metrics are derived during install/build. Stable product
 # lifecycle, pricing, and catalog artifacts remain committed.

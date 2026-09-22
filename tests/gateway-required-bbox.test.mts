@@ -15,6 +15,8 @@ const TEST_KEY = 'bbox-test-key';
 const REQUIRED_BBOX_QUERY = REQUIRED_BBOX_QUERY_PARAMS.join(',');
 const MARITIME_OPTIONAL_BBOX_PATH = '/api/maritime/v1/get-vessel-snapshot';
 const originalMaritimeRatePolicy = ENDPOINT_RATE_POLICIES[MARITIME_OPTIONAL_BBOX_PATH];
+const AIRCRAFT_OPTIONAL_BBOX_PATH = '/api/aviation/v1/track-aircraft';
+const originalAircraftRatePolicy = ENDPOINT_RATE_POLICIES[AIRCRAFT_OPTIONAL_BBOX_PATH];
 
 const OPTIONAL_BBOX_RPC_PATHS = [
   '/api/aviation/v1/track-aircraft',
@@ -29,6 +31,8 @@ afterEach(() => {
 
   if (originalMaritimeRatePolicy == null) delete ENDPOINT_RATE_POLICIES[MARITIME_OPTIONAL_BBOX_PATH];
   else ENDPOINT_RATE_POLICIES[MARITIME_OPTIONAL_BBOX_PATH] = originalMaritimeRatePolicy;
+  if (originalAircraftRatePolicy == null) delete ENDPOINT_RATE_POLICIES[AIRCRAFT_OPTIONAL_BBOX_PATH];
+  else ENDPOINT_RATE_POLICIES[AIRCRAFT_OPTIONAL_BBOX_PATH] = originalAircraftRatePolicy;
 });
 
 function createGatewayForPaths(hits: Map<string, number>, paths: readonly string[]) {
@@ -59,6 +63,7 @@ function bypassMaritimeRateLimitForLocalGatewayTest(pathAndQuery: string): void 
 
 function makeRequest(pathAndQuery: string): Request {
   bypassMaritimeRateLimitForLocalGatewayTest(pathAndQuery);
+  if (pathAndQuery.startsWith(AIRCRAFT_OPTIONAL_BBOX_PATH)) delete ENDPOINT_RATE_POLICIES[AIRCRAFT_OPTIONAL_BBOX_PATH];
   process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
   return new Request(
     'https://worldmonitor.app' + pathAndQuery,
@@ -162,14 +167,14 @@ describe('gateway required-bbox diagnostics', () => {
 
   it('does not add bbox diagnostics to unrelated API endpoints', async () => {
     const hits = new Map<string, number>();
-    const handler = createGatewayForPaths(hits, ['/api/market/v1/list-crypto-quotes']);
+    const handler = createGatewayForPaths(hits, ['/api/market/v1/list-gulf-quotes']);
 
-    const res = await handler(makeRequest('/api/market/v1/list-crypto-quotes?ids=bitcoin'));
+    const res = await handler(makeRequest('/api/market/v1/list-gulf-quotes'));
     const body = await res.json();
 
     assert.equal(res.status, 200);
     assert.deepEqual(body, { ok: true });
-    assert.equal(hits.get('/api/market/v1/list-crypto-quotes'), 1);
+    assert.equal(hits.get('/api/market/v1/list-gulf-quotes'), 1);
     assertNoBboxDiagnostic(res);
   });
 

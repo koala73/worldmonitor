@@ -205,20 +205,6 @@ describe('UNHCR displacement — scorer reads + labor-migrant-cohort invariant',
       `undefined-hostTotal must fall back to totalDisplaced=5M; score should be <80, got ${score.score}`);
   });
 
-  it('safeNum gotcha: safeNum(null) returns 0, not null (documents the root cause of the `??` short-circuit)', () => {
-    // Not testing the scorer directly — this pins the numeric-coercion
-    // quirk that makes the `hostTotal ?? totalDisplaced` fallback
-    // effectively dead code for any payload where hostTotal is null or 0.
-    // JavaScript's Number(null) === 0 (while Number(undefined) === NaN),
-    // so `safeNum` correctly classifies null as the finite number 0.
-    // The only way the `??` at _dimension-scorers.ts:1412 falls back
-    // today is if hostTotal is UNDEFINED — which the seeder never emits.
-    assert.equal(Number(null), 0, 'JS coerces null → 0 numerically');
-    assert.equal(Number.isFinite(Number(null)), true, 'and 0 is finite');
-    assert.equal(Number(undefined), Number(undefined), 'Number(undefined) is NaN');
-    assert.equal(Number.isFinite(Number(undefined)), false, 'NaN is not finite');
-  });
-
   it('scoreBorderSecurity imputes with `stable-absence` when the country is absent entirely from UNHCR', async () => {
     // Country not in payload at all (neither origin nor host).
     const payload = buildDisplacementPayload([

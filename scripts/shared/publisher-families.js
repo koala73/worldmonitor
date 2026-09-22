@@ -89,7 +89,7 @@ const PUBLISHER_FAMILY_DATA = {
   'eia': { publisher: "US Energy Information Administration", labels: ["EIA Press Room", "EIA Reports"] },
   'fao': { publisher: "UN Food and Agriculture Organization", labels: ["FAO GIEWS", "FAO News"] },
   'financial-times': { publisher: "Financial Times", labels: ["FT Energy", "Financial Times"] },
-  'france-24': { publisher: "France 24", labels: ["France 24", "France 24 LatAm"] },
+  'france-24': { publisher: "France 24", labels: ["France 24", "France 24 Africa", "France 24 Asia Pacific", "France 24 LatAm"] },
   'good-news-network': {
     publisher: "Good News Network",
     labels: [
@@ -105,9 +105,12 @@ const PUBLISHER_FAMILY_DATA = {
   'guardian': {
     publisher: "The Guardian",
     labels: [
+      "Guardian Africa",
       "Guardian Americas",
       "Guardian Australia",
+      "Guardian Caribbean",
       "Guardian ME",
+      "Guardian Pacific",
       "Guardian World",
     ],
   },
@@ -176,6 +179,18 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'venturebeat': { publisher: "VentureBeat", labels: ["VentureBeat", "VentureBeat AI"] },
   'white-house': { publisher: "The White House", labels: ["White House", "White House Actions"] },
+  // #8398: the feed URL is a Dow Jones delivery host
+  // (feeds.content.dowjones.io) but item links point at the publisher apex
+  // (wsj.com, per the Dow Jones Investor Select RSS docs). Without this
+  // mapping the ingest gate blanks every WSJ link. Domain-only by design:
+  // the bare feed label ("Wall Street Journal") keeps its own singleton
+  // (failing closed on labels), while the wsj.com domain allowance is
+  // declared explicitly in PUBLISHER_FAMILY_DOMAINS below and the ingest
+  // gate composes the feed-host leg (dowjones.io) separately. Domain-only
+  // families are exempt from the two-label minimum (that rule targets label
+  // folding; a domain table entry cannot merge two publishers' counts).
+  // Exempted in tests/publisher-families.test.mjs via DOMAIN_ONLY_FAMILIES.
+  'wsj': { publisher: "Wall Street Journal", labels: [] },
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
 };
@@ -229,6 +244,9 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'the-verge': ['theverge.com'],
   'venturebeat': ['venturebeat.com'],
   'white-house': ['whitehouse.gov'],
+  // #8398: see the 'wsj' family entry above — the Dow Jones delivery host
+  // is not the article host.
+  'wsj': ['wsj.com'],
 });
 export const PUBLISHER_FAMILY_DOMAIN_TABLE = PUBLISHER_FAMILY_DOMAINS;
 

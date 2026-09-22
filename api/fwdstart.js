@@ -153,8 +153,7 @@ export default async function handler(req, ctx) {
     console.error('FwdStart scraper error:', error);
     captureSilentError(error, { tags: { route: 'api/fwdstart', step: 'scrape' }, ctx });
     return jsonResponse({
-      error: 'Failed to fetch FwdStart archive',
-      details: error.message
+      error: 'Failed to fetch FwdStart archive'
     }, 502, cors);
   }
 }

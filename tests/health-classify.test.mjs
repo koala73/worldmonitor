@@ -31,6 +31,9 @@ const {
   ZERO_RECORD_DATA_OK_KEYS,
   EMPTY_DATA_OK_KEYS,
   projectChinaCoverageStatus,
+  composeChinaDecisionSignalsStatus,
+  computeOverallStatus,
+  isContainedHealthWarning,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -85,6 +88,53 @@ test('MND first-failure pending requires fresh last-good and expires without ano
   assert.equal(nearStale.sourceFailurePendingUntil, new Date(NOW + ONE_MIN_MS).toISOString());
 });
 
+test('NHC first-failure pending is bounded by its original complete snapshot', () => {
+  const name = 'naturalEvents';
+  const key = BOOTSTRAP_KEYS[name];
+  const meta = {
+    fetchedAt: NOW,
+    recordCount: 2,
+    sourceState: 'degraded',
+    errorCode: 'NHC_POINT_REQUEST_FAILED',
+    consecutiveSourceFailures: 1,
+    lastSourceFailureCode: 'NHC_POINT_REQUEST_FAILED',
+    firstSourceFailureAt: NOW,
+    lastSourceAttemptAt: NOW,
+    lastSourceSuccessAt: NOW - 539 * ONE_MIN_MS,
+  };
+  const classify = (over = {}, now = NOW) => classifyKey(name, key, { allowOnDemand: false }, {
+    ...makeCtx({ strens: { [key]: 1024 }, metaValues: { [SEED_META[name].key]: { ...meta, ...over } } }),
+    now,
+  });
+
+  const entry = classify();
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.sourceFailurePendingUntil, new Date(NOW + ONE_MIN_MS).toISOString());
+  assert.equal(__testing__.healthStatusBucket(entry, NOW), 'ok');
+  for (const over of [
+    { consecutiveSourceFailures: 2 },
+    { recordCount: 0 },
+    { lastSourceSuccessAt: null },
+    { lastSourceSuccessAt: NOW + 1 },
+    { firstSourceFailureAt: null },
+    { errorCode: 'NHC_UNRECOGNIZED_FAILURE', lastSourceFailureCode: 'NHC_UNRECOGNIZED_FAILURE' },
+  ]) {
+    const failed = classify(over);
+    assert.equal(failed.sourceFailurePendingUntil, undefined, JSON.stringify(over));
+    assert.notEqual(__testing__.healthStatusBucket(failed, NOW), 'ok', JSON.stringify(over));
+  }
+});
+
+test('natural events accepts a published complete empty aggregate but not a missing key', () => {
+  const name = 'naturalEvents';
+  const key = BOOTSTRAP_KEYS[name];
+  const metaValues = { [SEED_META[name].key]: { fetchedAt: NOW, recordCount: 0, sourceState: 'ok' } };
+  const present = classifyKey(name, key, { allowOnDemand: false }, makeCtx({ strens: { [key]: 100 }, metaValues }));
+  const missing = classifyKey(name, key, { allowOnDemand: false }, makeCtx({ strens: { [key]: 0 }, metaValues }));
+  assert.equal(present.status, 'OK');
+  assert.equal(missing.status, 'EMPTY');
+});
+
 // Build the same ctx shape the handler constructs: four Maps + now.
 //   strens:     { redisDataKey -> byteLen }
 //   errors:     { redisDataKey -> errMsg }
@@ -92,6 +142,7 @@ test('MND first-failure pending requires fresh last-good and expires without ano
 //   metaErrors: { seedMetaKey  -> errMsg }
 function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {}, activationStates = null } = {}) {
   return {
+    containmentEvidenceByName: new Map(),
     keyStrens: new Map(Object.entries(strens)),
     keyErrors: new Map(Object.entries(errors)),
     keyMetaValues: new Map(Object.entries(metaValues).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])),
@@ -114,21 +165,6 @@ const classifyNewsInsights = (over = {}) => classifyKey(
     metaValues: { [SEED_META.newsInsights.key]: seedMeta(over) },
   }),
 );
-
-// Mirror of the handler's overall-status computation (api/health.js ~850-859).
-// The handler computes this inline; these tests exercise the LOCAL replica —
-// they document the intended HEALTHY/WARNING/DEGRADED/UNHEALTHY thresholds but
-// do NOT catch handler drift if the 0.03 constant or branch order changes in
-// api/health.js without updating here. Non-REDIS_DOWN states return HTTP 200
-// (verdict in the JSON `status`); REDIS_DOWN returns 503.
-function computeOverall(critCount, realWarnCount, totalChecks) {
-  let status;
-  if (critCount === 0 && realWarnCount === 0) status = 'HEALTHY';
-  else if (critCount === 0) status = 'WARNING';
-  else if (critCount / totalChecks <= 0.03) status = 'DEGRADED';
-  else status = 'UNHEALTHY';
-  return { status, http: 200 };
-}
 
 // ── STATUS_COUNTS buckets ───────────────────────────────────────────────────
 
@@ -447,7 +483,7 @@ test('classifyKey: resilience interval coverage fails closed on missing or malfo
 
 test('classifyKey: consumer-price coverage below the declared completion floor degrades', () => {
   const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
-  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+  const ctx = makeCtx({
     strens: { [key]: 2048 },
     metaValues: {
       [SEED_META.consumerPricesCoverage.key]: seedMeta({
@@ -455,10 +491,36 @@ test('classifyKey: consumer-price coverage below the declared completion floor d
         coverage: { completedPages: 4, failedPages: 8, completionRatio: 0.3333, rejectedCount: 2 },
       }),
     },
-  }));
+  });
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, ctx);
 
   assert.equal(entry.status, 'COVERAGE_DEGRADED');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('consumerPricesCoverage'), NOW), true,
+    'valid coverage evidence proves a bounded serving degradation');
+});
+
+test('classifyKey: malformed consumer-price completion evidence is not containable', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const ctx = makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: {
+          status: 'degraded',
+          completedPages: 4,
+          failedPages: 8,
+          completionRatio: 'not-a-ratio',
+          rejectedCount: 2,
+        },
+      }),
+    },
+  });
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, ctx);
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('consumerPricesCoverage'), NOW), false);
 });
 
 test('classifyKey: consumer-price coverage at the floor remains healthy', () => {
@@ -608,13 +670,22 @@ test('classifyKey: consumer-price coverage without failure reasons reports an em
 
 test('classifyKey: missing consumer-price coverage metadata fails closed', () => {
   const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
-  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+  const ctx = makeCtx({
     strens: { [key]: 2048 },
     metaValues: { [SEED_META.consumerPricesCoverage.key]: seedMeta({ recordCount: 4 }) },
-  }));
+  });
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, ctx);
 
   assert.equal(entry.status, 'COVERAGE_DEGRADED');
   assert.equal(entry.coverage, null);
+  assert.equal(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('consumerPricesCoverage'), NOW), false,
+    'missing required coverage cannot prove usable last-good data');
+  assert.equal(computeOverallStatus({
+    warn: 1,
+    onDemandWarn: 0,
+    containedWarn: Number(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('consumerPricesCoverage'), NOW)),
+    crit: 0,
+  }, 292).overall, 'WARNING');
 });
 
 test('health registers every currently enabled consumer-price market coverage key', () => {
@@ -1419,8 +1490,7 @@ test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIA
 });
 
 test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', () => {
-  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
-    makeCtx({
+  const ctx = makeCtx({
       strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
       metaValues: {
         'seed-meta:prediction:markets': seedMeta({
@@ -1428,13 +1498,17 @@ test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', 
           poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
         }),
       },
-    }));
+    });
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    ctx);
 
   assert.equal(entry.status, 'COVERAGE_PARTIAL');
   assert.equal(entry.records, 38);
   assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
   assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('predictionMarkets'), NOW), true,
+    'complete pool evidence proves a bounded shortfall');
 });
 
 test('classifyKey: stale prediction snapshot outranks per-pool coverage', () => {
@@ -1455,17 +1529,20 @@ test('classifyKey: stale prediction snapshot outranks per-pool coverage', () => 
 });
 
 test('classifyKey: predictionMarkets requires valid per-pool metadata', () => {
-  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
-    makeCtx({
+  const ctx = makeCtx({
       strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
       metaValues: {
         'seed-meta:prediction:markets': seedMeta({ recordCount: 38 }),
       },
-    }));
+    });
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    ctx);
 
   assert.equal(entry.status, 'COVERAGE_PARTIAL');
   assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
   assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+  assert.equal(isContainedHealthWarning(entry, ctx.containmentEvidenceByName.get('predictionMarkets'), NOW), false,
+    'missing required pool evidence cannot prove a bounded shortfall');
 });
 
 test('classifyKey: predictionMarkets is OK when every pool meets its floor', () => {
@@ -2138,25 +2215,171 @@ test('cascade: a member that HAS data classifies on its own merits (OK), never d
 
 // ── overall status thresholds ───────────────────────────────────────────────
 
-test('overall: 0 crit / 0 warn → HEALTHY / 200', () => {
-  assert.deepEqual(computeOverall(0, 0, 150), { status: 'HEALTHY', http: 200 });
+test('overall: 0 crit / 0 warn → HEALTHY', () => {
+  assert.equal(computeOverallStatus({ warn: 0, onDemandWarn: 0, containedWarn: 0, crit: 0 }, 150).overall, 'HEALTHY');
 });
 
-test('overall: warn>0 (no crit) → WARNING / 200', () => {
-  assert.deepEqual(computeOverall(0, 1, 150), { status: 'WARNING', http: 200 });
-  assert.deepEqual(computeOverall(0, 40, 150), { status: 'WARNING', http: 200 });
+test('overall: containment allows the full 3% cohort approved by the health contract', () => {
+  const counts = { warn: 1, onDemandWarn: 0, containedWarn: 1, crit: 0 };
+  assert.equal(computeOverallStatus(counts, 34).overall, 'HEALTHY');
+  assert.equal(computeOverallStatus(counts, 34).diagnosticOverall, 'WARNING');
+  assert.equal(computeOverallStatus(counts, 33).overall, 'WARNING');
+  assert.equal(computeOverallStatus({ ...counts, warn: 3, containedWarn: 3 }, 100).overall, 'HEALTHY');
+  assert.equal(computeOverallStatus({ ...counts, warn: 8, containedWarn: 8 }, 292).overall, 'HEALTHY');
+  assert.equal(computeOverallStatus({ ...counts, warn: 9, containedWarn: 9 }, 292).overall, 'WARNING');
+  assert.equal(computeOverallStatus({ ...counts, warn: 3, containedWarn: 3 }, 292).overall, 'HEALTHY',
+    'the current disease, electricity, and PortWatch cohort is below 3%');
 });
 
-test('overall: crit within ~3% of total → DEGRADED / 200', () => {
-  // 3/150 = 0.02 <= 0.03
-  assert.deepEqual(computeOverall(3, 0, 150), { status: 'DEGRADED', http: 200 });
-  assert.deepEqual(computeOverall(1, 5, 150), { status: 'DEGRADED', http: 200 });
+test('overall: any uncontained warning remains WARNING and on-demand misses stay excused', () => {
+  assert.equal(computeOverallStatus({ warn: 2, onDemandWarn: 0, containedWarn: 1, crit: 0 }, 150).overall, 'WARNING');
+  assert.equal(computeOverallStatus({ warn: 40, onDemandWarn: 0, containedWarn: 0, crit: 0 }, 150).overall, 'WARNING');
+  assert.equal(computeOverallStatus({ warn: 2, onDemandWarn: 1, containedWarn: 1, crit: 0 }, 150).overall, 'HEALTHY');
 });
 
-test('overall: crit above ~3% of total → UNHEALTHY / 200', () => {
-  // 5/150 = 0.033 > 0.03
-  assert.deepEqual(computeOverall(5, 0, 150), { status: 'UNHEALTHY', http: 200 });
-  assert.deepEqual(computeOverall(20, 2, 150), { status: 'UNHEALTHY', http: 200 });
+test('overall: crit within ~3% of total → DEGRADED', () => {
+  assert.equal(computeOverallStatus({ warn: 0, onDemandWarn: 0, containedWarn: 0, crit: 3 }, 100).overall, 'DEGRADED');
+  assert.equal(computeOverallStatus({ warn: 5, onDemandWarn: 0, containedWarn: 5, crit: 1 }, 150).overall, 'DEGRADED');
+});
+
+test('overall: crit above ~3% of total → UNHEALTHY', () => {
+  assert.equal(computeOverallStatus({ warn: 0, onDemandWarn: 0, containedWarn: 0, crit: 4 }, 100).overall, 'UNHEALTHY');
+  assert.equal(computeOverallStatus({ warn: 2, onDemandWarn: 0, containedWarn: 2, crit: 20 }, 150).overall, 'UNHEALTHY');
+});
+
+function classifyContainment(name, meta, now = NOW) {
+  const key = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const ctx = { ...makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: { [SEED_META[name].key]: seedMeta(meta) },
+  }), now };
+  const entry = classifyKey(name, key, { allowOnDemand: false }, ctx);
+  return { entry, evidence: ctx.containmentEvidenceByName.get(name), ctx };
+}
+
+test('containment evaluates real classifier results with request-local proof', () => {
+  for (const [expected, meta, contained] of [
+    ['SEED_ERROR', { sourceState: 'degraded' }, true],
+    ['STALE_SEED', { fetchedAt: NOW - (SEED_META.earthquakes.maxStaleMin + 1) * ONE_MIN_MS }, true],
+    ['STALE_CONTENT', { newestItemAt: NOW - 180 * ONE_MIN_MS, maxContentAgeMin: 60 }, true],
+  ]) {
+    const { entry, evidence } = classifyContainment('earthquakes', meta);
+    assert.equal(entry.status, expected);
+    assert.equal(isContainedHealthWarning(entry, evidence, NOW), contained, expected);
+    assert.equal(Object.getOwnPropertySymbols(entry).length, 0);
+    assert.equal(JSON.stringify(entry).includes('usable'), false);
+    assert.equal(isContainedHealthWarning(JSON.parse(JSON.stringify(entry)), undefined, NOW), false);
+  }
+  for (const status of Object.keys(STATUS_COUNTS).concat('UNKNOWN_FUTURE_STATUS')) {
+    assert.equal(isContainedHealthWarning({ status, records: 5 }, undefined, NOW), false, status);
+  }
+  const { entry, evidence, ctx } = classifyContainment('earthquakes', { sourceState: 'degraded' });
+  const ready = __testing__.composeScorecardReadModelStatus(entry, 1);
+  const unavailable = __testing__.composeScorecardReadModelStatus(entry, 0);
+  assert.equal(isContainedHealthWarning(ready, evidence, NOW), true);
+  assert.equal(isContainedHealthWarning(unavailable, evidence, NOW), false);
+  assert.equal(isContainedHealthWarning({ ...entry, status: 'COVERAGE_PARTIAL' }, evidence, NOW), false,
+    'a final verdict change invalidates earlier evidence');
+  assert.equal(isContainedHealthWarning(entry, makeCtx().containmentEvidenceByName.get('earthquakes'), NOW), false);
+  entry.sourceFailurePendingUntil = new Date(NOW + ONE_MIN_MS).toISOString();
+  assert.equal(isContainedHealthWarning(entry, evidence, NOW), false);
+  ctx.keyErrors.set(BOOTSTRAP_KEYS.earthquakes, 'redis failure');
+  classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false }, ctx);
+  assert.equal(ctx.containmentEvidenceByName.has('earthquakes'), false,
+    'an early failure clears proof if a name is evaluated again');
+});
+
+test('containment follows current served-data proof after freshness budgets expire', () => {
+  for (const [kind, meta] of [
+    ['seed', { fetchedAt: NOW - SEED_META.earthquakes.maxStaleMin * ONE_MIN_MS }],
+    ['content', { newestItemAt: NOW - 60 * ONE_MIN_MS, maxContentAgeMin: 60 }],
+  ]) {
+    for (const offset of [-1, 0, 1]) {
+      const now = NOW + offset;
+      const { entry, evidence } = classifyContainment('earthquakes', { ...meta, sourceState: 'degraded' }, now);
+      assert.equal(entry.status, 'SEED_ERROR');
+      assert.equal(isContainedHealthWarning(entry, evidence, now), true, `${kind}: ${offset}`);
+    }
+  }
+});
+
+test('containment validates per-entity and served synthesis evidence without reclassifying age', () => {
+  const requirement = SEED_META.portwatchPortActivity.requireContentFreshness;
+  for (const [name, meta] of [
+    ['portwatchPortActivity', { recordCount: 173, contentFreshness: {
+      coveredCount: 2, freshCount: 2, staleCount: 0, unknownCount: 0,
+      criticalCountries: requirement.countries, criticalFreshCount: 2,
+      criticalOldestObservedAt: NOW - requirement.budgetMinutes * ONE_MIN_MS,
+    } }],
+    ['newsInsights', { consecutiveFailures: 2, lastAttemptAt: NOW - ONE_MIN_MS,
+      lastSuccessAt: NOW - ONE_MIN_MS,
+      servedGeneratedAt: new Date(NOW - SEED_META.newsInsights.maxStaleMin * ONE_MIN_MS).toISOString() }],
+  ]) {
+    for (const offset of [-1, 0, 1]) {
+      const { entry, evidence } = classifyContainment(name, meta, NOW + offset);
+      assert.equal(isContainedHealthWarning(entry, evidence, NOW + offset), true, `${name}: ${offset}`);
+    }
+  }
+  for (const meta of [{ fetchedAt: NOW + 1 }, { newestItemAt: NOW + 1, maxContentAgeMin: 60 }]) {
+    const { entry, evidence } = classifyContainment('earthquakes', { ...meta, sourceState: 'degraded' });
+    assert.equal(isContainedHealthWarning(entry, evidence, NOW), false, 'future timestamps cannot prove freshness');
+  }
+});
+
+test('containment has no source-specific denylist', () => {
+  for (const name of ['sanctionsPressure', 'sanctionsEntities', 'tariffTrendsUs',
+    'supplyVulnerability', 'supplyChokepointDependencies']) {
+    const { entry, evidence } = classifyContainment(name, {
+      sourceState: 'degraded', recordCount: 1000, rankableRecordCount: 1000,
+      redistributionPolicyVersion: SEED_META[name].requiredRedistributionPolicyVersion,
+      coverage: { ...SEED_META[name].requireVulnerabilityCoverage },
+    });
+    assert.equal(entry.status, 'SEED_ERROR', name);
+    assert.equal(entry.records, 1000, name);
+    assert.equal(isContainedHealthWarning(entry, evidence, NOW), true, name);
+  }
+});
+
+test('containment rejects missing proof even when an earlier diagnostic wins', () => {
+  const cases = [
+    ['earthquakes', { fetchedAt: undefined }, 'STALE_SEED'],
+    ['earthquakes', { status: 'error' }, 'SEED_ERROR'],
+    ['earthquakes', { fetchedAt: 'invalid' }, 'STALE_SEED'],
+    ['consumerPricesCoverage', { fetchedAt: NOW - 10_000 * ONE_MIN_MS }, 'STALE_SEED'],
+    ['consumerPricesCoverage', { status: 'error' }, 'SEED_ERROR'],
+    ['supplyChokepointDependencies', { fetchedAt: NOW - 10_000 * ONE_MIN_MS, redistributionPolicyVersion: 0 }, 'STALE_SEED'],
+    ['predictionMarkets', { fetchedAt: NOW - 10_000 * ONE_MIN_MS }, 'STALE_SEED'],
+    ['portwatchPortActivity', { recordCount: 1 }, 'COVERAGE_PARTIAL'],
+    ['consumerPricesCoverage', { coverage: { status: 'partial', completionRatio: 2 } }, 'COVERAGE_PARTIAL'],
+    ['physicalDivergence', { sourceState: 'error', recordCount: 2 }, 'SEED_ERROR'],
+    ['physicalDivergence', { sourceState: 'ok', recordCount: 2, inputFreshUntil: NOW - 1 }, 'SEED_ERROR'],
+    ['resilienceRanking', { recordCount: 196 }, 'STALE_SEED'],
+  ];
+  for (const [name, meta, expected] of cases) {
+    const { entry, evidence } = classifyContainment(name, meta);
+    assert.equal(entry.status, expected, name);
+    assert.equal(isContainedHealthWarning(entry, evidence, NOW), false, name);
+    assert.equal(computeOverallStatus({ warn: 1, onDemandWarn: 0,
+      containedWarn: Number(isContainedHealthWarning(entry, evidence, NOW)), crit: 0 }, 292).overall, 'WARNING');
+  }
+});
+
+test('overall rejects invalid containment counts', () => {
+  for (const containedWarn of [undefined, null, -1, 0.5, 2, NaN, Infinity, '1']) {
+    assert.equal(computeOverallStatus({ warn: 1, onDemandWarn: 0, containedWarn, crit: 0 }, 100).overall, 'WARNING');
+  }
+});
+
+test('containment fails closed for invalid or synthetic record counts', () => {
+  const { entry, evidence } = classifyContainment('earthquakes', { sourceState: 'degraded', recordCount: 5 });
+  assert.equal(isContainedHealthWarning(entry, evidence, NOW), true);
+  for (const records of [0, null, undefined, -1, Infinity, NaN, '5', 6]) {
+    assert.equal(isContainedHealthWarning({ ...entry, records }, evidence, NOW), false, String(records));
+  }
+  const { entry: synthetic, evidence: syntheticEvidence } = classifyContainment('earthquakes',
+    { recordCount: undefined, sourceState: 'degraded' });
+  assert.equal(synthetic.records, 1, 'documents the legacy payload-presence fallback');
+  assert.equal(isContainedHealthWarning(synthetic, syntheticEvidence, NOW), false);
 });
 
 // #6987. flightDelays serves the combined page-load aggregate but read its
@@ -2252,8 +2475,10 @@ test('#6987 — the two aviation probes no longer share a meta key', () => {
 // A summary that is degraded for ONE hourly evaluation is far more often a
 // sampling miss than an outage — measured 2026-08-25, a two-minute miss on
 // market.china-stock-connect cost ~50 minutes of CHINA_DEGRADED while 13 of the
-// surrounding 16 monitor runs were clean. Requiring a second consecutive
-// observation trades one cycle of detection latency for that.
+// surrounding 16 monitor runs were clean. A three-hour validity window avoids
+// turning those brief sampling misses into fleet warnings.
+const CHINA_SUMMARY_AT = Date.parse('2026-08-25T17:03:23.563Z');
+const CHINA_LAST_HEALTHY_AT = CHINA_SUMMARY_AT - 3 * ONE_MIN_MS;
 const chinaSummary = (over = {}) => ({
   schemaVersion: 1,
   countryCode: 'CN',
@@ -2274,38 +2499,76 @@ const chinaSummary = (over = {}) => ({
     status: 'degraded',
     reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
   }]),
+  lastHealthyAt: CHINA_LAST_HEALTHY_AT,
   ...over,
 });
 
-test('china coverage: a single degraded evaluation does not alarm', () => {
-  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
-  assert.equal(projected.status, 'OK');
-});
-
-test('china coverage: a second consecutive degraded evaluation alarms', () => {
-  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 2 }));
+test('china coverage: a recent degraded evaluation stays pending for three hours', () => {
+  const projected = projectChinaCoverageStatus(
+    chinaSummary({ degradedStreak: 1 }),
+    false,
+    CHINA_SUMMARY_AT + ONE_MIN_MS,
+  );
   assert.equal(projected.status, 'CHINA_DEGRADED');
+  assert.equal(
+    projected.chinaCoveragePendingUntil,
+    new Date(CHINA_LAST_HEALTHY_AT + 3 * 60 * ONE_MIN_MS).toISOString(),
+  );
+  assert.equal(__testing__.healthStatusBucket(projected, CHINA_SUMMARY_AT + ONE_MIN_MS), 'ok');
 });
 
-test('china coverage: nonpositive streaks cannot suppress a degraded alarm', () => {
-  for (const degradedStreak of [0, -1]) {
-    const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak }));
-    assert.equal(projected.status, 'CHINA_DEGRADED', `degradedStreak=${degradedStreak}`);
+test('china coverage: four rapid evaluations cannot exhaust the wall-clock window', () => {
+  for (const degradedStreak of [1, 2, 3, 4, 12]) {
+    const projected = projectChinaCoverageStatus(
+      chinaSummary({ degradedStreak }),
+      false,
+      CHINA_SUMMARY_AT + ONE_MIN_MS,
+    );
+    assert.equal(__testing__.healthStatusBucket(projected, CHINA_SUMMARY_AT + ONE_MIN_MS), 'ok');
   }
+});
+
+test('china coverage: the hold expires at exactly three hours after the last healthy evaluation', () => {
+  const deadline = CHINA_LAST_HEALTHY_AT + 3 * 60 * ONE_MIN_MS;
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 12 }), false, deadline);
+  assert.equal(projected.status, 'CHINA_DEGRADED');
+  assert.equal(projected.chinaCoveragePendingUntil, undefined);
+  assert.equal(__testing__.healthStatusBucket(projected, deadline), 'warn');
+});
+
+test('china coverage: stale evidence warns immediately', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({
+    entries: [{
+      id: 'market.china-stock-connect',
+      launchStatus: 'launched',
+      status: 'degraded',
+      reasonCodes: ['CONTENT_STALE'],
+    }],
+  }), false, CHINA_SUMMARY_AT + ONE_MIN_MS);
+  assert.equal(projected.chinaCoveragePendingUntil, undefined);
+  assert.equal(__testing__.healthStatusBucket(projected, CHINA_SUMMARY_AT + ONE_MIN_MS), 'warn');
 });
 
 test('china coverage: a held verdict stays visible rather than silent', () => {
   // The counterweight to the debounce. If holding the verdict also hid the
   // reason, a suppressed cycle would be indistinguishable from health.
-  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
-  assert.equal(projected.status, 'OK');
+  const projected = projectChinaCoverageStatus(
+    chinaSummary({ degradedStreak: 1 }),
+    false,
+    CHINA_SUMMARY_AT + ONE_MIN_MS,
+  );
+  assert.equal(projected.status, 'CHINA_DEGRADED');
   assert.equal(projected.chinaStatus, 'degraded', 'the summary verdict is still reported');
   assert.equal(projected.degradedStreak, 1);
   assert.ok(projected.problems?.some((p) => p.id === 'market.china-stock-connect'));
 });
 
 test('china coverage: a held verdict survives the compact health projection', () => {
-  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: 1 }));
+  const projected = projectChinaCoverageStatus(
+    chinaSummary({ degradedStreak: 1 }),
+    false,
+    CHINA_SUMMARY_AT + ONE_MIN_MS,
+  );
   const compact = healthResponseBody({
     status: 'HEALTHY',
     summary: { total: 1, ok: 1, warn: 0, crit: 0 },
@@ -2313,21 +2576,144 @@ test('china coverage: a held verdict survives the compact health projection', ()
     checks: { chinaCoverage: projected },
   }, true);
 
-  assert.equal(compact.problems?.chinaCoverage?.status, 'OK');
-  assert.equal(compact.problems?.chinaCoverage?.chinaStatus, 'degraded');
-  assert.equal(compact.problems?.chinaCoverage?.degradedStreak, 1);
-  assert.ok(compact.problems?.chinaCoverage?.problems?.some(
+  assert.equal(compact.pending?.chinaCoverage?.status, 'CHINA_DEGRADED');
+  assert.equal(compact.problems?.chinaCoverage, undefined);
+  assert.equal(compact.pending?.chinaCoverage?.chinaStatus, 'degraded');
+  assert.equal(compact.pending?.chinaCoverage?.degradedStreak, 1);
+  assert.ok(compact.pending?.chinaCoverage?.problems?.some(
     (problem) => problem.id === 'market.china-stock-connect',
   ));
   assert.deepEqual(healthResponseBody(compact, true), compact, 'cached compact snapshots remain stable');
 });
 
-test('china coverage: a summary with no streak field alarms as before', () => {
-  // Rollout safety. Every summary written before the producer shipped the field
-  // has no streak; absent evidence must not read as evidence of health, or the
-  // rollout window would silence a genuine outage.
-  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: undefined, degradedProblemKey: undefined }));
+test('china decision signals: aggregate degradation cannot replace producer success evidence', () => {
+  const chinaCoverage = projectChinaCoverageStatus(chinaSummary({
+    degradedStreak: 1,
+    entries: [{
+      id: 'market.china-corporate-disclosures',
+      launchStatus: 'launched',
+      status: 'degraded',
+      reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
+    }],
+    degradedProblemKey: JSON.stringify([{
+      id: 'market.china-corporate-disclosures',
+      status: 'degraded',
+      reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
+    }]),
+  }));
+  const evaluatedAt = Date.parse(chinaCoverage.evaluatedAt);
+  const now = evaluatedAt + 60_000;
+  const decisionSignals = composeChinaDecisionSignalsStatus({
+    status: 'COVERAGE_PARTIAL',
+    records: 5,
+    minRecordCount: 6,
+    decisionGroups: {
+      operationallyCovered: 5,
+      unavailableGroups: [{
+        id: 'corporate-disclosures',
+        unavailableCause: 'upstream_unavailable',
+      }],
+    },
+  }, chinaCoverage, now);
+
+  assert.equal(decisionSignals.status, 'COVERAGE_PARTIAL', 'the diagnosis stays truthful');
+  assert.equal(decisionSignals.chinaCoveragePendingUntil, undefined);
+  assert.equal(__testing__.healthStatusBucket(decisionSignals, now), 'warn');
+});
+
+test('china decision signals: failed publications cannot extend the three-hour validity window', () => {
+  const successAt = NOW - 15 * ONE_MIN_MS;
+  const candidate = {
+    status: 'COVERAGE_PARTIAL',
+    records: 5,
+    minRecordCount: 6,
+    decisionGroups: {
+      operationallyCovered: 5,
+      unavailableGroups: [{
+        id: 'corporate-disclosures',
+        unavailableCause: 'upstream_unavailable',
+      }],
+      coverageLastSuccessAt: successAt,
+    },
+  };
+
+  const composed = composeChinaDecisionSignalsStatus(candidate, null, NOW);
+  assert.equal(composed.status, 'COVERAGE_PARTIAL');
+  assert.equal(
+    composed.chinaCoveragePendingUntil,
+    new Date(successAt + SEED_META.chinaDecisionSignals.maxStaleMin * ONE_MIN_MS).toISOString(),
+  );
+  assert.equal(__testing__.healthStatusBucket(composed, NOW), 'ok');
+  assert.equal(
+    composeChinaDecisionSignalsStatus(candidate, null, successAt + 180 * ONE_MIN_MS)
+      .chinaCoveragePendingUntil,
+    undefined,
+    'the three-hour freshness ceiling still expires the hold',
+  );
+});
+
+test('china decision signals: missing or invalid last-success evidence fails closed', () => {
+  const valid = {
+    status: 'COVERAGE_PARTIAL',
+    records: 5,
+    minRecordCount: 6,
+    decisionGroups: {
+      operationallyCovered: 5,
+      unavailableGroups: [{
+        id: 'corporate-disclosures',
+        unavailableCause: 'upstream_unavailable',
+      }],
+      coverageLastSuccessAt: NOW - 15 * ONE_MIN_MS,
+    },
+  };
+  for (const coverageLastSuccessAt of [undefined, null, Number.NaN]) {
+    const candidate = {
+      ...valid,
+      decisionGroups: { ...valid.decisionGroups, coverageLastSuccessAt },
+    };
+    assert.equal(
+      composeChinaDecisionSignalsStatus(candidate, null, NOW).chinaCoveragePendingUntil,
+      undefined,
+    );
+  }
+});
+
+test('china decision signals: malformed producer evidence cannot use the legacy fallback', () => {
+  const chinaCoverage = projectChinaCoverageStatus(chinaSummary({
+    degradedStreak: 1,
+    entries: [{
+      id: 'market.china-corporate-disclosures',
+      launchStatus: 'launched',
+      status: 'degraded',
+      reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
+    }],
+  }));
+  const entry = {
+    status: 'COVERAGE_PARTIAL',
+    records: 5,
+    minRecordCount: 6,
+    decisionGroups: {
+      operationallyCovered: 5,
+      unavailableGroups: [{
+        id: 'corporate-disclosures',
+        unavailableCause: 'upstream_unavailable',
+      }],
+      coverageFailureInvalidReason: 'FAILURE_TIMESTAMP_MISSING',
+    },
+  };
+
+  assert.equal(
+    composeChinaDecisionSignalsStatus(entry, chinaCoverage, Date.parse(chinaCoverage.evaluatedAt)).chinaCoveragePendingUntil,
+    undefined,
+  );
+});
+
+test('china coverage: a summary with no last-healthy clock alarms immediately', () => {
+  const projected = projectChinaCoverageStatus(chinaSummary({
+    lastHealthyAt: undefined,
+  }), false, CHINA_SUMMARY_AT + ONE_MIN_MS);
   assert.equal(projected.status, 'CHINA_DEGRADED');
+  assert.equal(projected.chinaCoveragePendingUntil, undefined);
 });
 
 test('china coverage: UNAVAILABLE is never debounced', () => {
@@ -2437,4 +2823,17 @@ test('classifyKey: a key with no activation marker is untouched by the change', 
     makeCtx({ activationStates: IMD_MARKER_ABSENT }),
   );
   assert.equal(entry.status, 'STALE_SEED');
+});
+
+
+test('China composition can contain degraded coverage when the summary seed is served', () => {
+  const now = CHINA_SUMMARY_AT + 240 * ONE_MIN_MS;
+  const { entry: seed, evidence } = classifyContainment('chinaCoverage', { fetchedAt: now, recordCount: 1 }, now);
+  assert.equal(seed.status, 'OK');
+  for (const summary of [chinaSummary(), chinaSummary({ lastHealthyAt: undefined })]) {
+    const entry = __testing__.composeChinaCoverageStatus(seed, summary, false, now);
+    assert.equal(entry.status, 'CHINA_DEGRADED');
+    assert.equal(entry.chinaCoveragePendingUntil, undefined);
+    assert.equal(isContainedHealthWarning(entry, { ...evidence, status: entry.status }, now), true);
+  }
 });

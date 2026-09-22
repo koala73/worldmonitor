@@ -21,6 +21,13 @@ type Harness = {
   fetchAllFires: () => Promise<{ totalCount: number; regions?: Record<string, unknown[]>; skipped?: boolean }>;
   fetchEarthquakes: () => Promise<Array<{ id: string }>>;
   fetchFlightDelays: () => Promise<Array<{ id: string; updatedAt: Date }>>;
+  fetchDdosAttacks: () => Promise<{
+    protocol: Array<{ label: string }>;
+    vector: Array<{ label: string }>;
+    dateRangeStart: string;
+    dateRangeEnd: string;
+    topTargetLocations: Array<{ countryCode: string }>;
+  }>;
   fetchTrafficAnomalies: (country?: string) => Promise<{ anomalies: Array<{ id: string }>; totalCount: number }>;
   fetchSocialVelocity: () => Promise<{ posts: Array<{ id: string }>; fetchedAt: number }>;
   fetchDiseaseOutbreaks: () => Promise<{ outbreaks: Array<{ id: string }>; fetchedAt: number }>;
@@ -110,6 +117,10 @@ const FLIGHT_DELAY = {
 };
 const SOCIAL_POST = { id: 'post-1', title: 'headline', velocity: 42 };
 const OUTBREAK = { id: 'out-1', disease: 'Cholera', country: 'YY', cases: 10 };
+const DDOS_ATTACK = {
+  protocol: [{ label: 'TCP', percentage: 80 }], vector: [],
+  dateRangeStart: '2026-09-01T00:00:00Z', dateRangeEnd: '2026-09-08T00:00:00Z', topTargetLocations: [],
+};
 
 function bootstrapStub(
   payload: Record<string, unknown>,
@@ -186,6 +197,7 @@ before(async () => {
         "export { fetchAllFires } from './src/services/wildfires/index.ts';",
         "export { fetchEarthquakes } from './src/services/earthquakes.ts';",
         "export { fetchFlightDelays } from './src/services/aviation/index.ts';",
+        "export { fetchDdosAttacks } from './src/services/infrastructure/index.ts';",
         "export { fetchTrafficAnomalies } from './src/services/infrastructure/index.ts';",
         "export { fetchSocialVelocity } from './src/services/social-velocity.ts';",
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
@@ -410,6 +422,61 @@ describe('bootstrap hydration reuse (#7048)', () => {
     );
   });
 
+  it('malformed live DDoS and traffic responses use their fallbacks', async () => {
+    const requests = bootstrapStub({}, (url) => {
+      if (url.includes('list-internet-ddos-attacks')) {
+        return { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '', topTargetLocations: null };
+      }
+      if (url.includes('list-internet-traffic-anomalies')) return { anomalies: [], totalCount: '0' };
+      return { anomalies: [], totalCount: 0 };
+    });
+    await harness.fetchBootstrapData();
+
+    const [firstDdos, firstTraffic] = await Promise.all([
+      harness.fetchDdosAttacks(),
+      harness.fetchTrafficAnomalies(),
+    ]);
+
+    assert.deepEqual(firstDdos, { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '', topTargetLocations: [] });
+    assert.deepEqual(firstTraffic, { anomalies: [], totalCount: 0 });
+    assert.equal(rpcUrlCount(requests), 2, 'each malformed live response must reach its runtime guard');
+  });
+
+  it('malformed DDoS and traffic hydration falls through instead of warming the global cache', async () => {
+    const requests = bootstrapStub({
+      ddosAttacks: { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '' },
+      trafficAnomalies: { anomalies: [], totalCount: '0' },
+    }, (url) => {
+      if (url.includes('list-internet-ddos-attacks')) return DDOS_ATTACK;
+      if (url.includes('list-internet-traffic-anomalies')) return { anomalies: [{ id: 'live-traffic' }], totalCount: 1 };
+      return { anomalies: [], totalCount: 0 };
+    });
+    await harness.fetchBootstrapData();
+
+    const [ddos, traffic] = await Promise.all([
+      harness.fetchDdosAttacks(),
+      harness.fetchTrafficAnomalies(),
+    ]);
+
+    assert.equal(ddos.protocol[0]?.label, 'TCP');
+    assert.equal(traffic.anomalies[0]?.id, 'live-traffic');
+    assert.equal(rpcUrlCount(requests), 2, 'each malformed global hydration must use its live RPC fallback');
+  });
+
+  it('DDoS: authoritative empty hydration replaces stale global cache data', async () => {
+    const requests = bootstrapStub({
+      ddosAttacks: { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '', topTargetLocations: [] },
+    });
+    await harness.fetchBootstrapData();
+
+    const first = await harness.fetchDdosAttacks();
+    const second = await harness.fetchDdosAttacks();
+
+    assert.deepEqual(first, { protocol: [], vector: [], dateRangeStart: '', dateRangeEnd: '', topTargetLocations: [] });
+    assert.deepEqual(second, first, 'the empty global DDoS snapshot replaces the previous cached response');
+    assert.equal(rpcUrlCount(requests), 0, 'valid empty DDoS hydration must stay in the breaker cache');
+  });
+
   it('traffic anomalies: global hydration never satisfies a country-specific cache key', async () => {
     const requests = bootstrapStub({
       trafficAnomalies: { anomalies: [{ id: 'global-1' }], totalCount: 1 },
@@ -424,6 +491,23 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 1, 'the filtered read must use its own RPC/cache key');
   });
 
+  it('traffic anomalies: authoritative empty hydration and country results stay cached', async () => {
+    const requests = bootstrapStub({
+      trafficAnomalies: { anomalies: [], totalCount: 0 },
+    });
+    await harness.fetchBootstrapData();
+
+    const globalFirst = await harness.fetchTrafficAnomalies();
+    const globalSecond = await harness.fetchTrafficAnomalies();
+    assert.deepEqual(globalFirst, { anomalies: [], totalCount: 0 });
+    assert.deepEqual(globalSecond, globalFirst, 'the empty global snapshot replaces the previous cached response');
+    assert.equal(rpcUrlCount(requests), 0, 'valid empty global traffic hydration must stay in the breaker cache');
+
+    await harness.fetchTrafficAnomalies('CA');
+    await harness.fetchTrafficAnomalies('CA');
+    assert.equal(rpcUrlCount(requests), 1, 'the confirmed empty country result stays cached after its first RPC');
+  });
+
   it('socialVelocity (no breaker): the hydration handoff answers recurring reads', async () => {
     const requests = bootstrapStub({ socialVelocity: { posts: [SOCIAL_POST], fetchedAt: 1 } });
     await harness.fetchBootstrapData();
@@ -433,6 +517,24 @@ describe('bootstrap hydration reuse (#7048)', () => {
 
     assert.equal(first.posts.length, 1);
     assert.deepEqual(second, first);
+    assert.equal(rpcUrlCount(requests), 0);
+  });
+
+  it('diseaseOutbreaks retries unavailable hydration and retains confirmed-empty RPC data', async () => {
+    const payload = { outbreaks: [], fetchedAt: Date.now(), alertLevelMethodologyVersion: 'v1' };
+    const requests = bootstrapStub({ diseaseOutbreaks: { outbreaks: [], fetchedAt: 0 } }, () => payload);
+    await harness.fetchBootstrapData();
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.equal(rpcUrlCount(requests), 1);
+  });
+
+  it('diseaseOutbreaks retains confirmed-empty hydration without an RPC', async () => {
+    const payload = { outbreaks: [], fetchedAt: Date.now(), alertLevelMethodologyVersion: 'v1' };
+    const requests = bootstrapStub({ diseaseOutbreaks: payload });
+    await harness.fetchBootstrapData();
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
+    assert.deepEqual(await harness.fetchDiseaseOutbreaks(), payload);
     assert.equal(rpcUrlCount(requests), 0);
   });
 

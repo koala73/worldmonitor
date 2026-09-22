@@ -136,9 +136,6 @@ const stubSources: Record<string, string> = {
       fn({ addBreadcrumb: () => {}, captureMessage: () => {}, captureException: () => {} });
     }
   `,
-  'dodopayments-checkout': `
-    export const DodoPayments = { Initialize() {}, Checkout: { isOpen: () => false, close: () => {}, open() {} } };
-  `,
   './billing': `
     export const openBillingPortal = async () => {};
     export const prereserveBillingPortalTab = () => null;
@@ -186,6 +183,13 @@ const stubSources: Record<string, string> = {
   `,
   './checkout-sentry-policy': `
     export const shouldSkipSentryForAction = () => false;
+    export const CHECKOUT_REPORT_KIND = 'checkout_request_failed';
+    export const buildCheckoutReportTags = (input) => ({
+      component: 'dodo-checkout',
+      action: input.action,
+      code: input.code,
+      kind: CHECKOUT_REPORT_KIND,
+    });
   `,
   './entitlements': `
     export const isEntitled = () => false;
@@ -215,11 +219,6 @@ const stubSources: Record<string, string> = {
   `,
   './checkout-plan-names': `
     export const resolvePlanDisplayName = () => 'Pro Monthly';
-  `,
-  './entitlement-watchdog': `
-    export function createEntitlementWatchdog() {
-      return { start: () => {}, stop: () => {}, isActive: () => true };
-    }
   `,
 };
 

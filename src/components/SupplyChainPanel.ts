@@ -21,11 +21,32 @@ import { trackGateHit } from '@/services/analytics';
 import { runScenario, getScenarioStatus } from '@/services/scenario';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
+import { ISO2_TO_ISO3 } from '@/utils/country-codes';
+import COUNTRY_PORT_CLUSTERS from '../../scripts/shared/country-port-clusters.json';
 
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
 const FLOW_SUPPORTED_IDS = new Set(['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']);
+
+// Scenario country options, built once rather than per chokepoint card per render.
+// The exposure seeder writes one key per country in COUNTRY_PORT_CLUSTERS, so codes
+// outside it can never return a result — offer them disabled rather than letting a user
+// pick a normal-looking country and get an empty simulation back with no explanation.
+const SEEDED_SCENARIO_COUNTRIES = new Set(
+  Object.keys(COUNTRY_PORT_CLUSTERS).filter(k => k !== '_comment' && k.length === 2),
+);
+
+const SCENARIO_COUNTRY_OPTIONS: Array<{ iso2: string; label: string; seeded: boolean }> = (() => {
+  const names = new Intl.DisplayNames(['en'], { type: 'region' });
+  return Object.keys(ISO2_TO_ISO3)
+    .map(iso2 => {
+      const seeded = SEEDED_SCENARIO_COUNTRIES.has(iso2);
+      const name = names.of(iso2) ?? iso2;
+      return { iso2, label: seeded ? name : `${name} (not seeded)`, seeded };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+})();
 
 // Today's transits come from the relay's in-memory 24h AIS window, which is
 // empty far more often than it is zero-trafficked, and the relay cannot tell
@@ -61,11 +82,39 @@ export class SupplyChainPanel extends Panel {
   private onDismissScenario: (() => void) | null = null;
   private onScenarioActivate: ((scenarioId: string, result: ScenarioResult) => void) | null = null;
   private activeScenarioState: { scenarioId: string; result: ScenarioResult } | null = null;
+  private scenarioControls = new Map<string, { iso2: string; disruptionPct: number }>();
+  /**
+   * Per-scenario run state. Part of the RENDER MODEL, not the DOM: the button's
+   * disabled/label is derived from this in renderChokepoints(), so no code path mutates
+   * the button node directly. Absent means idle.
+   */
+  private scenarioRunState = new Map<string, 'running' | 'idle' | 'error'>();
+  /** When true, the next render() commits via setSafeContentImmediate (user gesture). */
+  private pendingImmediateRender = false;
   private scenarioPollController: AbortController | null = null;
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
     bindActivationKeys(this.content, '.trade-restriction-header');
+    // `input` commits every keystroke; `change` additionally invalidates the run.
+    // A number input fires `change` only on blur/Enter, so without the `input` half a
+    // typed-but-uncommitted severity is silently reverted by any data-driven re-render
+    // (the hourly supply-chain refresh, or showScenarioSummary landing mid-poll).
+    this.content.addEventListener('input', (e) => {
+      this.captureScenarioControls(e.target as HTMLElement);
+    });
+    this.content.addEventListener('change', (e) => {
+      const trigger = this.captureScenarioControls(e.target as HTMLElement);
+      if (!trigger) return;
+      // Changing a control invalidates any in-flight run. Clear the run state as well as
+      // aborting, so the button returns to "Simulate Closure" now rather than sitting at
+      // "Computing…" until the abandoned poll happens to settle. The abandoned run's own
+      // exit path is ownership-guarded, so it cannot clobber a newer run's button.
+      this.scenarioPollController?.abort();
+      const scenarioId = trigger.dataset.scenarioId;
+      if (scenarioId) this.scenarioRunState.delete(scenarioId);
+      this.renderFromUser();
+    });
     this.content.addEventListener('click', (e) => {
       const stageBtn = (e.target as HTMLElement).closest('[data-mineral-stage]') as HTMLElement | null;
       if (stageBtn?.dataset.mineralStage === 'mine' || stageBtn?.dataset.mineralStage === 'refinery') {
@@ -89,7 +138,7 @@ export class SupplyChainPanel extends Panel {
       const scenarioTrigger = (e.target as HTMLElement).closest('.sc-scenario-trigger') as HTMLElement | null;
       if (scenarioTrigger) {
         e.stopPropagation();
-        const btn = scenarioTrigger.querySelector<HTMLButtonElement>('.sc-scenario-btn');
+        const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.sc-scenario-btn');
         if (btn && !btn.disabled) void this.runScenario(scenarioTrigger, btn);
         return;
       }
@@ -102,6 +151,34 @@ export class SupplyChainPanel extends Panel {
         this.render();
       }
     });
+  }
+
+  /**
+   * Commit the country/severity controls for whichever scenario trigger `target` sits in.
+   * Returns the trigger element, or null when the event came from elsewhere in the panel.
+   */
+  private captureScenarioControls(target: HTMLElement | null): HTMLElement | null {
+    const trigger = target?.closest<HTMLElement>('.sc-scenario-trigger') ?? null;
+    if (!trigger) return null;
+    const scenarioId = trigger.dataset.scenarioId;
+    if (!scenarioId) return null;
+    const iso2 = trigger.querySelector<HTMLSelectElement>('.sc-scenario-country-select')?.value ?? '';
+    const severityInput = trigger.querySelector<HTMLInputElement>('.sc-scenario-severity');
+    const template = SCENARIO_TEMPLATES.find(tmpl => tmpl.id === scenarioId);
+    // An empty box means "no override" — fall back to the template default rather than
+    // persisting it as a deliberate 0% closure, which is a meaningfully different run.
+    const raw = severityInput?.value ?? '';
+    const disruptionPct = raw === '' ? (template?.disruptionPct ?? 0) : Number(raw);
+    if (!Number.isFinite(disruptionPct)) return trigger;
+    this.scenarioControls.set(scenarioId, { iso2, disruptionPct });
+    return trigger;
+  }
+
+  /** Record run state and repaint immediately — this always follows a user action. */
+  private setScenarioRunState(scenarioId: string, state: 'running' | 'idle' | 'error'): void {
+    if (state === 'idle') this.scenarioRunState.delete(scenarioId);
+    else this.scenarioRunState.set(scenarioId, state);
+    this.renderFromUser();
   }
 
   private restoreChokepointHeaderFocus(): void {
@@ -155,7 +232,19 @@ export class SupplyChainPanel extends Panel {
     this.render();
   }
 
+  /** User-gesture repaint: bypass Panel's content coalesce so controls update same-tick. */
+  private renderFromUser(): void {
+    this.pendingImmediateRender = true;
+    this.render();
+  }
+
+  /**
+   * Paint the panel. Scenario control gestures use renderFromUser() so the button state
+   * commits in the same tick instead of waiting on Panel's 150 ms content coalesce.
+   */
   private render(): void {
+    const immediate = this.pendingImmediateRender;
+    this.pendingImmediateRender = false;
     this.clearTransitChart();
 
     const tabsHtml = `
@@ -208,13 +297,35 @@ export class SupplyChainPanel extends Panel {
       case 'stress': contentHtml = this.renderStress(); break;
     }
 
-    this.setSafeContent(unsafeRawHtml(`
+    const html = unsafeRawHtml(`
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
-    `, 'legacy Panel.setContent() migration'), () => {
+    `, 'legacy Panel.setContent() migration');
+    const afterUpdate = (): void => {
       this.restoreChokepointHeaderFocus();
-    });
+      for (const trigger of this.content.querySelectorAll<HTMLElement>('.sc-scenario-trigger')) {
+        const controls = this.scenarioControls.get(trigger.dataset.scenarioId!);
+        const select = trigger.querySelector<HTMLSelectElement>('.sc-scenario-country-select');
+        if (select) select.value = controls?.iso2 ?? '';
+        // The severity input renders its value from an attribute, which a browser may keep
+        // from the previous DOM; restore it explicitly alongside the select.
+        const severityInput = trigger.querySelector<HTMLInputElement>('.sc-scenario-severity');
+        if (severityInput && controls) severityInput.value = String(controls.disruptionPct);
+      }
+      // Re-insert the scenario banner after setContent replaces inner content.
+      // Use the private renderScenarioBanner() — NOT showScenarioSummary() — so this
+      // render() call doesn't recurse. showScenarioSummary() is the public activate
+      // entrypoint that triggers render(); the banner DOM itself is built here from
+      // activeScenarioState. Running it inside the setContent callback (rather than
+      // after) guarantees it lands on the freshly committed DOM.
+      if (this.activeScenarioState) this.renderScenarioBanner();
+    };
+    if (immediate) {
+      this.setSafeContentImmediate(html, afterUpdate);
+    } else {
+      this.setSafeContent(html, afterUpdate);
+    }
 
     if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
       const expandedCpName = this.expandedChokepoint;
@@ -295,15 +406,6 @@ export class SupplyChainPanel extends Panel {
         if (this.chartObserver) { this.chartObserver.disconnect(); this.chartObserver = null; }
         this.chartMountTimer = null;
       }, 220);
-    }
-
-    // Re-insert scenario banner after setContent replaces inner content.
-    // Use the private renderScenarioBanner() — NOT showScenarioSummary() —
-    // so this render() call doesn't recurse. showScenarioSummary() is the
-    // public activate entrypoint that triggers render(); the banner DOM
-    // itself is built here from activeScenarioState.
-    if (this.activeScenarioState) {
-      this.renderScenarioBanner();
     }
   }
 
@@ -419,9 +521,6 @@ export class SupplyChainPanel extends Panel {
           : (ts?.riskLevel === 'elevated' || ts?.riskLevel === 'moderate') ? 'sc-disrupt-yellow' : 'sc-disrupt-green';
 
         const expanded = this.expandedChokepoint === cp.name;
-        const actionRow = expanded && ts?.riskReportAction
-          ? `<div class="sc-routing-advisory">${escapeHtml(ts.riskReportAction)}</div>`
-          : '';
         // Render the chart placeholder only when expanded AND upstream reported
         // data available for this chokepoint. If dataAvailable === false, the
         // per-id history key would also be zero (we skip the lazy-fetch).
@@ -463,21 +562,45 @@ export class SupplyChainPanel extends Panel {
           // so the mutation hit a detached node and the visible button
           // remained enabled + "Simulate Closure" — letting users queue
           // duplicate runs of an already-active scenario.
-          const isActiveScenario = this.activeScenarioState?.scenarioId === template.id;
+          const controls = this.scenarioControls.get(template.id) ?? { iso2: '', disruptionPct: template.disruptionPct };
+          const active = this.activeScenarioState;
+          const isActiveScenario = active?.scenarioId === template.id
+            && (active.result.scopedIso2 ?? '') === controls.iso2
+            && active.result.template?.disruptionPct === controls.disruptionPct;
+          // Button state is derived entirely from the model (run state + active scenario),
+          // so a render can always repair it. Nothing mutates the button node directly.
+          const runState = this.scenarioRunState.get(template.id);
+          const isRunning = runState === 'running';
           const btnClass = [
             'sc-scenario-btn',
             !isPro ? 'sc-scenario-btn--gated' : '',
             isActiveScenario ? 'sc-scenario-btn--active' : '',
           ].filter(Boolean).join(' ');
-          const btnLabel = isActiveScenario ? 'Active' : 'Simulate Closure';
+          const btnLabel = isRunning ? 'Computing\u2026'
+            : isActiveScenario ? 'Active'
+            : runState === 'error' ? 'Error \u2014 retry'
+            : 'Simulate Closure';
           const btnAttrs = [
             !isPro ? 'data-gated="1"' : '',
-            isActiveScenario ? 'disabled' : '',
+            isActiveScenario || isRunning ? 'disabled' : '',
           ].filter(Boolean).join(' ');
           return `<div class="sc-scenario-trigger" data-scenario-id="${escapeHtml(template.id)}" data-chokepoint-id="${escapeHtml(cp.id)}">
+            <div class="sc-scenario-section-label">Scenario settings</div>
+            <div class="sc-scenario-controls">
+              <label class="sc-scenario-control sc-scenario-control--country">Country
+                <select class="sc-scenario-country-select" aria-label="Scenario country">
+                  <option value="">All seeded countries</option>
+                  ${SCENARIO_COUNTRY_OPTIONS.map(c => `<option value="${c.iso2}"${c.seeded ? '' : ' disabled'}>${escapeHtml(c.label)}</option>`).join('')}
+                </select>
+              </label>
+              <label class="sc-scenario-control">Closure severity (%)
+                <input class="sc-scenario-severity" type="number" min="0" max="100" step="1" value="${controls.disruptionPct}" aria-label="Closure severity (%)">
+              </label>
+            </div>
+            <div class="sc-scenario-actions"><p class="sc-scenario-hint">${template.durationDays} days is descriptive only. Coverage is checked when the run completes.</p>
             <button class="${btnClass}" ${btnAttrs} aria-label="Simulate ${escapeHtml(template.name)}">
               ${btnLabel}
-            </button>
+            </button></div>
           </div>`;
         })() : '';
 
@@ -510,7 +633,7 @@ export class SupplyChainPanel extends Panel {
             <span class="trade-status ${statusClass}">${escapeHtml(cp.status)}</span>
           </div>
           <div class="trade-restriction-body">
-            ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
+            ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="white-space:normal;background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
               <span style="color:#fca5a5;font-weight:600">\u26A0 Projected under scenario: ${scenarioResult.template.disruptionPct}% closure for ${scenarioResult.template.durationDays} days${scenarioResult.template.costShockMultiplier > 1 ? ` (+${Math.round((scenarioResult.template.costShockMultiplier - 1) * 100)}% cost)` : ''}</span>
             </div>` : ''}
             <div class="sc-metric-row"${sourceMetrics || cp.directions?.length ? '' : ' hidden'}>
@@ -543,7 +666,6 @@ export class SupplyChainPanel extends Panel {
               </div>` : ''}
             ${cp.description ? `<div class="trade-description">${escapeHtml(cp.description)}</div>` : ''}
             <div class="trade-affected">${cp.affectedRoutes.slice(0, 3).map(r => escapeHtml(r)).join(', ')}</div>
-            ${actionRow}
             ${chartPlaceholder}
             ${bypassSection}
             ${scenarioSection}
@@ -890,9 +1012,15 @@ export class SupplyChainPanel extends Panel {
     const top5 = result.topImpactCountries.slice(0, 5);
     // impactPct is already a 0–100 integer from the scenario-worker
     // (scripts/scenario-worker.mjs: `Math.min(Math.round((totalImpact / maxImpact) * 100), 100)`).
-    const countriesHtml = top5.map(c =>
-      `<span class="sc-scenario-country">${escapeHtml(c.iso2)} <em>${c.impactPct.toFixed(0)}%</em></span>`
-    ).join(' \u00B7 ');
+    // A country whose requested evidence was only partly available carries a lower-bound
+    // subtotal, not its impact \u2014 mark it inline so the number is not read as low exposure.
+    const countriesHtml = top5.map(c => {
+      const partial = c.partialEvidence === true;
+      const suffix = partial
+        ? ` <span class="sc-scenario-partial" title="${escapeHtml(`Only ${c.evaluatedRecords ?? 0} of ${c.requestedRecords ?? 0} requested country/sector records were available; this is a lower bound, not low exposure.`)}">(partial evidence)</span>`
+        : '';
+      return `<div class="sc-scenario-country"><span class="sc-scenario-country-code">${escapeHtml(c.iso2)}</span><div><strong>${partial ? '\u2265' : ''}${c.totalImpact.toFixed(2)} score units</strong><span class="sc-scenario-relative">${c.impactPct.toFixed(0)}% relative ${suffix}</span></div></div>`;
+    }).join('');
     const banner = document.createElement('div');
     banner.className = 'sc-scenario-banner';
     const scenarioName = SCENARIO_TEMPLATES.find(tmpl => tmpl.id === scenarioId)?.name ?? scenarioId.replace(/-/g, ' ');
@@ -903,29 +1031,67 @@ export class SupplyChainPanel extends Panel {
     // (durationDays, disruptionPct, costShockMultiplier) come from the scenario
     // worker's result.template — optional field, defaults hide cleanly if absent.
     const tpl = result.template;
-    const durationStr = tpl ? `${tpl.durationDays}d` : null;
-    const closurePctStr = tpl ? `${tpl.disruptionPct}% closure` : null;
-    const costBumpPct = tpl ? Math.round((tpl.costShockMultiplier - 1) * 100) : null;
-    const costStr = costBumpPct != null && costBumpPct > 0 ? `+${costBumpPct}% cost` : null;
-    const paramsHtml = [durationStr, costStr].filter(Boolean).map(s =>
-      `<span class="sc-scenario-param">${escapeHtml(s!)}</span>`
-    ).join(' \u00B7 ');
+    const paramsHtml = tpl ? `<dl class="sc-scenario-metrics">
+      <div><dt>Closure</dt><dd aria-label="${tpl.disruptionPct}% closure">${tpl.disruptionPct}%<small>${result.affectedChokepointIds.length} chokepoint${result.affectedChokepointIds.length === 1 ? '' : 's'}</small></dd></div>
+      <div><dt>Duration</dt><dd>${tpl.durationDays} days<small>descriptive only</small></dd></div>
+      <div><dt>Cost multiplier</dt><dd>${tpl.costShockMultiplier.toFixed(2)}×<small>modeled freight cost</small></dd></div>
+    </dl>` : '';
+    const mapSummary = tpl?.disruptionPct === 0
+      ? 'No physical route disruption is highlighted.'
+      : 'Map highlights disrupted routes.';
 
-    const taglineParts = [durationStr, closurePctStr, costStr].filter(Boolean).join(' / ');
-    const taglineHtml = taglineParts
-      ? `<div class="sc-scenario-tagline">Simulating ${escapeHtml(taglineParts)} on ${result.affectedChokepointIds.length} chokepoint${result.affectedChokepointIds.length === 1 ? '' : 's'}. Chokepoint card below shows projected score; map highlights disrupted routes.</div>`
-      : '';
+    const coverage = result.coverage;
+    const records = coverage?.records ?? [];
+    const count = (state: string) => records.filter(r => r.state === state).length;
+    // "could not be read" rather than naming the producer: this branch also covers a
+    // manifest the status handler rejected, which is not the seeder's fault.
+    const coverageKnown = coverage && coverage.status !== 'unknown';
+    const coverageText = !coverageKnown
+      ? 'Unknown coverage: the country/sector manifest could not be read for this run. No broad exposure conclusion is supported.'
+      : `${coverage.status === 'complete' ? 'Complete within seeded scope' : 'Partial coverage'}: ${count('evaluated')}/${records.length} country/sector records evaluated`;
+    const coverageCounts = [
+      [count('missing'), 'missing'], [count('malformed'), 'malformed'],
+      [count('incomplete_routes'), 'incomplete routes'], [count('not_seeded'), 'not seeded'],
+      [records.filter(r => r.basis === 'flow_weighted').length, 'flow-weighted'],
+      [records.filter(r => r.basis === 'country_route_fallback').length, 'geographic fallback'],
+      [records.filter(r => r.rawImpact === 0).length, 'valid zero impacts'],
+    ] as const;
+    const coverageCountsHtml = coverageKnown ? coverageCounts.filter(([total]) => total > 0)
+      .map(([total, label]) => `<span>${total} ${label}</span>`).join('') : '';
 
     setTrustedHtml(banner, trustedHtml([
-      `<div class="sc-scenario-top">`,
-      `<span class="sc-scenario-icon">\u26A0</span>`,
-      `<span class="sc-scenario-name">${escapeHtml(scenarioName)}</span>`,
-      paramsHtml ? `<span class="sc-scenario-params">${paramsHtml}</span>` : '',
-      `<span class="sc-scenario-countries">${countriesHtml}</span>`,
-      `<button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button>`,
+      `<div class="sc-scenario-top"><div class="sc-scenario-heading">`,
+      `<span class="sc-scenario-section-label">Scenario result</span>`,
+      `<h3 class="sc-scenario-name">${escapeHtml(scenarioName)}</h3>`,
+      `<span class="sc-scenario-scope">Country scope: ${escapeHtml(result.scopedIso2 || 'All seeded countries')}</span></div>`,
+      `<button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button></div>`,
+      paramsHtml,
+      countriesHtml ? `<div class="sc-scenario-countries">${countriesHtml}</div>` : '',
+      `<div class="sc-scenario-coverage-block"><span class="sc-scenario-section-label">Evidence coverage</span>`,
+      `<p class="sc-scenario-coverage">${escapeHtml(coverageText)}</p>`,
+      coverageCountsHtml ? `<div class="sc-scenario-coverage-counts">${coverageCountsHtml}</div>` : '',
       `</div>`,
-      taglineHtml,
-    ].join(''), "legacy direct innerHTML migration"));
+      `<details class="sc-scenario-evidence"><summary>Country/sector evidence <span>${records.length} records</span></summary><ul></ul></details>`,
+      `<div class="sc-scenario-footer"><p class="sc-scenario-hint">Raw impact is a modeled relative score, not currency or lost trade. Duration does not change the score. ${mapSummary}</p>`,
+      `<button class="sc-scenario-export">Download scenario JSON</button></div>`,
+    ].join(''), "scenario result presentation"));
+    const evidenceDetails = banner.querySelector('details')!;
+    evidenceDetails.addEventListener('toggle', () => {
+      const list = evidenceDetails.querySelector('ul')!;
+      if (evidenceDetails.open && !list.childElementCount) {
+        const details = records.map(r => `<li>${escapeHtml(r.iso2)} / HS ${escapeHtml(r.hs2)}: ${escapeHtml(r.state.replace(/_/g, ' '))}${r.basis ? `, ${r.basis === 'flow_weighted' ? 'flow-weighted' : 'geographic fallback'}` : ''}${r.rawImpact !== undefined ? `, ${r.rawImpact.toFixed(2)} score units` : ''}. Cache date: ${escapeHtml(r.fetchedAt || 'unknown')}; trade observation date: unknown.</li>`).join('');
+        setTrustedHtml(list, trustedHtml(details, 'scenario evidence requested by user'));
+      }
+    });
+    banner.querySelector('.sc-scenario-export')!.addEventListener('click', () => {
+      const exported = { scenarioId, result, units: 'relative score units, not currency or lost trade', durationBasis: 'descriptive only', observationDate: 'unknown', source: 'HS2 chokepoint exposure model; flow_weighted uses recorded Comtrade shares with modeled routes; country_route_fallback uses geography' };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `scenario-${scenarioId}-${result.scopedIso2 || 'all'}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
     banner.querySelector('.sc-scenario-dismiss')!.addEventListener('click', () => this.onDismissScenario?.());
     this.content.prepend(banner);
   }
@@ -955,13 +1121,25 @@ export class SupplyChainPanel extends Panel {
       trackGateHit('scenario-engine');
       return;
     }
-    this.scenarioPollController?.abort();
-    this.scenarioPollController = new AbortController();
-    const { signal } = this.scenarioPollController;
-
+    // Read and validate BEFORE touching the shared controller: bailing on an invalid
+    // severity must not cancel a scenario that is already running.
     const scenarioId = trigger.dataset.scenarioId!;
-    btn.disabled = true;
-    btn.textContent = 'Computing\u2026';
+    const severityInput = trigger.querySelector<HTMLInputElement>('.sc-scenario-severity')!;
+    if (!severityInput.value || !severityInput.reportValidity()) return;
+    const iso2 = trigger.querySelector<HTMLSelectElement>('.sc-scenario-country-select')!.value;
+    const disruptionPct = Number(severityInput.value);
+
+    this.scenarioPollController?.abort();
+    for (const [id, state] of this.scenarioRunState) {
+      if (state === 'running') this.scenarioRunState.delete(id);
+    }
+    const controller = new AbortController();
+    this.scenarioPollController = controller;
+    const { signal } = controller;
+    // In-flight state goes through the render model, never onto the DOM node. An
+    // imperative `btn.disabled = true` desyncs Panel's committed-HTML snapshot, and the
+    // next render that produces identical HTML short-circuits and can never repair it.
+    this.setScenarioRunState(scenarioId, 'running');
 
     // Guarantee the button never stays stuck at "Computing…" regardless of
     // exit path. Prior logic early-returned on `signal.aborted` and
@@ -969,20 +1147,19 @@ export class SupplyChainPanel extends Panel {
     // swallowed AbortError in the catch block. When the scenario-worker is
     // down (no result key written in 24h), the polling loop DID fire a
     // timeout but the abort paths above it leaked the stuck state.
-    const resetButton = (text: string) => {
-      // Only touch the button if it's still the same element in the DOM.
-      // A re-render may have replaced it — updating the detached node is
-      // invisible and harmless, but we skip to avoid confusion.
-      if (btn.isConnected) {
-        btn.textContent = text;
-        btn.disabled = false;
-      }
+    // Ownership check: a cancelled run must not re-enable a button that a NEWER run
+    // now owns. The poll loop's 1s sleep is not abort-aware, so a second run can start
+    // inside that window; without this guard the loser's exit path would relabel the
+    // winner's button back to "Simulate Closure" and let the user queue a duplicate run.
+    const resetButton = (label: 'idle' | 'error') => {
+      if (this.scenarioPollController !== controller) return;
+      this.setScenarioRunState(scenarioId, label);
     };
     try {
       // Hard timeout on POST /run so a hanging edge function can't leave
       // the button in "Computing…" indefinitely.
       const runSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
-      const runResp = await runScenario({ scenarioId, iso2: '' }, { signal: runSignal });
+      const runResp = await runScenario({ scenarioId, iso2, disruptionPct }, { signal: runSignal });
       const jobId = runResp.jobId;
       let result: ScenarioResult | null = null;
       // 60 × 1s = 60s max (worker typically completes in <1s). 1s poll keeps
@@ -990,7 +1167,7 @@ export class SupplyChainPanel extends Panel {
       // immediately (no sleep) in case the worker was already running on a
       // previous job and blocked here only because of network round-trip.
       for (let i = 0; i < 60; i++) {
-        if (signal.aborted) { resetButton('Simulate Closure'); return; }
+        if (signal.aborted) { resetButton('idle'); return; }
         if (!this.content.isConnected) return; // panel gone — nothing to update
         if (i > 0) await new Promise(r => setTimeout(r, 1000));
         const status = await getScenarioStatus(jobId, { signal });
@@ -1003,7 +1180,7 @@ export class SupplyChainPanel extends Panel {
         if (status.status === 'failed') throw new Error('Scenario failed');
       }
       if (!result) throw new Error('Timeout — scenario worker may be down');
-      if (signal.aborted) { resetButton('Simulate Closure'); return; }
+      if (signal.aborted) { resetButton('idle'); return; }
       if (!this.content.isConnected) return;
       // After this callback fires, showScenarioSummary() → render() will rebuild
       // the scenario-trigger DOM with the button already in its "Active" +
@@ -1011,15 +1188,16 @@ export class SupplyChainPanel extends Panel {
       // Do NOT touch the captured btn reference here — it's about to be detached
       // by render()'s setContent(), and any imperative update would no-op
       // silently while the fresh button shows the wrong state.
+      this.scenarioRunState.delete(scenarioId);
       this.onScenarioActivate?.(scenarioId, result);
     } catch (err) {
       // Abort from a new click = user-triggered retry, no error banner needed.
       if (err instanceof Error && err.name === 'AbortError') {
-        resetButton('Simulate Closure');
+        resetButton('idle');
         return;
       }
       console.error('[scenario] run failed:', err);
-      resetButton('Error \u2014 retry');
+      resetButton('error');
     }
   }
 }

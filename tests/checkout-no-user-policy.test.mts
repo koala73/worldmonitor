@@ -227,11 +227,10 @@ describe('checkout.ts checkout-state write sites (count pins)', () => {
       3,
       'a new attempt write site appeared — confirm it cannot fire on the redirect path (#5380)',
     );
-    // Direct sessionStorage writes: the post-checkout flag and the pending
-    // intent serializer. A third means someone bypassed both helpers.
+    // Only the pending intent serializer writes directly to sessionStorage.
     assert.equal(
       countOf('sessionStorage.setItem('),
-      2,
+      1,
       'a direct sessionStorage write bypasses the persistence helpers — see #5380 bypass (b)',
     );
   });

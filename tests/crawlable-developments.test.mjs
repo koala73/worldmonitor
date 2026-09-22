@@ -242,6 +242,64 @@ describe('developmentsHasDatedItem', () => {
 });
 
 describe('normalizeFrozenDevelopments', () => {
+  it('withholds invented assets and citations to the wrong source (#7865)', () => {
+    const sources = [
+      { title: 'Israel resumes talks', source: 'Reuters', url: 'https://reuters.com/a' },
+      { title: 'Tamar resumes production', source: 'BBC', url: 'https://bbc.com/b' },
+    ];
+    for (const text of [
+      'Tamar faces disruption [1].',
+      'Tamar faces disruption [1][2].',
+      'Israel resumes talks [1]. Leviathan faces disruption [1].',
+      'Israel resumes talks [1].\n• Cerrejón faces disruption.',
+      'Caño Limón-Coveñas faces disruption [1].',
+      'El Guri faces disruption [1].',
+      'Électricité de France faces disruption [1].',
+      'The iPhone faces disruption [1].',
+      'Ørsted faces disruption [1].',
+      'Łódź faces disruption [1].',
+      'ΔΕΗ faces disruption [1].',
+      'The øBrand faces disruption [1].',
+      '3M faces disruption [1].',
+      '7-Eleven faces disruption [1].',
+      'Israel resumes talks [1].\nOutlook for Tamar deteriorates [1].\nIsrael resumes talks [1].',
+      'Israel resumes talks [1].\nOutlook for Tamar deteriorates.\nIsrael resumes talks [1].',
+      'Israel resumes talks [1].\nWHAT THIS MEANS FOR ISRAEL: Tamar closed [1].',
+    ]) {
+      const row = { headlines: sources, brief: { text, sources }, timeline: [], briefSkipped: null };
+      const out = normalizeFrozenDevelopments(row);
+      assert.equal(out.brief, null, text);
+      assert.equal(out.briefSkipped, 'unsupported-citation');
+      assert.deepEqual(out.headlines, sources);
+      assert.equal(row.brief.text, text, 'the historical input is unchanged');
+      assert.deepEqual(normalizeFrozenDevelopments(out), out, 'withholding is idempotent');
+    }
+  });
+
+  it('retains supported entities and the original source indexes', () => {
+    const sources = [
+      { title: 'Israel resumes talks', source: 'Reuters', url: 'https://reuters.com/a' },
+      { title: 'Tamar resumes production', source: 'BBC', url: 'https://bbc.com/b' },
+    ];
+    const text = 'SITUATION NOW\nIsrael resumes talks [1].\nWHAT THIS MEANS FOR ISRAEL\n• Tamar faces disruption [2].';
+    const out = normalizeFrozenDevelopments({ brief: { text, sources }, briefSkipped: null });
+    assert.equal(out.brief.text, text);
+    assert.deepEqual(out.brief.sources, sources);
+    assert.equal(out.briefSkipped, null);
+  });
+
+  it('retains Unicode names when the cited title supports them', () => {
+    for (const name of ['Ørsted', 'Łódź', 'ΔΕΗ', 'øBrand', '3M', '7-Eleven']) {
+      const sources = [
+        { title: `${name} resumes operations`, source: 'Reuters', url: 'https://reuters.com/a' },
+        { title: 'Talks resume', source: 'BBC', url: 'https://bbc.com/b' },
+      ];
+      const text = `${name} faces disruption [1].`;
+      const out = normalizeFrozenDevelopments({ brief: { text, sources } });
+      assert.equal(out.brief?.text, text, name);
+    }
+  });
+
   // Distinct hosts per wire: rows on one site are one publisher (#7748).
   const source = (n) => ({
     title: `Story ${n}`,
@@ -250,7 +308,7 @@ describe('normalizeFrozenDevelopments', () => {
     publishedAt: '2026-09-02T10:00:00.000Z',
   });
   const brief = (sources) => ({
-    text: 'SITUATION NOW\n**Bold** claim [1].\n\nWHAT THIS MEANS FOR SD\n• item',
+    text: 'SITUATION NOW\n**Story** develops [1].\n\nWHAT THIS MEANS FOR SD\n• item',
     model: 'm',
     generatedAt: '2026-09-02T12:00:00.000Z',
     sources,
@@ -310,5 +368,27 @@ describe('normalizeFrozenDevelopments', () => {
     assert.deepEqual(normalizeFrozenDevelopments(row, { countryCode: 'PW', countryName: 'Palau' }), row);
     assert.equal(normalizeFrozenDevelopments(null, {}), null);
     assert.equal(normalizeFrozenDevelopments(undefined, {}), undefined);
+  });
+});
+
+describe('brief heading country identity', () => {
+  it('rewrites exact aliases to the page name and is idempotent', () => {
+    for (const [countryCode, countryName, alias] of [
+      ['HK', 'Hong Kong', 'Hong Kong SAR China'],
+      ['CD', 'DR Congo', 'Congo - Kinshasa'],
+    ]) {
+      const input = `WHAT THIS MEANS FOR ${alias}\nA supported claim [1].`;
+      const expected = `WHAT THIS MEANS FOR ${countryName.toUpperCase()}\nA supported claim [1].`;
+      const country = { countryCode, countryName };
+      assert.equal(normalizeBriefText(input, country), expected);
+      assert.equal(normalizeBriefText(expected, country), expected);
+    }
+  });
+  it('leaves foreign names and prose unchanged', () => {
+    const country = { countryCode: 'CD', countryName: 'DR Congo' };
+    for (const heading of ['Congo - Brazzaville', 'Kinshasa', 'Congo - Kinshasa faces new risks [1]']) {
+      const input = `SITUATION NOW\nA claim [1].\nWHAT THIS MEANS FOR ${heading}`;
+      assert.equal(normalizeBriefText(input, country), input);
+    }
   });
 });

@@ -422,8 +422,8 @@ describe('redis-rest proxy body limit (#7099)', () => {
       assert.equal(withToken(undefined), false, 'absent header');
     });
 
-    it('stays open when no token is configured', () => {
-      assert.equal(buildHelpers({}).checkAuth({ headers: {} }), true);
+    it('rejects requests when no token is configured', () => {
+      assert.equal(buildHelpers({}).checkAuth({ headers: {} }), false);
     });
   });
 

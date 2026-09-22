@@ -1,4 +1,5 @@
 import { isDesktopRuntime } from './runtime';
+import { safeStorageSet } from '@/utils/safe-storage';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
@@ -449,7 +450,7 @@ export function getEffectiveSecrets(feature: RuntimeFeatureDefinition): RuntimeS
 
 export function setFeatureToggle(featureId: RuntimeFeatureId, enabled: boolean): void {
   runtimeConfig.featureToggles[featureId] = enabled;
-  localStorage.setItem(TOGGLES_STORAGE_KEY, JSON.stringify(runtimeConfig.featureToggles));
+  safeStorageSet(TOGGLES_STORAGE_KEY, JSON.stringify(runtimeConfig.featureToggles));
   notifyConfigChanged();
 }
 

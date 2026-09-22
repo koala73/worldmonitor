@@ -2132,11 +2132,13 @@ body.panel-resize-active iframe {
 }
 
 /* The resize strips are keyboard-focusable separators (arrow keys resize);
-   show where focus is when it lands on one. */
+   show where focus is when it lands on one. Panel content is a tab stop so
+   overflow-y:auto regions stay keyboard-scrollable (#8460). */
 .panel-resize-handle:focus-visible,
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
-.map-width-resize-handle:focus-visible {
+.map-width-resize-handle:focus-visible,
+.panel-content:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
@@ -3589,6 +3591,52 @@ body.panel-resize-active iframe {
   outline-offset: 2px;
 }
 
+.live-media-shell--idle {
+  cursor: default;
+}
+
+.live-media-shell--idle .live-media-shell-dot {
+  background: var(--text-dim);
+}
+
+.live-media-shell--idle .live-media-shell-dot::before {
+  animation: none;
+}
+
+.live-media-shell-body,
+.live-media-shell-hint {
+  max-width: 34em;
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.live-media-shell-body {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.live-media-shell-hint {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
+.live-media-shell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.live-media-shell .offline-retry.live-media-shell-secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.live-media-shell .offline-retry.live-media-shell-secondary:hover {
+  border-color: var(--text-dim);
+}
+
 @keyframes live-pulse-ring {
   0%,
   100% {
@@ -3701,10 +3749,6 @@ body.live-news-fullscreen-active #mapSection.live-news-fullscreen .map-container
   height: auto !important;
   flex: 1 1 auto !important;
   min-height: 0 !important;
-}
-
-body.live-news-fullscreen-active .community-widget {
-  display: none;
 }
 
 /* Hide map overlays and sibling panels behind fullscreen panel (#829, #859) */
@@ -4067,6 +4111,10 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   min-height: 200px;
   color: var(--text-dim);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.webcam-idle-notice {
+  min-height: 200px;
 }
 
 @media (max-width: 768px) {
@@ -15188,11 +15236,6 @@ a.prediction-link:hover {
     display: none !important;
   }
 
-  /* Mobile: hide community discussion widget (accessible via settings) */
-  .community-widget {
-    display: none !important;
-  }
-
   .focus-label {
     display: none;
   }
@@ -20501,35 +20544,6 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
-/* Discussion link in settings */
-.us-discussion-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: var(--overlay-subtle);
-  border: 1px solid var(--border);
-  color: var(--text);
-  text-decoration: none;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  font-weight: 500;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-.us-discussion-link:hover {
-  border-color: hsl(229, 48%, 55%);
-  background: rgba(99, 120, 198, 0.1);
-}
-
-.us-discussion-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: hsl(229, 48%, 55%);
-  flex-shrink: 0;
-}
-
 /* Data management buttons in settings */
 .us-data-mgmt {
   display: flex;
@@ -23201,167 +23215,6 @@ body.has-breaking-alert .panels-grid {
   body>*:not(.country-brief-overlay) {
     display: none !important;
   }
-}
-
-/* ============================================================
-   Community Discussion Widget — Floating Pill
-   ============================================================ */
-.community-widget {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  animation: cw-float-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.community-widget.cw-hiding {
-  animation: cw-float-out 0.3s ease-in forwards;
-}
-
-@keyframes cw-float-in {
-  0% {
-    transform: translateY(10px) scale(0.95);
-    opacity: 0;
-  }
-
-  100% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes cw-float-out {
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-
-  100% {
-    transform: translateY(10px) scale(0.95);
-    opacity: 0;
-  }
-}
-
-.cw-pill {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--panel-bg, #141414);
-  border: 1px solid var(--border, #2a2a2a);
-  border-radius: 28px;
-  padding: 8px 8px 8px 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-}
-
-.cw-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: hsl(229, 48%, 55%);
-  flex-shrink: 0;
-  animation: cw-dot-pulse 2s ease-in-out infinite;
-  position: relative;
-  overflow: visible;
-}
-
-.cw-dot::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: 1px solid hsla(229, 48%, 55%, 0.4);
-  border-radius: inherit;
-  opacity: 0.4;
-  pointer-events: none;
-  transform: scale(1);
-  animation: cw-dot-ring 2s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-@keyframes cw-dot-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.6;
-  }
-}
-
-@keyframes cw-dot-ring {
-
-  0%,
-  100% {
-    opacity: 0.4;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0;
-    transform: scale(2.4);
-  }
-}
-
-.cw-text {
-  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text, #e8e8e8);
-  white-space: nowrap;
-}
-
-.cw-cta {
-  padding: 6px 14px;
-  background: hsl(229, 48%, 55%);
-  border: none;
-  border-radius: 20px;
-  color: #fff;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background 0.2s;
-}
-
-.cw-cta:hover {
-  background: hsl(229, 48%, 62%);
-}
-
-.cw-close {
-  background: none;
-  border: none;
-  color: var(--text-ghost, #444);
-  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  line-height: 1;
-  transition: color 0.15s, background 0.15s;
-}
-
-.cw-close:hover {
-  color: var(--text-dim, #888);
-  background: var(--overlay-light, rgba(255, 255, 255, 0.05));
-}
-
-.cw-dismiss {
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-faint, #555);
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0 8px;
-  transition: color 0.2s;
-}
-
-.cw-dismiss:hover {
-  color: var(--text-dim, #888);
 }
 
 /* ── Ultra-wide layout: map left, panels beside it ── */
@@ -26488,6 +26341,117 @@ body.map-width-resizing {
 }
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
+
+.account-deletion-zone {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--danger, #d64545) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger, #d64545) 6%, var(--surface));
+}
+
+.account-deletion-title {
+  font-weight: 600;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  color: var(--danger, #d64545);
+  margin: 0 0 8px;
+}
+
+.account-deletion-desc {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.delete-account-btn {
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--danger, #d64545);
+  background: transparent;
+  color: var(--danger, #d64545);
+  font-weight: 600;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.delete-account-btn:hover {
+  background: color-mix(in srgb, var(--danger, #d64545) 12%, transparent);
+}
+
+.account-deletion-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim, rgb(0 0 0 / 50%));
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* Appended to document.body, not nested in #unifiedSettingsModal.
+     Must sit above .modal-overlay (9999) or the type-DELETE dialog is
+     invisible behind Settings. */
+  z-index: 10050;
+  padding: 20px;
+}
+
+.account-deletion-dialog-overlay.active {
+  display: flex;
+}
+
+.account-deletion-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 32px var(--shadow-color);
+  padding: 20px 20px 16px;
+}
+
+.account-deletion-dialog-title {
+  margin: 0 0 10px;
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+}
+
+.account-deletion-dialog-copy,
+.account-deletion-dialog-label {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+}
+
+.account-deletion-dialog-label {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.account-deletion-dialog-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+}
+
+.account-deletion-dialog-error {
+  min-height: 1.2em;
+  margin: 0 0 12px;
+  color: var(--danger, #d64545);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.account-deletion-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
 
 /* -- Legal links + pre-payment assent (#6976) -- */
 /* The dashboard had no path to the Terms at all, and every upgrade CTA jumped

@@ -9,17 +9,18 @@ import type {
   ListGulfQuotesResponse,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'market:gulf-quotes:v1';
 
 export async function listGulfQuotes(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: ListGulfQuotesRequest,
 ): Promise<ListGulfQuotesResponse> {
   try {
     const seedData = await getCachedJson(SEED_CACHE_KEY, true) as ListGulfQuotesResponse | null;
-    return seedData || { quotes: [], rateLimited: false };
+    return Array.isArray(seedData?.quotes) ? seedData : markNoStoreFallbackResponse(ctx.request, { quotes: [], rateLimited: false });
   } catch {
-    return { quotes: [], rateLimited: false };
+    return markNoStoreFallbackResponse(ctx.request, { quotes: [], rateLimited: false });
   }
 }

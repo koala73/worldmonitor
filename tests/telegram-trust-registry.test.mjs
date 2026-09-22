@@ -38,6 +38,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const require = createRequire(import.meta.url);
 const sourceTierPolicyPath = join(repoRoot, 'shared/source-tier-policy.cjs');
+const { SAUDI_CIVIL_DEFENSE } = require('../scripts/lib/saudi-civil-defense-alerts.cjs');
 const {
   createExplicitTierFourSourceSet,
   isExplicitTierFourSource,
@@ -67,6 +68,40 @@ function clientWouldDropKeywordAlert(sourceName, tiers) {
 const getSources = SOURCE_TOOLS.find((tool) => tool.name === 'get_sources');
 
 describe('Telegram trust registry (#6600)', () => {
+  it('ingests the validated additions with their public ratings and state affiliations', () => {
+    const expected = [
+      ['InaTEWS_BMKG', 'BMKG InaTEWS', 1, 'gov', 'Indonesia'],
+      ['dsns_telegram', 'Ukraine State Emergency Service', 1, 'gov', 'Ukraine'],
+      ['PikudHaOref_all', 'Israel Home Front Command', 1, 'gov', 'Israel'],
+      ['cnalatest', 'CNA', 2, 'mainstream', 'Singapore'],
+      ['govsg', 'Singapore Government', 1, 'gov', 'Singapore'],
+      ['wamnews_en', 'Emirates News Agency (WAM)', 1, 'wire', 'UAE'],
+    ];
+    for (const [handle, name, tier, type, state] of expected) {
+      const channel = telegramChannels.channels.full.find((entry) => entry.handle === handle);
+      assert.equal(channel?.enabled, true, handle);
+      assert.equal(channel.label, name);
+      assert.match(handle, /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/);
+      assert.equal(resolveTelegramSourceName('Mutable channel title', handle), name);
+      assert.equal(getSourceTier(name), tier);
+      assert.equal(getSourceType(name), type);
+      assert.equal(getSourcePropagandaRisk(name).stateAffiliated, state);
+    }
+  });
+
+  it('keeps Saudi emergency alert identity aligned with the public government rating', () => {
+    const entry = TELEGRAM_CHANNEL_TRUST.find((source) => source.handle === SAUDI_CIVIL_DEFENSE.handle);
+    assert.equal(entry.name, SAUDI_CIVIL_DEFENSE.name);
+    assert.equal(getSourceTier(entry.name), SAUDI_CIVIL_DEFENSE.tier);
+    assert.equal(getSourceType(entry.name), 'gov');
+    assert.equal(getSourcePropagandaRisk(entry.name).stateAffiliated, 'Saudi Arabia');
+  });
+
+  it('rates BNO as the same Tier 1 wire publisher across platform overlays', () => {
+    assert.equal(getSourceTier('BNO News'), 1);
+    assert.equal(getSourceType('BNO News'), 'wire');
+    assert.equal(getSourcePropagandaRisk('BNO News').risk, 'low');
+  });
   it('matches every enabled channel handle and display label exactly', () => {
     const enabled = enabledTelegramChannels();
     assert.ok(enabled.length >= 64, `expected 64 enabled channels, got ${enabled.length}`);

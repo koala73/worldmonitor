@@ -87,6 +87,7 @@ function withoutOperatorOnlyDiagnostics(source) {
     proxyControlProbe: _proxyControlProbe,
     shadowIndexProbe: _shadowIndexProbe,
     candidates: _candidates,
+    requestDiagnostics: _requestDiagnostics,
     ...publicSource
   } = source;
   return publicSource;
@@ -325,6 +326,12 @@ export async function fetchCrossStraitActivitySeedSnapshot({
     ? null
     : await readSnapshot(CROSS_STRAIT_ACTIVITY_JAPAN_SOURCE_HEALTH_KEY);
   const snapshot = await fetchSnapshotFn({ previousSnapshot, previousSourceHealth });
+  const failures = snapshot.sources?.find(source => source.id === 'taiwan-mnd')?.requestDiagnostics;
+  if (failures?.length) {
+    console.warn('[cross-strait] MND request failures', JSON.stringify({
+      attemptedAt: snapshot.generatedAt, failures,
+    }));
+  }
   // A first-run MND failure cannot publish the durable archive, but its source
   // health still needs to tell operators why no archive exists yet.
   if (!validateCrossStraitActivitySnapshot(snapshot)) await writeHealth(snapshot);

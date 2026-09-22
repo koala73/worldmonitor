@@ -275,7 +275,10 @@ export function formatTrend(dynamicScore, trend) {
   return 'Stable or unavailable';
 }
 
-export function parseCiiMovement(trend) {
+export const DEFAULT_CII_MOVEMENT_INTERVAL = 'over approximately 24 hours';
+
+export function parseCiiMovement(trend, { intervalPhrase = DEFAULT_CII_MOVEMENT_INTERVAL } = {}) {
+  const interval = String(intervalPhrase || '').trim() || DEFAULT_CII_MOVEMENT_INTERVAL;
   const normalized = String(trend || '').trim();
   if (
     normalized === 'Stable'
@@ -284,7 +287,7 @@ export function parseCiiMovement(trend) {
   ) {
     return {
       change24h: null,
-      movementText: 'stable or unavailable over approximately 24 hours',
+      movementText: `stable or unavailable ${interval}`,
     };
   }
   const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
@@ -295,7 +298,7 @@ export function parseCiiMovement(trend) {
   const direction = match[1] === 'Rising' ? 'up' : 'down';
   return {
     change24h,
-    movementText: `${direction} ${magnitude} ${unit} over approximately 24 hours`,
+    movementText: `${direction} ${magnitude} ${unit} ${interval}`,
   };
 }
 
@@ -1103,8 +1106,8 @@ function updateCountryQuery(select, dashboardLink) {
   if (dashboardLink) {
     // Keep conversion attribution on dynamically-rewritten dashboard links.
     dashboardLink.href = code
-      ? `/?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
-      : '/?utm_source=seo-tool';
+      ? `/dashboard?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
+      : '/dashboard?utm_source=seo-tool';
   }
 }
 

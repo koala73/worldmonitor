@@ -8,8 +8,11 @@ const zlib = require('node:zlib');
 const DECODO_GATE_HOST = 'gate.decodo.com';
 // Decodo's curl endpoint differs from its CONNECT endpoint.
 const DECODO_CURL_HOST = 'us.decodo.com';
-const DECODO_STICKY_PORT_MIN = 10_001;
-const DECODO_STICKY_PORT_MAX = 49_999;
+// Country endpoints have their own sticky ranges; never wrap into another pool.
+const DECODO_STICKY_PORT_RANGES = new Map([
+  [DECODO_GATE_HOST, [10_001, 49_999]],
+  ['cn.decodo.com', [30_001, 39_999]],
+]);
 
 function parseProxyConfig(raw) {
   if (!raw) return null;
@@ -55,32 +58,44 @@ function parseProxyConfig(raw) {
 }
 
 /**
- * Parse a proxy configuration and, for Decodo sticky gateway ports, advance
+ * Parse a proxy configuration and, for supported Decodo sticky ports, advance
  * each retry to a distinct sticky session. Other providers and Decodo rotating
  * ports retain their configured route exactly.
+ *
+ * `attempt` is sanitized HERE rather than at each entry point. It used to be
+ * clamped only inside resolveProxyStringForAttempt, which was fine while that
+ * was the only caller passing a live retry index — but #7963 exposed this
+ * function through httpsProxyFetchRaw's `proxyAttempt` option, and that helper
+ * is injected as the fetcher into seeders that run their own 1-based retry
+ * loops. An unsanitized index does not fail loudly: `+` concatenates before
+ * `%` coerces, so attempt '2' on port 10005 computes `4 + '2'` === `'42'` and
+ * silently exits on 10043, while a negative index resolves to 10000 — below
+ * the sticky floor and not a sticky exit at all.
  */
 function parseProxyConfigForAttempt(raw, attempt = 0) {
   const config = parseProxyConfig(raw);
   if (!config) return null;
+  const index = Number.isFinite(Number(attempt)) ? Math.max(0, Math.trunc(Number(attempt))) : 0;
   const port = Number(config.port);
   // Normalize for provider detection only: the host:port:user:pass form keeps
   // whatever casing the operator typed, while the URL form is lowercased by the
   // URL parser. config.host stays verbatim so the connection is unchanged.
   const host = String(config.host || '').toLowerCase().replace(/\.$/u, '');
+  const range = DECODO_STICKY_PORT_RANGES.get(host);
   if (
-    host !== DECODO_GATE_HOST
+    !range
     || !Number.isInteger(port)
-    || port < DECODO_STICKY_PORT_MIN
-    || port > DECODO_STICKY_PORT_MAX
+    || port < range[0]
+    || port > range[1]
   ) {
     return config;
   }
 
-  const stickyPortCount = DECODO_STICKY_PORT_MAX - DECODO_STICKY_PORT_MIN + 1;
+  const [minPort, maxPort] = range;
+  const stickyPortCount = maxPort - minPort + 1;
   return {
     ...config,
-    port: DECODO_STICKY_PORT_MIN
-      + ((port - DECODO_STICKY_PORT_MIN + attempt) % stickyPortCount),
+    port: minPort + ((port - minPort + index) % stickyPortCount),
   };
 }
 
@@ -146,8 +161,10 @@ function curlProxyString(cfg) {
  * advancing their port would point at a closed door.
  */
 function resolveProxyStringForAttempt(attempt = 0, raw = process.env.PROXY_URL || '') {
-  const index = Number.isFinite(Number(attempt)) ? Math.max(0, Math.trunc(Number(attempt))) : 0;
-  const cfg = parseProxyConfigForAttempt(raw, index);
+  // No local clamp: parseProxyConfigForAttempt sanitizes `attempt` itself now,
+  // with the identical expression. A second copy bought nothing and left two
+  // places to drift apart.
+  const cfg = parseProxyConfigForAttempt(raw, attempt);
   if (!cfg) return '';
   return curlProxyString(cfg);
 }
@@ -166,6 +183,15 @@ function resolveProxyStringConnect() {
   return cfg.tls ? `https://${base}` : base;
 }
 
+function recordProxyFailure(error, stage, httpStatus = null, proxyConnectStatus = null) {
+  try {
+    Object.defineProperty(error, 'proxyFailure', {
+      value: { stage, httpStatus, proxyConnectStatus }, configurable: true,
+    });
+  } catch { /* Frozen errors and primitive abort reasons keep their original identity. */ }
+  return error;
+}
+
 function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443, signal } = {}) {
   return new Promise((resolve, reject) => {
     if (signal && signal.aborted) {
@@ -175,12 +201,14 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
     let proxySock;
     let settled = false;
     let onAbort = null;
+    let stage = 'proxy_connection';
+    let proxyConnectStatus = null;
     const cleanup = () => {
       clearTimeout(timer);
       if (signal && onAbort) signal.removeEventListener('abort', onAbort);
     };
     const resolveOnce = (val) => { if (settled) return; settled = true; cleanup(); resolve(val); };
-    const rejectOnce = (err) => { if (settled) return; settled = true; cleanup(); reject(err); };
+    const rejectOnce = (err) => { if (settled) return; settled = true; cleanup(); reject(recordProxyFailure(err, stage, null, proxyConnectStatus)); };
 
     const timer = setTimeout(() => {
       if (proxySock) proxySock.destroy();
@@ -198,6 +226,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
     const onError = (e) => rejectOnce(e);
 
     const connectCb = () => {
+      stage = 'proxy_connect';
       const authHeader = proxyConfig.auth
         ? `\r\nProxy-Authorization: Basic ${Buffer.from(proxyConfig.auth).toString('base64')}`
         : '';
@@ -211,6 +240,8 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         if (!buf.includes('\r\n\r\n')) return;
         proxySock.removeListener('data', onData);
         const statusLine = buf.split('\r\n')[0];
+        const status = Number(/^HTTP\/1\.[01] (\d{3})(?:\s|$)/.exec(statusLine)?.[1]);
+        proxyConnectStatus = status >= 100 && status <= 599 ? status : null;
         if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
           proxySock.destroy();
           return rejectOnce(
@@ -225,6 +256,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
           );
         }
         proxySock.pause();
+        stage = 'target_tls';
 
         const tlsSocket = tls.connect(
           { socket: proxySock, servername: targetHostname, ALPNProtocols: ['http/1.1'] },
@@ -294,6 +326,8 @@ function proxyFetch(url, proxyConfig, {
     return new Promise((resolve, reject) => {
       let settled = false;
       let onAbort = null;
+      let stage = 'response_headers';
+      let httpStatus = null;
       const cleanup = () => {
         clearTimeout(timer);
         if (signal && onAbort) signal.removeEventListener('abort', onAbort);
@@ -301,7 +335,7 @@ function proxyFetch(url, proxyConfig, {
       // Both terminal paths destroy the TLS tunnel (mirrors the original
       // behavior where success + failure both released the socket).
       const resolveOnce = (v) => { if (settled) return; settled = true; cleanup(); destroy(); resolve(v); };
-      const rejectOnce = (e) => { if (settled) return; settled = true; cleanup(); destroy(); reject(e); };
+      const rejectOnce = (e) => { if (settled) return; settled = true; cleanup(); destroy(); reject(recordProxyFailure(e, stage, httpStatus)); };
 
       const timer = setTimeout(() => rejectOnce(new Error('proxy fetch timeout')), timeoutMs);
 
@@ -327,6 +361,9 @@ function proxyFetch(url, proxyConfig, {
         headers: reqHeaders,
         createConnection: () => tlsSocket,
       }, (resp) => {
+        stage = 'response_body';
+        httpStatus = Number.isInteger(resp.statusCode) && resp.statusCode >= 100 && resp.statusCode <= 599
+          ? resp.statusCode : null;
         let stream = resp;
         const enc = (resp.headers['content-encoding'] || '').trim().toLowerCase();
         if (enc === 'gzip') stream = resp.pipe(zlib.createGunzip());

@@ -48,8 +48,8 @@
 //
 // Scanner compatibility: WebMCP scanners probe for
 // `document.modelContext.registerTool` invocations during initial page load.
-// Register synchronously from App.ts (no dynamic import, no init-phase
-// awaits) so the probe finds the tools before it gives up.
+// Register synchronously from the dashboard entry before loading App. Tool
+// callbacks await App bindings, so discovery does not wait for the UI bundle.
 
 import { trackPrivacyRestricted, type UmamiEvent } from './analytics';
 import { markLcpDebug } from '../utils/lcp-debug';
@@ -106,7 +106,7 @@ import {
   parseMapLayerCatalogArgs,
   type MapLayerCatalogSnapshot,
 } from './webmcp-map-layer-catalog';
-import type { SetPanelEnabledResult } from '../config/panel-enablement';
+import { SET_PANEL_ENABLED_ID_PATTERN, type SetPanelEnabledResult } from '../config/panel-enablement';
 import {
   MISSION_PRESET_APPLY_DENY_REASONS,
   MissionPresetCatalogError,
@@ -471,8 +471,16 @@ type DashboardWebMcpTool = Omit<WebMCP.ModelContextTool, 'execute'> & {
   ) => Promise<unknown> | unknown;
 };
 
+interface LegacyWebMcpProvider {
+  registerTool?: (tool: DashboardWebMcpTool) => void | Promise<void>;
+  unregisterTool?: (name: string) => void;
+  provideContext?: (context: { tools: DashboardWebMcpTool[] }) => void | Promise<void>;
+  clearContext?: () => void;
+}
+
 interface WebMcpRegistrationRuntime {
   document?: Pick<Document, 'modelContext' | 'addEventListener'>;
+  navigator?: { modelContext?: LegacyWebMcpProvider };
   window?: Pick<Window, 'addEventListener'>;
   track?: WebMcpAnalytics;
 }
@@ -1771,10 +1779,81 @@ function boundPanelTabResult(result: PanelTabSelectionResult): Record<string, un
   };
 }
 
+const WEBMCP_APP_LOAD_TIMEOUT_MS = 30_000;
+
+export interface WebMcpBindingsGate {
+  wait(signal?: AbortSignal): Promise<WebMcpAppBindings>;
+  // Calls still waiting for an unsettled App load.
+  readonly pendingWaiters: number;
+}
+
+// Dashboard tools register before App loads, so every call waits here first.
+// The wait is bounded, and a canceled or timed-out call detaches its waiter and
+// timer so a stalled load retains nothing per abandoned call.
+export function createWebMcpBindingsGate(
+  bindings: WebMcpAppBindings | PromiseLike<WebMcpAppBindings>,
+): WebMcpBindingsGate {
+  type BindingsResult = { value: WebMcpAppBindings } | { error: unknown };
+  let settled: BindingsResult | undefined;
+  const waiters = new Set<(result: BindingsResult) => void>();
+  const settle = (result: BindingsResult): void => {
+    settled = result;
+    for (const resolve of waiters) resolve(result);
+    waiters.clear();
+  };
+  // Observe the shared load once. Per-call waiters can detach even if it stalls.
+  void Promise.resolve(bindings).then(
+    (value) => settle({ value }),
+    (error: unknown) => settle({ error }),
+  );
+  const unwrap = (result: BindingsResult): WebMcpAppBindings => {
+    if ('value' in result) return result.value;
+    // A failed load never serves the call, even when registration teardown
+    // aborted the load first. Report it like a destroyed App rather than as the
+    // caller's cancellation, and keep startup details out of the tool error.
+    throw new DashboardBindingError('app_destroyed', 'Dashboard application did not load.');
+  };
+  return {
+    get pendingWaiters() {
+      return waiters.size;
+    },
+    async wait(signal) {
+      if (settled) return unwrap(settled);
+      let waiter!: (result: BindingsResult) => void;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return unwrap(await raceWebMcpAbort(new Promise<BindingsResult>((resolve, reject) => {
+          waiter = resolve;
+          waiters.add(resolve);
+          timer = setTimeout(
+            () => reject(new Error('Dashboard application did not load.')),
+            WEBMCP_APP_LOAD_TIMEOUT_MS,
+          );
+        }), signal));
+      } finally {
+        waiters.delete(waiter);
+        clearTimeout(timer);
+      }
+    },
+  };
+}
+
 export function buildWebMcpTools(
-  app: WebMcpAppBindings,
+  bindings: WebMcpAppBindings | Promise<WebMcpAppBindings>,
   trackEvent: WebMcpAnalytics = trackPrivacyRestricted,
 ): DashboardWebMcpTool[] {
+  const bindingsGate = createWebMcpBindingsGate(bindings);
+  let app: WebMcpAppBindings;
+  const withBindings = (...[name, fn, track, hooks = {}]: Parameters<typeof withInvocationLogging>) => (
+    withInvocationLogging(name, fn, track, {
+      ...hooks,
+      // Every binding-dependent hook and callback runs after this bounded wait.
+      preflight: async (args, extra) => {
+        app = await bindingsGate.wait(extra?.signal);
+        return hooks.preflight?.(args, extra);
+      },
+    })
+  );
   const tools: DashboardWebMcpTool[] = [
     {
       name: WEBMCP_SPA_TOOL.openCountryBrief,
@@ -1794,7 +1873,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openCountryBrief, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openCountryBrief, async (args, extra) => {
         const iso2 = typeof args.iso2 === 'string' ? args.iso2.toUpperCase() : '';
         if (!ISO2.test(iso2)) {
           throw new SafeWebMcpError(
@@ -1824,7 +1903,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearch, async (_args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openSearch, async (_args, extra) => {
         const opened = await app.openSearch(extra);
         if (opened !== true) {
           throw new SafeWebMcpError(
@@ -1846,7 +1925,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getDashboardContext, async (_args, extra) => (
+      execute: withBindings(WEBMCP_SPA_TOOL.getDashboardContext, async (_args, extra) => (
         boundDashboardContext(await app.getDashboardContext(extra))
       ), trackEvent),
     },
@@ -1891,7 +1970,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listMapLayers, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.listMapLayers, async (args, extra) => {
         const parsed = parseMapLayerCatalogArgs(args);
         if (!parsed.ok) return parsed;
         return listMapLayerCatalog(
@@ -1948,7 +2027,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listDashboardPanels, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.listDashboardPanels, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['variant', 'category', 'enabled', 'available', 'cursor', 'limit'])) {
           throw new SafeWebMcpError(
             'list_dashboard_panels accepts only variant, category, enabled, available, cursor, and limit.',
@@ -1991,7 +2070,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.switchMonitor, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.switchMonitor, async (args, extra) => {
         const input = validateSwitchMonitorInput(args);
         if (!input.ok) {
           throw new SafeWebMcpError('switch_monitor input preflight did not run.');
@@ -2022,7 +2101,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSettings, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openSettings, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, [])) {
           return boundDashboardNavigationResult({
             ok: false,
@@ -2046,7 +2125,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openAlerts, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openAlerts, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, [])) {
           return boundDashboardNavigationResult({
             ok: false,
@@ -2084,7 +2163,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openDashboardPanel, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openDashboardPanel, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['panelId', 'tab'])) {
           return applyDashboardAction({ type: 'invalid_open_panel_arguments' }, app, extra);
         }
@@ -2133,7 +2212,7 @@ export function buildWebMcpTools(
             description: 'Dashboard panel ID, such as "markets" or "giving".',
             minLength: 1,
             maxLength: 96,
-            pattern: '^[a-z0-9][a-z0-9@_-]*$',
+            pattern: SET_PANEL_ENABLED_ID_PATTERN.source,
           },
           enabled: {
             type: 'boolean',
@@ -2144,7 +2223,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setPanelEnabled, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.setPanelEnabled, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['panelId', 'enabled'])) {
           return boundSetPanelEnabledResult({
             ok: false,
@@ -2181,7 +2260,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getPanelLayout, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.getPanelLayout, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['cursor'])) {
           return boundPanelLayoutMutationResult({
             ok: false,
@@ -2228,7 +2307,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setPanelCollapsed, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.setPanelCollapsed, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['panelId', 'collapsed'])) {
           return boundPanelLayoutMutationResult({
             ok: false,
@@ -2278,7 +2357,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.movePanel, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.movePanel, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['panelId', 'region', 'index'])) {
           return boundPanelLayoutMutationResult({
             ok: false,
@@ -2319,7 +2398,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setPanelFullscreen, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.setPanelFullscreen, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['panelId', 'fullscreen'])) {
           return boundPanelLayoutMutationResult({
             ok: false,
@@ -2390,7 +2469,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapView, async (args, extra) => (
+      execute: withBindings(WEBMCP_SPA_TOOL.setMapView, async (args, extra) => (
         applyDashboardAction({
           type: 'set_view',
           view: args.view,
@@ -2426,7 +2505,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapLayers, async (args, extra) => (
+      execute: withBindings(WEBMCP_SPA_TOOL.setMapLayers, async (args, extra) => (
         applyDashboardAction({
           type: 'set_layers',
           layers: args.layers,
@@ -2451,7 +2530,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setTimeRange, async (args, extra) => (
+      execute: withBindings(WEBMCP_SPA_TOOL.setTimeRange, async (args, extra) => (
         applyDashboardAction({
           type: 'set_time_range',
           timeRange: args.timeRange,
@@ -2476,7 +2555,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.focusCountry, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.focusCountry, async (args, extra) => {
         const iso2 = typeof args.iso2 === 'string' ? args.iso2.toUpperCase() : '';
         if (!ISO2.test(iso2)) {
           throw new SafeWebMcpError(
@@ -2508,7 +2587,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapMode, async (args, extra) => (
+      execute: withBindings(WEBMCP_SPA_TOOL.setMapMode, async (args, extra) => (
         applyDashboardAction({
           type: 'set_map_mode',
           mode: args.mode,
@@ -2547,7 +2626,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.searchDashboard, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.searchDashboard, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['query', 'scope', 'limit'])) {
           throw new SafeWebMcpError(
             'search_dashboard accepts only query, scope, and limit.',
@@ -2618,7 +2697,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearchResult, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openSearchResult, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['resultKey'])) {
           return boundSearchOpenResult({
             ok: false,
@@ -2656,7 +2735,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listDashboardTabs, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.listDashboardTabs, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['cursor'])) {
           return boundDashboardTabMutation(mutationDenied(
             'list',
@@ -2699,7 +2778,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.selectDashboardTab, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.selectDashboardTab, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['tabId'])) {
           return boundDashboardTabMutation(mutationDenied(
             'select',
@@ -2732,7 +2811,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.createDashboardTab, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.createDashboardTab, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['name'])) {
           return boundDashboardTabMutation(mutationDenied(
             'create',
@@ -2777,7 +2856,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.renameDashboardTab, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.renameDashboardTab, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['tabId', 'name'])) {
           return boundDashboardTabMutation(mutationDenied(
             'rename',
@@ -2820,7 +2899,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.deleteDashboardTab, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.deleteDashboardTab, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['tabId', 'confirm'])) {
           return boundDashboardTabMutation(mutationDenied(
             'delete',
@@ -2855,7 +2934,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listMissionPresets, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.listMissionPresets, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['available'])) {
           throw new SafeWebMcpError(
             'list_mission_presets accepts only available.',
@@ -2892,7 +2971,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.applyMissionPreset, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.applyMissionPreset, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['presetId'])) {
           return boundApplyMissionPresetResult({
             ok: false,
@@ -2917,7 +2996,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openMissionPicker, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openMissionPicker, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, [])) {
           return boundDashboardNavigationResult({
             ok: false,
@@ -2941,7 +3020,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listFollowedCountries, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.listFollowedCountries, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, [])) {
           throw new SafeWebMcpError(
             'list_followed_countries does not accept arguments.',
@@ -2977,7 +3056,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setCountryFollowed, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.setCountryFollowed, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, ['iso2', 'followed'])) {
           return boundFollowedCountryMutation({
             ok: false,
@@ -3002,7 +3081,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getAccessContext, async (_args, extra) => (
+      execute: withBindings(WEBMCP_SPA_TOOL.getAccessContext, async (_args, extra) => (
         boundWebMcpAccessContext(await app.getAccessContext(extra), Boolean(extra?.signal))
       ), trackEvent),
     },
@@ -3017,7 +3096,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSignIn, async (args, extra) => {
+      execute: withBindings(WEBMCP_SPA_TOOL.openSignIn, async (args, extra) => {
         if (!hasOnlyOwnKeys(args, [])) {
           throw new SafeWebMcpError(
             'open_sign_in does not accept credentials or other arguments.',
@@ -3063,7 +3142,7 @@ function registrationFailureReason(error: unknown): RegistrationFailureReason | 
 }
 
 function observeRegistration(
-  provider: WebMCP.ModelContext,
+  provider: Pick<WebMCP.ModelContext, 'registerTool'>,
   tool: DashboardWebMcpTool,
   controller: AbortController,
   trackEvent: WebMcpAnalytics,
@@ -3091,10 +3170,11 @@ function observeRegistration(
 }
 
 function startRegistration(
-  provider: WebMCP.ModelContext,
+  provider: Pick<WebMCP.ModelContext, 'registerTool'>,
   tools: DashboardWebMcpTool[],
   controller: AbortController,
   trackEvent: WebMcpAnalytics,
+  api = 'document-current',
 ): void {
   const registrations = tools.map((tool) => (
     observeRegistration(provider, tool, controller, trackEvent)
@@ -3119,7 +3199,7 @@ function startRegistration(
     reportWebMcpEvent(trackEvent, 'webmcp-registered', {
       toolCount,
       pageSurface: 'dashboard',
-      api: 'document-current',
+      api,
     });
   });
 }
@@ -3130,7 +3210,7 @@ function startRegistration(
 // returned AbortController tears down accepted tools, pending registrations,
 // and retry listeners. Unsupported runtimes remain a no-op.
 export function registerWebMcpTools(
-  app: WebMcpAppBindings,
+  app: WebMcpAppBindings | Promise<WebMcpAppBindings>,
   runtime: WebMcpRegistrationRuntime = {},
 ): AbortController | null {
   const runtimeDocument = runtime.document
@@ -3140,8 +3220,8 @@ export function registerWebMcpTools(
   const runtimeWindow = runtime.window
     ?? (typeof window === 'undefined' ? null : window);
   const trackEvent = runtime.track ?? trackPrivacyRestricted;
-  const tools = buildWebMcpTools(app, trackEvent);
   const controller = new AbortController();
+  const tools = buildWebMcpTools(raceWebMcpAbort(app, controller.signal), trackEvent);
   let registrationStarted = false;
 
   const registerAvailableProvider = (): boolean => {
@@ -3152,9 +3232,55 @@ export function registerWebMcpTools(
     } catch {
       return false;
     }
-    if (!provider || typeof provider.registerTool !== 'function') return false;
+    if (provider && typeof provider.registerTool === 'function') {
+      registrationStarted = true;
+      startRegistration(provider, tools, controller, trackEvent);
+      return true;
+    }
+    let legacy: LegacyWebMcpProvider | undefined;
+    try {
+      const runtimeNavigator = runtime.navigator
+        ?? (typeof navigator === 'undefined' ? undefined : navigator as Navigator & { modelContext?: LegacyWebMcpProvider });
+      legacy = runtimeNavigator?.modelContext;
+    } catch {
+      return false;
+    }
+    if (!legacy || (typeof legacy.registerTool !== 'function' && typeof legacy.provideContext !== 'function')) return false;
     registrationStarted = true;
-    startRegistration(provider, tools, controller, trackEvent);
+    const legacyTools = tools.map((tool) => ({
+      ...tool,
+      execute: (input: Record<string, unknown>, context?: WebMcpToolExecutionContext) => {
+        throwIfWebMcpAborted(controller.signal);
+        return tool.execute(input, context);
+      },
+    }));
+    const batch = typeof legacy.registerTool !== 'function';
+    const cleanup = (): void => {
+      try {
+        if (batch) legacy.clearContext?.();
+        else for (const tool of legacyTools) legacy.unregisterTool?.(tool.name);
+      } catch {
+        // Old hosts may have no usable unregister API. Callbacks still reject after teardown.
+      }
+    };
+    controller.signal.addEventListener('abort', cleanup, { once: true });
+    let batchRegistration: Promise<void> | undefined;
+    const adapter = {
+      registerTool(tool: DashboardWebMcpTool): Promise<void> {
+        throwIfWebMcpAborted(controller.signal);
+        if (batch) {
+          batchRegistration ??= new Promise<void>((resolve) => resolve(legacy.provideContext!({ tools: legacyTools })))
+            .then(() => { if (controller.signal.aborted) cleanup(); });
+          return batchRegistration;
+        }
+        return Promise.resolve(legacy.registerTool!(tool)).then(() => {
+          if (controller.signal.aborted) {
+            try { legacy.unregisterTool?.(tool.name); } catch { /* The callback remains disabled. */ }
+          }
+        });
+      },
+    };
+    startRegistration(adapter, legacyTools, controller, trackEvent, batch ? 'navigator-batch' : 'navigator-register');
     return true;
   };
 

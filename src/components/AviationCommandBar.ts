@@ -1,4 +1,5 @@
 import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAviationNews, fetchGoogleFlights } from '@/services/aviation';
+import { safeStorageSet } from '@/utils/safe-storage';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { MONITORED_AIRPORTS } from '@/config/airports';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -401,7 +402,7 @@ export class AviationCommandBar {
     private addToHistory(cmd: string): void {
         const h = this.getHistory().filter(h => h !== cmd);
         h.unshift(cmd);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, MAX_HISTORY)));
+        safeStorageSet(HISTORY_KEY, JSON.stringify(h.slice(0, MAX_HISTORY)));
         this.renderHistory();
     }
 

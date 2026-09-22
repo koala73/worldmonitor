@@ -102,9 +102,11 @@ describe('Organization JSON-LD NAP alignment', () => {
     assert.doesNotMatch(read('pro-test/prerender.mjs'), /Organization JSON-LD|ORGANIZATION_JSONLD/);
   });
 
-  it('links owned registry packages, never the foreign PyPI name or the product item', () => {
+  it('links the organization profile and owned packages, never foreign identities', () => {
     const [org] = organizationBlocks(read('pro-test/welcome.html'));
     for (const edge of [
+      'https://www.crunchbase.com/organization/world-monitor',
+      'https://www.wikidata.org/wiki/Q141437464',
       'https://rubygems.org/gems/worldmonitor',
       'https://pypi.org/project/worldmonitor-sdk/',
       'https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go',

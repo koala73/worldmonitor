@@ -332,7 +332,7 @@
   "soonBadge": "即將推出",
   "meta": {
     "title": "World Monitor Pro | AI 智慧與 MCP",
-    "description": "World Monitor Pro 新增 AI 分析師、定時智慧摘要、自訂小工具、市場研究和 MCP 存取權限，用於存取即時地緣政治和金融資料。",
+    "description": "瞭解 World Monitor Pro 的 AI 分析師、定時智慧摘要、自訂小工具、市場研究與 MCP 存取功能，將地緣政治、金融和其他即時資料用於持續監測與分析。檢視產品功能、訂閱方案和使用範圍，瞭解如何提問、安排摘要、構建自訂檢視，以及在相容的智慧體客戶端存取情報資料，選擇適合個人工作流程的工具。",
     "ogTitle": "World Monitor Pro | 地緣政治 AI",
     "ogDescription": "提問、訂閱、整合。WM Analyst 聊天（按你的節奏提供每日、兩次每日或每週的AI摘要）、自訂widget構建器，以及MCP for Claude/GPT——一個金鑰統一接入所有即時服務。"
   },
@@ -482,7 +482,7 @@
       "plateNote": "從即時地圖捕獲 — 點選開啟\t",
       "trustBuild": "構建應用：\t",
       "positioningLink": "WorldMonitor 不是開源的 Palantir\t",
-      "asOf": "截至2026年9月4日",
+      "asOf": "截至2026年9月8日",
       "whatIsTitle": "World Monitor 是什麼？",
       "whatIsBody": "World Monitor 是一款免費的開源儀表板，將地緣政治、市場、海運、航空、基礎設施和網路訊號即時流式傳輸到一張世界地圖上。它將獨立資料來源關聯到單一作戰圖景中，在新聞見報前標記匯聚點，所有資料均有來源，所有方法均已記錄。"
     },

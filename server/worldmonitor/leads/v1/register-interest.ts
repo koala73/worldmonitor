@@ -4,8 +4,6 @@
  * Sources: Convex registerInterest:register mutation + Resend confirmation email
  */
 
-import { ConvexHttpClient } from 'convex/browser';
-import { api } from '../../../../convex/_generated/api';
 import type {
   ServerContext,
   RegisterInterestRequest,
@@ -34,6 +32,8 @@ const DESKTOP_AUTH_ALLOW_LEGACY_ENV = 'WM_DESKTOP_AUTH_ALLOW_LEGACY';
 const DESKTOP_RATE_SCOPE = '/api/leads/v1/register-interest#desktop';
 const DESKTOP_RATE_LIMIT = 2;
 const DESKTOP_RATE_WINDOW = '1 h' as const;
+const CONVEX_REGISTER_INTEREST_PATH = '/api/internal-register-interest';
+const CONVEX_REGISTER_INTEREST_TIMEOUT_MS = 5_000;
 
 interface ConvexRegisterResult {
   status: 'registered' | 'already_registered';
@@ -41,6 +41,26 @@ interface ConvexRegisterResult {
   referralCount: number;
   position?: number;
   emailSuppressed?: boolean;
+}
+
+function convexSiteUrl(): string {
+  return (
+    process.env.CONVEX_SITE_URL ??
+    (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')
+  ).replace(/\/$/, '');
+}
+
+function isConvexRegisterResult(value: unknown): value is ConvexRegisterResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const result = value as Partial<ConvexRegisterResult>;
+  return (
+    (result.status === 'registered' || result.status === 'already_registered') &&
+    typeof result.referralCode === 'string' &&
+    typeof result.referralCount === 'number' &&
+    Number.isSafeInteger(result.referralCount) &&
+    (result.position === undefined || Number.isSafeInteger(result.position)) &&
+    (result.emailSuppressed === undefined || typeof result.emailSuppressed === 'boolean')
+  );
 }
 
 function canonicalizeDesktopAuthPayload(req: RegisterInterestRequest): string {
@@ -334,18 +354,53 @@ export async function registerInterest(
   const safeAppVersion = appVersion ? appVersion.slice(0, MAX_META_LENGTH) : 'unknown';
   const safeReferredBy = referredBy ? referredBy.slice(0, 20) : undefined;
 
-  const convexUrl = process.env.CONVEX_URL;
-  if (!convexUrl) {
+  const convexUrl = convexSiteUrl();
+  const convexSharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  if (!convexUrl || !convexSharedSecret) {
     throw new ApiError(503, 'Registration service unavailable', '');
   }
 
-  const client = new ConvexHttpClient(convexUrl);
-  const result = (await client.mutation(api.registerInterest.register, {
-    email,
-    source: safeSource,
-    appVersion: safeAppVersion,
-    referredBy: safeReferredBy,
-  })) as ConvexRegisterResult;
+  let convexResponse: Response;
+  try {
+    convexResponse = await fetch(`${convexUrl}${CONVEX_REGISTER_INTEREST_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-leads/1.0',
+        'x-convex-shared-secret': convexSharedSecret,
+      },
+      body: JSON.stringify({
+        email,
+        source: safeSource,
+        appVersion: safeAppVersion,
+        referredBy: safeReferredBy,
+      }),
+      signal: AbortSignal.timeout(CONVEX_REGISTER_INTEREST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.warn(
+      '[register-interest] Convex request failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+
+  if (!convexResponse.ok) {
+    console.warn(`[register-interest] Convex HTTP ${convexResponse.status}`);
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+
+  let resultBody: unknown;
+  try {
+    resultBody = await convexResponse.json();
+  } catch {
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+  if (!isConvexRegisterResult(resultBody)) {
+    console.error('[register-interest] Convex returned an invalid registration response');
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+  const result = resultBody;
 
   if (result.status === 'registered' && result.referralCode) {
     if (!result.emailSuppressed) {
@@ -355,11 +410,13 @@ export async function registerInterest(
     }
   }
 
+  // Bot verification does not prove address ownership. Keep both outcomes
+  // identical; referral details belong in the confirmation email above.
   return {
-    status: result.status,
-    referralCode: result.referralCode,
-    referralCount: result.referralCount,
-    position: result.position ?? 0,
-    emailSuppressed: result.emailSuppressed ?? false,
+    status: 'registered',
+    referralCode: '',
+    referralCount: 0,
+    position: 0,
+    emailSuppressed: false,
   };
 }

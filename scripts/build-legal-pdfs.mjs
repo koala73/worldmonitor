@@ -87,7 +87,7 @@ function pageHtml({ title, bodyHtml, version, docPath }) {
 <body>
 <h1>${title}</h1>
 <p class="doc-meta">World Monitor · version <strong>${version}</strong> ·
-Authoritative text: https://www.worldmonitor.app/${docPath.replace(/^docs\//, 'docs/').replace(/\.mdx$/, '')} ·
+Authoritative text: https://www.worldmonitor.app/${docPath.replace(/\.mdx$/, '')} ·
 Previous versions: https://github.com/koala73/worldmonitor/commits/main/${docPath}</p>
 ${bodyHtml}
 </body></html>`;

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Ratelimit } from '@upstash/ratelimit';
+import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -14,6 +16,37 @@ const VERCEL_JSON_PATH = join(ROOT, 'vercel.json');
 const card = JSON.parse(readFileSync(CARD_PATH, 'utf-8'));
 const serverCard = JSON.parse(readFileSync(SERVER_CARD_PATH, 'utf-8'));
 const vercelConfig = JSON.parse(readFileSync(VERCEL_JSON_PATH, 'utf-8'));
+const originalEnv = { ...process.env };
+const originalSlidingWindow = Ratelimit.slidingWindow;
+
+async function withForcedRateLimitDenial(run) {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+  __resetRateLimitForTest();
+  const calls = [];
+  Ratelimit.slidingWindow = (tokens, window) => () => ({
+    async limit(_ctx, key) {
+      calls.push({ key, tokens, window });
+      return {
+        success: false,
+        limit: tokens,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+      };
+    },
+  });
+  try {
+    return await run(calls);
+  } finally {
+    __resetRateLimitForTest();
+    Ratelimit.slidingWindow = originalSlidingWindow;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  }
+}
 
 // Guards for the A2A surface (orank Identity `a2a-agent-card`): the card at
 // /.well-known/agent-card.json and the JSON-RPC endpoint at /a2a must stay
@@ -84,7 +117,7 @@ describe('a2a: JSON-RPC endpoint', () => {
     return handler(
       new Request('https://worldmonitor.app/a2a', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-real-ip': '203.0.113.42' },
         body: typeof body === 'string' ? body : JSON.stringify(body),
       }),
     );
@@ -176,6 +209,31 @@ describe('a2a: JSON-RPC endpoint', () => {
     assert.equal((await wrong.json()).error.code, -32600);
   });
 
+  it('echoes string and numeric request ids, including 0, on a forced -32029 denial', async () => {
+    await withForcedRateLimitDenial(async (limiterCalls) => {
+      for (const id of ['a2a-rate-1', 7, 0]) {
+        const res = await rpc('tasks/get', {}, id);
+        assert.equal(res.status, 429);
+        const body = await res.json();
+        assert.equal(body.id, id);
+        assert.equal(body.error.code, -32029);
+      }
+      const unsafe = await rpc('tasks/get', {}, '🚀'.repeat(65));
+      assert.equal((await unsafe.json()).id, null, 'a string id over 256 UTF-8 bytes must not be echoed');
+      const nonFinite = await post('{"jsonrpc":"2.0","id":1e400,"method":"tasks/get","params":{}}');
+      assert.equal((await nonFinite.json()).id, null, 'a non-finite numeric id must not be echoed');
+      assert.deepEqual(
+        limiterCalls,
+        Array.from({ length: 5 }, () => ({
+          key: 'rl:scope:/api/a2a:203.0.113.42',
+          tokens: 60,
+          window: '60 s',
+        })),
+        'the production limiter key and 60/min/IP policy must stay unchanged',
+      );
+    });
+  });
+
   it('rejects an oversized JSON-RPC body before parsing (#7406)', async () => {
     const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
     const rpcBody = '{"jsonrpc":"2.0","id":1,"method":"message/send","params":{}}';
@@ -185,13 +243,16 @@ describe('a2a: JSON-RPC endpoint', () => {
       'fixture must exceed the shared body cap',
     );
 
-    const res = await post(oversized);
-    assert.equal(res.status, 413, 'oversized bodies must be HTTP 413');
-    const body = await res.json();
-    assert.equal(body.id, null, 'a pre-parse reject cannot echo an id');
-    assert.equal(body.error.code, -32600);
-    assert.equal(body.error.data?.reason, 'body-too-large');
-    assert.equal(body.error.data?.maxBytes, MAX_JSON_RPC_BODY_BYTES);
+    await withForcedRateLimitDenial(async (limiterCalls) => {
+      const res = await post(oversized);
+      assert.equal(res.status, 413, 'oversized bodies must be HTTP 413');
+      const body = await res.json();
+      assert.equal(body.id, null, 'a pre-parse reject cannot echo an id');
+      assert.equal(body.error.code, -32600);
+      assert.equal(body.error.data?.reason, 'body-too-large');
+      assert.equal(body.error.data?.maxBytes, MAX_JSON_RPC_BODY_BYTES);
+      assert.equal(limiterCalls.length, 0, 'the byte cap must reject before the scoped limiter runs');
+    });
   });
 
   it('accepts a JSON-RPC body at the exact byte cap (#7406)', async () => {

@@ -707,6 +707,54 @@ test.describe('dashboard tab persistence', () => {
   });
 });
 
+test('discovers tools before the deferred App loads and waits before executing', async ({ page }) => {
+  test.skip(productionSmoke, 'The held App request is a local startup fixture.');
+  await installReadinessRecorder(page);
+  await installSignalCapableModelContext(page);
+  await dismissMissionPreset(page);
+  let releaseApp!: () => void;
+  const heldApp = new Promise<void>((resolve) => { releaseApp = resolve; });
+  await page.route('**/src/App.ts*', async (route) => {
+    await heldApp;
+    await route.continue();
+  });
+  try {
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    const early = await page.evaluate(async () => ({
+      tools: (await document.modelContext!.getTools()).map((tool) => tool.name).sort(),
+      constructed: performance.getEntriesByName('wm:boot:app-construct').length > 0,
+    }));
+    expect(early.tools).toEqual(DASHBOARD_TOOL_NAMES);
+    expect(early.constructed).toBe(false);
+
+    const context = executeDashboardTool(page, 'get_dashboard_context', {});
+    void context.catch(() => undefined);
+    await expect.poll(() => page.evaluate(() => (
+      performance.getEntriesByName('wm:webmcp:tool-start').length
+    ))).toBeGreaterThan(0);
+    await expect(page.locator('.skeleton-shell')).toBeVisible();
+    releaseApp();
+    expect(await context).toMatchObject({ variant: 'full' });
+    await expect(page.locator('.skeleton-shell')).toHaveCount(0);
+  } finally {
+    releaseApp();
+  }
+});
+
+test('unregisters eager tools when the deferred App constructor fails', async ({ page }) => {
+  test.skip(productionSmoke, 'The malformed preferences are a local startup fixture.');
+  await installSignalCapableModelContext(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
+    localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'live-news': null }));
+  });
+  const failure = page.waitForEvent('pageerror', (error) => error.message.includes("reading 'enabled'"));
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  expect((await failure).name).toBe('TypeError');
+  expect(await page.evaluate(() => document.modelContext!.getTools())).toEqual([]);
+});
+
 test.describe('top-level WebMCP dashboard contract', () => {
   test.skip(
     !requireWebMcp,
@@ -2078,3 +2126,34 @@ test.describe('top-level WebMCP dashboard contract', () => {
     }
   });
 });
+
+for (const api of ['registerTool', 'provideContext'] as const) {
+  test(`discovers homepage and dashboard tools with legacy ${api}`, async ({ page }) => {
+    test.skip(productionSmoke, 'Legacy provider fixtures run only against the local build.');
+    await page.addInitScript((method) => {
+      Object.defineProperty(document, 'modelContext', { value: undefined, configurable: true });
+      const tools: WebMCP.ModelContextTool[] = [];
+      Object.defineProperty(navigator, 'modelContext', {
+        configurable: true,
+        value: {
+          [method]: method === 'registerTool'
+            ? (tool: WebMCP.ModelContextTool) => { tools.push(tool); }
+            : (context: { tools: WebMCP.ModelContextTool[] }) => { tools.push(...context.tools); },
+          getTools: () => tools,
+        },
+      });
+    }, api);
+    for (const [route, expected] of [
+      ['/pro/welcome.html', HOMEPAGE_TOOL_NAMES],
+      ['/dashboard', DASHBOARD_TOOL_NAMES],
+    ] as const) {
+      await page.goto(route);
+      await expect.poll(() => page.evaluate(() => {
+        const provider = (navigator as Navigator & {
+          modelContext: { getTools(): WebMCP.ModelContextTool[] };
+        }).modelContext;
+        return provider.getTools().map(tool => tool.name).sort();
+      })).toEqual([...expected].sort());
+    }
+  });
+}

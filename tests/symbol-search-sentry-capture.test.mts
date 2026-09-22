@@ -1,3 +1,4 @@
+import { allowSymbolSearchBudget } from './helpers/symbol-search-budget.mts';
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 
@@ -32,9 +33,8 @@ delete process.env.NODE_TEST_CONTEXT;
 process.env.VITE_SENTRY_DSN = 'https://testpublickey@sentry.test/12345';
 process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
 process.env.FINNHUB_API_KEY = 'test-key';
-// Leave UPSTASH_* unset: both the cache helpers and the rate limiter guard on
-// those vars and return early WITHOUT fetching, so Finnhub + the Sentry
-// envelope are the only two URLs the handler ever hits.
+// allowSymbolSearchBudget supplies mocked Redis admission and cache misses;
+// this file isolates Finnhub status classification and Sentry delivery.
 
 // parseDsn() derives `${protocol}//${host}/api/${projectId}/envelope/` from the
 // DSN above → this prefix.
@@ -64,7 +64,7 @@ function makeReq(q = 'nvidia'): Request {
  */
 async function runWithFinnhubStatus(finnhubStatus: number): Promise<{ envelopeHits: number; status: number }> {
   let envelopeHits = 0;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = allowSymbolSearchBudget((async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     if (url.startsWith(ENVELOPE_URL_PREFIX)) {
       envelopeHits++;
@@ -72,7 +72,7 @@ async function runWithFinnhubStatus(finnhubStatus: number): Promise<{ envelopeHi
     }
     if (url.includes('finnhub.io')) return new Response('upstream', { status: finnhubStatus });
     throw new Error(`unexpected fetch: ${url}`);
-  }) as typeof fetch;
+  }) as typeof fetch);
 
   const tasks: Array<Promise<unknown>> = [];
   const res = await handler(makeReq(), { waitUntil: (p: Promise<unknown>) => { tasks.push(p); } });

@@ -7,7 +7,7 @@ WorldMonitor exposes a live tool registry — markets, conflict events, maritime
 
 ## 1. Choose free source discovery or a subscription
 
-Anyone can connect to the MCP server and call `get_sources` without credentials. It is the sole credential-free, daily-quota-free data tool, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. Every other data tool is subscription-gated. For those tools, you need one of:
+Anyone can call `get_sources` without credentials — the [`worldmonitor` CLI](/cli) and the SDKs do exactly that. An MCP client such as Claude, Cursor or Grok signs in when it connects: the server answers its opening handshake with the challenge that opens the sign-in window, and a free account is enough. It is the sole credential-free, daily-quota-free data tool, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. Every other data tool is subscription-gated. For those tools, you need one of:
 
 - **Pro** — sign in with your WorldMonitor account, no key to manage. 50 quota-consuming calls per UTC day.
 - **API Starter / Business / Enterprise** — paste a user-issued `wm_…` key in your client, or use the same OAuth flow as Pro. Dashboard-issued keys share a 60 requests/minute/user bucket and use the 50 quota-consuming calls/UTC day default. OAuth allowances are plan-resolved; API Starter and API Business currently use that same default, while enterprise OAuth can be unlimited. REST/API plan allowances remain separate.
@@ -51,8 +51,8 @@ Older Claude Desktop builds — and any stdio-only MCP client — connect throug
 
 Two things matter with this setup:
 
-- **Attach your credential explicitly for subscription tools.** The server completes the connection and all discovery (tools/prompts/resources listings) anonymously by design, so `mcp-remote` never sees a 401 challenge at connect time and does not start its OAuth flow on its own. Without the header, `get_sources` still works, but every other data-bearing `tools/call` fails with `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
-- **Prefer OAuth?** Omit `--header`: your first tool call returns the 401 challenge that triggers `mcp-remote`'s browser consent flow (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). Older `mcp-remote` versions handle this mid-session flow less reliably than the connect-time one, so if the consent window never appears, the explicit key header above is the deterministic path.
+- **With an API key, pass it as a header.** A request that carries a valid key is not challenged; an invalid, expired or revoked key gets `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
+- **Prefer OAuth?** Omit `--header`. The server answers `mcp-remote`'s opening `initialize` with the `401` challenge, which opens its browser consent flow at connect time — the path `mcp-remote` handles most reliably (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). A free account can complete it; subscription tools then depend on your plan.
 
 ## 3. Ask your first question
 
@@ -144,10 +144,10 @@ The MCP handshake is invisible from the chat side, but here's the sequence so yo
 
 ## Server-side curl
 
-If you'd rather skip the OAuth dance and drive MCP from a script:
+Sign in to the [dashboard](https://www.worldmonitor.app/dashboard) with an API Starter or higher plan. Select **Settings → API Keys** to create a key for scripts.
 
 ```bash
-export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # API Starter+ key from worldmonitor.app/settings
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # Replace with your API key
 
 # 1. List tools (compressed descriptions)
 curl -s https://worldmonitor.app/mcp \

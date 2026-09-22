@@ -31,6 +31,27 @@ describe('nlweb: /ask endpoint', () => {
     );
   }
 
+  for (const contentType of ['application/json', 'application/x-www-form-urlencoded']) {
+    for (const length of [undefined, '1', '20000']) {
+      it(`rejects oversized ${contentType} streams with length ${length}`, async () => {
+        let cancelled = false;
+        const headers = { 'Content-Type': contentType };
+        if (length) headers['Content-Length'] = length;
+        const req = new Request('https://worldmonitor.app/ask', {
+          method: 'POST', headers, duplex: 'half',
+          body: new ReadableStream({
+            pull(controller) { controller.enqueue(new TextEncoder().encode('x'.repeat(17000))); },
+            cancel() { cancelled = true; },
+          }),
+        });
+        const res = await handler(req);
+        assert.equal(res.status, 413);
+        assert.equal((await res.json())._meta.response_type, 'error');
+        assert.equal(cancelled, true);
+      });
+    }
+  }
+
   it('POST {query} returns NLWeb JSON with the _meta envelope', async () => {
     const res = await post({ query: 'live shipping chokepoint status' });
     assert.equal(res.status, 200);

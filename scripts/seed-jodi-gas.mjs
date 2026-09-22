@@ -28,9 +28,10 @@ const inflateRawAsync = promisify(inflateRaw);
 export const CANONICAL_KEY = 'energy:jodi-gas:v1:_countries';
 export const KEY_PREFIX = 'energy:jodi-gas:v1:';
 export const LNG_VULNERABILITY_KEY = 'energy:lng-vulnerability:v1';
-export const GAS_TTL = 70 * 24 * 3600; // 70 days: 2× 35d cadence so one missed monthly publish still serves last-good through the 40d STALE_SEED window (#7273)
+export const GAS_TTL = 70 * 24 * 3600; // 70d keeps last-good through the 40d STALE_SEED window and several 15d bundle intervals (#7273)
 
-const ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
+const CATALOG_URL = 'https://api.publisher.jodidata.org/web/files/gas';
+const ARCHIVE_ROOT = 'https://www.jodidata.org/jodi-publisher/gas';
 const CSV_FILENAME = 'STAGING_world_NewFormat.csv';
 const UNIT_FILTER = 'TJ';
 export const MIN_COUNTRIES = 50;
@@ -258,11 +259,35 @@ function findZipEntry(buf, filename) {
   return null;
 }
 
+// Publication IDs identify specific releases. Follow the same catalog as the
+// official download page; a successful fetch of an old ID never finds new data.
+function resolveGasArchiveUrl(catalog) {
+  if (!Number.isSafeInteger(catalog?.publicationId) || catalog.publicationId <= 0
+    || !Array.isArray(catalog.files)) {
+    throw new Error('JODI Gas catalog has no valid publication');
+  }
+  const csvFiles = catalog.files.filter(file => file?.format === 'CSV' && file.ignore === false);
+  if (csvFiles.length !== 1 || csvFiles[0].filename !== 'GAS_world_NewFormat.zip') {
+    throw new Error('JODI Gas catalog must contain one supported CSV archive');
+  }
+  return `${ARCHIVE_ROOT}/${catalog.publicationId}/${csvFiles[0].filename}`;
+}
+
 async function fetchAndParseCsv() {
-  console.log(`  Fetching JODI Gas ZIP from ${ZIP_URL}`);
-  const resp = await fetch(ZIP_URL, {
+  // Discovery and archive download share the existing total request budget.
+  const signal = AbortSignal.timeout(120_000);
+  const catalogResponse = await fetch(CATALOG_URL, {
+    headers: { 'User-Agent': CHROME_UA },
+    signal,
+    redirect: 'error',
+  });
+  if (!catalogResponse.ok) throw new Error(`JODI Gas catalog fetch failed: HTTP ${catalogResponse.status}`);
+  const zipUrl = resolveGasArchiveUrl(await catalogResponse.json());
+  console.log(`  Fetching JODI Gas ZIP from ${zipUrl}`);
+  const resp = await fetch(zipUrl, {
     headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'identity' },
-    signal: AbortSignal.timeout(120_000),
+    signal,
+    redirect: 'error',
   });
   if (!resp.ok) throw new Error(`JODI Gas ZIP fetch failed: HTTP ${resp.status}`);
 
@@ -289,7 +314,7 @@ async function fetchAndParseCsv() {
   return csvText;
 }
 
-async function fetchJodiGas() {
+export async function fetchJodiGas() {
   const csvText = await fetchAndParseCsv();
   console.log('  Parsing CSV rows...');
   return buildGasRecordsFromCsv(csvText);
@@ -371,7 +396,7 @@ if (isMain) {
 
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 40 * 24 * 60, // 40d: 35d cadence + 5d late-publisher grace; must stay below GAS_TTL (#7273)
+    maxStaleMin: 40 * 24 * 60, // 40d allows missed 15d bundle intervals and must stay below GAS_TTL (#7273)
     sourceVersion: 'jodi-gas-v1',
   });
 }

@@ -1157,6 +1157,35 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.equal(payload.stale, true, 'preview risk data must use the preview freshness verdict');
   });
 
+  for (const method of ['tools/call', 'resources/read']) {
+    it(`withholds cached corridor prose with a null baseline row through ${method}`, async () => {
+      const capture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/chokepoints-routing-advice-2026-09-10.json'), 'utf8'));
+      const captured = capture.body.chokepoints.find(cp => cp.id === 'hormuz_strait').transitSummary;
+      const baseline = { id: 'hormuz_strait', name: 'Strait of Hormuz' };
+      for (const advice of [captured.riskReportAction, undefined, null, { route: 'Suez', cost: '$50-80K' }]) {
+        const summary = { ...captured, todayTotal: null, riskSummary: advice, riskReportAction: advice };
+        installMockFetch({ keyOverrides: {
+          'supply_chain:transit-summaries:v1': { summaries: { hormuz_strait: summary }, fetchedAt: capture.retrievedAt },
+          'energy:chokepoint-baselines:v1': { chokepoints: [null, baseline, { id: 'suez' }] },
+        } });
+        const request = method === 'tools/call'
+          ? callBody('get_chokepoint_status', { chokepoint: 'hormuz' })
+          : readBody('worldmonitor://chokepoints/strait-of-hormuz/status');
+        const response = await handler(envKeyReq(request));
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.error, undefined);
+        const text = body.result.contents?.[0]?.text ?? body.result.content?.[0]?.text;
+        const payload = JSON.parse(text);
+        const served = payload.data['transit-summaries'].summaries.hormuz_strait;
+        assert.deepEqual(served, { ...summary, riskSummary: '', riskReportAction: '' });
+        assert.equal(payload.data['transit-summaries'].fetchedAt, capture.retrievedAt);
+        assert.deepEqual(payload.data['chokepoint-baselines'].chokepoints, [baseline]);
+        assert.doesNotMatch(text, /REROUTE|50-80K|Salalah/);
+      }
+    });
+  }
+
   it('resources/read worldmonitor://chokepoints/suez/status returns the transit-summary envelope with cached_at + stale', async () => {
     const res = await handler(envKeyReq(readBody('worldmonitor://chokepoints/suez/status')));
     assert.equal(res.status, 200);

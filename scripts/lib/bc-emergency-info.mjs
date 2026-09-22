@@ -14,13 +14,11 @@ export const BC_ALERTS_CATALOGUE_URL = 'https://catalogue.data.gov.bc.ca/dataset
 export const BC_ALERTS_SOURCE = 'bc-evacuation-orders-alerts';
 export const BC_ALERTS_PROVINCE = 'BC';
 export const BRITISH_COLUMBIA_CENTROID = Object.freeze([-124.5, 54.5]);
-export const BC_ALERTS_MAX_CONTENT_AGE_MIN = 3 * 24 * 60;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const PAGE_SIZE = 200;
 const MAX_PAGES = 6;
 const MAX_ALERTS = 1_000;
-const INACTIVE_ORDER_ALERT_STATUSES = new Set(['', 'all clear']);
 const KNOWN_ACTIVE_ORDER_ALERT_STATUSES = new Set([
   'alert',
   'order',
@@ -103,9 +101,10 @@ function centroidOf(coords) {
 }
 
 function normalizeFeature(feature) {
-  if (!feature || typeof feature !== 'object') return null;
-  const properties = feature.properties;
-  if (!properties || typeof properties !== 'object') return null;
+  const properties = feature?.properties;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
+    throw new Error('bc-emergency-info: feature is missing usable properties');
+  }
 
   const sysId = String(properties.EMRG_OAA_SYSID ?? '').trim();
   if (!sysId) {
@@ -114,7 +113,7 @@ function normalizeFeature(feature) {
 
   const status = String(properties.ORDER_ALERT_STATUS ?? '').trim();
   const normalizedStatus = status.toLowerCase();
-  if (INACTIVE_ORDER_ALERT_STATUSES.has(normalizedStatus)) return null;
+  if (normalizedStatus === 'all clear') return null;
   if (!KNOWN_ACTIVE_ORDER_ALERT_STATUSES.has(normalizedStatus)) {
     throw new Error(`bc-emergency-info: unknown ORDER_ALERT_STATUS: ${status || '(empty)'}`);
   }
@@ -131,6 +130,10 @@ function normalizeFeature(feature) {
   const centroid = centroidOf(coords);
   const updatedAt = finiteTimestamp(properties.DATE_MODIFIED);
   const publishedAt = finiteTimestamp(properties.EVENT_START_DATE);
+  const eventTimestamp = updatedAt ?? publishedAt;
+  if (eventTimestamp == null || eventTimestamp > Date.now() + 60 * 60 * 1000) {
+    throw new Error('bc-emergency-info: active feature is missing a usable event timestamp');
+  }
 
   return {
     id: `bc-evacuation-${sysId}`,
@@ -245,12 +248,4 @@ export function validateBcAlertsEnvelope(data) {
 
 export function declareBcAlertRecords(data) {
   return Array.isArray(data?.alerts) ? data.alerts.length : 0;
-}
-
-export function bcAlertsContentMeta(data, nowMs = Date.now()) {
-  const timestamps = (data?.alerts ?? [])
-    .map((alert) => alert.updatedAt ?? alert.publishedAt)
-    .filter((value) => Number.isFinite(value) && value > 0 && value <= nowMs + 60 * 60 * 1000);
-  if (timestamps.length === 0) return null;
-  return { newestItemAt: Math.max(...timestamps), oldestItemAt: Math.min(...timestamps) };
 }

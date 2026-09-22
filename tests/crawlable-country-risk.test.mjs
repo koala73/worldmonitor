@@ -50,6 +50,15 @@ describe('crawlable country live-risk tool', () => {
       change24h: null,
       movementText: 'stable or unavailable over approximately 24 hours',
     });
+    assert.deepEqual(
+      parseCiiMovement(formatTrend(4, 'TREND_DIRECTION_RISING'), {
+        intervalPhrase: 'over a 24-hour comparison window',
+      }),
+      {
+        change24h: 4,
+        movementText: 'up 4 points over a 24-hour comparison window',
+      },
+    );
     assert.throws(() => parseCiiMovement('Rising later'), /Invalid CII movement label/);
   });
 

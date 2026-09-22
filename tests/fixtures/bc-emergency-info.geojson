@@ -50,18 +50,6 @@
         "DATE_MODIFIED": 1786894936000,
         "EVENT_START_DATE": 1786104000000
       }
-    },
-    {
-      "type": "Feature",
-      "geometry": null,
-      "properties": {
-        "EMRG_OAA_SYSID": 71,
-        "EVENT_NAME": "Unclassified incident",
-        "ORDER_ALERT_NAME": "Unknown area",
-        "ORDER_ALERT_STATUS": "",
-        "DATE_MODIFIED": 1786894936000,
-        "EVENT_START_DATE": 1786104000000
-      }
     }
   ]
 }

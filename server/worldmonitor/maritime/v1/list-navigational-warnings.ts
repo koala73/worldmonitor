@@ -9,7 +9,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { parseNgaBroadcastWarnings } from '../../../_shared/nga-broadcast-warnings';
 import { cachedFetchJson } from '../../../_shared/redis';
 
-const REDIS_CACHE_KEY = 'maritime:navwarnings:v2';
+const REDIS_CACHE_KEY = 'maritime:navwarnings:v3';
 const REDIS_CACHE_TTL = 3600; // 1 hr — NGA broadcasts update daily
 
 // ========================================================================
@@ -35,7 +35,7 @@ function parseNgaDate(dateStr: unknown): number {
   return Date.UTC(year, month, day, hours, minutes);
 }
 
-async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[] | null> {
+async function fetchNgaWarnings(): Promise<NavigationalWarning[] | null> {
   try {
     const response = await fetch(NGA_WARNINGS_URL, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
@@ -48,7 +48,7 @@ async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[] | 
     const rawWarnings = parseNgaBroadcastWarnings(data);
     if (rawWarnings === null) return null;
 
-    let warnings: NavigationalWarning[] = rawWarnings.map((w): NavigationalWarning => ({
+    return rawWarnings.map((w): NavigationalWarning => ({
       id: `${w.navArea || ''}-${w.msgYear || ''}-${w.msgNumber || ''}`,
       title: `NAVAREA ${w.navArea || ''} ${w.msgNumber || ''}/${w.msgYear || ''}`,
       text: w.text || '',
@@ -59,16 +59,6 @@ async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[] | 
       authority: w.authority || '',
     }));
 
-    if (area) {
-      const areaLower = area.toLowerCase();
-      warnings = warnings.filter(
-        (w) =>
-          w.area.toLowerCase().includes(areaLower) ||
-          w.text.toLowerCase().includes(areaLower),
-      );
-    }
-
-    return warnings;
   } catch {
     return null;
   }
@@ -83,16 +73,18 @@ export async function listNavigationalWarnings(
   req: ListNavigationalWarningsRequest,
 ): Promise<ListNavigationalWarningsResponse> {
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.area || 'all'}`;
-    const result = await cachedFetchJson<ListNavigationalWarningsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
-      const warnings = await fetchNgaWarnings(req.area);
+    const result = await cachedFetchJson<ListNavigationalWarningsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
+      const warnings = await fetchNgaWarnings();
       return warnings === null
         ? null
         : { warnings, pagination: undefined, dataAvailable: true };
     });
-    return result
-      ? { ...result, dataAvailable: result.dataAvailable === true }
-      : { warnings: [], pagination: undefined, dataAvailable: false };
+    if (!result) return { warnings: [], pagination: undefined, dataAvailable: false };
+    const area = (req.area || '').toLowerCase();
+    const warnings = area
+      ? result.warnings.filter(w => w.area.toLowerCase().includes(area) || w.text.toLowerCase().includes(area))
+      : result.warnings;
+    return { ...result, warnings, dataAvailable: result.dataAvailable === true };
   } catch {
     return { warnings: [], pagination: undefined, dataAvailable: false };
   }

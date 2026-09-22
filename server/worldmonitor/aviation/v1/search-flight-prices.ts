@@ -8,6 +8,7 @@ import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import { requireLiveAviationAccess } from './_shared';
 import { generateDemoPrices } from './_providers/demo_prices';
 import { searchPricesTravelpayouts } from './_providers/travelpayouts_data';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 
 type DegradedError = 'missing_credentials' | 'upstream_error' | 'no_results';
 type DegradedProvider = 'none' | 'travelpayouts_data';
@@ -101,6 +102,7 @@ export async function searchFlightPrices(
             }
             return emptyDegraded(now, error, 'travelpayouts_data');
         } catch (err) {
+            if (err instanceof ApiError && err.statusCode === 400) throw err;
             console.warn(`[Aviation] Travelpayouts upstream error: ${err instanceof Error ? err.message : err}`);
             void captureSilentError(err, { tags: { route: 'aviation/search-flight-prices', step: 'travelpayouts-fetch' } });
             if (demoOptIn) {

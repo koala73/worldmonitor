@@ -1,6 +1,7 @@
 ---
 title: "An origin cache header proves nothing about the layer that honours it"
 date: 2026-09-04
+last_updated: 2026-09-08
 category: conventions
 module: crawlable corpus / CDN cache configuration
 problem_type: convention
@@ -12,6 +13,8 @@ applies_when:
   - "Diagnosing cf-cache-status DYNAMIC on a route whose origin headers look correct"
   - "Changing anything about the crawlable corpus' caching, TTFB, or crawl budget"
   - "Reviewing a fix whose only evidence is a green offline config assertion"
+  - "Deferring half of a two-part change and pinning the deferral with a passing test"
+  - "Shipping a claim whose other half is applied by hand outside the repo"
   - "Caching a proxied or content-negotiated route (Accept, RSC) at a shared edge"
 symptoms:
   - "Every corpus route answers with the configured CDN-Cache-Control and Cloudflare still reports cf-cache-status: DYNAMIC"
@@ -180,6 +183,60 @@ What this adds to the convention:
   falls through to the bypass and shows the origin's answer without storing
   anything. Sending the suspect request to the bare URL *is* the poisoning.
 
+## Fifth time: #7869 (2026-09-08) — a deferred half, pinned by a confident test name
+
+The root sitemaps had been reported uncached in two consecutive audit rounds
+before anyone looked at why. The reason turns out to be a new shape of this same
+failure, and the most transferable one yet: **the incomplete half had been
+written down as a decision.**
+
+#7749 gave `/sitemap.xml` and `/sitemap-main.xml` the Vercel half of the pair and
+stopped there, which is a defensible place to stop. What made it durable was the
+test that pinned it:
+
+```
+it('caches root sitemaps at Vercel without changing the Cloudflare bypass (#7749)', ...)
+```
+
+— asserting `CDN-Cache-Control` was `null`. That test is green, confidently
+named, and reads as a deliberate scope boundary rather than an unfinished job. So
+nothing prompted anyone to finish it, and production kept answering
+`cf-cache-status: DYNAMIC` until an external audit re-measured it two rounds
+later. A TODO decays into a decision the moment it is expressed as a passing
+assertion.
+
+**The counter-practice, when a claim's other half lives outside the repo.** The
+Cloudflare rule is only reachable through a manual `--apply`, so nothing in the
+repo can prove it ran. Every in-repo guard here compares `vercel.json` against
+`scripts/cloudflare-cache-rule.mjs` — two constants in the same tree, neither of
+which knows what the zone contains. The fix is not a better offline assertion; it
+is to put the URLs in the live post-deploy probe
+(`tests/live-api-cache-auth-regression.test.mjs`), so *merged but never applied*
+turns the sweep red instead of staying quietly inert. That workflow runs on
+`deployment_status` and on a schedule, not on pull requests, so it cannot block
+the merge — it reports afterwards, which is the correct shape for a claim that
+only becomes true after an operator acts.
+
+Both of these are the same lesson the rest of this document keeps arriving at,
+one level up: **an assertion proves what was declared, and the thing worth
+proving usually lives somewhere the assertion cannot see.** When it does, say so
+in the test's name — a test called "…without changing the Cloudflare bypass"
+should have been called "…pending the Cloudflare claim (#7749)".
+
+### Two measurement traps, restated because both recurred here
+
+- `curl -I` sends HEAD, and the rule's method guard excludes it, so HEAD reports
+  `DYNAMIC` on routes that HIT for real clients. Every cache measurement in this
+  repo must use GET. This is already recorded above and still produced a wrong
+  round-6 measurement.
+- The naive birthday figure is the wrong number for a namespaced key. Sizing the
+  risk of a truncated-digest collision over 748 providers looked like ~1.65%
+  until the namespace was read correctly: an anchor collision needs the slug to
+  match *as well as* the digest, and every slug was distinct, so the path was
+  unreachable rather than a one-in-sixty gamble. Overstating a risk buys the
+  wrong fix; the defect there was a guarantee the code asserted and did not have.
+  (See `docs/solutions/design-patterns/published-citation-anchors-need-identity-based-ids-and-visible-scroll-targets.md`.)
+
 ## Related
 
 - `docs/solutions/design-patterns/pinned-value-allowlist-freezes-a-snapshot-not-the-invariant.md`
@@ -190,3 +247,6 @@ What this adds to the convention:
   (threshold *and* marker list) so it cannot itself go silently missing.
 - `docs/solutions/conventions/ref-param-is-affiliate-attribution-use-utm-for-internal-source-tags.md`
   — why the cache rule deliberately excludes query-bearing corpus URLs.
+- `docs/solutions/design-patterns/published-citation-anchors-need-identity-based-ids-and-visible-scroll-targets.md`
+  — the other half of #7869: what changes once a fragment id becomes published
+  citation data, and why an anchor must read only its own key.

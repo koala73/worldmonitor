@@ -197,7 +197,9 @@ const SEED_DOMAINS = {
   'economic:china-macro':     { key: 'seed-meta:economic:china-macro-transport', intervalMin: 2160 },
   'economic:china-release-calendar': { key: 'seed-meta:economic:china-release-calendar', intervalMin: 2160 },
   'china:policy-events':      { key: 'seed-meta:china:policy-events',      intervalMin: 360 },
-  'intelligence:china-decision-signals': { key: 'seed-meta:intelligence:china-decision-signals', intervalMin: 30, minRecordCount: 6 },
+  // The producer still runs every 15min. seed-health stales at intervalMin*2,
+  // so 90 mirrors the three-hour operational-coverage budget in api/health.js.
+  'intelligence:china-decision-signals': { key: 'seed-meta:intelligence:china-decision-signals', intervalMin: 90, minRecordCount: 6 },
   'economic:bis-dsr':                  { key: 'seed-meta:economic:bis-dsr',                  intervalMin: 720 }, // 12h cron; only written when DSR slice fetched fresh entries
   'economic:bis-property-residential': { key: 'seed-meta:economic:bis-property-residential', intervalMin: 720 }, // 12h cron; only written when SPP slice fetched fresh entries
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
@@ -580,6 +582,10 @@ async function getSeedBatch(entries) {
   return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
 
+// Per-country states the bilateral HS4 seeder records when it could not
+// observe a reporter this run (see scripts/seed-comtrade-bilateral-hs4.mjs).
+const BILATERAL_FAILURE_STATES = new Set(['unavailable', 'malformed', 'incomplete', 'not_attempted']);
+
 export async function handleSeedHealth(req, options = {}) {
   const hasInjectedClock = Object.hasOwn(options, 'now');
   const now = hasInjectedClock ? options.now : Date.now();
@@ -658,6 +664,18 @@ export async function handleSeedHealth(req, options = {}) {
     const ageMs = evaluationNow - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
     const rankableRecordCount = parseRankableRecordCount(meta);
+    const chinaDecisionDiagnostics = domain === 'intelligence:china-decision-signals'
+      ? projectChinaDecisionGroupDiagnostics(meta, {
+          groupIds: CHINA_DECISION_SIGNAL_GROUP_IDS,
+          allowedStates: CHINA_DECISION_SIGNAL_STATES,
+          healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
+        })
+      : null;
+    const chinaDecisionDiagnosticsInvalid = domain === 'intelligence:china-decision-signals'
+      && chinaDecisionDiagnostics === null;
+    const chinaDecisionFailureEvidenceInvalid = Boolean(
+      chinaDecisionDiagnostics?.coverageFailureInvalidReason,
+    );
     const redistributionPolicyVersion = Number.isInteger(meta.redistributionPolicyVersion)
       ? meta.redistributionPolicyVersion
       : null;
@@ -669,9 +687,31 @@ export async function handleSeedHealth(req, options = {}) {
     const poolCoveragePartial = hasPoolCoverageShortfall(poolCounts, cfg.minPoolCounts);
     const redistributionPolicyPartial = cfg.requiredRedistributionPolicyVersion != null
       && redistributionPolicyVersion !== cfg.requiredRedistributionPolicyVersion;
-    const coveragePartial = recordCoveragePartial
+    const bilateralGaps = domain === 'comtrade:bilateral-hs4' ? {
+      preservedCountries: Object.keys(meta.preserveStreaks ?? {}).filter(iso => /^[A-Z]{2}$/.test(iso)),
+      countryCoverage: Object.fromEntries(Object.entries(meta.countryCoverage ?? {}).filter(([iso]) => /^[A-Z]{2}$/.test(iso))),
+      productCoverageKnown: Boolean(meta.countryCoverage),
+      // The run's two reserved world-export requests (R10). Null on a snapshot
+      // written before the field existed, which is absence of evidence, not a
+      // failure — reporting it as one would flag every legacy run.
+      worldExports: meta.worldExports ?? null,
+    } : null;
+    // Only failures are a coverage gap. A reporter with no positive rows
+    // (no_records) and an observed importer that does not trade every reviewed
+    // heading are valid observations; flagging them would keep the domain
+    // partial on every healthy run. Both stay visible in bilateralCoverage.
+    //
+    // World exports are one run-level fetch, so anything but 'observed' — an
+    // unrecognised state included — is a gap the brief's supplier scale inherits.
+    const bilateralPartial = bilateralGaps && (bilateralGaps.preservedCountries.length > 0
+      || Object.values(bilateralGaps.countryCoverage).some(c => BILATERAL_FAILURE_STATES.has(c?.state))
+      || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed'));
+    const coveragePartial = Boolean(bilateralPartial) || recordCoveragePartial
       || rankableCoveragePartial
-      || poolCoveragePartial;
+      || poolCoveragePartial
+      || chinaDecisionDiagnosticsInvalid
+      || chinaDecisionFailureEvidenceInvalid
+      || (chinaDecisionDiagnostics?.staleGroups.length ?? 0) > 0;
     // Source-specific seed projections retain their last-good records while
     // reporting a current upstream failure through sourceState. Treat that as
     // an immediate operator error instead of waiting for the freshness window.
@@ -745,7 +785,7 @@ export async function handleSeedHealth(req, options = {}) {
       || probe?.ok === false
       || contentFreshnessInvalid
       || contentFreshnessStale;
-    if (stale || poolCoveragePartial) staleCount++;
+    if (stale || coveragePartial) staleCount++;
     // A policy mismatch is an operator error only once the producer has
     // actually activated. Before the first publish the field is legitimately
     // absent, so escalating then would drive `overall: degraded` (HTTP 503) for
@@ -784,6 +824,7 @@ export async function handleSeedHealth(req, options = {}) {
       ageMinutes: Math.round(ageMs / 60000),
       stale,
     };
+    if (bilateralGaps) seeds[domain].bilateralCoverage = bilateralGaps;
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
     if (cfg.minRankableRecordCount != null) {
       seeds[domain].rankableRecordCount = rankableRecordCount;
@@ -819,12 +860,8 @@ export async function handleSeedHealth(req, options = {}) {
       seeds[domain].lastErrorCode = meta.lastErrorCode;
     }
     if (domain === 'intelligence:china-decision-signals') {
-      const diagnostics = projectChinaDecisionGroupDiagnostics(meta, {
-        groupIds: CHINA_DECISION_SIGNAL_GROUP_IDS,
-        allowedStates: CHINA_DECISION_SIGNAL_STATES,
-        healthyQuietCause: CHINA_DECISION_HEALTHY_QUIET_CAUSE,
-      });
-      if (diagnostics) Object.assign(seeds[domain], diagnostics);
+      if (chinaDecisionDiagnostics) Object.assign(seeds[domain], chinaDecisionDiagnostics);
+      else seeds[domain].coverageFailureInvalidReason = 'GROUP_DIAGNOSTICS_INVALID';
     }
   }
 

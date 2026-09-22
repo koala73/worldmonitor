@@ -1,12 +1,9 @@
 /**
  * RPC: submitContact -- Stores an enterprise contact submission and emails ops.
  * Port from api/contact.js
- * Sources: Convex contactMessages:submit mutation + Resend notification email
+ * Sources: authenticated Convex contact HTTP route + Resend notification email
  */
 
-import { ConvexHttpClient } from 'convex/browser';
-import { ConvexError } from 'convex/values';
-import { api } from '../../../../convex/_generated/api';
 import type {
   ServerContext,
   SubmitContactRequest,
@@ -19,11 +16,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[+(]?\d[\d\s()./-]{4,23}\d$/;
 const MAX_FIELD = 500;
 const MAX_MESSAGE = 2000;
-
-type ConvexPolicyErrorData = {
-  kind?: string;
-  message?: string;
-};
 
 export const FREE_EMAIL_DOMAINS = new Set<string>([
   'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.fr', 'yahoo.co.uk', 'yahoo.co.jp',
@@ -48,25 +40,6 @@ function escapeHtml(str: string): string {
 
 function sanitizeForSubject(str: string, maxLen = 50): string {
   return str.replace(/[\r\n\0]/g, '').slice(0, maxLen);
-}
-
-function getConvexPolicyErrorData(error: { data: unknown }): ConvexPolicyErrorData | null {
-  const rawData = error.data;
-  if (rawData && typeof rawData === 'object') {
-    return rawData as ConvexPolicyErrorData;
-  }
-  if (typeof rawData !== 'string') {
-    return null;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(rawData);
-    return parsed && typeof parsed === 'object'
-      ? parsed as ConvexPolicyErrorData
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 async function sendNotificationEmail(
@@ -174,35 +147,47 @@ export async function submitContact(
   const safeMsg = message ? message.slice(0, MAX_MESSAGE) : undefined;
   const safeSource = source ? source.slice(0, 100) : 'enterprise-contact';
 
-  const convexUrl = process.env.CONVEX_URL;
-  if (!convexUrl) {
+  const convexUrl = (process.env.CONVEX_SITE_URL
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')).replace(/\/$/, '');
+  const secret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  if (!convexUrl || !secret) {
     throw new ApiError(503, 'Service unavailable', '');
   }
 
-  const client = new ConvexHttpClient(convexUrl);
+  let response: Response;
   try {
-    await client.mutation(api.contactMessages.submit, {
-      name: safeName,
-      email: email.trim(),
-      organization: safeOrg,
-      phone: safePhone,
-      message: safeMsg,
-      source: safeSource,
+    response = await fetch(`${convexUrl}/leads/submit-contact`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-leads/1.0',
+        'x-convex-shared-secret': secret,
+      },
+      body: JSON.stringify({
+        name: safeName,
+        email: email.trim(),
+        organization: safeOrg,
+        phone: safePhone,
+        message: safeMsg,
+        source: safeSource,
+      }),
+      signal: AbortSignal.timeout(10_000),
     });
-  } catch (err) {
-    // Preserve policy failures from direct Convex enforcement at the HTTP seam
-    // instead of turning expected client errors into opaque 500 responses.
-    // Convex serializes ConvexError payloads onto err.data.
-    if (err instanceof ConvexError) {
-      const data = getConvexPolicyErrorData(err);
-      if (data?.kind === 'rate_limited') {
-        throw new ApiError(429, data.message || 'Too many requests', '');
-      }
-      if (data?.kind === 'FREE_EMAIL_NOT_ALLOWED') {
-        throw new ApiError(422, data.message || 'Please use your work email address', '');
-      }
-    }
-    throw err;
+  } catch {
+    throw new ApiError(503, 'Service unavailable', '');
+  }
+  if (response.status === 429) {
+    throw new ApiError(429, 'Too many recent submissions for this email; try again later.', '');
+  }
+  if (response.status === 422) {
+    throw new ApiError(422, 'Please use a corporate email address.', '');
+  }
+  if (!response.ok) {
+    throw new ApiError(503, 'Service unavailable', '');
+  }
+  const result: unknown = await response.json().catch(() => null);
+  if (!result || typeof result !== 'object' || !('status' in result) || result.status !== 'sent') {
+    throw new ApiError(503, 'Service unavailable', '');
   }
 
   const emailSent = await sendNotificationEmail(

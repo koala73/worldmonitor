@@ -18,12 +18,11 @@ import {
   CHOKEPOINT_LNG_EXPOSURE,
   EU_GAS_STORAGE_COUNTRIES,
   computeGasDisruption,
-  computeGasBufferDays,
-  buildGasAssessment,
   REFINERY_YIELD,
   REFINERY_YIELD_BASIS,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 import { computeEnergyShockScenario } from '../server/worldmonitor/intelligence/v1/compute-energy-shock.ts';
+import { buildDecisionBrief } from '../src/utils/decision-brief.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
@@ -587,7 +586,7 @@ describe('cache key includes degraded state and fuelMode', () => {
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 60, fuelMode: 'gas',
     });
     assert.equal(gas.products.length, 0, 'gas-only mode must not receive the oil cache entry');
-    assert.equal(gas.gasImpact?.dataAvailable, true);
+    assert.equal(gas.gasSensitivity?.dataAvailable, true);
   });
 });
 
@@ -653,59 +652,13 @@ describe('computeGasDisruption', () => {
     assert.equal(deficitPct, 0);
   });
 
-  it('returns zero deficit for zero totalDemandTj', () => {
-    const { deficitPct } = computeGasDisruption(1000, 0, 'hormuz_strait', 100);
-    assert.equal(deficitPct, 0);
+  it('suppresses gas sensitivity for zero totalDemandTj', () => {
+    assert.equal(computeGasDisruption(1000, 0, 'hormuz_strait', 100), undefined);
   });
 
-  it('clamps deficit to 100%', () => {
+  it('preserves the loss-to-demand ratio when LNG imports exceed demand', () => {
     const { deficitPct } = computeGasDisruption(10000, 100, 'malacca_strait', 100);
-    assert.equal(deficitPct, 100);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// computeGasBufferDays
-// ---------------------------------------------------------------------------
-
-describe('computeGasBufferDays', () => {
-  it('computes buffer from TWh and monthly disruption', () => {
-    const days = computeGasBufferDays(10, 300);
-    assert.equal(days, 3600);
-  });
-
-  it('returns 0 for zero disruption', () => {
-    assert.equal(computeGasBufferDays(100, 0), 0);
-  });
-
-  it('returns 0 for zero storage', () => {
-    assert.equal(computeGasBufferDays(0, 300), 0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildGasAssessment
-// ---------------------------------------------------------------------------
-
-describe('buildGasAssessment', () => {
-  it('returns insufficient data message when not available', () => {
-    const msg = buildGasAssessment('JP', 'hormuz', false, 0, 0, 0, 0, 50, false);
-    assert.ok(msg.includes('Insufficient gas import data'));
-  });
-
-  it('returns low dependence for lngShare < 10%', () => {
-    const msg = buildGasAssessment('US', 'hormuz', true, 100, 0.05, 1.0, 0, 50, false);
-    assert.ok(msg.includes('low LNG dependence'));
-  });
-
-  it('returns buffer message for EU with >90 days', () => {
-    const msg = buildGasAssessment('DE', 'hormuz', true, 500, 0.3, 5.0, 200, 50, true);
-    assert.ok(msg.includes('200 days of gas storage buffer'));
-  });
-
-  it('returns deficit message for high exposure', () => {
-    const msg = buildGasAssessment('JP', 'malacca', true, 1000, 0.9, 25.0, 0, 50, false);
-    assert.ok(msg.includes('25.0% gas supply deficit'));
+    assert.equal(deficitPct, 5000);
   });
 });
 
@@ -751,8 +704,8 @@ describe('gasDataAvailable distinguishes zero-LNG from missing data', () => {
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'gas',
     });
     assert.equal(response.dataAvailable, true, 'an existing JODI gas record is available even with zero LNG');
-    assert.equal(response.gasImpact?.dataAvailable, true);
-    assert.match(response.assessment, /pipeline only/i);
+    assert.equal(response.gasSensitivity?.dataAvailable, true);
+    assert.match(response.assessment, /recorded zero LNG imports/i);
   });
 
   it('reports missing JODI gas as unavailable through the production response', async (t) => {
@@ -763,7 +716,7 @@ describe('gasDataAvailable distinguishes zero-LNG from missing data', () => {
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 50, fuelMode: 'gas',
     });
     assert.equal(response.dataAvailable, false);
-    assert.equal(response.gasImpact, undefined);
+    assert.equal(response.gasSensitivity, undefined);
     assert.equal(response.coverageLevel, 'unsupported');
   });
 });
@@ -784,22 +737,6 @@ describe('buildAssessment skips low-dependence dismissal when proxied', () => {
     const products = [{ product: 'Diesel', deficitPct: 5.0 }];
     const msg = buildAssessment('XX', 'suez', true, 0.06, 60, 30, 50, products, 'full', false, true, true);
     assert.ok(msg.includes('low Gulf crude dependence'));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildGasAssessment pipeline-only branch
-// ---------------------------------------------------------------------------
-
-describe('buildGasAssessment pipeline-only branch', () => {
-  it('returns pipeline-only message for zero lngImportsTj', () => {
-    const msg = buildGasAssessment('DE', 'hormuz', true, 0, 0, 0, 0, 50, false);
-    assert.ok(msg.includes('pipeline only'));
-  });
-
-  it('returns insufficient data when dataAvailable=false', () => {
-    const msg = buildGasAssessment('XX', 'hormuz', false, 0, 0, 0, 0, 50, false);
-    assert.ok(msg.includes('Insufficient'));
   });
 });
 
@@ -838,27 +775,6 @@ describe('grid-tightness limitation from Ember fossilShare', () => {
 });
 
 // ---------------------------------------------------------------------------
-// computeGasDisruption uses liveFlowRatio when available
-// ---------------------------------------------------------------------------
-
-describe('computeGasDisruption uses liveFlowRatio when available', () => {
-  it('scales static exposure by liveFlowRatio', () => {
-    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100, 0.5);
-    assert.equal(lngDisruptionTj, 150);
-  });
-
-  it('uses static exposure when liveFlowRatio is null (degraded)', () => {
-    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100, null);
-    assert.equal(lngDisruptionTj, 300);
-  });
-
-  it('uses static exposure when liveFlowRatio is undefined', () => {
-    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100);
-    assert.equal(lngDisruptionTj, 300);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // gas-only mode coverage override
 // ---------------------------------------------------------------------------
 
@@ -871,9 +787,9 @@ describe('gas-only mode response', () => {
       countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 80, fuelMode: 'gas',
     });
 
-    assert.equal(response.coverageLevel, 'full');
+    assert.equal(response.coverageLevel, 'partial');
     assert.equal(response.dataAvailable, true);
-    assert.equal(response.gasImpact?.dataAvailable, true);
+    assert.equal(response.gasSensitivity?.dataAvailable, true);
     assert.deepEqual(response.products, []);
     assert.equal(response.gulfCrudeShare, 0);
     assert.equal(response.crudeLossKbd, 0);
@@ -881,7 +797,7 @@ describe('gas-only mode response', () => {
     assert.equal(response.jodiOilCoverage, false);
     assert.equal(response.comtradeCoverage, false);
     assert.equal(response.ieaStocksCoverage, false);
-    assert.ok(response.limitations.some((limitation) => limitation.includes('LNG chokepoint exposure')));
+    assert.ok(response.limitations.some((limitation) => limitation.includes('assumed route sensitivities')));
     assert.ok(!response.limitations.some((limitation) => limitation.includes('refinery yield')));
     assert.ok(!response.limitations.some((limitation) => limitation.includes('Gulf crude share')));
     assert.ok(!response.limitations.some((limitation) => limitation.includes('IEA strategic stock')));
@@ -986,5 +902,245 @@ describe('buildAssessment picks actual worst product', () => {
     ];
     const msg = buildAssessment('JP', 'malacca', true, 0.5, 60, 30, 50, products, 'full', false, true, true);
     assert.ok(msg.includes('40.0% jet fuel deficit'), `expected jet fuel deficit in: ${msg}`);
+  });
+});
+
+describe('gas sensitivity preserves measurement meaning', () => {
+  for (const [disruptionPct, loss, deficit] of [[50, 6197.7, 1.3], [100, 12395.4, 2.7]]) {
+    it(`replays captured DE inputs at ${disruptionPct}% without traffic scaling or endurance`, async (t) => {
+      t.after(restoreEnergyShockEnvironment);
+      const { body: profile } = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('./fixtures/energy-shock/de-profile-2026-09-10.json', import.meta.url), 'utf8'));
+      const { body: old } = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('./fixtures/energy-shock/de-shock-100-2026-09-10.json', import.meta.url), 'utf8'));
+      installEnergyShockRedis({
+        ...liveChokepointSeed(old.liveFlowRatio),
+        'energy:jodi-gas:v1:DE': {
+          lngImportsTj: profile.gasLngImportsTj, totalDemandTj: profile.gasTotalDemandTj,
+          lngShareOfImports: profile.gasLngShare / 100, dataMonth: profile.jodiGasDataMonth,
+        },
+        'energy:gas-storage:v1:DE': old.gasImpact.storage,
+        [`energy:shock:v2:DE:hormuz_strait:${disruptionPct}:l:gas`]: old,
+        [`energy:shock:v3:DE:hormuz_strait:${disruptionPct}:l:gas`]: old,
+      });
+      const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct, fuelMode: 'gas' });
+      assert.equal(response.gasSensitivity?.lngDisruptionTj, loss);
+      assert.equal(response.gasSensitivity?.deficitPct, deficit);
+      assert.equal(response.coverageLevel, 'partial');
+      assert.notEqual(response.chokepointConfidence, 'high');
+      assert.equal(response.gasSensitivity?.dataMonth, '2026-01');
+      assert.equal(response.gasSensitivity?.storage?.date, '2026-09-07');
+      assert.equal(response.gasSensitivity?.storage?.bufferDays, undefined);
+      assert.match(response.assessment, /assumes 30%/i);
+      assert.match(response.assessment, /not.*shortage forecast/i);
+      assert.doesNotMatch(response.assessment, /days|can bridge|low.*dependence|faces/i);
+    });
+  }
+
+  for (const invalid of [null, undefined, -1, '100', NaN, Infinity]) {
+    for (const field of ['lngImportsTj', 'totalDemandTj']) {
+      it(`suppresses ${field}=${String(invalid)} rather than claiming zero impact`, async (t) => {
+        t.after(restoreEnergyShockEnvironment);
+        installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED,
+          'energy:jodi-gas:v1:US': { ...US_GAS_SEED['energy:jodi-gas:v1:US'], [field]: invalid },
+        });
+        const response = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+        assert.equal(response.dataAvailable, false);
+        assert.equal(response.coverageLevel, 'unsupported');
+        assert.equal(response.gasSensitivity, undefined);
+        assert.deepEqual(response.products, []);
+        assert.match(response.assessment, /insufficient gas/i);
+      });
+    }
+  }
+
+  it('cannot turn zero demand into a zero deficit', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ 'energy:jodi-gas:v1:US': { lngImportsTj: 100, totalDemandTj: 0 } });
+    const response = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+    assert.equal(response.gasSensitivity, undefined);
+    assert.equal(response.dataAvailable, false);
+  });
+
+  it('keeps missing gas separate from available oil in gas-only and combined modes', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_OIL_SEED });
+    const request = { countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100 };
+    const gas = await computeShock({ ...request, fuelMode: 'gas' });
+    assert.equal(gas.dataAvailable, false);
+    assert.deepEqual(gas.products, []);
+    const both = await computeShock({ ...request, fuelMode: 'both' });
+    assert.equal(both.dataAvailable, true);
+    assert.equal(both.coverageLevel, 'partial');
+    assert.equal(both.chokepointConfidence, 'none');
+    assert.ok(both.limitations.some(l => /insufficient gas/i.test(l)));
+  });
+});
+
+describe('gas sensitivity edge cases through the handler', () => {
+  for (const flow of [null, 0, 0.122, 1]) {
+    it(`does not scale total assumed loss by shipping flow ${flow}`, async (t) => {
+      t.after(restoreEnergyShockEnvironment);
+      installEnergyShockRedis({ ...(flow === null ? {} : liveChokepointSeed(flow)), ...US_GAS_SEED });
+      const response = await computeShock({ countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+      assert.equal(response.gasSensitivity.lngDisruptionTj, 300);
+      assert.equal(response.gasSensitivity.deficitPct, 6);
+      assert.equal(response.coverageLevel, 'partial');
+      assert.equal(response.chokepointConfidence, 'none');
+      assert.equal(response.gasSensitivity.dataMonth, '');
+      assert.ok(response.limitations.some(l => l.includes('no observation date')));
+    });
+  }
+
+  for (const lngImportsTj of [0, 0.001]) {
+    it(`preserves ${lngImportsTj} LNG without inventing share or endurance`, async (t) => {
+      t.after(restoreEnergyShockEnvironment);
+      installEnergyShockRedis({ ...liveChokepointSeed(),
+        'energy:jodi-gas:v1:DE': { lngImportsTj, totalDemandTj: 1000, dataMonth: '2026-01' },
+        'energy:gas-storage:v1:DE': { fillPct: 54.75, gasTwh: 135.5, date: '2026-09-07' },
+      });
+      const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+      assert.equal(response.gasSensitivity.dataAvailable, true);
+      assert.equal(response.gasSensitivity.lngShareOfImports, undefined);
+      assert.equal(response.gasSensitivity.storage.bufferDays, undefined);
+      assert.equal(response.gasSensitivity.storage.gasTwh, 135.5);
+      if (lngImportsTj === 0) {
+        assert.equal(response.gasSensitivity.lngDisruptionTj, 0);
+        assert.equal(response.gasSensitivity.deficitPct, 0);
+        assert.match(response.assessment, /recorded zero LNG imports in 2026-01/);
+        assert.doesNotMatch(response.assessment, /pipeline only|no direct LNG impact/);
+      } else {
+        assert.equal(response.gasSensitivity.lngDisruptionTj, 0.0003);
+        assert.ok(response.gasSensitivity.deficitPct > 0);
+        assert.match(response.assessment, /<0.1%/);
+      }
+    });
+  }
+
+  it('does not publish missing storage observations as zeros', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ 'energy:jodi-gas:v1:DE': { lngImportsTj: 100, totalDemandTj: 1000 },
+      'energy:gas-storage:v1:DE': { fillPct: null, gasTwh: null, date: '2026-09-07' } });
+    const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+    assert.equal(response.gasSensitivity.storage, undefined);
+  });
+});
+
+describe('gas response JSON contract', () => {
+  it('preserves omitted measurements and dated sensitivity through the generated client', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({
+      'energy:jodi-gas:v1:DE': { lngImportsTj: 1000, totalDemandTj: 5000, dataMonth: '2026-01' },
+      'energy:gas-storage:v1:DE': { gasTwh: 135.5, fillPct: 54.75, date: '2026-09-07' },
+    });
+    const { IntelligenceServiceClient } = await import('../src/generated/client/worldmonitor/intelligence/v1/service_client.ts');
+    const client = new IntelligenceServiceClient('https://fixture.invalid', {
+      fetch: async (input, init) => {
+        const url = new URL(input);
+        assert.equal(init.method, 'GET');
+        assert.equal(url.pathname, '/api/intelligence/v1/compute-energy-shock');
+        return Response.json(await computeShock({
+          countryCode: url.searchParams.get('country_code'),
+          chokepointId: url.searchParams.get('chokepoint_id'),
+          fuelMode: url.searchParams.get('fuel_mode'),
+          disruptionPct: Number(url.searchParams.get('disruption_pct')),
+        }));
+      },
+    });
+    const response = await client.computeEnergyShockScenario({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'gas' });
+    assert.equal(response.gasSensitivity.lngDisruptionTj, 300);
+    assert.equal(response.gasSensitivity.deficitPct, 6);
+    assert.equal(response.gasSensitivity.modelBasis, 'assumed_route_sensitivity');
+    assert.equal(Object.hasOwn(response, 'gasImpact'), false);
+    const { assessment, dataAvailable, gasImpact } = await Response.json(response).json();
+    assert.equal(dataAvailable, true);
+    assert.equal(gasImpact, undefined);
+    assert.match(assessment, /6.0% of JODI demand/);
+    assert.match(assessment, /not measured country-specific exposure or a supply-shortage forecast/);
+    assert.doesNotMatch(assessment, /days|no direct LNG impact|low LNG dependence|bridge/);
+    assert.equal(response.gasSensitivity.dataMonth, '2026-01');
+    assert.equal(response.gasSensitivity.storage.date, '2026-09-07');
+    assert.equal(Object.hasOwn(response.gasSensitivity.storage, 'bufferDays'), false);
+    assert.equal(Object.hasOwn(response.gasSensitivity, 'lngShareOfImports'), false);
+  });
+});
+
+
+describe('observed oil imports through handler and Decision brief', () => {
+  for (const importsKbd of [null, undefined, -1, '100', NaN, Infinity, 0, 100]) {
+    it(`distinguishes crude imports ${String(importsKbd)} from missing data`, async (t) => {
+      t.after(restoreEnergyShockEnvironment);
+      installEnergyShockRedis({ ...liveChokepointSeed(),
+        'energy:jodi-oil:v1:DE': { dataMonth: '2026-05', crude: { importsKbd }, diesel: { demandKbd: 80 } },
+      });
+      const available = importsKbd === 0 || importsKbd === 100;
+      const captures = [];
+      for (const disruptionPct of [50, 100]) {
+        const response = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct, fuelMode: 'oil' });
+        assert.equal(response.jodiOilCoverage, true);
+        assert.equal(response.dataAvailable, available);
+        // coverage_level must agree with data_available. jodi_oil_coverage stays true
+        // (the row exists), so keying coverage off row presence reports "full"/"partial"
+        // here and paints a coverage badge beside the insufficient-data assessment.
+        if (!available) assert.equal(response.coverageLevel, 'unsupported');
+        if (!available) assert.match(response.assessment, /insufficient/i);
+        captures.push({ response, retrievedAt: '2026-09-10T10:00:00Z' });
+      }
+      const brief = buildDecisionBrief({ countryCode: 'DE', countryName: 'Germany', chokepointId: 'hormuz_strait', fuelMode: 'oil', baselinePct: 50, comparisonPct: 100 }, captures);
+      assert.deepEqual(brief.results.map(r => r.loss), available ? importsKbd === 0 ? [0, 0] : [20, 40] : [null, null]);
+      assert.match(brief.action.text, available ? importsKbd === 0 ? /modeled zero/ : /Compare Germany/ : /Recover the oil import/);
+      if (!available) assert.match(brief.action.constraint, /baseline is incomplete/);
+      const both = await computeShock({ countryCode: 'DE', chokepointId: 'hormuz_strait', disruptionPct: 100, fuelMode: 'both' });
+      assert.equal(both.dataAvailable, available);
+    });
+  }
+
+  it('isolates old oil and both caches while preserving gas-only cache reuse', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    const request = { countryCode: 'US', chokepointId: 'hormuz_strait', disruptionPct: 100 };
+    installEnergyShockRedis({ ...liveChokepointSeed(), ...US_GAS_SEED,
+      'energy:jodi-oil:v1:US': { crude: { importsKbd: null }, diesel: { demandKbd: 80 } },
+      'energy:shock:v2:US:hormuz_strait:100:l:oil': { dataAvailable: true, assessment: 'old oil' },
+      'energy:shock:v4:US:hormuz_strait:100:l:both': { dataAvailable: false, assessment: 'old both' },
+      'energy:shock:v4:US:hormuz_strait:100:l:gas': { dataAvailable: true, assessment: 'gas cache retained' },
+    });
+    const oil = await computeShock({ ...request, fuelMode: 'oil' });
+    assert.equal(oil.dataAvailable, false);
+    assert.notEqual(oil.assessment, 'old oil');
+    const both = await computeShock({ ...request, fuelMode: 'both' });
+    assert.equal(both.dataAvailable, true);
+    assert.equal(both.gasSensitivity.dataAvailable, true);
+    assert.notEqual(both.assessment, 'old both');
+    assert.equal((await computeShock({ ...request, fuelMode: 'gas' })).assessment, 'gas cache retained');
+  });
+});
+
+
+describe('bilateral Gulf share excludes World totals', () => {
+  for (const partnerCode of [0, '0', '000', '0000']) {
+    it(`does not treat World ${partnerCode} as bilateral evidence`, () => {
+      assert.deepEqual(computeGulfShare([{ partnerCode, tradeValueUsd: 100 }]), { share: 0, hasData: false });
+    });
+  }
+  it('excludes aggregate totals from mixed bilateral denominators', () => {
+    assert.deepEqual(computeGulfShare([{ partnerCode: '000', tradeValueUsd: 200 }, { partnerCode: '682', tradeValueUsd: 100 }, { partnerCode: '840', tradeValueUsd: 100 }]), { share: 0.5, hasData: true });
+    assert.deepEqual(computeGulfShare([{ partnerCode: '840', tradeValueUsd: 100 }]), { share: 0, hasData: true });
+  });
+  it('uses an explicit positive proxy for producer-shaped World data and ignores v5 caches', async (t) => {
+    t.after(restoreEnergyShockEnvironment);
+    installEnergyShockRedis({ ...liveChokepointSeed(),
+      'energy:jodi-oil:v1:CN': { crude: { importsKbd: 100 }, diesel: { demandKbd: 80 } },
+      'comtrade:flows:156:2709': [{ reporterCode: '156', partnerCode: '000', partnerName: 'World', cmdCode: '2709', tradeValueUsd: 100 }],
+      'energy:shock:v5:CN:hormuz_strait:50:l:oil': { dataAvailable: true, comtradeCoverage: true, crudeLossKbd: 0 },
+      'energy:shock:v5:CN:hormuz_strait:50:l:both': { dataAvailable: true, comtradeCoverage: true, crudeLossKbd: 0 },
+    });
+    const request = { countryCode: 'CN', chokepointId: 'hormuz_strait', disruptionPct: 50 };
+    const response = await computeShock({ ...request, fuelMode: 'oil' });
+    assert.equal(response.comtradeCoverage, false);
+    assert.equal(response.crudeLossKbd, 20);
+    assert.ok(response.limitations.some(l => /proxied at 40%/.test(l)));
+    const brief = buildDecisionBrief({ countryCode: 'CN', countryName: 'China', chokepointId: 'hormuz_strait', fuelMode: 'oil', baselinePct: 50, comparisonPct: 50 }, [{ response, retrievedAt: '2026-09-10T10:00:00Z' }, { response, retrievedAt: '2026-09-10T10:00:00Z' }]);
+    assert.equal(brief.evidence.find(e => e.id === 'baseline-route').value, null);
+    assert.match(brief.unknowns.join(' '), /fixed proxy/);
+    assert.equal(brief.results[0].loss, 20);
+    assert.equal((await computeShock({ ...request, fuelMode: 'both' })).crudeLossKbd, 20);
   });
 });

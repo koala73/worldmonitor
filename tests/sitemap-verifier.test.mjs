@@ -86,6 +86,111 @@ describe('production sitemap verifier helpers', () => {
     assert.equal(markdown.indexable, false);
   });
 
+  it('rejects conflicting canonical signals instead of giving the HTTP header priority', () => {
+    const url = 'https://www.worldmonitor.app/docs/zh/country-instability-index';
+    const inspect = (htmlHref) => inspectIndexability({
+      url,
+      headers: new Headers({
+        'content-type': 'text/html',
+        link: `</docs/llms.txt>; rel="llms-txt", <${url}>; title="CII, documentation"; rel="canonical"`,
+      }),
+      body: `<html><head><link href="${htmlHref}" rel="canonical"></head></html>`,
+    });
+    const conflict = inspect('https://mirror.example/wm-proxy/docs/zh/country-instability-index');
+    assert.equal(conflict.canonical, null);
+    assert.match(conflict.canonicalErrors.join('\n'), /conflicting/i);
+    assert.equal(conflict.canonicalDeclarations.length, 2);
+    const agreement = inspect(url);
+    assert.equal(agreement.canonical, url);
+    assert.deepEqual(agreement.canonicalErrors, []);
+  });
+
+  it('reports duplicate, missing, invalid, relative and body-only docs canonicals', () => {
+    const url = 'https://www.worldmonitor.app/docs/about';
+    for (const [head, body, error] of [
+      [`<link rel="canonical" href="${url}"><link rel="canonical" href="${url}">`, '', /duplicate/i],
+      ['<link rel="canonical">', '', /missing.*href/i],
+      ['<link rel="canonical" href="https://[broken">', '', /invalid/i],
+      ['<link rel="canonical" href="/docs/about">', '', /absolute/i],
+      [`<link data-rel="canonical" href="${url}">`, '', /missing/i],
+      [`<link title="rel='canonical'" href="${url}">`, '', /missing/i],
+      [`<link rel="canonical" data-href="${url}">`, '', /missing.*href/i],
+      ['', `<link rel="canonical" href="${url}">`, /outside.*head/i],
+      [`<!-- <link rel="canonical" href="${url}"> --><script>const example = '<link rel="canonical" href="${url}">';</script>`, '', /missing/i],
+    ]) {
+      const result = inspectIndexability({
+        url, headers: new Headers({ 'content-type': 'text/html' }),
+        body: `<html><head>${head}</head><body>${body}</body></html>`,
+      });
+      assert.match(result.canonicalErrors.join('\n'), error);
+    }
+  });
+
+  it('does not lose earlier robots restrictions or apply another bot scope to Googlebot', () => {
+    const inspect = (meta, header = '') => inspectIndexability({
+      url: 'https://www.worldmonitor.app/docs/about',
+      headers: new Headers({ 'content-type': 'text/html', 'x-robots-tag': header }),
+      body: `<html><head>${meta}</head></html>`,
+    });
+    assert.equal(inspect('<meta name="robots" content="noindex"><meta name="robots" content="index">').indexable, false);
+    assert.equal(inspect('<meta name="googlebot" content="none">').indexable, false);
+    assert.equal(inspect('', 'googlebot: noindex, follow').indexable, false);
+    assert.equal(inspect('', 'otherbot: noindex, googlebot: index').indexable, true);
+    assert.equal(inspect('<meta name="robots" content="max-image-preview:none">').indexable, true);
+    assert.equal(inspect('', 'max-image-preview: none').indexable, true);
+    assert.equal(inspect('', 'googlebot: max-image-preview:none').indexable, true);
+    assert.equal(inspect('', 'none').indexable, false);
+    assert.equal(inspect('', 'max-image-preview:none, noindex').indexable, false);
+  });
+
+  it('parses each HTTP canonical without treating quoted Link parameters as declarations', () => {
+    const url = 'https://www.worldmonitor.app/docs/about';
+    const inspect = (link) => inspectIndexability({
+      url, headers: new Headers({ 'content-type': 'text/html', link }),
+      body: `<html><head><link rel="canonical" href="${url}"></head></html>`,
+    });
+    assert.match(inspect(`<${url}>; rel="canonical", <${url}>; rel="canonical"`).canonicalErrors.join('\n'), /duplicate http/);
+    assert.match(inspect(`<${url}>; rel="canonical", invalid; rel="canonical"`).canonicalErrors.join('\n'), /missing href/);
+    assert.deepEqual(inspect(`<${url}>; title="example, <not-a-link>; rel='canonical'"; rel="alternate"`).canonicalErrors, []);
+  });
+
+  it('GET-checks both CII locales and rejects conflicting canonicals or missing locales', async () => {
+    const origin = 'https://www.worldmonitor.app';
+    const pages = ['/', '/blog/', '/docs/about', '/docs/country-instability-index', '/docs/zh/country-instability-index'];
+    const documents = new Map([
+      [`${origin}/robots.txt`, `Sitemap: ${origin}/sitemap.xml\nSitemap: ${origin}/blog/sitemap-index.xml\nSitemap: ${origin}/docs/sitemap.xml`],
+      [`${origin}/sitemap.xml`, `<sitemapindex>${['/sitemap-main.xml', '/blog/sitemap-index.xml', '/docs/sitemap.xml'].map(path => `<sitemap><loc>${origin}${path}</loc></sitemap>`).join('')}</sitemapindex>`],
+      ...[['/sitemap-main.xml', pages.slice(0, 1)], ['/blog/sitemap-index.xml', pages.slice(1, 2)], ['/docs/sitemap.xml', pages.slice(2)]].map(([path, paths]) => [
+        `${origin}${path}`, `<urlset>${paths.map(page => `<url><loc>${origin}${page}</loc></url>`).join('')}</urlset>`,
+      ]),
+    ]);
+    const fetches = [];
+    let conflicting = true;
+    const fetchImpl = async (url, { method }) => {
+      fetches.push({ url, method });
+      if (documents.has(url)) return new Response(documents.get(url), { headers: { 'content-type': 'application/xml' } });
+      const href = conflicting && url.includes('/zh/') ? 'https://mirror.example/docs/zh/country-instability-index' : url;
+      return new Response(`<html><head><link rel="canonical" href="${href}"></head></html>`, {
+        headers: { 'content-type': 'text/html', link: `<${url}>; rel="canonical"` },
+      });
+    };
+    const result = await verifyProductionSitemaps({ fetchImpl });
+    assert.equal(result.passed, false);
+    assert.match(result.errors.join('\n'), /conflicting/i);
+    for (const path of pages.slice(3)) {
+      assert.ok(fetches.some(entry => entry.url === `${origin}${path}` && entry.method === 'GET'), path);
+    }
+    conflicting = false;
+    assert.equal((await verifyProductionSitemaps({ fetchImpl })).passed, true);
+    const sitemap = documents.get(`${origin}/docs/sitemap.xml`);
+    for (const path of pages.slice(3)) {
+      documents.set(`${origin}/docs/sitemap.xml`, sitemap.replace(`<url><loc>${origin}${path}</loc></url>`, ''));
+      const missingLocale = await verifyProductionSitemaps({ fetchImpl });
+      assert.equal(missingLocale.passed, false);
+      assert.ok(missingLocale.errors.includes(`required docs page missing from sitemap: ${origin}${path}`));
+    }
+  });
+
   it('accepts the canonical apex MCP URL in the root sitemap inventory', async () => {
     const mcpUrl = 'https://worldmonitor.app/mcp';
     const rootSitemap = 'https://www.worldmonitor.app/sitemap.xml';
@@ -109,10 +214,15 @@ describe('production sitemap verifier helpers', () => {
       ['https://www.worldmonitor.app/docs/', '<html><head><link rel="canonical" href="https://www.worldmonitor.app/docs/"></head></html>'],
       [mcpUrl, '# World Monitor MCP'],
     ]);
+    for (const path of ['/docs/country-instability-index', '/docs/zh/country-instability-index']) {
+      const url = `https://www.worldmonitor.app${path}`;
+      responses.set(docsSitemap, responses.get(docsSitemap).replace('</urlset>', `<url><loc>${url}</loc></url></urlset>`));
+      responses.set(url, `<html><head><link rel="canonical" href="${url}"></head></html>`);
+    }
     const fetchImpl = async (url) => {
       const value = String(url);
       const isMcp = value === mcpUrl;
-      const isPage = value.endsWith('/') || isMcp;
+      const isPage = value.endsWith('/') || value.endsWith('/country-instability-index') || isMcp;
       return new Response(responses.get(value), {
         status: responses.has(value) ? 200 : 404,
         headers: isMcp

@@ -119,7 +119,8 @@
       "activeSirens": "警報啟動中",
       "sirens24h": "警報 / 24小時",
       "aviationDisruptions": "航空中斷",
-      "gpsJammingZones": "GPS干擾區域"
+      "gpsJammingZones": "GPS干擾區域",
+      "temporalUnavailable": "時間序列觀測資料不可用"
     },
     "fallback": {
       "instabilityIndex": "**不穩定指數：{{score}}/100**（{{level}}，{{trend}}）",
@@ -852,7 +853,6 @@
   "components": {
     "webcams": {
       "paused": "攝影機已暫停",
-      "pausedIdle": "攝影機已暫停 — 移動滑鼠以恢復",
       "regions": {
         "all": "全部",
         "mideast": "中東",
@@ -1175,9 +1175,6 @@
       "base": "基地",
       "nuclear": "核設施"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "危急",
       "high": "高",
@@ -1486,7 +1483,10 @@
       "compiledFrom": "編譯自 {{stories}} 條故事和 {{sources}} 個來源",
       "provenanceTitle": "覆蓋來源：此摘要選自多少條攝取的故事和不同的來源",
       "briefFreshness": "生成於 {{minutes}}m 前 · 最新來源 {{hours}}h 前",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "報道詳情 ({{count}})",
+      "streamIdleStopLabel": "空閒時停止即時影片",
+      "streamIdleStopNever": "從不",
+      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。"
     },
     "settings": {
       "exportSettings": "匯出設定",
@@ -1898,6 +1898,7 @@
       "etfs": "ETFs",
       "netInflow": "淨流入",
       "netOutflow": "淨流出",
+      "netNeutral": "淨中性",
       "table": {
         "ticker": "程式碼",
         "issuer": "發行方",
@@ -2163,7 +2164,7 @@
       "infoTooltip": "<strong>經濟日曆</strong> 預定的宏觀經濟資料釋出：CPI、NFP、GDP、PMI和央行決議。顯示預測值、實際值和前值。高影響事件突出顯示。來源：經濟資料提供商。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融壓力指標</strong> 堪薩斯城聯儲金融壓力指數（KCFSI）：使用11個指標衡量美國金融市場壓力，包括收益率利差、波動率和交叉相關性。正值表示高於平均水平的壓力。來源：堪薩斯城聯邦儲備銀行。",
+      "infoTooltip": "<strong>金融壓力指標</strong> WorldMonitor 對高收益信貸與長期美國國債的比率，並根據股票波動率和高收益利差進行調整：(HYG / TLT) / (VIX × HY spread / 100)。這不是堪薩斯城聯邦儲備銀行金融壓力指數。讀數為 1.5 或更高表示壓力較低；低於 0.3 表示壓力較高。",
       "title": "金融壓力指標",
       "usFsiValue": "美國FSI值",
       "cissTitle": "歐盟CISS（歐元區系統性壓力）",
@@ -2613,7 +2614,14 @@
       "empty": "未檢測到活躍收斂",
       "signals_other": "{{count}} 個訊號",
       "analyzing": "分析中...",
-      "viewOnMap": "在地圖上檢視"
+      "viewOnMap": "在地圖上檢視",
+      "waiting": "正在等待下一次資料更新。此面板會自動更新。",
+      "offline": "正在等待連線。恢復聯網後，此面板會自動更新。",
+      "updated": "更新於 {{time}}",
+      "saved": "最近一次已知更新 {{time}} · 正在檢查更新",
+      "savedOffline": "最近一次已知更新 {{time}} · 離線",
+      "localSignals": "基於儀表板中已載入的訊號",
+      "emptySaved": "最近一次已知更新中未發現匯聚。"
     },
     "thermalEscalation": {
       "title": "熱異常升級",
@@ -2770,6 +2778,35 @@
       "succeeded": "通行金鑰已儲存。下次登入時可以使用。",
       "retryable": "操作未完成。您可以重試。",
       "failed": "無法在此裝置上儲存通行金鑰。"
+    },
+    "decisionBrief": {
+      "commodityTitle": "大宗商品決策簡報",
+      "commodity": "大宗商品 / 產品",
+      "blockedChokepoint": "假定被封鎖的咽喉要道",
+      "commodityCapture": "記錄大宗商品比較",
+      "title": "決策簡報",
+      "fuel": "燃料",
+      "chokepoint": "咽喉要道",
+      "baseline": "基準中斷程度",
+      "comparison": "對比中斷程度",
+      "capture": "獲取 / 重新整理兩者",
+      "downloadHtml": "下載 HTML 簡報",
+      "downloadJson": "下載 JSON 簡報",
+      "back": "← 返回國家簡報",
+      "select": "選擇能源供應中斷情況，然後獲取兩個情景。",
+      "changed": "選擇已更改。匯出前請獲取兩個情景。",
+      "loading": "正在獲取兩個情景…",
+      "captured": "已獲取。下載前請核查觀測日期和限制條件。",
+      "failed": "無法獲取情景。請檢查存取權限並重試。沒有可匯出的結果。",
+      "locked": "決策簡報面向 Pro 使用者提供。"
+    },
+    "liveMedia": {
+      "idleStatus": "因不活動已暫停",
+      "idleBody": "在沒有滑鼠、鍵盤或觸控活動 {{duration}} 後，即時影片已停止。",
+      "idleResume": "繼續",
+      "idleKeepPlaying": "空閒時繼續播放",
+      "idleSettingsHint": "可隨時在設定 › 媒體中更改。",
+      "idleKeepPlayingToast": "即時影片在空閒時將繼續播放。在設定 › 媒體中更改。"
     }
   },
   "popups": {
@@ -3460,7 +3497,7 @@
   },
   "shell": {
     "documentTitle": "World Monitor — 即時全球情報儀表板",
-    "metaDescription": "即時全球情報平臺。刊登於 WIRED。全球 190 個國家 200 萬+ 使用者使用。衝突、市場、軍事、OSINT 資訊一覽無遺。",
+    "metaDescription": "使用 World Monitor 即時儀表盤瀏覽全球態勢，結合互動式地圖與資料面板檢視新聞、地緣政治、軍事、金融、能源和基礎設施資訊。按所選產品檢視探索相關圖層、地區與事件，比較資料來源、觀測時間和可用訊號，跟蹤變化並開啟詳情核查背景，為日常監測與研究提供可追溯的資訊入口，同時關注來源覆蓋及更新狀態。",
     "offlineTitle": "您已離線",
     "offlineMessage": "World Monitor 需要網際網路連線來獲取即時情報資料。",
     "offlineRetry": "重試"

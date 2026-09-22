@@ -247,6 +247,9 @@ export type WaveExportStats = {
   // Already in the new segment (impossible on first run, possible only
   // if the same registrant is re-attached during a partial retry).
   alreadyExists: number;
+  // Existing Resend contacts that are globally unsubscribed. They are not
+  // attached to the segment and are not stamped for this wave.
+  unsubscribedSkipped: number;
   // Push-side failures (Resend rejected the contact). Not stamped, so
   // available for retry in the next wave.
   failed: number;
@@ -384,6 +387,7 @@ export const assignAndExportWave = internalAction({
       assigned: 0,
       linkedExisting: 0,
       alreadyExists: 0,
+      unsubscribedSkipped: 0,
       failed: 0,
       stampFailed: 0,
       underfilled: picked.length < count,
@@ -403,6 +407,17 @@ export const assignAndExportWave = internalAction({
         case "alreadyInSegment":
           stats.alreadyExists++;
           break;
+        case "unsubscribed":
+          await ctx.runMutation(internal.emailSuppressions.suppress, {
+            email,
+            reason: "unsubscribe",
+            source: "resend-contact-read",
+          });
+          suppressedSet.add(email);
+          stats.unsubscribedSkipped++;
+          // Do not stamp an address that Resend says opted out. It remains
+          // out of the segment and is now locally suppressed.
+          continue;
         case "failed":
           stats.failed++;
           // Mask the email — Convex dashboard logs are observable to

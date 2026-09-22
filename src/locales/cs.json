@@ -129,7 +129,8 @@
       "activeSirens": "Aktivní sirény",
       "sirens24h": "Sirény / 24h",
       "aviationDisruptions": "Letecké poruchy",
-      "gpsJammingZones": "Zóny rušení GPS"
+      "gpsJammingZones": "Zóny rušení GPS",
+      "temporalUnavailable": "Časové pozorování není k dispozici"
     },
     "countryFacts": "Fakta o zemi",
     "loadingFacts": "Načítání faktů o zemi...",
@@ -869,7 +870,6 @@
         "space": "VESMÍR"
       },
       "paused": "Webkamery pozastaveny",
-      "pausedIdle": "Webkamery pozastaveny — pohněte myší pro obnovení",
       "play": "Přehrát",
       "previewStatus": "Živý náhled"
     },
@@ -1171,9 +1171,6 @@
       "datacenter": "Datové centrum",
       "base": "Základna",
       "nuclear": "Jaderné zařízení"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "KRIT",
@@ -1486,7 +1483,10 @@
       "provenanceTitle": "Původ pokrytí: počet příjatých příběhů a odlišných zdrojů, ze kterých byl tento přehled vybrán",
       "compiledFrom": "Sestaveno z {{stories}} příběhů z {{sources}} zdrojů",
       "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Podrobnosti zprávy ({{count}})",
+      "streamIdleStopLabel": "Zastavit živé video při nečinnosti",
+      "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu.",
+      "streamIdleStopNever": "Nikdy"
     },
     "cascade": {
       "filters": {
@@ -1889,6 +1889,7 @@
       "etfs": "ETF",
       "netInflow": "ČISTÝ PŘÍLIV",
       "netOutflow": "ČISTÝ ODLIV",
+      "netNeutral": "ČISTĚ NEUTRÁLNÍ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Vydavatel",
@@ -2190,7 +2191,7 @@
       "infoTooltip": "<strong>Ekonomický kalendář</strong> Plánované makroekonomické publikace: CPI, NFP, GDP, PMI a rozhodnutí centrálních bank. Zobrazuje prognózu vs. skutečnost vs. předchozí. Události s vysokým dopadem jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
     },
     "fsi": {
-      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Index finančního stresu Federální rezervní banky Kansas City (KCFSI): měří stres na finančních trzích USA pomocí 11 ukazatelů včetně výnosových spreadů, volatility a křížových korelací. Kladné hodnoty indikují nadprůměrný stres. Zdroj: Federální rezervní banka Kansas City.",
+      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Poměr WorldMonitoru mezi vysokovýnosovým úvěrem a dlouhodobými americkými státními dluhopisy, upravený o volatilitu akcií a rozpětí vysokovýnosových dluhopisů: (HYG / TLT) / (VIX × HY spread / 100). Nejde o Index finančního stresu Federální rezervní banky v Kansas City. Hodnota 1.5 nebo vyšší znamená nízký stres; hodnota pod 0.3 znamená vysoký stres.",
       "title": "Indikátor finanční stability",
       "usFsiValue": "HODNOTA US FSI",
       "cissTitle": "EU CISS (Systemické napětí eurozóny)",
@@ -2655,7 +2656,14 @@
       "analyzing": "Analyzování...",
       "viewOnMap": "Zobrazit na mapě",
       "signals_few": "{{count}} signály",
-      "signals_many": "{{count}} signálů"
+      "signals_many": "{{count}} signálů",
+      "waiting": "Čekání na další aktualizaci dat. Tento panel se aktualizuje automaticky.",
+      "offline": "Čekání na připojení. Tento panel se automaticky aktualizuje po obnovení připojení.",
+      "updated": "Aktualizováno {{time}}",
+      "saved": "Poslední známá aktualizace {{time}} · Kontrola aktualizací",
+      "savedOffline": "Poslední známá aktualizace {{time}} · Bez připojení",
+      "localSignals": "Na základě načtených signálů přehledu",
+      "emptySaved": "V poslední známé aktualizaci nebyla zjištěna konvergence."
     },
     "thermalEscalation": {
       "title": "Teplotní eskalace",
@@ -2827,6 +2835,35 @@
       "succeeded": "Přístupový klíč uložen. Můžete jej použít při příštím přihlášení.",
       "retryable": "To se nedokončilo. Můžete to zkusit znovu.",
       "failed": "Na tomto zařízení se nám nepodařilo uložit přístupový klíč."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Podklad pro rozhodování o komoditách",
+      "commodity": "Komodita / produkt",
+      "blockedChokepoint": "Předpokládaný zablokovaný průchod",
+      "commodityCapture": "Zachytit srovnání komodit",
+      "title": "Rozhodovací přehled",
+      "fuel": "Palivo",
+      "chokepoint": "Úzké hrdlo",
+      "baseline": "Výchozí narušení",
+      "comparison": "Srovnávací narušení",
+      "capture": "Načíst / obnovit oba",
+      "downloadHtml": "Stáhnout přehled v HTML",
+      "downloadJson": "Stáhnout přehled v JSON",
+      "back": "← Zpět na přehled země",
+      "select": "Vyberte narušení dodávek energie a načtěte oba scénáře.",
+      "changed": "Výběr změněn. Před exportem načtěte oba scénáře.",
+      "loading": "Načítání obou scénářů…",
+      "captured": "Načteno. Před stažením zkontrolujte data pozorování a omezení.",
+      "failed": "Scénáře se nepodařilo načíst. Zkontrolujte přístup a zkuste to znovu. Není dostupný žádný výsledek k exportu.",
+      "locked": "Rozhodovací přehled je dostupný s Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Pozastaveno kvůli nečinnosti",
+      "idleBody": "Živé video se zastavilo po {{duration}} bez aktivity myši, klávesnice nebo dotyku.",
+      "idleResume": "Pokračovat",
+      "idleKeepPlaying": "Pokračovat v přehrávání při nečinnosti",
+      "idleSettingsHint": "Toto můžete kdykoli změnit v Nastavení › Média.",
+      "idleKeepPlayingToast": "Živé video se bude přehrávat při nečinnosti. Toto nastavení můžete změnit v Nastavení › Média."
     }
   },
   "popups": {

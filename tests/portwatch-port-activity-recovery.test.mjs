@@ -6,6 +6,27 @@ import * as portwatchSeed from '../scripts/seed-portwatch-port-activity.mjs';
 const { orderColdFetchQueue } = portwatchSeed;
 const DAY = 86_400_000;
 
+describe('PortWatch activity page validation', () => {
+  const row = { attributes: { portid: 'p1', date: '2026-09-09', portcalls_tanker: 1 } };
+  for (const [label, body] of [
+    ['missing features', {}],
+    ['null envelope', null],
+    ['invalid date', { features: [{ attributes: { ...row.attributes, date: 'bad' } }] }],
+    ['invalid metrics', { features: [{ attributes: { ...row.attributes, portcalls_tanker: 'bad' } }] }],
+    ['duplicate rows', { features: [row, row] }],
+    ['null row', { features: [null] }],
+  ]) {
+    it(`rejects ${label} instead of publishing partial totals`, async () => {
+      await assert.rejects(portwatchSeed.fetchCountryAccum('USA', {
+        anchorEpochMs: Date.parse('2026-09-09T00:00:00Z'), dateField: 'date',
+        fetchFn: async (url) => Response.json(new URL(url).searchParams.get('where').includes('<=')
+          ? { features: [] } : body),
+        proxyRetryFn: async () => assert.fail('invalid pages must not retry'),
+      }), /incomplete page/);
+    });
+  }
+});
+
 function cachedCountry(iso2, cacheWrittenAt = 0) {
   return {
     iso2,
@@ -588,7 +609,7 @@ describe('PortWatch atomic publication', () => {
     );
   });
 
-  it('preserves the last-good canonical and seed-meta below the publish floor', async () => {
+  it('writes failure metadata alongside recovery state without advancing canonical', async () => {
     const publish = portwatchSeed.publishPortActivitySnapshot;
     assert.equal(typeof publish, 'function');
     const calls = [];
@@ -604,6 +625,9 @@ describe('PortWatch atomic publication', () => {
     input.countryData = new Map();
     input.countries = [];
     input.canonicalAdvances = false;
+    input.metaPayload = portwatchSeed.buildPortActivityFailureMeta({ fetchedAt: 123, recordCount: 174 }, {
+      coverage: input.metaPayload.coverage,
+    });
 
     await publish(input, {
       fetchFn,
@@ -611,15 +635,17 @@ describe('PortWatch atomic publication', () => {
     });
 
     assert.ok(
-      calls[0].every((command) =>
-        command[1] !== 'supply_chain:portwatch-ports:v1:_countries'
-        && command[1] !== 'seed-meta:supply_chain:portwatch-ports'),
+      calls[0].every((command) => command[1] !== 'supply_chain:portwatch-ports:v1:_countries'),
     );
     assert.deepEqual(
       calls[0].map((command) => command[1]),
-      ['supply_chain:portwatch-ports:v1:CY'],
+      ['supply_chain:portwatch-ports:v1:CY', 'seed-meta:supply_chain:portwatch-ports'],
       'scheduler-only failure state must persist even with zero publishable countries',
     );
+    const meta = JSON.parse(calls[0][1][2]);
+    assert.equal(meta.sourceState, 'error');
+    assert.equal(meta.fetchedAt, 123);
+    assert.equal(meta.recordCount, 174);
   });
 
   it('fails loudly when any transaction command reports an error', async () => {
@@ -642,5 +668,14 @@ describe('PortWatch atomic publication', () => {
       }),
       /transaction: 1\/5 commands failed/,
     );
+  });
+
+  it('rejects a shortened transaction acknowledgement', async () => {
+    await assert.rejects(portwatchSeed.publishPortActivitySnapshot(publicationInput(), {
+      fetchFn: async (_url, init) => Response.json(
+        JSON.parse(init.body).slice(1).map(() => ({ result: 'OK' })),
+      ),
+      credentials: { url: 'https://redis.example.test', token: 'token' },
+    }), /Redis transaction failed: invalid response/);
   });
 });

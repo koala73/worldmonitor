@@ -5,6 +5,16 @@ on:
   push:
     branches: [main]
 
+# A superseded PR run owes nobody a verdict. Branch protection and
+# deploy-gate.sh both evaluate the head SHA only. Letting it finish burned
+# 59% of this workflow's runs on dead commits and queued the live commit
+# behind them. Cancellation is pull_request-only. A push to main still owes
+# the deploy gate a verdict, and `github.run_id` gives it a group of one so
+# nothing can evict it (#8443).
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -256,7 +266,7 @@ jobs:
     # Always-on: derives build-owned inventory facts and validates fixed or
     # semantic documentation contracts. Runs on every PR/push (docs-only PRs
     # set changes.code=false and skip `unit`, so this must not gate on it).
-    # Pure Node builtins — no npm install required.
+    # Docs date generation uses the existing YAML parser for OpenAPI pages.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -275,6 +285,7 @@ jobs:
         run: node scripts/docs-stats.mjs --check
       - name: Generate and validate docs page dates for this revision
         run: |
+          npm ci --ignore-scripts --prefer-offline
           node scripts/generate-docs-page-dates.mjs
           node scripts/generate-docs-page-dates.mjs --check
           node --test tests/docs-page-dates.test.mjs
@@ -742,6 +753,15 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - name: Use Ubuntu repositories for browser OS libraries
+        # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
+        # failures must not prevent their installation on this disposable runner.
+        run: |
+          test -s /etc/apt/sources.list.d/ubuntu.sources
+          printf '%s\n' \
+            'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
+            'Dir::Etc::sourceparts "-";' \
+            | sudo tee /etc/apt/apt.conf.d/99-playwright-sources
       - run: npx playwright install --with-deps chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       # The cache restores only browser binaries (~/.cache/ms-playwright), not
@@ -781,12 +801,64 @@ jobs:
           done
           sudo dpkg --configure -a || true
           npx playwright install --with-deps chromium
-      # Explicit lists keep the measured slow specs balanced across runners.
-      # The full command stays in package.json for local use, and contract tests
-      # require these two lists to be a disjoint, complete partition of it.
-      - run: npm run test:e2e:ci-smoke:${{ matrix.shard }}
-      # One upload per Playwright run: the next invocation clears test-results/.
-      # Include the matrix value because artifact names are unique per run.
+      # Capture outside outputDir: Playwright clears it at startup. Collect
+      # stderr once at the parent, since DEBUG_FILE is truncated by each worker.
+      - name: Run ci-smoke with browser-loss diagnostics
+        env:
+          DEBUG: 'pw:browser'
+          DEBUG_COLORS: '0'
+        run: |
+          set -euo pipefail
+          unset DEBUG_FILE
+          DIAGNOSTICS_DIR=$(mktemp -d)
+          sample_memory() {
+            date -u +%FT%TZ
+            free -m
+            if [ -r /sys/fs/cgroup/memory.events ]; then
+              cat /sys/fs/cgroup/memory.events
+            fi
+          }
+          sample_memory > "$DIAGNOSTICS_DIR/memory-samples.log"
+          ( while sleep 5; do sample_memory; done ) >> "$DIAGNOSTICS_DIR/memory-samples.log" 2>&1 &
+          MEM_SAMPLER_PID=$!
+          collect_diagnostics() {
+            SMOKE_STATUS=$?
+            kill "$MEM_SAMPLER_PID" 2>/dev/null || true
+            wait "$MEM_SAMPLER_PID" 2>/dev/null || true
+            sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
+            mkdir -p test-results/browser-loss
+            cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
+            # A browser crash is not a flake. With retries at 1 a single crash
+            # is absorbed and the job reports `flaky`, which is how these went
+            # unnoticed from #5685 until #8447. Report every crash whatever the
+            # job outcome, and do not change the exit code while the rate is
+            # still around one crash per run.
+            CRASHES=$(grep -ac "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" 2>/dev/null || true)
+            if [ "${CRASHES:-0}" -gt 0 ]; then
+              echo "::error title=Browser crashed::chrome-headless-shell exited with SIGTRAP ${CRASHES} time(s) on ci-smoke shard ${{ matrix.shard }}. A green job does not mean no crash. See the browser-loss artifact."
+              {
+                echo "### Browser crashes, ci-smoke shard ${{ matrix.shard }}"
+                echo ""
+                echo "SIGTRAP exits: ${CRASHES}"
+                echo ""
+                echo '```'
+                # Bounded because GITHUB_STEP_SUMMARY caps at 1 MiB and an
+                # oversized write is dropped whole, which would lose the count
+                # above too. Say so when it bites: a silent cut reads as if
+                # these were all of them.
+                grep -an "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" | head -50 || true
+                echo '```'
+                if [ "${CRASHES:-0}" -gt 50 ]; then
+                  echo ""
+                  echo "Showing the first 50. The other $((CRASHES - 50)) are in the browser-loss artifact."
+                fi
+              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            fi
+            return "$SMOKE_STATUS"
+          }
+          trap collect_diagnostics EXIT
+          npm run test:e2e:ci-smoke:${{ matrix.shard }} 2>&1 | tee "$DIAGNOSTICS_DIR/playwright.log"
+
       - name: Upload ci-smoke Playwright artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -820,6 +892,15 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - name: Use Ubuntu repositories for browser OS libraries
+        # Playwright needs Ubuntu libraries. Unrelated Chrome repository index
+        # failures must not prevent their installation on this disposable runner.
+        run: |
+          test -s /etc/apt/sources.list.d/ubuntu.sources
+          printf '%s\n' \
+            'Dir::Etc::sourcelist "/etc/apt/sources.list.d/ubuntu.sources";' \
+            'Dir::Etc::sourceparts "-";' \
+            | sudo tee /etc/apt/apt.conf.d/99-playwright-sources
       - run: npx playwright install --with-deps chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       # The cache restores only browser binaries (~/.cache/ms-playwright), not
@@ -893,6 +974,22 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-pro-cls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Named explicitly for the same reason as the gates above: nothing runs
+      # the e2e/ glob, so an unnamed spec would never execute. It reads the same
+      # public/pro/ bytes the build step above produced.
+      - name: Run /pro hero native-animation gate
+        id: pro-hero
+        run: npm run test:e2e:pro-hero
+      # Its own upload: Playwright clears test-results/ when the next run
+      # starts, so a later step would delete this gate's failure trace.
+      - name: Upload /pro hero animation Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-hero.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-hero-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

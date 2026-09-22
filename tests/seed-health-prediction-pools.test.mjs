@@ -25,6 +25,15 @@ const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
+const CHINA_DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
+const CHINA_DECISION_GROUP_IDS = [
+  'macro',
+  'policy-enforcement',
+  'cross-strait-activity',
+  'corporate-disclosures',
+  'corridor-conditions',
+  'activity-nowcast',
+];
 
 function educationPayload() {
   return {
@@ -114,6 +123,23 @@ function installSeedHealthPipelineMock(poolCounts, { fetchedAt = Date.now() } = 
         // #6845: the bases domain carries a 100k integrity floor the
         // generic fresh-and-healthy default does not clear.
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 125_380 }) };
+      }
+      if (key === CHINA_DECISION_META_KEY) {
+        return { result: JSON.stringify({
+          fetchedAt,
+          recordCount: CHINA_DECISION_GROUP_IDS.length,
+          groupStates: Object.fromEntries(CHINA_DECISION_GROUP_IDS.map((id) => [id, 'available'])),
+          groupCounts: {
+            populated: 6,
+            partial: 0,
+            stale: 0,
+            unavailable: 0,
+            healthyQuiet: 0,
+            operationallyCovered: 6,
+          },
+          unavailableCauses: {},
+          lastDecisionCoverageSuccessAt: fetchedAt,
+        }) };
       }
       return { result: JSON.stringify({
         fetchedAt: Date.now(),

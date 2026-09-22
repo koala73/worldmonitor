@@ -9,7 +9,7 @@ const originalUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalConvexUrl = process.env.CONVEX_URL;
 const originalConvexSiteUrl = process.env.CONVEX_SITE_URL;
-const originalRelaySecret = process.env.RELAY_SHARED_SECRET;
+const originalRelaySecret = process.env.CONVEX_NOTIFICATION_RELAY_SECRET;
 const originalResendApiKey = process.env.RESEND_API_KEY;
 
 afterEach(() => {
@@ -23,8 +23,8 @@ afterEach(() => {
   else process.env.CONVEX_URL = originalConvexUrl;
   if (originalConvexSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
   else process.env.CONVEX_SITE_URL = originalConvexSiteUrl;
-  if (originalRelaySecret === undefined) delete process.env.RELAY_SHARED_SECRET;
-  else process.env.RELAY_SHARED_SECRET = originalRelaySecret;
+  if (originalRelaySecret === undefined) delete process.env.CONVEX_NOTIFICATION_RELAY_SECRET;
+  else process.env.CONVEX_NOTIFICATION_RELAY_SECRET = originalRelaySecret;
   if (originalResendApiKey === undefined) delete process.env.RESEND_API_KEY;
   else process.env.RESEND_API_KEY = originalResendApiKey;
 });
@@ -35,7 +35,7 @@ describe('notification relay welcome identity', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
     process.env.CONVEX_URL = 'https://convex.test';
     process.env.CONVEX_SITE_URL = 'https://convex.test';
-    process.env.RELAY_SHARED_SECRET = 'relay-secret';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'relay-secret';
     process.env.RESEND_API_KEY = 'resend-key';
     const resendSends = [];
     const relayPath = require.resolve('../scripts/notification-relay.cjs');
@@ -72,6 +72,7 @@ describe('notification relay welcome identity', () => {
         channelType: 'email',
         email: 'replacement@example.com',
         verified: true,
+        emailOwnership: 'verified_account',
       }]);
     });
     globalThis.fetch = fetchMock;
@@ -108,7 +109,7 @@ describe('notification relay welcome identity', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
     process.env.CONVEX_URL = 'https://convex.test';
     process.env.CONVEX_SITE_URL = 'https://convex.test';
-    process.env.RELAY_SHARED_SECRET = 'relay-secret';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'relay-secret';
     process.env.RESEND_API_KEY = 'resend-key';
     const resendSends = [];
     const relayPath = require.resolve('../scripts/notification-relay.cjs');
@@ -144,6 +145,7 @@ describe('notification relay welcome identity', () => {
         channelType: 'email',
         email: 'current@example.com',
         verified: true,
+        emailOwnership: 'verified_account',
       }]);
     });
 

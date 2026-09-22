@@ -85,13 +85,13 @@ describe('notification-relay checkDedup — SETNX transport outcomes', () => {
       UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
       CONVEX_URL: process.env.CONVEX_URL,
       CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
-      RELAY_SHARED_SECRET: process.env.RELAY_SHARED_SECRET,
+      CONVEX_NOTIFICATION_RELAY_SECRET: process.env.CONVEX_NOTIFICATION_RELAY_SECRET,
     };
     process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.example.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     process.env.CONVEX_URL = 'https://example.convex.cloud';
     process.env.CONVEX_SITE_URL = 'https://example.convex.site';
-    process.env.RELAY_SHARED_SECRET = 'secret';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'secret';
     delete require.cache[require.resolve(relayPath)];
 
     const originalLoad = Module._load;

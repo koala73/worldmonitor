@@ -80,9 +80,10 @@ const tpl = {
 function renderedComparePages() {
   const lastmod = '2026-09-05';
   const baseUrl = 'https://www.worldmonitor.app';
+  const snapshotDate = '2026-09-04';
   return [
-    ['hub', __test.renderCompareHub({ tpl, baseUrl, lastmod })],
-    ...COMPARISON_PAGES.map((page) => [page.slug, __test.renderComparePage(page, { tpl, baseUrl, lastmod })]),
+    ['hub', __test.renderCompareHub({ tpl, baseUrl, lastmod, snapshotDate })],
+    ...COMPARISON_PAGES.map((page) => [page.slug, __test.renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate })]),
   ];
 }
 

@@ -3,12 +3,12 @@
 // ordering so those contracts can be tested without loading the full runner.
 
 export const PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES = 12 * 60;
-// One full cold-fetch rotation is six 12-hour runs (174 countries / 30 slots),
-// so two rotations -- the derived floor this budget must clear -- is 144h/6d.
+// One nominal cold-fetch rotation is six 12-hour runs (174 countries / 30 slots),
+// so two rotations -- the floor this budget must clear -- is 6d.
 // The parity test recomputes that floor from the seeder's own constants and the
 // cron cadence, and fails if the budget drops under it.
 //
-// 10 days is an OPERATOR CHOICE above that floor (3.3 rotations), not a derived
+// 10 days is an OPERATOR CHOICE above that floor, not a derived
 // value. It was raised from the bare 2-rotation 6d on 2026-08-18 while CN sat at
 // 6.9 days and 173 of 174 countries were fresh.
 //

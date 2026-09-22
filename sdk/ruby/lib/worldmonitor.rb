@@ -85,7 +85,10 @@ module WorldMonitor
     def initialize(api_key: nil, base_url: nil, mcp_url: nil,
                    timeout: DEFAULT_TIMEOUT, transport: nil, env: ENV)
       @api_key = api_key || env["WORLDMONITOR_API_KEY"] || env["WM_API_KEY"]
-      @base_url = (base_url || env["WORLDMONITOR_BASE_URL"] || DEFAULT_BASE_URL).sub(%r{/+\z}, "")
+      @base_url = base_url || env["WORLDMONITOR_BASE_URL"] || DEFAULT_BASE_URL
+      end_index = @base_url.bytesize
+      end_index -= 1 while end_index.positive? && @base_url.getbyte(end_index - 1) == 47
+      @base_url = @base_url.byteslice(0, end_index)
       @mcp_url = mcp_url || env["WORLDMONITOR_MCP_URL"] || DEFAULT_MCP_URL
       @timeout = timeout
       @transport = transport || method(:http_transport)

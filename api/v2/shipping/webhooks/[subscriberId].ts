@@ -8,10 +8,13 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { validateApiKey } from '../../../_api-key.js';
+import { getHeaderApiKey, USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../../../_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from '../../../_cors.js';
-import { isCallerPremium } from '../../../../server/_shared/premium-check';
+import { renderBillingVerificationDenial } from '../../../../server/_shared/entitlement-check';
+import { validateUserApiKey } from '../../../../server/_shared/user-api-key';
+import { checkFailClosedScopedIpRateLimit } from '../../../../server/_shared/rate-limit';
+import { resolvePremiumCallerIdentity } from '../../../../server/_shared/premium-check';
 import { getCachedJson } from '../../../../server/_shared/redis';
 import {
   webhookKey,
@@ -20,7 +23,11 @@ import {
 } from '../../../../server/worldmonitor/shipping/v2/webhook-shared';
 
 export default async function handler(req: Request): Promise<Response> {
-  const cors = getCorsHeaders(req);
+  const cors = {
+    ...getCorsHeaders(req),
+    'Cache-Control': 'private, no-store',
+    'CDN-Cache-Control': 'no-store',
+  };
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: cors });
@@ -34,6 +41,30 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const apiKeyResult = await validateApiKey(req, { forceKey: true });
+  if (apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR) {
+    const validationGuard = await checkFailClosedScopedIpRateLimit(
+      req, 'user-api-key:pre-auth-validation', 600, '60 s', cors,
+    );
+    if (validationGuard) return validationGuard;
+    const credential = getHeaderApiKey(req);
+    let userKey;
+    try {
+      userKey = credential ? await validateUserApiKey(credential) : null;
+    } catch {
+      return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+        status: 503,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    if (!userKey) {
+      return new Response(JSON.stringify({ error: 'Invalid API key' }), {
+        status: 401,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    apiKeyResult.valid = true;
+    apiKeyResult.credential = credential;
+  }
   if (apiKeyResult.required && !apiKeyResult.valid) {
     return new Response(JSON.stringify({ error: apiKeyResult.error ?? 'API key required' }), {
       status: 401,
@@ -41,8 +72,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const isPro = await isCallerPremium(req);
-  if (!isPro) {
+  const identity = await resolvePremiumCallerIdentity(req);
+  if (!identity.isPremium) {
+    if (identity.billingDenial) return renderBillingVerificationDenial(identity.billingDenial, cors);
     return new Response(JSON.stringify({ error: 'PRO subscription required' }), {
       status: 403,
       headers: { ...cors, 'Content-Type': 'application/json' },

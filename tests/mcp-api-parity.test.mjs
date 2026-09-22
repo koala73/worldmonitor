@@ -224,6 +224,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/intelligence/v1/get-regional-snapshot",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
+  ["GET /api/intelligence/v1/list-wsb-tickers",
+    "deferred-to-future-tool: premium WSB panel transport; WSB seed has no MCP tool"],
   ["GET /api/intelligence/v1/list-market-implications",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/intelligence/v1/list-telegram-feed",
@@ -257,7 +259,9 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (60) ===
+  // === deferred-to-future-tool (61) ===
+  ["GET /api/news/v1/list-country-headlines",
+    "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
   ["GET /api/company-monitoring/v1/get-company-coverage",
@@ -319,6 +323,12 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:crude-inventories:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-oil-stocks-analysis",
     "deferred-to-future-tool: pure-read but no MCP tool exposes energy:oil-stocks-analysis:v1 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/economic/v1/get-us-cpi-monthly",
+    "deferred-to-future-tool: pure-read of the full CPI history is larger than the composite economic cache tool — bundle the latest print into a future macro-history tool"],
+  ["GET /api/economic/v1/get-us-treasury-par-yield-curve",
+    "deferred-to-future-tool: pure-read of the daily par curve since 1990 is larger than the composite economic cache tool — bundle the latest business day into a future macro-history tool"],
+  ["GET /api/economic/v1/get-us-interest-rates",
+    "deferred-to-future-tool: pure-read of daily Fed funds, Treasury yields, and SOFR since 1954 is larger than the composite economic cache tool — bundle the latest print into a future macro-history tool"],
   ["GET /api/economic/v1/list-grocery-basket-prices",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:grocery-basket:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/forecast/v1/get-simulation-outcome",

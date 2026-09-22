@@ -10,24 +10,24 @@
  * overrides the stack grouping and splits each failure mode into its own
  * trackable group.
  *
- * Signature derivation:
- *  - Sibling-fetch failures are thrown as `<inner-endpoint> HTTP <status>`
- *    (see api/mcp/registry/rpc-tools.ts). Key on `<endpoint>:<status>` and drop
- *    any trailing `: <reason>` so `HTTP 401` and
- *    `HTTP 401: invalid_internal_mcp_signature` coalesce into one group rather
- *    than fragmenting on the variable reason token.
- *  - Any other failure (timeout, abort, TypeError from a bad _postFilter) keys
- *    on the stable error name so distinct runtime faults stay separable.
+ * Confirmed internal signature/replay rejections share one group across tools.
+ * Other sibling HTTP failures retain endpoint/status grouping; missing reasons
+ * must not be interpreted as signature failures. Non-HTTP failures use the
+ * error name. The step separates execution from post-filter faults.
  *
- * The `step` distinguishes the two capture sites in dispatch.ts (`tool-execution`
- * vs `post-filter`) so a post-filter bug never re-merges with the fetch path.
- *
- * Pure + zero-import by design so it is unit-testable from the `tests/*.test.mjs`
- * runner without a Sentry DSN or a full dispatch harness.
+ * Pure + zero-import so the grouping contract needs no Sentry harness.
  */
 export function mcpErrorFingerprint(step: string, toolName: string, err: unknown): string[] {
   const message = err instanceof Error ? err.message : String(err);
   const siblingHttp = message.match(/^([A-Za-z0-9_-]+) HTTP (\d{3})\b/);
+
+  // Signed requests can also fail the gateway entitlement recheck with 401.
+  // Only this explicit code identifies the shared signature/replay mechanism.
+  if (siblingHttp?.[2] === '401'
+    && message === `${siblingHttp[1]} HTTP 401: invalid_internal_mcp_signature`) {
+    return ['mcp-internal-auth-401'];
+  }
+
   const signature = siblingHttp
     ? `${siblingHttp[1]}:${siblingHttp[2]}`
     : err instanceof Error

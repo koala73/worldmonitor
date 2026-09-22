@@ -43,6 +43,47 @@ function volume(overrides = {}) {
   };
 }
 
+// One sample per 15-minute tick, rising linearly to (but excluding) `now`.
+function linearSamples({ now, days, currentSizeMB, growthMBPerDay }) {
+  const tickMs = 15 * 60 * 1000;
+  const samples = [];
+  for (let at = now - days * DAY_MS; at < now; at += tickMs) {
+    samples.push({
+      sampledAt: new Date(at).toISOString(),
+      currentSizeMB: currentSizeMB - ((now - at) / DAY_MS) * growthMBPerDay,
+    });
+  }
+  return samples;
+}
+
+// Railway refreshes currentSizeMB only every ~6 hours, so the monitor sees a
+// staircase. These are the production refreshes that raised the 2026-09-13
+// false critical: the last step (+1,078 MB) against a 24-hour baseline read as
+// 1.53 GiB/day and 8 days of headroom, while the multi-day trend was ~0.7.
+const OBSERVED_REFRESHES = [
+  ['2026-09-09T23:47:23Z', 34_730.5],
+  ['2026-09-11T00:22:15Z', 35_159.2],
+  ['2026-09-11T01:31:36Z', 35_188.5],
+  ['2026-09-11T08:32:25Z', 35_314.5],
+  ['2026-09-11T14:47:20Z', 35_517.3],
+  ['2026-09-11T21:47:08Z', 35_703.3],
+  ['2026-09-12T04:08:39Z', 35_775.5],
+  ['2026-09-12T10:47:07Z', 35_978.8],
+  ['2026-09-12T17:33:22Z', 36_191.1],
+  ['2026-09-13T00:24:36Z', 36_279.2],
+  ['2026-09-13T06:47:34Z', 37_357.2],
+].map(([at, currentSizeMB]) => ({ atMs: Date.parse(at), currentSizeMB }));
+
+function observedStaircaseSamples(now) {
+  const tickMs = 15 * 60 * 1000;
+  const samples = [];
+  for (let at = OBSERVED_REFRESHES[0].atMs; at < now; at += tickMs) {
+    const { currentSizeMB } = OBSERVED_REFRESHES.findLast((refresh) => refresh.atMs <= at);
+    samples.push({ sampledAt: new Date(at).toISOString(), currentSizeMB });
+  }
+  return samples;
+}
+
 function runStorageCheckCli({ currentSizeMB, samples = [], volumeOverrides = {} }) {
   const directory = mkdtempSync(join(tmpdir(), 'wm-umami-storage-monitor-'));
   const inputPath = join(directory, 'volumes.json');
@@ -99,10 +140,22 @@ describe('Umami storage monitor', () => {
     assert.equal(result.alerting, false);
   });
 
+  it('waits for two days of history before projecting, because Railway refreshes in steps', () => {
+    const result = evaluateUmamiStorage({
+      volume: volume({ currentSizeMB: 28_000 }),
+      samples: linearSamples({ now: NOW, days: 1.5, currentSizeMB: 28_000, growthMBPerDay: 5_000 }),
+      now: NOW,
+    });
+
+    assert.equal(result.growthMBPerDay, null);
+    assert.equal(result.projectedHeadroomDays, null);
+    assert.equal(result.status, 'healthy');
+  });
+
   it('alerts when projected capacity is inside the 30-day warning window', () => {
     const result = evaluateUmamiStorage({
       volume: volume({ currentSizeMB: 28_000 }),
-      samples: [{ sampledAt: new Date(NOW - 7 * 24 * 60 * 60 * 1000).toISOString(), currentSizeMB: 22_800 }],
+      samples: linearSamples({ now: NOW, days: 3, currentSizeMB: 28_000, growthMBPerDay: 743 }),
       now: NOW,
     });
 
@@ -110,6 +163,36 @@ describe('Umami storage monitor', () => {
     assert.equal(Math.round(result.projectedHeadroomDays), 30);
     assert.equal(result.status, 'warning');
     assert.equal(result.alerting, true);
+  });
+
+  it('fits the multi-day trend instead of letting one Railway refresh step set it', () => {
+    const now = Date.parse('2026-09-13T11:19:55Z');
+    const result = evaluateUmamiStorage({
+      volume: volume({ currentSizeMB: 37_357.2 }),
+      samples: observedStaircaseSamples(now),
+      now,
+    });
+
+    // Least squares over the 3-day window reads the staircase as ~740 MB/day.
+    // The endpoint slope against a 24h baseline read 1,580 MB/day: critical.
+    assert.ok(
+      result.growthMBPerDay > 600 && result.growthMBPerDay < 900,
+      `growth ${result.growthMBPerDay} MB/day`,
+    );
+    assert.ok(result.projectedHeadroomDays > 14, `headroom ${result.projectedHeadroomDays} days`);
+    assert.equal(result.status, 'warning');
+  });
+
+  it('reports no growth when the fitted trend is flat or shrinking', () => {
+    const result = evaluateUmamiStorage({
+      volume: volume({ currentSizeMB: 28_000 }),
+      samples: linearSamples({ now: NOW, days: 3, currentSizeMB: 28_000, growthMBPerDay: -200 }),
+      now: NOW,
+    });
+
+    assert.equal(result.growthMBPerDay, 0);
+    assert.equal(result.projectedHeadroomDays, Infinity);
+    assert.equal(result.status, 'healthy');
   });
 
   it('fails closed at critical usage even when no growth baseline exists', () => {
@@ -127,10 +210,7 @@ describe('Umami storage monitor', () => {
   it('reports a capacity warning without failing the scheduled workflow', () => {
     const run = runStorageCheckCli({
       currentSizeMB: 28_000,
-      samples: [{
-        sampledAt: new Date(Date.now() - 7 * DAY_MS).toISOString(),
-        currentSizeMB: 22_800,
-      }],
+      samples: linearSamples({ now: Date.now(), days: 3, currentSizeMB: 28_000, growthMBPerDay: 743 }),
     });
 
     assert.equal(run.status, 0, run.stderr);
@@ -215,21 +295,41 @@ describe('Umami storage monitor', () => {
     assert.match(workflowSource, /railway volume .* list --json/);
     assert.match(workflowSource, /check-umami-storage\.mjs/);
 
-    // The combined actions/cache declares `post-if: success()`, so its save is
-    // skipped whenever the job fails — and this job can now fail on the
-    // retention runner alarm. Split restore/save, with the save unconditional,
-    // is what keeps the growth baseline accumulating across a red run.
-    const saveStep = workflow.jobs.monitor.steps.find(
-      (step) => (step.uses ?? '').startsWith('actions/cache/save@'),
-    );
-    assert.match(workflowSource, /actions\/cache\/restore@/);
-    assert.ok(saveStep, 'the growth baseline must be saved by an explicit step');
+    // The repository's Actions cache sits at its 10 GB cap, so GitHub evicted
+    // this history (every entry, on 2026-09-12) and the trend restarted from
+    // nothing. The history lives in a workflow artifact instead, which the
+    // cache limit does not touch.
+    assert.doesNotMatch(workflowSource, /actions\/cache/, 'cache eviction erases the growth history');
+    const steps = workflow.jobs.monitor.steps;
+    const restoreStep = steps.find((step) => /gh run download/.test(step.run ?? ''));
+    const checkStep = steps.find((step) => /check-umami-storage\.mjs/.test(step.run ?? ''));
+    const saveStep = steps.find((step) => (step.uses ?? '').startsWith('actions/upload-artifact@'));
+    assert.ok(restoreStep, 'the growth history must be restored from the previous run');
+    assert.ok(saveStep, 'the growth history must be saved by an explicit step');
+    assert.ok(steps.indexOf(restoreStep) < steps.indexOf(checkStep));
+    assert.equal(steps.indexOf(saveStep), steps.indexOf(checkStep) + 1);
+
+    // Only this workflow's own runs on the same branch may seed the history, so
+    // a same-named artifact from another workflow or ref cannot skew the trend.
+    assert.match(restoreStep.run, /actions\/workflows\/umami-storage-monitor\.yml\/runs/);
+    // A branch name may contain `&`; interpolated into the URL it would add a
+    // query parameter. gh api encodes a GET field instead.
+    assert.match(restoreStep.run, /gh api --method GET "[^"?]*\/runs"/);
+    assert.match(restoreStep.run, /-f "branch=\$BRANCH"/);
+    assert.equal(restoreStep.env.BRANCH, '${{ github.ref_name }}');
+    assert.equal(restoreStep.env.GH_TOKEN, '${{ github.token }}');
+    assert.deepEqual(workflow.permissions, { contents: 'read', actions: 'read' });
+
+    // The check writes its state before it sets a failing exit code, so saving
+    // on every uncancelled run keeps the newest sample even on a critical run.
     assert.equal(saveStep.if, '${{ !cancelled() }}');
-    assert.doesNotMatch(
-      workflowSource,
-      /uses: actions\/cache@/,
-      'the combined action would drop the sample on any failing run',
-    );
+    assert.equal(saveStep.with.name, restoreStep.run.match(/--name (\S+)/)?.[1]);
+    assert.equal(saveStep.with.path, '.cache/umami-storage-state.json');
+    // upload-artifact skips dot-directories unless told otherwise.
+    assert.equal(saveStep.with['include-hidden-files'], true);
+    // A re-run keeps github.run_id, and upload-artifact rejects a second
+    // artifact with the same name in one run unless it may replace it.
+    assert.equal(saveStep.with.overwrite, true);
     assert.match(retentionSql, /LIMIT 10000/);
     assert.match(retentionSql, /64 \* 1024 \* 1024/);
     assert.doesNotMatch(executableRetentionSql, /\bTRUNCATE\b/);

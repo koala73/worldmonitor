@@ -30,7 +30,7 @@ Scenario Engine 位于主仪表盘的 **Supply Chain** 面板内。每个预构�
 | `sanctions` | 针对性贸易限制（例如俄罗斯/波罗的海谷物暂停）。 |
 | `tariff_shock` | 突然关税行动及其成本传导（例如美国对电子产品加征关税升级）。 |
 
-每个模板声明其影响的咽喉要道（来自咽喉要道注册表的 ID）、持续时间（天）、受影响的 HS2 板块和成本冲击乘数。在模板列表的传输形态上，`affectedHs2: []` 表示所有 HS2 章节（注册表将该哨兵值存储为 `null`）。按原样运行模板 — v1 中没有滑块。`ScenarioType` 联合类型为 `infrastructure` 和 `pandemic` 类别留有空间，但目前没有这些类型的模板。
+每个模板声明其影响的咽喉要道（来自咽喉要道注册表的 ID）、持续时间（天）、受影响的 HS2 板块和成本冲击乘数。在模板列表的传输形态上，`affectedHs2: []` 表示所有 HS2 章节（注册表将该哨兵值存储为 `null`）。物理中断场景支持选择国家和 0–100 的整数关闭百分比；省略百分比时使用模板默认值。持续时间仅为说明，不参与影响计算。关税场景不接受关闭百分比覆盖。`ScenarioType` 联合类型为 `infrastructure` 和 `pandemic` 类别留有空间，但目前没有这些类型的模板。
 
 ## 返回内容
 
@@ -54,19 +54,19 @@ API 侧的速率限制 — 10 个作业/分钟/IP，一旦待处理队列已超�
 工作流本质上是异步的 — 边缘函数入队作业，Railway worker 计算影响，结果被轮询回来：
 
 1. 打开 Supply Chain 面板。
-2. 点击场景触发按钮（模板名称）。
+2. 在物理中断卡片中选择国家和关闭百分比，然后点击场景按钮。0% 是有效输入。
 3. 作业运行时按钮禁用（通常 5-30 秒）。
-4. 结果到达后，地图重绘，场景横幅前置于面板。横幅始终显示：⚠ 图标、场景名称、受影响最大的 5 个国家及每国影响百分比，以及 **×** 关闭控件。当场景的结果载荷包含模板参数（持续时间、中断百分比、成本冲击乘数）时，横幅额外渲染一个标签行（例如 `14d · +110% cost`）和一行标语，如 *"Simulating 14d / 100% closure / +110% cost on 1 chokepoint. Chokepoint card below shows projected score; map highlights disrupted routes."* 受影响的咽喉要道本身在地图和咽喉要道卡片上高亮，而非在横幅中按名称列出。
+4. 结果到达后，地图重绘，场景横幅前置于面板。横幅显示所选国家范围、实际关闭强度、说明性持续时间、成本乘数、原始分数单位和相对排名。覆盖摘要区分 missing、malformed、incomplete_routes、not_seeded 和 evaluated 记录，并标注流量加权与地理回退，以及有效的零影响。仅凭部分证据聚合的国家会标记为 partial evidence，其数值为下限，不可解读为低暴露。展开国家/行业证据可查看每条记录，或下载捕获的场景 JSON。持续时间不改变计算结果。
 5. 点击横幅上的 **×** 关闭控件（aria-label："Dismiss scenario"）清除场景状态 — 地图重绘回基线，面板重新渲染时不显示投影分数和红色边框标注。
 
 对于脚本化使用，请参见 [`POST /api/scenario/v1/run-scenario`](/zh/api-scenarios#运行场景) — 入队，然后轮询 `GET /api/scenario/v1/get-scenario-status` 直到响应有终止状态（成功为 `"done"`，错误为 `"failed"`）。非终止状态为 `"pending"`（排队）和 `"processing"`（worker 已启动）；两者都可能持续数秒。请参见[状态生命周期表](/zh/api-scenarios#轮询作业状态)了解完整合约。
 
 ## Scenario Engine 背后的数据
 
-- **场景模板** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`。添加需要 proto 侧变更；目前不可由用户配置。
+- **场景模板** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`。目录是预定义的；添加模板需要 proto 侧变更。受支持的物理关闭强度和国家选择是运行时输入。
 - **作业队列** — Redis 列表 `scenario-queue:pending`；worker 结果落在 `scenario-result:{jobId}`。
 - **咽喉要道注册表** — 支持实时咽喉要道状态和 Route Explorer 的同一注册表，确保场景结果与产品其余部分视觉一致。
-- **贸易/影响数据** — 从 `supply-chain:exposure:{ISO2}:{HS2}:v1` 读取的 HS2 暴露缓存条目。如果省略 `iso2`，v1 仅计算已种子化的报告国集合：`US`、`CN`、`RU`、`IR`、`IN` 和 `TW`。提供 `iso2` 会将作业限定到该单个国家键。
+- **贸易/影响数据** — 从 `supply-chain:exposure:{ISO2}:{HS2}:v1` 读取的 HS2 暴露缓存条目。如果省略 `iso2`，worker 使用最新成功种子元数据中明确列出的国家和 HS2 范围。提供 `iso2` 会将作业限定到该国家。清单缺失、过旧格式或无效时，覆盖范围为未知；不会猜测国家列表，也不会把缺失记录当作零。
 
 ## 影响数学
 
@@ -95,3 +95,9 @@ impactPct = round(countryTotalImpact / max(maxReturnedTotalImpact, 1) * 100)
 - [Route Explorer](/zh/route-explorer) — 针对*今天*的状态运行特定航线。
 - [Scenarios API](/zh/api-scenarios) — 底层 HTTP 合约。
 - [Supply Chain](https://github.com/koala73/worldmonitor/blob/main/docs/api/SupplyChainService.openapi.yaml) — 支持 Supply Chain 面板的更广泛服务。
+
+## 覆盖范围和导出
+
+结果包含 `scenarioId`、`scopedIso2`、`computedAt` 和 `coverage`。覆盖状态为 `complete`、`partial` 或 `unknown`；完整仅指清单内的种子范围。每条国家/HS2 记录区分 `evaluated`、`missing`、`malformed`、`incomplete_routes` 和 `not_seeded`。有效零影响保留为证据，但不高亮受影响国家；0% 物理关闭不高亮中断路线。关税影响仍按原公式计算。
+
+横幅同时显示原始分数和相对百分比，二者都不是货币或贸易损失。证据区分 `flow_weighted`（记录的贸易份额加模型路线）和 `country_route_fallback`（地理回退）。缓存日期不是贸易观察日期；未知观察日期明确标为未知。展开证据后才渲染逐条记录。**Download scenario JSON** 下载本次已捕获的完整结果，不重新获取证据。

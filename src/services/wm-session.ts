@@ -431,6 +431,14 @@ type RecoveryVerdict =
  */
 function noteRecoveryFailure(verdict: RecoveryVerdict, rawPath: string): void {
   const cause = verdict.reason === 'mint_failed' ? verdict.cause : null;
+  // A mint the browser cancelled says nothing about the session — the request
+  // was never answered because we stopped asking. It is weaker evidence than
+  // the transport causes below, which at least reached the network, so it does
+  // not even earn a route strike: banking one would let two navigations inside
+  // the corroboration window tip the quorum on a demonstrably healthy session.
+  // Production 2026-09-06..08 is the case: the `network` rate stepped ~25x
+  // while /api/wm-session answered 100% 200 with a flat p95 throughout.
+  if (cause === 'aborted') return;
   // A mint the SERVER refused (or answered unusably) is session-wide by
   // construction, exactly as before: no route can succeed against an endpoint
   // that will not issue a token, so this still skips the quorum.
@@ -529,12 +537,19 @@ function noteMintCookieEvidence(hadSession: boolean, aCookieExistedWhenSent: boo
  * about whether the next attempt will work, and must not be read as one
  * (WORLDMONITOR-WG — see mintCauseIsTransport).
  *
+ * `aborted` is weaker still: the browser cancelled the request before anything
+ * could fail. A navigation, a bfcache entry, or a page unload mid-mint produces
+ * it. Nothing was asked, so nothing was refused, and unlike the transport pair
+ * it does not even take the corroboration route — it earns no route strike at
+ * all (see noteRecoveryFailure). Folding it into `network` is what let an
+ * ordinary link click suppress every anonymous panel for 15 minutes.
+ *
  * `unknown` is the defensive floor: the mint path threw somewhere it was not
  * expected to. It is not a server verdict either, so it takes the corroboration
  * route rather than blacking out the tab on a client-side bug — but it is not
  * retried, because we cannot say what would be retried.
  */
-type MintFailureCause = 'refused' | 'malformed' | 'timeout' | 'network' | 'unknown';
+type MintFailureCause = 'refused' | 'malformed' | 'timeout' | 'network' | 'aborted' | 'unknown';
 // What the `mint_cause` Sentry tag may say. `none` is the explicit "this
 // episode has no mint cause" — see markWmSessionDead (#6804).
 type MintCauseTag = MintFailureCause | 'none';
@@ -565,6 +580,25 @@ function mintCauseIsTransport(cause: MintFailureCause | null): boolean {
  */
 function mintCauseIsServerVerdict(cause: MintFailureCause | null): boolean {
   return cause === 'refused' || cause === 'malformed';
+}
+
+/**
+ * Did the BROWSER cancel this fetch, rather than our own budget timer?
+ *
+ * Checked against the controller we own rather than the error name alone: a
+ * timed-out mint also rejects with `AbortError`, and `timedOut` is already the
+ * discriminator for that one. An un-aborted controller plus an `AbortError` can
+ * only mean the abort came from outside this module.
+ *
+ * Duck-typed on `name` because a browser-issued abort is a `DOMException` in
+ * every engine we ship to, but the constructor is not reliably identifiable
+ * across realms (an iframe, a bfcache restore), and `instanceof` fails there.
+ */
+function isBrowserIssuedAbort(err: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted) return false;
+  return typeof err === 'object'
+    && err !== null
+    && (err as { name?: unknown }).name === 'AbortError';
 }
 
 async function mintSession(body?: { widgetKey?: string; proKey?: string }): Promise<MintOutcome> {
@@ -618,8 +652,18 @@ async function mintSession(body?: { widgetKey?: string; proKey?: string }): Prom
       }
     }
     return { ok: true, session: { exp: data.exp } };
-  } catch {
+  } catch (err) {
     // The request never completed. Nothing here is evidence about the session.
+    //
+    // `timeoutController` is the ONLY abort this module issues, so an
+    // AbortError raised while that controller is still un-aborted was issued by
+    // the browser, not by us: the user navigated away, the tab entered
+    // bfcache, or the page unloaded mid-mint. That is a cancelled question, not
+    // a failed one, and folding it into `network` is what let an ordinary link
+    // click black out every anonymous panel for 15 minutes (WORLDMONITOR-WG).
+    if (!timedOut && isBrowserIssuedAbort(err, timeoutController.signal)) {
+      return { ok: false, cause: 'aborted' };
+    }
     return { ok: false, cause: timedOut ? 'timeout' : 'network' };
   } finally {
     clearTimeout(timeoutId);

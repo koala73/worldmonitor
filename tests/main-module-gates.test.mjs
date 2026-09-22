@@ -15,7 +15,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const MAIN_MODULE_HELPER = join(REPO_ROOT, 'scripts/lib/main-module.mjs');
+// Every scripts/lib/ module a gate imports has to be copied into the fixture,
+// not just main-module.mjs — a gate that also imports source-scan.mjs would
+// otherwise fail the symlink run with a module-resolution error that looks
+// exactly like the silent no-op this test exists to detect.
+const SHARED_LIB_MODULES = ['scripts/lib/main-module.mjs', 'scripts/lib/source-scan.mjs'];
 const INLINE_MAIN_GUARD = /(?:import\.meta\.url\s*===\s*pathToFileURL\s*\(\s*process\.argv\s*\[\s*1\s*\]\s*\)\.href|pathToFileURL\s*\(\s*process\.argv\s*\[\s*1\s*\]\s*\)\.href\s*===\s*import\.meta\.url)/;
 
 const GATES = [
@@ -42,6 +46,20 @@ const GATES = [
     expected: /Panel content-write guard failed/,
   },
   {
+    file: 'scripts/enforce-safe-local-storage.mjs',
+    setup(root) {
+      mkdirSync(join(root, 'src/services'), { recursive: true });
+      writeFileSync(
+        join(root, 'src/services/failing-store.ts'),
+        "export const stored = localStorage.getItem('wm-key');\n",
+      );
+    },
+    // Deliberately the unlisted-deref line rather than the headline. The
+    // fixture tree is one file, so the population floor also trips — matching
+    // the headline alone would pass even if the deref patterns had gone stale.
+    expected: /These dereference localStorage directly/,
+  },
+  {
     file: 'scripts/check-local-secret-dumps.mjs',
     setup(root) {
       writeFileSync(join(root, '.env.vercel-backup'), 'do-not-use\n');
@@ -63,7 +81,13 @@ function createSymlinkedGateFixture(gate) {
   mkdirSync(dirname(scriptPath), { recursive: true });
   mkdirSync(join(root, 'scripts/lib'), { recursive: true });
   copyFileSync(join(REPO_ROOT, gate.file), scriptPath);
-  copyFileSync(MAIN_MODULE_HELPER, join(root, 'scripts/lib/main-module.mjs'));
+  for (const lib of SHARED_LIB_MODULES) copyFileSync(join(REPO_ROOT, lib), join(root, lib));
+  // A gate may import a real dependency — enforce-safe-local-storage.mjs uses
+  // the TypeScript parser — and ESM resolves those from node_modules, not from
+  // NODE_PATH. Without this the fixture run dies on ERR_MODULE_NOT_FOUND, which
+  // exits non-zero and so passes the status check while producing none of the
+  // gate's output: the exact silent-no-op shape this test exists to catch.
+  symlinkSync(join(REPO_ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   gate.setup(root);
 
   const linkedRoot = join(root, 'linked-checkout');

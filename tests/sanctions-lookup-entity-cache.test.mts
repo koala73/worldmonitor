@@ -37,7 +37,7 @@ const OPENSANCTIONS_PAYLOAD = {
  * Minimal in-memory Upstash stub: serves GET from a Map that POST /SET fills,
  * so the second handler call sees whatever the first one persisted.
  */
-function installRedisBackedStub() {
+function installRedisBackedStub(payloadForQuery = (_q: string) => OPENSANCTIONS_PAYLOAD) {
   const store = new Map<string, string>();
   const upstreamCalls: string[] = [];
 
@@ -58,7 +58,7 @@ function installRedisBackedStub() {
 
     if (url.startsWith('https://api.opensanctions.org/')) {
       upstreamCalls.push(url);
-      return new Response(JSON.stringify(OPENSANCTIONS_PAYLOAD), { status: 200 });
+      return new Response(JSON.stringify(payloadForQuery(new URL(url).searchParams.get('q')!)), { status: 200 });
     }
 
     throw new Error(`unexpected request: ${url}`);
@@ -66,6 +66,32 @@ function installRedisBackedStub() {
 
   return { upstreamCalls, store };
 }
+
+test('distinct queries with the same legacy FNV hash cannot replay an empty result', async (t) => {
+  t.after(restoreEnvironment);
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const attackerQuery = 'entity eoe';
+  const targetQuery = 'entity 4s20';
+  const legacyHash = (q: string) => {
+    let hash = 2166136261;
+    for (const char of q) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    return (hash >>> 0).toString(36);
+  };
+  assert.equal(legacyHash(attackerQuery), legacyHash(targetQuery));
+
+  const { upstreamCalls, store } = installRedisBackedStub(q => q === attackerQuery
+    ? { results: [], total: { value: 0 } }
+    : OPENSANCTIONS_PAYLOAD);
+  const { lookupSanctionEntity } = await import('../server/worldmonitor/sanctions/v1/lookup-entity.ts');
+  const first = await lookupSanctionEntity({} as never, { q: attackerQuery, maxResults: 10 });
+  const second = await lookupSanctionEntity({} as never, { q: targetQuery, maxResults: 10 });
+  assert.equal(first.total, 0);
+  assert.equal(second.total, 1, 'the target must not inherit the colliding empty result');
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(store.size, 2);
+  assert.ok([...store.keys()].every(key => /sanctions:lookup:v2:[a-f0-9]{64}:10$/.test(key)));
+});
 
 test('repeat OpenSanctions lookup is served from Redis, not re-fetched upstream', async (t) => {
   t.after(restoreEnvironment);

@@ -12,7 +12,17 @@ World Monitor 在四个语言生态中提供官方客户端库。它们都是**�
 | Go | [pkg.go.dev 上的 `github.com/koala73/worldmonitor/sdk/go`](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
 | JavaScript / CLI | [npm 上的 `worldmonitor`](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
 
-每个软件包都将其主页设为 `worldmonitor.app`——你（或你的智能体）正是据此验证它是官方 SDK 而非仿冒品。
+## 查找并验证官方软件包
+
+请使用表格中的完整包名。npm、PyPI 和 RubyGems 的项目元数据包含指向 `worldmonitor.app` 的链接；请将这些链接与上方列出的源码仓库进行比对。Python 包名是 `worldmonitor-sdk`。PyPI 上名为 `worldmonitor` 的包属于无关项目。
+
+Go SDK 的模块路径是 `github.com/koala73/worldmonitor/sdk/go`，包名是 `worldmonitor`。Go 模块没有注册表主页字段。请通过上方链接的官方仓库核对模块路径，并检查 pkg.go.dev 页面上的产品链接。
+
+- [在 pkg.go.dev 搜索 worldmonitor](https://pkg.go.dev/search?q=worldmonitor)。
+- [查看 Go 模块代理上的最新发布元数据](https://proxy.golang.org/github.com/koala73/worldmonitor/sdk/go/@latest)。
+- 在 Go 项目中运行 `go get github.com/koala73/worldmonitor/sdk/go` 安装。
+
+Go 通过仓库标签（`sdk/go/vX.Y.Z`）和模块代理发布版本。代理查询成功表示版本可用；pkg.go.dev 搜索结果表示该包可以被搜索到。参见 [pkg.go.dev 如何添加软件包](https://pkg.go.dev/about#adding-a-package)。
 
 ## 共享设计
 
@@ -75,10 +85,10 @@ import run from 'worldmonitor/run';
 
 ## 发布（维护者）
 
-每个 SDK 通过 OIDC 可信发布独立进行版本管理和发布——无需长期有效的注册表令牌（npm 流程请参见 [CLI 发布手册](/zh/releasing-cli)）：
+各 SDK 独立管理版本。npm、Python 和 Ruby 使用 OIDC 可信发布；Go 使用仓库标签和公共模块代理。它们均无需长期有效的注册表令牌（npm 流程请参见 [CLI 发布手册](/zh/releasing-cli)）：
 
 - **Python：** 在 `sdk/python/pyproject.toml` 中提升 `version`，**并**在 `sdk/python/src/worldmonitor_sdk/__init__.py` 中提升 `__version__`，然后打上 `py-vX.Y.Z` 标签（工作流 `publish-python.yml`）。
 - **Ruby：** 在 `sdk/ruby/lib/worldmonitor/version.rb` 中提升 `WorldMonitor::VERSION`，然后打上 `gem-vX.Y.Z` 标签（工作流 `publish-ruby.yml`）。
 - **Go：** 在 `sdk/go/worldmonitor.go` 中提升 `Version`，然后打上 `sdk/go/vX.Y.Z` 标签（工作流 `publish-go.yml` 会验证并预热模块代理）。
 
-`tests/sdk-packages.test.mjs` 会在每个软件包上守护版本同步和 `worldmonitor.app` 主页元数据。
+`tests/sdk-packages.test.mjs` 检查包身份、版本声明、注册表元数据和发布工作流配置。

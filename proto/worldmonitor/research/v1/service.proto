@@ -27,7 +27,7 @@ service ResearchService {
     option (sebuf.http.config) = {path: "/list-hackernews-items", method: HTTP_METHOD_GET};
   }
 
-  // ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
+  // Find technology events from Techmeme, dev.events and curated sources, filtering by type, map availability, result limit and upcoming days for event discovery.
   rpc ListTechEvents(ListTechEventsRequest) returns (ListTechEventsResponse) {
     option (sebuf.http.config) = {path: "/list-tech-events", method: HTTP_METHOD_GET};
   }

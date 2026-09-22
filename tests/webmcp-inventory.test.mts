@@ -385,6 +385,7 @@ const WEBMCP_MAINTAINER_SOURCES = [
   'src/services/webmcp-map-layer-catalog.ts',
   'src/services/webmcp-panel-catalog.ts',
   'src/services/webmcp-mission-preset-catalog.ts',
+  'src/main.ts',
   'src/App.ts',
   'src/app/webmcp-dashboard.ts',
   'src/app/dashboard-action-binding.ts',

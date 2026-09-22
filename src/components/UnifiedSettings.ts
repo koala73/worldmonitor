@@ -28,10 +28,13 @@ import {
 } from '@/components/unified-settings-interactions';
 import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
+import { safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { signOut } from '@/services/clerk';
+import { requestOwnAccountDeletion } from '@/services/account-deletion';
 import { track, trackApiAction } from '@/services/analytics';
 import {
   getEntitlementState,
@@ -181,6 +184,11 @@ export class UnifiedSettings {
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
+  private deletionDialog: HTMLElement | null = null;
+  private deletionFocusTrap: FocusTrap | null = null;
+  private deletionBusy = false;
+  private deletionError = '';
+  private deletionPhraseHandler: (() => void) | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -197,11 +205,20 @@ export class UnifiedSettings {
     this.resetPanelDraft();
 
     this.escapeHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') this.close();
+      if (e.key === 'Escape') {
+        if (this.deletionDialog) {
+          e.stopPropagation();
+          if (!this.deletionBusy) this.closeDeletionDialog();
+          return;
+        }
+        this.close();
+      }
     };
 
     this.overlay.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+
+      if (this.deletionDialog) return;
 
       if (target === this.overlay) {
         this.close();
@@ -240,10 +257,15 @@ export class UnifiedSettings {
           }
           if (result.outcome === 'no-customer') {
             showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+              'Billing portal unavailable. Email support@worldmonitor.app for help.',
             );
           }
         });
+        return;
+      }
+
+      if (target.closest('[data-delete-account]')) {
+        this.openDeletionDialog();
         return;
       }
 
@@ -267,7 +289,7 @@ export class UnifiedSettings {
           }
           if (result.outcome === 'no-customer') {
             showToast(
-              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+              'Billing portal unavailable. Email support@worldmonitor.app for help.',
             );
           }
         });
@@ -517,6 +539,7 @@ export class UnifiedSettings {
   private handleAccountIdentityChange(nextUserId: string | null): void {
     if (nextUserId === this.accountUserId) return;
 
+    this.closeDeletionDialog();
     this.accountUserId = nextUserId;
     this.accountDataGeneration += 1;
     this.accountEntitlementRefreshPending = true;
@@ -582,7 +605,7 @@ export class UnifiedSettings {
       if (replaceOverlayId) overlayHistory.replace(replaceOverlayId, 'settings', close);
       else overlayHistory.open('settings', close);
     }
-    localStorage.setItem('wm-settings-open', '1');
+    safeStorageSet('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
     (this.overlay.querySelector('.unified-settings-tabs') as HTMLElement)?.addEventListener('keydown', (e: KeyboardEvent) => this.handleKeyDown(e));
     track('settings-open', { tab: tab ?? 'default' });
@@ -670,6 +693,22 @@ export class UnifiedSettings {
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
     if (origin === 'history') this.historyRegistered = false;
+    // An in-flight deletion owns the overlay until it settles. The overlay
+    // click handler and escapeHandler already refuse while deletionBusy is
+    // set; without this guard the mobile back gesture reaches teardownSettings
+    // -> closeDeletionDialog, which clears the latch mid-await and re-permits
+    // a second confirmAccountDeletion against the same account. Re-arm the
+    // history entry the gesture just consumed, matching the unsaved-changes
+    // branch below, so a later back press still closes the overlay. This sits
+    // after the flag is cleared above, because that is what makes the
+    // re-registration condition reachable.
+    if (this.deletionBusy) {
+      if (origin === 'history' && !this.historyRegistered) {
+        this.historyRegistered = true;
+        overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
+      }
+      return;
+    }
     // Unsaved panel changes → confirm before tearing down. The confirm is a
     // non-blocking in-app dialog (#4559): close() stays synchronous (8 callers)
     // and defers teardown to the user's choice instead of a blocking confirm().
@@ -712,8 +751,9 @@ export class UnifiedSettings {
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
     this.stopMcpQuotaPolling();
+    this.closeDeletionDialog();
     this.resetPanelDraft();
-    localStorage.removeItem('wm-settings-open');
+    safeStorageRemove('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
     // Last: the host reloads data in response, and the overlay covering the
     // dashboard has to be gone before that lands for the user to see it.
@@ -776,6 +816,7 @@ export class UnifiedSettings {
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
     this.stopMcpQuotaPolling();
+    this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
     // Teardown, not a user-initiated close: release the trap's document
     // listener without handing focus back to a trigger that is also going away.
@@ -866,6 +907,7 @@ export class UnifiedSettings {
             <p>See your current plan and manage payment details, invoices, or cancellation.</p>
           </div>
           ${this.renderUpgradeSection()}
+          ${this.renderAccountDeletionSection()}
         </div>
         ` : ''}
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
@@ -1174,6 +1216,152 @@ export class UnifiedSettings {
     `;
   }
 
+  private renderAccountDeletionSection(): string {
+    return `
+      <section class="account-deletion-zone" data-account-deletion>
+        <h3 class="account-deletion-title">Delete account</h3>
+        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
+        <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
+      </section>
+    `;
+  }
+
+  private syncDeletionConfirmEnabled(): void {
+    const overlay = this.deletionDialog;
+    if (!overlay) return;
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    const confirm = overlay.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
+    if (!input || !confirm) return;
+    confirm.disabled = this.deletionBusy || input.value.trim() !== 'DELETE';
+    input.disabled = this.deletionBusy;
+    const error = overlay.querySelector('[data-deletion-error]');
+    if (error) error.textContent = this.deletionError;
+  }
+
+  private openDeletionDialog(): void {
+    if (this.deletionDialog || this.deletionBusy) return;
+    this.deletionError = '';
+    const overlay = document.createElement('div');
+    this.deletionDialog = overlay;
+    overlay.className = 'account-deletion-dialog-overlay active';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'account-deletion-dialog-title');
+    setTrustedHtml(
+      overlay,
+      trustedHtml(
+        `
+      <div class="account-deletion-dialog">
+        <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">Delete this account?</h2>
+        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
+        <label class="account-deletion-dialog-label" for="account-deletion-phrase">Type DELETE to confirm</label>
+        <input id="account-deletion-phrase" class="account-deletion-dialog-input" data-deletion-phrase type="text" autocomplete="off" spellcheck="false" />
+        <p class="account-deletion-dialog-error" data-deletion-error role="alert"></p>
+        <div class="account-deletion-dialog-actions">
+          <button type="button" class="confirm-dialog-btn" data-deletion-cancel>Cancel</button>
+          <button type="button" class="confirm-dialog-btn confirm-dialog-confirm" data-deletion-confirm disabled>Delete account</button>
+        </div>
+      </div>
+    `,
+        'account deletion confirm dialog; static copy only',
+      ),
+    );
+    overlay.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target === overlay || target.closest('[data-deletion-cancel]')) {
+        if (!this.deletionBusy) this.closeDeletionDialog();
+        return;
+      }
+      if (target.closest('[data-deletion-confirm]')) {
+        void this.confirmAccountDeletion();
+      }
+    });
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    this.deletionPhraseHandler = () => this.syncDeletionConfirmEnabled();
+    input?.addEventListener('input', this.deletionPhraseHandler);
+    document.body.appendChild(overlay);
+    this.syncDeletionConfirmEnabled();
+    // aria-modal is a promise to the keyboard: without a trap, Tab walks out
+    // of a destructive-action dialog into the settings modal behind it, which
+    // is still interactive. Escape stays with escapeHandler (no onEscape here)
+    // so an in-flight deletion still cannot be dismissed.
+    this.deletionFocusTrap = createFocusTrap(overlay, { initialFocus: () => input });
+    this.deletionFocusTrap.activate();
+  }
+
+  private closeDeletionDialog(): void {
+    const overlay = this.deletionDialog;
+    if (!overlay) return;
+    const input = overlay.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    if (input && this.deletionPhraseHandler) {
+      input.removeEventListener('input', this.deletionPhraseHandler);
+    }
+    this.deletionPhraseHandler = null;
+    // Deactivate before the node leaves the document so the trap can hand
+    // focus back to the [data-delete-account] button that opened it.
+    this.deletionFocusTrap?.deactivate();
+    this.deletionFocusTrap = null;
+    overlay.remove();
+    this.deletionDialog = null;
+    this.deletionBusy = false;
+    this.deletionError = '';
+  }
+
+  private async confirmAccountDeletion(): Promise<void> {
+    const overlay = this.deletionDialog;
+    const input = overlay?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+    if (!overlay || !input || input.value.trim() !== 'DELETE' || this.deletionBusy) return;
+    this.deletionBusy = true;
+    this.deletionError = '';
+    this.syncDeletionConfirmEnabled();
+    try {
+      await requestOwnAccountDeletion();
+      this.closeDeletionDialog();
+      // Tear down directly rather than via close(): the account is gone, so an
+      // unsaved draft in another panel has nothing to be saved to, and close()
+      // would stop to ask "discard changes?" for it while signOut() proceeds.
+      this.teardownSettings('control');
+      await signOut();
+      showToast('Account deleted. Sign out on other devices and clear this device\'s site data.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Account deletion failed. Try again.';
+      if (message.includes('Account changed')) {
+        // Only speak if this attempt still owns the dialog. When the account
+        // switch already tore it down, the user has moved on and a late
+        // "Account changed... Try again." is about a request they no longer
+        // remember starting.
+        const stillOurs = this.deletionDialog === overlay;
+        this.closeDeletionDialog();
+        if (stillOurs) showToast(message);
+        return;
+      }
+      // The dialog is the only place the error text renders, and an account
+      // switch can tear it down mid-await. Without this fallback the failure
+      // is written into a detached overlay and the user is told nothing.
+      if (!this.deletionDialog) {
+        showToast(message);
+        return;
+      }
+      // The server is still working when the poll gives up — its external
+      // retry ladder outlasts the client timeout by design. Clearing the
+      // phrase leaves Confirm disabled so the reflex second submission is not
+      // one click away, while still releasing the busy latch so the dialog can
+      // be dismissed; re-submitting takes a deliberate re-type.
+      if (message.includes('still running')) {
+        this.deletionBusy = false;
+        this.deletionError = message;
+        const phrase = this.deletionDialog
+          ?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+        if (phrase) phrase.value = '';
+        this.syncDeletionConfirmEnabled();
+        return;
+      }
+      this.deletionBusy = false;
+      this.deletionError = message;
+      this.syncDeletionConfirmEnabled();
+    }
+  }
+
   // Business Pro seats (#4634/#4635) state/render/handlers live in
   // BusinessSeatsSection — see this.businessSeatsSection.
 
@@ -1194,7 +1382,7 @@ export class UnifiedSettings {
         }
         if (result.outcome === 'no-customer') {
           showToast(
-            'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            'Billing portal unavailable. Email support@worldmonitor.app for help.',
           );
         }
       });
@@ -1675,7 +1863,7 @@ export class UnifiedSettings {
           return;
         }
         if (result.outcome === 'no-customer') {
-          showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+          showToast('Billing portal unavailable. Email support@worldmonitor.app for help.');
         }
       });
       return;
@@ -1699,7 +1887,7 @@ export class UnifiedSettings {
             return;
           }
           if (result.outcome === 'no-customer') {
-            showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+            showToast('Billing portal unavailable. Email support@worldmonitor.app for help.');
           }
         });
         return;
@@ -2366,7 +2554,7 @@ export class UnifiedSettings {
     const revoked = this.mcpClients.filter(c => c.revokedAt);
 
     if (active.length === 0 && revoked.length === 0) {
-      const mcpUrl = 'https://api.worldmonitor.app/mcp';
+      const mcpUrl = 'https://worldmonitor.app/mcp';
       setTrustedHtml(container, trustedHtml(`
         <div class="mcp-clients-empty">
           <div class="mcp-clients-empty-title">No connected MCP clients yet</div>

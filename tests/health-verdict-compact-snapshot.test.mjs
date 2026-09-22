@@ -24,7 +24,7 @@ function fullVerdict(checkCount = 228, problemCount = 5) {
   }
   return {
     status: 'WARNING',
-    summary: { total: checkCount, ok: checkCount - problemCount, warn: problemCount, crit: 0 },
+    summary: { total: checkCount, ok: checkCount - problemCount, warn: problemCount, containedWarn: 0, crit: 0 },
     checkedAt: CHECKED_AT,
     checks,
   };
@@ -73,6 +73,28 @@ test('a compact response reports the same verdict and problems as the full one',
   for (const [name, check] of Object.entries(fromFull.problems ?? {})) {
     assert.deepEqual(fromCompact.problems[name], check);
   }
+});
+
+test('a healthy availability verdict retains contained warnings in compact problems', () => {
+  const full = fullVerdict(100, 3);
+  full.status = 'HEALTHY';
+  full.summary.containedWarn = 3;
+  for (const check of Object.values(full.checks).filter(({ status }) => status === 'STALE_SEED')) {
+    check.records = 5;
+  }
+
+  const compact = buildCompactVerdictSnapshot(full);
+  assert.equal(compact.status, 'HEALTHY');
+  assert.equal(compact.summary.warn, 3);
+  assert.equal(compact.summary.containedWarn, 3);
+  assert.deepEqual(compact.problems, {
+    bad_key_0: full.checks.bad_key_0,
+    bad_key_1: full.checks.bad_key_1,
+    bad_key_2: full.checks.bad_key_2,
+  });
+  assert.deepEqual(healthResponseBody(compact, true), compact);
+  assert.deepEqual(healthResponseBody(full, false).checks, full.checks,
+    'the full response retains every warning field too');
 });
 
 test('an all-healthy verdict omits `problems` entirely', () => {

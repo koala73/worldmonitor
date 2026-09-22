@@ -21,6 +21,7 @@ export const MONITORED_REGIONS = Object.freeze({
 });
 
 const REQUEST_PACE_MS = 6_000;
+const OBSERVATION_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 function mapConfidence(value) {
   switch ((value || '').toLowerCase()) {
@@ -60,7 +61,8 @@ function safeFailureReason(error) {
 }
 
 function buildAreaUrl(baseUrl, apiKey, source, bbox) {
-  return `${baseUrl}/api/area/csv/${apiKey}/${source}/${bbox}/1`;
+  // NASA day ranges are calendar days, so /1 loses yesterday at midnight UTC.
+  return `${baseUrl}/api/area/csv/${apiKey}/${source}/${bbox}/2`;
 }
 
 export async function fetchFirmsRegionSource(apiKey, regionName, bbox, source, {
@@ -116,11 +118,13 @@ export async function fetchAllFirmsRegions(apiKey, {
           logger,
         });
         fulfilled++;
+        const now = Date.now();
         for (const row of rows) {
+          const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
+          if (!Number.isFinite(detectedAt) || detectedAt < now - OBSERVATION_WINDOW_MS || detectedAt > now) continue;
           const id = `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`;
           if (seen.has(id)) continue;
           seen.add(id);
-          const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
           const brightness = parseFloat(row.bright_ti4 ?? '0') || 0;
           const frp = parseFloat(row.frp ?? '0') || 0;
           fireDetections.push({

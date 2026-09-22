@@ -1,4 +1,5 @@
 import { getRecentSignals, type CorrelationSignal } from '@/services/correlation';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
 import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
@@ -77,7 +78,7 @@ export class IntelligenceFindingsBadge {
 
   constructor() {
     this.enabled = IntelligenceFindingsBadge.getStoredEnabledState();
-    this.popupEnabled = localStorage.getItem(POPUP_STORAGE_KEY) === '1';
+    this.popupEnabled = safeStorageGet(POPUP_STORAGE_KEY) === '1';
 
     this.badge = document.createElement('button');
     this.badge.className = 'intel-findings-badge';
@@ -108,9 +109,9 @@ export class IntelligenceFindingsBadge {
         e.stopPropagation();
         this.popupEnabled = !this.popupEnabled;
         if (this.popupEnabled) {
-          localStorage.setItem(POPUP_STORAGE_KEY, '1');
+          safeStorageSet(POPUP_STORAGE_KEY, '1');
         } else {
-          localStorage.removeItem(POPUP_STORAGE_KEY);
+          safeStorageRemove(POPUP_STORAGE_KEY);
         }
         this.renderDropdown();
         return;
@@ -178,7 +179,7 @@ export class IntelligenceFindingsBadge {
   }
 
   public static getStoredEnabledState(): boolean {
-    return localStorage.getItem(STORAGE_KEY) !== 'hidden';
+    return safeStorageGet(STORAGE_KEY) !== 'hidden';
   }
 
   public isEnabled(): boolean {
@@ -194,7 +195,7 @@ export class IntelligenceFindingsBadge {
     this.enabled = enabled;
 
     if (enabled) {
-      localStorage.removeItem(STORAGE_KEY);
+      safeStorageRemove(STORAGE_KEY);
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
       this.initAudio();
@@ -202,7 +203,7 @@ export class IntelligenceFindingsBadge {
       this.startRefresh();
     } else {
       this.updateEpoch++;
-      localStorage.setItem(STORAGE_KEY, 'hidden');
+      safeStorageSet(STORAGE_KEY, 'hidden');
       document.removeEventListener('click', this.boundCloseDropdown);
       document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
       if (this.refreshInterval) {
@@ -287,7 +288,7 @@ export class IntelligenceFindingsBadge {
 
     // Update badge status based on priority
     const hasCritical = this.findings.some(f => f.priority === 'critical');
-    const hasHigh = this.findings.some(f => f.priority === 'high' || f.confidence >= 0.7);
+    const hasHigh = this.findings.some(f => f.priority === 'high');
 
     this.badge.classList.remove('status-none', 'status-low', 'status-high');
     if (count === 0) {
@@ -352,8 +353,8 @@ export class IntelligenceFindingsBadge {
   }
 
   private priorityToConfidence(priority: string): number {
-    const map: Record<string, number> = { critical: 95, high: 80, medium: 60, low: 40 };
-    return map[priority] ?? 50;
+    const map: Record<string, number> = { critical: 0.95, high: 0.8, medium: 0.6, low: 0.4 };
+    return map[priority] ?? 0.5;
   }
 
   private priorityScore(priority: string): number {
@@ -397,7 +398,7 @@ export class IntelligenceFindingsBadge {
     }
 
     const criticalCount = this.findings.filter(f => f.priority === 'critical').length;
-    const highCount = this.findings.filter(f => f.priority === 'high' || f.confidence >= 70).length;
+    const highCount = this.findings.filter(f => f.priority === 'high').length;
 
     let statusClass = 'moderate';
     let statusText = t('components.intelligenceFindings.detected', { count: String(this.findings.length) });

@@ -72,6 +72,7 @@ import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { safeStorageGet, safeStorageSet } from '@/utils/safe-storage';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { MonitorPanel } from '@/components/MonitorPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -123,6 +124,7 @@ import {
   CANADA_ARCTIC_OPT_IN_SOURCES,
   CANADA_DEPTH_OPT_IN_SOURCES,
   CRISIS_FLOOR_OPT_IN_SOURCES,
+  CURATED_REGIONAL_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -168,8 +170,8 @@ import {
   DashboardBindingError,
   isWebMcpAbortError,
   raceWebMcpAbort,
-  registerWebMcpTools,
   throwIfWebMcpAborted,
+  type WebMcpAppBindings,
   type WebMcpExecutionOptions,
 } from '@/services/webmcp';
 import {
@@ -227,6 +229,7 @@ import {
   migrateCanadaArcticOptInsV6,
   migrateCanadaDepthOptInsV7,
   migrateCrisisDeskOptInsV8,
+  migrateCuratedRegionalOptInsV9,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -282,6 +285,7 @@ const DEFAULT_VIEWPORT_MARGIN_PX = 400;
 // run site (#4486) so the engine bytes stay off the eager boot graph. The TYPE is
 // referenced via the inline `import(...)` type in app-context.ts (erased at build).
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
+import { CORRELATION_DOMAINS } from '@/types/correlation';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
@@ -365,6 +369,9 @@ export class App {
   private visiblePanelPrimeRaf: number | null = null;
   private viewportHydrationReady = false;
   private viewportHydrationReadyAt = 0;
+  private slowTierWaitTimedOut = false;
+  /** Scroll/resize register at readiness; marks/primes arm only after fan-out. */
+  private viewportTriggersArmed = false;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
@@ -386,6 +393,9 @@ export class App {
   };
   private readonly handleViewportPrime = (event?: Event): void => {
     if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    // The catch-up scan after fan-out covers early viewport changes without
+    // replaying their scroll events as viewport-trigger marks. (#5876)
+    if (!this.viewportTriggersArmed) return;
     if (
       event &&
       this.viewportHydrationReadyAt > 0 &&
@@ -1454,6 +1464,27 @@ export class App {
         }
         localStorage.setItem(crisisDeskOptInKey, 'done');
       }
+      const curatedRegionalOptInKey = 'worldmonitor-curated-regional-optin-v1';
+      if (!safeStorageGet(curatedRegionalOptInKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCuratedRegionalOptInsV9({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CURATED_REGIONAL_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        let persisted = true;
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            persisted = saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          }
+        }
+        if (persisted) safeStorageSet(curatedRegionalOptInKey, 'done');
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
@@ -1579,6 +1610,7 @@ export class App {
       },
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
+      loadTelegramIntel: () => this.dataLoader.loadTelegramIntel(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
@@ -1855,16 +1887,50 @@ export class App {
     }
   }
 
-  private async waitForSlowBootstrapCheckpoint(): Promise<void> {
+  private async waitForSlowBootstrapCheckpoint(): Promise<boolean> {
     markLcpDebug('wm:data:slow-tier-wait-start');
     try {
       const settled = await waitForBootstrapSlowTier(isDesktopRuntime() ? 8_500 : 3_500);
       markLcpDebug('wm:data:slow-tier-wait-end', { settled });
-      if (this.state.isDestroyed) return;
+      if (this.state.isDestroyed) return settled;
       this.bootstrapHydrationState = getBootstrapHydrationState();
       this.updateConnectivityUi();
+      return settled;
     } catch {
       markLcpDebug('wm:data:slow-tier-wait-error');
+      return false;
+    }
+  }
+
+  private completePendingSlowTierFanout(): void {
+    if (!this.slowTierWaitTimedOut || this.state.isDestroyed) return;
+    this.slowTierWaitTimedOut = false;
+    void this.runVisibleDataFanout();
+  }
+
+  private async runVisibleDataFanout(): Promise<void> {
+    if (this.viewportHydrationReady || this.state.isDestroyed) return;
+    this.viewportHydrationReady = true;
+    window.addEventListener('scroll', this.handleViewportPrime, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener('resize', this.handleViewportPrime);
+    markLcpDebug('wm:data:initial-fanout-start');
+    await Promise.all([
+      this.dataLoader.loadAllData(),
+      this.primeVisiblePanelData(),
+    ]);
+    markLcpDebug('wm:data:initial-fanout-complete');
+    if (this.state.isDestroyed) return;
+    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
+      typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    this.viewportTriggersArmed = true;
+    void this.primeVisiblePanelData();
+    if (import.meta.env.VITE_E2E === '1') {
+      document.documentElement.dataset.wmInitialDataReady = 'true';
     }
   }
 
@@ -1911,10 +1977,20 @@ export class App {
       engine.registerAdapter(economicAdapter);
       engine.registerAdapter(disasterAdapter);
       this.state.correlationEngine = engine;
+      this.connectCorrelationAssessments();
 
       await this.runCorrelationEngine();
     } catch (error) {
       console.warn('[CorrelationEngine] Initial lazy load/run failed:', error);
+    }
+  }
+
+  private connectCorrelationAssessments(): void {
+    const engine = this.state.correlationEngine;
+    if (!engine) return;
+    for (const domain of CORRELATION_DOMAINS) {
+      const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
+      panel?.setAssessmentHandler(cards => engine.assessCards(domain, cards));
     }
   }
 
@@ -1932,25 +2008,14 @@ export class App {
     // which on a first-run overlap would write empty cards into live panels.
     const didRun = await engine.run(this.state, runtimeMode);
     if (!didRun || this.state.isDestroyed) return;
-    for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
+    for (const domain of CORRELATION_DOMAINS) {
       const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
       panel?.updateCards(engine.getCards(domain));
     }
   }
 
-  public async init(): Promise<void> {
-    const initStart = performance.now();
-    markLcpDebug('wm:boot:app-init-start');
-
-    // WebMCP — register synchronously before any init awaits so agent
-    // scanners (isitagentready.com, in-browser agents) find the tools on
-    // their first probe. No-op in browsers without document.modelContext.
-    // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so a tool
-    // invoked during startup waits for managers that can lazily create their
-    // targets. A bounded startup timeout keeps a genuinely broken state from
-    // hanging the caller. Store the returned controller
-    // so destroy() can unregister every tool on teardown.
-    this.webMcpController = registerWebMcpTools({
+  public getWebMcpBindings(): WebMcpAppBindings {
+    return {
       openCountryBriefByCode: (code, country, execution) => (
         this.openWebMcpCountryBrief(code, country, execution)
       ),
@@ -2328,7 +2393,16 @@ export class App {
         }
         return openWebMcpSignIn(execution?.signal);
       },
-    });
+    };
+  }
+
+  public async init(webMcpController: AbortController | null): Promise<void> {
+    const initStart = performance.now();
+    markLcpDebug('wm:boot:app-init-start');
+
+    // src/main.ts registers WebMCP before loading App. Own its controller before
+    // the first await so a failed init unregisters those tools through destroy().
+    this.webMcpController = webMcpController;
 
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
 
@@ -2516,6 +2590,7 @@ export class App {
       if (this.state.isDestroyed) return;
       this.bootstrapHydrationState = getBootstrapHydrationState();
       this.updateConnectivityUi();
+      this.completePendingSlowTierFanout();
     });
     markLcpDebug('wm:boot:fast-bootstrap-ready');
     this.bootstrapHydrationState = getBootstrapHydrationState();
@@ -2539,7 +2614,7 @@ export class App {
     let _prevUserId: string | null = null;
     let _convexWatchHandoffGeneration = 0;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
-    // ONCE on a false→true transition (user signs in / purchase lands mid-session).
+    // on a false→true transition or an account change while still premium.
     // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
     // loadTradePolicy) would sit empty until the next scheduled refresh — for
     // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
@@ -2551,16 +2626,16 @@ export class App {
     // for a Pro Monthly subscriber because the original listener only
     // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
     // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
-    const firePremiumLoaders = (): void => {
+    const firePremiumLoaders = (accountTransition = false): void => {
       // Account sign-in replaces anonymous/local preferences asynchronously.
       // Entitlement callbacks may arrive first; defer every ownership mutation
       // until cloud prefs signals success or error for this same account.
       this.reconcileTierOwnedPreferences();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
-      if (nowPremium && !hadPremium) {
-        // Entitlement just resolved → fire PRO-gated initial loads that were
-        // skipped at boot. Each loader early-returns if the panel isn't
+      if (nowPremium && (!hadPremium || accountTransition)) {
+        // Load panels skipped at boot or cleared for an account change.
+        // Each loader early-returns if the panel isn't
         // mounted and re-checks hasPremiumAccess() internally, so these
         // calls are safe and idempotent. Without this, panels would sit empty
         // until the next scheduled refresh (10+ min for trade-policy; FOREVER
@@ -2580,12 +2655,14 @@ export class App {
         void this.dataLoader.loadWsbTickers();
         void this.dataLoader.loadResilienceRanking();
         void this.dataLoader.loadGlobalTenders();
+        this.connectCorrelationAssessments();
       } else if (!nowPremium && hadPremium) {
         // Pro data must not remain visible or available from the client cache
         // after sign-out, expiry, or downgrade.
         this.dataLoader.clearPhysicalPremiumComparison();
         this.dataLoader.clearMineralProduction();
         void this.dataLoader.clearGlobalTenders();
+        this.state.correlationEngine?.clearAssessments();
       }
       _prevHadPremium = nowPremium;
     };
@@ -2766,7 +2843,7 @@ export class App {
       _prevUserId = userId;
       // Run after account handoff/reset so this pass cannot enforce the
       // previous user's entitlement against the new user's panels.
-      firePremiumLoaders();
+      firePremiumLoaders(accountTransition);
     });
 
 
@@ -2926,40 +3003,21 @@ export class App {
     // painted back in panelLayout.init() (Phase 1), so awaiting here is OFF the
     // LCP critical path; it stays bounded by waitForBootstrapSlowTier's timeout
     // (3.5 s browser / 8.5 s desktop). (#4512)
-    await slowTierReady;
+    const settled = await slowTierReady;
     if (this.state.isDestroyed) return;
-    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
-      typeof performance.now === 'function'
-      ? performance.now()
-      : Date.now();
-    this.viewportHydrationReady = true;
-    // Register viewport triggers only after the slow bootstrap tier settles.
-    // Scrolls before this point are covered by the initial fan-out below, which
-    // scans the current viewport after readiness. Registering earlier lets a
-    // captured descendant scroll consume hydration keys before they arrive.
-    window.addEventListener('scroll', this.handleViewportPrime, {
-      passive: true,
-      capture: true,
-    });
-    window.addEventListener('resize', this.handleViewportPrime);
-    // Prime panel-specific data concurrently with bulk loading.
-    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
-    // are NOT part of loadAllData. Running them in parallel prevents those
-    // panels from being blocked when a loadAllData batch is slow.
     // Snapshot whether precision geometry was already loaded BEFORE the fan-out
     // (the map renderer triggers the memoized fetch early). If so, the fan-out's
     // geometry-dependent CII ingests already attributed correctly and the
     // post-LCP replay would just be a redundant second CII compute + choropleth
     // repaint, so we skip it below. (#4512)
     const geometryReadyBeforeFanout = isCountryGeometryLoaded();
-    markLcpDebug('wm:data:initial-fanout-start');
-    await Promise.all([
-      this.dataLoader.loadAllData(),
-      this.primeVisiblePanelData(),
-    ]);
-    markLcpDebug('wm:data:initial-fanout-complete');
-    if (import.meta.env.VITE_E2E === '1') {
-      document.documentElement.dataset.wmInitialDataReady = 'true';
+    if (!settled) {
+      this.slowTierWaitTimedOut = true;
+      // No fan-out mark here: the deferred runVisibleDataFanout() emits the paired
+      // start/complete, and a second start would read as a phantom fan-out.
+      await this.dataLoader.loadAllData();
+    } else {
+      await this.runVisibleDataFanout();
     }
     const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();
 
@@ -3499,6 +3557,8 @@ export class App {
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
     this.viewportHydrationReadyAt = 0;
+    this.viewportTriggersArmed = false;
+    this.slowTierWaitTimedOut = false;
     cancelBootstrapSlowTier();
     window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
@@ -3566,7 +3626,7 @@ export class App {
       this.state.findingsBadge = new IntelligenceGapBadge();
       this.state.findingsBadge.setOnSignalClick((signal) => {
         if (this.state.countryBriefPage?.isVisible()) return;
-        if (localStorage.getItem('wm-settings-open') === '1') return;
+        if (safeStorageGet('wm-settings-open') === '1') return;
         void this.state.ensureSignalModal()
           .then((signalModal) => {
             if (!this.state.isDestroyed) signalModal.showSignal(signal);
@@ -3577,7 +3637,7 @@ export class App {
       });
       this.state.findingsBadge.setOnAlertClick((alert) => {
         if (this.state.countryBriefPage?.isVisible()) return;
-        if (localStorage.getItem('wm-settings-open') === '1') return;
+        if (safeStorageGet('wm-settings-open') === '1') return;
         void this.state.ensureSignalModal()
           .then((signalModal) => {
             if (!this.state.isDestroyed) signalModal.showAlert(alert);

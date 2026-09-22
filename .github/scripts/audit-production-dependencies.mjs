@@ -52,12 +52,6 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   'blog-site/package-lock.json': [],
   'pro-test/package-lock.json': [
     {
-      id: 'GHSA-395f-4hp3-45gv',
-      expiresAt: '2026-11-05',
-      reason:
-        'shell-quote quadratic-complexity DoS in parse() reaches pro-test only via react-native -> react-devtools-core, a mobile/dev-tooling chain the Vite web build never bundles into public/pro/. The parse() DoS is unreachable from the shipped browser bundle. Drop once react-native leaves pro-test\'s tree.',
-    },
-    {
       id: 'GHSA-5p2g-fcmc-qvqq',
       expiresAt: '2026-11-05',
       reason:

@@ -240,6 +240,76 @@ test('official URLs are HTTPS and restricted to the source host', () => {
   assert.equal(safeOfficialUrl('https://sam.gov.attacker.example/notice', 'sam'), '');
 });
 
+const CF_SUCCESS = '2026-07-13T05:00:00.000Z';
+function contractsFinderSnapshot() {
+  const record = normalizeContractsFinderRelease({
+    id: 'fixture', date: CF_SUCCESS,
+    tender: { title: 'Network services', status: 'active', tenderPeriod: { endDate: '2026-07-14T12:00:00Z' } },
+  });
+  return {
+    fetchedAt: Date.parse(CF_SUCCESS), dataAvailable: true, tenders: [record],
+    sourceStatuses: [{ source: 'contracts-finder', state: 'ok', recordCount: 1, fetchedAt: CF_SUCCESS, lastSuccessfulAt: CF_SUCCESS }],
+  };
+}
+function failContractsFinder(previousSnapshot, attemptedAt = '2026-07-13T06:00:00.000Z') {
+  return mergeTenderSourceResults({
+    previousSnapshot, attemptedAt, sourceNames: ['contracts-finder'],
+    settled: [{ status: 'rejected', reason: new Error('The operation was aborted due to timeout') }],
+  });
+}
+
+test('Contracts Finder retains usable data with a durable failure episode and truthful clocks', () => {
+  const first = failContractsFinder(contractsFinderSnapshot());
+  const status = first.sourceStatuses[0];
+  assert.equal(first.tenders.length, 1);
+  assert.equal(status.state, 'stale');
+  assert.equal(status.lastSuccessfulAt, CF_SUCCESS);
+  assert.equal(status.consecutiveFailures, 1);
+  assert.equal(status.firstFailureAt, status.fetchedAt);
+  assert.match(status.error, /timeout/);
+  const second = failContractsFinder(first, '2026-07-13T07:00:00.000Z');
+  assert.equal(second.sourceStatuses[0].consecutiveFailures, 2);
+  assert.equal(second.sourceStatuses[0].firstFailureAt, status.firstFailureAt);
+  assert.equal(second.sourceStatuses[0].lastSuccessfulAt, CF_SUCCESS);
+  const expired = failContractsFinder(second, '2026-07-13T08:00:00.000Z');
+  assert.equal(expired.tenders.length, 0, 'source retention ends at 180 minutes, even while other sources keep publishing');
+  assert.equal(expired.sourceStatuses[0].lastSuccessfulAt, CF_SUCCESS);
+  const recovered = mergeTenderSourceResults({
+    previousSnapshot: second, sourceNames: ['contracts-finder'], attemptedAt: '2026-07-13T07:05:00Z',
+    settled: [{ status: 'fulfilled', value: { records: [], status: {
+      source: 'contracts-finder', state: 'ok', recordCount: 0, fetchedAt: '2026-07-13T07:05:00Z',
+    } } }],
+  });
+  assert.equal(recovered.sourceStatuses[0].consecutiveFailures, 0);
+  assert.equal(recovered.sourceStatuses[0].firstFailureAt, '');
+  assert.equal(recovered.availability, 'empty', 'verified empty is a real recovery');
+});
+
+test('Contracts Finder cannot borrow a bundle timestamp or a failed attempt as a source success', () => {
+  for (const patch of [
+    { state: 'stale', lastSuccessfulAt: '', fetchedAt: '2026-07-13T06:00:00Z' },
+    { lastSuccessfulAt: 'bad-date' },
+    { lastSuccessfulAt: '2026-07-13T07:00:00Z' },
+  ]) {
+    const prior = contractsFinderSnapshot();
+    Object.assign(prior.sourceStatuses[0], patch);
+    assert.equal(failContractsFinder(prior).tenders.length, 0, JSON.stringify(patch));
+  }
+  for (const patch of [{ title: '' }, { officialUrl: 'https://example.com' }, { deadline: 'bad' }, { status: 'awarded' }]) {
+    const prior = contractsFinderSnapshot();
+    Object.assign(prior.tenders[0], patch);
+    assert.equal(failContractsFinder(prior).tenders.length, 0, JSON.stringify(patch));
+  }
+  const legacyFailure = contractsFinderSnapshot();
+  legacyFailure.sourceStatuses[0].state = 'stale';
+  assert.equal(failContractsFinder(legacyFailure).sourceStatuses[0].consecutiveFailures, 2,
+    'a legacy failure must not restart as the first failure');
+  for (const sourceStatuses of [null, {}, [null]]) {
+    const prior = { ...contractsFinderSnapshot(), sourceStatuses };
+    assert.equal(failContractsFinder(prior).tenders.length, 0);
+  }
+});
+
 test('keeps historical awards and records with unknown closing dates out of the open-opportunity feed', () => {
   const future = normalizeSamOpportunity({ noticeId: 'future', title: 'Current opportunity', responseDeadLine: '2026-07-30T00:00:00Z', uiLink: 'https://sam.gov/future' });
   const award = { ...future, status: 'awarded' };

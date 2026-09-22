@@ -129,7 +129,8 @@
       "activeSirens": "Aktywne syreny",
       "sirens24h": "Syreny / 24h",
       "aviationDisruptions": "Zakłócenia lotnicze",
-      "gpsJammingZones": "Strefy zakłóceń GPS"
+      "gpsJammingZones": "Strefy zakłóceń GPS",
+      "temporalUnavailable": "Obserwacje czasowe niedostępne"
     },
     "countryFacts": "Fakty o kraju",
     "loadingFacts": "Ładowanie faktów o kraju...",
@@ -878,7 +879,6 @@
         "space": "KOSMOS"
       },
       "paused": "Kamery wstrzymane",
-      "pausedIdle": "Kamery wstrzymane — przesuń mysz, aby wznowić",
       "play": "Odtwórz",
       "previewStatus": "Podgląd na żywo"
     },
@@ -1263,9 +1263,6 @@
       "datacenter": "Centrum danych",
       "base": "Baza",
       "nuclear": "Obiekt jądrowy"
-    },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "KRYT",
@@ -1755,7 +1752,10 @@
       "provenanceTitle": "Pochodzenie zasięgu: ile pozyskanych artykułów i odrębnych źródeł wybrano dla tego briefu",
       "compiledFrom": "Zebrane z {{stories}} artykułów z {{sources}} źródeł",
       "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Szczegóły wiadomości ({{count}})",
+      "streamIdleStopLabel": "Zatrzymaj transmisję live gdy nieaktywna",
+      "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu.",
+      "streamIdleStopNever": "Nigdy"
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",
@@ -1765,6 +1765,7 @@
       "etfs": "ETF-y",
       "netInflow": "NAPŁYW NETTO",
       "netOutflow": "ODPŁYW NETTO",
+      "netNeutral": "NETTO NEUTRALNE",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emitent",
@@ -2190,7 +2191,7 @@
       "infoTooltip": "<strong>Kalendarz ekonomiczny</strong> Zaplanowane publikacje makroekonomiczne: CPI, NFP, GDP, PMI i decyzje banków centralnych. Pokazuje prognozę vs. rzeczywistość vs. poprzedni. Wydarzenia o wysokim wpływie wyróżnione. Źródło: dostawcy danych ekonomicznych."
     },
     "fsi": {
-      "infoTooltip": "<strong>Wskaźnik stresu finansowego</strong> Indeks stresu finansowego Fed z Kansas City (KCFSI): mierzy stres na rynkach finansowych USA przy użyciu 11 wskaźników, w tym spreadów rentowności, zmienności i korelacji krzyżowych. Wartości dodatnie wskazują na stres powyżej średniej. Źródło: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Wskaźnik stresu finansowego</strong> Stosunek WorldMonitor kredytu wysokodochodowego do długoterminowych amerykańskich obligacji skarbowych, skorygowany o zmienność akcji i spread wysokodochodowy: (HYG / TLT) / (VIX × HY spread / 100). Nie jest to indeks stresu finansowego Rezerwy Federalnej w Kansas City. Odczyt 1.5 lub wyższy oznacza niski stres; poniżej 0.3 oznacza wysoki stres.",
       "title": "Wskaźnik Stresu Finansowego",
       "usFsiValue": "WARTOŚĆ US FSI",
       "cissTitle": "EU CISS (Systemowy Stres w Strefie Euro)",
@@ -2655,7 +2656,14 @@
       "analyzing": "Analiza...",
       "viewOnMap": "Wyświetl na mapie",
       "signals_few": "{{count}} sygnały",
-      "signals_many": "{{count}} sygnałów"
+      "signals_many": "{{count}} sygnałów",
+      "waiting": "Oczekiwanie na kolejną aktualizację danych. Ten panel aktualizuje się automatycznie.",
+      "offline": "Oczekiwanie na połączenie. Ten panel zaktualizuje się automatycznie po przywróceniu połączenia.",
+      "updated": "Zaktualizowano {{time}}",
+      "saved": "Ostatnia znana aktualizacja {{time}} · Sprawdzanie aktualizacji",
+      "savedOffline": "Ostatnia znana aktualizacja {{time}} · Brak połączenia",
+      "localSignals": "Na podstawie sygnałów załadowanych w panelu",
+      "emptySaved": "Brak konwergencji w ostatniej znanej aktualizacji."
     },
     "thermalEscalation": {
       "title": "Eskalacja termiczna",
@@ -2827,6 +2835,35 @@
       "succeeded": "Klucz dostępu zapisany. Możesz go użyć przy następnym logowaniu.",
       "retryable": "To się nie powiodło. Możesz spróbować ponownie.",
       "failed": "Nie udało się zapisać klucza dostępu na tym urządzeniu."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Raport decyzyjny dotyczący surowców",
+      "commodity": "Surowiec / produkt",
+      "blockedChokepoint": "Przejście uznane za zablokowane",
+      "commodityCapture": "Zapisz porównanie surowców",
+      "title": "Raport decyzyjny",
+      "fuel": "Paliwo",
+      "chokepoint": "Wąskie gardło",
+      "baseline": "Zakłócenie bazowe",
+      "comparison": "Zakłócenie porównawcze",
+      "capture": "Pobierz / odśwież oba",
+      "downloadHtml": "Pobierz raport w HTML",
+      "downloadJson": "Pobierz raport w JSON",
+      "back": "← Powrót do raportu kraju",
+      "select": "Wybierz zakłócenie dostaw energii, a następnie pobierz oba scenariusze.",
+      "changed": "Wybór zmieniony. Pobierz oba scenariusze przed eksportem.",
+      "loading": "Pobieranie obu scenariuszy…",
+      "captured": "Pobrano. Przed pobraniem pliku sprawdź daty obserwacji i ograniczenia.",
+      "failed": "Nie udało się pobrać scenariuszy. Sprawdź dostęp i spróbuj ponownie. Brak wyniku do eksportu.",
+      "locked": "Raport decyzyjny jest dostępny w Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "Wstrzymana z powodu braku aktywności",
+      "idleBody": "Transmisja live zatrzymana po {{duration}} bez aktywności myszy, klawiatury lub ekranu dotykowego.",
+      "idleResume": "Wznów",
+      "idleKeepPlaying": "Kontynuuj odtwarzanie przy braku aktywności",
+      "idleSettingsHint": "Możesz to zmienić w dowolnym momencie w Ustawienia › Media.",
+      "idleKeepPlayingToast": "Transmisja live będzie kontynuowana przy braku aktywności. Zmień w Ustawienia › Media."
     }
   },
   "popups": {
