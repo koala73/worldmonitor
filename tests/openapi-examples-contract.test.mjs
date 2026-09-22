@@ -809,6 +809,20 @@ describe('OpenAPI curated example values', () => {
     assert.equal(example, '2026-01-15T12:00:00.000Z');
   });
 
+  it('uses a published wire id and UTC-midnight epoch for GetUsInterestRates', () => {
+    const specs = [
+      ['EconomicService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'EconomicService.openapi.json'), 'utf8'))],
+      ['EconomicService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'EconomicService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths?.['/api/economic/v1/get-us-interest-rates']?.get
+        ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.series?.[0]?.id, 'fed_funds_effective', `${label}: series id`);
+      assert.equal(example?.series?.[0]?.points?.[0]?.date, 1717200000000, `${label}: observation date`);
+    }
+  });
+
   it('uses accepted LLM providers in SummarizeArticle examples', () => {
     const specs = [
       ['NewsService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'NewsService.openapi.json'), 'utf8'))],

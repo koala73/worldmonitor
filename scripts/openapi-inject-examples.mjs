@@ -211,6 +211,11 @@ function isCuratedOmission(key, context = {}) {
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  // UsInterestRateSeries.id is a closed wire-id set. The generic `example-id`
+  // is not one of the published ids, so the documented 200 sample is un-runnable.
+  if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
+    return 'fed_funds_effective';
+  }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
     if (key === 'band') return 'high';
@@ -705,6 +710,13 @@ function numberExample(name, schema = {}, integer = false) {
   else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
   else if (key === 'lng' || key === 'lon' || key.endsWith('lng') || key.endsWith('lon') || key.includes('longitude')) value = -74.006;
   else if (key.includes('time') || key.endsWith('at')) value = 1717200000000;
+  // Epoch-ms calendar fields (UsInterestRateObservation.date, UsCpiMonth.month,
+  // UsTreasuryParYieldCurve.date, UCDP dateStart/dateEnd). Match date as a
+  // token, not a substring — `includes('date')` would hit consolidatedCount
+  // and lastUpdated because those keys contain the letters "date".
+  else if (integer && (key === 'date' || key === 'month' || key.startsWith('date') || key.endsWith('date'))) {
+    value = 1717200000000;
+  }
   else if (key.includes('percent') || key.includes('ratio') || key.includes('score')) value = 42.5;
   else if (key.includes('confidence')) value = 0.82;
   else if (key.includes('price') || key.includes('cost') || key.includes('rate')) value = 75.25;

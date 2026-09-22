@@ -4505,8 +4505,8 @@ paths:
                             example:
                                 "events":
                                     - "country": "US"
-                                      "dateEnd": 1
-                                      "dateStart": 1
+                                      "dateEnd": 1717200000000
+                                      "dateStart": 1717200000000
                                       "deathsBest": 1
                                       "deathsHigh": 1
                                       "id": "example-id"
@@ -10537,7 +10537,7 @@ paths:
                                               "percent": 42.5
                                           "yearOverYear":
                                               "percent": 42.5
-                                      "month": 1
+                                      "month": 1717200000000
                                 "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetUsCpiMonthlyResponse'
@@ -10654,7 +10654,7 @@ paths:
                         application/json:
                             example:
                                 "curves":
-                                    - "date": 1
+                                    - "date": 1717200000000
                                       "fiveYear": 1.5
                                       "fourMonth": 1.5
                                       "oneAndAHalfMonth": 1.5
@@ -10775,9 +10775,9 @@ paths:
                         application/json:
                             example:
                                 "series":
-                                    - "id": "example-id"
+                                    - "id": "fed_funds_effective"
                                       "points":
-                                          - "date": 1
+                                          - "date": 1717200000000
                                             "percent": 42.5
                                 "unavailable": false
                             schema:
@@ -13815,7 +13815,7 @@ paths:
                                 "anomalies":
                                     - "asn": "example"
                                       "asnName": "WorldMonitor Analyst"
-                                      "endDate": 1
+                                      "endDate": 1717200000000
                                       "latitude": 40.7128
                                       "locationCode": "US"
                                 "totalCount": 1
