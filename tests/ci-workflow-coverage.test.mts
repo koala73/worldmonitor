@@ -1632,7 +1632,16 @@ describe('CI workflow coverage', () => {
     assert.ok(pathLoop, 'the smoke step must enumerate the paths it requests');
     assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/'], 'must request the same routes docker-publish.yml checks before it publishes');
     assert.match(smoke, /expected 200/, 'a non-200 must fail the job, not just print');
-    assert.match(smoke, /returned an empty body/, 'a 200 with no body must also fail the job');
+    assert.match(smoke, /returned 200 with an empty body/, 'a 200 with no body must also fail the job');
+    // The empty-body guard must read the loop's $path, not a route hardcoded
+    // to `/` alone -- otherwise a 200-with-empty-body response from `/pro/`
+    // would pass silently while `/` alone stayed covered.
+    const loopBody = smoke.slice(smoke.indexOf('for path in'));
+    assert.match(
+      loopBody,
+      /elif \[ -z "\$\(curl -fsS "http:\/\/127\.0\.0\.1:8080\$\{path\}"\)" \]/,
+      'the empty-body check must be scoped to the loop variable, not hardcoded to /',
+    );
   });
 
   it('keeps desktop drift-gate inputs in the CI change filter (#5902)', () => {

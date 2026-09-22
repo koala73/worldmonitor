@@ -1154,16 +1154,17 @@ jobs:
             if [ "$code" != "200" ]; then
               echo "::error::GET ${path} returned ${code}, expected 200"
               failed="yes"
+            # A 200 that served an empty body is not a working page either --
+            # checked per path, not just for `/` (#8503 review, CodeRabbit):
+            # otherwise a 200-with-empty-body response from `/pro/` would
+            # pass silently while `/` alone stayed covered.
+            elif [ -z "$(curl -fsS "http://127.0.0.1:8080${path}")" ]; then
+              echo "::error::GET ${path} returned 200 with an empty body"
+              failed="yes"
             else
               echo "GET ${path} -> 200"
             fi
           done
-
-          # A 200 that served an empty body is not a working page.
-          if [ -z "$(curl -fsS http://127.0.0.1:8080/)" ]; then
-            echo "::error::GET / returned an empty body"
-            failed="yes"
-          fi
 
           if [ -n "$failed" ]; then
             echo "::error::Image smoke test failed."
