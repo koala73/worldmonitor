@@ -18,6 +18,9 @@ export const PRO_TOKEN_ID = 'k57mcptokenid';
 export const PRO_BEARER = 'pro-bearer-uuid';
 export const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
 export const BASE_URL = 'https://worldmonitor.app/mcp';
+// The transport at BASE_URL challenges an unauthenticated `initialize`. A full
+// anonymous handshake is served on the machine-discovery alias (same handler).
+export const ANON_DISCOVERY_URL = 'https://worldmonitor.app/.well-known/mcp';
 
 /**
  * In-memory pipeline stub over Pro INCR / DECR / EXPIRE, the Pro daily

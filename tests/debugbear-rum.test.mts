@@ -56,6 +56,7 @@ interface FakeDebugBearScript {
   async: boolean;
   src: string;
   fetchPriority?: string;
+  onerror?: (() => void) | null;
 }
 
 function installDebugBearHarness(
@@ -75,6 +76,7 @@ function installDebugBearHarness(
     addEventListener: (type: string, cb: (event: Event) => void) => {
       listeners.set(type, cb);
     },
+    removeEventListener: (type: string) => { listeners.delete(type); },
   } as Window & { dbbRum?: unknown[] };
   const doc = {
     querySelector: () => existingScript,
@@ -151,6 +153,27 @@ describe('DebugBear RUM loader', () => {
     } finally {
       h.restore();
     }
+  });
+
+  it('bounds preload errors, forwards to the loaded collector, and cleans up on failure', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initDebugBearRum();
+      for (let i = 0; i < 1000; i++) h.listeners.get('error')!(new Event('error'));
+      assert.equal(h.win.dbbRum?.length, 51);
+      assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
+      const buffered = h.win.dbbRum!;
+      const delivered: unknown[] = [];
+      Object.assign(h.win, { dbbRum: { push: (...events: unknown[]) => delivered.push(...events) } });
+      const event = new Event('unhandledrejection');
+      h.listeners.get('unhandledrejection')!(event);
+      assert.deepEqual(delivered, [['unhandledrejection', event]]);
+      assert.equal(buffered.length, 51, 'loaded collector receives events instead of stale buffer');
+      h.win.dbbRum = buffered;
+      h.appendedScripts[0]!.onerror!();
+      assert.equal(h.listeners.size, 0);
+      assert.deepEqual(buffered, [['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]]);
+    } finally { h.restore(); }
   });
 
   it('queues transfer metrics and closed low-cardinality tags in the documented slots', () => {

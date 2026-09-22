@@ -1386,7 +1386,7 @@ paths:
                                 "anomalies":
                                     - "asn": "example"
                                       "asnName": "WorldMonitor Analyst"
-                                      "endDate": 1
+                                      "endDate": 1717200000000
                                       "latitude": 40.7128
                                       "locationCode": "US"
                                 "totalCount": 1

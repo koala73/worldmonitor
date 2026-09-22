@@ -29,6 +29,7 @@ const MIRRORED_FILES = [
   'physical-divergence-contract.d.ts',
   'physical-divergence-staleness.js',
   'physical-divergence-staleness.d.ts',
+  'compare-and-delete-script.cjs',
   'stablecoin-classifier.cjs',
   // The classifier's default thresholds come from its SIBLING stablecoins.json
   // (both homes), so a drift in the JSON mirror silently changes classification.
@@ -66,6 +67,7 @@ describe('regional snapshot seed scripts use scripts/shared/ (not repo-root shar
   // shared/) will ERR_MODULE_NOT_FOUND at runtime on Railway because the
   // shared/ dir is not copied into the deploy root.
   const FILES_THAT_MUST_USE_MIRROR = [
+    'scripts/_seed-utils.mjs',
     'scripts/_clustering.mjs',
     'scripts/seed-regional-snapshots.mjs',
     'scripts/regional-snapshot/actor-scoring.mjs',

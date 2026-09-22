@@ -6,7 +6,7 @@ keywords: "OSINT tools free, open source intelligence software, OSINT dashboard,
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
 pubDate: "2026-02-17"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-20"
 ---
 
 Open source intelligence used to require a dozen subscriptions, custom scrapers, and years of domain expertise. A professional OSINT analyst's browser might have 50+ tabs open at any given time: flight trackers, ship trackers, earthquake monitors, conflict databases, Telegram channels, RSS readers, and satellite imagery viewers.
@@ -54,6 +54,8 @@ Three of World Monitor's most powerful layers bring live tracking to your screen
 ### ADS-B Aircraft Tracking
 
 Military and civilian aircraft positions update in real time via OpenSky and Wingbits enrichment. The system automatically identifies military aircraft and displays their callsigns, types, and flight paths on the map.
+
+For source coverage, observation timing, and historical-data limits, see [military flight tracking for OSINT](/blog/posts/military-flight-tracking-osint/).
 
 ### AIS Maritime Monitoring
 

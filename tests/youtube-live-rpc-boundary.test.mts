@@ -71,7 +71,7 @@ describe('YouTube public RPC input and scrape boundary', () => {
   }
 
   it('accepts every shipped handle and documented international forms', async () => {
-    const source = readFileSync(new URL('../src/components/LiveNewsPanel.ts', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/services/live-channels.ts', import.meta.url), 'utf8');
     const handles = new Set([...source.matchAll(/handle:\s*'([^']+)'/g)].map(match => match[1]!));
     assert.ok(handles.size > 50);
     for (const channel of [...handles, '@中', '@あい', '@cafe\u0301', '@a·b']) {

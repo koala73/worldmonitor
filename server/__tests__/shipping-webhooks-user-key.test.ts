@@ -113,13 +113,13 @@ test('handler-side validation outage fails closed without reading ownership', as
 });
 
 test('invalid explicit user key cannot borrow an enterprise cookie', async () => {
-  const response = await gateway(request(invalidKey, { Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request(invalidKey, { Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(401);
   expect(runRedisPipeline).not.toHaveBeenCalled();
 });
 
 test('enterprise cookie retains its credential owner when an anonymous header is present', async () => {
-  const response = await gateway(request('wms_anonymous', { Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(200);
   expect(ownerMembersCall(hash('enterprise-test'))).toBe(true);
   expect(await response.json()).toEqual({ webhooks: [] });
