@@ -542,4 +542,52 @@ describe('user-prefs POST during account deletion', () => {
     assert.equal(warnMock.mock.calls.length, 1);
     assert.match(String(warnMock.mock.calls[0].arguments[0]), /account deletion in progress/);
   });
+
+  it('stores the keyed 403 and replays it without reaching Convex', async () => {
+    process.env.CONVEX_URL = 'https://convex.test';
+    mock.method(console, 'warn', () => {});
+    let completed: string | null = null;
+    installRedisPipeline((commands) => {
+      const [command] = commands;
+      if (command[0] === 'GET') return [{ result: completed }];
+      if (command[0] === 'SET' && command.includes('NX')) return [{ result: 'OK' }, { result: null }];
+      if (command[0] === 'SET') completed = command[2];
+      return [{ result: 'OK' }];
+    });
+    let mutations = 0;
+    __setUserPrefsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: TEST_USER_ID }),
+      checkScopedRateLimit: async () => ({
+        allowed: true,
+        limit: USER_PREFS_WRITE_RATE_LIMIT,
+        reset: TEST_NOW + 60_000,
+        degraded: false,
+      }),
+      createConvexClient: () => ({
+        setAuth(): void {},
+        async query(): Promise<unknown> {
+          return null;
+        },
+        async mutation(): Promise<unknown> {
+          mutations += 1;
+          const err = new Error('{"kind":"ACCOUNT_DELETION_IN_PROGRESS"}') as Error & {
+            data?: Record<string, unknown>;
+          };
+          err.data = { kind: 'ACCOUNT_DELETION_IN_PROGRESS' };
+          throw err;
+        },
+      }),
+    });
+
+    const first = await handler(makePost(undefined, { 'Idempotency-Key': IDEMPOTENCY_KEY }));
+    assert.equal(first.status, 403);
+    assert.equal(first.headers.get('Idempotent-Replayed'), 'false');
+    assert.equal(JSON.parse(completed ?? '{}').status, 403, 'the terminal 403 should be stored for replay');
+
+    const replay = await handler(makePost(undefined, { 'Idempotency-Key': IDEMPOTENCY_KEY }));
+    assert.equal(replay.status, 403);
+    assert.equal(replay.headers.get('Idempotent-Replayed'), 'true');
+    assert.deepEqual(await replay.json(), { error: 'ACCOUNT_DELETION_IN_PROGRESS' });
+    assert.equal(mutations, 1, 'the replay should not reach Convex');
+  });
 });
