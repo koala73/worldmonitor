@@ -99,6 +99,27 @@ describe('publication block classification (#8501)', () => {
     })?.kind, 'coverage_shortfall');
   });
 
+  it('classifies on data loss, not on which failure class caused it', () => {
+    // A schema regression that leaves every country cache-served is still a
+    // lossless run: canonical retained, meta says error, the freshness monitor
+    // alarms. The failure CLASS decides how the run reacts in-flight (the
+    // circuit-breaker's abort/slow-down split); it does not decide whether
+    // publication being blocked is a crash. Pinning this so the two concerns
+    // are not conflated later.
+    const block = classifyPublicationBlock({
+      ...stalledRotation,
+      coverage: {
+        ...stalledRotation.coverage,
+        refreshFailures: [
+          { iso2: 'MY', code: 'rate_limited' },
+          { iso2: 'CN', code: 'invalid_query' },
+        ],
+      },
+    });
+    assert.equal(block?.kind, 'rotation_incomplete');
+    assert.match(block.reason, /invalid_query, rate_limited/);
+  });
+
   it('keeps a hard failure when the run made no upstream contact at all', () => {
     const block = classifyPublicationBlock({ ...stalledRotation, upstreamContactCount: 0 });
     assert.equal(block?.kind, 'coverage_shortfall');
@@ -410,6 +431,34 @@ describe('rate-limit backoff (#8501)', () => {
     assert.ok(
       activityWorstCaseMs + spent < sectionTimeoutMs,
       `activity worst case ${activityWorstCaseMs}ms + ${spent}ms of backoff must fit ${sectionTimeoutMs}ms`,
+    );
+  });
+
+  it('leaves room for the batch it admits and the publication after it', () => {
+    // The dispatch deadline admits a batch when now + PER_COUNTRY_TIMEOUT_MS is
+    // still inside it, so the admitted batch can run a full wrap AFTER the
+    // deadline, and the Redis publication runs after that. A deadline that
+    // ignores either term overruns the section timeout — a hard bundle failure,
+    // the exact crash this change removes. 480s did exactly that.
+    const src = readFileSync(
+      fileURLToPath(new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url)),
+      'utf-8',
+    );
+    const dispatchDeadlineMs = Number(
+      src.match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''),
+    );
+    const redisTimeoutMs = 30_000; // AbortSignal.timeout in redisPipeline / publish
+    const sectionTimeoutMs = Number(
+      readFileSync(
+        fileURLToPath(new URL('../scripts/seed-bundle-portwatch-port-activity.mjs', import.meta.url)),
+        'utf-8',
+      ).match(/timeoutMs:\s*([\d_]+)/)[1].replace(/_/g, ''),
+    );
+    assert.ok(
+      dispatchDeadlineMs + portwatchSeed.PER_COUNTRY_TIMEOUT_MS + redisTimeoutMs < sectionTimeoutMs,
+      `a batch admitted at the ${dispatchDeadlineMs}ms deadline runs to `
+      + `${dispatchDeadlineMs + portwatchSeed.PER_COUNTRY_TIMEOUT_MS}ms and must still publish `
+      + `within ${sectionTimeoutMs}ms`,
     );
   });
 

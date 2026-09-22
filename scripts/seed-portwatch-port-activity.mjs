@@ -179,12 +179,25 @@ const MAX_RATE_LIMITED_BATCH_BACKOFF_MS = 40_000;
 // wall-clock deadline (RUN_BACKOFF_DEADLINE_MS), which is what actually makes
 // the overrun unreachable. This constant just bounds the escalation itself.
 const RATE_LIMIT_BACKOFF_BUDGET_MS = 60_000;
-// Wall-clock point in the run past which no EXTRA rate-limit backoff is spent,
-// measured from main()'s startedAt. 60s short of the 540s section timeout so
-// the publication phase still fits after the last batch. Backoff is further
-// held back by PER_COUNTRY_TIMEOUT_MS at the call site, so widening a gap can
-// never consume the room the next batch needs.
-const RUN_BACKOFF_DEADLINE_MS = 480_000;
+// Wall-clock point in the run past which no further batch is DISPATCHED and no
+// extra rate-limit backoff is spent, measured from main()'s startedAt.
+//
+// Derived backwards from the 540s section timeout, because the deadline has to
+// leave room for everything that still happens after the last batch is
+// admitted: the batch itself can run a full PER_COUNTRY_TIMEOUT_MS (90s), and
+// the publication that follows is a Redis multi-exec at AbortSignal.timeout
+// (30s), plus TTL extension. 540 - 90 - 30 = 420s, taken down to 390s so the
+// arithmetic has slack rather than sitting on the boundary.
+//
+// An earlier 480s was wrong in exactly this way: a batch admitted at 479s runs
+// to 569s and then still has to publish, overrunning the section timeout — a
+// hard bundle failure, i.e. the crash this whole change exists to remove.
+const RUN_DISPATCH_DEADLINE_MS = 390_000;
+// The reference fetch runs before any country work and has no page cap, so it
+// gets its own slice rather than the whole run deadline. Without this it could
+// legally spend the entire dispatch budget and leave nothing for the countries
+// it exists to describe.
+const REF_FETCH_DEADLINE_MS = 120_000;
 // Escalation steps from BATCH_BACKOFF_MS to MAX_RATE_LIMITED_BATCH_BACKOFF_MS.
 // Used to jump straight to the widest gap when a whole batch comes back
 // rate-limited, instead of climbing to it one batch at a time.
@@ -1402,9 +1415,11 @@ export function buildCoverageReport({
 export async function fetchAll(progress, {
   signal,
   expectedCountries = [],
-  // Wall-clock point past which the run spends no extra rate-limit backoff.
-  // main() supplies it; omitted in unit tests, which then have no deadline.
+  // Wall-clock point past which no further batch is dispatched and no extra
+  // rate-limit backoff is spent. main() supplies both; omitted in unit tests,
+  // which then have no deadline.
   runDeadlineAt,
+  refsDeadlineAt,
 } = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
 
@@ -1418,7 +1433,10 @@ export async function fetchAll(progress, {
   if (progress) progress.stage = 'refs';
   console.log('  [port-activity] Fetching global port reference (EP4)...');
   const t0 = Date.now();
-  const refsByIso3 = await fetchAllPortRefs({ signal, deadlineAt: runDeadlineAt });
+  const refsByIso3 = await fetchAllPortRefs({
+    signal,
+    deadlineAt: refsDeadlineAt ?? runDeadlineAt,
+  });
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
@@ -2060,7 +2078,8 @@ export async function main() {
     } = await fetchAll(progress, {
       signal: shutdownController.signal,
       expectedCountries: Array.isArray(prevIso2List) ? prevIso2List : [],
-      runDeadlineAt: startedAt + RUN_BACKOFF_DEADLINE_MS,
+      runDeadlineAt: startedAt + RUN_DISPATCH_DEADLINE_MS,
+      refsDeadlineAt: startedAt + REF_FETCH_DEADLINE_MS,
     });
 
     console.log(`  Assembled ${countryData.size} usable country payloads; persistence pending`);
