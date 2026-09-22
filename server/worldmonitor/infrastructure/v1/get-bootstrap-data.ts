@@ -10,6 +10,8 @@ import { BOOTSTRAP_CACHE_KEYS, BOOTSTRAP_TIERS } from '../../../_shared/cache-ke
 import { sanitizeBootstrapValue } from '../../../../api/_bootstrap-public-payload.js';
 // @ts-expect-error — Edge-safe JS helper
 import { extraCanadaAlertsCutoverReadKeys, canadaAlertsCutoverFallbackValue } from '../../../../api/_canada-alerts-cutover.js';
+// @ts-expect-error — Edge-safe JS helper, shared with api/bootstrap.js
+import { validateImfDataset } from '../../../../api/_imf-dataset.js';
 import { getCachedJsonBatch } from '../../../_shared/redis';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: this RPC bootstrap
@@ -60,9 +62,12 @@ export const getBootstrapData: InfrastructureServiceHandler['getBootstrapData'] 
     for (let i = 0; i < names.length; i += 1) {
       const keyName = names[i]!;
       const cacheKey = cacheKeys[i]!;
-      const value = keyName === 'canadaAlerts' && !cached.has(cacheKey)
+      const raw = keyName === 'canadaAlerts' && !cached.has(cacheKey)
         ? canadaAlertsCutoverFallbackValue(cached)
         : cached.get(cacheKey);
+      // Same gate as api/bootstrap.js: a malformed IMF dataset is `missing`,
+      // malformed country rows are dropped. Non-IMF keys pass through.
+      const value = raw === undefined ? undefined : validateImfDataset(keyName, raw);
       if (value === undefined) {
         missing.push(keyName);
         continue;
