@@ -310,7 +310,7 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
     const response: BacktestStockResponse = {
       available: true,
       symbol,
-      name: req.name || symbol,
+      name: symbol,
       display: symbol,
       currency: history.currency || 'USD',
       evalWindowDays,
@@ -358,14 +358,7 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
     if (quotaHold.reservation && (definitiveInvalidSymbol || result.source !== 'fresh' || !result.leader)) {
       await quotaHold.reservation.rollback();
     }
-    // `name` is a caller-supplied display label, not part of the computation,
-    // which is why it is deliberately absent from `cacheKey` — two callers
-    // watching one ticker should share a single Yahoo fetch. But the shared
-    // BODY carries whichever label populated the entry first, so without this
-    // re-stamp caller B gets caller A's spelling echoed back. Custom watchlist
-    // entries make differing names for one symbol reachable in production.
-    // Same `req.name || symbol` rule the fresh-compute and unavailable paths
-    // use, so a caller's echo never depends on who warmed the cache.
+    // Shared records use the symbol; caller display names belong only in this response.
     if (result.data) return { ...result.data, name: req.name || symbol };
   } catch (err) {
     if (quotaHold.reservation) {

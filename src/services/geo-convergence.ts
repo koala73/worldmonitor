@@ -1,5 +1,6 @@
 import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel } from '@/types';
 import type { Earthquake } from '@/services/earthquakes';
+import { usableCoord } from '../../shared/analysis-adapter-guards';
 import { generateSignalId } from '@/utils/analysis-constants';
 import type { CorrelationSignalCore } from './analysis-core';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
@@ -8,6 +9,7 @@ import {
   geoConvergenceToSignal as toSignal,
   getLocationName as reverseGeocode,
   type GeoConvergenceAlert,
+  type GeoEventInput,
   type GeoEventType,
   type GeoPlaceDatasets,
 } from '../../shared/analysis-geo-convergence';
@@ -55,11 +57,14 @@ export function ingestVessels(vessels: MilitaryVessel[]): void {
 }
 
 export function ingestEarthquakes(quakes: Earthquake[]): void {
-  engine.ingestEvents(quakes.map(q => ({
-    lat: q.location?.latitude ?? 0,
-    lon: q.location?.longitude ?? 0,
-    time: new Date(q.occurredAt).getTime(),
-  })), 'earthquake');
+  const events: GeoEventInput[] = [];
+  for (const q of quakes) {
+    const lat = q.location?.latitude ?? null;
+    const lon = q.location?.longitude ?? null;
+    if (!usableCoord(lat, lon) || lon === null) continue;
+    events.push({ lat, lon, time: new Date(q.occurredAt).getTime() });
+  }
+  engine.ingestEvents(events, 'earthquake');
 }
 
 export function detectGeoConvergence(seenAlerts: Set<string>): GeoConvergenceAlert[] {

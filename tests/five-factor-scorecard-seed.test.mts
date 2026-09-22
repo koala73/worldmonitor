@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { readFileSync } from 'node:fs';
 
 import {
@@ -30,6 +31,7 @@ import {
   scorecardPayloadFingerprint,
   stageScorecardReadModel,
 } from '../scripts/seed-five-factor-scorecard.mjs';
+
 
 const sources = {
   population: { countries: { AA: { populationMillions: 10, year: 2024 } } },
@@ -543,13 +545,9 @@ describe('five-factor atomic snapshot', () => {
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
       globalThis.fetch = async (_input, init = {}) => {
         requestCount += 1;
-        return new Promise<Response>((_resolve, reject) => {
-          const signal = init.signal;
-          if (!signal) return reject(new Error('missing Redis deadline signal'));
-          const abort = () => reject(signal.reason);
-          if (signal.aborted) abort();
-          else signal.addEventListener('abort', abort, { once: true });
-        });
+        const signal = init.signal;
+        if (!signal) throw new Error('missing Redis deadline signal');
+        return hangUntilAbort(signal) as unknown as Promise<Response>;
       };
       const deadlineAtMs = Date.now() + 40;
       const startedAtMs = Date.now();

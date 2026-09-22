@@ -60,7 +60,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
 
   lines.push(`# WorldMonitor Export — ${new Date(clean.timestamp).toISOString()}`);
   lines.push('# Note: CSV is a structured summary. Use JSON export for full fidelity.');
-  if (clean.meta?.note) lines.push(`# ${clean.meta.note}`);
+  if (clean.meta?.note) lines.push(csvRow([`# ${clean.meta.note}`]));
   lines.push('');
 
   // News — prefer raw items over clusters; clusters lose individual sources
@@ -86,7 +86,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     lines.push('=== MARKETS ===');
     lines.push('Symbol,Name,Price,Change');
     clean.markets.forEach(m => {
-      lines.push(csvRow([m.symbol, m.name, String(m.price ?? ''), String(m.change ?? '')]));
+      lines.push(csvRow([m.symbol, m.name, m.price ?? '', m.change ?? '']));
     });
     lines.push('');
   }
@@ -95,7 +95,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     lines.push('=== PREDICTIONS ===');
     lines.push('Title,Yes Price,Volume');
     clean.predictions.forEach(p => {
-      lines.push(csvRow([p.title, String(p.yesPrice), String(p.volume ?? '')]));
+      lines.push(csvRow([p.title, p.yesPrice, p.volume ?? '']));
     });
     lines.push('');
   }
@@ -115,7 +115,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== EARTHQUAKES ===');
       lines.push('Place,Magnitude,DepthKm,OccurredAt,URL');
       intel.earthquakes.forEach(e => {
-        lines.push(csvRow([e.place, String(e.magnitude), String(e.depthKm), new Date(e.occurredAt * 1000).toISOString(), e.sourceUrl]));
+        lines.push(csvRow([e.place, e.magnitude, e.depthKm, new Date(e.occurredAt * 1000).toISOString(), e.sourceUrl]));
       });
       lines.push('');
     }
@@ -133,7 +133,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== FLIGHT DELAYS ===');
       lines.push('Airport,IATA,City,Country,DelayType,Severity,AvgDelayMin,Source');
       intel.flightDelays.forEach(d => {
-        lines.push(csvRow([d.name, d.iata, d.city, d.country, d.delayType, d.severity, String(d.avgDelayMinutes), d.source]));
+        lines.push(csvRow([d.name, d.iata, d.city, d.country, d.delayType, d.severity, d.avgDelayMinutes, d.source]));
       });
       lines.push('');
     }
@@ -142,7 +142,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== MILITARY FLIGHTS ===');
       lines.push('Callsign,HexCode,AircraftType,Operator,Country,Lat,Lon');
       intel.military.flights.forEach(f => {
-        lines.push(csvRow([f.callsign, f.hexCode, f.aircraftType, f.operator, f.operatorCountry, String(f.lat), String(f.lon)]));
+        lines.push(csvRow([f.callsign, f.hexCode, f.aircraftType, f.operator, f.operatorCountry, f.lat, f.lon]));
       });
       lines.push('');
     }
@@ -151,7 +151,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== MILITARY VESSELS ===');
       lines.push('Name,MMSI,Country,VesselType,Lat,Lon');
       intel.military.vessels.forEach(v => {
-        lines.push(csvRow([v.name, v.mmsi, v.operatorCountry, v.vesselType, String(v.lat), String(v.lon)]));
+        lines.push(csvRow([v.name, v.mmsi, v.operatorCountry, v.vesselType, v.lat, v.lon]));
       });
       lines.push('');
     }
@@ -168,7 +168,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.orefAlerts) {
       lines.push('=== OREF ALERTS ===');
       lines.push('ActiveAlerts,History24h');
-      lines.push(csvRow([String(intel.orefAlerts.alertCount), String(intel.orefAlerts.historyCount24h)]));
+      lines.push(csvRow([intel.orefAlerts.alertCount, intel.orefAlerts.historyCount24h]));
       lines.push('');
     }
 
@@ -185,7 +185,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== RADIATION MONITORING ===');
       lines.push('Location,Country,Value,Unit,ObservedAt');
       intel.radiation.observations.forEach(s => {
-        lines.push(csvRow([s.location, s.country, String(s.value), s.unit, s.observedAt.toISOString()]));
+        lines.push(csvRow([s.location, s.country, s.value, s.unit, s.observedAt.toISOString()]));
       });
       lines.push('');
     }
@@ -194,7 +194,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('=== SATELLITE IMAGERY ===');
       lines.push('ID,Satellite,DateTime,ResolutionM,Mode');
       intel.imageryScenes.forEach(s => {
-        lines.push(csvRow([s.id, s.satellite, s.datetime, String(s.resolutionM), s.mode]));
+        lines.push(csvRow([s.id, s.satellite, s.datetime, s.resolutionM, s.mode]));
       });
       lines.push('');
     }
@@ -244,7 +244,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     lines.push('=== GPS JAMMING ===');
     lines.push('FetchedAt,TotalHexes,HighCount,MediumCount');
     const s = clean.gpsJamming.stats;
-    lines.push(csvRow([clean.gpsJamming.fetchedAt, String(s.totalHexes), String(s.highCount), String(s.mediumCount)]));
+    lines.push(csvRow([clean.gpsJamming.fetchedAt, s.totalHexes, s.highCount, s.mediumCount]));
     lines.push('# Per-hex data available in JSON export');
     lines.push('');
   }
@@ -253,7 +253,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     lines.push('=== SIGNAL CONVERGENCE ===');
     lines.push('Domain,Title,Score,Trend,Countries');
     clean.convergenceCards.forEach(c => {
-      lines.push(csvRow([c.domain, c.title, String(c.score), c.trend, c.countries.join(';')]));
+      lines.push(csvRow([c.domain, c.title, c.score, c.trend, c.countries.join(';')]));
     });
     lines.push('');
   }
@@ -354,7 +354,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   aisDisruptions: 'AIS disruptions',
   satelliteFires: 'Satellite fires',
   radiationAnomalies: 'Radiation anomalies',
-  temporalAnomalies: 'Temporal anomalies',
+  temporalAnomalies: 'Observed country temporal anomalies',
+  globalTemporalAnomalies: 'Observed global temporal anomalies (not country-attributed)',
   cyberThreats: 'Cyber threats',
   earthquakes: 'Earthquakes',
   displacementOutflow: 'Displacement outflow',
@@ -485,7 +486,13 @@ function signalLabel(key: string): string {
 
 function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
   if (!signals) return [];
-  return Object.entries(signals)
+  const normalized: Record<string, unknown> = { ...signals };
+  for (const key of ['temporalAnomalies', 'globalTemporalAnomalies']) {
+    if (key in normalized && normalized[key] === null) {
+      normalized[key] = 'unavailable';
+    }
+  }
+  return Object.entries(normalized)
     .filter(([, value]) => {
       if (typeof value === 'number') return value > 0;
       if (typeof value === 'string') return value.trim().length > 0;
@@ -688,13 +695,13 @@ export function exportCountryBriefJSON(data: CountryBriefExport): void {
 
 export function exportCountryBriefCSV(data: CountryBriefExport): void {
   const lines: string[] = [];
-  lines.push(`Country Brief: ${data.country} (${data.code})`);
-  lines.push(`Generated: ${data.generatedAt}`);
+  lines.push(csvRow([`Country Brief: ${data.country} (${data.code})`]));
+  lines.push(csvRow([`Generated: ${data.generatedAt}`]));
   lines.push('');
   if (data.score != null) {
     lines.push(`Score,${data.score}`);
-    lines.push(`Level,${data.level || ''}`);
-    lines.push(`Trend,${data.trend || ''}`);
+    lines.push(csvRow(['Level', data.level || '']));
+    lines.push(csvRow(['Trend', data.trend || '']));
   }
   if (data.components) {
     lines.push('');
@@ -708,7 +715,7 @@ export function exportCountryBriefCSV(data: CountryBriefExport): void {
     lines.push('');
     lines.push('Signal,Count');
     for (const [k, v] of Object.entries(data.signals)) {
-      lines.push(csvRow([k, String(v)]));
+      lines.push(csvRow([k, typeof v === 'number' ? v : String(v)]));
     }
   }
   if (data.headlines && data.headlines.length > 0) {
@@ -719,14 +726,19 @@ export function exportCountryBriefCSV(data: CountryBriefExport): void {
   if (data.brief) {
     lines.push('');
     lines.push('Intelligence Brief');
-    lines.push(`"${data.brief.replace(/"/g, '""')}"`);
+    lines.push(csvRow([data.brief]));
   }
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   downloadFile(lines.join('\n'), `country-brief-${data.code}-${timestamp}.csv`, 'text/csv');
 }
 
-function csvRow(values: string[]): string {
-  return values.map(v => `"${(v || '').replace(/"/g, '""')}"`).join(',');
+function csvRow(values: (string | number)[]): string {
+  return values.map(value => {
+    if (typeof value === 'number') return `"${value}"`;
+    const text = value || '';
+    const safe = /^[\t\r\n]|^\s*[=+@-]/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  }).join(',');
 }
 
 function downloadFile(content: string, filename: string, mimeType: string): void {

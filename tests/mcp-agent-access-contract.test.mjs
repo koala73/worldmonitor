@@ -21,9 +21,10 @@ describe('agent-visible MCP access contract', () => {
     assert.equal(accessFor('get_sources'), 'free');
     assert.equal(accessFor('get_market_data'), 'free-account');
     assert.equal(accessFor('get_country_risk'), 'subscription');
+    assert.equal(accessFor('get_sanctions_data'), 'subscription');
 
     for (const tool of TOOL_REGISTRY) {
-      const expected = tool._freeTier === true
+      const expected = tool._subscriptionOnly ? 'subscription' : tool._freeTier === true
         ? 'free'
         : tool._execute === undefined || tool.name === 'describe_tool'
           ? 'free-account'

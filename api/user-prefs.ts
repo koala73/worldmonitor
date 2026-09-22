@@ -27,6 +27,7 @@ import {
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
 import { checkScopedRateLimit } from '../server/_shared/rate-limit';
+import { isPreferenceVariant } from '../shared/cloud-preferences-contract';
 
 export const USER_PREFS_WRITE_RATE_SCOPE = 'user-prefs-write';
 // Keep in lockstep with convex/constants.ts; tests/user-prefs-rate-limit.test.mts
@@ -221,6 +222,9 @@ export default async function handler(
   if (req.method === 'GET') {
     const url = new URL(req.url);
     const variant = url.searchParams.get('variant') ?? 'full';
+    if (!isPreferenceVariant(variant)) {
+      return jsonResponse({ error: 'INVALID_VARIANT' }, 400, cors);
+    }
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -327,6 +331,9 @@ export default async function handler(
     typeof body.expectedSyncVersion !== 'number'
   ) {
     return finish(jsonResponse({ error: 'MISSING_FIELDS' }, 400, cors));
+  }
+  if (!isPreferenceVariant(body.variant)) {
+    return finish(jsonResponse({ error: 'INVALID_VARIANT' }, 400, cors));
   }
 
   try {

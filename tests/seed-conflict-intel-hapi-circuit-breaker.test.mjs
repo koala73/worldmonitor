@@ -219,7 +219,7 @@ test('the channel that served a seed reaches the marker AND the seed-meta record
   assert.equal(authoritative.marker.sourceChannel, HAPI_SNAPSHOT_CHANNEL);
   assert.deepEqual(
     Object.keys(authoritative.channelProvenance),
-    ['sourceChannel'],
+    ['requiredCountryCodes', 'sourceChannel'],
     'an authoritative run must not carry snapshotFailureReason, sourceState or errorCode',
   );
 
@@ -872,7 +872,7 @@ test('a quota rejection on the demoted API backs off and names both channels', a
   assert.equal(backoff.status, 429);
   assert.equal(backoff.reasonCode, 'HAPI_RATE_LIMIT');
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
-  assert.equal(failureMeta.status, 'error');
+  assert.equal(failureMeta.sourceState, 'degraded');
   assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
   assert.equal(failureMeta.attemptedChannel, HAPI_API_CHANNEL);
   assert.equal(
@@ -1107,6 +1107,71 @@ test('a snapshot outage publishes the demoted aggregate rather than going dark',
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
 });
 
+for (const { status, body, reasonCode, countryRejection = false } of [
+  { status: 403, body: 'Forbidden', reasonCode: 'HTTP_403' },
+  { status: 429, body: 'Too Many Requests', reasonCode: 'HAPI_RATE_LIMIT' },
+  { status: 429, body: 'Blocked due to bot activity.', reasonCode: 'HAPI_BOT_BLOCK' },
+  { status: 406, body: 'Blocked due to bot activity.', reasonCode: 'HAPI_BOT_BLOCK' },
+  { status: 406, body: 'Blocked due to bot activity.', reasonCode: 'HAPI_BOT_BLOCK', countryRejection: true },
+]) {
+  test(`terminal HAPI ${status} ${reasonCode} stops after ${countryRejection ? 'country' : 'subnational'} rejection`, async () => {
+    let calls = 0;
+    let backoff;
+    let preserved = 0;
+    const rejectionCall = countryRejection ? 3 : 2;
+    const result = await fetchAllHumanitarianSummaries({
+      now: () => NOW,
+      countryCodes: ['SD', 'UA', 'IR'],
+      loadPreviousMarker: async () => null,
+      loadFailureBackoff: async () => null,
+      snapshotFetchFn: async () => new Response('unavailable', { status: 503 }),
+      fetchFn: async () => {
+        calls += 1;
+        if (calls === 1) return Response.json({ data: [hapiRow('SDN', { events: 12, fatalities: 3 })] });
+        if (calls < rejectionCall) return Response.json({ data: [] });
+        if (calls === rejectionCall) return new Response(body, { status });
+        return new Response('later transport failure', { status: 500 });
+      },
+      pace: async () => {},
+      writeFailureBackoff: async (value) => { backoff = value; },
+      writeFailureMeta: async () => assert.fail('usable national rows remain available'),
+      preserveLastGood: async () => { preserved += 1; },
+    });
+
+    assert.equal(calls, rejectionCall, 'no request may follow the provider rejection');
+    assert.deepEqual(Object.keys(result.summaries), ['SD']);
+    assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
+    assert.equal(result.snapshotFailureReason, 'HDX_HTTP_503');
+    assert.equal(preserved, 1);
+    assert.equal(backoff.status, status);
+    assert.equal(backoff.reasonCode, reasonCode, 'keep the original terminal rejection');
+    assert.equal(backoff.failedAt, NOW);
+    assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+  });
+}
+
+test('a transient subnational failure still permits country recovery', async () => {
+  let calls = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD', 'UA'],
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    snapshotFetchFn: async () => new Response('unavailable', { status: 503 }),
+    fetchFn: async () => {
+      calls += 1;
+      if (calls === 2) return new Response('unavailable', { status: 503 });
+      return Response.json({ data: [hapiRow(calls === 1 ? 'SDN' : 'UKR')] });
+    },
+    pace: async () => {},
+    writeFailureBackoff: async () => {},
+    writeFailureMeta: async () => assert.fail('country recovery must return usable rows'),
+    preserveLastGood: async () => {},
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(Object.keys(result.summaries), ['SD', 'UA']);
+});
+
 test('a snapshot that parses but covers nothing demotes rather than going dark', async () => {
   // Promoting the snapshot to primary would otherwise turn an upstream
   // publication gap — a well-formed annual file with no rows in the window —
@@ -1305,7 +1370,10 @@ test('a partial demoted tick retries the snapshot at the next cron boundary desp
     pace: async () => {},
     loadPreviousMarker: async () => marker,
     loadFailureBackoff: async () => failureBackoff,
-    writeFailureBackoff: async () => assert.fail('snapshot recovery must not extend API backoff'),
+    writeFailureBackoff: async (value) => {
+      assert.equal(value.retryAt, failureBackoff.retryAt);
+      assert.ok(value.nextSnapshotRetryAt > nextCronAt);
+    },
     writeFailureMeta: async () => assert.fail('snapshot recovery must not publish SEED_ERROR'),
     preserveLastGood: async () => assert.fail('snapshot recovery must publish new authoritative rows'),
     snapshotFetchFn: snapshotServing(hapiCsv(
@@ -1324,8 +1392,12 @@ test('a partial demoted tick retries the snapshot at the next cron boundary desp
     pace: async () => {},
     loadPreviousMarker: async () => marker,
     loadFailureBackoff: async () => failureBackoff,
-    writeFailureBackoff: async () => assert.fail('the active API backoff must remain unchanged'),
-    writeFailureMeta: async () => assert.fail('a snapshot-only retry must keep the previous health state'),
+    writeFailureBackoff: async (value) => assert.equal(value.retryAt, failureBackoff.retryAt),
+    writeFailureMeta: async (value) => {
+      assert.equal(value.sourceState, 'degraded');
+      assert.equal(value.fetchedAt, marker.updatedAt);
+      assert.equal(value.retryAt, failureBackoff.retryAt);
+    },
     preserveLastGood: async () => { preserved += 1; },
     snapshotFetchFn: snapshotDown(),
     fetchFn: async () => assert.fail('a failed snapshot-only retry must not bypass API backoff'),
