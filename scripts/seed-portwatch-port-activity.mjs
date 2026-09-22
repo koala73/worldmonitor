@@ -145,7 +145,7 @@ const MAX_PORTS_PER_COUNTRY = 50;
 // which is fine for most countries but heavy ones (USA ~313k historic rows, CHN/IND/RUS
 // similar) can push 60-90s when the server is under load. Promise.allSettled would
 // otherwise wait for the slowest, stalling the whole batch.
-const PER_COUNTRY_TIMEOUT_MS = 90_000;
+export const PER_COUNTRY_TIMEOUT_MS = 90_000;
 // Concurrency for the per-country activity fetch. Halved from 12 → 6 on
 // 2026-05-14 to ease pressure on both ArcGIS direct AND Decodo proxy paths,
 // which were each hitting their own rate-limits in the post-3676/3681 runs
@@ -153,18 +153,43 @@ const PER_COUNTRY_TIMEOUT_MS = 90_000;
 // Math at concurrency 6 + cold-fetch cap 30:
 //   5 batches × ~60s realistic (90s worst-case per country) + 4×5s backoff
 //   ≈ 320s realistic, 470s worst case — fits the 570s bundle budget.
-const CONCURRENCY = 6;
+export const CONCURRENCY = 6;
 // Cooldown between activity-fetch batches. Spaces out per-batch bursts so
 // neither ArcGIS-direct nor Decodo-proxy hits its rate-limit window from
 // our run alone. 5s × 4 inter-batch gaps = 20s total added to a 30-country
 // run — negligible against the 570s bundle budget.
 const BATCH_BACKOFF_MS = 5_000;
-// Ceiling for the rate-limit-escalated inter-batch gap. At CONCURRENCY=6 and
-// MAX_COLD_FETCH_PER_RUN=30 a run has four inter-batch gaps, so the worst case
-// this cap admits is 10+20+40+40 = 110s of backoff against the 540s section
-// timeout — affordable beside the ~60s the fetch itself costs when upstream is
-// rate-limiting, and the circuit-breaker usually ends the run before batch 4.
+// Ceiling for a single rate-limit-escalated inter-batch gap.
 const MAX_RATE_LIMITED_BATCH_BACKOFF_MS = 40_000;
+// Total EXTRA backoff (above the 5s baseline) one run may spend on rate limits.
+//
+// This cap is what keeps the fix from reintroducing the crash it removes: a
+// section timeout is a hard bundle FAILURE — the same Railway "Deploy Crashed!"
+// this change exists to stop, except the SIGTERM destroys in-flight work
+// instead of writing recovery state.
+//
+// The static cap alone is NOT the safety argument. The activity loop's own
+// worst case (5 batches x PER_COUNTRY_TIMEOUT_MS + four baseline gaps = 470s)
+// is only part of what the 540s section timeout covers; the run also pays for
+// the canonical/meta/174-country snapshot read, schema introspection, the
+// paginated reference fetch (no per-page wrap: direct 30s + proxy 50s per
+// page), the 174-country preflight (observed at 360s during the 2026-05-13
+// incident — see MAX_COLD_FETCH_PER_RUN), and the final ~176-key publication.
+// So the budget is additionally clamped at the call site against a real
+// wall-clock deadline (RUN_BACKOFF_DEADLINE_MS), which is what actually makes
+// the overrun unreachable. This constant just bounds the escalation itself.
+const RATE_LIMIT_BACKOFF_BUDGET_MS = 60_000;
+// Wall-clock point in the run past which no EXTRA rate-limit backoff is spent,
+// measured from main()'s startedAt. 60s short of the 540s section timeout so
+// the publication phase still fits after the last batch. Backoff is further
+// held back by PER_COUNTRY_TIMEOUT_MS at the call site, so widening a gap can
+// never consume the room the next batch needs.
+const RUN_BACKOFF_DEADLINE_MS = 480_000;
+// Escalation steps from BATCH_BACKOFF_MS to MAX_RATE_LIMITED_BATCH_BACKOFF_MS.
+// Used to jump straight to the widest gap when a whole batch comes back
+// rate-limited, instead of climbing to it one batch at a time.
+const RATE_LIMIT_ESCALATION_STEPS_TO_MAX =
+  Math.ceil(Math.log2(MAX_RATE_LIMITED_BATCH_BACKOFF_MS / BATCH_BACKOFF_MS));
 const BATCH_LOG_EVERY = 5;
 // #8501: 2s was one token retry against an ArcGIS rate-limit window measured in
 // minutes. The ceiling is the 90s per-country wrap, which must still hold a
@@ -173,12 +198,19 @@ const BATCH_LOG_EVERY = 5;
 // can be sized for the fast-failure case that dominates a rate-limited run
 // (24 country errors inside a 60s five-batch run on 2026-09-22 => ~10s each).
 const RATE_LIMIT_RETRY_DELAY_MS = 8_000;
-// A retry is only worth starting if the cooldown AND one ArcGIS round trip fit
-// before the per-country wrap. Sized from that same ~10s observed round trip.
-// Without this, a late retry is aborted mid-flight and the country's failure is
-// recorded as `timeout`, hiding the rate limiting from the circuit-breaker and
-// from the persisted refreshFailure code.
-const RATE_LIMIT_RETRY_MIN_ATTEMPT_MS = 10_000;
+// A retry is only worth starting if the cooldown AND a full direct attempt fit
+// before the per-country wrap. Without this, a late retry is aborted mid-flight
+// and the country's failure is recorded as `timeout`, hiding the rate limiting
+// from the circuit-breaker and from the persisted refreshFailure code.
+//
+// Sized at FETCH_TIMEOUT, the direct leg's own budget — NOT at the ~10s a
+// rate-limited response actually takes. A retry that only clears the observed
+// fast-failure time can still be killed mid-flight by the 90s wrap when the
+// upstream stops failing fast, which is the exact misclassification this guard
+// exists to prevent. The proxy fallback leg (PROXY_FETCH_TIMEOUT) is not
+// included: a retry that gets through its direct leg has already produced the
+// truthful classification.
+const RATE_LIMIT_RETRY_MIN_ATTEMPT_MS = FETCH_TIMEOUT;
 const MAX_RATE_LIMIT_RETRIES = 1;
 // Hard publication expiry: reject cached payloads at seven days. Queue a full
 // refetch earlier so the bounded rotation can finish before this deadline,
@@ -451,6 +483,10 @@ export async function fetchAllPortRefs({
   fetchFn,
   proxyRetryFn,
   sleepFn = waitForRetry,
+  // Run-level wall-clock deadline. This loop has no per-page timeout wrap, so
+  // without it a rate-limit cooldown on every page would be unbounded against
+  // the bundle's section timeout.
+  deadlineAt,
 } = {}) {
   const byIso3 = new Map();
   let offset = 0;
@@ -458,6 +494,20 @@ export async function fetchAllPortRefs({
   let page = 0;
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
+    // This loop has no page cap and no per-page wrap: `while
+    // (body.exceededTransferLimit)` will keep going as long as ArcGIS keeps
+    // saying there is more, at up to FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT per
+    // page. Two such pages eat most of the run's non-activity headroom. Stop
+    // before a page that cannot finish inside the run's budget, so the failure
+    // is this explicit error — which retains last-good state through main()'s
+    // catch — rather than a SIGTERM partway through page N.
+    if (Number.isFinite(deadlineAt)
+      && Date.now() + FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT > deadlineAt) {
+      throw Object.assign(
+        new Error(`ArcGIS reference fetch exceeded its run budget after ${page} page(s)`),
+        { refreshFailureCode: 'timeout' },
+      );
+    }
     page++;
     const params = new URLSearchParams({
       where: '1=1',
@@ -476,7 +526,7 @@ export async function fetchAllPortRefs({
         fetchFn,
         proxyRetryFn,
       }),
-      { signal, sleepFn, label: `reference page ${page}` },
+      { signal, sleepFn, label: `reference page ${page}`, deadlineAt },
     );
     const features = validatedPage(body, `reference page ${page}`, offset);
     for (const f of features) {
@@ -1159,21 +1209,49 @@ export function classifyBatchCircuitBreak(
   return null;
 }
 
-// Inter-batch gap, doubled for each CONSECUTIVE batch that saw rate limiting
-// and capped at MAX_RATE_LIMITED_BATCH_BACKOFF_MS. Batch-level is the right
-// place for this lever: ArcGIS throttles the source, not the country, so
-// spacing the next six concurrent fetches does more than retrying one country
-// sooner. A clean batch resets the escalation.
+// What a tripped breaker should DO — the two classes need opposite responses.
+//
+// `invalid_query` is unrecoverable within the run (schema/policy regression):
+// the remaining batches would fail identically, so abort and keep last-good.
+//
+// `rate_limited` is NOT. The 2026-09-22 incident landed 6 of 30 countries while
+// 24 were throttled, so batch 1 sits right at the 80% trip rate — aborting
+// there would abandon 24 of the 30 cold-fetch slots and cut the run's recovery
+// rate roughly fivefold, at exactly the moment the expiring-tail priority tier
+// needs those slots to pull countries back from the seven-day cliff. The right
+// response to a throttle is to stop hammering, not to stop working: jump
+// straight to the widest inter-batch gap and keep the remaining batches.
+export function circuitBreakerAction(tripped) {
+  if (!tripped) return 'continue';
+  return tripped.code === 'invalid_query' ? 'abort' : 'slow-down';
+}
+
+// Inter-batch gap, doubled for each CONSECUTIVE batch that saw rate limiting and
+// capped both per-gap (MAX_RATE_LIMITED_BATCH_BACKOFF_MS) and per-run
+// (RATE_LIMIT_BACKOFF_BUDGET_MS, via `spentExtraMs`). Batch-level is the right
+// place for this lever: ArcGIS throttles the source, not the country, so spacing
+// the next six concurrent fetches does more than retrying one country sooner. A
+// clean batch resets the escalation. Never returns less than the baseline gap.
 export function rateLimitedBatchBackoffMs(
   consecutiveRateLimitedBatches,
-  baseMs = BATCH_BACKOFF_MS,
-  maxMs = MAX_RATE_LIMITED_BATCH_BACKOFF_MS,
+  {
+    baseMs = BATCH_BACKOFF_MS,
+    maxMs = MAX_RATE_LIMITED_BATCH_BACKOFF_MS,
+    spentExtraMs = 0,
+    extraBudgetMs = RATE_LIMIT_BACKOFF_BUDGET_MS,
+    // Wall-clock room the caller still has for extra backoff, already net of
+    // whatever the next batch needs. Infinity when the caller has no deadline.
+    availableMs = Number.POSITIVE_INFINITY,
+  } = {},
 ) {
   const escalations = Number.isFinite(consecutiveRateLimitedBatches)
     && consecutiveRateLimitedBatches > 0
     ? Math.floor(consecutiveRateLimitedBatches)
     : 0;
-  return Math.min(maxMs, baseMs * 2 ** escalations);
+  const wanted = Math.min(maxMs, baseMs * 2 ** escalations);
+  const remainingBudget = Math.max(0, extraBudgetMs - Math.max(0, spentExtraMs));
+  const wallClockRoom = Math.max(0, availableMs);
+  return baseMs + Math.min(wanted - baseMs, remainingBudget, wallClockRoom);
 }
 
 function waitForRetry(delayMs, signal) {
@@ -1321,7 +1399,13 @@ export function buildCoverageReport({
 // → batched fetch → finalise); splitting it would move complexity into a
 // hidden seam and obscure the linear pipeline. Each stage is short and
 // well-commented.
-export async function fetchAll(progress, { signal, expectedCountries = [] } = {}) {
+export async function fetchAll(progress, {
+  signal,
+  expectedCountries = [],
+  // Wall-clock point past which the run spends no extra rate-limit backoff.
+  // main() supplies it; omitted in unit tests, which then have no deadline.
+  runDeadlineAt,
+} = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
 
   // Resolve the queryable date-column name once per run, before any
@@ -1334,7 +1418,7 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
   if (progress) progress.stage = 'refs';
   console.log('  [port-activity] Fetching global port reference (EP4)...');
   const t0 = Date.now();
-  const refsByIso3 = await fetchAllPortRefs({ signal });
+  const refsByIso3 = await fetchAllPortRefs({ signal, deadlineAt: runDeadlineAt });
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
@@ -1535,11 +1619,28 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
   };
 
   const completedFetches = new Set();
-  // Consecutive batches that saw rate limiting, driving the inter-batch gap.
+  // Consecutive batches that saw rate limiting, driving the inter-batch gap,
+  // and the extra backoff spent so far against RATE_LIMIT_BACKOFF_BUDGET_MS.
   let consecutiveRateLimitedBatches = 0;
+  let rateLimitBackoffSpentMs = 0;
   for (let i = 0; i < needsFetch.length; i += CONCURRENCY) {
     const batch = needsFetch.slice(i, i + CONCURRENCY);
     const batchIdx = Math.floor(i / CONCURRENCY) + 1;
+    // The backoff clamp only shortens sleeping; it cannot shorten WORK, and the
+    // activity loop's own ceiling (batches x PER_COUNTRY_TIMEOUT_MS) plus the
+    // bounded prefix/suffix phases already exceeds the section timeout with
+    // zero backoff spent. Stop dispatching once a batch cannot finish inside
+    // the run's budget: this break lands on the same last-good retention path
+    // the invalid_query breaker uses, so the tick ends as the lossless
+    // publish-blocked outcome instead of a SIGTERM mid-batch that destroys
+    // in-flight work and reports a hard bundle failure.
+    if (Number.isFinite(runDeadlineAt) && Date.now() + PER_COUNTRY_TIMEOUT_MS > runDeadlineAt) {
+      console.warn(
+        `  [port-activity] run deadline reached at batch ${batchIdx}/${batches} — ` +
+        'skipping the remaining batches; unattempted countries retain last-good state.',
+      );
+      break;
+    }
     const attemptedAt = Date.now();
     const errorsBeforeBatch = errors.length;
     if (progress) progress.batchIdx = batchIdx;
@@ -1655,16 +1756,28 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     // throttle and burned the full 60s before throwing anyway.
     if (batchIdx === 1 && batches > 1 && batch.length >= 5) {
       const tripped = classifyBatchCircuitBreak(batchErrors, batch.length);
-      if (tripped) {
-        const diagnosis = tripped.code === 'rate_limited'
-          ? 'upstream is throttling us; further batches would only deepen the rate-limit window'
-          : 'assuming upstream schema/policy regression';
+      const action = circuitBreakerAction(tripped);
+      if (action === 'abort') {
         console.error(
           `  [port-activity] CIRCUIT-BREAKER: ${(tripped.rate * 100).toFixed(0)}% of batch 1 rejected as ` +
-          `${tripped.code} — ${diagnosis}. Skipping remaining ${batches - 1} batches; ` +
+          `${tripped.code} — assuming upstream schema/policy regression, which the remaining batches ` +
+          `cannot beat. Skipping remaining ${batches - 1} batches; ` +
           `unattempted countries will retain last-good state. First error: ${batchErrors[0]}`,
         );
         break;
+      }
+      if (action === 'slow-down') {
+        console.warn(
+          `  [port-activity] CIRCUIT-BREAKER: ${(tripped.rate * 100).toFixed(0)}% of batch 1 rejected as ` +
+          `${tripped.code} — widening to the maximum inter-batch gap and continuing. The remaining ` +
+          `${batches - 1} batches keep their cold-fetch slots: a throttle still lets a minority through, ` +
+          `and those slots are what pull the expiring tail back from the ${MAX_CACHE_AGE_MS / 86_400_000}-day cliff. ` +
+          `First error: ${batchErrors[0]}`,
+        );
+        consecutiveRateLimitedBatches = Math.max(
+          consecutiveRateLimitedBatches,
+          RATE_LIMIT_ESCALATION_STEPS_TO_MAX,
+        );
       }
     }
 
@@ -1681,11 +1794,23 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     // immediately so SIGTERM doesn't start additional in-flight work.
     if (signal?.aborted) break;
     if (batchIdx < batches) {
-      const backoffMs = rateLimitedBatchBackoffMs(consecutiveRateLimitedBatches);
+      // Wall-clock room for EXTRA backoff, already net of the per-country wrap
+      // the next batch may need. Keeps a widened gap from eating the time the
+      // batch it precedes depends on, and collapses to the baseline near the
+      // deadline. No deadline (unit tests) leaves the static budget in charge.
+      const availableMs = Number.isFinite(runDeadlineAt)
+        ? runDeadlineAt - Date.now() - PER_COUNTRY_TIMEOUT_MS
+        : Number.POSITIVE_INFINITY;
+      const backoffMs = rateLimitedBatchBackoffMs(consecutiveRateLimitedBatches, {
+        spentExtraMs: rateLimitBackoffSpentMs,
+        availableMs,
+      });
+      rateLimitBackoffSpentMs += backoffMs - BATCH_BACKOFF_MS;
       if (backoffMs > BATCH_BACKOFF_MS) {
         console.warn(
           `  [port-activity] batch ${batchIdx} saw rate limiting ` +
-          `(${consecutiveRateLimitedBatches} consecutive) — widening the next gap to ${backoffMs / 1000}s`,
+          `(${consecutiveRateLimitedBatches} consecutive) — widening the next gap to ${backoffMs / 1000}s ` +
+          `(${rateLimitBackoffSpentMs / 1000}s of the ${RATE_LIMIT_BACKOFF_BUDGET_MS / 1000}s run budget spent)`,
         );
       }
       // Abort-aware sleep: previously a plain setTimeout(BATCH_BACKOFF_MS)
@@ -1816,6 +1941,14 @@ export function classifyPublicationBlock(input) {
   };
 }
 
+// The process exit code for a completed run, as the isMain wrapper applies it.
+// Pure and exported because the wrapper itself never executes under test (the
+// harness imports the module, so isMain is false), which left the whole point
+// of #8501 — leaving with 76 rather than 1 — provable only by grepping source.
+export function exitCodeForOutcome(outcome) {
+  return outcome?.publishBlocked === true ? PUBLISH_BLOCKED_EXIT_CODE : 0;
+}
+
 export function buildPortActivityFailureMeta(previousMeta, {
   coverage,
   reason,
@@ -1918,6 +2051,7 @@ export async function main() {
     } = await fetchAll(progress, {
       signal: shutdownController.signal,
       expectedCountries: Array.isArray(prevIso2List) ? prevIso2List : [],
+      runDeadlineAt: startedAt + RUN_BACKOFF_DEADLINE_MS,
     });
 
     console.log(`  Assembled ${countryData.size} usable country payloads; persistence pending`);
@@ -1970,10 +2104,20 @@ export async function main() {
       `${coverage.refreshFailures.length} unresolved refresh failures`,
     );
     if (!canonicalAdvances) {
-      // A SIGTERM-aborted run never reached a verdict on its own coverage, so
-      // it cannot claim the soft outcome — treat it as the hard failure it is.
+      // Two states disqualify the soft outcome before coverage is even
+      // consulted:
+      //   - a SIGTERM-aborted run never reached a verdict on its own coverage;
+      //   - an unconfirmed canonical retention means the ONE key the blocked
+      //     path does not rewrite (publishPortActivitySnapshot only pushes
+      //     CANONICAL_KEY when the canonical advances) may not have had its TTL
+      //     extended. At TTL/cron = 259200s/12h, six such runs expire the
+      //     canonical list and the product surface goes dark — so this must
+      //     stay the loud exit 1 it was, not a green publish-blocked tick.
+      const canonicalAtRisk = prevIso2List !== null && !canonicalTtlExtended;
       const block = shutdownController.signal.aborted
         ? { kind: 'coverage_shortfall', reason: 'run aborted before coverage was decided' }
+        : canonicalAtRisk
+        ? { kind: 'coverage_shortfall', reason: 'canonical retention unconfirmed; its TTL may not have been extended' }
         : classifyPublicationBlock(advanceInput);
       if (block?.kind === 'rotation_incomplete') {
         console.warn(
@@ -2013,7 +2157,13 @@ if (isMain) {
     // #6396 exit code: the coverage gate refused to advance the canonical list
     // after preserving last-good. The bundle runner reports PUBLISH_BLOCKED and
     // exits 0, so a stalled rotation stops painting Railway CRASHED (#8501).
-    if (outcome?.publishBlocked) process.exit(PUBLISH_BLOCKED_EXIT_CODE);
+    //
+    // exitCode, not process.exit: the bundle runner pipes this child's stdout,
+    // so console writes are asynchronous and process.exit can drop them. On
+    // this path the ROTATION INCOMPLETE line is the only human-readable reason
+    // the tick was publish-blocked — the runner's own summary just says the
+    // gate refused. Letting the loop drain keeps that diagnostic.
+    process.exitCode = exitCodeForOutcome(outcome);
   }).catch(err => {
     console.error(err);
     process.exit(1);
