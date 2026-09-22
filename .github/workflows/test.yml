@@ -27,6 +27,7 @@ jobs:
       code: ${{ steps.diff.outputs.code }}
       browser: ${{ steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
+      docker: ${{ steps.diff.outputs.docker }}
       validation: ${{ steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
@@ -48,6 +49,7 @@ jobs:
             echo "browser=true" >> "$GITHUB_OUTPUT"
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
             echo "umami=true" >> "$GITHUB_OUTPUT"
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
@@ -185,6 +187,28 @@ jobs:
             END { print count + 0 }
           ')
           echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # docker/Dockerfile builds the whole frontend inside the image, but
+          # this filter does not try to cover every input that could make that
+          # build fail -- unit/typecheck already gate src/, api/, etc. for
+          # LOGIC correctness. What is scoped here is narrower and specific to
+          # the container: the Dockerfile and its sibling nginx/entrypoint
+          # configs (docker/), the npm install inputs the build stage actually
+          # runs (package.json, package-lock.json), the pro-test lockfile
+          # build:pro installs on its own, and the one script the Dockerfile
+          # names directly (generate-inventory-facts.mjs). Before this, none of
+          # these had a PR-time build at all -- docker-publish.yml's weekly
+          # schedule was the first execution of any change to the Dockerfile.
+          DOCKER=$(printf '%s\n' "$FILES" | awk '
+            /^\.dockerignore$/ { count++; next }
+            /^docker\// { count++; next }
+            /^package\.json$/ { count++; next }
+            /^package-lock\.json$/ { count++; next }
+            /^pro-test\/package\.json$/ { count++; next }
+            /^pro-test\/package-lock\.json$/ { count++; next }
+            /^scripts\/generate-inventory-facts\.mjs$/ { count++; next }
+            END { print count + 0 }
+          ')
+          echo "docker=$( [ "$DOCKER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # resilience-validation-smoke job: run the no-secrets artifact/schema
           # and script-contract gate when the validation bundle, its Dockerfile,
           # its committed artifacts, or its focused tests change.
@@ -1076,3 +1100,25 @@ jobs:
         # COPY+install steps and surfaces native-dep / package-lock issues
         # the static walk can't see.
         run: docker build -f Dockerfile.digest-notifications -t wm-digest .
+
+  docker-image:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    # A full frontend build (crawlable-corpus, sitemap, inventory facts, pro,
+    # tsc + vite) inside node:24-alpine, so it runs longer than the other
+    # Docker smokes here. 25min catches a base-image-pull stall or a hung npm
+    # install without holding the queue for the 360-minute default.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Build the app image (smoke)
+        # No push, no run, no route curl -- that belongs to docker-publish.yml,
+        # which is the last check before an image reaches `latest` and already
+        # does it. What this job answers is narrower and was previously
+        # unanswered at PR time at all: does docker/Dockerfile still build?
+        # RUN test -s dist/dashboard.html and the /pro assertions inside it
+        # already catch a file-presence regression (the exact class #7808's
+        # review found) at build time, which is why this stays a plain build
+        # rather than duplicating the runtime smoke.
+        run: docker build -f docker/Dockerfile -t wm-docker-smoke .

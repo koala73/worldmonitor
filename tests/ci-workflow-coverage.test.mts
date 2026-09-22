@@ -167,6 +167,18 @@ const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
   'scripts/_bundle-runner.mjs',
 ] as const;
 
+// docker-image's change filter: the literal awk patterns it must keep, so a
+// filter refactor cannot silently un-gate a Dockerfile-breaking path class
+// and go back to "the weekly rebuild is the first execution of this change".
+const REQUIRED_DOCKER_IMAGE_INPUTS = [
+  'docker/',
+  'package.json',
+  'package-lock.json',
+  'pro-test/package.json',
+  'pro-test/package-lock.json',
+  'scripts/generate-inventory-facts.mjs',
+] as const;
+
 // Desktop drift gates (#5902): the literal awk patterns each change filter
 // must keep, so a filter refactor cannot silently un-gate a desktop-breaking
 // path class (the exact drift class #5902 exists to close).
@@ -1570,13 +1582,45 @@ describe('CI workflow coverage', () => {
   });
 
   it('routes the root Docker context policy into image build jobs', () => {
-    for (const variable of ['DIGEST', 'UMAMI']) {
+    for (const variable of ['DIGEST', 'UMAMI', 'DOCKER']) {
       const awkBlock = shellAwkAssignmentBlock(variable);
       assert.ok(
         evaluateAwkAssignmentBlock(awkBlock, ['.dockerignore']) > 0,
         `.dockerignore must set ${variable.toLowerCase()}=true`,
       );
     }
+  });
+
+  it('keeps the docker-image build gate wired to its own inputs, and only those', () => {
+    assert.ok(
+      testWorkflow.includes('docker: ${{ steps.diff.outputs.docker }}'),
+      'test.yml must expose a docker change output',
+    );
+    const dockerFilter = shellAwkAssignmentBlock('DOCKER');
+    for (const input of REQUIRED_DOCKER_IMAGE_INPUTS) {
+      assert.ok(
+        dockerFilter.includes(workflowRegexNeedle(input)),
+        `test.yml docker filter must cover ${input}`,
+      );
+    }
+    for (const [files, expected, why] of [
+      [['docker/Dockerfile'], 1, 'the Dockerfile itself is the whole point'],
+      [['docker/nginx.conf.template'], 1, 'a sibling config the Dockerfile COPYs must gate it too'],
+      [['package-lock.json'], 1, 'the npm ci input the build stage actually runs'],
+      [['pro-test/package-lock.json'], 1, 'build:pro installs this lockfile on its own'],
+      [['scripts/generate-inventory-facts.mjs'], 1, 'the one script the Dockerfile names directly'],
+      [['src/components/GlobeMap.ts'], 0, 'app logic is unit/typecheck\'s job, not a docker-specific one'],
+      [['docs/DOCUMENTATION.md'], 0, 'docs never reach the image'],
+    ] as [string[], number, string][]) {
+      assert.equal(evaluateAwkAssignmentBlock(dockerFilter, files), expected, why);
+    }
+
+    const job = testJobBlock('docker-image');
+    assert.match(job, /needs: changes/);
+    assert.match(job, /if: needs\.changes\.outputs\.docker == 'true'/, 'docker-image must gate on the docker change output');
+    assert.match(job, /\n {4}timeout-minutes: \d+\n/, 'a hung npm install must not hold the gate for the 360-minute default');
+    assert.match(job, /docker build -f docker\/Dockerfile /, 'must build the actual production Dockerfile');
+    assert.doesNotMatch(job, /push: true|docker push|docker run /, 'PR-time coverage is a build only; the runtime smoke stays exclusive to docker-publish.yml');
   });
 
   it('keeps desktop drift-gate inputs in the CI change filter (#5902)', () => {
