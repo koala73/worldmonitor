@@ -180,6 +180,9 @@ jobs:
            steps.metadata.outputs.update-type == 'version-update:semver-patch'))
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
+          # The commit this run is evaluating -- see the head-guard comment
+          # below, right before it is used.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -202,6 +205,22 @@ jobs:
           if [ -z "$armed" ]; then
             echo "Auto-merge is not armed; nothing to disable."
           else
-            retry gh pr merge --disable-auto "$PR_URL"
-            echo "::warning::Auto-merge was armed on $PR_URL and has been disabled because the commit pushed by $GITHUB_ACTOR does not meet the auto-merge guards. Review it and merge deliberately."
+            # The concurrency group above cancels a superseded run, but GitHub
+            # does not guarantee event ordering (CodeRabbit, citing GitHub's own
+            # docs): a disqualified run can still reach this point after a
+            # newer, qualifying run has already armed for a different, later
+            # head. `--match-head-commit` gives the enable call an atomic guard
+            # against exactly this; `--disable-auto` has no equivalent flag, so
+            # check by hand and only disarm when the PR's live head still
+            # matches the commit this run vetted. A mismatch means a newer run
+            # owns the decision instead, and skipping here does not strand a
+            # bad arming: that newer run reaches this same step and evaluates
+            # its own head on its own merits.
+            current_head="$(retry bash -c "gh pr view '$PR_URL' --json headRefOid --jq '.headRefOid'")"
+            if [ "$current_head" != "$HEAD_SHA" ]; then
+              echo "PR head is now $current_head, not the $HEAD_SHA this run evaluated; leaving the decision to whatever run is evaluating the current head."
+            else
+              retry gh pr merge --disable-auto "$PR_URL"
+              echo "::warning::Auto-merge was armed on $PR_URL and has been disabled because the commit pushed by $GITHUB_ACTOR does not meet the auto-merge guards. Review it and merge deliberately."
+            fi
           fi
