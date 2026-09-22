@@ -5397,9 +5397,10 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "US"
+                  example: "ae"
                   schema:
                     type: string
+                    pattern: '^([A-Za-z]{2})?$'
                 - name: basket_slug
                   in: query
                   description: basket_slug selects the basket (e.g. "essentials-ae").
@@ -5407,6 +5408,7 @@ paths:
                   example: "essentials-ae"
                   schema:
                     type: string
+                    pattern: '^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$'
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
@@ -5430,11 +5432,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "essentials-ae"
-                                "currencyCode": "USD"
+                                "currencyCode": "AED"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
                                       "index": 1.5
-                                "marketCode": "US"
+                                "marketCode": "ae"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_consumer_prices_v1_GetConsumerPriceBasketSeriesResponse'
                 "400":
@@ -5955,6 +5957,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^([A-Za-z]{2})?$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -21645,8 +21648,12 @@ paths:
             tags:
                 - MarketService
             summary: GetInsiderTransactions
-            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub.
+            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetInsiderTransactions
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbol
                   in: query
@@ -21691,7 +21698,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -39446,9 +39453,13 @@ components:
             properties:
                 marketCode:
                     type: string
+                    maxLength: 2
+                    pattern: ^([A-Za-z]{2})?$
                     description: market_code is the ISO 3166-1 alpha-2 market identifier.
                 basketSlug:
                     type: string
+                    maxLength: 13
+                    pattern: ^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$
                     description: basket_slug selects the basket (e.g. "essentials-ae").
                 range:
                     type: string
@@ -39677,6 +39688,8 @@ components:
             properties:
                 marketCode:
                     type: string
+                    maxLength: 2
+                    pattern: ^([A-Za-z]{2})?$
                     description: market_code is the ISO 3166-1 alpha-2 market identifier.
             description: GetConsumerPriceFreshnessRequest parameters for the freshness RPC.
         worldmonitor_consumer_prices_v1_GetConsumerPriceFreshnessResponse:
@@ -51013,7 +51026,7 @@ components:
                            feed and the build did not hit the global deadline.
                          partial: content exists, but a category had no completed feed or the
                            build hit the global deadline.
-                         stale: accepted older content is served after a failed latest attempt
+                         stale: accepted older content is served after a failed or gate-held attempt
                            (durable last-good serving, #7084).
                          unavailable: no eligible content could be served.
                 attemptedAt:
@@ -51069,8 +51082,8 @@ components:
                     type: boolean
                     description: |-
                         Durable last-good serving (#7084): true exactly when accepted older
-                         content is replayed after a failed latest attempt. The content counts
-                         above still describe the served body; attempted_at names the FAILED
+                         content is replayed after a failed or gate-held attempt. The content counts
+                         above still describe the served body; attempted_at names that latest
                          attempt, so it and generated_at diverge on a replay.
                 staleAgeSeconds:
                     type: integer
@@ -51081,12 +51094,12 @@ components:
                          state=unavailable rather than serving older content.
                 staleReason:
                     type: string
-                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
+                    description: 'Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).'
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);
                  attempted_at keeps the latest BUILD identity — the two diverge when
-                 stale content is served after a failed attempt (#7084).
+                 stale content is served after a failed or gate-held attempt (#7084).
         worldmonitor_news_v1_DigestCoverage_CategoryStatesEntry:
             type: object
             properties:

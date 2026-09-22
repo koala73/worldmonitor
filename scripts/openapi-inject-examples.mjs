@@ -274,6 +274,10 @@ function overrideStringExample(key, context = {}) {
   if (key === 'topic') {
     if (where.includes('getgdelttopictimeline') || where.includes('get-gdelt-topic-timeline')) return GDELT_TOPIC_EXAMPLE_ID;
   }
+  if (where.includes('getconsumerpricebasketseries') || where.includes('get-consumer-price-basket-series')) {
+    if (key === 'marketcode') return 'ae';
+    if (key === 'currencycode') return 'AED';
+  }
   if (key === 'basketslug') return CONSUMER_PRICE_BASKET_EXAMPLE_ID;
   if (key === 'range') {
     if (where.includes('consumerprice') || where.includes('consumer-prices')) return CONSUMER_PRICE_RANGE_EXAMPLE_ID;

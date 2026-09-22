@@ -13,7 +13,7 @@
 //      object, preserving the upstream SSE/JSON framing.
 // Genuine tool-execution failures deliberately stay `isError` results — the
 // MCP spec reserves top-level errors for protocol-level failures only.
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { safeJsonRpcId } from './mcp/utils';
@@ -208,6 +208,12 @@ function jsonRpcErrorResponse(status: number, id: JsonRpcId, code: number, messa
 }
 
 async function docsMcpRateLimitResponse(req: Request, id: JsonRpcId): Promise<Response | null> {
+  const proofDenied = checkIpScopedEdgeProof(req, CORS_HEADERS);
+  if (proofDenied) {
+    return jsonRpcErrorResponse(403, id, -32003, 'Cloudflare edge proof required', {
+      'X-RateLimit-Mode': 'edge-proof',
+    });
+  }
   const ip = getClientIp(req);
   // Redis-degraded scoped limits intentionally stay availability-first — the
   // upstream docs MCP is fully public and cheap, so degradation (logged by

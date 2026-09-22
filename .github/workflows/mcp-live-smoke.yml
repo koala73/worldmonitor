@@ -1,7 +1,9 @@
 name: MCP Live Smoke
 
-# Anonymous strict-client walk of the PRODUCTION MCP surface on both hosts
-# (apex + www) — the regression net for #4937/#4938, two outages that were
+# Anonymous strict-client walk of the PRODUCTION MCP surface on the
+# canonical product origin (`https://worldmonitor.app`), plus alias
+# 308/410 migration probes and direct www `/api/mcp-proxy` liveness.
+# This is the regression net for #4937/#4938, two outages that were
 # structurally invisible to unit tests:
 #   #4937 — an advertised-but-gated method (prompts/list) hung strict SDK
 #           clients (Claude Desktop via mcp-remote) and got the server marked
@@ -53,6 +55,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/mcp-live-smoke.mjs'
+      - 'scripts/mcp-smoke-http.mjs'
       - 'scripts/mcp-proxy-live-smoke.mjs'
       - 'scripts/mcp-schema-wire-check.mjs'
       - '.github/workflows/mcp-live-smoke.yml'
@@ -88,8 +91,9 @@ jobs:
       group: mcp-live-smoke-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # ~40 requests × 15s worst-case timeout each ≈ 10min absolute ceiling;
-    # nominal runs finish in well under a minute.
+    # The smoke run itself stops after 10 minutes, reserving two minutes for
+    # report persistence and artifact upload. Nominal runs finish in well under
+    # a minute.
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -106,7 +110,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      # Probes the production ALIASES, never the checked-out SHA's own bits: the
+      # Probes the production CANONICAL origin, listed aliases, and www
+      # `/api/mcp-proxy`, never the checked-out SHA's own bits: the
       # `ref:` above pins which copy of this checker runs, not what it measures.
       # That is deliberate — CDN rules, host-split and deploy config only exist
       # at the alias — but it bounds what a green run proves. A run that queued
@@ -114,4 +119,14 @@ jobs:
       # or earlier than the commit that triggered it, so treat green as "the
       # production surface is healthy now", NOT as "this deployment is good".
       - name: Live MCP production smoke
-        run: node scripts/mcp-live-smoke.mjs
+        env:
+          MCP_SMOKE_RUN_BUDGET_MS: '600000'
+        run: node scripts/mcp-live-smoke.mjs --report "$RUNNER_TEMP/mcp-live-smoke-report.json"
+      - name: Upload MCP smoke report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mcp-live-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mcp-live-smoke-report.json
+          if-no-files-found: error
+          retention-days: 14

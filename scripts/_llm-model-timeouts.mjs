@@ -52,8 +52,14 @@ export const DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS = 15_000;
 // so the primary provider could never succeed and every run wrote a SEED_ERROR.
 export const DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS = 40_000;
 
+// Point releases of the same Flash line (`deepseek-v4.1-flash`, used by headline
+// classification) share its latency profile and must keep the cap: measured on 413
+// single-title classify calls, v4.1-flash ran p50 1.1s / p95 3.8s. End-anchored: a
+// `-flash-thinking` style variant is a different latency class and must not be capped.
+const DEEPSEEK_V4_FLASH_POINT_RELEASE = /^deepseek\/deepseek-v4\.\d+-flash$/;
+
 export function isDeepseekV4FlashModel(model) {
-  return model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX);
+  return model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX) || DEEPSEEK_V4_FLASH_POINT_RELEASE.test(model);
 }
 
 // Stays a MIN: a caller asking for LESS than the cap must still get less (the shared

@@ -634,7 +634,6 @@ describe('canonical schema graph', () => {
         'https://www.npmjs.com/package/worldmonitor',
         'https://x.com/worldmonitorai',
         'https://x.com/eliehabib',
-        'https://discord.gg/re63kWKxaz',
         'https://www.wired.com/story/world-monitor-elie-habib/',
       ],
     });

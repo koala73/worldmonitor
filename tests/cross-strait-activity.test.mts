@@ -3363,7 +3363,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
               const body = Object.assign(new PassThrough(), { headers: {}, statusCode: 200 });
               onResponse(body);
               if (url.includes('plaactlist')) body.end(list);
-              else body.destroy(new Error('response stream reset'));
+              else body.destroy(Object.assign(new Error('response stream reset'), { code: 'ECONNRESET' }));
             },
           }),
         });
@@ -3382,6 +3382,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       assert.equal(diagnostic.stage, 'response_body');
       assert.equal(diagnostic.httpStatus, 200);
       assert.equal(diagnostic.proxyConnectStatus, null);
+      assert.equal(diagnostic.transportErrorCode, 'ECONNRESET');
     }
   });
 
@@ -3412,6 +3413,75 @@ describe('quantified cross-Strait activity (#5575)', () => {
       assert.equal(mnd.requestCount, 2);
       assert.equal(mnd.lastSuccessAt, null);
       assert.equal(JSON.stringify(snapshot).includes('proxy-secret'), false);
+    }
+  });
+
+  it('retains only allowlisted native MND transport codes without changing failure policy', async (t) => {
+    for (const nativeCode of ['CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'ERR_TLS_CERT_ALTNAME_INVALID',
+      'EPROTO', 'ECONNRESET', 'ENOTFOUND', 'UNRECOGNIZED_SECRET', 123, undefined]) {
+      const expected = typeof nativeCode === 'string' && nativeCode !== 'UNRECOGNIZED_SECRET'
+        ? nativeCode : undefined;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'http://proxy.test',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw new TypeError('fetch failed SECRET', { cause: Object.assign(new Error('SECRET'), { code: nativeCode }) });
+        },
+        proxyRequestFn: async () => {
+          throw Object.assign(new Error('TLS failure SECRET'), {
+            code: nativeCode,
+            proxyFailure: { stage: 'target_tls', proxyConnectStatus: 200 },
+          });
+        },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.equal(mnd.requestCount, 2);
+      assert.equal(mnd.lastSuccessAt, null);
+      assert.equal(mnd.lastAttemptAt, retrievedAt);
+      assert.deepEqual(mnd.errorCodes, ['SOURCE_ERROR']);
+      assert.deepEqual(mnd.requestDiagnostics.map(row => row.transportErrorCode), [expected, expected]);
+      assert.ok(mnd.requestDiagnostics.every(row => row.httpStatus === null));
+      assert.equal(mnd.requestDiagnostics[1].stage, 'target_tls');
+      assert.equal(mnd.requestDiagnostics[1].proxyConnectStatus, 200);
+      assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
+      assert.equal(JSON.stringify(projectCrossStraitActivityBootstrap(snapshot)).includes('transportErrorCode'), false);
+      const stored = new Map();
+      const logs: unknown[][] = [];
+      const logMock = t.mock.method(console, 'warn', (...args: unknown[]) => { logs.push(args); });
+      await fetchCrossStraitActivitySeedSnapshot({
+        readSnapshot: async () => null, fetchSnapshot: async () => snapshot,
+        writeHealth: value => writeSourceHealth(value, async (key, row) => { stored.set(key, row); }, async key => stored.get(key) ?? null),
+      });
+      assert.deepEqual(logs, [['[cross-strait] MND request failures', JSON.stringify({
+        attemptedAt: retrievedAt, failures: mnd.requestDiagnostics,
+      })]]);
+      assert.deepEqual(stored.get(healthTesting.STANDALONE_KEYS.crossStraitActivityTaiwanMnd).requestDiagnostics,
+        mnd.requestDiagnostics);
+      logMock.mock.restore();
+    }
+  });
+
+  it('does not let hostile native-code properties replace an MND failure', async () => {
+    for (const property of ['code', 'cause']) {
+      const failure = new Error('transport failed');
+      Object.defineProperty(failure, property, { get() { throw new Error('diagnostic getter SECRET'); } });
+      Object.freeze(failure);
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        now: Date.parse(retrievedAt), proxyUrl: '', mndProxyUrl: 'http://proxy.test',
+        sleepFn: async () => {},
+        fetchFn: async (input: string | URL | Request) => {
+          if (String(input).includes('mod.go.jp')) return new Response(usableJapanEnglishIndex);
+          throw failure;
+        },
+        proxyRequestFn: async () => { throw failure; },
+      });
+      const mnd = snapshot.sources.find(source => source.id === 'taiwan-mnd');
+      assert.equal(mnd.requestCount, 2);
+      assert.deepEqual(mnd.errorCodes, ['SOURCE_ERROR']);
+      assert.ok(mnd.requestDiagnostics.every(row => !('transportErrorCode' in row)));
+      assert.equal(failure.message, 'transport failed');
+      assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
     }
   });
 
@@ -3625,7 +3695,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
             return new Response(new ReadableStream({
               pull(controller) {
                 clock += 20_000;
-                controller.error(new DOMException('timeout SECRET upstream body', 'TimeoutError'));
+                controller.error(Object.assign(new Error('timeout SECRET upstream body'), { code: 'UND_ERR_BODY_TIMEOUT' }));
               },
             }), { status: 206 });
           }
@@ -3638,6 +3708,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       assert.ok(failures.every(row => row.purpose === purpose && row.httpStatus === 206
         && row.errorCode === 'TIMEOUT' && Number.isInteger(row.elapsedMs) && row.elapsedMs >= 0));
       assert.ok(failures.every(row => row.attempt <= 2));
+      assert.ok(failures.every(row => row.transportErrorCode === 'UND_ERR_BODY_TIMEOUT'));
       assert.ok(mnd.requestDiagnostics.length <= mnd.requestCount);
       assert.equal(JSON.stringify(mnd.requestDiagnostics).includes('SECRET'), false);
       assert.ok(snapshot.observations.some(row => row.sourceUrl.endsWith('/86001')));

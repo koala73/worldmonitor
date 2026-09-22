@@ -55,7 +55,7 @@ test('Edge rejects invalid input before forwarding to its configured relay', asy
   assert.deepEqual(surface.calls, []);
 });
 test('shipped handles, international handles and channel IDs keep safe paths', async () => {
-  const panel = readFileSync(new URL('../src/components/LiveNewsPanel.ts', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../src/services/live-channels.ts', import.meta.url), 'utf8');
   const handles = new Set([...panel.matchAll(/handle:\s*'([^']+)'/g)].map(match => match[1]));
   assert.ok(handles.size > 50);
   for (const surface of [edge(), relay()]) {
