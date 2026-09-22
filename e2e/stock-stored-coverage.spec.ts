@@ -36,7 +36,10 @@ for (const count of [12, 50]) {
         const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         const url = new URL(raw, location.origin);
         let body: unknown = {};
-        if (url.pathname.endsWith('/get-stock-analysis-history')) {
+        if (url.pathname === '/api/wm-session') {
+          // setProKey resolves only after the HttpOnly key-session mint succeeds (#8269).
+          body = { exp: Date.now() + 3_600_000 };
+        } else if (url.pathname.endsWith('/get-stock-analysis-history')) {
           body = { items: symbols.map((symbol, i) => ({ symbol, snapshots: [snapshot(symbol, i === count - 1)] })) };
         } else if (url.pathname.endsWith('/list-stored-stock-backtests')) {
           body = { items: symbols.map((symbol, i) => snapshot(symbol, i === count - 1)) };
@@ -48,7 +51,7 @@ for (const count of [12, 50]) {
         }
         return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
       };
-      setProKey('controlled-fixture-key');
+      if (!(await setProKey('controlled-fixture-key'))) throw new Error('fixture Pro key session was not established');
       const backtest = new StockBacktestPanel();
       const analysis = new StockAnalysisPanel();
       const ctx = { panels: { 'stock-backtest': backtest, 'stock-analysis': analysis } };
@@ -78,7 +81,10 @@ for (const count of [12, 50]) {
     await expect(page.locator('[data-panel="stock-analysis"]')).toContainText(`${count} symbols`);
     await expect(page.locator('[data-panel="stock-backtest"]')).toContainText(`${count} symbols`);
     for (const id of ['stock-analysis', 'stock-backtest']) {
-      await expect(page.locator(`[data-panel="${id}"]`).getByRole('row').filter({ hasText: 'SYM0' })).toBeVisible();
+      // Match the row key exactly: a substring match on 'SYM0' also hits SYM01..SYM09.
+      const row = page.locator(`[data-panel="${id}"] tr.watchlist-row[data-rowkey="SYM0"]`);
+      await expect(row).toHaveCount(1);
+      await expect(row).toBeVisible();
     }
     await page.screenshot({ path: testInfo.outputPath(`stock-${count}-partial.png`), fullPage: true });
     await page.getByRole('button', { name: 'Refresh stock panels', exact: true }).click();
@@ -86,13 +92,17 @@ for (const count of [12, 50]) {
     await expect(page.locator('[data-panel="stock-analysis"]')).toContainText(`${count} symbols`);
     await expect(page.locator('[data-panel="stock-backtest"]')).toContainText(`${count} symbols`);
     for (const id of ['stock-analysis', 'stock-backtest']) {
-      await expect(page.locator(`[data-panel="${id}"]`).getByRole('row').filter({ hasText: 'SYM0' })).toBeVisible();
+      // Match the row key exactly: a substring match on 'SYM0' also hits SYM01..SYM09.
+      const row = page.locator(`[data-panel="${id}"] tr.watchlist-row[data-rowkey="SYM0"]`);
+      await expect(row).toHaveCount(1);
+      await expect(row).toBeVisible();
     }
     await page.screenshot({ path: testInfo.outputPath(`stock-${count}-fallback.png`), fullPage: true });
     for (const id of ['stock-analysis', 'stock-backtest']) {
       const panel = page.locator(`[data-panel="${id}"]`);
       await panel.getByRole('textbox').fill(`SYM${count - 1}`);
-      await expect(panel.getByRole('row').filter({ hasText: `SYM${count - 1}` })).toHaveCount(1);
+      await expect(panel.locator('tr.watchlist-row')).toHaveCount(1);
+      await expect(panel.locator(`tr.watchlist-row[data-rowkey="SYM${count - 1}"]`)).toHaveCount(1);
     }
   });
 }

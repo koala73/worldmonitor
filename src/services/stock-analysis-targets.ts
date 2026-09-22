@@ -5,6 +5,7 @@
  */
 
 import type { MarketWatchlistEntry } from '@/services/market-watchlist';
+import { normalizeStockSymbol } from '../../shared/stock-symbol';
 
 export interface StockAnalysisTarget {
   symbol: string;
@@ -57,7 +58,7 @@ export function selectStockAnalysisTargets(
     }));
 
   const cap = opts.isPro
-    ? Math.max(STOCK_ANALYSIS_FREE_LIMIT, Math.min(STOCK_ANALYSIS_PRO_LIMIT, new Set(userPicks.map(pick => pick.symbol.toUpperCase())).size))
+    ? Math.max(STOCK_ANALYSIS_FREE_LIMIT, Math.min(STOCK_ANALYSIS_PRO_LIMIT, new Set(userPicks.map(pick => normalizeStockSymbol(pick.symbol))).size))
     : STOCK_ANALYSIS_FREE_LIMIT;
   const limit = opts.limitOverride != null
     ? Math.max(0, Math.min(opts.limitOverride, cap))
@@ -68,7 +69,7 @@ export function selectStockAnalysisTargets(
 
   for (const entry of userPicks) {
     if (targets.length >= limit) break;
-    const key = entry.symbol.toUpperCase();
+    const key = normalizeStockSymbol(entry.symbol);
     if (seen.has(key)) continue;
     seen.add(key);
     targets.push(entry);
@@ -76,7 +77,7 @@ export function selectStockAnalysisTargets(
 
   for (const entry of defaultSymbols) {
     if (targets.length >= limit) break;
-    const key = entry.symbol.toUpperCase();
+    const key = normalizeStockSymbol(entry.symbol);
     if (!isAnalyzableSymbol(entry.symbol) || seen.has(key)) continue;
     seen.add(key);
     targets.push({ symbol: entry.symbol, name: entry.name, display: entry.display });
