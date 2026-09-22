@@ -1107,18 +1107,65 @@ jobs:
     runs-on: ubuntu-latest
     # A full frontend build (crawlable-corpus, sitemap, inventory facts, pro,
     # tsc + vite) inside node:24-alpine, so it runs longer than the other
-    # Docker smokes here. 25min catches a base-image-pull stall or a hung npm
-    # install without holding the queue for the 360-minute default.
+    # Docker smokes here. No push, so this never reaches `latest` -- that stays
+    # docker-publish.yml's job alone. 25min catches a base-image-pull stall or
+    # a hung npm install without holding the queue for the 360-minute default.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Build the app image (smoke)
-        # No push, no run, no route curl -- that belongs to docker-publish.yml,
-        # which is the last check before an image reaches `latest` and already
-        # does it. What this job answers is narrower and was previously
-        # unanswered at PR time at all: does docker/Dockerfile still build?
-        # RUN test -s dist/dashboard.html and the /pro assertions inside it
-        # already catch a file-presence regression (the exact class #7808's
-        # review found) at build time, which is why this stays a plain build
-        # rather than duplicating the runtime smoke.
         run: docker build -f docker/Dockerfile -t wm-docker-smoke .
+
+      # Runs the same routes docker-publish.yml checks before it publishes,
+      # here instead of at the next push or the weekly rebuild. `RUN test -s
+      # dist/dashboard.html` and the /pro assertions inside docker/Dockerfile
+      # already catch a file-presence regression (the exact class #7808's
+      # review found) at build time above -- what only a running container
+      # answers is whether nginx actually serves what got built: a template
+      # edit that builds clean but 404s every route, or serves an empty body.
+      - name: Smoke the image (build proved the files exist; this proves nginx serves them)
+        run: |
+          set -euo pipefail
+          docker run -d --name wm-docker-smoke -p 8080:80 wm-docker-smoke
+
+          cleanup() {
+            echo "--- container logs ---"
+            docker logs wm-docker-smoke 2>&1 | tail -50 || true
+            docker rm -f wm-docker-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # nginx is up in well under this budget; the loop is for the runner,
+          # not the server.
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+              break
+            fi
+            sleep 1
+          done
+
+          failed=""
+          # The same two routes docker-publish.yml's own smoke requests, and
+          # for the same reason: they are exactly what docker/Dockerfile's
+          # build-time assertions cover, so this gate can only go red on a
+          # genuinely broken image. Keep both lists in step.
+          for path in / /pro/; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}")"
+            if [ "$code" != "200" ]; then
+              echo "::error::GET ${path} returned ${code}, expected 200"
+              failed="yes"
+            else
+              echo "GET ${path} -> 200"
+            fi
+          done
+
+          # A 200 that served an empty body is not a working page.
+          if [ -z "$(curl -fsS http://127.0.0.1:8080/)" ]; then
+            echo "::error::GET / returned an empty body"
+            failed="yes"
+          fi
+
+          if [ -n "$failed" ]; then
+            echo "::error::Image smoke test failed."
+            exit 1
+          fi

@@ -1620,7 +1620,19 @@ describe('CI workflow coverage', () => {
     assert.match(job, /if: needs\.changes\.outputs\.docker == 'true'/, 'docker-image must gate on the docker change output');
     assert.match(job, /\n {4}timeout-minutes: \d+\n/, 'a hung npm install must not hold the gate for the 360-minute default');
     assert.match(job, /docker build -f docker\/Dockerfile /, 'must build the actual production Dockerfile');
-    assert.doesNotMatch(job, /push: true|docker push|docker run /, 'PR-time coverage is a build only; the runtime smoke stays exclusive to docker-publish.yml');
+    // Never reaches `latest`: that publish stays docker-publish.yml's job
+    // alone, which is the check that actually gates what self-hosters pull.
+    assert.doesNotMatch(job, /push: true|docker push/, 'PR-time coverage must never publish the image itself');
+    // But it does run what it built and request the routes docker/Dockerfile
+    // asserts the inputs for -- build-time assertions prove the files exist,
+    // only a running container proves nginx serves them.
+    assert.match(job, /docker run -d --name wm-docker-smoke/, 'must actually run the built image, not just build it');
+    const smoke = String(job).slice(String(job).indexOf('docker run -d --name wm-docker-smoke'));
+    const pathLoop = smoke.match(/for path in ([^;]+); do/);
+    assert.ok(pathLoop, 'the smoke step must enumerate the paths it requests');
+    assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/'], 'must request the same routes docker-publish.yml checks before it publishes');
+    assert.match(smoke, /expected 200/, 'a non-200 must fail the job, not just print');
+    assert.match(smoke, /returned an empty body/, 'a 200 with no body must also fail the job');
   });
 
   it('keeps desktop drift-gate inputs in the CI change filter (#5902)', () => {
