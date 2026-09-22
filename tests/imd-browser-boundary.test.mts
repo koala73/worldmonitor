@@ -23,16 +23,26 @@ beforeEach(async () => {
 });
 afterEach(() => { globalThis.fetch = originalFetch; Date.now = originalNow; });
 
-test('both consumers share accepted hydration even when refetch would fail; expiry retries and recovers', async () => {
+test('the hydration handoff shares one accepted snapshot for 60s, then retries and recovers', async () => {
+  // Both map layers (natural + weather) call fetchImdCycloneMarine() in the
+  // same tick; getHydratedData() is consume-once, so the second read must come
+  // from createHydrationHandoff (#8386), not a failed refetch.
   app.bootstrap.seedHydrationCacheForTests({ imdCycloneMarine: snapshot() });
   let calls = 0;
   globalThis.fetch = async () => { calls++; throw new Error('offline'); };
-  const results = await Promise.all([app.fetchImdCycloneMarine(), app.fetchImdCycloneMarine()]);
-  assert.deepEqual(results[0], results[1]);
-  assert.equal(results[1].cycloneEvents.length, 1);
+  const [natural, weather] = await Promise.all([app.fetchImdCycloneMarine(), app.fetchImdCycloneMarine()]);
+  assert.equal(weather, natural, 'both layers receive the same accepted object');
+  assert.equal(natural.coverageState, 'ok');
+  assert.equal(natural.cycloneEvents.length, 1);
+  assert.equal(natural.portAlerts.length, 1);
   assert.equal(calls, 0);
-  now += 61_000;
-  assert.equal((await app.fetchImdCycloneMarine()).coverageState, 'unavailable');
+
+  now += 60_000;
+  assert.equal(await app.fetchImdCycloneMarine(), natural, 'still inside the 60s handoff window');
+  assert.equal(calls, 0);
+
+  now += 1;
+  assert.equal((await app.fetchImdCycloneMarine()).coverageState, 'unavailable', 'expired handoff goes back to the load path');
   assert.equal(calls, 1);
   globalThis.fetch = async () => { calls++; return Response.json({ data: { imdCycloneMarine: snapshot() } }); };
   assert.equal((await app.fetchImdCycloneMarine()).coverageState, 'ok');
@@ -52,26 +62,61 @@ test('cold consumers coalesce through the real public bootstrap and valid empty 
   assert.equal(calls, 1);
 });
 
-test('malformed collections and invalid records never become healthy empty data', () => {
-  for (const value of [null, [], {}, { ...snapshot(), cycloneEvents: {} }, { ...snapshot(), portAlerts: 'bad' }]) {
-    assert.notEqual(app.mapImdSnapshot(value as never).coverageState, 'ok');
+test('malformed collections never report healthy coverage', () => {
+  for (const value of [null, [], {}, { ...snapshot(), cycloneEvents: {} }, { ...snapshot(), portAlerts: 'bad' }, { ...snapshot(), marineBulletins: undefined }]) {
+    assert.notEqual(app.mapImdSnapshot(value as never).coverageState, 'ok', JSON.stringify(value));
   }
-  for (const invalid of [null, {}, { ...event, lat: 91 }, { ...event, lon: NaN }, { ...event, date: 'bad' }]) {
-    assert.equal(app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [invalid] } as never).cycloneEvents.length, 0);
-  }
-  for (const invalid of [{ ...alert, onset: 'bad' }, { ...alert, coordinates: [[181, 0]] }, { ...alert, expires: 9e99 }]) {
-    assert.equal(app.mapImdSnapshot({ ...snapshot(), portAlerts: [invalid] } as never).portAlerts.length, 0);
-  }
+  // A malformed collection next to valid records is degraded, not ok.
+  const partial = app.mapImdSnapshot({ ...snapshot(), marineBulletins: 'bad' } as never);
+  assert.equal(partial.coverageState, 'degraded');
+  assert.equal(partial.cycloneEvents.length, 1);
+  assert.equal(partial.portAlerts.length, 1);
 });
 
-test('allowed fields survive; raw properties and nonnumeric storm fields are removed', () => {
-  const result = app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [{ ...event, windKt: '<img>', pressureMb: Infinity, extra: 'untrusted', forecastTrack: [null, { lat: 15, lon: 80, hour: 12, windKt: 45, category: 0, extra: true }] }], portAlerts: [{ ...alert, wind: '20 kt', extra: true }] } as never);
-  const storm = result.cycloneEvents[0];
-  assert.equal(storm.windKt, undefined); assert.equal(storm.pressureMb, undefined);
+test('records with invalid dates are rejected instead of stamped with generatedAt', () => {
+  for (const date of ['bad', null, undefined, 0, -1, 9e99, Number.NaN]) {
+    assert.equal(app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [{ ...event, date }] } as never).cycloneEvents.length, 0, `date ${String(date)}`);
+  }
+  for (const invalid of [{ ...alert, onset: 'bad' }, { ...alert, expires: 9e99 }, { ...alert, onset: undefined }, { ...alert, expires: null }]) {
+    assert.equal(app.mapImdSnapshot({ ...snapshot(), portAlerts: [invalid] } as never).portAlerts.length, 0);
+    assert.equal(app.mapImdSnapshot({ ...snapshot(), marineBulletins: [invalid] } as never).marineBulletins.length, 0);
+  }
+  const iso = app.mapImdSnapshot({ ...snapshot(), portAlerts: [{ ...alert, onset: '2026-09-15T11:00:00Z', expires: '2026-09-15T13:00:00Z' }] } as never);
+  assert.equal(iso.portAlerts[0]?.onset.getTime(), Date.parse('2026-09-15T11:00:00Z'));
+});
+
+test('rejected records downgrade coverage: degraded while some survive, unavailable when none do', () => {
+  const some = app.mapImdSnapshot({ ...snapshot(), portAlerts: [alert, { ...alert, id: 'bad-date', onset: 'bad' }] } as never);
+  assert.equal(some.coverageState, 'degraded');
+  assert.deepEqual(some.portAlerts.map((row) => row.id), ['port-test']);
+
+  const none = app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [{ ...event, date: 'bad' }], portAlerts: [null], marineBulletins: [] } as never);
+  assert.equal(none.coverageState, 'unavailable');
+
+  for (const invalid of [null, {}, { ...event, lat: 91 }, { ...event, lon: Number.NaN }, { ...event, id: '' }]) {
+    const mapped = app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [invalid, event] } as never);
+    assert.equal(mapped.cycloneEvents.length, 1);
+    assert.equal(mapped.coverageState, 'degraded', JSON.stringify(invalid));
+  }
+
+  // A degraded snapshot stays degraded; unknown states are not passed through.
+  assert.equal(app.mapImdSnapshot({ ...snapshot(), coverageState: 'degraded' }).coverageState, 'degraded');
+  assert.equal(app.mapImdSnapshot({ ...snapshot(), coverageState: 'totally-fine' }).coverageState, 'unavailable');
+});
+
+test('main mapper field handling is preserved: unsafe values and extra keys are dropped', () => {
+  const result = app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [{ ...event, windKt: '<img>', extra: 'untrusted', sourceUrl: 'https://evil.example', forecastTrack: [null, { lat: 15, lon: 80, hour: 12, windKt: 45, category: 0, extra: true }] }], portAlerts: [{ ...alert, wind: '20 kt', extra: true, sourceUrl: 'javascript:alert(1)' }] } as never);
+  const storm = result.cycloneEvents[0]!;
+  assert.equal(storm.windKt, undefined);
   assert.equal('extra' in storm, false);
-  assert.deepEqual(storm.forecastTrack, [{ lat: 15, lon: 80, hour: 12, windKt: 45, category: 0 }]);
-  assert.equal(result.portAlerts[0].wind, '20 kt'); assert.equal('extra' in result.portAlerts[0], false);
+  assert.equal(storm.sourceUrl, undefined);
+  assert.deepEqual(storm.forecastTrack, [{ lat: 15, lon: 80, hour: 12, windKt: 45, category: 0, geometryKind: '' }]);
+  assert.equal(result.portAlerts[0]!.wind, '20 kt');
+  assert.equal('extra' in result.portAlerts[0]!, false);
+  assert.equal(result.portAlerts[0]!.sourceUrl, undefined);
   assert.equal(result.sourceName, 'IMD');
+  assert.equal(result.sourceUrl, 'https://rsmcnewdelhi.imd.gov.in/');
+  assert.equal(result.coverageState, 'ok', 'field sanitizing is not a record rejection');
 });
 
 test('real producer fixtures preserve cyclone tracks, cone, wind radii, marine fields and attribution', () => {
@@ -96,26 +141,19 @@ test('real producer fixtures preserve cyclone tracks, cone, wind radii, marine f
   assert.equal(mapped.sourceName, raw.sourceName); assert.equal(mapped.sourceUrl, raw.sourceUrl);
 });
 
-
 test('unavailable or disabled snapshots do not become available because some records are valid', async () => {
   for (const coverageState of ['unavailable', 'disabled']) {
     const raw = { ...snapshot(), coverageState, marineBulletins: null };
     assert.equal(app.mapImdSnapshot(raw).coverageState, coverageState);
   }
+  // An unavailable, empty snapshot is not retained by the handoff: every call
+  // goes back to the load path.
   let calls = 0;
-  globalThis.fetch = async () => { calls++; return Response.json({ data: { imdCycloneMarine: { ...snapshot(), coverageState: 'unavailable' } } }); };
+  globalThis.fetch = async () => {
+    calls++;
+    return Response.json({ data: { imdCycloneMarine: { ...snapshot(), coverageState: 'unavailable', cycloneEvents: [], portAlerts: [] } } });
+  };
   await app.fetchImdCycloneMarine();
   await app.fetchImdCycloneMarine();
   assert.equal(calls, 2);
-});
-
-
-test('blank identity/display fields are rejected while empty bulletin details remain valid', () => {
-  for (const key of ['id', 'title']) {
-    assert.equal(app.mapImdSnapshot({ ...snapshot(), cycloneEvents: [{ ...event, [key]: '  ' }] }).cycloneEvents.length, 0);
-  }
-  for (const key of ['id', 'event', 'headline']) {
-    assert.equal(app.mapImdSnapshot({ ...snapshot(), portAlerts: [{ ...alert, [key]: '' }] }).portAlerts.length, 0);
-  }
-  assert.equal(app.mapImdSnapshot({ ...snapshot(), portAlerts: [{ ...alert, description: '', areaDesc: '' }] }).portAlerts.length, 1);
 });
