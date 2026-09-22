@@ -102,8 +102,16 @@ describe('runSeed fetch-phase deadline (issue #4786)', () => {
     // Section shorter than the publish reserve → resolveFetchDeadlineMs caps at 1ms.
     process.env.BUNDLE_SECTION_TIMEOUT_MS = '80';
     try {
+      // Without the clamp, lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS ≈ 240s still
+      // yields exit 75 — so assert.equal(code, 75) alone cannot prove the section
+      // env bounded the hang (review #8483 follow-up).
+      const started = Date.now();
       const code = await exitCodeFor(hang, { ttlSeconds: 600, validateFn: () => true, lockTtlMs: 120_000 });
       assert.equal(code, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+      assert.ok(
+        Date.now() - started < 5_000,
+        'section clamp must bound the hang, not merely end it',
+      );
     } finally {
       if (prevSection === undefined) delete process.env.BUNDLE_SECTION_TIMEOUT_MS;
       else process.env.BUNDLE_SECTION_TIMEOUT_MS = prevSection;
