@@ -1175,9 +1175,6 @@
       "base": "군사 기지",
       "nuclear": "핵 시설"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "심각",
       "high": "높음",
@@ -1901,6 +1898,7 @@
       "etfs": "ETF",
       "netInflow": "순유입",
       "netOutflow": "순유출",
+      "netNeutral": "순중립",
       "table": {
         "ticker": "티커",
         "issuer": "발행사",
@@ -2166,7 +2164,7 @@
       "infoTooltip": "<strong>경제 캘린더</strong> 예정된 거시경제 발표: CPI, NFP, GDP, PMI 및 중앙은행 결정. 전망 대 실제 대 이전을 표시. 고영향 이벤트 강조 표시. 출처: 경제 데이터 제공업체."
     },
     "fsi": {
-      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행.",
+      "infoTooltip": "<strong>금융 스트레스 지표</strong> 주식 변동성과 하이일드 스프레드로 조정한 하이일드 신용과 장기 미국 국채 간 WorldMonitor 비율: (HYG / TLT) / (VIX × HY spread / 100). 이는 캔자스시티 연방준비은행의 금융 스트레스 지수가 아닙니다. 1.5 이상은 낮은 스트레스, 0.3 미만은 높은 스트레스를 의미합니다.",
       "title": "금융 스트레스 지표",
       "usFsiValue": "미국 FSI 값",
       "cissTitle": "EU CISS (유로존 시스템 스트레스)",

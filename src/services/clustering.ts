@@ -8,7 +8,7 @@ import type { NewsItem, ClusteredEvent } from '@/types';
 import { getSourceTier } from '@/config';
 import { countPublisherFamilies } from '../../shared/publisher-families.js';
 import { analysisWorker } from './analysis-worker';
-import { clusterNewsCore } from './analysis-core';
+import { aggregateThreats, clusterNewsCore } from './analysis-core';
 import { mlWorker } from './ml-worker';
 import { ML_THRESHOLDS } from '@/config/ml-config';
 
@@ -20,6 +20,19 @@ interface HybridClusteringOptions {
 
 export function clusterNews(items: NewsItem[]): ClusteredEvent[] {
   return clusterNewsCore(items, getSourceTier) as ClusteredEvent[];
+}
+
+function mergedLocation(items: NewsItem[]): Pick<ClusteredEvent, 'lat' | 'lon'> {
+  const locations = new Map<string, { lat: number; lon: number; count: number }>();
+  for (const item of items) {
+    if (item.lat == null || item.lon == null) continue;
+    const key = `${item.lat},${item.lon}`;
+    const location = locations.get(key) ?? { lat: item.lat, lon: item.lon, count: 0 };
+    location.count += 1;
+    locations.set(key, location);
+  }
+  const winner = [...locations.values()].sort((a, b) => b.count - a.count)[0];
+  return winner ? { lat: winner.lat, lon: winner.lon } : {};
 }
 
 function compareClustersForSemanticCandidate(a: ClusteredEvent, b: ClusteredEvent): number {
@@ -198,9 +211,12 @@ function mergeSemanticallySimilarClusters(
       firstSeen,
       lastUpdated,
       isAlert: allItems.some(i => i.isAlert),
-      monitorColor: primary.monitorColor,
+      monitorColor: allItems.find(item => item.monitorColor)?.monitorColor,
       velocity: primary.velocity,
-      threat: primary.threat,
+      threat: aggregateThreats(allItems),
+      lang: primary.lang,
+      ...(Number.isFinite(primary.credibilityScore) ? { credibilityScore: primary.credibilityScore } : {}),
+      ...mergedLocation(allItems),
     };
     merged.push(mergedCluster);
   }

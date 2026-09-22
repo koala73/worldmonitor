@@ -13,7 +13,10 @@ const deferred = () => Promise.withResolvers();
 
 // Stateful Redis transport double: real handler, election, polling, classifier,
 // persistence and release execute; only external Redis commands are simulated.
-function redisFixture({ holdFirstSweep = false, failFirstSweep = false, failRelease = false } = {}) {
+function redisFixture({
+  holdFirstSweep = false, failFirstSweep = false, failRelease = false,
+  holdSweepNumber = holdFirstSweep ? 1 : 0, holdHistory = false,
+} = {}) {
   let now = realNow();
   Date.now = () => now;
   const store = new Map();
@@ -25,17 +28,26 @@ function redisFixture({ holdFirstSweep = false, failFirstSweep = false, failRele
   const rejectedMutations = [];
   const mutations = [];
   const acquire = [];
+  const history = deferred();
+  if (!holdHistory) history.resolve();
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     const sweep = commands.some(([op]) => op === 'STRLEN' || op === 'LLEN');
     if (sweep) {
       sweeps++;
       assert.ok(lock && lock.until > now, 'every sweep must start under a live lease');
-      if (sweeps === 1) {
+      if (sweeps === 1 && failFirstSweep) {
         started.resolve();
-        if (holdFirstSweep) await release.promise;
-        if (failFirstSweep) return new Response(null, { status: 503 });
+        if (holdSweepNumber === 1) await release.promise;
+        return new Response(null, { status: 503 });
       }
+      if (sweeps === Math.max(1, holdSweepNumber)) {
+        started.resolve();
+        if (holdSweepNumber) await release.promise;
+      }
+    }
+    if (commands.some(([op, script, ...args]) => op === 'EVAL' && script === keys.HEALTH_VERDICT_MUTATION_SCRIPT && args[4] === 'LPUSH')) {
+      await history.promise;
     }
     const results = commands.map(([op, key, ...args]) => {
       if (op === 'SET' && key === keys.HEALTH_VERDICT_REFRESH_LOCK_KEY) {
@@ -45,12 +57,13 @@ function redisFixture({ holdFirstSweep = false, failFirstSweep = false, failRele
         return { result: 'OK' };
       }
       if (op === 'EVAL' && key === keys.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
-        const [count, lockKey, fullKey, compactKey, token, full, compact] = args;
-        assert.equal(count, '3');
+        const count = Number(args[0]);
+        const [lockKey, ...targets] = args.slice(1, 1 + count);
+        const [token, full, compact] = args.slice(1 + count);
         assert.equal(lockKey, keys.HEALTH_VERDICT_REFRESH_LOCK_KEY);
         if (!lock || lock.until <= now || lock.token !== token) return { result: null };
-        store.set(fullKey, full);
-        store.set(compactKey, compact);
+        // Targets alternate full/compact: the live pair, then any retained copies.
+        targets.forEach((target, index) => store.set(target, index % 2 === 0 ? full : compact));
         publications.push(token);
         return { result: 'OK' };
       }
@@ -69,7 +82,8 @@ function redisFixture({ holdFirstSweep = false, failFirstSweep = false, failRele
       }
       assert.ok(!['SET', 'DEL', 'HSETNX', 'HDEL', 'PEXPIRE', 'LPUSH', 'LTRIM', 'EXPIRE'].includes(op),
         'refresh mutations must be fenced at the Redis boundary');
-      if (op === 'GET' && [keys.HEALTH_VERDICT_SNAPSHOT_KEY, keys.HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY].includes(key)) {
+      if (op === 'GET' && (store.has(key) || String(key).startsWith(keys.HEALTH_VERDICT_SNAPSHOT_KEY)
+        || String(key).startsWith(keys.HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY))) {
         return { result: store.get(key) ?? null };
       }
       if (op === 'STRLEN') return { result: 100 };
@@ -81,7 +95,7 @@ function redisFixture({ holdFirstSweep = false, failFirstSweep = false, failRele
     return Response.json(results);
   };
   return {
-    started: started.promise, release: () => release.resolve(),
+    started: started.promise, release: () => release.resolve(), releaseHistory: () => history.resolve(),
     advance: (ms) => { now += ms; },
     get sweeps() { return sweeps; }, get lock() { return lock; },
     allowRelease: () => { failRelease = false; },
@@ -113,6 +127,50 @@ test('slow owner keeps concurrent misses pending without unowned sweeps', async 
   assert.equal(result.status, 200);
   assert.equal((await request()).status, 200);
   assert.equal(f.sweeps, 1, 'subsequent retry uses the owner snapshot');
+});
+
+test('waiters serve the last-known verdict as stale 200 while the owner refreshes', async () => {
+  const f = redisFixture({ holdSweepNumber: 2 });
+  const first = await request();
+  assert.equal(first.status, 200);
+  const published = await first.json();
+  // The live snapshot ages out; the retained copy does not.
+  f.advance(61_000);
+  const owner = request();
+  await f.started;
+  const followers = Promise.all(Array.from({ length: 3 }, request));
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  f.advance(3_100);
+  for (const response of await followers) {
+    assert.equal(response.status, 200, 'UptimeRobot and the capture scripts read non-2xx as down');
+    assert.match(response.headers.get('Cache-Control'), /no-store/);
+    const body = await response.json();
+    assert.equal(body.stale, true);
+    assert.equal(body.staleReason, 'REFRESH_PENDING');
+    assert.equal(body.status, published.status, 'status stays the verdict for keyword monitors');
+    assert.equal(body.checkedAt, published.checkedAt, 'checkedAt is the published verdict, not now');
+  }
+  assert.equal(f.sweeps, 2, 'waiters never sweep');
+  f.release();
+  const refreshed = await owner;
+  assert.equal(refreshed.status, 200);
+  assert.equal((await refreshed.json()).stale, undefined, 'the owner serves its own fresh verdict');
+});
+
+test('a last-known verdict older than its retention is not served', async () => {
+  const f = redisFixture({ holdSweepNumber: 2 });
+  assert.equal((await request()).status, 200);
+  f.advance(601_000);
+  const owner = request();
+  await f.started;
+  const follower = request();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  f.advance(3_100);
+  const response = await follower;
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).status, 'REFRESH_PENDING');
+  f.release();
+  assert.equal((await owner).status, 200);
 });
 
 test('failed owner releases its lease and the next request can refresh', async () => {
@@ -206,7 +264,8 @@ test('a lock acknowledgement arriving after lease expiry cannot start a sweep', 
   };
   const response = await request();
   assert.equal((await response.json()).status, 'REFRESH_PENDING');
-  assert.deepEqual(operations, ['GET', 'SET', 'EVAL']);
+  // Snapshot read, lease claim, release, then the last-known lookup (none here).
+  assert.deepEqual(operations, ['GET', 'SET', 'EVAL', 'GET']);
 });
 
 
@@ -247,7 +306,7 @@ function runLua(command, call) {
 }
 
 test('one Lua publication checks ownership once and writes both variants with the same TTL', () => {
-  const command = ['EVAL', keys.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT, '3', 'lease', 'full', 'compact', 'owner', 'full-json', 'compact-json', '30'];
+  const command = ['EVAL', keys.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT, '5', 'lease', 'full', 'compact', 'full-lk', 'compact-lk', 'owner', 'full-json', 'compact-json', '30', '600'];
   const calls = [];
   assert.equal(runLua(command, (args) => {
     calls.push(args);
@@ -257,6 +316,8 @@ test('one Lua publication checks ownership once and writes both variants with th
     ['get', 'lease'],
     ['set', 'full', 'full-json', 'EX', '30'],
     ['set', 'compact', 'compact-json', 'EX', '30'],
+    ['set', 'full-lk', 'full-json', 'EX', '600'],
+    ['set', 'compact-lk', 'compact-json', 'EX', '600'],
   ]);
   for (const token of [null, 'successor']) {
     const rejected = [];
@@ -287,14 +348,30 @@ test('Lua fences every grace/history/rollout mutation against expired and succes
   }
 });
 
-test('health awaits owned persistence rather than leaving writes in waitUntil', async () => {
-  const f = redisFixture();
+test('owned cleanup and history run in waitUntil and the lease outlives them', async () => {
+  const f = redisFixture({ holdHistory: true });
   const tasks = [];
-  const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'), {
+  const pending = handler(new Request('https://api.worldmonitor.app/api/health?compact=1'), {
     waitUntil: (task) => tasks.push(task),
   });
+  const response = await Promise.race([
+    pending,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('response waited for history persistence')), 1_000)),
+  ]);
   assert.equal(response.status, 200);
-  assert.deepEqual(tasks, []);
+  assert.equal(tasks.length, 1);
+  assert.ok(f.lock, 'the lease is held until the fenced background writes settle');
+  assert.ok(!f.mutations.includes('LPUSH'));
+  f.releaseHistory();
+  await Promise.all(tasks);
+  assert.ok(f.mutations.includes('LPUSH'), 'history lands under the owner lease');
+  assert.deepEqual(f.rejectedMutations, []);
+  assert.equal(f.lock, null);
+});
+
+test('without waitUntil the owner still finishes its fenced writes before returning', async () => {
+  const f = redisFixture();
+  assert.equal((await request()).status, 200);
   assert.ok(f.mutations.includes('LPUSH'));
   assert.equal(f.lock, null);
 });

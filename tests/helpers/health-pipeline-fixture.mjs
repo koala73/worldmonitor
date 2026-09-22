@@ -6,9 +6,16 @@ export function decodeHealthPipeline(body) {
   const wire = JSON.parse(body);
   const groups = wire.map((command) => {
     if (command[0] === 'EVAL' && command[1] === health.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
+      // KEYS: lease, full, compact, retained full, retained compact.
+      // ARGV: token, full json, compact json, live TTL, retained TTL.
+      const keyCount = Number(command[2]);
+      const [, full, compact, retainedFull, retainedCompact] = command.slice(3, 3 + keyCount);
+      const [, fullJson, compactJson, ttl, retainedTtl] = command.slice(3 + keyCount);
       return [
-        ['SET', command[4], command[7], 'EX', command[9]],
-        ['SET', command[5], command[8], 'EX', command[9]],
+        ['SET', full, fullJson, 'EX', ttl],
+        ['SET', compact, compactJson, 'EX', ttl],
+        ...(retainedFull ? [['SET', retainedFull, fullJson, 'EX', retainedTtl]] : []),
+        ...(retainedCompact ? [['SET', retainedCompact, compactJson, 'EX', retainedTtl]] : []),
       ];
     }
     if (command[0] === 'EVAL' && command[1] === health.HEALTH_VERDICT_MUTATION_SCRIPT) {

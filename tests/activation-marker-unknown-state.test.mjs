@@ -632,13 +632,17 @@ describe('#6152 review — the verdict cache cannot outlive the deadline it publ
     globalThis.fetch = async (url, init) => {
       for (const command of JSON.parse(init.body)) {
         if (command[0] === 'EVAL' && command[1] === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT) {
-          assert.equal(command[2], '3');
-          assert.equal(command[3], __testing__.HEALTH_VERDICT_REFRESH_LOCK_KEY);
-          // Inspect the logical SET protected by this script, excluding the
-          // refresh lock's independent expiry. Keep the TTL assertions below.
+          // KEYS: lease, full, compact, retained full, retained compact;
+          // ARGV: token, full, compact, live TTL, retained TTL. Inspect the two
+          // live snapshot SETs this script protects. The retained copies carry
+          // their own longer TTL and are refused at read time past a deadline.
+          const keyCount = Number(command[2]);
+          const [lease, full, compact] = command.slice(3, 3 + keyCount);
+          const [, fullJson, compactJson, ttl] = command.slice(3 + keyCount);
+          assert.equal(lease, __testing__.HEALTH_VERDICT_REFRESH_LOCK_KEY);
           sets.push(
-            ['SET', command[4], command[7], 'EX', command[9]],
-            ['SET', command[5], command[8], 'EX', command[9]],
+            ['SET', full, fullJson, 'EX', ttl],
+            ['SET', compact, compactJson, 'EX', ttl],
           );
         }
       }

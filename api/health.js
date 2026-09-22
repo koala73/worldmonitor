@@ -35,6 +35,7 @@ import {
   projectContentFreshnessForWire,
 } from './_content-freshness.js';
 import { assessContentAge } from './_content-age.js';
+import { readHumanitarianRetention } from './_humanitarian-retention.js';
 
 export const config = { runtime: 'edge' };
 
@@ -189,9 +190,19 @@ const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-
 const HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS = 30;
 const HEALTH_VERDICT_REFRESH_WAIT_ATTEMPTS = 45;
 const HEALTH_VERDICT_REFRESH_WAIT_MS = 3_000;
+// The last published verdict outlives the 60s snapshot so a request that loses
+// the refresh election answers 200 with that verdict, marked `stale`, instead
+// of a 503: UptimeRobot, scripts/capture-seed-recovery.mjs and
+// scripts/capture-resilience-energy-v2-acceptance.mjs all read any non-2xx as
+// down. Only a waiter with no prior verdict at all gets REFRESH_PENDING.
+const HEALTH_VERDICT_LAST_KNOWN_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:last-known`;
+const HEALTH_VERDICT_COMPACT_LAST_KNOWN_KEY = `${HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY}:last-known`;
+const HEALTH_VERDICT_LAST_KNOWN_TTL_SECONDS = 600;
+const HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS = 2_000;
 // Avoid starting a Redis HTTP request that cannot realistically complete
-// inside the remaining contention budget. Contention returns REFRESH_PENDING;
-// only failed Redis operations report REDIS_DOWN.
+// inside the remaining contention budget. Contention serves the last-known
+// verdict (or REFRESH_PENDING without one); only failed Redis operations
+// report REDIS_DOWN.
 const HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS = 100;
 // #6339 deploy-before-provisioning bridge. A production health sweep claims
 // this versioned deadline with SET NX, so the 24h window starts when the reader
@@ -215,10 +226,14 @@ const HEALTH_VERDICT_RELEASE_LOCK_SCRIPT = [
 
 // Fence publication as well as release: a paused owner can resume after its
 // lease expired and a successor already published a newer verdict.
+// The same fenced write refreshes the last-known copies (KEYS[4], KEYS[5]),
+// so a stale fallback is always a verdict some lease owner published.
 const HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT = [
   "if redis.call('get', KEYS[1]) ~= ARGV[1] then return nil end",
   "redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[4])",
   "redis.call('set', KEYS[3], ARGV[3], 'EX', ARGV[4])",
+  "redis.call('set', KEYS[4], ARGV[2], 'EX', ARGV[5])",
+  "redis.call('set', KEYS[5], ARGV[3], 'EX', ARGV[5])",
   "return 'OK'",
 ].join('\n');
 
@@ -475,6 +490,11 @@ const STANDALONE_KEYS = {
   // Meta-only aggregate: payloads are sharded by country, so use the seed-meta
   // key as the probe target rather than pretending one country key is global.
   comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
+  // Meta-only probes. The CPI and par-curve documents are sharded, and the
+  // canonical curve is large enough to time out a health GET.
+  usCpiMonthly:          'seed-meta:economic:us-cpi',
+  usTreasuryParYield:    'seed-meta:economic:us-treasury-par-yield',
+  usInterestRates:       'seed-meta:economic:us-interest-rates',
   // Authoritative shared cohort pointer read by all vulnerability RPCs. The
   // country and inverse manifests are compatibility projections; probing only
   // them can report OK while every public handler is unavailable.
@@ -1332,6 +1352,39 @@ const SEED_META = {
   eurostatIndProd:     { key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }, // daily cron, monthly data; 5d threshold matches TTL
   euGasStorage:      { key: 'seed-meta:economic:eu-gas-storage',      maxStaleMin: 2880 }, // daily seed (T+1); 2880min = 48h = 2x interval
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 4320 }, // daily seed (weekdays only); 4320min = 72h = covers Fri→Mon gap
+  usCpiMonthly: {
+    key: 'seed-meta:economic:us-cpi',
+    maxStaleMin: 4320, // daily macro-bundle tail; 72h covers one missed tick. CPI content age is separate.
+    activationKey: 'seed-activated:economic:us-cpi',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8480,
+      activationKey: 'seed-activated:economic:us-cpi',
+    },
+  },
+  usTreasuryParYield: {
+    key: 'seed-meta:economic:us-treasury-par-yield',
+    maxStaleMin: 4320, // daily macro-bundle tail; 72h covers one missed tick. Curve content age is separate.
+    activationKey: 'seed-activated:economic:us-treasury-par-yield',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8480,
+      activationKey: 'seed-activated:economic:us-treasury-par-yield',
+    },
+  },
+  usInterestRates: {
+    key: 'seed-meta:economic:us-interest-rates',
+    maxStaleMin: 4320, // daily macro-bundle tail; 72h covers one missed tick. DFF content age is separate.
+    activationKey: 'seed-activated:economic:us-interest-rates',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8485,
+      activationKey: 'seed-activated:economic:us-interest-rates',
+    },
+  },
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
@@ -1634,6 +1687,12 @@ const ON_DEMAND_KEYS = new Set([
   // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
+  // #8480. The macro bundle can ship the reader before the tail sections
+  // publish. Each marker is written after the first successful publish.
+  'usCpiMonthly',
+  'usTreasuryParYield',
+  // #8485. Same deploy-before-first-tick bridge for the US rate basket.
+  'usInterestRates',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
   // permanent marker after its first successful canonical publish; health is
   // strict from that point onward.
@@ -1738,6 +1797,9 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
+  usCpiMonthly: SEED_META.usCpiMonthly.activationKey,
+  usTreasuryParYield: SEED_META.usTreasuryParYield.activationKey,
+  usInterestRates: SEED_META.usInterestRates.activationKey,
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,
@@ -1880,7 +1942,8 @@ function staleContentGraceCandidateUntil(evidence, now) {
  * `claimCommands` must be awaited: their HGET replies decide what deadline (if
  * any) this response publishes. `cleanupCommands` only reap state for sources
  * that have recovered, so nothing in this response depends on them and they are
- * awaited before releasing the refresh lease so recovery cannot lose its cleanup.
+ * dispatched in the background; the refresh lease is released only after they
+ * settle, so their token-fenced writes still see this owner's lease.
  *
  * Claims are gated on the CLASSIFIED status, not on content evidence alone.
  * Several classifier branches (REDIS_PARTIAL, EMPTY, SEED_ERROR, STALE_SEED,
@@ -2173,6 +2236,9 @@ const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
 ]);
 
 const COMPANY_MONITORING_WORKER_STATUSES = new Set(['ok', 'error']);
+const COMPANY_MONITORING_CLAIM_FAILURE_KINDS = new Set([
+  'timeout', 'network', 'http_transient', 'http_error', 'invalid_response', 'unknown',
+]);
 const COMPANY_MONITORING_SCAN_OUTCOMES = new Set([
   'starting', 'disabled', 'idle', 'completed', 'non_reassuring', 'fenced',
   'replayed', 'claim_error', 'finalize_error',
@@ -2199,7 +2265,7 @@ function projectCompanyMonitoringWorkerSubsystem(raw, outcomes) {
   return { status: raw.status, outcome: raw.outcome };
 }
 
-function projectCompanyMonitoringWorkerControl(meta, enabled) {
+function projectCompanyMonitoringWorkerControl(meta, enabled, now) {
   if (!enabled || !COMPANY_MONITORING_WORKER_STATUSES.has(meta?.status)
     || !COMPANY_MONITORING_WORKER_OUTCOMES.has(meta?.outcome)) return null;
   let subsystems;
@@ -2215,6 +2281,21 @@ function projectCompanyMonitoringWorkerControl(meta, enabled) {
       COMPANY_MONITORING_ADMISSION_OUTCOMES,
     );
     if (!scan || !admission) return null;
+    const failure = meta.subsystems.scan.claimFailure;
+    if (scan.outcome === 'claim_error' && COMPANY_MONITORING_CLAIM_FAILURE_KINDS.has(failure?.kind)
+      && (failure.httpStatus === null
+        || (Number.isInteger(failure.httpStatus) && failure.httpStatus >= 400 && failure.httpStatus <= 599))) {
+      scan.claimFailure = {
+        kind: failure.kind,
+        httpStatus: failure.httpStatus,
+        consecutiveFailures: Number.isSafeInteger(failure.consecutiveFailures) && failure.consecutiveFailures > 0
+          ? Math.min(failure.consecutiveFailures, 9_999_999_999) : null,
+        lastHealthyAt: Number.isSafeInteger(failure.lastHealthyAt) && failure.lastHealthyAt > 0
+          && Number.isSafeInteger(meta.observedAt) && meta.observedAt === meta.fetchedAt
+          && failure.lastHealthyAt <= meta.observedAt && meta.observedAt <= now
+          ? failure.lastHealthyAt : null,
+      };
+    }
     subsystems = { scan, admission };
   }
   const counters = {};
@@ -2392,7 +2473,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
     : null;
-  const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl);
+  const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl, now);
   const resilienceCacheState = seedCfg.requireResilienceCacheState
     ? assessResilienceCacheState(meta)
     : null;
@@ -3054,6 +3135,19 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Closed, bounded projection from the worker's seed-meta. It contains only
   // control-loop state and counters, never work or customer identifiers.
   if (workerControl) entry.workerControl = workerControl;
+  const claimFailure = workerControl?.subsystems?.scan?.claimFailure;
+  if (entry.status === 'SEED_ERROR' && hasData && records > 0
+    && workerControl?.status === 'error' && workerControl.outcome === 'claim_error'
+    && workerControl.subsystems.scan.status === 'error'
+    && workerControl.subsystems.admission.status === 'ok'
+    && ['disabled', 'idle', 'admission_recorded', 'admission_replayed'].includes(workerControl.subsystems.admission.outcome)
+    && claimFailure?.consecutiveFailures >= 1 && claimFailure.consecutiveFailures < 3
+    && ((['timeout', 'network'].includes(claimFailure.kind) && claimFailure.httpStatus === null)
+      || (claimFailure.kind === 'http_transient' && [408, 429, 500, 502, 503, 504].includes(claimFailure.httpStatus)))
+    && claimFailure.lastHealthyAt !== null && claimFailure.lastHealthyAt <= now) {
+    const deadline = claimFailure.lastHealthyAt + seedCfg.maxStaleMin * 60_000;
+    if (now < deadline) entry.workerControlPendingUntil = new Date(deadline).toISOString();
+  }
   if (resilienceCacheState) entry.cacheState = resilienceCacheState;
   if (failedDatasets?.length > 0) entry.failedDatasets = failedDatasets;
   // Surface content-age fields when seeder opted in (presence of
@@ -3094,6 +3188,15 @@ function classifyKey(name, redisKey, opts, ctx) {
   // proof is checked here, even when an earlier stale/error verdict won. This
   // proves that the current request found a real served payload; freshness is
   // deliberately left to the unchanged diagnostic status.
+  if (name === 'humanitarianSummary' && ctx.humanitarianRetention?.until > now) {
+    entry.containmentUntil = new Date(ctx.humanitarianRetention.until).toISOString();
+  }
+  if (name === 'humanitarianSummary') {
+    const sourceMeta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
+    for (const field of ['lastSourceAttemptAt', 'lastSuccessAt', 'retryAt']) {
+      if (Number.isSafeInteger(sourceMeta?.[field]) && sourceMeta[field] > 0) entry[field] = sourceMeta[field];
+    }
+  }
   ctx.containmentEvidenceByName?.set(name, {
     status,
     records: hasData ? metaCount : null,
@@ -3114,6 +3217,8 @@ function classifyKey(name, redisKey, opts, ctx) {
       && (!contentAge || (Number.isFinite(contentAge.newestItemAt) && contentAge.newestItemAt <= now
         && Number.isFinite(contentAge.contentAgeMin) && contentAge.contentAgeMin >= 0))
       && resilienceCacheState?.ok !== false
+      && (name !== 'humanitarianSummary' || (ctx.humanitarianRetention?.until > now
+        && ctx.humanitarianRetention.records === metaCount))
       // These records include missing/stale input placeholders. A positive
       // count alone cannot prove that the reader serves a usable index.
       && !seedCfg?.enforceInputFreshUntil,
@@ -3171,6 +3276,15 @@ const STATUS_COUNTS = {
   CHINA_UNAVAILABLE: 'crit',
   EMPTY: 'crit',
   EMPTY_DATA: 'crit',
+  // Tenant-relay gateway gate (probeRelayGatewayGate). Both crit statuses mean
+  // checkout / customer-portal / notification-channels are dead right now:
+  // MISCONFIGURED is the Vercel half of #8208 (the build cannot see the
+  // secret), REJECTED is the Convex half (the deployed gate does not admit
+  // it). UNREACHABLE is a transport verdict, not a credential one, and stays
+  // a warning so a single Convex blip inside one 60 s snapshot does not page.
+  RELAY_GATE_MISCONFIGURED: 'crit',
+  RELAY_GATE_REJECTED: 'crit',
+  RELAY_GATE_UNREACHABLE: 'warn',
 };
 
 function healthStatusBucket(entry, now) {
@@ -3178,12 +3292,19 @@ function healthStatusBucket(entry, now) {
     && typeof entry.chinaCoveragePendingUntil === 'string'
     && !isExpiredDeadline(entry.chinaCoveragePendingUntil, now)) return 'ok';
   if (entry?.status === 'SEED_ERROR'
-    && typeof entry.sourceFailurePendingUntil === 'string'
-    && !isExpiredDeadline(entry.sourceFailurePendingUntil, now)) return 'ok';
+    && [entry.sourceFailurePendingUntil, entry.workerControlPendingUntil]
+      .some(deadline => typeof deadline === 'string' && !isExpiredDeadline(deadline, now))) return 'ok';
   if (
     entry?.status === 'STALE_CONTENT'
     && Object.prototype.hasOwnProperty.call(entry, 'staleContentGraceUntil')
     && !isExpiredDeadline(entry.staleContentGraceUntil, now)
+  ) return 'ok';
+  // A relay transport blip is pending, not a problem, until its bounded
+  // grace passes (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).
+  if (
+    entry?.status === 'RELAY_GATE_UNREACHABLE'
+    && typeof entry.transportGraceUntil === 'string'
+    && !isExpiredDeadline(entry.transportGraceUntil, now)
   ) return 'ok';
   return STATUS_COUNTS[entry?.status] ?? 'warn';
 }
@@ -3506,7 +3627,7 @@ function composeScorecardReadModelStatus(entry, raw, readError = false) {
   };
 }
 
-function parseHealthVerdictSnapshot(raw, now, { requireChecks = true } = {}) {
+function parseHealthVerdictSnapshot(raw, now, { requireChecks = true, maxAgeMs = HEALTH_VERDICT_SNAPSHOT_TTL_MS } = {}) {
   if (typeof raw !== 'string') return null;
   const snapshot = parseRedisValue(raw);
   if (!snapshot || typeof snapshot !== 'object') return null;
@@ -3520,7 +3641,7 @@ function parseHealthVerdictSnapshot(raw, now, { requireChecks = true } = {}) {
   const ageMs = now - checkedAtMs;
   // Redis expiry is the primary bound; this is a defensive guard against a
   // malformed/manual snapshot write or a future TTL regression.
-  if (!Number.isFinite(checkedAtMs) || ageMs < 0 || ageMs > HEALTH_VERDICT_SNAPSHOT_TTL_MS) return null;
+  if (!Number.isFinite(checkedAtMs) || ageMs < 0 || ageMs > maxAgeMs) return null;
   return snapshot;
 }
 
@@ -3577,8 +3698,10 @@ const ENTRY_SOFTENING_DEADLINES = [
   { field: 'contentFreshnessPendingUntil', kind: 'content', status: null },
   { field: 'staleContentGraceUntil', kind: 'content', status: null },
   { field: 'sourceFailurePendingUntil', kind: 'source', status: 'SEED_ERROR' },
+  { field: 'workerControlPendingUntil', kind: 'source', status: 'SEED_ERROR' },
   { field: 'chinaCoveragePendingUntil', kind: 'source', status: null },
   { field: 'containmentUntil', kind: 'source', status: null },
+  { field: 'transportGraceUntil', kind: 'source', status: 'RELAY_GATE_UNREACHABLE' },
 ];
 
 function entryDeadlineRaw(entry, { field, status }) {
@@ -3644,7 +3767,7 @@ function nearestActivationDeadlineMs(snapshot, now) {
  *
  * Expire at the deadline instead of retaining a softened verdict that every
  * reader must reject through hasExpiredActivationGrace. The next request
- * elects a refresher; concurrent waiters use its result or return pending.
+ * elects a refresher; concurrent waiters use its result or the retained last-known verdict.
  *
  * Floor, never ceil: the entry must die at or before the deadline, not after.
  * Redis EX has a 1s granularity, so a sub-second overhang remains possible —
@@ -3673,6 +3796,443 @@ function snapshotTtlSeconds(snapshot, now) {
  * ROLLOUT_PENDING is never contained (#6059): it stays availability-affecting
  * until its deadline promotes a missing payload to critical.
  */
+// ── Tenant-relay gateway gate probe (#8208 / #8217) ──────────────────────
+//
+// #8208 took checkout, the customer portal and notification channels down for
+// nine hours while every credential existed in the right store: the Vercel
+// build predated CONVEX_TENANT_RELAY_SECRET, so `create-checkout` answered its
+// env-missing 503 before reaching Convex, and the Convex deploy predated it
+// too, so every `/relay/*` route answered 401. Presence in a store proves
+// nothing; only the deployed gate admitting the deployed secret does.
+//
+// So the sweep sends ONE credentialed, body-less POST to the gateway-role
+// route. The relay's own contract makes that safe and decisive
+// (convex/http.ts `authorizeTenantRelay` → `parseJsonObjectBody`): a wrong or
+// missing bearer is `401 UNAUTHORIZED`; an admitted bearer with `{}` is
+// `400 MISSING_FIELDS`, returned before any Convex mutation runs. Anything
+// else — network error, timeout, 5xx, an unexpected 200 — is a transport
+// verdict (`RELAY_GATE_UNREACHABLE`, warn), never a credential one, so a
+// Convex stall cannot read as "credential fine" and a credential fault cannot
+// hide behind a stall.
+//
+// Cost: the probe lives inside the verdict recompute, which the snapshot TTL
+// and refresh lock already bound to one run per 60 s regardless of poll
+// volume (~115k `?compact=1` reads/day), and it is skipped entirely when the
+// gateway env is absent outside production (previews, local, the existing
+// test suites). On a production build a missing var is itself the fault.
+//
+// Counted in `summary.total` whenever it applies, so the endpoint's partition
+// invariant (`ok + warn + onDemandWarn + crit == total`) holds; the published
+// examples stay pinned to the registry size by the docs-stats gate and the
+// docs state that a production build reports one more. Its verdict lands in
+// compact `problems`, which is what the 15-minute seed-freshness monitor
+// fails on (scripts/check-seed-freshness.mjs findOperationalProblems).
+const RELAY_GATEWAY_GATE_CHECK_NAME = 'relayGatewayGate';
+const RELAY_GATEWAY_GATE_ROUTE = '/relay/create-checkout';
+const RELAY_GATEWAY_GATE_TIMEOUT_MS = 4_000;
+const RELAY_GATEWAY_GATE_USER_AGENT = 'worldmonitor-health-relay-gate/1.0';
+const RELAY_GATEWAY_GATE_ENV = ['CONVEX_SITE_URL', 'CONVEX_TENANT_RELAY_SECRET'];
+
+// The same resolution the gateways use (api/create-checkout.ts,
+// api/customer-portal.ts, api/notification-channels.ts): CONVEX_SITE_URL, or
+// the `.convex.site` twin of CONVEX_URL. A deployment configured through
+// CONVEX_URL alone is a supported shape and must not read as misconfigured.
+function resolveRelayGatewaySiteUrl() {
+  return process.env.CONVEX_SITE_URL
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+}
+
+/** Names of the gateway inputs this deployment lacks, in RELAY_GATEWAY_GATE_ENV terms. */
+function relayGatewayGateMissingEnv() {
+  const missing = [];
+  if (!resolveRelayGatewaySiteUrl()) missing.push('CONVEX_SITE_URL');
+  if (!process.env.CONVEX_TENANT_RELAY_SECRET) missing.push('CONVEX_TENANT_RELAY_SECRET');
+  return missing;
+}
+// Last probe verdict, shared by every concurrent sweep. TTL equals the verdict
+// snapshot TTL so the gate is re-asked exactly as often as the verdict itself.
+// Scoped per deployment exactly like the verdict snapshot keys: preview and
+// production share one Upstash, so a preview's verdict or lease must never be
+// reused by production, nor a production verdict read by a preview.
+// `healthVerdictRedisKey` folds VERCEL_ENV and the commit SHA in, and these
+// keys are sent verbatim (no `sweepKey` prefixing), the same as the snapshot.
+const RELAY_GATEWAY_GATE_PROBE_KEY = healthVerdictRedisKey(
+  'health:relay-gate:v1',
+  process.env.VERCEL_ENV,
+  process.env.VERCEL_GIT_COMMIT_SHA,
+);
+const RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS;
+// Transport grace. A single timeout or 5xx from the relay is not yet evidence
+// of anything: the first RELAY_GATE_UNREACHABLE verdict carries a
+// `transportGraceUntil` deadline during which it buckets as `ok` (compact
+// `pending`), and only a stall that is still there when the deadline passes
+// becomes an operational problem. Three verdict windows is enough for one
+// blip to clear and short enough that a real outage still pages inside the
+// monitor's 15-minute cadence. The verdict is kept in Redis for the grace
+// PLUS the freshness window (freshness is judged on `evaluatedAt`, not the
+// Redis TTL) so the streak survives between windows.
+const RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS = 3 * 60 * 1_000;
+// The streak must survive at least one operational-monitor interval with NO
+// other traffic: `seed-freshness-monitor.yml` polls every 15 minutes, and if
+// the previous verdict had already expired by then, every run would see a
+// "first sighting", mint a fresh grace and park a dead relay in `pending`
+// forever. Retention = freshness window + grace + one monitor interval +
+// slack; freshness itself is still judged on `evaluatedAt`.
+const SEED_FRESHNESS_MONITOR_INTERVAL_MS = 15 * 60 * 1_000;
+const RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS =
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS
+  + (RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS + SEED_FRESHNESS_MONITOR_INTERVAL_MS + 60_000) / 1_000;
+
+/** The previous verdict regardless of freshness, for streak continuity. */
+function parsePreviousRelayGatewayGate(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && typeof parsed.status === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function withTransportGrace(fresh, previous, now) {
+  if (fresh.status !== 'RELAY_GATE_UNREACHABLE') return fresh;
+  // The streak anchor survives its own deadline: after the grace lapses it
+  // rides in `transportGraceExpiredAt`, so an unbroken run of unreachable
+  // verdicts reads as one continuous outage for as long as the predecessor is
+  // retained (RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS); a gap longer than
+  // that evicts it and the next sighting is a first one.
+  // Only an unreachable predecessor is carried — any other verdict in between
+  // (including OK) clears the anchor, and the next failure is a first
+  // sighting that earns a fresh grace.
+  const carried = previous?.status === 'RELAY_GATE_UNREACHABLE'
+    ? [previous.transportGraceUntil, previous.transportGraceExpiredAt]
+      .find((raw) => typeof raw === 'string' && Number.isFinite(Date.parse(raw))) ?? null
+    : null;
+  const deadline = carried ?? new Date(now + RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS).toISOString();
+  // Publish it as a softening deadline ONLY while it is still in force.
+  // `transportGraceUntil` is registered in ENTRY_SOFTENING_DEADLINES, so an
+  // expired one makes hasExpiredActivationGrace reject every snapshot that
+  // carries it and snapshotTtlSeconds clip the TTL to a second — turning a
+  // persistent relay outage into a full Redis sweep on every single health
+  // poll instead of one warm read (#8282 review). The relay itself is not
+  // re-probed at that rate: readOrProbeRelayGatewayGate reuses a cached
+  // verdict inside its own freshness window before it ever takes the lease.
+  // That holds whenever a reusable verdict is in the cache — so not when the
+  // stored record is an unprobed follower fallback, and not when a probe's
+  // own publish failed. Both leave the next sweep to probe again.
+  return isExpiredDeadline(deadline, now)
+    ? { ...fresh, transportGraceExpiredAt: deadline }
+    : { ...fresh, transportGraceUntil: deadline };
+}
+
+function parseCachedRelayGatewayGate(raw, now) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || typeof parsed.status !== 'string') return null;
+  // A persisted follower fallback is a predecessor for the grace streak,
+  // never a verdict to serve warm: nobody probed, so the next sweep must.
+  if (parsed.probed === false) return null;
+  const evaluatedAt = Date.parse(parsed.evaluatedAt ?? '');
+  if (!Number.isFinite(evaluatedAt) || evaluatedAt > now) return null;
+  if (now - evaluatedAt >= RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS * 1_000) return null;
+  return parsed;
+}
+
+// The owner's publish is guarded by its lease token (KEYS[1] = lease,
+// KEYS[2] = verdict): an owner paused past its 10 s lease resumes to find a
+// successor that already probed and published, and an unconditional SET here
+// would let its OLDER verdict overwrite the newer one — an old OK masking a
+// new rejection, or an old failure replacing a recovery. Losing the lease
+// means losing the right to publish; the sweep still reports what it saw.
+const RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT = [
+  "if redis.call('get', KEYS[1]) == ARGV[1] then",
+  "  return redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 0',
+].join('\n');
+
+// Compare-and-set for the follower fallback: publish only if the key still
+// holds what the follower last read (ARGV[1], '' for absent), so a verdict
+// the owner landed between the last poll and this write is never clobbered.
+const RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT = [
+  "local current = redis.call('get', KEYS[1])",
+  "if current == false then current = '' end",
+  'if current == ARGV[1] then',
+  "  return redis.call('set', KEYS[1], ARGV[2], 'EX', ARGV[3])",
+  'end',
+  'return 0',
+].join('\n');
+
+// Single-flight population. When no verdict is cached, exactly one sweep may
+// probe: it takes a short `SET NX` lease, probes, publishes the verdict and
+// releases. Every other sweep that finds the lease taken polls for the
+// published verdict for as long as the probe itself may run; if none appears
+// in that budget it reports the gate as unclassified (`RELAY_GATE_UNREACHABLE`,
+// warn) rather than either probing itself or vouching for a credential it
+// never checked. The lease outlives the probe budget so a crashed owner
+// cannot wedge the gate for longer than one snapshot.
+const RELAY_GATEWAY_GATE_LEASE_KEY = `${RELAY_GATEWAY_GATE_PROBE_KEY}:lease`;
+const RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS = 10;
+const RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS = 250;
+// Redis budget for the cache read, the lease and the verdict publish.
+const RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS = 2_000;
+// A follower must outwait the owner's WHOLE critical path — the relay probe,
+// then the verdict publish (its own Redis timeout), plus polling slack —
+// otherwise a follower that happens to be the 15-minute monitor request
+// gives up a moment before the verdict lands and pages a false
+// RELAY_GATE_UNREACHABLE. The lease TTL below stays longer than this wait.
+const RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS =
+  RELAY_GATEWAY_GATE_TIMEOUT_MS + RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS + 1_000;
+
+async function readOrProbeRelayGatewayGate({
+  now,
+  // Cache validation reads the live clock, not the sweep's fixed `now`: a
+  // follower polls for a verdict the lease owner publishes AFTER this sweep
+  // began, and that verdict's `evaluatedAt` is later than `now`. Validating
+  // against `now` would reject it as future-dated and persist a false
+  // RELAY_GATE_UNREACHABLE in both snapshots. `now` still stamps any verdict
+  // this sweep creates itself.
+  clock = Date.now,
+  key,
+  leaseKey,
+  ctx,
+  fetchImpl,
+  followerWaitMs = RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+  followerPollMs = RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  // A deployment that would not report the gate at all (no gateway env
+  // outside a production build) touches neither the cache nor the lease.
+  if (!probeRelayGatewayGateApplies()) return null;
+  let lastRaw = null;
+  const readCached = async () => {
+    const cached = await redisPipeline([['GET', key]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    lastRaw = cached?.[0]?.result ?? null;
+    return parseCachedRelayGatewayGate(lastRaw, clock());
+  };
+  const reused = await readCached();
+  if (reused) return reused;
+  // Whatever was cached, fresh or not, is the previous verdict for the
+  // transport-grace streak (see withTransportGrace).
+  const previous = parsePreviousRelayGatewayGate(lastRaw);
+
+  // The lease carries a per-sweep token and is released with the same
+  // compare-and-delete script as the verdict refresh lock: if the TTL lapses
+  // mid-probe and another sweep takes the lease, an unconditional DEL here
+  // would free the successor's lease and let a third sweep overlap it.
+  const leaseToken = `${now}:${crypto.randomUUID()}`;
+  const lease = await redisPipeline(
+    [['SET', leaseKey, leaseToken, 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
+    RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+    true,
+  ).catch(() => null);
+  const ownsLease = lease?.[0]?.result === 'OK';
+
+  // The follower path: wait for whoever holds the lease to publish, then
+  // adopt that verdict; if none lands in the probe budget, report the gate
+  // unclassified with transport grace. Taken by a sweep that lost the lease
+  // race AND by an owner that lost its lease mid-probe (below).
+  // `own` is set by an owner whose publish result was indeterminate: it did
+  // probe, so if no newer verdict appears its own observation stands rather
+  // than an unclassified fallback it would have to invent.
+  const follow = async (own = null) => {
+    const deadline = Date.now() + followerWaitMs;
+    while (Date.now() < deadline) {
+      await sleep(followerPollMs);
+      const published = await readCached();
+      if (published) return published;
+    }
+    if (own) return own;
+    if (!probeRelayGatewayGateApplies()) return null;
+    // Same grace as a directly probed unreachable verdict: one slow or crashed
+    // owner is a single observation, not yet a problem. `lastRaw` is the last
+    // cached verdict the polls saw, so a carried deadline still carries.
+    const fallback = withTransportGrace({
+      role: 'gateway',
+      route: RELAY_GATEWAY_GATE_ROUTE,
+      evaluatedAt: new Date(now).toISOString(),
+      status: 'RELAY_GATE_UNREACHABLE',
+      error: 'another sweep holds the probe lease and published no verdict within the probe budget',
+      hint: 'This sweep did not probe the gate itself (single-flight). Persistent across sweeps = the probing sweep keeps timing out against Convex.',
+    }, parsePreviousRelayGatewayGate(lastRaw), now);
+    // Persist the deadline, not just the snapshot: if the owner died without
+    // publishing and nothing else sweeps, the next monitor run (one interval
+    // later, after the snapshot expired) would otherwise find no predecessor
+    // and mint a fresh grace — one more interval before a dead relay pages.
+    // `probed: false` keeps it a predecessor only (see parseCachedRelayGatewayGate).
+    const published = await redisPipeline([[
+      'EVAL',
+      RELAY_GATEWAY_GATE_FALLBACK_PUBLISH_SCRIPT,
+      '1',
+      key,
+      typeof lastRaw === 'string' ? lastRaw : '',
+      JSON.stringify({ ...fallback, probed: false }),
+      String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    // Anything but an explicit 'OK' means a verdict may have landed between
+    // this sweep's last poll and the CAS. Returning the fabricated fallback
+    // then lets handleHealth write it over the owner's real answer, hiding a
+    // fresh rejection as pending for a whole monitor run (#8282 review).
+    if (published?.[0]?.result !== 'OK') {
+      const winner = await readCached();
+      if (winner) return winner;
+    }
+    return fallback;
+  };
+
+  if (!ownsLease) return follow();
+
+  try {
+    const probed = await probeRelayGatewayGate({ now, fetchImpl });
+    if (!probed) return null;
+    const fresh = withTransportGrace(probed, previous, now);
+    // Publish before releasing so a follower never sees a free lease and an
+    // empty cache in the same instant, and only while the lease still holds
+    // this sweep's token (see RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT).
+    // Retained past the freshness window so the next sweep can still see
+    // this verdict as its predecessor.
+    const published = await redisPipeline([[
+      'EVAL',
+      RELAY_GATEWAY_GATE_OWNER_PUBLISH_SCRIPT,
+      '2',
+      leaseKey,
+      key,
+      leaseToken,
+      JSON.stringify(fresh),
+      String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    // Only an explicit 'OK' proves this verdict landed while the lease was
+    // still ours. A refusal (0) means the lease lapsed mid-probe and a
+    // successor owns the gate; an indeterminate result (timeout, error,
+    // malformed reply) may hide the same thing. Either way this sweep's
+    // verdict may be the older one, and handleHealth would write it into the
+    // health snapshot for the snapshot TTL — so follow the current owner. On
+    // an indeterminate result the own verdict stands if nothing newer lands.
+    const result = published?.[0]?.result;
+    if (result === 'OK') return fresh;
+    return follow(result === 0 ? null : fresh);
+  } finally {
+    const release = redisPipeline([[
+      'EVAL',
+      HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
+      '1',
+      leaseKey,
+      leaseToken,
+    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(release);
+    else await release;
+  }
+}
+
+/** True when this deployment would report the gate at all (see probeRelayGatewayGate's omit rule). */
+function probeRelayGatewayGateApplies() {
+  const configured = relayGatewayGateMissingEnv().length === 0;
+  const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+  return configured || isProductionBuild;
+}
+
+// The default forwards through a wrapper rather than capturing `globalThis.fetch`
+// itself: on Edge runtimes the native implementation requires its global
+// receiver, and a detached call throws — which would have read here as
+// RELAY_GATE_UNREACHABLE on every sweep. AGENTS.md bans `fetch.bind` for the
+// stale-reference reason; the arrow keeps both the receiver and the current
+// (possibly wrapped) global.
+async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+  const missing = relayGatewayGateMissingEnv();
+  const base = {
+    role: 'gateway',
+    route: RELAY_GATEWAY_GATE_ROUTE,
+    evaluatedAt: new Date(now).toISOString(),
+  };
+  if (missing.length > 0) {
+    // "Production build" means a build Vercel is actually running (`VERCEL=1`
+    // is the platform's own system variable, present at runtime), in the
+    // production environment. Suites that set VERCEL_ENV=production on a
+    // laptop to model rollout semantics carry no tenant secret and must keep
+    // reading as they did; a missing var only becomes the fault on the build
+    // that serves paying customers.
+    const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+    if (!isProductionBuild) return null;
+    return {
+      ...base,
+      status: 'RELAY_GATE_MISCONFIGURED',
+      missing,
+      hint: `This production build cannot see ${missing.map((name) => (name === 'CONVEX_SITE_URL' ? 'CONVEX_SITE_URL (or CONVEX_URL)' : name)).join(', ')}; the gateways answer 503 before reaching Convex. Set the value, then push a NEW commit — a same-commit redeploy is cancelled by scripts/vercel-ignore.sh (#8216).`,
+    };
+  }
+  // The bearer is the tenant secret, so it never leaves over anything but
+  // TLS: a malformed or `http:` CONVEX_SITE_URL is a misconfiguration, not a
+  // transport failure, and is reported without a request being made.
+  // The target is built exactly as the gateways build theirs — the configured
+  // string with the route appended (api/create-checkout.ts:172) — so a value
+  // carrying a path or a trailing slash is probed at the same endpoint the
+  // paying path would hit, not at a normalised origin that may be healthy
+  // while the real one is not. Parsing is for the https check only.
+  let target;
+  try {
+    const configured = resolveRelayGatewaySiteUrl();
+    const site = new URL(configured);
+    if (site.protocol !== 'https:') throw new Error(`protocol ${site.protocol}`);
+    target = `${configured}${RELAY_GATEWAY_GATE_ROUTE}`;
+  } catch (error) {
+    const isProductionBuild = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
+    if (!isProductionBuild) return null;
+    return {
+      ...base,
+      status: 'RELAY_GATE_MISCONFIGURED',
+      invalid: ['CONVEX_SITE_URL'],
+      error: String(error?.message ?? error),
+      hint: 'CONVEX_SITE_URL must be an https: origin; the gateway credential is never sent over plaintext, so no probe was made.',
+    };
+  }
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await fetchImpl(target, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CONVEX_TENANT_RELAY_SECRET}`,
+        'User-Agent': RELAY_GATEWAY_GATE_USER_AGENT,
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(RELAY_GATEWAY_GATE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    return {
+      ...base,
+      status: 'RELAY_GATE_UNREACHABLE',
+      latencyMs: Date.now() - startedAt,
+      error: String(error?.message ?? error),
+      hint: 'The Convex relay did not answer the gate probe; a credential verdict needs a reachable gate. Persistent over several sweeps = Convex outage or a wrong CONVEX_SITE_URL.',
+    };
+  }
+  const latencyMs = Date.now() - startedAt;
+  let body = null;
+  try { body = await response.json(); } catch { /* non-JSON is classified by status alone */ }
+  if (response.status === 401) {
+    return {
+      ...base,
+      status: 'RELAY_GATE_REJECTED',
+      httpStatus: 401,
+      latencyMs,
+      hint: 'The deployed Convex gate does not admit this build\'s CONVEX_TENANT_RELAY_SECRET. Either side can be stale: a value written after the last `convex deploy` reads as undefined inside deployed functions until the next push (#8217). Redeploy Convex, then confirm this check returns OK.',
+    };
+  }
+  if (response.status === 400 && body?.error === 'MISSING_FIELDS') {
+    return { ...base, status: 'OK', httpStatus: 400, latencyMs };
+  }
+  return {
+    ...base,
+    status: 'RELAY_GATE_UNREACHABLE',
+    httpStatus: response.status,
+    latencyMs,
+    error: typeof body?.error === 'string' ? body.error : `unexpected HTTP ${response.status}`,
+    hint: 'The gate answered something other than 401 or 400 MISSING_FIELDS, so this sweep cannot classify the credential. Persistent over several sweeps = relay contract drift or a Convex fault.',
+  };
+}
+
 function computeOverallStatus(counts, totalChecks) {
   const realWarnCount = counts.warn - counts.onDemandWarn;
   const containedWarnCount = Number.isInteger(counts.containedWarn)
@@ -3866,7 +4426,7 @@ function buildCompactVerdictSnapshot(snapshot) {
   return healthResponseBody(snapshot, true);
 }
 
-function healthResponse(snapshot, compact, headers) {
+function healthResponse(snapshot, compact, headers, { stale = false } = {}) {
   let responseHeaders = headers;
   if (compact) {
     const { 'CF-Cache-Status': _bypassMarker, ...base } = headers;
@@ -3877,7 +4437,11 @@ function healthResponse(snapshot, compact, headers) {
     };
   }
 
-  return new Response(JSON.stringify(healthResponseBody(snapshot, compact), null, compact ? 0 : 2), {
+  const body = healthResponseBody(snapshot, compact);
+  // `status` stays the verdict so keyword monitors keep matching; `stale`
+  // tells a reader that `checkedAt` predates this response's refresh window.
+  if (stale) Object.assign(body, { stale: true, staleReason: 'REFRESH_PENDING' });
+  return new Response(JSON.stringify(body, null, compact ? 0 : 2), {
     status: 200,
     headers: responseHeaders,
   });
@@ -3889,6 +4453,21 @@ function healthRefreshPendingResponse(headers) {
     error: 'Health refresh is pending. Retry shortly.',
     retryAfterSeconds: 3,
   }, 503, { ...headers, 'Retry-After': '3' });
+}
+
+// A request that does not own the refresh lease never sweeps. It serves the
+// last published verdict as stale; only without one does it answer 503. A
+// last-known verdict past an activation deadline is refused for the same
+// reason a fresh snapshot is (hasExpiredActivationGrace).
+async function lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow) {
+  const key = compact ? HEALTH_VERDICT_COMPACT_LAST_KNOWN_KEY : HEALTH_VERDICT_LAST_KNOWN_KEY;
+  const result = await redisPipeline([['GET', key]], HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS, true).catch(() => null);
+  const snapshot = result?.[0]?.error ? null : parseHealthVerdictSnapshot(result?.[0]?.result, snapshotNow(), {
+    requireChecks: !compact,
+    maxAgeMs: HEALTH_VERDICT_LAST_KNOWN_TTL_SECONDS * 1_000,
+  });
+  if (!snapshot || hasExpiredActivationGrace(snapshot, snapshotNow())) return healthRefreshPendingResponse(headers);
+  return healthResponse(snapshot, compact, headers, { stale: true });
 }
 
 export async function handleHealth(req, ctx, options = {}) {
@@ -4069,7 +4648,7 @@ export async function handleHealth(req, ctx, options = {}) {
         ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
         if (ownsSnapshotRefreshLock) break;
       }
-      if (!ownsSnapshotRefreshLock) return healthRefreshPendingResponse(headers);
+      if (!ownsSnapshotRefreshLock) return await lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow);
     }
   } catch (err) {
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
@@ -4083,7 +4662,7 @@ export async function handleHealth(req, ctx, options = {}) {
   // Count from before SET, so network delay cannot extend our local lease.
   if (Date.now() - refreshLeaseStartedAt >= HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS * 1_000) {
     await releaseHealthVerdictRefreshLock(refreshLockToken);
-    return healthRefreshPendingResponse(headers);
+    return lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow);
   }
 
   const allDataKeys = [
@@ -4156,6 +4735,13 @@ export async function handleHealth(req, ctx, options = {}) {
     contractsFinderReadFailed = !payload || Boolean(payload[0]?.error);
     contractsFinderSnapshot = unwrapEnvelope(parseRedisValue(payload?.[0]?.result)).data;
   }
+  const humanitarianMetaResult = results[allDataKeys.length + allMetaKeys.indexOf(SEED_META.humanitarianSummary.key)];
+  const humanitarianMeta = unwrapEnvelope(parseRedisValue(humanitarianMetaResult?.result)).data;
+  const humanitarianNeedsProof = humanitarianMeta?.sourceState === 'degraded'
+    || (snapshotNow() - humanitarianMeta?.fetchedAt > SEED_META.humanitarianSummary.maxStaleMin * 60_000);
+  const humanitarianRetention = humanitarianMetaResult?.error || !humanitarianNeedsProof ? null : await readHumanitarianRetention(
+    humanitarianMeta, SEED_META.humanitarianSummary.minRecordCount, snapshotNow(), redisPipeline,
+  );
   const evaluationNow = snapshotNow();
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)
@@ -4229,6 +4815,7 @@ export async function handleHealth(req, ctx, options = {}) {
     rolloutPendingUntilMs,
     educationPayloadReadFailed: Boolean(educationPayloadResult?.error),
     educationPayloadRankableCount,
+    humanitarianRetention,
     now: evaluationNow,
   };
   const checks = {};
@@ -4295,8 +4882,11 @@ export async function handleHealth(req, ctx, options = {}) {
 
   // Now that every key has a status, claim (or read back) the one durable
   // deadline per STALE_CONTENT source and publish it. Only the claim half is
-  // used to classify this response. Cleanup and history also finish before
-  // release; a token check at each mutation rejects an expired owner.
+  // used to classify this response. Cleanup and the failure log run in the
+  // background (nothing in this response depends on them); the lease is
+  // released only after they settle, and a token check at each mutation
+  // rejects an expired owner.
+  const ownedBackgroundWrites = [];
   const graceStatePlan = staleContentGraceStatePlan(graceEvidenceByName, checks, evaluationNow);
   if (graceStatePlan.claimCommands.length > 0) {
     // `redisPipeline` resolves null rather than throwing on every failure shape
@@ -4315,7 +4905,34 @@ export async function handleHealth(req, ctx, options = {}) {
     );
   }
   if (graceStatePlan.cleanupCommands.length > 0) {
-    await redisPipeline(fenceHealthMutations(graceStatePlan.cleanupCommands, refreshLockToken), 4_000, true).catch(() => {});
+    ownedBackgroundWrites.push(
+      redisPipeline(fenceHealthMutations(graceStatePlan.cleanupCommands, refreshLockToken), 4_000, true).catch(() => {}),
+    );
+  }
+
+  // Liveness of the paying path's credential, not a data key: see
+  // probeRelayGatewayGate. Added after the registry loop and counted in
+  // `totalChecks` when it applies, so `ok + warn + onDemandWarn + crit` still
+  // partitions `summary.total` (the invariant scripts/docs-stats.mjs pins on
+  // the published examples). On a production build `total` is therefore the
+  // registry size plus one; the docs say so.
+  //
+  // "One probe per 60 s" is enforced here, not inferred from the snapshot
+  // lock: a caller that loses the lock waits HEALTH_VERDICT_REFRESH_WAIT_MS
+  // (3 s) and then runs its own sweep, and the probe's own budget is longer
+  // than that wait, so a cold burst during the very outage this check exists
+  // for could otherwise fan out one relay call per caller. The last verdict
+  // is kept in Redis for the snapshot TTL and every sweep inside that window
+  // reuses it; only a sweep that finds it missing or expired touches Convex.
+  const relayGatewayGate = await readOrProbeRelayGatewayGate({
+    now: evaluationNow,
+    key: RELAY_GATEWAY_GATE_PROBE_KEY,
+    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+    ctx,
+  });
+  if (relayGatewayGate) {
+    checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
+    totalChecks++;
   }
 
   for (const [name, entry] of Object.entries(checks)) {
@@ -4369,7 +4986,7 @@ export async function handleHealth(req, ctx, options = {}) {
     const commands = persistencePlan.commands.map(([op, key, ...args]) => [op, applyRedisKeyPrefix(key), ...args]);
     await redisPipeline(fenceHealthMutations(commands, refreshLockToken), 4_000, true).catch(() => {});
   };
-  await persistFailureLog();
+  ownedBackgroundWrites.push(persistFailureLog().catch(() => {}));
 
   const verdictSnapshot = {
     status: overall,
@@ -4418,23 +5035,30 @@ export async function handleHealth(req, ctx, options = {}) {
   const snapshotWriteResult = await redisPipeline([[
     'EVAL',
     HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT,
-    '3',
+    '5',
     HEALTH_VERDICT_REFRESH_LOCK_KEY,
     HEALTH_VERDICT_SNAPSHOT_KEY,
     HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+    HEALTH_VERDICT_LAST_KNOWN_KEY,
+    HEALTH_VERDICT_COMPACT_LAST_KNOWN_KEY,
     refreshLockToken,
     JSON.stringify(verdictSnapshot),
     JSON.stringify(buildCompactVerdictSnapshot(verdictSnapshot)),
     snapshotTtl,
+    String(HEALTH_VERDICT_LAST_KNOWN_TTL_SECONDS),
   ]], 4_000, true).catch(() => null);
   const snapshotWriteFailed = !snapshotWriteResult
     || snapshotWriteResult.length !== 1
     || snapshotWriteResult[0]?.error
     || snapshotWriteResult[0]?.result !== 'OK';
-  if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
   // A failed cache write does not invalidate the live verdict. Releasing only
-  // this request's token lets the next caller retry immediately without ever
-  // deleting a successor's lock after a slow sweep outlives its lease.
+  // this request's token lets the next caller retry without ever deleting a
+  // successor's lock after a slow sweep outlives its lease. Release waits for
+  // the background writes so their fences still match this owner's token.
+  const releaseAfterBackgroundWrites = Promise.allSettled(ownedBackgroundWrites)
+    .then(() => releaseHealthVerdictRefreshLock(refreshLockToken));
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(releaseAfterBackgroundWrites);
+  else await releaseAfterBackgroundWrites;
   if (snapshotWriteFailed) console.warn('[health] verdict snapshot write failed');
 
   // Compact is the public keyless form polled by external uptime MONITORS, so it
@@ -4446,14 +5070,16 @@ export async function handleHealth(req, ctx, options = {}) {
   // only the verdict payload is reused, for at most 60 seconds. All other
   // responses already carry the no-store defaults from `headers` (a cached
   // 401 pins an auth failure; a cached 503 masks outage or refresh recovery).
-  // Persistence can cross a tender deadline after classification. The cached
+  // Persistence can cross a retention deadline after classification. The cached
   // snapshot is already rejected at that deadline; recheck the cold response too.
-  const contractsFinder = checks.globalTendersContractsFinder;
-  if (contractsFinder?.containmentUntil
-    && isContainedHealthWarning(contractsFinder, containmentEvidenceByName.get('globalTendersContractsFinder'), evaluationNow)
-    && isExpiredDeadline(contractsFinder.containmentUntil, snapshotNow())) {
-    verdictSnapshot.summary.containedWarn--;
-    verdictSnapshot.status = computeOverallStatus({ ...counts, containedWarn: verdictSnapshot.summary.containedWarn }, totalChecks).overall;
+  for (const name of ['globalTendersContractsFinder', 'humanitarianSummary']) {
+    const entry = checks[name];
+    if (entry?.containmentUntil
+      && isContainedHealthWarning(entry, containmentEvidenceByName.get(name), evaluationNow)
+      && isExpiredDeadline(entry.containmentUntil, snapshotNow())) {
+      verdictSnapshot.summary.containedWarn--;
+      verdictSnapshot.status = computeOverallStatus({ ...counts, containedWarn: verdictSnapshot.summary.containedWarn }, totalChecks).overall;
+    }
   }
   return healthResponse(verdictSnapshot, compact, headers);
 }
@@ -4502,11 +5128,30 @@ export const __testing__ = {
   dataLenCommand,
   HEALTH_VERDICT_SNAPSHOT_KEY,
   HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+  RELAY_GATEWAY_GATE_CHECK_NAME,
+  RELAY_GATEWAY_GATE_ROUTE,
+  RELAY_GATEWAY_GATE_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_PROBE_KEY,
+  RELAY_GATEWAY_GATE_PROBE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_LEASE_KEY,
+  RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS,
+  RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+  RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
+  RELAY_GATEWAY_GATE_TRANSPORT_GRACE_MS,
+  RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS,
+  SEED_FRESHNESS_MONITOR_INTERVAL_MS,
+  withTransportGrace,
+  probeRelayGatewayGate,
+  parseCachedRelayGatewayGate,
+  readOrProbeRelayGatewayGate,
   buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
   HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT,
+  HEALTH_VERDICT_LAST_KNOWN_KEY,
+  HEALTH_VERDICT_COMPACT_LAST_KNOWN_KEY,
+  HEALTH_VERDICT_LAST_KNOWN_TTL_SECONDS,
   HEALTH_VERDICT_MUTATION_SCRIPT,
   HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
   fenceHealthMutations,

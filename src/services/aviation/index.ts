@@ -346,7 +346,15 @@ const breakerCarrier = createCircuitBreaker<CarrierOps[]>({ name: 'Carrier Ops',
 const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 6 * 60 * 1000, persistCache: false });
 const breakerTrack = createCircuitBreaker<PositionSample[]>({ name: 'Track Aircraft', cacheTtlMs: 15 * 1000, persistCache: false });
 const breakerPrices = createCircuitBreaker<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; degraded: boolean; error: string; provider: string }>({ name: 'Flight Prices', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
-const breakerNews = createCircuitBreaker<AviationNewsItem[]>({ name: 'Aviation News', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+const breakerNews = createCircuitBreaker<AviationNewsItem[]>({
+  name: 'Aviation News',
+  cacheTtlMs: 15 * 60 * 1000,
+  persistCache: true,
+  revivePersistedData: (items) => items.map((item) => ({
+    ...item,
+    publishedAt: new Date(item.publishedAt),
+  })),
+});
 // No client-side cache for Google Flights search (gateway is no-store, prices change rapidly)
 const breakerGoogleFlights = createCircuitBreaker<GoogleFlightsResult>({ name: 'Google Flights', cacheTtlMs: 0, persistCache: false });
 // 5-min client cache (server has 10-min Redis + medium gateway cache)

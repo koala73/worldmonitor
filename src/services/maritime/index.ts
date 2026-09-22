@@ -122,7 +122,7 @@ let pollLoop: SmartPollLoopHandle | null = null;
 let inFlight = false;
 let isPolling = false;
 let lastPollAt = 0;
-let lastSequence = 0;
+let lastCandidateSequence = 0;
 
 let latestDisruptions: AisDisruptionEvent[] = [];
 let latestDensity: AisDensityZone[] = [];
@@ -160,6 +160,11 @@ async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSi
       { signal },
     ),
     emptySnapshotFallback,
+    {
+      cacheKey: includeCandidates ? 'candidates' : 'density',
+      shouldCache: (result) => result.dataAvailable && result.snapshot !== undefined,
+      evictOnRefreshFailure: includeCandidates,
+    },
   );
 
   const snapshot = response.snapshot;
@@ -261,16 +266,13 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
     latestStatus = snapshot.status;
     lastPollAt = Date.now();
 
-    if (includeCandidates) {
-      if (snapshot.sequence > lastSequence) {
-        emitCandidateReports(snapshot.candidateReports);
-        lastSequence = snapshot.sequence;
-      } else if (lastSequence === 0) {
-        emitCandidateReports(snapshot.candidateReports);
-        lastSequence = snapshot.sequence;
-      }
-    } else {
-      lastSequence = snapshot.sequence;
+    if (
+      includeCandidates
+      && positionCallbacks.size > 0
+      && (lastCandidateSequence === 0 || snapshot.sequence > lastCandidateSequence)
+    ) {
+      lastCandidateSequence = snapshot.sequence;
+      emitCandidateReports(snapshot.candidateReports);
     }
 
     const itemCount = latestDisruptions.length + latestDensity.length;
@@ -309,6 +311,7 @@ export function unregisterAisCallback(callback: AisCallback): void {
   positionCallbacks.delete(callback);
   if (positionCallbacks.size === 0) {
     lastCallbackTimestampByMmsi.clear();
+    lastCandidateSequence = 0;
   }
 }
 

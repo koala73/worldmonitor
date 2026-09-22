@@ -259,7 +259,7 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDuration
   return response;
 }
 
-const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
+const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', '__Host-wm-pro-key', '__Host-wm-widget-key']);
 
 function hasBootstrapCredentialCookie(req) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';

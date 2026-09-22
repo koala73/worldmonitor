@@ -13,17 +13,12 @@ interface CachedResult {
   cacheKey: string;
 }
 
-const quantize = (v: number, step: number) => Math.round(v / step) * step;
+const quantize = (v: number, step: number, upper = false) => (upper ? Math.ceil(v / step) : Math.floor(v / step)) * step;
 
 function getBboxGridStep(zoom: number): number {
   if (zoom < 5) return 5;
   if (zoom <= 7) return 1;
   return 0.5;
-}
-
-function quantizeBbox(swLat: number, swLon: number, neLat: number, neLon: number, zoom: number): string {
-  const step = getBboxGridStep(zoom);
-  return [quantize(swLat, step), quantize(swLon, step), quantize(neLat, step), quantize(neLon, step)].join(':');
 }
 
 function entryToEnriched(e: MilitaryBaseEntry): MilitaryBaseEnriched {
@@ -47,7 +42,7 @@ function entryToEnriched(e: MilitaryBaseEntry): MilitaryBaseEnriched {
 }
 
 let lastResult: CachedResult | null = null;
-let pendingFetch: Promise<CachedResult | null> | null = null;
+const pendingFetches = new Map<string, Promise<CachedResult | null>>();
 
 export type { MilitaryBaseCluster };
 
@@ -56,17 +51,23 @@ export async function fetchMilitaryBases(
   zoom: number,
   filters?: { type?: string; kind?: string; country?: string },
 ): Promise<CachedResult | null> {
-  const qBbox = quantizeBbox(swLat, swLon, neLat, neLon, zoom);
-  const floorZoom = Math.floor(zoom);
+  const floorZoom = Math.max(0, Math.min(22, Math.floor(zoom))) || 3;
+  const step = getBboxGridStep(floorZoom);
+  swLat = quantize(Math.max(-90, Math.min(90, swLat)), step);
+  neLat = quantize(Math.max(-90, Math.min(90, neLat)), step, true);
+  swLon = quantize(Math.max(-180, Math.min(180, swLon)), step);
+  neLon = quantize(Math.max(-180, Math.min(180, neLon)), step, true);
+  const qBbox = [swLat, swLon, neLat, neLon].join(':');
   const cacheKey = `${qBbox}:${floorZoom}:${filters?.type || ''}:${filters?.kind || ''}:${filters?.country || ''}`;
 
   if (lastResult && lastResult.cacheKey === cacheKey) {
     return lastResult;
   }
 
-  if (pendingFetch) return pendingFetch;
+  const pending = pendingFetches.get(cacheKey);
+  if (pending) return pending;
 
-  pendingFetch = (async () => {
+  const pendingFetch = (async () => {
     try {
       const resp: ListMilitaryBasesResponse = await client.listMilitaryBases({
         swLat, swLon, neLat, neLon,
@@ -75,6 +76,12 @@ export async function fetchMilitaryBases(
         kind: filters?.kind || '',
         country: filters?.country || '',
       });
+
+      // Handler empty-200 and backend errors share this payload. Treat it as
+      // a miss so DeckGLMap can keep the bundled fallback and the key can retry.
+      if (resp.bases.length === 0 && resp.clusters.length === 0 && resp.totalInView === 0) {
+        return null;
+      }
 
       const bases = resp.bases.map(entryToEnriched);
       const result: CachedResult = {
@@ -88,11 +95,12 @@ export async function fetchMilitaryBases(
       return result;
     } catch (err) {
       console.error('[bases-svc] error', err);
-      return lastResult;
+      return null;
     } finally {
-      pendingFetch = null;
+      pendingFetches.delete(cacheKey);
     }
   })();
 
+  pendingFetches.set(cacheKey, pendingFetch);
   return pendingFetch;
 }

@@ -10,6 +10,7 @@ import { setResponseHeader } from '../../../_shared/response-headers';
 import { attachApiErrorHttpResponseMetadata } from '../../../error-mapper';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { sha256Hex } from '../../../_shared/hash';
 import { isOpenSkyProvider, requiresRedistributableProviders } from '../../../_shared/provider-redistribution';
 
 // 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
@@ -96,12 +97,12 @@ function parseOpenSkyStates(states: unknown[][]): PositionSample[] {
 // request that was already failing over. Removing it also returns that 6s to
 // the response budget below (#6222).
 
-function buildCacheKey(req: TrackAircraftRequest): string {
+async function buildCacheKey(req: TrackAircraftRequest): Promise<string> {
+    if (!isDegenerateBbox(req)) {
+        return `aviation:track:bbox:v2:${await sha256Hex(JSON.stringify([req.swLat, req.swLon, req.neLat, req.neLon, req.icao24, req.callsign]))}`;
+    }
     if (req.icao24) return `aviation:track:icao:${req.icao24}:v2`;
     if (req.callsign) return `aviation:track:callsign:${req.callsign.toUpperCase()}:v2`;
-    if (!isDegenerateBbox(req)) {
-        return `aviation:track:bbox:${Math.floor(req.swLat)}:${Math.floor(req.swLon)}:${Math.ceil(req.neLat)}:${Math.ceil(req.neLon)}:v1`;
-    }
     return 'aviation:track:all:v2';
 }
 
@@ -120,11 +121,16 @@ export async function trackAircraft(
     const callsign = rawCallsign.trim().toUpperCase();
     if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ApiError(400, 'Expected a six-character hexadecimal ICAO address', '');
     if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ApiError(400, 'Expected an alphanumeric callsign of at most eight characters', '');
-    req = { ...req, icao24, callsign };
+    if (![req.swLat, req.swLon, req.neLat, req.neLon].every(Number.isFinite)) throw new ApiError(400, 'Expected finite viewport coordinates', '');
+    const lat1 = Math.max(-90, Math.min(90, req.swLat));
+    const lat2 = Math.max(-90, Math.min(90, req.neLat));
+    const lon1 = Math.max(-180, Math.min(180, req.swLon));
+    const lon2 = Math.max(-180, Math.min(180, req.neLon));
+    req = { ...req, icao24, callsign, swLat: Math.min(lat1, lat2), neLat: Math.max(lat1, lat2), swLon: Math.min(lon1, lon2), neLon: Math.max(lon1, lon2) };
     if (icao24 || callsign) await admitIdentifierLookup(ctx.request);
 
     const redistributableOnly = requiresRedistributableProviders(ctx.request);
-    const cacheKey = `${buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
+    const cacheKey = `${await buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
 
     let result: { positions: PositionSample[]; source: string } | null = null;
     try {
@@ -230,6 +236,9 @@ export async function trackAircraft(
     if (result) {
         let positions = result.positions;
         let source = result.source;
+        if (!isDegenerateBbox(req)) {
+            positions = positions.filter(p => p.lat >= req.swLat && p.lat <= req.neLat && p.lon >= req.swLon && p.lon <= req.neLon);
+        }
         if (redistributableOnly) {
             positions = positions.filter((position) => position.source !== 'POSITION_SOURCE_OPENSKY');
             if (isOpenSkyProvider(source)) {

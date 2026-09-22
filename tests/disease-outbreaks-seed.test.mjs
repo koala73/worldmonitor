@@ -24,6 +24,7 @@ import {
   whoNormalizeItem,
   rssNormalizeItem,
   tghNormalizeItem,
+  mapItem,
   diseaseContentMeta,
   diseasePublishTransform,
   DISEASE_MAX_CONTENT_AGE_MIN,
@@ -428,3 +429,18 @@ test('seed payload carries alertLevelMethodologyVersion post-publishTransform (v
     'wire payload must surface the methodology version so bumps propagate to clients',
   );
 });
+
+for (const [input, expected] of [
+  [0, 0], [1, 1], [42, 42], ['5', 5], [' 12 ', 12],
+  [undefined, 0], [null, 0], ['', 0], [true, 0], [[], 0], [{}, 0],
+  [-1, 0], [1.5, 0], [Infinity, 0], [NaN, 0], [Number.MAX_SAFE_INTEGER + 1, 0],
+  ['<img src=x onerror=alert(1)>', 0], ['12 cases', 0],
+]) {
+  test(`TGH cases ${JSON.stringify(input)} publishes numeric ${expected}`, () => {
+    const normalized = tghNormalizeItem({ disease: 'Cholera', date: '2026-09-01', cases: input });
+    const published = diseasePublishTransform({ outbreaks: [mapItem(normalized)] });
+    assert.equal(normalized._cases, expected);
+    assert.equal(published.outbreaks[0].cases, expected);
+    assert.equal(typeof published.outbreaks[0].cases, 'number');
+  });
+}

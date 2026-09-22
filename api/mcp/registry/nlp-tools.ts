@@ -186,7 +186,7 @@ const NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA = {
     },
     staleReason: {
       type: 'string',
-      description: 'Why retained content is served: empty-rebuild or build-error. Empty when fresh.',
+      description: 'Why retained content is served: empty-rebuild, build-error, or gate-held. Empty when fresh.',
     },
   },
 } as const;
@@ -220,7 +220,7 @@ type NlpDigestFetch = {
      * — 90 seconds and 6 hours warrant different conclusions.
      */
     staleAgeSeconds: number;
-    /** #7084: why stale content is served — empty-rebuild | build-error ('' when fresh). */
+    /** #7084/#8361: why stale content is served — empty-rebuild | build-error | gate-held ('' when fresh). */
     staleReason: string;
   };
 };

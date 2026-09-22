@@ -415,10 +415,19 @@ const BARE_SYMBOL_MESSAGE = /^[a-zA-Z_$]+$/;
  * Every browser phrasing for "a module failed to load or link". Chrome/Edge
  * `Failed to fetch dynamically imported module`, Safari `Importing a module
  * script failed.`, Firefox `error loading dynamically imported module`, and the
- * link-time counterpart `Importing binding name '<x>' is not found.`
+ * link-time counterpart in all three of its engine spellings: WebKit
+ * `Importing binding name '<x>' is not found.`, plus Gecko's and V8's
+ * `The requested module '<url>' does(n't| not) provide an export named …`.
+ *
+ * The dashboard carried only the WebKit spelling of that link failure and so
+ * reported V8's for months on a one-word difference (WORLDMONITOR-149); this
+ * surface never covered either wording. Bound by the runtime condition — a
+ * chunk importing a named export a sibling no longer provides after a deploy —
+ * rather than by one engine's wording, and stack-gated by its callers so a link
+ * failure attributable to this bundle still surfaces.
  */
 const MODULE_LOAD_FAILURE =
-  /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found/i;
+  /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found|The requested module '[^']*' does(?: not|n't) provide an export named/i;
 /**
  * Runaway recursion, in every browser phrasing (Chrome/Safari "Maximum call
  * stack size exceeded", Firefox "too much recursion"). Deliberately NOT in
@@ -641,8 +650,9 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // is still not a precedent to copy, though the old reason given here — that
   // the dashboard bundle mints its own DOMException carrying caller frames —
   // was wrong, and cost WORLDMONITOR-Q4. `createTimeoutSignal` only mints one
-  // on the pre-Baseline-2024 fallback path; every current engine takes the
-  // native `AbortSignal.timeout` branch and produces the same frameless
+  // on the pre-Baseline-2024 fallback path, and stamps it with the native
+  // header-only stack; every current engine takes the native
+  // `AbortSignal.timeout` branch instead. Both produce the same frameless
   // rejection seen here (Chromium 141: `stack` is the header line alone).
   // What separates the two surfaces is that the dashboard gate exempts any
   // event carrying a first-party `kind` tag, which its checkout and panel
