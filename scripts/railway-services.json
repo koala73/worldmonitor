@@ -53,6 +53,7 @@
       "scripts/shared/ai-tokens.json",
       "scripts/shared/closed-market-equity-maintenance.cjs",
       "scripts/shared/commodities.json",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-region.json",
@@ -78,6 +79,7 @@
       "scripts/shared/ucdp-candidate.cjs",
       "scripts/source-attribution.mjs",
       "public/.well-known/mcp/server-card.json",
+      "shared/compare-and-delete-script.cjs",
       "shared/source-attribution-manifest.json",
       "src/components/**/*.ts",
       "src/config/feeds.ts",
@@ -143,7 +145,8 @@
       "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
-      "scripts/package.json"
+      "scripts/package.json",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": null,
     "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts); provisioned in Railway production 2026-08-12"
@@ -181,7 +184,8 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/process-deep-forecast-tasks.mjs",
-      "scripts/seed-forecasts.mjs"
+      "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -313,6 +317,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-bundle-portwatch-port-activity.mjs",
       "scripts/seed-portwatch-port-activity.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
@@ -334,7 +339,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/scenario-worker.mjs"
+      "scripts/scenario-worker.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "scripts/scenario-worker.mjs (header docblock declares rootDirectory: scripts)"
   },
@@ -351,7 +357,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-aaii-sentiment.mjs"
+      "scripts/seed-aaii-sentiment.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -388,6 +395,7 @@
       "scripts/seed-military-bases.mjs",
       "scripts/seed-mineral-production.mjs",
       "scripts/seed-supply-vulnerability.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -450,6 +458,7 @@
       "scripts/seed-tps-mci.mjs",
       "scripts/seed-ttc-alerts.mjs",
       "scripts/seed-viarail-live.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/toronto-safety.mjs",
       "scripts/viarail-live.mjs"
     ],
@@ -481,6 +490,7 @@
       "scripts/seed-climate-zone-normals.mjs",
       "scripts/seed-co2-monitoring.mjs",
       "scripts/seed-natural-events.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-bboxes.json",
       "scripts/shared/country-names.json",
       "scripts/shared/geo-extract.mjs",
@@ -550,6 +560,7 @@
       "scripts/seed-cross-source-signals.mjs",
       "scripts/seed-cross-strait-activity.mjs",
       "scripts/seed-regional-snapshots.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/correlation-runtime-mode.js",
       "scripts/shared/country-names.json",
       "scripts/shared/geography.js",
@@ -583,7 +594,8 @@
       "scripts/seed-ecb-fx-rates.mjs",
       "scripts/seed-ecb-short-rates.mjs",
       "scripts/seed-fsi-eu.mjs",
-      "scripts/seed-yield-curve-eu.mjs"
+      "scripts/seed-yield-curve-eu.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-1-seed-bundle-ecb-eu"
   },
@@ -629,6 +641,7 @@
       "scripts/seed-pipelines-oil.mjs",
       "scripts/seed-spr-policies.mjs",
       "scripts/seed-storage-facilities.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/jodi-content-age.mjs",
@@ -667,6 +680,7 @@
       "scripts/seed-displacement-summary.mjs",
       "scripts/seed-health-air-quality.mjs",
       "scripts/seed-vpd-tracker.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/geo-extract.mjs"
     ],
@@ -729,6 +743,7 @@
       "scripts/seed-us-cpi.mjs",
       "scripts/seed-us-treasury-par-yield.mjs",
       "scripts/seed-wb-external-debt.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -779,6 +794,7 @@
       "scripts/seed-token-panels.mjs",
       "scripts/shared/ai-tokens.json",
       "scripts/shared/china-corporate-disclosure-policy.js",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/crypto.json",
       "scripts/shared/defi-tokens.json",
       "scripts/shared/etf-flow-provider.mjs",
@@ -815,7 +831,8 @@
       "scripts/seed-portwatch.mjs",
       "scripts/package.json",
       "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/nixpacks.toml",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "0 */1 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-2-seed-bundle-portwatch"
@@ -843,6 +860,7 @@
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-bundle-portwatch-port-activity.mjs",
       "scripts/seed-portwatch-port-activity.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
@@ -891,6 +909,7 @@
       "scripts/seed-bundle-regional.mjs",
       "scripts/seed-regional-briefs.mjs",
       "scripts/seed-regional-snapshots.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/geography.js",
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -923,6 +942,7 @@
       "scripts/seed-ucdp-events.mjs",
       "scripts/seed-usa-spending.mjs",
       "scripts/seed-wb-indicators.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/ucdp-candidate.cjs"
     ],
@@ -950,6 +970,7 @@
       "scripts/seed-five-factor-scorecard.mjs",
       "scripts/seed-resilience-scores.mjs",
       "scripts/seed-resilience-static.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/rankable-universe.mjs",
@@ -991,6 +1012,7 @@
       "scripts/seed-fossil-electricity-share.mjs",
       "scripts/seed-low-carbon-generation.mjs",
       "scripts/seed-power-reliability.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
@@ -1023,6 +1045,7 @@
       "scripts/seed-recovery-reexport-share.mjs",
       "scripts/seed-recovery-reserve-adequacy.mjs",
       "scripts/seed-sovereign-wealth.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/comtrade-reporter-overrides.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -1053,6 +1076,7 @@
       "scripts/lib/resilience-formula.mjs",
       "scripts/resilience-validation-bundle.mjs",
       "scripts/seed-bundle-resilience-validation.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/sovereign-status.json",
@@ -1079,6 +1103,7 @@
       "server/worldmonitor/resilience/v1/_shared.ts",
       "server/worldmonitor/resilience/v1/_source-failure.ts",
       "server/worldmonitor/resilience/v1/_standalone-source-thresholds.ts",
+      "shared/compare-and-delete-script.cjs",
       "shared/country-names.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json",
@@ -1116,6 +1141,7 @@
       "scripts/seed-defense-patents.mjs",
       "scripts/seed-demographics-capability.mjs",
       "scripts/seed-submarine-cables.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
@@ -1138,6 +1164,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-hs2-chokepoint-exposure.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/supply-vulnerability-commodities.json",
       "scripts/shared/country-port-clusters.json"
     ],
@@ -1160,6 +1187,7 @@
       "scripts/package.json",
       "scripts/seed-commodity-quotes.mjs",
       "scripts/shared/commodities.json",
+      "scripts/shared/compare-and-delete-script.cjs",
       "shared/commodities.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
@@ -1178,6 +1206,7 @@
       "scripts/_seed-utils.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-comtrade-bilateral-hs4.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/comtrade.mjs",
       "scripts/shared/comtrade-bilateral.mjs",
       "scripts/shared/comtrade-partners.json",
@@ -1226,6 +1255,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-conflict-intel.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/crawlable-crises.json",
       "scripts/shared/hapi-app-identifier.json",
@@ -1262,7 +1292,8 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-earthquakes.mjs",
-      "scripts/seismology/nrcan-atom.mjs"
+      "scripts/seismology/nrcan-atom.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1280,7 +1311,8 @@
       "scripts/seed-economy.mjs",
       "scripts/nixpacks.toml",
       "scripts/package.json",
-      "scripts/package-lock.json"
+      "scripts/package-lock.json",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1311,7 +1343,8 @@
       "scripts/seed-fire-detections.mjs",
       "scripts/wildfire/bc-fire-points.mjs",
       "scripts/wildfire/cwfis-wfs.mjs",
-      "scripts/wildfire/firms-area.mjs"
+      "scripts/wildfire/firms-area.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/10 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1357,6 +1390,7 @@
       "scripts/package.json",
       "scripts/seed-forecast-resolutions.mjs",
       "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "shared/country-names.json"
     ],
@@ -1394,7 +1428,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-forecasts.mjs"
+      "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
@@ -1419,7 +1454,8 @@
       "scripts/seed-fred-rates.mjs",
       "scripts/nixpacks.toml",
       "scripts/package.json",
-      "scripts/package-lock.json"
+      "scripts/package-lock.json",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "0 * * * *",
     "documentedAt": "docs/market-data-cadence-audit.md"
@@ -1438,7 +1474,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-fx-yoy.mjs"
+      "scripts/seed-fx-yoy.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -1466,7 +1503,8 @@
       "scripts/seed-gdelt-bulk-materializer.mjs",
       "scripts/package.json",
       "scripts/package-lock.json",
-      "scripts/nixpacks.toml"
+      "scripts/nixpacks.toml",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
@@ -1492,6 +1530,7 @@
       "scripts/package.json",
       "scripts/seed-insights.mjs",
       "scripts/shared/brief-llm-core.js",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/digest-acceptance.mjs",
       "scripts/shared/diplomacy-keywords.json",
@@ -1517,7 +1556,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-market-breadth.mjs"
+      "scripts/seed-market-breadth.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
@@ -1541,7 +1581,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-military-cii.mjs"
+      "scripts/seed-military-cii.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "scripts/seed-military-cii.mjs (header docblock declares rootDirectory: scripts and */10 cron)"
   },
@@ -1567,6 +1608,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-sanctions-pressure.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json"
     ],
@@ -1592,6 +1634,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-security-advisories.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/rss-allowed-domains.json",
       "shared/country-names.json",
@@ -1622,6 +1665,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-supply-chain-trade.mjs",
+      "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/un-to-iso2.json",
       "shared/un-to-iso2.json"
     ],
@@ -1659,7 +1703,8 @@
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
-      "scripts/seed-imd-cyclone-marine.mjs"
+      "scripts/seed-imd-cyclone-marine.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "cronSchedule": "*/15 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
@@ -1697,7 +1742,8 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/process-simulation-tasks.mjs",
-      "scripts/seed-forecasts.mjs"
+      "scripts/seed-forecasts.mjs",
+      "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
