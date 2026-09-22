@@ -2045,6 +2045,32 @@ describe('privileged publish and auto-merge conditions', () => {
     }
   });
 
+  it('republishes on a push to main that touches docker-relevant paths, and nothing else', () => {
+    // `on.push` rather than a job-level `if:` -- docker-publish.yml publishes
+    // no gate-required check, so the "never gate on a workflow's paths:"
+    // convention (docs/solutions/conventions/…) does not apply here.
+    const push = (dockerPublish as { on: { push?: { branches?: string[]; paths?: string[] } } }).on.push;
+    assert.ok(push, 'docker-publish.yml must trigger on push');
+    assert.deepEqual(push.branches, ['main']);
+    // Every entry here is load-bearing: unfiltered, every merge to main would
+    // rebuild and republish `latest`. Deliberately narrower than `unit`'s code
+    // filter -- this asks "does this affect the built image", not "is this a
+    // logic change" -- and kept in step by eye with test.yml's docker-image
+    // job filter (#8503), which answers the same question at PR time.
+    assert.deepEqual(
+      [...(push.paths ?? [])].sort(),
+      [
+        '.dockerignore',
+        'docker/**',
+        'package-lock.json',
+        'package.json',
+        'pro-test/package-lock.json',
+        'pro-test/package.json',
+        'scripts/generate-inventory-facts.mjs',
+      ].sort(),
+    );
+  });
+
   it('leaves `latest` to the explicit raw entry rather than metadata-action\'s latest=auto', () => {
     const metaStep = dockerPublish.jobs.docker.steps.find((step: { id?: string }) => step.id === 'meta');
     // `latest=auto` is the default and appends `latest` whenever a semver tag
