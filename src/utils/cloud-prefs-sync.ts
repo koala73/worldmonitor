@@ -12,6 +12,7 @@
  * Desktop guard: isDesktopRuntime() always skips sync.
  */
 
+import { PINNED_WEBCAMS_KEY, normalizePinnedWebcamsPreference, normalizeWebcamPreferences } from '../../shared/pinned-webcams';
 import {
   ACCOUNT_PROVENANCE_SYNC_KEYS,
   CLOUD_SYNC_KEYS,
@@ -457,7 +458,8 @@ function buildCloudBlob(): Record<string, string> | null {
   for (const key of CLOUD_SYNC_KEYS) {
     const read = safeStorageGetChecked(key);
     if (!read.ok) return null;
-    if (read.value !== null) blob[key] = read.value;
+    if (read.value !== null) blob[key] = key === PINNED_WEBCAMS_KEY
+      ? normalizePinnedWebcamsPreference(read.value) : read.value;
   }
   return blob;
 }
@@ -822,7 +824,7 @@ async function postCloudPrefs(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ variant, data, expectedSyncVersion, schemaVersion }),
+      body: JSON.stringify({ variant, data: normalizeWebcamPreferences(data), expectedSyncVersion, schemaVersion }),
       signal: AbortSignal.timeout(CLOUD_PREFS_REQUEST_TIMEOUT_MS),
     });
   } catch (error) {

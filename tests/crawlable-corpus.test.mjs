@@ -2190,6 +2190,16 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.sources.routes,
       ]);
       assert.deepEqual(corpusLocations, manifestLocations);
+      for (const route of corpusLocations) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const canonicals = [...html.matchAll(/<link rel="canonical" href="([^"]+)">/g)].map(match => match[1]);
+        assert.deepEqual(canonicals, [`https://www.worldmonitor.app${route}`]);
+        for (const [, rawHref] of html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)) {
+          const url = new URL(decodeHtmlAttribute(rawHref), 'https://www.worldmonitor.app');
+          if (url.origin !== 'https://www.worldmonitor.app' || url.pathname !== '/') continue;
+          assert.ok(!['c', 'country', 'chokepoint'].some(key => url.searchParams.has(key)), `${route} publishes a legacy dashboard link: ${url}`);
+        }
+      }
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
       assert.equal(
@@ -2824,7 +2834,7 @@ describe('crawlable corpus generator', () => {
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       // Carries utm_source (NOT ref= — that would be captured as an affiliate referral code).
-      assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?country=NO&amp;expanded=1&amp;utm_source=seo-country">Open Norway on the live map/);
+      assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?country=NO&amp;expanded=1&amp;utm_source=seo-country">Open Norway on the live map/);
       assert.doesNotMatch(norway, /[?&]ref=/, 'corpus CTAs must never use the affiliate ref= param');
       // Social preview + trust-link contracts.
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
@@ -4286,7 +4296,7 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
       assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
       // Deep-link CTA into the live map (pans to + opens the waterway popup).
-      assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?chokepoint=hormuz_strait&amp;utm_source=seo-chokepoint">Open Strait of Hormuz on the live map/);
+      assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?chokepoint=hormuz_strait&amp;utm_source=seo-chokepoint">Open Strait of Hormuz on the live map/);
       assert.match(hormuz, /href="\/docs\/methodology\/chokepoints"/);
       // Human trade-route names replace the old raw route-id dump.
       assert.match(hormuz, /Persian Gulf → Europe \(Oil\)/);
@@ -5217,7 +5227,8 @@ describe('crawlable corpus generator', () => {
   });
 
   it('loads deterministic source data without network access', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const now = Date.now();
+    const data = await loadCorpusData({ rootDir: repoRoot, now });
     assert.match(
       data.sources.resilienceSnapshot,
       /^docs\/snapshots\/resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/,
@@ -5244,10 +5255,12 @@ describe('crawlable corpus generator', () => {
       laterDate(
         data.resilience.capturedAt,
         data.livePulse.capturedAt,
+        livePulseMovementClaimLastmod(data.livePulse.capturedAt, now),
         gitFileLastmod(repoRoot, data.sources.countryRegions),
+        gitFileLastmod(repoRoot, data.sources.microstateTerritories),
         COUNTRY_PAGE_CONTENT_VERSION,
       ),
-      'countries lastmod must fold snapshot, pulse, regions and the page content version',
+      'countries lastmod must fold snapshot, pulse, movement-claim expiry, geographic inputs and the page content version',
     );
     // #7518 set COUNTRY_PAGE_CONTENT_VERSION and CII_COUNTRY_PAGE_CONTENT_VERSION
     // to the same date, so the two clocks coincide by value. Pin the DERIVATION

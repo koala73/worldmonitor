@@ -2,6 +2,10 @@
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
 
+export function isHostedAppOrigin(origin) {
+  return typeof origin === 'string' && APP_ORIGIN_PATTERN.test(origin);
+}
+
 const ALLOWED_ORIGIN_PATTERNS = [
   APP_ORIGIN_PATTERN,
   // Vercel preview deployments under the "eliewm" team scope, e.g.

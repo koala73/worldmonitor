@@ -146,9 +146,10 @@ paths:
                   in: query
                   description: market_code is the ISO 3166-1 alpha-2 market identifier.
                   required: false
-                  example: "US"
+                  example: "ae"
                   schema:
                     type: string
+                    pattern: '^([A-Za-z]{2})?$'
                 - name: basket_slug
                   in: query
                   description: basket_slug selects the basket (e.g. "essentials-ae").
@@ -156,6 +157,7 @@ paths:
                   example: "essentials-ae"
                   schema:
                     type: string
+                    pattern: '^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$'
                 - name: range
                   in: query
                   description: range is one of "7d", "30d", "90d". Unsupported values use "30d".
@@ -179,11 +181,11 @@ paths:
                             example:
                                 "asOf": "1717200000000"
                                 "basketSlug": "essentials-ae"
-                                "currencyCode": "USD"
+                                "currencyCode": "AED"
                                 "essentialsSeries":
                                     - "date": "2026-01-15"
                                       "index": 1.5
-                                "marketCode": "US"
+                                "marketCode": "ae"
                             schema:
                                 $ref: '#/components/schemas/GetConsumerPriceBasketSeriesResponse'
                 "400":
@@ -704,6 +706,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^([A-Za-z]{2})?$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -1057,9 +1060,13 @@ components:
             properties:
                 marketCode:
                     type: string
+                    maxLength: 2
+                    pattern: ^([A-Za-z]{2})?$
                     description: market_code is the ISO 3166-1 alpha-2 market identifier.
                 basketSlug:
                     type: string
+                    maxLength: 13
+                    pattern: ^([Ee][Ss][Ss][Ee][Nn][Tt][Ii][Aa][Ll][Ss]-[A-Za-z]{2})?$
                     description: basket_slug selects the basket (e.g. "essentials-ae").
                 range:
                     type: string
@@ -1288,6 +1295,8 @@ components:
             properties:
                 marketCode:
                     type: string
+                    maxLength: 2
+                    pattern: ^([A-Za-z]{2})?$
                     description: market_code is the ISO 3166-1 alpha-2 market identifier.
             description: GetConsumerPriceFreshnessRequest parameters for the freshness RPC.
         GetConsumerPriceFreshnessResponse:

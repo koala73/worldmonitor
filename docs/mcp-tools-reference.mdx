@@ -54,9 +54,10 @@ Response — identical shape to a `tools/list` entry, with the full uncompressed
     "content": [
       {
         "type": "text",
-        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}}"
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
       }
-    ]
+    ],
+    "structuredContent": { "name": "get_chokepoint_status", "description": "…", "inputSchema": {}, "outputSchema": {}, "annotations": {}, "_meta": {} }
   }
 }
 ```
@@ -75,11 +76,35 @@ The full per-tool reference for `describe_tool` (parameters, response shape, quo
 
 ### `outputSchema` — typed parsing without a sample call
 
-As of v1.6.0, every tool's `tools/list` entry declares a spec-defined [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema). The schema describes the shape of the JSON that lives inside `result.content[0].text` for that tool — letting clients author projections, validate responses, or generate types without ever issuing a real `tools/call`.
+As of v1.6.0, every tool's `tools/list` entry declares a spec-defined [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema). The schema describes `result.structuredContent`; its first `anyOf` branch is the tool's documented payload shape, which is also the document `result.content[0].text` serializes on an ordinary call (a projection or `summary: true` reshapes the text and is wrapped in `structuredContent`; see the table below) — letting clients author projections, validate responses, or generate types without ever issuing a real `tools/call`.
 
 Schemas are emitted **unconditionally** on every `tools/list`, regardless of the negotiated `protocolVersion`. Clients on the older `2025-03-26` floor still receive them and (per spec) are expected to ignore unknown fields rather than fail.
 
-Worked example — the `outputSchema` for `get_country_risk`:
+**`structuredContent` and the shape of the advertised schema (v1.21.0).** Every successful `tools/call` returns the payload twice: as JSON text in `result.content[0].text`, and as an object in `result.structuredContent`. Strict MCP clients require this: once a tool advertises an `outputSchema`, the official SDK rejects a result with no `structuredContent` (`-32600`) and validates the one it gets against the schema (`-32602`). Four kinds of response are not a tool's documented shape, so the advertised schema names them:
+
+```json
+{
+  "type": "object",
+  "anyOf": [
+    { "…": "the tool's documented shape — the schema shown below" },
+    { "required": ["projection"] },
+    { "required": ["data", "_attribution"] },
+    { "required": ["_budget_exceeded"] },
+    { "required": ["_jmespath_error"] }
+  ]
+}
+```
+
+| Response | `content[0].text` | `structuredContent` |
+|---|---|---|
+| Normal call | the payload | the same payload |
+| `jmespath` projection, or a cache tool's `summary: true` | the reshaped value (any JSON value) | `{ "projection": <that value> }`, because the field must be an object |
+| Projection on a licence-bearing tool | `{ "data": …, "_attribution": … }` | the same object |
+| `_budget_exceeded` or `_jmespath_error` | the envelope | the same envelope |
+
+The text is byte-identical to what earlier versions returned, so a client that reads only `content[0].text` sees no change. To read a tool's documented shape programmatically, take `outputSchema.anyOf[0]`.
+
+Worked example — the `outputSchema` documented shape (its `anyOf[0]`) for `get_country_risk`:
 
 ```json
 {
@@ -178,7 +203,7 @@ Things to know:
 
 - `additionalProperties` is left implicit (= true) on every schema, so producer-side forward-compatible additions don't suddenly fail validation.
 - Per-array `items.properties` lists known fields but does NOT enumerate every observed key — the schema is a **hint surface** for JMESPath authoring, not a bytecode-level contract.
-- Schemas describe the success-path payload only. The two catalog-class soft envelopes (`_budget_exceeded`, `_jmespath_error`) are NOT in the per-tool schema — they replace the payload entirely and have their own shapes. See the [MCP Error Catalog](/mcp-error-catalog) for both envelopes.
+- The documented shape (`anyOf[0]`) describes the success-path payload only. The two catalog-class soft envelopes (`_budget_exceeded`, `_jmespath_error`) replace the payload entirely; since v1.21.0 each has its own branch in the advertised `anyOf`, as do projections, so a strict client accepts them. See the [MCP Error Catalog](/mcp-error-catalog) for both envelopes.
 
 Universal arguments:
 

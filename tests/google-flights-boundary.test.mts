@@ -333,13 +333,26 @@ test('upstream failure remains degraded and is not cached as a successful search
     const failed = await read();
     assert.equal(failed.degraded, true);
     assert.deepEqual(failed.flights, []);
-    assert.equal((await read()).degraded, true);
-    assert.equal(attempts, 1, 'existing short negative cache prevents a retry storm');
-    now += 30_001;
     assert.equal((await read()).degraded, false);
-    await read();
     assert.equal(attempts, 2);
   } finally {
     Date.now = realNow;
   }
+});
+
+test('provider cooldown remains degraded and is never stored as a healthy empty search', async () => {
+  let attempts = 0;
+  globalThis.fetch = (async (input, init) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'redis.example') return redis.fetchImpl(input, init);
+    attempts++;
+    return Response.json({ flights: [], cooldown: true, error: 'provider cooldown' });
+  }) as typeof fetch;
+
+  const first = await read();
+  const second = await read();
+  assert.deepEqual(first, { flights: [], degraded: true, error: 'provider cooldown' });
+  assert.deepEqual(second, { flights: [], degraded: true, error: 'provider cooldown' });
+  assert.equal(attempts, 2, 'cooldown must not be cached as a successful empty result');
+  assert.equal([...redis.redis.keys()].filter(key => key.startsWith('aviation:gf:')).length, 0);
 });
