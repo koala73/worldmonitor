@@ -1,9 +1,13 @@
 import { Panel } from './Panel';
 import { validateUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { isDesktopRuntime } from '@/services/runtime';
+import { hasPremiumAccess, PanelGateReason } from '@/services/panel-gating';
 import { h, replaceChildren, safeHtml } from '@/utils/dom-utils';
 import {
   TELEGRAM_TOPICS,
+  clearTelegramIntelCache,
+  getTelegramIntelGeneration,
   fetchTelegramChannelFeed,
   fetchTelegramChannelPreview,
   formatTelegramTime,
@@ -93,7 +97,9 @@ export class TelegramIntelPanel extends Panel {
   private watchlistPillsEl: HTMLElement | null = null;
   private previewEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
-  private relayEnabled = true;
+  private relayEnabled = false;
+  private disposed = false;
+  private onAccessGranted: (() => void) | null = null;
   private previewState: PreviewState = { channel: null, error: null, loading: false, username: '' };
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private previewRequestId = 0;
@@ -138,6 +144,7 @@ export class TelegramIntelPanel extends Panel {
     this.inputEl = h('input', {
       className: 'telegram-intel-input',
       type: 'text',
+      disabled: true,
       placeholder: t('components.telegramIntel.watchlistPlaceholder'),
       'aria-label': t('components.telegramIntel.watchlistPlaceholder'),
       autocomplete: 'off',
@@ -163,6 +170,7 @@ export class TelegramIntelPanel extends Panel {
   }
 
   private selectTopic(topicId: string): void {
+    if (!this.canUseFeed()) return;
     if (topicId === this.activeTopic) return;
     this.activeTopic = topicId;
 
@@ -173,7 +181,8 @@ export class TelegramIntelPanel extends Panel {
     this.renderItems();
   }
 
-  public setData(response: TelegramFeedResponse & { error?: string }): void {
+  public setData(response: TelegramFeedResponse & { error?: string }, generation = getTelegramIntelGeneration()): void {
+    if (!this.canUseFeed() || generation !== getTelegramIntelGeneration()) return;
     this.relayEnabled = response.enabled !== false && !response.error;
     this.baseItems = response.items || [];
 
@@ -186,7 +195,7 @@ export class TelegramIntelPanel extends Panel {
       this.watchlistItems = [];
       this.cancelPreviewResolve();
       this.setCount(0);
-      replaceChildren(this.content,
+      this.setContentNodes(
         h('div', { className: 'empty-state error' },
           response.error || t('components.telegramIntel.disabled')
         ),
@@ -205,7 +214,7 @@ export class TelegramIntelPanel extends Panel {
       this.previewTimer = null;
     }
 
-    if (!this.relayEnabled) {
+    if (!this.relayEnabled || !this.canUseFeed()) {
       this.cancelPreviewResolve();
       return;
     }
@@ -225,7 +234,7 @@ export class TelegramIntelPanel extends Panel {
 
     this.previewTimer = setTimeout(async () => {
       this.previewTimer = null;
-      if (requestId !== this.previewRequestId || !this.relayEnabled) return;
+      if (requestId !== this.previewRequestId || !this.relayEnabled || !this.canUseFeed()) return;
 
       if (!normalized) {
         this.previewState = {
@@ -240,10 +249,10 @@ export class TelegramIntelPanel extends Panel {
 
       try {
         const channel = await fetchTelegramChannelPreview(normalized);
-        if (requestId !== this.previewRequestId || !this.relayEnabled) return;
+        if (requestId !== this.previewRequestId || !this.relayEnabled || !this.canUseFeed()) return;
         this.previewState = { channel, error: null, loading: false, username: normalized };
       } catch (error) {
-        if (requestId !== this.previewRequestId || !this.relayEnabled) return;
+        if (requestId !== this.previewRequestId || !this.relayEnabled || !this.canUseFeed()) return;
         this.previewState = {
           channel: null,
           error: describeTelegramLookupError(error),
@@ -277,6 +286,10 @@ export class TelegramIntelPanel extends Panel {
 
   private renderPreview(): void {
     if (!this.previewEl) return;
+    if (!this.canUseFeed()) {
+      replaceChildren(this.previewEl);
+      return;
+    }
 
     if (this.previewState.loading) {
       replaceChildren(this.previewEl,
@@ -332,7 +345,7 @@ export class TelegramIntelPanel extends Panel {
 
   private async addPreviewChannel(): Promise<void> {
     const channel = this.previewState.channel;
-    if (!channel || !this.relayEnabled) return;
+    if (!channel || !this.relayEnabled || !this.canUseFeed()) return;
 
     const alreadyAdded = this.watchlistEntries.some(entry => entry.username === channel.username);
     if (!alreadyAdded && this.watchlistEntries.length >= TELEGRAM_WATCHLIST_MAX_ENTRIES) {
@@ -362,6 +375,10 @@ export class TelegramIntelPanel extends Panel {
 
   private renderWatchlistPills(): void {
     if (!this.watchlistPillsEl) return;
+    if (!this.canUseFeed()) {
+      replaceChildren(this.watchlistPillsEl);
+      return;
+    }
 
     if (this.watchlistEntries.length === 0) {
       this.watchlistPillsEl.classList.add('is-empty');
@@ -376,6 +393,7 @@ export class TelegramIntelPanel extends Panel {
           type: 'button',
           className: 'telegram-intel-pill',
           onClick: () => {
+            if (!this.canUseFeed()) return;
             try {
               removeTelegramWatchlistEntry(entry.username);
             } catch {
@@ -395,7 +413,7 @@ export class TelegramIntelPanel extends Panel {
   private async syncWatchlistFeed(): Promise<void> {
     const requestId = ++this.watchlistRequestId;
 
-    if (!this.relayEnabled) {
+    if (!this.relayEnabled || !this.canUseFeed()) {
       return;
     }
 
@@ -413,7 +431,7 @@ export class TelegramIntelPanel extends Panel {
         batch.map(entry => fetchTelegramChannelFeed(entry.username, WATCHLIST_ITEM_LIMIT)),
       );
 
-      if (requestId !== this.watchlistRequestId) return;
+      if (requestId !== this.watchlistRequestId || !this.canUseFeed()) return;
 
       for (const result of results) {
         if (result.status === 'fulfilled') {
@@ -433,6 +451,7 @@ export class TelegramIntelPanel extends Panel {
   }
 
   private renderItems(): void {
+    if (!this.canUseFeed()) return;
     const mergedItems = mergeTelegramItems(this.watchlistItems, this.baseItems);
     const filtered = this.activeTopic === 'all'
       ? mergedItems
@@ -441,13 +460,13 @@ export class TelegramIntelPanel extends Panel {
     this.setCount(filtered.length);
 
     if (filtered.length === 0) {
-      replaceChildren(this.content,
+      this.setContentNodes(
         h('div', { className: 'empty-state' }, t('components.telegramIntel.empty')),
       );
       return;
     }
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       h('div', { className: 'telegram-intel-items' },
         ...filtered.map(item => this.buildItem(item)),
       ),
@@ -537,11 +556,59 @@ export class TelegramIntelPanel extends Panel {
     );
   }
 
+  private canUseFeed(): boolean {
+    return !this.disposed && !this.isLocked && (!isDesktopRuntime() || hasPremiumAccess());
+  }
+
+  private resetFeed(): void {
+    this.relayEnabled = false;
+    this.watchlistRequestId++;
+    this.baseItems = [];
+    this.watchlistItems = [];
+    this.cancelPreviewResolve();
+    if (this.inputEl) {
+      this.inputEl.value = '';
+      this.inputEl.disabled = true;
+    }
+    if (this.previewEl) replaceChildren(this.previewEl);
+    if (this.watchlistPillsEl) replaceChildren(this.watchlistPillsEl);
+    this.setCount(0);
+    this.clearSensitiveContent();
+    clearTelegramIntelCache();
+  }
+
+  public override showLocked(features: string[] = []): void {
+    if (!this.isLocked) this.resetFeed();
+    super.showLocked(features);
+  }
+
+  public override showGatedCta(reason: PanelGateReason, onAction: () => void): void {
+    if (reason !== PanelGateReason.NONE && !this.isLocked) this.resetFeed();
+    super.showGatedCta(reason, onAction);
+  }
+
+  public setAccessGrantedHandler(handler: () => void): void {
+    this.onAccessGranted = handler;
+  }
+
+  public override unlockPanel(): void {
+    if (this.disposed || (isDesktopRuntime() && !hasPremiumAccess())) return;
+    const wasLocked = this.isLocked;
+    super.unlockPanel();
+    if (wasLocked) {
+      this.renderWatchlistPills();
+      this.showLoading(t('components.telegramIntel.loading'));
+      this.onAccessGranted?.();
+    }
+  }
+
   public async refresh(): Promise<void> {
     // Handled by DataLoader + RefreshScheduler
   }
 
   public destroy(): void {
+    this.disposed = true;
+    this.onAccessGranted = null;
     this.previewRequestId++;
     this.watchlistRequestId++;
     if (this.previewTimer) {

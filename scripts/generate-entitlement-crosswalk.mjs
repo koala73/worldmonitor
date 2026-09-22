@@ -185,7 +185,7 @@ const MAP = [
   [/^panel:\w+\.(regional-intelligence|deduction)$/, { exclude: 'ships enabled:false — gate guards nothing' }],
   // isPanelEntitled(): a 'locked' panel outside apiKeyPanels returns isDesktopRuntime(),
   // so desktop-only markers grant access on desktop and are absent on web. Not a paid gate.
-  [/^panel:\w+\.(forecast|oref-sirens|telegram-intel|x-intel)$/, { exclude: "desktop-only 'locked' — isPanelEntitled returns isDesktopRuntime(); free users are entitled on both surfaces" }],
+  [/^panel:\w+\.(forecast|oref-sirens|x-intel)$/, { exclude: "desktop-only 'locked' — isPanelEntitled returns isDesktopRuntime(); free users are entitled on both surfaces" }],
   [/^panel:\w+\.(cii|strategic-risk|gdelt-intel|supply-chain)$/, { exclude: "desktop-only 'enhanced' — badge only, never blocks a free user" }],
   [/^panel:\w+\.stock-analysis$/,             { cap: 'markets.stock_analysis' }],
   [/^panel:\w+\.stock-backtest$/,             { cap: 'markets.backtest' }],
@@ -206,6 +206,7 @@ const MAP = [
 ];
 
 const SITE_MAP = [
+  [/^src\/components\/TelegramIntelPanel\.ts$/, { cap: 'intel.telegram', note: 'desktop access lifecycle; free web feed remains available', preds: ['hasPremiumAccess'] }],
   // --- capabilities the hand-built ledger never found ---
   [/convex\/companyMonitoring\//,             { cap: 'monitoring.company', note: 'requires planKey!==free && tier>0' , preds: ['tier'] }],
   [/_shared\/direct-llm-quota\.ts/,           { cap: 'llm.direct_quota', note: 'entitlement-derived daily LLM ceiling' , preds: ['tier'] }],
@@ -365,6 +366,7 @@ const SITE_BASELINE = {
   "src/app/event-handlers.ts::isProUser": 2,
   "src/app/panel-layout.ts::hasPremiumAccess": 1,
   "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
+  "src/components/TelegramIntelPanel.ts::hasPremiumAccess": 1,
   "src/components/UnifiedSettings.ts::isProUser": 1,
   "src/services/analysis-framework-store.ts::hasPremiumAccess": 1,
   "src/services/correlation-engine/engine.ts::hasPremiumAccess": 1,

@@ -21,7 +21,7 @@ const COOLDOWN_MS = 5_000;
 export class DeductionPanel extends Panel {
     private formEl: HTMLFormElement;
     private inputEl: HTMLTextAreaElement;
-    private geoInputEl: HTMLInputElement;
+    private geoInputEl: HTMLTextAreaElement;
     private resultContainer: HTMLElement;
     private contentRoot: HTMLElement;
     private submitBtn: HTMLButtonElement;
@@ -46,11 +46,11 @@ export class DeductionPanel extends Panel {
             rows: 3,
         }) as HTMLTextAreaElement;
 
-        this.geoInputEl = h('input', {
+        this.geoInputEl = h('textarea', {
             className: 'deduction-geo-input',
-            type: 'text',
+            rows: 2,
             placeholder: 'Geographic or situation context (optional)...',
-        }) as HTMLInputElement;
+        }) as HTMLTextAreaElement;
 
         this.submitBtn = h('button', {
             className: 'deduction-submit-btn',
