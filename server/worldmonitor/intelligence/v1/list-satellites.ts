@@ -5,7 +5,7 @@ import type {
   ListSatellitesResponse,
   Satellite,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 
 const REDIS_KEY = 'intelligence:satellites:tle:v1';
 
@@ -49,15 +49,10 @@ export const listSatellites: IntelligenceServiceHandler['listSatellites'] = asyn
   _ctx: ServerContext,
   req: ListSatellitesRequest,
 ): Promise<ListSatellitesResponse> => {
-  const cached = await getCachedJson(REDIS_KEY, true);
-  if (!cached || typeof cached !== 'object') {
-    return { satellites: [] };
-  }
-
-  const payload = cached as SatelliteCacheResponse;
-  if (!Array.isArray(payload.satellites)) {
-    return { satellites: [] };
-  }
+  const payload = await readRequiredSeed(REDIS_KEY, value => {
+    const data = value as SatelliteCacheResponse | null;
+    return data && Array.isArray(data.satellites) ? { satellites: data.satellites } : undefined;
+  });
 
   const filterCountry = req.country?.trim().toUpperCase();
   const satellites = payload.satellites

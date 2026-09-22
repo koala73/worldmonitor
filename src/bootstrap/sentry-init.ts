@@ -464,7 +464,30 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         && /^(?:TypeError: )?Load failed( \(.*\))?$/.test(msg)
       ) return null;
       const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
-      const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
+      // Chunks whose code is entirely third-party. `beforeSend` runs in the
+      // browser, BEFORE sourcemapping, so a hashed filename is the only
+      // ownership signal available here — hence a name list.
+      //
+      // `protomaps` and `h3-js` were emitted by vite.config.ts's node_modules
+      // branch but missing from this list, so an error whose only frame was one
+      // of those chunks counted as first-party and escaped every
+      // `!hasFirstParty` gate below. Both verified pure on a real build
+      // (2026-09-22) by dumping each chunk's `moduleIds` in `generateBundle`:
+      // protomaps 0/3 and h3-js 0/1 modules outside node_modules.
+      //
+      // KNOWN UNSOUND, do not extend without measuring. A chunk NAME does not
+      // tell you whose code is inside it — Rollup names a chunk after its seed
+      // module and then hoists shared modules into it. The same build showed
+      // three names already on this list matching chunks that DO hold our code:
+      // `i18n` (12/12 modules ours, incl. safe-storage/billing-retry/
+      // premium-paths — a second, genuinely pure `i18n` chunk shares the name),
+      // `deck-stack` (src/components/DeckGLMap.ts), and `sentry` (which also
+      // matches `sentry-init-<hash>.js`, 5/5 ours). Those are suppressed today.
+      // Removing the names cannot fix it, because two chunks named `i18n` have
+      // OPPOSITE ownership; only a build-time per-chunk manifest can. Adding a
+      // name here is safe ONLY after confirming that chunk has no first-party
+      // module.
+      const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime|protomaps|h3-js)-[A-Za-z0-9_-]+\.js/;
       const firstPartyFile = (filename: string) => {
         if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
         if (/\/assets\/[A-Za-z0-9_-]+\.js/.test(filename)) return !vendorChunk.test(filename);
@@ -923,9 +946,25 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // a sibling chunk no longer provides after a deploy — a built bundle always links
       // consistently, so at runtime this is version skew, never a code defect, and it
       // throws at link time with zero first-party frames (WORLDMONITOR-TM).
+      //
+      // That module-LINK condition has THREE engine spellings, and coverage used to be
+      // bound to two of them:
+      //   WebKit  `Importing binding name 's' is not found.`                    (here)
+      //   Gecko   `The requested module './x.js' doesn't provide an export named: 's'`
+      //   V8      `The requested module './x.js' does not provide an export named 's'`
+      // Gecko's sits in `ignoreErrors` above, so V8's — the most common engine — was the
+      // one spelling nothing matched, and it reported for months on a one-word
+      // difference (`does not` vs `doesn't`): WORLDMONITOR-149, Chrome 153, zero frames,
+      // 7 min after its own build deployed. Both wordings are matched HERE so the rule is
+      // complete by class rather than by engine, and so removing the frame-blind
+      // `ignoreErrors` entry would leave the class correctly gated rather than uncovered.
+      // Bound to the runtime sentence (`The requested module '<specifier>' …`) so a
+      // first-party error that merely mentions the phrase keeps reporting, and gated on
+      // `!hasFirstParty` like its siblings so a link failure attributable to our own code
+      // still surfaces.
       if (
         !hasFirstParty
-        && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found/i.test(msg)
+        && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found|The requested module '[^']*' does(?: not|n't) provide an export named/i.test(msg)
       ) return null;
       // Safari's URL-less wording gives the owned-URL rule above nothing to
       // match, and WebKit's async stack trace appends the awaiting `import()`

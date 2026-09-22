@@ -126,7 +126,7 @@ describe("checkout rate-limit classification", () => {
       isCheckoutRateLimitedOutcome({
         checkoutFailed: true,
         code: CHECKOUT_RATE_LIMITED,
-        retryAfterSeconds: 999,
+        retryAfterSeconds: 10_000,
       }),
     ).toBe(false);
   });
@@ -392,7 +392,7 @@ describe("relay and public action contracts", () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({
-      error: "CHECKOUT_FAILED",
+      error: "Operation failed",
     });
     expect(createDodoCheckoutSession).toHaveBeenCalledTimes(1);
     expect(sleeps).not.toHaveBeenCalled();

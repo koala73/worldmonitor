@@ -986,6 +986,23 @@ test('Military-Bases backfill validates every active record', async () => {
   }
 });
 
+test('bundled CA selection applies only to the configured child and preserves NODE_OPTIONS', async () => {
+  const cleanup = writeFixture('_bundle-fixture-ca.mjs', `
+    console.log(JSON.stringify({ args: process.execArgv, options: process.env.NODE_OPTIONS }));
+  `);
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'BUNDLED', script: '_bundle-fixture-ca.mjs', useBundledCa: true, intervalMs: 1, timeoutMs: 5000 },
+      { label: 'DEFAULT', script: '_bundle-fixture-ca.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ], {}, { NODE_OPTIONS: '--dns-result-order=ipv4first' });
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /\[BUNDLED\] \{"args":\["--use-bundled-ca"\],"options":"--dns-result-order=ipv4first"\}/);
+    assert.match(stdout, /\[DEFAULT\] \{"args":\[\],"options":"--dns-result-order=ipv4first"\}/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('streams child stdout live and reports Done on success', async () => {
   const cleanup = writeFixture(
     '_bundle-fixture-fast.mjs',
@@ -1586,6 +1603,26 @@ test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bound
     // child ran before `after`. So: before - tolerance <= injected <= after.
     assert.ok(injected >= before - 5000 && injected <= after,
       `injected=${injected} out of bounds [${before - 5000}, ${after}]`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('injects BUNDLE_SECTION_TIMEOUT_MS env into child as the section timeoutMs (#8479)', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-section-timeout-env.mjs',
+    `console.log('BUNDLE_SECTION_TIMEOUT_MS=' + process.env.BUNDLE_SECTION_TIMEOUT_MS);\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'SECTION_TO', script: '_bundle-fixture-section-timeout-env.mjs', intervalMs: 1, timeoutMs: 12_345 },
+    ]);
+    assert.equal(code, 0);
+    assert.match(
+      stdout,
+      /BUNDLE_SECTION_TIMEOUT_MS=12345/,
+      `expected section timeout env in child stdout; got:\n${stdout}`,
+    );
   } finally {
     cleanup();
   }

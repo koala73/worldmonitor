@@ -5227,7 +5227,8 @@ describe('crawlable corpus generator', () => {
   });
 
   it('loads deterministic source data without network access', async () => {
-    const data = await loadCorpusData({ rootDir: repoRoot });
+    const now = Date.now();
+    const data = await loadCorpusData({ rootDir: repoRoot, now });
     assert.match(
       data.sources.resilienceSnapshot,
       /^docs\/snapshots\/resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/,
@@ -5254,10 +5255,12 @@ describe('crawlable corpus generator', () => {
       laterDate(
         data.resilience.capturedAt,
         data.livePulse.capturedAt,
+        livePulseMovementClaimLastmod(data.livePulse.capturedAt, now),
         gitFileLastmod(repoRoot, data.sources.countryRegions),
+        gitFileLastmod(repoRoot, data.sources.microstateTerritories),
         COUNTRY_PAGE_CONTENT_VERSION,
       ),
-      'countries lastmod must fold snapshot, pulse, regions and the page content version',
+      'countries lastmod must fold snapshot, pulse, movement-claim expiry, geographic inputs and the page content version',
     );
     // #7518 set COUNTRY_PAGE_CONTENT_VERSION and CII_COUNTRY_PAGE_CONTENT_VERSION
     // to the same date, so the two clocks coincide by value. Pin the DERIVATION

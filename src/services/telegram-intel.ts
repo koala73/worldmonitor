@@ -70,6 +70,28 @@ const previewInflight = new Map<string, Promise<TelegramChannelPreview>>();
 const channelCache = new Map<string, { data: TelegramFeedResponse; expiresAt: number }>();
 const channelInflight = new Map<string, Promise<TelegramFeedResponse>>();
 
+let cacheGeneration = 0;
+
+/** Stamp loader deliveries so deferred panels can reject pre-lock results. */
+export function getTelegramIntelGeneration(): number {
+  return cacheGeneration;
+}
+
+/** Invalidate cached payloads and prevent old requests from repopulating them. */
+export function clearTelegramIntelCache(): void {
+  cacheGeneration++;
+  cachedResponse = null;
+  cachedAt = 0;
+  previewCache.clear();
+  previewInflight.clear();
+  channelCache.clear();
+  channelInflight.clear();
+}
+
+function assertCurrentGeneration(generation: number): void {
+  if (generation !== cacheGeneration) throw new DOMException('Telegram access changed', 'AbortError');
+}
+
 function setLookupCache<T>(
   cache: Map<string, { data: T; expiresAt: number }>,
   key: string,
@@ -216,6 +238,7 @@ function applyWatchlistMetadata(items: TelegramItem[]): TelegramItem[] {
 }
 
 export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedResponse> {
+  const generation = cacheGeneration;
   if (cachedResponse && Date.now() - cachedAt < CACHE_TTL) return cachedResponse;
 
   // Gating the route cost us the edge's `stale-if-error=120`: a shared entry used
@@ -232,8 +255,10 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
   //
   // Never touches `cachedAt`: the stale copy is only ever a fallback, so it
   // cannot satisfy the fresh-cache check above or suppress the next real fetch.
-  const staleFallback = (): TelegramFeedResponse | null =>
-    cachedResponse && Date.now() - cachedAt < STALE_FALLBACK_TTL ? cachedResponse : null;
+  const staleFallback = (): TelegramFeedResponse | null => {
+    assertCurrentGeneration(generation);
+    return cachedResponse && Date.now() - cachedAt < STALE_FALLBACK_TTL ? cachedResponse : null;
+  };
 
   let res: Response;
   try {
@@ -260,12 +285,14 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
     if (stale) return stale;
     throw error;
   }
+  assertCurrentGeneration(generation);
   cachedResponse = json;
   cachedAt = Date.now();
   return json;
 }
 
 export async function fetchTelegramChannelPreview(username: string): Promise<TelegramChannelPreview> {
+  const generation = cacheGeneration;
   // Normalize here rather than trusting callers: an un-normalized value became
   // both the cache key and the wire value, so `@foo` and `t.me/foo` would hold
   // separate entries and issue requests the edge then rejects.
@@ -281,6 +308,7 @@ export async function fetchTelegramChannelPreview(username: string): Promise<Tel
     const preview = parseTelegramChannelPreview(await readJson(await fetch(telegramResolveUrl(cacheKey), {
       signal: createTimeoutSignal(PREVIEW_REQUEST_TIMEOUT_MS),
     })));
+    assertCurrentGeneration(generation);
     setLookupCache(previewCache, cacheKey, preview, RESOLVE_CACHE_TTL);
     return preview;
   })();
@@ -289,11 +317,12 @@ export async function fetchTelegramChannelPreview(username: string): Promise<Tel
   try {
     return await request;
   } finally {
-    previewInflight.delete(cacheKey);
+    if (previewInflight.get(cacheKey) === request) previewInflight.delete(cacheKey);
   }
 }
 
 export async function fetchTelegramChannelFeed(username: string, limit = 20): Promise<TelegramFeedResponse> {
+  const generation = cacheGeneration;
   const safeLimit = Math.max(1, Math.min(50, limit));
   const normalizedUsername = normalizeTelegramUsername(username);
   if (!normalizedUsername) throw new TelegramLookupError('Invalid Telegram username', 400);
@@ -317,9 +346,11 @@ export async function fetchTelegramChannelFeed(username: string, limit = 20): Pr
         items: applyWatchlistMetadata(response.items || []),
         count: Array.isArray(response.items) ? response.items.length : 0,
       };
+      assertCurrentGeneration(generation);
       setLookupCache(channelCache, cacheKey, normalized, CHANNEL_CACHE_TTL);
       return normalized;
     } catch (error) {
+      assertCurrentGeneration(generation);
       if (stale) return stale;
       throw error;
     }
@@ -329,7 +360,7 @@ export async function fetchTelegramChannelFeed(username: string, limit = 20): Pr
   try {
     return await request;
   } finally {
-    channelInflight.delete(cacheKey);
+    if (channelInflight.get(cacheKey) === request) channelInflight.delete(cacheKey);
   }
 }
 

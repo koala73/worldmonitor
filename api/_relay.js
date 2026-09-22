@@ -1,5 +1,5 @@
 // Edge function copy — canonical version at server/_shared/relay.ts
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
@@ -59,7 +59,10 @@ export function buildRelayResponse(response, body, headers) {
 
 export function createRelayHandler(cfg) {
   return async function handler(req) {
-    const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
+    const corsHeaders = {
+      ...getCorsHeaders(req, 'GET, OPTIONS'),
+      ...(cfg.publicCors ? { 'Cache-Control': 'no-store' } : {}),
+    };
 
     if (isDisallowedOrigin(req)) {
       return jsonResponse({ error: 'Origin not allowed' }, 403, corsHeaders);
@@ -112,7 +115,8 @@ export function createRelayHandler(cfg) {
       const isSuccess = response.status >= 200 && response.status < 300;
       const cacheHeaders = cfg.cacheHeaders ? cfg.cacheHeaders(isSuccess) : {};
 
-      return buildRelayResponse(response, body, { ...cacheHeaders, ...extraHeaders, ...corsHeaders });
+      const responseCors = cfg.publicCors && isSuccess ? getPublicCorsHeaders('GET, OPTIONS') : corsHeaders;
+      return buildRelayResponse(response, body, { ...cacheHeaders, ...extraHeaders, ...responseCors });
     } catch (error) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
       const isTimeout = error?.name === 'AbortError';

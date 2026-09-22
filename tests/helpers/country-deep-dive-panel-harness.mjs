@@ -247,6 +247,8 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['panel-gating-stub', `
       export function hasPremiumAccess() { return globalThis.__wmCountryDeepDiveTestState.premiumAccess; }
       export function getPanelGateReason() { return 'none'; }
+      export function readPremiumAccessGrant() { return globalThis.__wmCountryDeepDiveTestState.premiumGrant; }
+      export function readClientEntitlementBelief() { return globalThis.__wmCountryDeepDiveTestState.entitlementBelief; }
     `],
     ['auth-state-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
@@ -290,6 +292,15 @@ async function loadCountryDeepDivePanel(options = {}) {
           hasSignal: signal instanceof AbortSignal,
         });
         if (scorecardMode === 'reject') throw new Error('synthetic scorecard failure');
+        // The generated service clients throw ApiError, which carries the HTTP
+        // status on \`statusCode\`. Synthetic values only — never a captured body.
+        if (scorecardMode === 'denied' || scorecardMode === 'forbidden') {
+          const error = new Error('Request failed with status ' + (scorecardMode === 'denied' ? 401 : 403));
+          error.name = 'ApiError';
+          error.statusCode = scorecardMode === 'denied' ? 401 : 403;
+          error.body = '';
+          throw error;
+        }
         if (scorecardMode === 'timeout') {
           await new Promise((resolve) => setTimeout(resolve, 10));
           const error = new Error('synthetic scorecard timeout');
@@ -437,6 +448,12 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     costShockRequests: [],
     deferCostShock: options.deferCostShock === true,
     premiumAccess: options.premiumAccess === true,
+    // Which arm of hasPremiumAccess granted access, and what the client itself
+    // believes about the plan. Defaults mirror the common case (a signed-in Pro
+    // whose entitlement snapshot has landed) so existing cases are unaffected;
+    // a denial test overrides them to model a browser-local grant.
+    premiumGrant: options.premiumGrant ?? (options.premiumAccess === true ? 'pro_user' : 'none'),
+    entitlementBelief: options.entitlementBelief ?? { entitlementTier: null, authRole: null },
     authListeners: new Set(),
     entitlementListeners: new Set(),
     sentryUser: undefined,

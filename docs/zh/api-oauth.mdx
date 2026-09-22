@@ -16,7 +16,13 @@ WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向�
 | URL | 用途 |
 |-----|---------|
 | `/.well-known/oauth-authorization-server` | AS 元数据(端点、支持的 grant、PKCE 方法) |
-| `/.well-known/oauth-protected-resource` | 资源元数据(授权服务器、scope) |
+| `/.well-known/oauth-authorization-server/mcp` | 同一份 AS 元数据,供探测路径限定位置的客户端使用 |
+| `/.well-known/oauth-authorization-server/api/mcp` | 同上,供在已部署的 `/api/mcp` 路由下探测的客户端使用 |
+| `/.well-known/oauth-protected-resource` | 源站范围的资源元数据(授权服务器、scope) |
+| `/.well-known/oauth-protected-resource/mcp` | MCP 端点的资源元数据,其 `resource` 为 `https://<host>/mcp`([RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1)) |
+| `/.well-known/oauth-protected-resource/api/mcp` | 同上,对应已部署的 `/api/mcp` 路由,其 `resource` 为 `https://<host>/api/mcp` |
+
+每个传输路径都有各自的文档:客户端只有在其调用的 URL 位于所公布 `resource` 路径之下时才会接受该 `resource`。`401` 质询指向客户端实际调用路径所对应的文档。自行拼接该 URL(而非跟随质询)的客户端可以在此找到它;两份文档同时提供,已发现源站范围文档的客户端不受影响。
 
 `/.well-known/oauth-protected-resource` 目前公布公共资源作用域 `mcp`。Pro 授权码授权返回内部作用域值 `mcp_pro`。遗留 API-key 授权与 `client_credentials` 返回 `mcp`。
 

@@ -1055,11 +1055,16 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
   await page.route(/\/api\/bootstrap\?tier=slow(?:&|$)/, async (route) => {
     markRequested();
     await released;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: {}, missing: [] }),
-    });
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: {}, missing: [] }),
+      });
+    } catch {
+      // The held slow-tier request can outlive the page. Fulfill then throws
+      // `Object with guid response@… was not bound in the connection`.
+    }
   });
   return {
     release,
@@ -1068,6 +1073,15 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 }
 
 test.describe('dashboard container scroll hydration (#5876)', () => {
+  // Drop routes before Playwright tears the page down. An in-flight
+  // `route.fulfill` against a closed page surfaces as
+  // `Object with guid response@… was not bound in the connection`
+  // (playwright.config.ts retries). That is a harness race on teardown, not
+  // #6501 (browser gone during the first `page.goto`).
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+  });
+
   test('scroll during initial fan-out hydrates an already-mounted panel without another gesture', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     const first = [

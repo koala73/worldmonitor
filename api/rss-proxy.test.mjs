@@ -802,9 +802,7 @@ test('maps a relay-only host to 502 when the relay is unavailable', async () => 
 });
 
 test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
-  // The timeout is only observable through the AbortSignal that
-  // fetchWithTimeout arms, and it is cleared as soon as fetch settles — so the
-  // fetch is held pending while the fake clock is advanced across each
+  // Hold fetch pending while the fake clock is advanced across each
   // boundary. Fake timers keep this deterministic (no real waiting).
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
@@ -847,7 +845,6 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
     mock.timers.reset();
   }
 });
-
 
 // ---------------------------------------------------------------------------
 // Browser User-Agent on the RSS proxy (#6624)
@@ -965,4 +962,90 @@ test('keeps upstream HTML errors inert while preserving their status', async () 
   assert.equal(response.headers.get('Content-Type'), 'text/plain; charset=utf-8');
   assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
   assert.equal(response.headers.get('Content-Security-Policy'), "sandbox; default-src 'none'");
+});
+
+// ─── WORLDMONITOR-ZR: an oversized feed must degrade, not vanish ─────────────
+//
+// #8273 bounded the body read with a hard `throw new Error('Feed body too
+// large')` once the decoded body passed 5 MB. That turned an unbounded read
+// into a total failure for any feed above the cap: the throw unwinds to the
+// outer catch, which captures to Sentry and returns 502 `Failed to fetch
+// feed`. "20VC Episodes" (src/config/feeds.ts, an allowlisted host) measures
+// 11.92 MB across 1423 episodes, so it 502s on every fetch.
+//
+// Nothing downstream wanted 11.92 MB. src/services/rss.ts renders
+// `Array.from(items).slice(0, 5)`, and src/services/country-coverage.ts caps
+// lower still. The read should stop once it has enough items.
+//
+// Truncating at an arbitrary byte is not an option. src/services/rss.ts parses
+// with `DOMParser(text, 'text/xml')` and treats a `<parsererror>` document as a
+// total feed failure, falling back to stale cache — a silently stale panel
+// rather than a visible error. So the read must stop on an ITEM boundary and
+// close the document so it stays well-formed.
+
+/**
+ * Build a syntactically valid feed of `items` entries, each padded to force the
+ * body over a byte threshold. `dialect` picks RSS 2.0 (`<item>`/`</channel>
+ * </rss>`) or Atom (`<entry>`/`</feed>`), the two shapes src/services/rss.ts
+ * branches on via `items.length === 0 ? 'entry' : 'item'`.
+ */
+function buildFeed({ items, padBytes = 0, dialect = 'rss' }) {
+  const pad = 'x'.repeat(padBytes);
+  if (dialect === 'atom') {
+    const entries = Array.from({ length: items }, (_, i) =>
+      `<entry><title>Episode ${i}</title><summary>${pad}</summary></entry>`).join('');
+    return `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Show</title>${entries}</feed>`;
+  }
+  const body = Array.from({ length: items }, (_, i) =>
+    `<item><title>Episode ${i}</title><description>${pad}</description></item>`).join('');
+  return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>Show</title>${body}</channel></rss>`;
+}
+
+function countTags(xml, tag) {
+  return {
+    open: (xml.match(new RegExp(`<${tag}[\\s>]`, 'g')) || []).length,
+    close: (xml.match(new RegExp(`</${tag}>`, 'g')) || []).length,
+  };
+}
+
+test('returns the newest items of an oversized RSS feed instead of failing it (WORLDMONITOR-ZR)', async () => {
+  const feed = buildFeed({ items: 600, padBytes: 10 * 1024 });
+  assert.ok(feed.length > 5 * 1024 * 1024, 'fixture must exceed the 5 MB byte cap to exercise the bound');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200, 'an oversized feed degrades to its newest items, it does not 502');
+  const items = countTags(text, 'item');
+  assert.ok(items.close >= 1, 'at least one complete item survives the bound');
+  assert.ok(items.close <= 20, `item bound caps the payload, got ${items.close}`);
+  assert.equal(items.open, items.close, 'every retained <item> is closed — a half-item yields <parsererror>');
+  assert.ok(text.endsWith('</channel></rss>'), `document must close its open elements, got tail ${JSON.stringify(text.slice(-40))}`);
+  assert.ok(text.length < feed.length, 'the response is actually bounded');
+});
+
+test('returns the newest entries of an oversized Atom feed instead of failing it', async () => {
+  const feed = buildFeed({ items: 600, padBytes: 10 * 1024, dialect: 'atom' });
+  assert.ok(feed.length > 5 * 1024 * 1024, 'fixture must exceed the 5 MB byte cap');
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/atom+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const text = await res.text();
+
+  assert.equal(res.status, 200);
+  const entries = countTags(text, 'entry');
+  assert.ok(entries.close >= 1 && entries.close <= 20, `entry bound caps the payload, got ${entries.close}`);
+  assert.equal(entries.open, entries.close, 'every retained <entry> is closed');
+  assert.ok(text.endsWith('</feed>'), `Atom closes its root, got tail ${JSON.stringify(text.slice(-40))}`);
+});
+
+test('leaves a feed inside both bounds byte-identical', async () => {
+  const feed = buildFeed({ items: 3, padBytes: 32 });
+  spyFetch(() => new Response(feed, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } }));
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), feed, 'a small feed must pass through untouched');
 });

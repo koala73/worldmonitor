@@ -54,6 +54,42 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     );
   });
 
+  // The BFS below seeds only from COPY'd entrypoints. notification-relay.cjs
+  // is NOT COPY'd (this image's CMD is ais-relay.cjs), so nothing it requires
+  // is reachable by that BFS — a COPY line added solely for the relay could be
+  // deleted with this suite still green (#8414 review finding). These explicit
+  // assertions are what pin those lines.
+  it('pins the COPY lines added for notification-relay.cjs, which the BFS cannot reach', () => {
+    for (const required of ['scripts/shared/notification-dedup.cjs', 'scripts/shared/notify-fields.cjs']) {
+      assert.ok(
+        copied.has(required),
+        `${required} is required by scripts/notification-relay.cjs and must stay COPY'd; ` +
+        'the transitive BFS cannot see it because notification-relay.cjs is not an entrypoint of this image',
+      );
+    }
+  });
+
+  // Keeps the Dockerfile comment honest: notification-relay.cjs pulls in
+  // scripts/lib/* modules this image does not ship, so it demonstrably does
+  // not run from this image. If that ever changes, COPY the entrypoint (the
+  // BFS then covers its whole closure) and delete this test.
+  it('notification-relay.cjs is not runnable from this image, so it is not an entrypoint', () => {
+    const relay = resolve(root, 'scripts/notification-relay.cjs');
+    const unshipped = [];
+    for (const rel of collectRelativeImports(relay)) {
+      const resolved = resolveNodeRelative(relay, rel);
+      if (!resolved) continue;
+      const relToRoot = relativeToRepoRoot(root, resolved);
+      if (relToRoot && relToRoot.startsWith('scripts/') && !copied.has(relToRoot)) unshipped.push(relToRoot);
+    }
+    assert.ok(
+      unshipped.length > 0,
+      'Dockerfile.relay now ships every notification-relay.cjs dependency. If the notification-relay ' +
+      'service runs from this image, add `COPY scripts/notification-relay.cjs` so the BFS covers it ' +
+      'and delete this test.',
+    );
+  });
+
   it('scanner catches both ESM imports and CJS require/createRequire', () => {
     // Regression guard for the scanner itself: _seed-utils.mjs has both
     // `import { ... } from './_seed-envelope-source.mjs'` (ESM) AND

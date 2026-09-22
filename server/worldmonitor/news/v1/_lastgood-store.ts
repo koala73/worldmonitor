@@ -24,7 +24,9 @@ import {
   attemptMetaKey,
   isAcceptableDigest,
   isEligibleScope,
+  isStaleReason,
   lastGoodKey,
+  nextPeak,
   parseAcceptedSnapshot,
   shouldReplaceAccepted,
   type AcceptedSnapshot,
@@ -58,6 +60,8 @@ export interface LastGoodRead<T extends DigestLike> {
 const activeAttempts = new Map<string, AttemptSlot>();
 const recentFailedAttempts = new Map<string, { attempt: FailedDigestAttempt; expiresAt: number }>();
 const failureCooldowns = new Map<string, number>();
+const gateRejectionReports = new Map<string, number>();
+const GATE_REJECTION_REPORT_COOLDOWN_MS = 30 * 60 * 1000;
 const RECENT_ATTEMPT_MEMORY_MS = 5_000;
 const LOCAL_RECOVERY_MAX_ENTRIES = 100;
 
@@ -199,6 +203,24 @@ export function publishFailedAttempt(
   return attempt;
 }
 
+/** Remember the gate identity locally after its durable publication succeeds. */
+function rememberGateHeldAttempt(
+  variant: string,
+  lang: string,
+  at: string,
+  digestCacheKey?: string,
+): void {
+  const now = Date.now();
+  recentFailedAttempts.set(scopeKey(variant, lang), {
+    attempt: Object.freeze({ at, reason: 'gate-held' as const }),
+    expiresAt: now + DIGEST_REJECTION_TTL_S * 1000,
+  });
+  if (digestCacheKey) {
+    failureCooldowns.set(digestCacheKey, now + DIGEST_REJECTION_TTL_S * 1000);
+  }
+  boundLocalRecoveryMaps(now);
+}
+
 export async function recoverFailedAttempt(
   variant: string,
   lang: string,
@@ -220,9 +242,7 @@ export async function recoverFailedAttempt(
       if (read.status === 'hit' && read.value && typeof read.value === 'object') {
         const value = read.value as { ts?: unknown; outcome?: unknown };
         const ts = typeof value.ts === 'number' && Number.isFinite(value.ts) ? value.ts : null;
-        const reason = value.outcome === 'build-error' || value.outcome === 'empty-rebuild'
-          ? value.outcome
-          : null;
+        const reason = isStaleReason(value.outcome) ? value.outcome : null;
         if (ts !== null && reason) {
           const recovered = Object.freeze({ at: new Date(ts).toISOString(), reason });
           recentFailedAttempts.set(key, {
@@ -260,6 +280,33 @@ export async function readAcceptedSnapshot<T extends DigestLike>(variant: string
     });
     return { snapshot: null, readable: false };
   }
+}
+
+/**
+ * A fresh build lost to the live snapshot. The requester still gets the fresh
+ * body; everyone else keeps the older one until a build clears the gate or the
+ * snapshot ages out. That is correct for a degraded build and invisible when
+ * it is wrong: on 2026-09-19 it froze `full` for ~6h with only a console.log.
+ * One Sentry issue per variant, at warning level.
+ *
+ * The 120s rejection sentinel is the only backoff for a held snapshot, so a
+ * frozen scope rebuilds ~30x/hour in every region. The condition is sustained,
+ * not an event: one capture per scope per cooldown, per isolate. The capture
+ * rides the request's waitUntil so a frozen isolate cannot drop it mid-incident.
+ */
+function reportGateRejection(variant: string, lang: string): void {
+  console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+  const key = scopeKey(variant, lang);
+  const now = Date.now();
+  if ((gateRejectionReports.get(key) ?? 0) > now) return;
+  if (gateRejectionReports.size >= LOCAL_RECOVERY_MAX_ENTRIES) gateRejectionReports.clear();
+  gateRejectionReports.set(key, now + GATE_REJECTION_REPORT_COOLDOWN_MS);
+  captureSilentError(new Error('fresh digest rejected by the last-good acceptance gate'), {
+    tags: { surface: 'news', component: 'digest-lastgood', stage: 'publish-gate', variant, lang },
+    fingerprint: ['digest-lastgood', 'publish-gate-rejected', variant],
+    level: 'warning',
+    ctx: getUsageScope()?.ctx,
+  });
 }
 
 /**
@@ -318,11 +365,23 @@ export async function publishAcceptedSnapshot(
             ...canonicalRichness,
           }
         : null;
-      const decision = shouldReplaceAccepted(current, candidateRichness, now);
+      // Re-measure the incumbent BODY under the current revocation set, as the
+      // Lua gate does. Its stored itemCount is a publication-time count, and a
+      // URL revoked since must not keep inflating it and veto the repair.
+      const measuredCurrentItems = current
+        ? measureServableRichness(current.data, revoked.urls).itemCount
+        : undefined;
+      const decision = shouldReplaceAccepted(current, candidateRichness, now, measuredCurrentItems);
       const canonicalDecision = canonicalMeta
         ? shouldReplaceAccepted(canonicalMeta, candidateRichness, now)
         : null;
       if (!decision.replace || canonicalDecision && !canonicalDecision.replace) {
+        // The single-process sidecar has no transaction primitive. Publish
+        // identity first, so a visible sentinel always has its matching reason.
+        const attemptWritten = await setCachedJson(
+          attemptMetaKey(variant, lang), { ts: now, outcome: 'gate-held' }, ATTEMPT_META_TTL_S,
+        );
+        if (!attemptWritten) return 'unavailable';
         if (!decision.replace && canonicalDigestKey && currentCanonical.status === 'miss') {
           const cooldownWritten = await setCachedJson(
             canonicalDigestKey,
@@ -334,10 +393,15 @@ export async function publishAcceptedSnapshot(
             return 'unavailable';
           }
         }
-        console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+        rememberGateHeldAttempt(variant, lang, new Date(now).toISOString(), canonicalDigestKey);
+        reportGateRejection(variant, lang);
         return 'rejected';
       }
-      const meta: AcceptedSnapshotMeta = { acceptedAt, ...candidateRichness };
+      const meta: AcceptedSnapshotMeta = {
+        acceptedAt,
+        ...candidateRichness,
+        ...nextPeak(current, candidateRichness.itemCount, acceptedAt, now, measuredCurrentItems),
+      };
       const durableWritten = await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
       if (!durableWritten) {
         console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
@@ -358,20 +422,19 @@ export async function publishAcceptedSnapshot(
     // letting Lua rebuild it meant a cjson decode/encode round trip, which
     // silently rewrote every empty array in the body as `{}`.
     const keys = canonicalDigestKey
-      ? [lastGoodKey(variant, lang), REVOKED_URLS_KEY, canonicalDigestKey]
-      : [lastGoodKey(variant, lang), REVOKED_URLS_KEY];
+      ? [lastGoodKey(variant, lang), REVOKED_URLS_KEY, attemptMetaKey(variant, lang), canonicalDigestKey]
+      : [lastGoodKey(variant, lang), REVOKED_URLS_KEY, attemptMetaKey(variant, lang)];
     const args = [
       String(now),
       String(LASTGOOD_MAX_AGE_MS),
       String(acceptedAt),
       String(LASTGOOD_TTL_S),
       JSON.stringify(data),
-      ...(canonicalDigestKey ? [
-        String(DIGEST_CACHE_TTL_S),
-        new Date(now - LASTGOOD_MAX_AGE_MS).toISOString(),
-        new Date(now).toISOString(),
-        String(DIGEST_REJECTION_TTL_S),
-      ] : []),
+      String(DIGEST_CACHE_TTL_S),
+      new Date(now - LASTGOOD_MAX_AGE_MS).toISOString(),
+      new Date(now).toISOString(),
+      String(DIGEST_REJECTION_TTL_S),
+      String(ATTEMPT_META_TTL_S),
     ];
     const results = await runRedisPipeline([[
       'EVAL',
@@ -385,7 +448,8 @@ export async function publishAcceptedSnapshot(
       console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
       return 'unavailable';
     } else if (outcome.result === 0) {
-      console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+      rememberGateHeldAttempt(variant, lang, new Date(now).toISOString(), canonicalDigestKey);
+      reportGateRejection(variant, lang);
       return 'rejected';
     } else if (outcome.result === -1) {
       console.log(`[digest-publication] candidate rejected after revocations variant=${variant} lang=${lang}`);
@@ -409,6 +473,7 @@ export const __testing__ = {
   activeAttempts,
   recentFailedAttempts,
   failureCooldowns,
+  gateRejectionReports,
   deferDigestAttempt,
   measureServableRichness,
 };

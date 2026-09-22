@@ -62,13 +62,14 @@
 
 export const config = { runtime: 'edge' };
 
-import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
 } from '../../server/_shared/entitlement-check';
 import {
   checkProMcpAccess,
+  grantSessionVerificationUnavailableResponse,
   proMcpGateDenialResponse,
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
@@ -176,7 +177,7 @@ async function rawRedisSetNxEx(key: string, value: unknown, ttlSeconds: number):
 
 export interface MintDeps {
   /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
-  resolveUserId: (req: Request) => Promise<string | null>;
+  resolveUserId: (req: Request) => Promise<string | Response | null>;
   /** Reads a raw `oauth:*` or `mcp-grant:*` key from Redis. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
   /** Writes a raw `mcp-grant:*` key with TTL. Returns false on failure. */
@@ -209,6 +210,7 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   }
 
   const userId = await deps.resolveUserId(req);
+  if (userId instanceof Response) return grantSessionVerificationUnavailableResponse();
   if (!userId) {
     return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
   }
@@ -371,7 +373,7 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
 
 export default async function handler(req: Request): Promise<Response> {
   return mintGrantHandler(req, {
-    resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
+    resolveUserId: resolveSessionUserId,
     redisGet: rawRedisGet,
     redisSetEx: rawRedisSetEx,
     redisSetNxEx: rawRedisSetNxEx,

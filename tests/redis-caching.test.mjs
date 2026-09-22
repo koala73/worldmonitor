@@ -2528,6 +2528,7 @@ export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Re
       './_shared': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
       '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
       '../../../_shared/rate-limit': rateStub,
     });
@@ -2845,7 +2846,7 @@ export const RATE_LIMIT_DEGRADED_HEADERS = { 'X-RateLimit-Mode': 'degraded', 'Re
       const raw = String(url);
       if (raw.includes('/wingbits/track') && raw.includes('lamin=')) {
         wingbitsCalls += 1;
-        return jsonResponse({ positions: [{ icao24: 'abc', lat: 20.5, lon: 10.5 }], source: 'wingbits' }, true);
+        return jsonResponse({ positions: [{ icao24: 'abc', lat: 10, lon: 10.5 }], source: 'wingbits' }, true);
       }
       return jsonResponse({}, false);
     };
@@ -5146,7 +5147,11 @@ describe('allowlisted Redis transactions', { concurrency: 1 }, () => {
       ]);
       const proxy = readFileSync(resolve(root, 'docker/redis-rest-proxy.mjs'), 'utf8');
       assert.match(proxy, /req\.url === '\/multi-exec'/);
-      assert.match(proxy, /'GET', 'SET', 'DEL'/);
+      const allowlist = proxy.match(/const ALLOWED_COMMANDS = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? '';
+      const commands = new Set([...allowlist.matchAll(/'([A-Z]+)'/g)].map((match) => match[1]));
+      for (const command of ['GET', 'GETDEL', 'SET', 'DEL']) {
+        assert.ok(commands.has(command), `${command} must be allowed by the Redis proxy`);
+      }
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();

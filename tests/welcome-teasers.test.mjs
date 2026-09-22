@@ -44,6 +44,16 @@ function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+function assertCapturedHeadline(headline, capturedHeadlines) {
+  assert.ok(
+    capturedHeadlines.some((captured) => headline.title === captured.title
+      && headline.source === captured.source
+      && headline.url === captured.url
+      && headline.publishedAt === Date.parse(captured.publishedAt)),
+    `"${headline.title}" has no matching title, source, URL and publication time in the capture`,
+  );
+}
+
 const snapshot = JSON.parse(read(resolveLatestLivePulseSnapshotPath(repoRoot)));
 const committed = JSON.parse(read(TEASERS_OUTPUT_PATH));
 
@@ -87,13 +97,30 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
   });
 
   it('every published headline came from the snapshot capture', () => {
-    const frozen = new Map(snapshot.headlines.map((h) => [h.title, h]));
     for (const headline of committed.headlines) {
-      const source = frozen.get(headline.title);
-      assert.ok(source, `"${headline.title}" is not in the frozen capture — it was hand-written`);
-      assert.equal(headline.source, source.source);
-      assert.equal(headline.url, source.url);
-      assert.equal(headline.publishedAt, Date.parse(source.publishedAt));
+      assertCapturedHeadline(headline, snapshot.headlines);
+    }
+  });
+
+  it('accepts the same headline from two editions without accepting altered provenance', () => {
+    const article = {
+      title: 'Shared headline',
+      source: 'France 24',
+      url: 'https://www.france24.com/en/example-article',
+      publishedAt: '2026-09-14T01:42:29.000Z',
+    };
+    const captured = [article, { ...article, source: 'France 24 LatAm' }];
+    const generated = buildWelcomeTeasers({ ...snapshot, headlines: captured }, 'same-title fixture');
+    assert.equal(generated.headlines.length, 2);
+    for (const headline of generated.headlines) assertCapturedHeadline(headline, captured);
+
+    for (const changes of [
+      { title: 'Uncaptured headline' },
+      { source: 'Uncaptured source' },
+      { url: 'https://www.france24.com/en/different-article' },
+      { publishedAt: generated.headlines[0].publishedAt + 1 },
+    ]) {
+      assert.throws(() => assertCapturedHeadline({ ...generated.headlines[0], ...changes }, captured));
     }
   });
 

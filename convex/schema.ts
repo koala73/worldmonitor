@@ -594,7 +594,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_referrer", ["referrerUserId"])
-    .index("by_referrer_email", ["referrerUserId", "refereeEmail"]),
+    .index("by_referrer_email", ["referrerUserId", "refereeEmail"])
+    .index("by_refereeEmail", ["refereeEmail"]),
 
   contactMessages: defineTable({
     name: v.string(),
@@ -990,6 +991,66 @@ export default defineSchema({
     .index("by_normalizedEmail", ["normalizedEmail"])
     .index("by_localePrimary", ["localePrimary"]),
 
+  // Durable DSAR tombstone for a Clerk subject. Personal Convex rows are
+  // deleted or anonymized by `convex/accountDeletion`; Company Monitoring
+  // still uses `markOwnerDeleted` / `advanceAccountPurge` for its own fence.
+  // `verifiedEmail` is captured for waitlist/contact deletes and cleared
+  // when status becomes complete so the tombstone is not a second email index.
+  accountDeletions: defineTable({
+    userId: v.string(),
+    userIdHash: v.string(),
+    source: v.union(
+      v.literal("self"),
+      v.literal("support"),
+      v.literal("clerk_webhook"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("follows"),
+      v.literal("personal"),
+      v.literal("grants"),
+      v.literal("anonymize"),
+      v.literal("email_keyed"),
+      v.literal("external"),
+      v.literal("complete"),
+    ),
+    personalTableIndex: v.optional(v.number()),
+    verifiedEmail: v.optional(v.string()),
+    dodoSubscriptionIds: v.optional(v.array(v.string())),
+    subscriptionDocIds: v.optional(v.array(v.id("subscriptions"))),
+    cancelledDodoSubscriptionIds: v.optional(v.array(v.string())),
+    keyHashes: v.optional(v.array(v.string())),
+    embedKeyHashes: v.optional(v.array(v.string())),
+    mcpTokenIds: v.optional(v.array(v.string())),
+    redisClearedAt: v.optional(v.number()),
+    clerkDeletedAt: v.optional(v.number()),
+    fenceAppliedAt: v.optional(v.number()),
+    // Set when the email-keyed step ran with no verified proof of the account
+    // email — the webhook path never has one, because Clerk deleted the user
+    // before we were told. Waitlist, contact-form and invitee-email-keyed rows
+    // are then left alone rather than matched on a cached address we cannot
+    // trust. Recorded so the gap is visible and repairable instead of silent;
+    // `accountDeletion/batches:completeEmailKeyedErasure` clears it.
+    emailKeyedSkipped: v.optional(v.boolean()),
+    externalAttempts: v.optional(v.number()),
+    // Consecutive failures of the Convex-side batch stepper. A write conflict
+    // on a globally shared aggregate row is routine, so a batch failure is
+    // retried a bounded number of times before the row goes terminal.
+    // Reset whenever a batch commits progress.
+    batchAttempts: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userIdHash", ["userIdHash"])
+    .index("by_status_updatedAt", ["status", "updatedAt"]),
+
   webhookEvents: defineTable({
     webhookId: v.string(),
     eventType: v.string(),
@@ -1135,6 +1196,13 @@ export default defineSchema({
   })
     .index("by_dodoPaymentId", ["dodoPaymentId"])
     .index("by_reconciledAt", ["reconciledAt"]),
+
+  // One reusable admission counter per account, independent of provider alarms.
+  checkoutAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
 
   // One row per checkout that exhausted the #6027 provider-429 retry ladder
   // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This

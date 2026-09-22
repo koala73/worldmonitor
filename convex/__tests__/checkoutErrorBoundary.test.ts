@@ -35,6 +35,7 @@ test("actual edge to relay to checkout chain masks provider exceptions", async (
   const edge = await import("../../api/create-checkout");
   edge.__setCreateCheckoutDepsForTests({
     validateBearerToken: async () => ({ valid: true, userId: "error-boundary-buyer" }),
+    checkRateLimit: async () => null,
     fetch: async (input, init) => t.fetch(new URL(String(input)).pathname, init),
   });
   try {
@@ -52,9 +53,9 @@ test("actual edge to relay to checkout chain masks provider exceptions", async (
 test.each([
   ["not a URL", "Invalid returnUrl: must be a valid absolute URL"],
   ["https://untrusted.example", "Invalid returnUrl: must use a trusted worldmonitor.app origin"],
-])("relay retains explicit returnUrl validation for %s", async (returnUrl, message) => {
+])("relay masks returnUrl validation for %s and logs it server-side", async (returnUrl, message) => {
   vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const t = convexTest(schema, modules);
   const response = await t.fetch("/relay/create-checkout", {
     method: "POST",
@@ -62,5 +63,6 @@ test.each([
     body: JSON.stringify({ userId: "validation-buyer", productId, returnUrl }),
   });
   expect(response.status).toBe(500);
-  expect(await response.json()).toEqual({ error: message });
+  expect(await response.json()).toEqual({ error: "Operation failed" });
+  expect(JSON.stringify(log.mock.calls)).toContain(message);
 });

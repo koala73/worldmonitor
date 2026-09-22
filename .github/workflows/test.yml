@@ -5,6 +5,16 @@ on:
   push:
     branches: [main]
 
+# A superseded PR run owes nobody a verdict. Branch protection and
+# deploy-gate.sh both evaluate the head SHA only. Letting it finish burned
+# 59% of this workflow's runs on dead commits and queued the live commit
+# behind them. Cancellation is pull_request-only. A push to main still owes
+# the deploy gate a verdict, and `github.run_id` gives it a group of one so
+# nothing can evict it (#8443).
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -818,6 +828,32 @@ jobs:
             sample_memory >> "$DIAGNOSTICS_DIR/memory-samples.log"
             mkdir -p test-results/browser-loss
             cp "$DIAGNOSTICS_DIR/"*.log test-results/browser-loss/
+            # A browser crash is not a flake. With retries at 1 a single crash
+            # is absorbed and the job reports `flaky`, which is how these went
+            # unnoticed from #5685 until #8447. Report every crash whatever the
+            # job outcome, and do not change the exit code while the rate is
+            # still around one crash per run.
+            CRASHES=$(grep -ac "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" 2>/dev/null || true)
+            if [ "${CRASHES:-0}" -gt 0 ]; then
+              echo "::error title=Browser crashed::chrome-headless-shell exited with SIGTRAP ${CRASHES} time(s) on ci-smoke shard ${{ matrix.shard }}. A green job does not mean no crash. See the browser-loss artifact."
+              {
+                echo "### Browser crashes, ci-smoke shard ${{ matrix.shard }}"
+                echo ""
+                echo "SIGTRAP exits: ${CRASHES}"
+                echo ""
+                echo '```'
+                # Bounded because GITHUB_STEP_SUMMARY caps at 1 MiB and an
+                # oversized write is dropped whole, which would lose the count
+                # above too. Say so when it bites: a silent cut reads as if
+                # these were all of them.
+                grep -an "signal=SIGTRAP" "$DIAGNOSTICS_DIR/playwright.log" | head -50 || true
+                echo '```'
+                if [ "${CRASHES:-0}" -gt 50 ]; then
+                  echo ""
+                  echo "Showing the first 50. The other $((CRASHES - 50)) are in the browser-loss artifact."
+                fi
+              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            fi
             return "$SMOKE_STATUS"
           }
           trap collect_diagnostics EXIT
