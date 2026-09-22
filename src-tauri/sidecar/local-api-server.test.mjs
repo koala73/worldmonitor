@@ -3190,6 +3190,58 @@ test('releases the upstream fetch semaphore when a response stalls mid-body (#54
   }
 });
 
+test('nested self-origin fetches do not hold upstream semaphore slots (#5449)', async () => {
+  // Self-hosted MCP tools call sibling /api routes on the sidecar's own
+  // loopback origin through the patched globalThis.fetch. Each such call used
+  // to hold one of the 6 upstream slots for the whole nested request while
+  // the nested handler's own fetch needed a slot from the same pool, so six
+  // concurrent tool calls wedged until their timeouts fired. Fire 7 outer
+  // self-calls whose handler makes one more self-call: with self-origin
+  // fetches exempt from the semaphore, all 7 complete promptly.
+  const localApi = await setupApiDir({
+    'leaf.js': `
+      export default async function handler() {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+    'self-hop.js': `
+      export default async function handler(req) {
+        const leaf = await fetch(new URL('/api/leaf', req.url), {
+          headers: { 'X-WorldMonitor-Local-Token': process.env.LOCAL_API_TOKEN },
+        });
+        const payload = await leaf.text();
+        return new Response(payload, { status: leaf.status, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    // Deliberately the PATCHED globalThis.fetch, not getJsonViaHttp: this is
+    // exactly how an MCP registry tool reaches a sibling route in-process.
+    const results = await Promise.all(Array.from({ length: 7 }, () =>
+      globalThis.fetch(`http://127.0.0.1:${port}/api/self-hop`, {
+        headers: { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN },
+        signal: AbortSignal.timeout(3000),
+      }).then(async (res) => ({ status: res.status, json: await res.json() }))
+    ));
+    for (const result of results) {
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.json, { ok: true });
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('releases the upstream fetch semaphore when a connection goes silent forever (#5441 follow-up)', async () => {
   // Accepts the connection and never writes anything, never closes -- no
   // FIN/RST, no data. None of res 'error'/'aborted'/'end' or req 'error'/

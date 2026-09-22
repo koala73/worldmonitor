@@ -484,6 +484,24 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://connect.facebook.net/en_US/fbevents.js', '', false));
     });
 
+    it('suppresses an injected Meta Pixel form post to facebook.com/tr — WORLDMONITOR-12G', () => {
+      // Verbatim production value: 23 events from one Chrome 153 / Windows user
+      // on /dashboard, breadcrumbs showing an injected server-side GTM tag
+      // (stape.io) that the app does not ship. Our form-action is 'self' plus
+      // api.worldmonitor.app, and no first-party code submits to Meta.
+      assert.ok(suppress('enforce', 'form-action', 'https://www.facebook.com/tr/', '', false));
+      assert.ok(suppress('enforce', 'form-action', 'https://www.facebook.com/tr', '', false));
+      assert.ok(suppress('enforce', 'form-action', 'https://www.facebook.com:443/tr/', '', false));
+    });
+
+    it('does NOT suppress other facebook.com form posts or /tr under other directives', () => {
+      assert.ok(!suppress('enforce', 'form-action', 'https://www.facebook.com/login.php', '', false));
+      assert.ok(!suppress('enforce', 'form-action', 'https://www.facebook.com:8443/tr/', '', false));
+      assert.ok(!suppress('enforce', 'form-action', 'http://www.facebook.com/tr/', '', false));
+      assert.ok(!suppress('enforce', 'form-action', 'https://www.facebook.com.evil.example/tr/', '', false));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://www.facebook.com/tr/', '', false));
+    });
+
     it('suppresses googlevideo (YouTube embeds)', () => {
       assert.ok(suppress('enforce', 'media-src', 'https://rr1---sn-abc.googlevideo.com/videoplayback', '', false));
     });

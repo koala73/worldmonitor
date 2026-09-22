@@ -155,7 +155,6 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/SpeciesComebackPanel.ts :: this.content.appendChild(…) x2',
   'src/components/SupplyChainPanel.ts :: this.content.prepend(…) x1',
   'src/components/TechEventsPanel.ts :: replaceChildren(this.content, …) x1',
-  'src/components/TelegramIntelPanel.ts :: replaceChildren(this.content, …) x3',
 ];
 
 /**

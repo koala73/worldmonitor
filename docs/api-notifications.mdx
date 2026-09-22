@@ -84,6 +84,24 @@ Errors: 401 (missing/invalid JWT), 403 `pro_required` — and, like every Pro-ga
 
 - **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key with an identical body replays the original enqueue response instead of publishing the notification again.
 
+#### Caller-submitted field policy
+
+`payload.title`, `payload.source`, `payload.link`, `payload.url` and `payload.description` reach the email subject and body, the Telegram/Slack/Discord text, and the web-push click target, so they are shaped at this boundary before the event is queued (issue #8397). Fields are neutralised individually — an event is never rejected for its content:
+
+- **`title`** — control characters, newlines and invisible formatting are stripped, the value is truncated to 200 characters, clickable URL tokens are replaced with `[link removed]`, and the result is prefixed `Community alert: ` so caller copy is never rendered as WorldMonitor's own.
+- **`source`** — preserved as submitted, unless it impersonates a first-party identity (matched after Unicode normalisation, confusable folding and punctuation stripping), in which case it becomes the neutral label `Community alert`. Real publisher attribution such as `Reuters` is kept.
+- **`link` / `url`** — must be `https` with no embedded credentials; anything else becomes the dashboard URL. An off-origin article link is delivered to text channels with its destination host disclosed inline (`<url> (source: <host>)`), and is never used as the web-push click target, which stays first-party.
+- **`description`** — same shaping as `title`, truncated to 400 characters.
+- `importanceScore` and `corroborationCount` are stripped; they are computed server-side.
+
+A `200` response carries `warnings` when any field was rewritten, so a caller can detect the change instead of discovering it from a malformed notification:
+
+```json
+{ "ok": true, "warnings": ["source_rewritten", "link_rewritten"] }
+```
+
+The field is omitted entirely when nothing was rewritten, so callers that ignore unknown keys are unaffected.
+
 ## Telegram
 
 ### `GET /api/telegram-feed`

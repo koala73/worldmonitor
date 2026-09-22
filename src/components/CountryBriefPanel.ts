@@ -216,6 +216,7 @@ export interface CountryBriefPanel {
   updateInfrastructure(code: string): void;
   showGeoError?(onRetry: () => void): void;
   updateScore?(score: CountryScore | null, signals: CountryBriefSignals): void;
+  isFallbackBrief?(): boolean;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;

@@ -105,7 +105,7 @@ export class CountryBriefPage implements CountryBriefPanel {
       const linkShareBtn = target.closest('.cb-link-share-btn') as HTMLButtonElement | null;
       if (linkShareBtn) {
         if (!this.currentCode || !this.currentName) return;
-        const url = `${window.location.origin}/?c=${this.currentCode}`;
+        const url = `${window.location.origin}/dashboard?c=${this.currentCode}`;
         navigator.clipboard.writeText(url).then(() => {
           const orig = linkShareBtn.innerHTML;
           setTrustedHtml(linkShareBtn, trustedHtml('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
@@ -267,7 +267,8 @@ export class CountryBriefPage implements CountryBriefPanel {
     if (signals.aisDisruptions > 0) chips.push(`<span class="signal-chip outage">🚢 ${signals.aisDisruptions} AIS Disruptions</span>`);
     if (signals.satelliteFires > 0) chips.push(`<span class="signal-chip climate">🔥 ${signals.satelliteFires} Satellite Fires</span>`);
     if (signals.radiationAnomalies > 0) chips.push(`<span class="signal-chip outage">☢️ ${signals.radiationAnomalies} Radiation Anomalies</span>`);
-    if (signals.temporalAnomalies > 0) chips.push(`<span class="signal-chip outage">⏱️ ${signals.temporalAnomalies} Temporal Anomalies</span>`);
+    if (signals.temporalAnomalies === null) chips.push(`<span class="signal-chip outage">⏱️ ${t('countryBrief.chips.temporalUnavailable')}</span>`);
+    else if (signals.temporalAnomalies > 0) chips.push(`<span class="signal-chip outage">⏱️ ${signals.temporalAnomalies} Temporal Anomalies</span>`);
     if (signals.cyberThreats > 0) chips.push(`<span class="signal-chip conflict">🛡️ ${signals.cyberThreats} Cyber Threats</span>`);
     if (signals.earthquakes > 0) chips.push(`<span class="signal-chip quake">🌍 ${signals.earthquakes} ${t('modals.countryBrief.signals.earthquakes')}</span>`);
     if (signals.displacementOutflow > 0) {
@@ -727,6 +728,7 @@ export class CountryBriefPage implements CountryBriefPanel {
         satelliteFires: this.currentSignals.satelliteFires,
         radiationAnomalies: this.currentSignals.radiationAnomalies,
         temporalAnomalies: this.currentSignals.temporalAnomalies,
+        globalTemporalAnomalies: this.currentSignals.globalTemporalAnomalies ?? null,
         cyberThreats: this.currentSignals.cyberThreats,
         earthquakes: this.currentSignals.earthquakes,
         displacementOutflow: this.currentSignals.displacementOutflow,

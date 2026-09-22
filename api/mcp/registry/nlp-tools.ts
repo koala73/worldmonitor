@@ -27,10 +27,11 @@ import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
 import { computeCredibilityScore } from '../../../shared/news-credibility.js';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { buildAuthHeaders } from '../auth';
+import { fetchMcpDownstream } from '../downstream';
 import { assertToolFetchOk } from '../billing-denial';
 import { argStr, ciIncludes } from '../filters';
 import { McpSourceUnavailableError } from '../source-unavailable';
-import type { ToolDef } from '../types';
+import type { ToolDef, McpToolExecutionContext } from '../types';
 
 // ── #5697 on-demand NLP intelligence utilities ──────────────────────────────
 // Four deterministic (classify_event excepted — enum-validated LLM) utilities
@@ -185,7 +186,7 @@ const NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA = {
     },
     staleReason: {
       type: 'string',
-      description: 'Why retained content is served: empty-rebuild or build-error. Empty when fresh.',
+      description: 'Why retained content is served: empty-rebuild, build-error, or gate-held. Empty when fresh.',
     },
   },
 } as const;
@@ -219,7 +220,7 @@ type NlpDigestFetch = {
      * — 90 seconds and 6 hours warrant different conclusions.
      */
     staleAgeSeconds: number;
-    /** #7084: why stale content is served — empty-rebuild | build-error ('' when fresh). */
+    /** #7084/#8361: why stale content is served — empty-rebuild | build-error | gate-held ('' when fresh). */
     staleReason: string;
   };
 };
@@ -247,14 +248,18 @@ async function fetchNlpDigestItems(
   base: string,
   context: Parameters<typeof buildAuthHeaders>[0],
   variant: NlpDigestVariant,
-  category = '',
+  category: string,
+  // Required-but-nullable, matching fetchMcpDownstream: a caller that forgets
+  // the execution context fails typecheck instead of silently dropping the
+  // self-hosted transport token.
+  execution: McpToolExecutionContext | undefined,
 ): Promise<NlpDigestFetch> {
   const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
   const auth = await buildAuthHeaders(context, 'GET', digestUrl, null);
-  const res = await fetch(digestUrl, {
+  const res = await fetchMcpDownstream(digestUrl, {
     headers: { ...auth, 'User-Agent': NLP_UA },
     signal: AbortSignal.timeout(NLP_DIGEST_TIMEOUT_MS),
-  });
+  }, execution);
   await assertToolFetchOk(res, 'list-feed-digest');
   const body = await res.json() as {
     categories?: Record<string, NlpDigestCategoryGroup>;
@@ -469,7 +474,7 @@ export const NLP_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const text = typeof params.text === 'string' ? params.text.trim() : '';
       if (!text) return { classification: null, error: 'text is required (a non-empty string of at most 500 characters)' };
       if (text.length > CLASSIFY_TEXT_MAX_CHARS) {
@@ -477,13 +482,13 @@ export const NLP_TOOLS: ToolDef[] = [
       }
       const url = `${base}/api/intelligence/v1/classify-event?title=${encodeURIComponent(text)}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
-      const res = await fetch(url, {
+      const res = await fetchMcpDownstream(url, {
         headers: { ...auth, 'User-Agent': NLP_UA },
         // Matches the classify-event handler's own UPSTREAM_TIMEOUT_MS (25s)
         // and the sibling LLM tools below. A shorter client budget would abort
         // slow-but-successful cache-miss classifications the handler completes.
         signal: AbortSignal.timeout(25_000),
-      });
+      }, execution);
       await assertToolFetchOk(res, 'classify-event');
       const result = await res.json() as {
         classification?: { category?: string; subcategory?: string; severity?: string; confidence?: number };
@@ -565,7 +570,7 @@ export const NLP_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       // Validation failures keep every outputSchema-required member present so
       // schema-validating clients can parse the envelope (classify_event does
       // the same with `classification: null`).
@@ -611,7 +616,7 @@ export const NLP_TOOLS: ToolDef[] = [
         };
       }
       const category = argStr(params.category);
-      const digest = await fetchNlpDigestItems(base, context, variant, category);
+      const digest = await fetchNlpDigestItems(base, context, variant, category, execution);
       const aggregated = nlpRegistryEntities(digest.items.map(item => item.title), limit);
       return {
         mode: 'headlines',
@@ -709,7 +714,7 @@ export const NLP_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const limit = nlpClampInt(params.limit, 1, 25, 10);
       const minSources = nlpClampInt(params.min_sources, 1, 10, 1);
       const variant = resolveNlpDigestVariant(params.variant);
@@ -725,7 +730,7 @@ export const NLP_TOOLS: ToolDef[] = [
       }
       const category = argStr(params.category);
       const query = argStr(params.query);
-      const digest = await fetchNlpDigestItems(base, context, variant, category);
+      const digest = await fetchNlpDigestItems(base, context, variant, category, execution);
       const clusters = clusterNewsCore(digest.items, () => 3);
       const selectedClusters = clusters
         .map(cluster => ({

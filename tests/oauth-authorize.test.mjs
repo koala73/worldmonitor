@@ -190,6 +190,11 @@ describe('consentPage — preserved invariants (regression guard for U6+)', () =
     assert.match(html, /<div class="client-host">via claude\.ai<\/div>/);
   });
 
+  it('a custom-scheme redirect shows its scheme, not a bare pseudo-host (cursor:// deeplink)', async () => {
+    const html = await renderHtml({ ...BASE_PARAMS, redirect_uri: 'cursor://anysphere.cursor-mcp/oauth/callback' }, NONCE);
+    assert.match(html, /<div class="client-host">via cursor:\/\/anysphere\.cursor-mcp<\/div>/);
+  });
+
   it('all five scope bullets are still listed (anti-phishing — user sees what they grant)', async () => {
     const html = await renderHtml(BASE_PARAMS, NONCE);
     assert.match(html, /Real-time news/);

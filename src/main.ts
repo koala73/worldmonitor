@@ -319,6 +319,18 @@ function shouldSuppressCspViolation(
   if (/manifest\.webmanifest$/.test(blockedURI)) return true;
   // Third-party injectors: Google Translate, Facebook Pixel.
   if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  // Meta Pixel's form-post beacon. An injected server-side GTM tag (stape.io
+  // collect breadcrumbs) submitted a form to https://www.facebook.com/tr/
+  // (WORLDMONITOR-12G: 23 events from one user). The app ships no Meta Pixel,
+  // and the dashboard's form-action admits only 'self' and api.worldmonitor.app,
+  // so the post is never ours. Exact host, /tr path and form-action only: other
+  // facebook.com form targets and /tr under other directives still report.
+  if (directive === 'form-action') {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:' && url.host === 'www.facebook.com' && /^\/tr\/?$/.test(url.pathname)) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
   // ---- font-src: one invariant, not a host list.
   //
   // The app ships `font-src 'self' data:` (vercel.json, the catch-all route that

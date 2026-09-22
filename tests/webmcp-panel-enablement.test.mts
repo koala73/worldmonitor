@@ -101,6 +101,14 @@ describe('isPanelNativeToVariant', () => {
 });
 
 describe('evaluateSetPanelEnabled', () => {
+  it('accepts mixed-case catalog IDs without changing case-sensitive lookup', () => {
+    for (const [panelId, variant] of [['gccNews', 'finance'], ['regionalStartups', 'tech']]) {
+      const value = evaluate({ panelId, variant, enabled: false });
+      assert.equal(value.ok, true);
+      assert.equal(value.panelId, panelId);
+    }
+  });
+
   it('enables a native disabled panel', () => {
     const panelSettings = settingsWithFreeSlots('full');
     assert.equal(panelSettings['windy-webcams']?.enabled, false);
@@ -278,12 +286,12 @@ describe('evaluateSetPanelEnabled', () => {
     assert.equal(evaluate({ panelId: 'not-a-real-panel' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: 'cw-custom-1' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: 'mcp-remote-1' }).reason, 'unknown_panel');
-    assert.equal(evaluate({ panelId: 'Markets' }).reason, 'malformed_arguments');
+    assert.equal(evaluate({ panelId: 'Markets' }).reason, 'unknown_panel');
     assert.equal(evaluate({ panelId: '.markets' }).reason, 'malformed_arguments');
     assert.equal(evaluate({ panelId: 'a'.repeat(97) }).reason, 'malformed_arguments');
     assert.equal(evaluate({ panelId: 12 }).reason, 'malformed_arguments');
     assert.equal(evaluate({ enabled: 'true' }).reason, 'malformed_arguments');
-    assert.equal(evaluate({ panelId: 'Markets' }).status, 'invalid');
+    assert.equal(evaluate({ panelId: 'Markets' }).status, 'denied');
   });
 
   it('treats a catalog panel missing from settings as currently disabled', () => {
@@ -706,6 +714,9 @@ describe('set_panel_enabled WebMCP adapter', () => {
     }, () => {});
     const tool = tools.find((candidate) => candidate.name === 'set_panel_enabled');
     assert.ok(tool);
+    const schema = tool.inputSchema as { properties: { panelId: { pattern: string } } };
+    assert.ok(new RegExp(schema.properties.panelId.pattern).test('gccNews'));
+    assert.ok(new RegExp(schema.properties.panelId.pattern).test('regionalStartups'));
 
     const extraKeys = await tool.execute(
       { panelId: 'giving', enabled: true, selector: '#giving' },

@@ -1,3 +1,4 @@
+import { assertAccountWritable } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
@@ -48,6 +49,7 @@ export const createApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
 
     // Entitlement gate: only users with apiAccess may create API keys.
     // This is catalog-driven — Pro (tier 1) has apiAccess=false;

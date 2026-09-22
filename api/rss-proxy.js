@@ -1,7 +1,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
-import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
+import { getRelayBaseUrl, getRelayHeaders } from './_relay.js';
 import { isAllowedDomain, hostMatchForms } from './_rss-allowed-domain-match.js';
 import { RSS_BROWSER_UA, rssFetchHeadersForHost } from './_rss-fetch-headers.js';
 import { jsonResponse } from './_json-response.js';
@@ -35,6 +35,160 @@ const RELAY_ONLY_DOMAINS = new Set([
 const DIRECT_FETCH_HEADERS = rssFetchHeadersForHost('');
 const DIRECT_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_DIRECT_REDIRECTS = 3;
+const MAX_FEED_BYTES = 5 * 1024 * 1024;
+
+// Consumers render far fewer items than a feed carries: src/services/rss.ts
+// slices to 5, src/services/country-coverage.ts lower still. Stopping the read
+// here bounds a 1400-episode podcast feed to a few KB instead of 11.92 MB.
+const MAX_FEED_ITEMS = 20;
+const ITEM_CLOSE_PATTERN = /<\/(?:item|entry)\s*>/gi;
+// Longest `</entry  >` spelling we rescan across a chunk seam.
+const ITEM_CLOSE_SEAM = 16;
+
+/**
+ * Closing tags for every element still open in `xml`, outermost last.
+ *
+ * A body cut at an item boundary is still missing its `</channel></rss>` or
+ * `</feed>`. Consumers parse with a strict XML parser and treat a parse error
+ * as a total feed failure, so an unclosed root costs the whole feed rather
+ * than the trimmed tail. Comments and CDATA are skipped so markup quoted
+ * inside them cannot unbalance the stack.
+ */
+function closeOpenElements(xml) {
+  const stack = [];
+  let i = 0;
+  while (i < xml.length) {
+    const lt = xml.indexOf('<', i);
+    if (lt === -1) break;
+    if (xml.startsWith('<!--', lt)) {
+      const end = xml.indexOf('-->', lt + 4);
+      i = end === -1 ? xml.length : end + 3;
+      continue;
+    }
+    if (xml.startsWith('<![CDATA[', lt)) {
+      const end = xml.indexOf(']]>', lt + 9);
+      i = end === -1 ? xml.length : end + 3;
+      continue;
+    }
+    if (xml.startsWith('<?', lt) || xml.startsWith('<!', lt)) {
+      const end = xml.indexOf('>', lt);
+      i = end === -1 ? xml.length : end + 1;
+      continue;
+    }
+    const gt = xml.indexOf('>', lt);
+    if (gt === -1) break;
+    const raw = xml.slice(lt + 1, gt);
+    const name = raw.replace(/^\//, '').match(/^[A-Za-z_][\w.:-]*/)?.[0];
+    if (name) {
+      if (raw.startsWith('/')) {
+        const open = stack.lastIndexOf(name);
+        if (open !== -1) stack.length = open;
+      } else if (!raw.endsWith('/')) {
+        stack.push(name);
+      }
+    }
+    i = gt + 1;
+  }
+  return stack.reverse().map((name) => `</${name}>`).join('');
+}
+
+/**
+ * Stable Sentry grouping fingerprint for an `api/rss-proxy` capture.
+ *
+ * Both capture sites run in the minified edge bundle, whose frames are all
+ * anonymous `(vc/edge/function` with no source map. Sentry's default grouping
+ * keys on that stack, so unfingerprinted captures collapse into whatever
+ * catch-all shares it — WORLDMONITOR-ZR absorbed a feed error next to six
+ * events from an unrelated subsystem. Same remedy as
+ * `api/mcp/error-fingerprint.ts`.
+ *
+ * Keyed on the error class, never the feed URL: the allowlist carries 428
+ * hosts, and a URL-keyed fingerprint would mint 428 issues for one outage.
+ */
+function rssProxyErrorFingerprint(step, error) {
+  const name = error instanceof Error ? error.name || 'Error' : 'non-error';
+  return ['rss-proxy', step, name];
+}
+
+// Own the deadline through body consumption, without changing other relay callers.
+async function fetchRssResponse(url, options, timeoutMs) {
+  const controller = new AbortController();
+  let reader;
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new DOMException('Feed timeout', 'AbortError'));
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([deadline, (async () => {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      // A late fetch must not leave a body alive after the deadline won.
+      if (controller.signal.aborted) {
+        void response.body?.cancel().catch(() => {});
+        controller.signal.throwIfAborted();
+      }
+      const result = { status: response.status, ok: response.ok, headers: response.headers, data: '' };
+      if (options.redirect === 'manual' && DIRECT_REDIRECT_STATUSES.has(response.status)
+        && response.headers.get('location')) {
+        void response.body?.cancel().catch(() => {});
+        return result;
+      }
+      if (!response.body) return result;
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let bytes = 0;
+      // End offset of the last complete item, and how far we have scanned for
+      // one. Scanning resumes a seam short of the tail so a close tag split
+      // across two chunks is still seen, and never before `keepTo`, so a tag
+      // already counted cannot be counted twice.
+      let keepTo = -1;
+      let scannedTo = 0;
+      let items = 0;
+      let bounded = false;
+      while (true) {
+        const { done, value } = await reader.read();
+        controller.signal.throwIfAborted();
+        if (done) break;
+        // Fetch exposes decoded bytes; Content-Length may describe compressed data.
+        bytes += value.byteLength;
+        result.data += decoder.decode(value, { stream: true });
+
+        ITEM_CLOSE_PATTERN.lastIndex = scannedTo;
+        for (let m = ITEM_CLOSE_PATTERN.exec(result.data); m; m = ITEM_CLOSE_PATTERN.exec(result.data)) {
+          items += 1;
+          keepTo = m.index + m[0].length;
+          if (items >= MAX_FEED_ITEMS) break;
+        }
+        scannedTo = Math.max(keepTo, result.data.length - ITEM_CLOSE_SEAM);
+
+        if (items >= MAX_FEED_ITEMS || bytes > MAX_FEED_BYTES) {
+          bounded = true;
+          break;
+        }
+      }
+      result.data += decoder.decode();
+      if (bounded) {
+        // A single item wider than the byte cap leaves nothing well-formed to
+        // keep, so that stays a hard failure.
+        if (keepTo < 0) throw new Error('Feed body too large');
+        const kept = result.data.slice(0, keepTo);
+        result.data = kept + closeOpenElements(kept);
+        void reader.cancel().catch(() => {});
+      }
+      return result;
+    })()]);
+  } catch (error) {
+    controller.abort();
+    // Cancellation can itself stall. Request it, but never extend the deadline.
+    void reader?.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    reader?.releaseLock();
+  }
+}
 
 class RssProxyPolicyError extends Error {
   constructor(message, status = 403) {
@@ -48,7 +202,7 @@ async function fetchViaRailway(feedUrl, timeoutMs) {
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) return null;
   const relayUrl = `${relayBaseUrl}/rss?url=${encodeURIComponent(feedUrl)}`;
-  return fetchWithTimeout(relayUrl, {
+  return fetchRssResponse(relayUrl, {
     headers: getRelayHeaders({
       'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       'User-Agent': 'WorldMonitor-RSS-Proxy/1.0',
@@ -149,7 +303,7 @@ export default async function handler(req, ctx) {
       let currentUrl = parsedUrl;
 
       for (let redirectCount = 0; redirectCount <= MAX_DIRECT_REDIRECTS; redirectCount += 1) {
-        const response = await fetchWithTimeout(currentUrl.href, {
+        const response = await fetchRssResponse(currentUrl.href, {
           headers: rssFetchHeadersForHost(currentUrl.hostname),
           redirect: 'manual',
         }, timeout);
@@ -217,7 +371,7 @@ export default async function handler(req, ctx) {
           // level (WORLDMONITOR-11G); #7438 made the same call for
           // api/telegram-feed.js. Real relay failures still report.
           if (relayError?.name !== 'AbortError') {
-            captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, ctx });
+            captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, fingerprint: rssProxyErrorFingerprint('relay-retry', relayError), ctx });
           }
         }
         if (relayResponse?.ok) {
@@ -227,7 +381,7 @@ export default async function handler(req, ctx) {
       }
     }
 
-    const data = await response.text();
+    const data = response.data;
     const relayCacheState = usedRelay ? response.headers.get('x-cache') : null;
     const relayStaleMarker = usedRelay ? response.headers.get('x-relay-stale') : null;
     return new Response(data, {
@@ -257,7 +411,7 @@ export default async function handler(req, ctx) {
     // Skip Sentry capture on timeout — Sentry would drown in transient
     // upstream-feed timeouts which are routine. Only surface "real" errors.
     if (!isTimeout) {
-      captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl }, ctx });
+      captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl }, fingerprint: rssProxyErrorFingerprint('fetch', error), ctx });
     }
     return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',

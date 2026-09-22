@@ -53,7 +53,8 @@ test('keeps crawler and browser responses cache-distinct for the same URL', () =
   assert.equal(browserResponse.statusCode, 302);
   assert.equal(browserResponse.headers.vary, 'User-Agent');
   assert.equal(browserResponse.headers['cache-control'], 'private, no-store');
-  assert.equal(browserResponse.headers.location, 'https://worldmonitor.app/?c=US&t=ciianalysis&ts=2026-08-27T12%3A00%3A00Z');
+  assert.equal(browserResponse.headers.location, 'https://www.worldmonitor.app/dashboard?c=US&t=ciianalysis&ts=2026-08-27T12%3A00%3A00Z');
+  assert.match(crawlerResponse.body, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/dashboard"/);
 });
 
 for (const key of ['c', 't', 'ts', 's', 'l']) {
@@ -65,15 +66,15 @@ for (const key of ['c', 't', 'ts', 's', 'l']) {
     const crawler = requestStory('Twitterbot/1.0', query);
     assert.equal(browser.statusCode, 302);
     assert.equal(crawler.statusCode, 200);
-    const links = [...crawler.body.matchAll(/(?:content|href)="(https:\/\/worldmonitor\.app[^" ]*)"/g)]
+    const links = [...crawler.body.matchAll(/(?:content|href)="(https:\/\/(?:www\.)?worldmonitor\.app[^" ]*)"/g)]
       .map((match) => match[1].replaceAll('&amp;', '&'));
     assert.equal(links.length, 5);
     for (const target of [browser.headers.location, ...links]) {
       const url = new URL(target);
-      assert.equal(url.origin, 'https://worldmonitor.app');
+      assert.equal(url.origin, url.pathname === '/dashboard' ? 'https://www.worldmonitor.app' : 'https://worldmonitor.app');
       assert.equal(url.hash, '');
       assert.doesNotMatch(target, /[\r\n"<>]/);
-      const keys = url.pathname === '/api/og-story' ? ['c', 't', 's', 'l'] : ['c', 't', 'ts'];
+      const keys = !url.search ? [] : url.pathname === '/api/og-story' ? ['c', 't', 's', 'l'] : ['c', 't', 'ts'];
       assert.deepEqual([...url.searchParams.keys()], keys);
       for (const name of keys) {
         assert.equal(url.searchParams.get(name), name === 'c' ? values[name].toUpperCase() : values[name]);
