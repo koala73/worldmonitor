@@ -212,6 +212,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health probe for the sharded CPI history. GetUsCpiMonthly serves the series; the history is too large for the composite economic cache tool (#8480).'],
   ['seed-meta:economic:us-treasury-par-yield',
     'operational: meta-only health probe for the sharded Treasury par curve. GetUsTreasuryParYieldCurve serves the series; the history is too large for the composite economic cache tool (#8480).'],
+  ['seed-meta:economic:us-interest-rates',
+    'operational: meta-only health probe for the sharded Fed funds, Treasury yield, and SOFR history. GetUsInterestRates serves the series; the history is too large for the composite economic cache tool (#8485).'],
   ['research:arxiv:v1:cs.AI::50',
     'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
 

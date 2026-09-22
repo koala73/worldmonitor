@@ -62,6 +62,8 @@ const MACRO_SECTIONS = [
   // One Treasury XML document per year since 1990. The tail placement is the
   // same admission choice as US-CPI.
   { label: 'US-Treasury-Par-Yield', script: 'seed-us-treasury-par-yield.mjs', seedMetaKey: 'economic:us-treasury-par-yield', canonicalKey: 'economic:us-treasury-par-yield:v1', completionMetaKey: 'seed-completion:economic:us-treasury-par-yield', intervalMs: DAY, timeoutMs: 180_000 },
+  // Twelve full-history FRED series. Kept at the tail for the same reason as US-CPI.
+  { label: 'US-Interest-Rates', script: 'seed-us-interest-rates.mjs', seedMetaKey: 'economic:us-interest-rates', canonicalKey: 'economic:us-interest-rates:v1', completionMetaKey: 'seed-completion:economic:us-interest-rates', intervalMs: DAY, timeoutMs: 180_000 },
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark

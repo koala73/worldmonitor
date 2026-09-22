@@ -1146,6 +1146,9 @@
         },
         {
           "path": "scripts/seed-us-cpi.mjs"
+        },
+        {
+          "path": "scripts/seed-us-interest-rates.mjs"
         }
       ]
     },

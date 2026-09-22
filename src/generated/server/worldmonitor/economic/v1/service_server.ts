@@ -944,6 +944,25 @@ export interface UsTreasuryParYieldCurve {
   thirtyYear?: number;
 }
 
+export interface GetUsInterestRatesRequest {
+  history: boolean;
+}
+
+export interface GetUsInterestRatesResponse {
+  series: UsInterestRateSeries[];
+  unavailable: boolean;
+}
+
+export interface UsInterestRateSeries {
+  id: string;
+  points: UsInterestRateObservation[];
+}
+
+export interface UsInterestRateObservation {
+  date: number;
+  percent: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1021,6 +1040,7 @@ export interface EconomicServiceHandler {
   listGlobalTenders(ctx: ServerContext, req: ListGlobalTendersRequest): Promise<ListGlobalTendersResponse>;
   getUsCpiMonthly(ctx: ServerContext, req: GetUsCpiMonthlyRequest): Promise<GetUsCpiMonthlyResponse>;
   getUsTreasuryParYieldCurve(ctx: ServerContext, req: GetUsTreasuryParYieldCurveRequest): Promise<GetUsTreasuryParYieldCurveResponse>;
+  getUsInterestRates(ctx: ServerContext, req: GetUsInterestRatesRequest): Promise<GetUsInterestRatesResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -2324,6 +2344,53 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getUsTreasuryParYieldCurve(ctx, body);
           return new Response(JSON.stringify(result as GetUsTreasuryParYieldCurveResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-us-interest-rates",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetUsInterestRatesRequest = {
+            history: params.get("history") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getUsInterestRates", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getUsInterestRates(ctx, body);
+          return new Response(JSON.stringify(result as GetUsInterestRatesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

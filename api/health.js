@@ -457,6 +457,7 @@ const STANDALONE_KEYS = {
   // canonical curve is large enough to time out a health GET.
   usCpiMonthly:          'seed-meta:economic:us-cpi',
   usTreasuryParYield:    'seed-meta:economic:us-treasury-par-yield',
+  usInterestRates:       'seed-meta:economic:us-interest-rates',
   // Authoritative shared cohort pointer read by all vulnerability RPCs. The
   // country and inverse manifests are compatibility projections; probing only
   // them can report OK while every public handler is unavailable.
@@ -1336,6 +1337,17 @@ const SEED_META = {
       activationKey: 'seed-activated:economic:us-treasury-par-yield',
     },
   },
+  usInterestRates: {
+    key: 'seed-meta:economic:us-interest-rates',
+    maxStaleMin: 4320, // daily macro-bundle tail; 72h covers one missed tick. DFF content age is separate.
+    activationKey: 'seed-activated:economic:us-interest-rates',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8485,
+      activationKey: 'seed-activated:economic:us-interest-rates',
+    },
+  },
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
@@ -1642,6 +1654,8 @@ const ON_DEMAND_KEYS = new Set([
   // publish. Each marker is written after the first successful publish.
   'usCpiMonthly',
   'usTreasuryParYield',
+  // #8485. Same deploy-before-first-tick bridge for the US rate basket.
+  'usInterestRates',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
   // permanent marker after its first successful canonical publish; health is
   // strict from that point onward.
@@ -1748,6 +1762,7 @@ const ACTIVATION_MARKERS = {
   statcanWds: 'seed-activated:economic:statcan-wds',
   usCpiMonthly: SEED_META.usCpiMonthly.activationKey,
   usTreasuryParYield: SEED_META.usTreasuryParYield.activationKey,
+  usInterestRates: SEED_META.usInterestRates.activationKey,
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,

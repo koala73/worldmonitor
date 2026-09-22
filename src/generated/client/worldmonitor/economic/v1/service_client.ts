@@ -944,6 +944,25 @@ export interface UsTreasuryParYieldCurve {
   thirtyYear?: number;
 }
 
+export interface GetUsInterestRatesRequest {
+  history: boolean;
+}
+
+export interface GetUsInterestRatesResponse {
+  series: UsInterestRateSeries[];
+  unavailable: boolean;
+}
+
+export interface UsInterestRateSeries {
+  id: string;
+  points: UsInterestRateObservation[];
+}
+
+export interface UsInterestRateObservation {
+  date: number;
+  percent: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1774,6 +1793,31 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetUsTreasuryParYieldCurveResponse;
+  }
+
+  async getUsInterestRates(req: GetUsInterestRatesRequest, options?: EconomicServiceCallOptions): Promise<GetUsInterestRatesResponse> {
+    let path = "/api/economic/v1/get-us-interest-rates";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsInterestRatesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

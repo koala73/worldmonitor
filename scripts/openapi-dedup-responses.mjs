@@ -317,9 +317,13 @@ function shortInlineDescription(name, description) {
   if (typeof description !== 'string' || utf8Bytes(description) <= INLINE_DESCRIPTION_MAX_BYTES) {
     return description;
   }
+  // A curated summary already states the limits. The component path is not a
+  // link a JSON scanner follows, and repeating it on every restored copy is
+  // what pushes a new operation through the 950,000-byte cap.
+  if (INLINE_SUMMARY_OVERRIDES[name]) return INLINE_SUMMARY_OVERRIDES[name];
   const pointer = `Full text: #/components/parameters/${name}.`;
   const budget = INLINE_DESCRIPTION_MAX_BYTES - utf8Bytes(` ${pointer}`);
-  let lead = INLINE_SUMMARY_OVERRIDES[name] ?? leadSentence(description);
+  let lead = leadSentence(description);
   if (utf8Bytes(lead) > budget) {
     while (lead.length > 0 && utf8Bytes(`${lead}…`) > budget) {
       const space = lead.lastIndexOf(' ');

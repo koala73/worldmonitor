@@ -728,6 +728,7 @@
       "scripts/seed-statcan-wds.mjs",
       "scripts/seed-us-cpi.mjs",
       "scripts/seed-us-treasury-par-yield.mjs",
+      "scripts/seed-us-interest-rates.mjs",
       "scripts/seed-wb-external-debt.mjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-iso3.json",

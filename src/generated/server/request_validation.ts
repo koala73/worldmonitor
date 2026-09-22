@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 621;
-export const GENERATED_REQUEST_METHOD_COUNT = 171;
+export const GENERATED_REQUEST_METHOD_COUNT = 172;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -91,6 +91,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getTradeFlows": "worldmonitor.trade.v1.GetTradeFlowsRequest",
   "getTradeRestrictions": "worldmonitor.trade.v1.GetTradeRestrictionsRequest",
   "getUsCpiMonthly": "worldmonitor.economic.v1.GetUsCpiMonthlyRequest",
+  "getUsInterestRates": "worldmonitor.economic.v1.GetUsInterestRatesRequest",
   "getUSNIFleetReport": "worldmonitor.military.v1.GetUSNIFleetReportRequest",
   "getUsTreasuryParYieldCurve": "worldmonitor.economic.v1.GetUsTreasuryParYieldCurveRequest",
   "getVesselSnapshot": "worldmonitor.maritime.v1.GetVesselSnapshotRequest",
@@ -1037,6 +1038,9 @@ export const GENERATED_MESSAGE_RULES = {
     }
   },
   "worldmonitor.economic.v1.GetUsCpiMonthlyRequest": {
+    "fields": {}
+  },
+  "worldmonitor.economic.v1.GetUsInterestRatesRequest": {
     "fields": {}
   },
   "worldmonitor.economic.v1.GetUsTreasuryParYieldCurveRequest": {
