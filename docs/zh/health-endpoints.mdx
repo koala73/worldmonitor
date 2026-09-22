@@ -96,6 +96,9 @@ consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `con
 | `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |
 | `EMPTY` | 严重 | Bootstrap 或种子填充的独立键无数据 |
 | `EMPTY_DATA` | 严重 | 键存在但包含零条记录（且 0 对它来说不是有效状态） |
+| `RELAY_GATE_MISCONFIGURED` | 严重 | 提供 `/api/health` 的生产构建看不到 `CONVEX_TENANT_RELAY_SECRET` 或中继站点 URL（`CONVEX_SITE_URL`，或网关同样接受的 `CONVEX_URL`），或者解析得到的 URL 格式错误或不是 `https:`；在所有这些情况下，判定都在发送任何请求之前得出，租户密钥绝不会以明文传输。在缺少环境变量的情形下，结账、客户门户和通知渠道在到达 Convex 之前就返回 503。该状态出现在 `relayGatewayGate` 存活性条目上；它不是数据键，但在生产构建上会计入 `summary.total` 一次，因此那里的 `total` 等于键注册表大小加一，`ok + warn + onDemandWarn + crit` 的分区关系仍然成立。设置变量（`CONVEX_SITE_URL`，或网关同样接受的 `CONVEX_URL`）后必须推送一个新的提交：同一提交的重新部署会被忽略构建步骤取消 |
+| `RELAY_GATE_REJECTED` | 严重 | 已部署的 Convex 租户中继网关对本构建的网关凭据（无请求体的 `POST /relay/create-checkout`）返回 `401`。任一侧都可能过期：在上一次 `convex deploy` 之后写入的变量在下一次推送之前，在已部署函数内读取为 undefined。探测每个判定快照（60 秒）只运行一次，而不是每次轮询 |
+| `RELAY_GATE_UNREACHABLE` | 宽限期后为警告 | 网关探测没有得到可分类的回答（网络错误、超时、5xx，或除 `401` / `400 MISSING_FIELDS` 之外的任何响应）。这是传输层判定，不是凭据判定。首次出现时带有三分钟的 `transportGraceUntil`：在此期间计入 `ok`、出现在紧凑响应的 `pending` 中，且不是运维问题；截止时间过后仍然存在的故障会移入 `problems` 并计入 `summary.warn`。该截止时间跨扫描保存在 Redis 中，包括仅等待其他扫描探测结果的扫描（它以 `probed: false` 保存其回退判定，下一次扫描会重新探测而不是复用），因此探测扫描在发布前崩溃不会重新开始宽限期——但这仅在有另一个扫描正在等待时成立，因为该回退判定只由未抢到探测租约的扫描写入。如果唯一的计划任务调用者抢到租约后在发布前崩溃，则不会保存任何内容，下一次运行将是首次出现。截止时间过后，连续状态改由 `transportGraceExpiredAt` 承载：继续发布已过期的宽限截止时间会使每份判定快照都不可复用，使每次轮询都退化为完整扫描而不是热读取。中继本身不会以该频率被重新探测：只要缓存中存在可复用的网关判定，无论端点被轮询多少次，每个新鲜度窗口大约只联系网关一次。有两条路径不会留下可复用的判定——仅等待的扫描所保存的回退判定（`probed: false`），以及发布失败的探测——这两种情况之后的扫描都会重新探测。连续多次扫描持续出现意味着 Convex 故障或 `CONVEX_SITE_URL` 错误 |
 
 ### 级联组
 

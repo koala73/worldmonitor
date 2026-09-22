@@ -50,6 +50,14 @@ export class EnergyCrisisPanel extends Panel {
       this.render();
     });
     this.showLoading('Loading energy crisis policies...');
+    this.content.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.ecp-filter-btn');
+      if (!btn) return;
+      const filter = btn.dataset.filter || 'all';
+      if (filter === this.activeFilter) return;
+      this.activeFilter = filter;
+      this.render();
+    });
   }
 
   public async fetchData(): Promise<void> {

@@ -46,6 +46,17 @@ describe('gateway rate-limit principal scoping (WORLDMONITOR-12A)', () => {
     );
   });
 
+  it('stamps the handler-facing principal with the same credential-derived scope', () => {
+    // The batch fan-out charges the caller's budget from this stamp, so a
+    // hardcoded scope here would silently move an API-key caller's sub-requests
+    // into the session bucket — the same starvation, one layer down.
+    assert.match(
+      GATEWAY_SOURCE,
+      /withTrustedRateLimitPrincipal\([\s\S]{0,120}?isUserApiKey\s*\?\s*'api_key'\s*:\s*'session'/,
+      'the trusted principal handed to handlers must carry the credential-derived scope',
+    );
+  });
+
   it('derives the scope from the credential, not from a constant', () => {
     // A hardcoded 'session' everywhere would satisfy the count check above while
     // restoring the original bug, so pin that the scope is actually branched on

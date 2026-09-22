@@ -18,8 +18,17 @@ async function boot(token) {
     on() {},
     async connect() { calls.push('connect'); },
     async sendCommand(command) { calls.push(command); return 'PONG'; },
+    // node-redis v4's transaction chain queues with addCommand and has NO
+    // sendCommand — that is a client method. This stub used to answer both, so
+    // it certified a /multi-exec call site that threw on every real request
+    // (#8265). Mirror the real surface: a stub richer than the library hides
+    // exactly this class of defect.
     multi() {
-      return { sendCommand: client.sendCommand, async exec() { calls.push('exec'); return []; } };
+      const multi = {
+        addCommand(command) { calls.push(command); return multi; },
+        async exec() { calls.push('exec'); return []; },
+      };
+      return multi;
     },
   };
   const started = run({ env }, {
