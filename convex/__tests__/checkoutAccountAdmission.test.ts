@@ -85,7 +85,7 @@ test("provider retries consume one slot and provider failures retain their slot"
   await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId })).resolves.toEqual(success);
   expect(createDodoCheckoutSession).toHaveBeenCalledTimes(2);
   vi.mocked(createDodoCheckoutSession).mockRejectedValueOnce(new Error("provider unavailable"));
-  await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId })).rejects.toThrow("provider unavailable");
+  await expect(t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId })).rejects.toThrow("CHECKOUT_FAILED");
   expect((await t.run((ctx) => ctx.db.query("checkoutAdmissions").unique()))?.count).toBe(2);
 });
 
