@@ -1,12 +1,18 @@
-// SAM.gov request-budget regression tests (#5444).
+// SAM.gov request-budget regression tests (#5444, #8505).
 //
 // SAM.gov enforces a small per-key daily quota (10/day for non-federal keys).
 // Pre-fix, the hourly seed fetched SAM every tick AND retried 429s in-run —
 // ~72 requests/day against a 10/day budget — so the source pinned at HTTP 429
 // and its age climbed past the 180-minute staleness ceiling (health
 // SEED_ERROR, empty US tender queries). The fix spreads the budget: skip the
-// request while the last success is fresher than SAM_MIN_FETCH_INTERVAL, and
-// never spend in-run retries on a 429.
+// request while the last ATTEMPT is fresher than SAM_MIN_FETCH_INTERVAL, and
+// never spend in-run retries at all. The quota is spent by attempts, not
+// successes: the first fix gated on the last success, which a failed run
+// carries forward unchanged, so once a failure was older than the interval
+// every hourly tick hit SAM again, and each tick cost three requests because
+// timeouts were still retried (#8505). Snapshots here separate fetchedAt
+// (last attempt) from lastSuccessfulAt on purpose; conflating them is how
+// the regression escaped.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
