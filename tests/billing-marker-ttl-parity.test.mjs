@@ -68,13 +68,14 @@ test('entitlement cache key prefix is derived identically by every writer and re
   // #5600's aggravator: the Dodo webhook's corrective Redis sync wrote
   // `entitlements:live:*` while the edge read `entitlements:test:*`, so the
   // poisoned free entry was never overwritten. The env var itself is deploy
-  // config, but the three independent derivations of the prefix are code — and
+  // config, but the independent derivations of the prefix are code — and
   // nothing pinned them together. A drift here silently splits the namespace
   // again, with the same symptom and the same 15-minute blast radius.
   const sources = [
     ['server/_shared/entitlement-check.ts', read('server/_shared/entitlement-check.ts')],
     ['api/_user-api-key.js', read('api/_user-api-key.js')],
     ['convex/payments/cacheActions.ts', read('convex/payments/cacheActions.ts')],
+    ['convex/accountDeletion/sideEffects.ts', read('convex/accountDeletion/sideEffects.ts')],
   ];
 
   // The two assertions below must BIND, not merely co-occur. An earlier version
@@ -123,8 +124,8 @@ test('entitlement cache key prefix is derived identically by every writer and re
   }
 });
 
-test('exactly three files derive the entitlements cache key', async () => {
-  // The `sources` list above is hardcoded, so a FOURTH derivation added anywhere
+test('exactly four files derive the entitlements cache key', async () => {
+  // The `sources` list above is hardcoded, so a FIFTH derivation added anywhere
   // in the repo would be invisible to it — the drift would be silent in exactly
   // the way #5600 was. Pin the count repo-wide.
   const { execFileSync } = await import('node:child_process');
@@ -137,6 +138,7 @@ test('exactly three files derive the entitlements cache key', async () => {
   const files = out.split('\n').filter(Boolean).sort();
   assert.deepEqual(files, [
     'api/_user-api-key.js',
+    'convex/accountDeletion/sideEffects.ts',
     'convex/payments/cacheActions.ts',
     'server/_shared/entitlement-check.ts',
   ], 'a new entitlements-cache-key derivation appeared; add it to the parity list above');

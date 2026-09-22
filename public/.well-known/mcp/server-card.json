@@ -3,12 +3,12 @@
   "kind": "product",
   "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.20.0",
+  "version": "1.21.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.20.0",
+    "version": "1.21.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -141,7 +141,7 @@
       "name": "get_sanctions_data",
       "description": "OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.",
       "_meta": {
-        "worldmonitor/access": "free-account"
+        "worldmonitor/access": "subscription"
       }
     },
     {
@@ -573,7 +573,7 @@
     "authorization_servers": [
       "https://worldmonitor.app"
     ],
-    "resource": "https://worldmonitor.app",
+    "resource": "https://worldmonitor.app/mcp",
     "scopes": [
       "mcp"
     ],

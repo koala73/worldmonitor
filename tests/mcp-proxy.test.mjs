@@ -146,6 +146,25 @@ function dnsJsonResponse(records) {
 }
 
 describe('api/mcp-proxy', () => {
+  it('rejects an unproven CF IP after premium auth and before proxy dispatch', async () => {
+    const previous = process.env.CF_EDGE_PROOF_SECRET;
+    process.env.CF_EDGE_PROOF_SECRET = 'test-edge-proof';
+    let fetches = 0;
+    globalThis.fetch = async () => { fetches += 1; throw new Error('must not dispatch'); };
+    try {
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }, 'https://worldmonitor.app', {
+        extra: { 'cf-connecting-ip': '203.0.113.7' },
+      }));
+      assert.equal(res.status, 403);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'edge-proof');
+      assertNoStore(res, 'edge-proof refusal');
+      assert.equal(fetches, 0);
+    } finally {
+      if (previous === undefined) delete process.env.CF_EDGE_PROOF_SECRET;
+      else process.env.CF_EDGE_PROOF_SECRET = previous;
+    }
+  });
+
   beforeEach(async () => {
     // mcp-proxy migrated .js → .ts in PR #3768 to unlock the
     // premium-check import from server/. Test must follow the rename.
@@ -1655,7 +1674,7 @@ describe('api/mcp-proxy', () => {
       assert.ok(redisBodies.some((body) => body.includes(`/api/mcp-proxy:${ip}`)), 'scoped limiter key should include the proofed CF client IP');
     });
 
-    it('does not let missing Cloudflare proof rotate the MCP proxy scoped limiter key', async () => {
+    it('rejects missing Cloudflare proof before the MCP proxy scoped limiter', async () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
       process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
@@ -1679,9 +1698,9 @@ describe('api/mcp-proxy', () => {
         'https://worldmonitor.app',
         { extra: { 'cf-connecting-ip': spoofedIp, 'x-real-ip': '192.0.2.5' } },
       ));
-      assert.equal(res.status, 200);
-      assert.ok(redisBodies.some((body) => body.includes('/api/mcp-proxy:192.0.2.5')), 'scoped limiter should fall back to x-real-ip without proof');
-      assert.ok(!redisBodies.some((body) => body.includes(`/api/mcp-proxy:${spoofedIp}`)), 'spoofed cf-connecting-ip must not reach the scoped limiter key without proof');
+      assert.equal(res.status, 403);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'edge-proof');
+      assert.deepEqual(redisBodies, [], 'unproven CF IP must be rejected before Redis');
     });
   });
 
@@ -1899,6 +1918,9 @@ describe('api/mcp-proxy — observability', () => {
     assert.equal(rows[0].reason, 'auth_401');
     assert.equal(rows[0].event_type, 'request');
     assert.equal(rows[0].domain, 'mcp', 'joins with the /mcp surface');
+    assert.equal(rows[0].res_bytes, null, 'proxied size is unknown — never a fake zero (#8403)');
+    assert.equal(rows[0].rpc_method, null, 'proxy is not the JSON-RPC MCP transport');
+    assert.equal(rows[0].tool_name, null);
   });
 
   it('labels a disallowed origin as origin_403, not a generic failure', async () => {

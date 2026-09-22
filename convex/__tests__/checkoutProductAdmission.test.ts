@@ -58,7 +58,7 @@ for (const entryPoint of ["public", "internal"] as const) {
 }
 
 test("relay returns a non-retryable product rejection", async () => {
-  vi.stubEnv("RELAY_SHARED_SECRET", "synthetic-relay-secret");
+  vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
   const t = convexTest(schema, modules);
   const response = await t.fetch("/relay/create-checkout", {
     method: "POST",

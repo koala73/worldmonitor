@@ -18,6 +18,7 @@ import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
   countFreePanelCapUsage,
+  enforceFreePanelLimit,
   isFreePanelCapCounted,
   isPanelEntitled,
   userSetPanelEnabled,
@@ -1219,6 +1220,13 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
+  private limitMissionPanels(panelSettings: Record<string, PanelConfig>): Record<string, PanelConfig> {
+    if (isProUser() || (!isProTierResolved() && this.callbacks.isFreeTierFallbackActive?.() !== true)) {
+      return panelSettings;
+    }
+    return enforceFreePanelLimit(panelSettings, false);
+  }
+
   private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
     let applied: ReturnType<typeof applyMissionPresetToState>;
     try {
@@ -1235,9 +1243,10 @@ export class EventHandlerManager implements AppModule {
     const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
 
-    this.ctx.panelSettings = applied.panelSettings;
+    const panelSettings = this.limitMissionPanels(applied.panelSettings);
+    this.ctx.panelSettings = panelSettings;
     this.ctx.mapLayers = mapLayers;
-    saveToStorage(STORAGE_KEYS.panels, applied.panelSettings);
+    saveToStorage(STORAGE_KEYS.panels, panelSettings);
     saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
     this.persistMissionPanelOrder(applied.panelOrder);
     saveMissionPreset(applied.preset.id);
@@ -1247,7 +1256,7 @@ export class EventHandlerManager implements AppModule {
       // Suppress the panel-view records those mounts trigger (same rule the
       // WebMCP search flows apply via search-selection-dispatcher) so the
       // funnel's denominator stays human.
-      for (const [key, cfg] of Object.entries(applied.panelSettings)) {
+      for (const [key, cfg] of Object.entries(panelSettings)) {
         if (cfg?.enabled) suppressNextAgentPanelView(key);
       }
     }
@@ -1381,9 +1390,10 @@ export class EventHandlerManager implements AppModule {
     const mapLayers = this.filterMissionLayersForCurrentRenderer(reset.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
 
-    this.ctx.panelSettings = reset.panelSettings;
+    const panelSettings = this.limitMissionPanels(reset.panelSettings);
+    this.ctx.panelSettings = panelSettings;
     this.ctx.mapLayers = mapLayers;
-    saveToStorage(STORAGE_KEYS.panels, reset.panelSettings);
+    saveToStorage(STORAGE_KEYS.panels, panelSettings);
     saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
     this.persistMissionPanelOrder(reset.panelOrder);
     clearMissionPreset();

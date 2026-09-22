@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
 import { listNaturalEvents } from '../server/worldmonitor/natural/v1/list-natural-events.ts';
+import { fetchNaturalEvents, naturalEventsAfterPublish, naturalEventsPublishTransform } from '../scripts/seed-natural-events.mjs';
+import { __testing__ as health } from '../api/health.js';
 
 const NOW = Date.parse('2026-09-07T10:05:00.000Z');
 const originalFetch = globalThis.fetch;
@@ -46,4 +48,76 @@ test('natural-events consumer serves a retained NHC storm from the seeded envelo
   assert.equal(response.dataAvailable, true);
   assert.equal(response.fetchedAt, NOW);
   assert.deepEqual(response.events, [storm]);
+});
+
+test('producer, RPC and health keep a failed EONET source visible without renewing its age', async () => {
+  let failEonet = false;
+  let transientFailures = 0;
+  let eventId = 'eonet-consumer';
+  const fetchFn = async (input: string) => {
+    if (new URL(input).hostname === 'eonet.gsfc.nasa.gov') {
+      if (failEonet) return new Response('', { status: 503 });
+      if (transientFailures > 0) {
+        transientFailures--;
+        throw new TypeError('fetch failed');
+      }
+      return Response.json({ events: [{
+        id: eventId, title: 'Volcano', categories: [{ id: 'volcanoes' }],
+        geometry: [{ type: 'Point', coordinates: [10, 20], date: new Date(NOW).toISOString() }],
+        sources: [], closed: null,
+      }] });
+    }
+    return Response.json({ type: 'FeatureCollection', features: [] });
+  };
+  const options = {
+    fetchFn,
+    fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
+  };
+  const first = await fetchNaturalEvents({ ...options, now: NOW });
+  failEonet = true;
+  const now = NOW + 3_600_000;
+  const retained = await fetchNaturalEvents({ ...options, now, previousSources: first._sourceSnapshots });
+  const meta = { fetchedAt: now, recordCount: retained.events.length, ...naturalEventsAfterPublish(retained).freshnessMetaPatch };
+  const values = new Map([
+    ['natural:events:v1', JSON.stringify({ _seed: { fetchedAt: now, recordCount: 1, schemaVersion: 2, state: 'OK' }, data: naturalEventsPublishTransform(retained) })],
+    ['seed-meta:natural:events', JSON.stringify(meta)],
+  ]);
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.nhc-consumer.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture-only';
+  globalThis.fetch = async (input) => Response.json({ result: values.get(decodeURIComponent(new URL(String(input)).pathname.slice('/get/'.length))) ?? null });
+  const response = await listNaturalEvents({} as never, {});
+  assert.equal(response.dataAvailable, true);
+  assert.equal(response.fetchedAt, NOW);
+  assert.deepEqual(response.events.map(event => event.id), ['eonet-consumer']);
+  const result = health.classifyKey('naturalEvents', 'natural:events:v1', { allowOnDemand: false }, {
+    keyStrens: new Map([['natural:events:v1', 1000]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([['seed-meta:natural:events', JSON.stringify(meta)]]), now,
+  });
+  assert.equal(result.status, 'SEED_ERROR');
+  assert.equal(result.errorCode, 'EONET_SOURCE_FAILED');
+  assert.equal(meta.sourceHealth.eonet.lastSuccessAt, NOW);
+
+  failEonet = false;
+  transientFailures = 1;
+  eventId = 'eonet-new-observation';
+  const recoveryAt = now + 3_600_000;
+  const recovered = await fetchNaturalEvents({ ...options, now: recoveryAt, previousSources: retained._sourceSnapshots });
+  assert.equal(transientFailures, 0);
+  const recoveredMeta = { fetchedAt: recoveryAt, recordCount: 1, ...naturalEventsAfterPublish(recovered).freshnessMetaPatch };
+  values.set('natural:events:v1', JSON.stringify({
+    _seed: { fetchedAt: recoveryAt, recordCount: 1, schemaVersion: 2, state: 'OK' },
+    data: naturalEventsPublishTransform(recovered),
+  }));
+  values.set('seed-meta:natural:events', JSON.stringify(recoveredMeta));
+  const recoveredResponse = await listNaturalEvents({} as never, {});
+  assert.equal(recoveredResponse.dataAvailable, true);
+  assert.equal(recoveredResponse.fetchedAt, recoveryAt);
+  assert.deepEqual(recoveredResponse.events.map(item => item.id), ['eonet-new-observation']);
+  assert.equal(recoveredMeta.sourceHealth.eonet.lastSuccessAt, recoveryAt);
+  assert.deepEqual(recoveredMeta.failedSources, []);
+  const recoveredHealth = health.classifyKey('naturalEvents', 'natural:events:v1', { allowOnDemand: false }, {
+    keyStrens: new Map([['natural:events:v1', 1000]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([['seed-meta:natural:events', JSON.stringify(recoveredMeta)]]), now: recoveryAt,
+  });
+  assert.equal(recoveredHealth.status, 'OK');
 });

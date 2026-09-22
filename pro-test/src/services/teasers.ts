@@ -14,6 +14,7 @@
  */
 
 import fallbackJson from '../generated/teasers.json';
+import { dedupeByArticleUrl } from '../../../shared/article-identity.js';
 import { createTimeoutSignal } from './timeout-signal';
 
 export interface TeaserHeadline {
@@ -299,7 +300,7 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
     .flatMap(c => c?.items ?? [])
     .filter(i => typeof i.title === 'string' && i.title.length > 0);
   if (!all.length) return null;
-  const items = all
+  const ranked = all
     // Same three-level ordering as selectFrozenHeadlines in
     // scripts/freeze-crawlable-live-pulse.mjs. Sorting on importance alone
     // leaves ties to array order, so a tie at the fourth slot could swap which
@@ -308,7 +309,8 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
       (b.importanceScore ?? 0) - (a.importanceScore ?? 0)
       || (b.publishedAt ?? 0) - (a.publishedAt ?? 0)
       || (a.title ?? '').localeCompare(b.title ?? '')
-    ))
+    ));
+  const items = dedupeByArticleUrl(ranked, i => i.link)
     .slice(0, 4)
     .map(i => ({
       title: i.title as string,

@@ -319,12 +319,7 @@ describe("gateway entitlement check", () => {
     );
   });
 
-  test("an unconfigured backend still returns null — the gateway's fail-open exception depends on it", async () => {
-    // The one null that survives #5619. server/gateway.ts distinguishes it with
-    // isEntitlementBackendConfigured() and serves wm_-key traffic fail-open,
-    // because 503ing a missing env var turns a config regression into a
-    // fleet-wide API outage. Returning a marker here would silently delete that
-    // exception (the gateway would answer the billing 503 first).
+  test("an unconfigured backend returns null without attempting a lookup", async () => {
     const site = process.env.CONVEX_SITE_URL;
     const secret = process.env.CONVEX_SERVER_SHARED_SECRET;
     delete process.env.CONVEX_SITE_URL;

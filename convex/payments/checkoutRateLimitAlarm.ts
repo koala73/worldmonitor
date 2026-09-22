@@ -260,3 +260,35 @@ export async function recordTerminalCheckoutRateLimit(
     );
   }
 }
+
+/** Durable timeout count; reuse the terminal-event retention and pruning bounds. */
+export const recordCheckoutTimedOut = internalMutation({
+  args: { userId: v.string(), productId: v.string(), occurredAt: v.number() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("checkoutTimeoutEvents", args);
+    const expired = await ctx.db
+      .query("checkoutTimeoutEvents")
+      .withIndex("by_occurredAt", (q) =>
+        q.lt("occurredAt", args.occurredAt - CHECKOUT_RATE_LIMIT_EVENT_RETENTION_MS),
+      )
+      .take(CHECKOUT_RATE_LIMIT_EVENT_PRUNE_BATCH);
+    for (const row of expired) await ctx.db.delete(row._id);
+  },
+});
+
+export async function recordTerminalCheckoutTimeout(
+  ctx: ActionCtx,
+  args: { userId: string; productId: string },
+): Promise<void> {
+  try {
+    await ctx.runMutation(
+      internal.payments.checkoutRateLimitAlarm.recordCheckoutTimedOut,
+      { ...args, occurredAt: Date.now() },
+    );
+  } catch (err) {
+    // sentry-coverage-ok: Convex forwards this failed durable write to Sentry.
+    console.error(
+      `[checkout-timeout] failed to record terminal CHECKOUT_TIMED_OUT: ${String(err)}`,
+    );
+  }
+}

@@ -14,6 +14,7 @@ import type {
 import type { CountrySanctionsPressure } from './sanctions-pressure';
 import type { RadiationObservation } from './radiation';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
+import countryNames from '../../shared/country-names.json';
 
 export const SIGNAL_AGGREGATOR_MAX_SIGNALS = 1000;
 
@@ -96,9 +97,16 @@ const REGION_DEFINITIONS: Record<string, { countries: string[]; name: string }> 
   },
 };
 
+// Cached feeds are not replayed after geometry loads, so resolve bundled names immediately.
+const fallbackCountryCodes = new Map<string, string>(Object.entries(countryNames));
+
 function normalizeCountryCode(country: string): string {
-  if (country.length === 2) return country.toUpperCase();
-  return nameToCountryCode(country) || country.slice(0, 2).toUpperCase();
+  const trimmed = country.trim();
+  if (!trimmed) return '';
+  const fromCatalog = nameToCountryCode(trimmed) ?? fallbackCountryCodes.get(trimmed.toLowerCase());
+  if (fromCatalog) return fromCatalog;
+  if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+  return '';
 }
 
 function getCountryName(code: string): string {
@@ -141,7 +149,7 @@ class SignalAggregator {
   ingestOutages(outages: InternetOutage[]): void {
     this.clearSignalType('internet_outage');
     for (const o of outages) {
-      const code = normalizeCountryCode(o.country);
+      const code = normalizeCountryCode(o.country) || this.coordsToCountry(o.lat, o.lon);
       this.signals.push({
         type: 'internet_outage',
         country: code,
@@ -275,7 +283,7 @@ class SignalAggregator {
     this.clearSignalType('satellite_fire');
     
     for (const fire of fires) {
-      const code = this.coordsToCountry(fire.lat, fire.lon) || normalizeCountryCode(fire.region);
+      const code = getCountryAtCoordinates(fire.lat, fire.lon)?.code || normalizeCountryCode(fire.region) || 'XX';
       const severity = fire.brightness > 360 ? 'high' : fire.brightness > 320 ? 'medium' : 'low';
       
       this.signals.push({
@@ -359,7 +367,7 @@ class SignalAggregator {
     this.clearSignalType('sanctions_pressure');
 
     for (const country of countries) {
-      const code = normalizeCountryCode(country.countryCode || country.countryName);
+      const code = normalizeCountryCode(country.countryCode) || normalizeCountryCode(country.countryName) || 'XX';
       const severity: 'low' | 'medium' | 'high' =
         country.newEntryCount >= 5 || country.entryCount >= 50
           ? 'high'

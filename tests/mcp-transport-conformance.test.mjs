@@ -388,6 +388,10 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     });
     assert.equal(initialize.status, 200);
     assert.match(initialize.headers.get('content-type') ?? '', /text\/event-stream/i);
+    // #8403: jsonResponse advertises Content-Length for the bare JSON body.
+    // SSE framing is larger — the converted stream must not keep that length
+    // or the wire truncates mid-JSON (Unterminated string).
+    assert.equal(initialize.headers.get('content-length'), null);
 
     const events = await readAllSseEvents(initialize);
     assert.ok(events.length >= 1, 'stream must contain at least one event');

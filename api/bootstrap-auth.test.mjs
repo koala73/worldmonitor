@@ -446,7 +446,7 @@ test('over-limit wm_ user key returns non-cacheable 429 before Convex validation
 
 test('wm_ credential outside the supported header fallback never leaks the gateway sentinel', async () => {
   await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
-    const resp = await handler(makeBootstrapRequest({ Cookie: `wm-pro-key=${USER_KEY}` }));
+    const resp = await handler(makeBootstrapRequest({ Cookie: `__Host-wm-pro-key=${USER_KEY}` }));
     const body = await resp.json();
 
     assert.equal(resp.status, 401);
@@ -919,6 +919,17 @@ test('public on-demand URL does not widen into a CDN-amplification vector', asyn
       const resp = await handler(makePublicOnDemandRequest(keys));
       assert.equal(resp.status, 401, `keys=${keys} must not qualify for the public path`);
       assert.equal(resp.headers.get('cache-control'), 'no-store', `keys=${keys} must stay no-store`);
+    }
+  });
+});
+
+test('protected tester cookie names keep implicit weather bootstrap off the public cache path', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    for (const name of ['__Host-wm-pro-key', '__Host-wm-widget-key']) {
+      const response = await handler(makeWeatherBootstrapRequest({ Cookie: `${name}=invalid-key` }));
+      assert.equal(response.status, 401, name);
+      assert.equal(response.headers.get('cache-control'), 'no-store', name);
+      assert.equal(response.headers.get('cdn-cache-control'), null, name);
     }
   });
 });

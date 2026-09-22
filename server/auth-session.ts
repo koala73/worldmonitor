@@ -12,6 +12,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
+import { isAllowedOrigin } from './cors';
 
 // Clerk Backend API secret -- used to look up user metadata when the JWT
 // does not include a `plan` claim (i.e. standard session token, no template).
@@ -142,6 +143,26 @@ export function getClerkJwtVerifyOptions() {
   };
 }
 
+/**
+ * Clerk browser session tokens set `azp` to the origin that minted them.
+ * When the claim is present, require it to be an app-serving origin (same
+ * boundary as credentialed CORS / TRUSTED_RETURN_URL_ORIGINS), a surveyed
+ * desktop/preview origin already covered by `isAllowedOrigin`, or the
+ * deployment's own `SITE_URL`. Absent `azp` stays fail-open — machine and
+ * other non-browser Clerk tokens omit it (#8178).
+ */
+export function isAllowedClerkAuthorizedParty(azp: string): boolean {
+  if (!azp) return false;
+  if (isAllowedOrigin(azp)) return true;
+  const siteUrl = process.env.SITE_URL?.trim();
+  if (!siteUrl) return false;
+  try {
+    return new URL(siteUrl).origin === new URL(azp).origin;
+  } catch {
+    return false;
+  }
+}
+
 function extractOrgId(payload: Record<string, unknown>): string | null {
   const orgClaim = payload.org as Record<string, unknown> | undefined;
   return (
@@ -221,6 +242,9 @@ async function lookupPlanFromClerk(userId: string): Promise<'free' | 'pro'> {
  * Accepts both custom-template tokens (with `plan` claim) and standard
  * session tokens (plan looked up via Clerk Backend API).
  * Fails closed: invalid/expired/unverifiable tokens return { valid: false }.
+ * When a browser session token carries `azp`, it must be an authorized party
+ * (app hosts seeded from TRUSTED_RETURN_URL_ORIGINS via the CORS allowlist,
+ * plus desktop/preview origins and `SITE_URL`); absent `azp` is fail-open.
  */
 export async function validateBearerToken(token: string): Promise<SessionResult> {
   const jwks = getJWKS();
@@ -244,6 +268,18 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     const userId = payload.sub as string | undefined;
     // Verified, but carries no subject — a confirmed answer about the token.
     if (!userId) return { valid: false, reason: 'invalid' };
+
+    // Bind Clerk's authorized-party claim when present. Fail open when absent
+    // so non-browser tokens keep working; reject a foreign minting origin.
+    const azp = payload.azp;
+    if (typeof azp === 'string' && azp.length > 0 && !isAllowedClerkAuthorizedParty(azp)) {
+      return { valid: false, reason: 'invalid' };
+    }
+    // Present non-string claims (including explicit null) are unbound; only
+    // absent (`undefined`) and empty-string azp remain fail-open.
+    if (azp !== undefined && typeof azp !== 'string') {
+      return { valid: false, reason: 'invalid' };
+    }
 
     // `plan` claim is present only in 'convex' template tokens. For standard
     // session tokens we fall back to a cached Clerk API lookup.

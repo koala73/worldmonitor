@@ -254,6 +254,8 @@ export interface NonceData {
   redirect_uri: string;
   code_challenge: string;
   state?: string;
+  /** RFC 9207 issuer captured by GET /oauth/authorize; absent on older nonces. */
+  iss?: string;
   created_at?: number;
 }
 
@@ -543,6 +545,10 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   const redirectUrl = new URL(redirect_uri);
   redirectUrl.searchParams.set('code', code);
   if (state) redirectUrl.searchParams.set('state', state);
+  // The issuer the client discovered, not this host (always api.*).
+  if (typeof nonceData.iss === 'string' && nonceData.iss) {
+    redirectUrl.searchParams.set('iss', nonceData.iss);
+  }
 
   return new Response(null, {
     status: 302,
