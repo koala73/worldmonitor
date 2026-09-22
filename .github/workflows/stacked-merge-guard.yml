@@ -6,6 +6,12 @@ name: Stacked Merge Guard
 # parent ref before it can retarget the child, the merge still succeeds, and
 # main never sees the commits. Fail here instead of painting the PR MERGED.
 #
+# No event fires on a child when its parent merges, so this verdict goes stale
+# (#8518 → #8519). orphaned-stacked-merge-monitor.yml retargets such children
+# and re-runs this job; the checker reads the live base, not the replayed
+# payload. This check is not required on non-main bases, so it cannot block
+# the merge button there by itself.
+#
 # Runs on push to main as a no-op success so the deploy gate can require the
 # check-run name on both PR heads and main commits (the gate evaluates both).
 

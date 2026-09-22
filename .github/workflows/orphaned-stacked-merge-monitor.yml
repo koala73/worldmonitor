@@ -1,5 +1,10 @@
 name: Orphaned Stacked Merge Monitor
 
+# Runs trusted default-branch code (the checkout below pins the default
+# branch, never the PR head). On a fork PR closure the pull_request token is
+# read-only, and the retarget step exits before any write because a fork head
+# cannot be an upstream base.
+
 on:
   pull_request:
     types: [closed]
@@ -8,6 +13,9 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  # Re-run stacked-merge-guard on retargeted children: a base change made
+  # with GITHUB_TOKEN fires no workflow of its own.
+  actions: write
 
 jobs:
   monitor:
@@ -24,7 +32,15 @@ jobs:
         with:
           node-version: '24'
 
+      # First, and before anything slow: a child merged in the window between
+      # the parent merging and this step lands on the orphaned branch (#8519).
+      - name: Retarget open children of the closed PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-stacked-merge.mjs --mode retarget
+
       - name: Reconcile closed PR and merged descendants
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
