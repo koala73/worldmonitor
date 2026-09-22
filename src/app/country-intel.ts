@@ -176,7 +176,10 @@ export class CountryIntelManager implements AppModule {
 
   destroy(): void {
     this.briefRequestToken++;
-    this.abortCountryCoverage();
+    // Drop the handle without aborting in-flight body reads. WebKit rejects
+    // those as unhandled `AbortError: Fetch is aborted` on panel teardown
+    // (WORLDMONITOR-132) even when the coverage promise chain catches AbortError.
+    this.coverageAbortController = null;
     this.pendingBriefRequest = null;
     if (this._fwDebounce) { clearTimeout(this._fwDebounce); this._fwDebounce = null; }
     this.ctx.countryTimeline?.destroy();
@@ -316,7 +319,8 @@ export class CountryIntelManager implements AppModule {
 
     this.ctx.countryBriefPage.onClose(() => {
       this.briefRequestToken++;
-      this.abortCountryCoverage();
+      // Keep the controller for the next open to cancel; closing must not
+      // interrupt WebKit body reads.
       this.ctx.map?.clearCountryHighlight();
       this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();

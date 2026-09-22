@@ -16,6 +16,11 @@ import assert from 'node:assert/strict';
 const ROOT = new URL('../', import.meta.url).pathname;
 const DOCS_JSON = join(ROOT, 'docs', 'docs.json');
 const DOCS_DIR = join(ROOT, 'docs');
+const ENGLISH_ONLY_APPENDICES = new Set([
+  'methodology/known-limitations',
+  'methodology/financial-system-exposure',
+  'methodology/swf-classification-rubric',
+]);
 
 function readZhDoc(page) {
   return readFileSync(join(DOCS_DIR, 'zh', `${page}.mdx`), 'utf8');
@@ -80,6 +85,12 @@ describe('docs i18n parity', () => {
   });
 
   for (const page of enPages) {
+    if (ENGLISH_ONLY_APPENDICES.has(page)) {
+      it(`English-only source appendix exists for ${page}`, () => {
+        assert.ok(existsSync(join(DOCS_DIR, `${page}.md`)));
+      });
+      continue;
+    }
     it(`zh/ counterpart exists for ${page}`, () => {
       const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
       assert.ok(existsSync(zhPath), `Missing zh/${page}.mdx`);

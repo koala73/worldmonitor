@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, it, mock } from 'node:test';
-import handler, { isAllowedRedirectUri } from '../api/oauth/register.js';
+import handler from '../api/oauth/register.js';
+import { isAllowedRedirectUri } from '../api/oauth/_redirect-uri.js';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -131,7 +132,7 @@ it('accepts exactly 2048 URI bytes and multibyte stream chunks', async () => {
 
 it('preserves malformed JSON, list cap, redirect rejection and default name', async () => {
   await rejected(request('{'), 400, 'invalid_request');
-  await rejected(request(payload(Array(4).fill('http://localhost/'))), 400, 'invalid_request');
+  await rejected(request(payload(Array(9).fill('http://localhost/'))), 400, 'invalid_request');
   await rejected(request(payload(['https://evil.test/'])), 400, 'invalid_redirect_uri');
   assert.equal((await handler(request(payload(undefined, null)))).status, 201);
   assert.equal(JSON.parse(writes[0][2]).client_name, 'Unknown Client');

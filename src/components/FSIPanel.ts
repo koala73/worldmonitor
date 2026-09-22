@@ -44,9 +44,11 @@ function fsiLabelDisplay(label: string): string {
   if (label === 'Low Stress') return t('components.fsi.labels.lowStress');
   if (label === 'Moderate Stress') return t('components.fsi.labels.moderateStress');
   if (label === 'Elevated Stress') return t('components.fsi.labels.elevatedStress');
-  if (label === 'Severe Stress') return t('components.fsi.labels.severeStress');
+  if (label === 'Severe Stress' || label === 'High Stress') return t('components.fsi.labels.severeStress');
   return label;
 }
+
+export { fsiLabelDisplay };
 
 function cissLabelDisplay(label: string): string {
   if (label === 'Low') return t('components.fsi.cissLabels.low');
@@ -104,6 +106,10 @@ export class FSIPanel extends Panel {
         const hdr = (hydrated.headerMetrics ?? {}) as Record<string, Record<string, unknown> | null>;
         fsiValue = Number(hdr?.fsi?.value ?? 0);
         fsiLabel = String(hdr?.fsi?.label ?? '');
+        hygPrice = Number(hdr?.fsi?.hygPrice ?? 0);
+        tltPrice = Number(hdr?.fsi?.tltPrice ?? 0);
+        if (!Number.isFinite(hygPrice)) hygPrice = 0;
+        if (!Number.isFinite(tltPrice)) tltPrice = 0;
         vix = Number(hdr?.vix?.value ?? 0);
         hySpread = Number(hdr?.hySpread?.value ?? 0);
       }

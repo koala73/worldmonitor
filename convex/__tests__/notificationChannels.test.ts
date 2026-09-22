@@ -2,6 +2,12 @@ import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import schema from "../schema";
+import {
+  deactivateChannel,
+  deactivateChannelForUser,
+  deleteChannel,
+  deleteChannelForUser,
+} from "../notificationChannels";
 
 const modules = import.meta.glob("../**/*.ts");
 type TestUser = ReturnType<ReturnType<typeof convexTest>["withIdentity"]>;
@@ -10,6 +16,7 @@ const originalFetch = globalThis.fetch;
 const originalUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalRelaySecret = process.env.CONVEX_TENANT_RELAY_SECRET;
+const originalDeliveryRelaySecret = process.env.CONVEX_NOTIFICATION_RELAY_SECRET;
 const originalClerkSecret = process.env.CLERK_SECRET_KEY;
 
 const USER = {
@@ -27,6 +34,8 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalUpstashToken;
   if (originalRelaySecret === undefined) delete process.env.CONVEX_TENANT_RELAY_SECRET;
   else process.env.CONVEX_TENANT_RELAY_SECRET = originalRelaySecret;
+  if (originalDeliveryRelaySecret === undefined) delete process.env.CONVEX_NOTIFICATION_RELAY_SECRET;
+  else process.env.CONVEX_NOTIFICATION_RELAY_SECRET = originalDeliveryRelaySecret;
   if (originalClerkSecret === undefined) delete process.env.CLERK_SECRET_KEY;
   else process.env.CLERK_SECRET_KEY = originalClerkSecret;
   vi.restoreAllMocks();
@@ -66,19 +75,13 @@ async function seedEntitlement(
 }
 
 describe("notificationChannels — Convex entitlement gate", () => {
+  // Creation paths stay Pro-gated. Deletion/deactivation are internal and
+  // ungated — covered by the "live delete/deactivate" suite below (#8430).
   const guardedMutations: Array<[string, (asUser: TestUser) => Promise<unknown>]> = [
     ["setChannel", (asUser: TestUser) =>
       asUser.mutation(api.notificationChannels.setChannel, {
         channelType: "email",
         email: "free-user@example.com",
-      })],
-    ["deleteChannel", (asUser: TestUser) =>
-      asUser.mutation(api.notificationChannels.deleteChannel, {
-        channelType: "email",
-      })],
-    ["deactivateChannel", (asUser: TestUser) =>
-      asUser.mutation(api.notificationChannels.deactivateChannel, {
-        channelType: "email",
       })],
     ["createPairingToken", (asUser: TestUser) =>
       asUser.mutation(api.notificationChannels.createPairingToken, {
@@ -148,12 +151,6 @@ describe("notificationChannels — Convex entitlement gate", () => {
       channelType: "email",
       email: "pro-user@example.com",
     });
-    await asProUser.mutation(api.notificationChannels.deactivateChannel, {
-      channelType: "email",
-    });
-    await asProUser.mutation(api.notificationChannels.deleteChannel, {
-      channelType: "email",
-    });
     const pairing = await asProUser.mutation(
       api.notificationChannels.createPairingToken,
       { variant: "full" },
@@ -170,8 +167,157 @@ describe("notificationChannels — Convex entitlement gate", () => {
     expect(pairing.token).toHaveLength(43);
     expect(claimed).toEqual({ ok: true, reason: null });
     expect(channels).toMatchObject([
+      { channelType: "email", email: "pro-user@example.com", verified: true },
       { channelType: "telegram", chatId: "12345", verified: true },
     ]);
+  });
+});
+
+describe("notificationChannels — live delete/deactivate (ungated)", () => {
+  test("deleteChannelForUser works without Pro and scopes to the target user", async () => {
+    const t = convexTest(schema, modules);
+    const otherUser = "user-tests-notification-channels-other";
+    await t.run(async (ctx) => {
+      for (const userId of [USER.subject, otherUser]) {
+        await ctx.db.insert("notificationChannels", {
+          userId,
+          channelType: "email",
+          email: `${userId}@example.com`,
+          verified: true,
+          linkedAt: Date.now(),
+        });
+        await ctx.db.insert("alertRules", {
+          userId,
+          variant: "full",
+          enabled: true,
+          eventTypes: [],
+          sensitivity: "high",
+          channels: ["email", "telegram"],
+          updatedAt: Date.now(),
+        });
+      }
+    });
+
+    await t.mutation(notificationChannelFns.deleteChannelForUser, {
+      userId: USER.subject,
+      channelType: "email",
+    });
+
+    await t.run(async (ctx) => {
+      const remaining = await ctx.db.query("notificationChannels").collect();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]).toMatchObject({
+        userId: otherUser,
+        channelType: "email",
+      });
+      const rules = await ctx.db.query("alertRules").collect();
+      const mine = rules.find((r) => r.userId === USER.subject)!;
+      const theirs = rules.find((r) => r.userId === otherUser)!;
+      expect(mine.channels).toEqual(["telegram"]);
+      expect(theirs.channels).toEqual(["email", "telegram"]);
+    });
+  });
+
+  test("relay delete-channel removes the channel without a Pro entitlement", async () => {
+    process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: USER.subject,
+        channelType: "webhook",
+        webhookEnvelope: "encrypted",
+        verified: true,
+        linkedAt: Date.now(),
+      });
+      await ctx.db.insert("alertRules", {
+        userId: USER.subject,
+        variant: "full",
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "high",
+        channels: ["webhook", "email"],
+        updatedAt: Date.now(),
+      });
+    });
+
+    const response = await t.fetch("/relay/notification-channels", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer relay-secret",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "delete-channel",
+        userId: USER.subject,
+        channelType: "webhook",
+      }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+
+    expect(
+      await t.query(notificationChannelFns.getChannelsByUserId, {
+        userId: USER.subject,
+      }),
+    ).toEqual([]);
+    await t.run(async (ctx) => {
+      const rule = await ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", USER.subject))
+        .unique();
+      expect(rule?.channels).toEqual(["email"]);
+    });
+  });
+
+  test("relay deactivate marks the channel unverified without Pro", async () => {
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = "delivery-secret";
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: USER.subject,
+        channelType: "telegram",
+        chatId: "12345",
+        verified: true,
+        linkedAt: Date.now(),
+      });
+    });
+
+    const response = await t.fetch("/relay/deactivate", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer delivery-secret",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: USER.subject,
+        channelType: "telegram",
+      }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+
+    expect(
+      await t.query(notificationChannelFns.getChannelsByUserId, {
+        userId: USER.subject,
+      }),
+    ).toMatchObject([{ channelType: "telegram", verified: false }]);
+  });
+
+  test("deleteChannel and deactivateChannel are internal, not public", () => {
+    const deleteRegistered = deleteChannel as unknown as {
+      isInternal?: boolean;
+      isPublic?: boolean;
+    };
+    const deactivateRegistered = deactivateChannel as unknown as {
+      isInternal?: boolean;
+      isPublic?: boolean;
+    };
+    expect(deleteRegistered.isInternal).toBe(true);
+    expect(deleteRegistered.isPublic).toBeUndefined();
+    expect(deactivateRegistered.isInternal).toBe(true);
+    expect(deactivateRegistered.isPublic).toBeUndefined();
+    expect(deleteChannelForUser.isInternal).toBe(true);
+    expect(deactivateChannelForUser.isInternal).toBe(true);
   });
 });
 

@@ -97,18 +97,28 @@ describe('App.destroy lifecycle cleanup contract', () => {
     );
 
     const slowTierAwait = appSrc.indexOf('await slowTierReady;');
-    const readyFlag = appSrc.indexOf('this.viewportHydrationReady = true;', slowTierAwait);
-    const scrollRegistration = appSrc.indexOf("window.addEventListener('scroll', this.handleViewportPrime");
+    const settledGate = appSrc.indexOf('if (!settled)', slowTierAwait);
+    const fanoutFn = appSrc.indexOf('private async runVisibleDataFanout(): Promise<void> {');
+    const readyFlag = appSrc.indexOf('this.viewportHydrationReady = true;', fanoutFn);
+    const scrollRegistration = appSrc.indexOf("window.addEventListener('scroll', this.handleViewportPrime", fanoutFn);
     const fanoutComplete = appSrc.indexOf("markLcpDebug('wm:data:initial-fanout-complete');", scrollRegistration);
     const readyTimestamp = appSrc.indexOf('this.viewportHydrationReadyAt = typeof performance', fanoutComplete);
     const armedFlag = appSrc.indexOf('this.viewportTriggersArmed = true;', readyTimestamp);
     assert.notEqual(slowTierAwait, -1, 'could not locate the slow-tier readiness checkpoint');
     assert.ok(
-      scrollRegistration > slowTierAwait,
-      'captured descendant scrolls must not trigger hydration before the slow tier settles',
+      settledGate > slowTierAwait,
+      'a timed-out slow-tier wait must keep the mount-callback gate closed',
     );
     assert.ok(
-      readyFlag > slowTierAwait && readyFlag < scrollRegistration,
+      appSrc.includes('this.completePendingSlowTierFanout()'),
+      'a late slow-tier settle must still open viewport hydration',
+    );
+    assert.ok(
+      fanoutFn > -1 && fanoutFn < slowTierAwait,
+      'visible-data fan-out must stay behind the shared helper, not inline after a forced ready flag',
+    );
+    assert.ok(
+      readyFlag > fanoutFn && readyFlag < scrollRegistration,
       'viewport hydration readiness must open before registering scroll listeners',
     );
     assert.ok(

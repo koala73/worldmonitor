@@ -288,7 +288,7 @@ export class IntelligenceFindingsBadge {
 
     // Update badge status based on priority
     const hasCritical = this.findings.some(f => f.priority === 'critical');
-    const hasHigh = this.findings.some(f => f.priority === 'high' || f.confidence >= 0.7);
+    const hasHigh = this.findings.some(f => f.priority === 'high');
 
     this.badge.classList.remove('status-none', 'status-low', 'status-high');
     if (count === 0) {
@@ -353,8 +353,8 @@ export class IntelligenceFindingsBadge {
   }
 
   private priorityToConfidence(priority: string): number {
-    const map: Record<string, number> = { critical: 95, high: 80, medium: 60, low: 40 };
-    return map[priority] ?? 50;
+    const map: Record<string, number> = { critical: 0.95, high: 0.8, medium: 0.6, low: 0.4 };
+    return map[priority] ?? 0.5;
   }
 
   private priorityScore(priority: string): number {
@@ -398,7 +398,7 @@ export class IntelligenceFindingsBadge {
     }
 
     const criticalCount = this.findings.filter(f => f.priority === 'critical').length;
-    const highCount = this.findings.filter(f => f.priority === 'high' || f.confidence >= 70).length;
+    const highCount = this.findings.filter(f => f.priority === 'high').length;
 
     let statusClass = 'moderate';
     let statusText = t('components.intelligenceFindings.detected', { count: String(this.findings.length) });

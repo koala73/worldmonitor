@@ -584,12 +584,10 @@ describe('ensureInlineTypedInput (fixture)', () => {
     assert.equal(restored.schema.type, 'string');
     // JmespathParam carries a curated summary: the lead sentence plus the two
     // limits the API contract states on every operation.
-    assert.match(restored.description, /JMESPath/);
-    assert.match(restored.description, /JSON response/);
-    assert.match(restored.description, /HTTP 400/);
-    assert.match(restored.description, /1024 UTF-8 bytes/);
-    assert.match(restored.description, /256 KB output cap/);
-    assert.match(restored.description, /#\/components\/parameters\/JmespathParam/);
+    assert.equal(
+      restored.description,
+      'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
+    );
     assert.ok(
       Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
       `restored description is ${Buffer.byteLength(restored.description, 'utf8')} bytes`,

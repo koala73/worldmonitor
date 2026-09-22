@@ -73,6 +73,16 @@ describe('default map mode', () => {
       /DeckGL initialization failed[\s\S]*Initializing SVG map \(DeckGL fallback mode\)/,
       'SVG should stay a DeckGL failure fallback, not the default 2D renderer',
     );
+    assert.match(
+      mapContainer,
+      /onFatalError:\s*\(error\)\s*=>\s*this\.handleDeckGLRuntimeFailure\(token,\s*error\)/,
+      'DeckGL must wire mid-session MapLibre fatals into the SVG runtime fallback',
+    );
+    assert.match(
+      mapContainer,
+      /handleDeckGLRuntimeFailure[\s\S]*Initializing SVG map \(DeckGL runtime fallback\)/,
+      'DeckGL runtime fatals (e.g. GPUInitializationError on fallback recreate) must degrade to SVG',
+    );
   });
 
   it('does not require the stricter deck.gl WebGL2 gate before selecting globe mode', () => {
