@@ -1440,9 +1440,16 @@ describe('deploy gate stale-base drift over a real repository', () => {
     mkdirSync(work, { recursive: true });
     const commit = (files, message) => {
       for (const file of files) {
+        // `from>to` renames instead of writing, so a rename/modify collision
+        // can be built. The body is left alone so git scores it a rename.
+        const rename = file.split('>');
+        if (rename.length === 2) {
+          git(remote, 'mv', rename[0], rename[1]);
+          continue;
+        }
         const path = join(remote, file);
         mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, `${message}\n`);
+        writeFileSync(path, `${message}\n${'filler\n'.repeat(200)}`);
       }
       git(remote, 'add', '-A');
       git(remote, 'commit', '-q', '-m', message);
@@ -1521,6 +1528,20 @@ describe('deploy gate stale-base drift over a real repository', () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, 'zz-shared.ts');
+  });
+
+  it('sees an overlap main hid behind a rename', () => {
+    // Rename detection is on by default and --name-only prints the POST-image
+    // path, so main renaming a.ts to b.ts lists only b.ts. A head still editing
+    // a.ts would then intersect with nothing and the gate would publish a
+    // success — for a pair that actually conflicts on merge.
+    const result = drift({
+      base: ['api/a.ts', 'docs/x.md'],
+      head: ['api/a.ts'],
+      main: ['api/a.ts>api/b.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'api/a.ts');
   });
 
   it('says nothing for a head main already contains, or one that is up to date', () => {

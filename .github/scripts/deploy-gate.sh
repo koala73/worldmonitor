@@ -215,8 +215,14 @@ base_drift() {
   fi
   head_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-head.XXXXXX")
   main_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-main.XXXXXX")
-  if ! git diff --name-only "$merge_base" "$BASE_DRIFT_HEAD_REF" | sort -u > "$head_list" ||
-    ! git diff --name-only "$merge_base" "$BASE_DRIFT_MAIN_REF" | sort -u > "$main_list"; then
+  # --no-renames, because rename detection is on by default and --name-only
+  # prints the POST-image path. If main renames a.ts to b.ts while the head
+  # edits a.ts, main's side lists only b.ts, the intersection comes out empty,
+  # and the gate publishes a success for a head that in fact collides — that
+  # pair conflicts on merge. Without detection the rename is a delete plus an
+  # add, so a.ts appears on both sides and the overlap is seen.
+  if ! git diff --name-only --no-renames "$merge_base" "$BASE_DRIFT_HEAD_REF" | sort -u > "$head_list" ||
+    ! git diff --name-only --no-renames "$merge_base" "$BASE_DRIFT_MAIN_REF" | sort -u > "$main_list"; then
     rm -f "$head_list" "$main_list"
     echo "::error::Could not list the changed files for $head" >&2
     return 1
