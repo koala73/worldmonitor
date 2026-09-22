@@ -98,6 +98,60 @@ test('fetchGlobalTenders does not promote a paced stale/error SAM snapshot to he
   }
 });
 
+test('fetchSam paces on the last attempt, not the last success (#8505)', async () => {
+  const calls = [];
+  const previousSnapshot = samSnapshot(new Date(NOW - 13 * 3_600_000).toISOString());
+  previousSnapshot.sourceStatuses[0] = {
+    ...previousSnapshot.sourceStatuses[0],
+    state: 'stale',
+    stale: true,
+    error: 'request timeout',
+    fetchedAt: new Date(NOW - 58 * 60_000).toISOString(),
+  };
+
+  const result = await fetchSam({
+    apiKey: 'test-key',
+    now: NOW,
+    fetchJsonFn: async (url) => {
+      calls.push(String(url));
+      return { opportunitiesData: [] };
+    },
+    previousSnapshot,
+  });
+
+  assert.equal(calls.length, 0, 'SAM meters attempts, so a 58-minute-old failed attempt must still pace');
+  assert.equal(result.status.paced, true);
+  assert.equal(result.status.state, 'stale');
+});
+
+test('fetchGlobalTenders retries a failing SAM source once per interval across hourly ticks (#8505)', async () => {
+  const attempts = [];
+  const lastSuccessfulAt = new Date(NOW - 180 * 60_000).toISOString();
+  let snapshot = samSnapshot(lastSuccessfulAt);
+  snapshot.fetchedAt = Date.parse(lastSuccessfulAt);
+  for (let tick = 0; tick < 13; tick += 1) {
+    snapshot = await fetchGlobalTenders({
+      now: NOW + tick * 3_600_000,
+      previousSnapshot: snapshot,
+      adapters: [[
+        'sam',
+        (options) => fetchSam({
+          ...options,
+          apiKey: 'test-key',
+          fetchJsonFn: async () => {
+            attempts.push(tick);
+            throw new Error('request timeout');
+          },
+        }),
+      ]],
+    });
+  }
+
+  assert.deepEqual(attempts, [0, 3, 6, 9, 12], 'a 150-minute gate on hourly ticks spends one request every third tick');
+  assert.equal(snapshot.sourceStatuses[0].state, 'stale');
+  assert.equal(snapshot.sourceStatuses[0].error, 'request timeout');
+});
+
 test('fetchSam skips the request while the previous success is inside the budget interval', async () => {
   const calls = [];
   const fetchJsonFn = async (url) => {
@@ -188,32 +242,30 @@ test('the SAM native transport rejects request semantics it cannot preserve with
   }
 });
 
-test('the SAM transport retries a transient native request error', async () => {
-  const calls = [];
-  const httpsGetFn = (url, options, onResponse) => {
-    calls.push({ url: String(url), options });
-    const request = new EventEmitter();
-    queueMicrotask(() => {
-      if (calls.length === 1) {
-        request.emit('error', Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }));
-        return;
-      }
-      const response = Readable.from([Buffer.from(JSON.stringify({ opportunitiesData: [] }))]);
-      response.statusCode = 200;
-      response.headers = {};
-      onResponse(response);
+// SAM meters attempts, not successes: a request that reset or timed out may
+// already count against the 10/day budget, so the next 150-minute window is
+// the only retry (#8505).
+test('the SAM transport spends exactly one request on a transient native error', async (t) => {
+  for (const [name, failure] of [
+    ['ECONNRESET', Object.assign(new Error('socket reset'), { code: 'ECONNRESET' })],
+    ['request timeout', Object.assign(new Error('The operation was aborted'), { name: 'AbortError', code: 'ABORT_ERR' })],
+  ]) {
+    await t.test(name, async () => {
+      const calls = [];
+      const httpsGetFn = (url, options) => {
+        calls.push({ url: String(url), options });
+        const request = new EventEmitter();
+        queueMicrotask(() => request.emit('error', failure));
+        return request;
+      };
+
+      await assert.rejects(
+        () => fetchSam({ apiKey: 'test-key', now: NOW, fetchJsonFn: __testing__.createSamFetchJson(httpsGetFn) }),
+        (error) => error === failure,
+      );
+      assert.equal(calls.length, 1, `${name} must not be retried in-run: every attempt may be metered`);
     });
-    return request;
-  };
-
-  const result = await fetchSam({
-    apiKey: 'test-key',
-    now: NOW,
-    fetchJsonFn: __testing__.createSamFetchJson(httpsGetFn),
-  });
-
-  assert.equal(calls.length, 2);
-  assert.equal(result.status.state, 'ok');
+  }
 });
 
 test('the SAM transport deadline also covers connection setup', async (t) => {
