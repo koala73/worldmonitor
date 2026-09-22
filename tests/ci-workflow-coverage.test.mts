@@ -1597,16 +1597,32 @@ describe('CI workflow coverage', () => {
       'test.yml must expose a docker change output',
     );
     const dockerFilter = shellAwkAssignmentBlock('DOCKER');
+    // Check each required input against the individual RULES, not the whole
+    // block. Raw containment is satisfied by a SIBLING pattern whenever one is
+    // a substring of another -- `package\.json` occurs inside
+    // `/^pro-test\/package\.json$/`, so deleting the root rule left the loop
+    // green and the guard blind (proven by mutation: the suite stayed 53/53).
+    // Require a rule anchored to the input itself instead: an exact file match
+    // (`^package\.json$`) or a directory prefix (`^docker\/`).
+    const dockerRulePatterns = dockerFilter
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('/^'))
+      .map((line) => line.slice(line.indexOf('/^') + 1, line.lastIndexOf('/')));
     for (const input of REQUIRED_DOCKER_IMAGE_INPUTS) {
+      const escaped = workflowRegexNeedle(input);
       assert.ok(
-        dockerFilter.includes(workflowRegexNeedle(input)),
-        `test.yml docker filter must cover ${input}`,
+        dockerRulePatterns.includes(`^${escaped}$`) || dockerRulePatterns.includes(`^${escaped}`),
+        `test.yml docker filter must have a rule covering ${input}, not just a sibling pattern containing it`,
       );
     }
     for (const [files, expected, why] of [
       [['docker/Dockerfile'], 1, 'the Dockerfile itself is the whole point'],
       [['docker/nginx.conf.template'], 1, 'a sibling config the Dockerfile COPYs must gate it too'],
+      [['.dockerignore'], 1, 'the build-context policy is part of the image build'],
+      [['package.json'], 1, 'the root manifest defines every build:* script the Dockerfile invokes'],
       [['package-lock.json'], 1, 'the npm ci input the build stage actually runs'],
+      [['pro-test/package.json'], 1, 'build:pro installs pro-test from this manifest'],
       [['pro-test/package-lock.json'], 1, 'build:pro installs this lockfile on its own'],
       [['scripts/generate-inventory-facts.mjs'], 1, 'the one script the Dockerfile names directly'],
       [['src/components/GlobeMap.ts'], 0, 'app logic is unit/typecheck\'s job, not a docker-specific one'],

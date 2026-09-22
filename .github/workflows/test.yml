@@ -196,8 +196,9 @@ jobs:
           # runs (package.json, package-lock.json), the pro-test lockfile
           # build:pro installs on its own, and the one script the Dockerfile
           # names directly (generate-inventory-facts.mjs). Before this, none of
-          # these had a PR-time build at all -- docker-publish.yml's weekly
-          # schedule was the first execution of any change to the Dockerfile.
+          # these had a PR-time build at all -- docker-publish.yml runs only on
+          # a published release or a manual dispatch, so its build was the
+          # first execution of any change to the Dockerfile.
           DOCKER=$(printf '%s\n' "$FILES" | awk '
             /^\.dockerignore$/ { count++; next }
             /^docker\// { count++; next }
@@ -1116,13 +1117,14 @@ jobs:
       - name: Build the app image (smoke)
         run: docker build -f docker/Dockerfile -t wm-docker-smoke .
 
-      # Runs the same routes docker-publish.yml checks before it publishes,
-      # here instead of at the next push or the weekly rebuild. `RUN test -s
-      # dist/dashboard.html` and the /pro assertions inside docker/Dockerfile
-      # already catch a file-presence regression (the exact class #7808's
-      # review found) at build time above -- what only a running container
-      # answers is whether nginx actually serves what got built: a template
-      # edit that builds clean but 404s every route, or serves an empty body.
+      # The build above already asserts the files it produced are non-empty
+      # (`test -s dist/product-facts.json` and the /pro pair inside
+      # docker/Dockerfile). What only a running container answers is whether
+      # nginx actually serves what got built: a template edit that builds clean
+      # but 404s every route, or serves an empty body. #7808 additionally adds
+      # a `test -s dist/dashboard.html` build assertion and a publish-time
+      # runtime smoke; until that lands, this job is the repo's only runtime
+      # check on the image.
       - name: Smoke the image (build proved the files exist; this proves nginx serves them)
         run: |
           set -euo pipefail
@@ -1145,10 +1147,13 @@ jobs:
           done
 
           failed=""
-          # The same two routes docker-publish.yml's own smoke requests, and
-          # for the same reason: they are exactly what docker/Dockerfile's
-          # build-time assertions cover, so this gate can only go red on a
-          # genuinely broken image. Keep both lists in step.
+          # The two routes docker/Dockerfile's own build-time assertions cover
+          # -- `/` is the SPA entry the nginx template indexes and falls back
+          # to, `/pro` is a live nginx route that 404s if the pro build did not
+          # survive the public/ -> dist/ copy (#6898). Requesting exactly the
+          # asserted set is what keeps this gate from going red on an unasserted
+          # path that nothing builds. #7808's publish-time smoke requests the
+          # same pair from the same image; keep the two in step.
           for path in / /pro/; do
             code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}")"
             if [ "$code" != "200" ]; then
