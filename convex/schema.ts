@@ -1029,6 +1029,13 @@ export default defineSchema({
     redisClearedAt: v.optional(v.number()),
     clerkDeletedAt: v.optional(v.number()),
     fenceAppliedAt: v.optional(v.number()),
+    // Set when the email-keyed step ran with no verified proof of the account
+    // email — the webhook path never has one, because Clerk deleted the user
+    // before we were told. Waitlist, contact-form and invitee-email-keyed rows
+    // are then left alone rather than matched on a cached address we cannot
+    // trust. Recorded so the gap is visible and repairable instead of silent;
+    // `accountDeletion/batches:completeEmailKeyedErasure` clears it.
+    emailKeyedSkipped: v.optional(v.boolean()),
     externalAttempts: v.optional(v.number()),
     // Consecutive failures of the Convex-side batch stepper. A write conflict
     // on a globally shared aggregate row is routine, so a batch failure is

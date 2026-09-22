@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
-import { CLERK_SKEW_SECONDS } from "../accountDeletion/clerkWebhook";
+import { CLERK_SKEW_SECONDS, MAX_SIGNATURE_CANDIDATES } from "../accountDeletion/clerkWebhook";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -176,6 +176,53 @@ describe("Clerk account-deletion webhook", () => {
     expect(res.status).toBe(401);
     const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
     expect(rows).toHaveLength(0);
+  });
+
+  test("only a bounded number of signature candidates is considered", async () => {
+    process.env.CLERK_WEBHOOK_SECRET = CLERK_WEBHOOK_SECRET;
+    const t = convexTest(schema, modules);
+    const payload = deletedPayload();
+    const real = await signPayload(payload);
+    // The header is attacker-supplied on an unauthenticated endpoint and each
+    // candidate costs a key generation plus two HMAC signs. Burying the real
+    // signature past the cap must fail closed rather than make us do the work.
+    const padding = Array.from(
+      { length: MAX_SIGNATURE_CANDIDATES + 20 },
+      (_unused, i) => `v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA${i}=`,
+    );
+    const res = await postClerkWebhook(t, {
+      payload,
+      signature: [...padding, `v1,${real}`].join(" "),
+    });
+    expect(res.status).toBe(401);
+    const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("a real signature within the cap still verifies", async () => {
+    process.env.CLERK_WEBHOOK_SECRET = CLERK_WEBHOOK_SECRET;
+    process.env.CLERK_SECRET_KEY = "sk_test";
+    process.env.DODO_API_KEY = "ddp_test";
+    process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "token";
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (isClerkApiUrl(url)) return new Response("gone", { status: 404 });
+      if (url.includes("upstash.test")) return Response.json({ result: "OK" });
+      return new Response("unexpected", { status: 500 });
+    });
+    const t = convexTest(schema, modules);
+    const payload = deletedPayload();
+    const real = await signPayload(payload);
+    // Svix sends one signature per active signing key, so a rotation looks
+    // like this -- a couple of stale candidates ahead of the live one.
+    const res = await postClerkWebhook(t, {
+      payload,
+      signature: `v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= v1,${real}`,
+    });
+    expect(res.status).toBe(200);
+    const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
+    expect(rows).toHaveLength(1);
   });
 
   test("valid user.deleted starts erase and a duplicate event id is a no-op", async () => {

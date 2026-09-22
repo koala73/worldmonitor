@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
@@ -13,6 +13,7 @@ import {
   ERASE_WRITE_BUDGET,
   PENDING_STALE_AFTER_MS,
   mergeUniqueStrings,
+  normalizeVerifiedEmail,
   redactBillingPayload,
   tombstoneUserId,
 } from "./registry";
@@ -508,7 +509,24 @@ async function eraseEmailKeyed(
   budget: number,
 ): Promise<{ writes: number; done: boolean }> {
   const email = deletion.verifiedEmail;
-  if (!email) return { writes: 0, done: true };
+  if (!email) {
+    // No verified proof of this subject's address was captured before Clerk
+    // removed the user — the webhook path never has one. Matching waitlist and
+    // contact rows on a cached profile address instead would risk deleting a
+    // third party's data, which is exactly why this engine refuses to. But
+    // completing silently made the gap permanent AND invisible: every later
+    // entry point skips the Clerk lookup once a deletion row exists, so no
+    // amount of re-running the runbook command repairs it. Record it instead.
+    if (!deletion.emailKeyedSkipped) {
+      await ctx.db.patch(deletion._id, { emailKeyedSkipped: true });
+      return { writes: 1, done: true };
+    }
+    return { writes: 0, done: true };
+  }
+  // An operator supplied confirmed proof; the gap is closed.
+  if (deletion.emailKeyedSkipped) {
+    await ctx.db.patch(deletion._id, { emailKeyedSkipped: undefined });
+  }
 
   let writes = 0;
   const referralCredits = await ctx.db
@@ -799,6 +817,69 @@ export const markBatchFailed = internalMutation({
       updatedAt: Date.now(),
     });
     return "failed";
+  },
+});
+
+/**
+ * Finish email-keyed cleanup for a deletion that ran without verified proof.
+ *
+ * A `user.deleted` webhook arrives after Clerk has already destroyed the
+ * subject, so `beginErase` has no address to attribute waitlist, contact-form
+ * or invitee-email-keyed rows with, and every later entry point skips the Clerk
+ * lookup once a deletion row exists. Those rows would otherwise survive
+ * forever with no command able to remove them.
+ *
+ * The email is an argument for the same reason the Clerk subject is an argument
+ * to `eraseConfirmedUser`: a human confirms it out of band first. Do not pass a
+ * cached profile address — that is precisely the proof this engine refuses.
+ *
+ * Idempotent and budgeted. Both steppers re-query their own leftovers, so
+ * re-running is safe and rows already erased are simply not found; it
+ * reschedules itself until both report done.
+ */
+export const completeEmailKeyedErasure = internalMutation({
+  args: { userId: v.string(), verifiedEmail: v.string() },
+  returns: v.object({
+    status: v.union(v.literal("done"), v.literal("continuing"), v.literal("missing")),
+    writes: v.number(),
+  }),
+  handler: async (ctx, args): Promise<{
+    status: "done" | "continuing" | "missing";
+    writes: number;
+  }> => {
+    const email = normalizeVerifiedEmail(args.verifiedEmail);
+    if (!email) throw new ConvexError("VERIFIED_EMAIL_REQUIRED");
+
+    const row = await ctx.db
+      .query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId.trim()))
+      .unique();
+    if (!row) return { status: "missing" as const, writes: 0 };
+
+    if (row.verifiedEmail !== email) {
+      await ctx.db.patch(row._id, { verifiedEmail: email });
+    }
+    const withProof = await ctx.db.get(row._id);
+    if (!withProof) return { status: "missing" as const, writes: 0 };
+
+    // Grants first: collectGrantIds only sweeps by_inviteeEmail once the row
+    // carries a verified address, so this is the pass that was skipped.
+    const grants = await eraseGrants(ctx, withProof, ERASE_WRITE_BUDGET);
+    const remaining = ERASE_WRITE_BUDGET - grants.writes;
+    const keyed = remaining > 0
+      ? await eraseEmailKeyed(ctx, withProof, remaining)
+      : { writes: 0, done: false };
+
+    const writes = grants.writes + keyed.writes;
+    const done = grants.done && keyed.done;
+    if (!done) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.accountDeletion.batches.completeEmailKeyedErasure,
+        { userId: args.userId, verifiedEmail: email },
+      );
+    }
+    return { status: done ? "done" as const : "continuing" as const, writes };
   },
 });
 

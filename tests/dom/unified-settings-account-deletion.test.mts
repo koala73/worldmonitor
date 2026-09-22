@@ -455,6 +455,32 @@ describe('UnifiedSettings account deletion', () => {
     expect(signOutMock).not.toHaveBeenCalled();
   });
 
+  it('does not toast "Account changed" after the switch already closed the dialog', async () => {
+    let rejectRequest!: (err: Error) => void;
+    deletionMocks.request.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectRequest = reject;
+    }));
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    typePhrase('DELETE');
+    document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
+
+    // The switch itself already removed the dialog, so by the time the
+    // abandoned request rejects the user has moved on -- a late "Account
+    // changed... Try again." is about a request they no longer remember.
+    switchAccountTo(signedIn('user_other'));
+    expect(document.querySelector('.account-deletion-dialog-overlay')).toBeNull();
+
+    rejectRequest(new Error('Account changed while deleting the account. Try again.'));
+    await vi.waitFor(() => {
+      expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+    });
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/Account changed/),
+    );
+    expect(signOutMock).not.toHaveBeenCalled();
+  });
+
   it('shows a retryable error and keeps the session on failure', async () => {
     deletionMocks.request.mockRejectedValue(new Error('Convex unavailable'));
     settings.open('billing');

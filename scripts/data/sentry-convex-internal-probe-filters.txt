@@ -5,6 +5,7 @@
 #
 *Could not find public function for 'accountDeletion/batches:advanceErase'*
 *Could not find public function for 'accountDeletion/batches:advanceEraseSafely'*
+*Could not find public function for 'accountDeletion/batches:completeEmailKeyedErasure'*
 *Could not find public function for 'accountDeletion/batches:getBatchSnapshot'*
 *Could not find public function for 'accountDeletion/batches:markBatchFailed'*
 *Could not find public function for 'accountDeletion/batches:reapStalledDeletions'*

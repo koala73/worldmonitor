@@ -1326,8 +1326,13 @@ export class UnifiedSettings {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Account deletion failed. Try again.';
       if (message.includes('Account changed')) {
+        // Only speak if this attempt still owns the dialog. When the account
+        // switch already tore it down, the user has moved on and a late
+        // "Account changed... Try again." is about a request they no longer
+        // remember starting.
+        const stillOurs = this.deletionDialog === overlay;
         this.closeDeletionDialog();
-        showToast(message);
+        if (stillOurs) showToast(message);
         return;
       }
       // The dialog is the only place the error text renders, and an account

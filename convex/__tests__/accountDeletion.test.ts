@@ -858,6 +858,78 @@ describe("account deletion — continuation ownership", () => {
   });
 });
 
+describe("webhook deletions record and can repair the email-keyed gap", () => {
+  // A user.deleted webhook arrives after Clerk destroyed the subject, so there
+  // is no verified address to attribute waitlist/contact rows with. Matching on
+  // a cached address could delete a third party's records, so the engine skips
+  // -- but skipping silently made the gap permanent and invisible.
+  async function seedEmailKeyedRows(t: ReturnType<typeof convexTest>) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("registrations", {
+        email: USER_A.email,
+        normalizedEmail: USER_A.email,
+        registeredAt: Date.now(),
+      });
+      await ctx.db.insert("contactMessages", {
+        name: "Alice", email: USER_A.email, source: "test",
+        receivedAt: Date.now(), normalizedEmail: USER_A.email,
+      });
+    });
+  }
+
+  test("a webhook deletion records the skip instead of completing silently", async () => {
+    const t = await makeT();
+    await seedEmailKeyedRows(t);
+    await t.mutation(internal.accountDeletion.erase.ingestClerkUserDeleted, {
+      webhookId: "clerk:evt_gap", userId: USER_A.subject,
+    });
+    await drainErase(t);
+
+    const row = await t.query(
+      internal.accountDeletion.erase.getDeletionStatusForOperator,
+      { userId: USER_A.subject },
+    );
+    expect(row?.emailKeyedSkipped).toBe(true);
+    // The rows really are still there -- that is what the flag reports.
+    expect(await t.run((ctx) => ctx.db.query("registrations").collect())).toHaveLength(1);
+    expect(await t.run((ctx) => ctx.db.query("contactMessages").collect())).toHaveLength(1);
+  });
+
+  test("the repair command finishes the cleanup and clears the flag", async () => {
+    const t = await makeT();
+    await seedEmailKeyedRows(t);
+    await t.mutation(internal.accountDeletion.erase.ingestClerkUserDeleted, {
+      webhookId: "clerk:evt_gap", userId: USER_A.subject,
+    });
+    await drainErase(t);
+
+    await t.mutation(internal.accountDeletion.batches.completeEmailKeyedErasure, {
+      userId: USER_A.subject, verifiedEmail: USER_A.email.toUpperCase(),
+    });
+    await drainErase(t);
+
+    expect(await t.run((ctx) => ctx.db.query("registrations").collect())).toHaveLength(0);
+    expect(await t.run((ctx) => ctx.db.query("contactMessages").collect())).toHaveLength(0);
+    const row = await t.query(
+      internal.accountDeletion.erase.getDeletionStatusForOperator,
+      { userId: USER_A.subject },
+    );
+    expect(row?.emailKeyedSkipped).toBeUndefined();
+  });
+
+  test("the repair command refuses an empty email and reports an unknown subject", async () => {
+    const t = await makeT();
+    await expect(
+      t.mutation(internal.accountDeletion.batches.completeEmailKeyedErasure, {
+        userId: USER_A.subject, verifiedEmail: "   ",
+      }),
+    ).rejects.toThrow(/VERIFIED_EMAIL_REQUIRED/);
+    expect(await t.mutation(internal.accountDeletion.batches.completeEmailKeyedErasure, {
+      userId: "user_never_deleted", verifiedEmail: USER_A.email,
+    })).toMatchObject({ status: "missing" });
+  });
+});
+
 describe("operator visibility into a failed deletion", () => {
   // The runbook tells support to "inspect lastError, then re-run". That step
   // had no command behind it: eraseConfirmedUser can only answer

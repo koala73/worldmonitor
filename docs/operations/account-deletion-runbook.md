@@ -40,8 +40,31 @@ that a deletion failed or why:
 npx convex run accountDeletion/erase:getDeletionStatusForOperator '{"userId":"user_..."}'
 ```
 
-It returns `status`, `step`, `lastError`, `externalAttempts`, `batchAttempts`, and
-timestamps, or `null` when no deletion was ever requested for that subject.
+It returns `status`, `step`, `lastError`, `emailKeyedSkipped`, `externalAttempts`,
+`batchAttempts`, and timestamps, or `null` when no deletion was ever requested for
+that subject.
+
+### `emailKeyedSkipped: true` — finish the email-keyed cleanup
+
+A deletion that started from the Clerk `user.deleted` webhook has no verified proof
+of the account's email address: Clerk had already destroyed the subject before it
+told us. Waitlist rows, contact-form messages, and Business grants keyed on the
+invitee's email are therefore left alone rather than matched on a cached address we
+cannot trust — and no later re-run repairs that, because every entry point skips the
+Clerk lookup once a deletion row exists.
+
+Confirm the address out of band, the same way you confirm the Clerk subject, then:
+
+```bash
+npx convex run accountDeletion/batches:completeEmailKeyedErasure \
+  '{"userId":"user_...","verifiedEmail":"person@example.com"}'
+```
+
+Do **not** pass an address read from our own cached profile — that is exactly the
+proof this engine refuses, and a stale or attacker-influenced value would delete a
+third party's records. The command is idempotent and reschedules itself until both
+the grant sweep and the email-keyed sweep report done; re-run
+`getDeletionStatusForOperator` afterwards to confirm `emailKeyedSkipped` is gone.
 
 If the row is `failed`, inspect `lastError` **with that command first**, correct the
 provider configuration or failure, then re-run `eraseConfirmedUser` to resume from

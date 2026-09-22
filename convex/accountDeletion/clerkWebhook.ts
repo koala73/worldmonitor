@@ -9,6 +9,15 @@ import { requireEnv } from "../lib/env";
  */
 export const CLERK_SKEW_SECONDS = 300;
 
+const SECRET_PREFIX = "whsec_";
+
+/**
+ * Most `v1` signatures considered per delivery. Svix sends one per active
+ * signing key, so this comfortably covers a key rotation while capping the
+ * crypto an unauthenticated caller can make this endpoint perform.
+ */
+export const MAX_SIGNATURE_CANDIDATES = 5;
+
 async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.generateKey(
@@ -42,9 +51,14 @@ async function verifyClerkSvixSignature(
   if (Math.abs(Date.now() / 1000 - ts) > CLERK_SKEW_SECONDS) return false;
 
   const toSign = `${msgId}.${timestamp}.${payload}`;
-  const secretBytes = Uint8Array.from(atob(secret.replace("whsec_", "")), (c) =>
-    c.charCodeAt(0),
-  );
+  // Anchored strip: `replace` removes the first occurrence anywhere, so a
+  // secret whose base64 body happened to contain "whsec_" would be silently
+  // corrupted into a different key — and every delivery would then fail
+  // verification for a reason no log would explain.
+  const secretBody = secret.startsWith(SECRET_PREFIX)
+    ? secret.slice(SECRET_PREFIX.length)
+    : secret;
+  const secretBytes = Uint8Array.from(atob(secretBody), (c) => c.charCodeAt(0));
   const key = await crypto.subtle.importKey(
     "raw",
     secretBytes,
@@ -58,9 +72,18 @@ async function verifyClerkSvixSignature(
     new TextEncoder().encode(toSign),
   );
   const expected = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  // Bounded: the header is attacker-supplied on an unauthenticated endpoint and
+  // each candidate costs a key generation plus two HMAC signs. Svix sends one
+  // signature per active key, so a handful covers a real rotation; anything
+  // beyond that is someone making us do crypto.
+  const candidates: string[] = [];
   for (const part of signature.split(" ")) {
     const [version, val] = part.split(",");
     if (version !== "v1" || !val) continue;
+    candidates.push(val);
+    if (candidates.length >= MAX_SIGNATURE_CANDIDATES) break;
+  }
+  for (const val of candidates) {
     if (await timingSafeEqualStrings(val, expected)) return true;
   }
   return false;
