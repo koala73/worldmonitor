@@ -11,7 +11,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/unrest/v1/service_server';
 
 import { sortBySeverityAndRecency } from './_shared';
-import { getCachedJson } from '../../../_shared/redis';
+import { readRequiredSeed } from '../../../_shared/required-seed';
 import { resolveCountryCode } from '../../../../shared/country-code-resolve';
 
 const SEED_CACHE_KEY = 'unrest:events:v1';
@@ -38,12 +38,11 @@ export async function listUnrestEvents(
   _ctx: ServerContext,
   req: ListUnrestEventsRequest,
 ): Promise<ListUnrestEventsResponse> {
-  try {
-    const seedData = await getCachedJson(SEED_CACHE_KEY, true) as ListUnrestEventsResponse | null;
-    const filtered = filterSeedEvents(seedData?.events || [], req);
-    const sorted = sortBySeverityAndRecency(filtered);
-    return { events: sorted, clusters: [], pagination: undefined };
-  } catch {
-    return { events: [], clusters: [], pagination: undefined };
-  }
+  const seedData = await readRequiredSeed(SEED_CACHE_KEY, value => {
+    const data = value as ListUnrestEventsResponse | null;
+    return data && Array.isArray(data.events) ? data : undefined;
+  });
+  const filtered = filterSeedEvents(seedData.events, req);
+  const sorted = sortBySeverityAndRecency(filtered);
+  return { events: sorted, clusters: [], pagination: undefined };
 }

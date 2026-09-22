@@ -15,7 +15,7 @@
         "name": "Israel"
       }
     ],
-    "dashboardPath": "/?country=IR&expanded=1"
+    "dashboardPath": "/dashboard?country=IR&expanded=1"
   },
   {
     "slug": "ukraine-war",
@@ -33,7 +33,7 @@
         "name": "Russia"
       }
     ],
-    "dashboardPath": "/?country=UA&expanded=1"
+    "dashboardPath": "/dashboard?country=UA&expanded=1"
   },
   {
     "slug": "red-sea-security",
@@ -59,7 +59,7 @@
         "name": "Eritrea"
       }
     ],
-    "dashboardPath": "/?chokepoint=bab_el_mandeb"
+    "dashboardPath": "/dashboard?chokepoint=bab_el_mandeb"
   },
   {
     "slug": "sudan-conflict",
@@ -73,7 +73,7 @@
         "name": "Sudan"
       }
     ],
-    "dashboardPath": "/?country=SD&expanded=1"
+    "dashboardPath": "/dashboard?country=SD&expanded=1"
   },
   {
     "slug": "lebanon-israel-escalation",
@@ -91,7 +91,7 @@
         "name": "Israel"
       }
     ],
-    "dashboardPath": "/?country=LB&expanded=1"
+    "dashboardPath": "/dashboard?country=LB&expanded=1"
   },
   {
     "slug": "hormuz-gulf-security",
@@ -133,7 +133,7 @@
         "name": "Bahrain"
       }
     ],
-    "dashboardPath": "/?chokepoint=hormuz_strait"
+    "dashboardPath": "/dashboard?chokepoint=hormuz_strait"
   },
   {
     "slug": "sahel-insurgency",
@@ -155,7 +155,7 @@
         "name": "Niger"
       }
     ],
-    "dashboardPath": "/?country=BF&expanded=1"
+    "dashboardPath": "/dashboard?country=BF&expanded=1"
   },
   {
     "slug": "horn-of-africa",
@@ -181,7 +181,7 @@
         "name": "Eritrea"
       }
     ],
-    "dashboardPath": "/?country=ET&expanded=1"
+    "dashboardPath": "/dashboard?country=ET&expanded=1"
   },
   {
     "slug": "myanmar-civil-war",
@@ -195,7 +195,7 @@
         "name": "Myanmar"
       }
     ],
-    "dashboardPath": "/?country=MM&expanded=1"
+    "dashboardPath": "/dashboard?country=MM&expanded=1"
   },
   {
     "slug": "haiti-gang-crisis",
@@ -209,7 +209,7 @@
         "name": "Haiti"
       }
     ],
-    "dashboardPath": "/?country=HT&expanded=1"
+    "dashboardPath": "/dashboard?country=HT&expanded=1"
   },
   {
     "slug": "drc-eastern-conflict",
@@ -223,7 +223,7 @@
         "name": "Democratic Republic of the Congo"
       }
     ],
-    "dashboardPath": "/?country=CD&expanded=1"
+    "dashboardPath": "/dashboard?country=CD&expanded=1"
   },
   {
     "slug": "nigeria-security-crisis",
@@ -237,7 +237,7 @@
         "name": "Nigeria"
       }
     ],
-    "dashboardPath": "/?country=NG&expanded=1"
+    "dashboardPath": "/dashboard?country=NG&expanded=1"
   },
   {
     "slug": "afghanistan-crisis",
@@ -251,7 +251,7 @@
         "name": "Afghanistan"
       }
     ],
-    "dashboardPath": "/?country=AF&expanded=1"
+    "dashboardPath": "/dashboard?country=AF&expanded=1"
   },
   {
     "slug": "palestine-gaza-crisis",
@@ -265,6 +265,6 @@
         "name": "Palestine"
       }
     ],
-    "dashboardPath": "/?country=PS&expanded=1"
+    "dashboardPath": "/dashboard?country=PS&expanded=1"
   }
 ]

@@ -1298,9 +1298,6 @@
       "base": "Base",
       "nuclear": "Nuclear"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "CRÍT",
       "high": "ALTO",
@@ -1856,6 +1853,7 @@
       "etfs": "ETFs",
       "netInflow": "ENTRADA NETA",
       "netOutflow": "SALIDA NETA",
+      "netNeutral": "NEUTRO",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emisor",
@@ -2184,7 +2182,7 @@
       "infoTooltip": "<strong>Calendario económico</strong> Publicaciones macroeconómicas programadas: CPI, NFP, GDP, PMI y decisiones de bancos centrales. Muestra pronóstico vs. real vs. anterior. Eventos de alto impacto resaltados. Fuente: proveedores de datos económicos."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Índice de estrés financiero del Fed de Kansas City (KCFSI): mide el estrés en los mercados financieros de EE.UU. usando 11 indicadores que incluyen diferenciales de rendimiento, volatilidad y correlaciones cruzadas. Valores positivos indican estrés superior al promedio. Fuente: Banco de la Reserva Federal de Kansas City.",
+      "infoTooltip": "<strong>Indicador de estrés financiero</strong> Relación de WorldMonitor entre crédito de alto rendimiento y bonos del Tesoro estadounidense a largo plazo, ajustada por la volatilidad de la renta variable y el diferencial de alto rendimiento: (HYG / TLT) / (VIX × HY spread / 100). No es el Índice de Estrés Financiero de la Reserva Federal de Kansas City. Una lectura de 1.5 o superior indica estrés bajo; por debajo de 0.3 indica estrés alto.",
       "title": "Indicador de Estrés Financiero",
       "usFsiValue": "VALOR FSI DE EE.UU.",
       "cissTitle": "EU CISS (Estrés Sistémico del Área Euro)",

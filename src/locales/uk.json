@@ -1327,9 +1327,6 @@
       "base": "Base",
       "nuclear": "Nuclear"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "HIGH",
@@ -2059,6 +2056,7 @@
       "etfs": "ETFs",
       "netInflow": "NET INFLOW",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "ЧИСТИЙ НЕЙТРАЛ",
       "table": {
         "ticker": "Ticker",
         "issuer": "Issuer",
@@ -2405,7 +2403,7 @@
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Індикатор фінансового стресу</strong> Співвідношення WorldMonitor високодохідного кредиту до довгострокових казначейських облігацій США, скориговане на волатильність акцій і спред високодохідних облігацій: (HYG / TLT) / (VIX × HY spread / 100). Це не Індекс фінансового стресу Федерального резервного банку Канзас-Сіті. Значення 1.5 або вище означає низький стрес; нижче 0.3 — високий стрес.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",

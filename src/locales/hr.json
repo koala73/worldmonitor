@@ -1327,9 +1327,6 @@
       "base": "Baza",
       "nuclear": "Nuklearna"
     },
-    "community": {
-      "joinDiscussion": "Pomozi oblikovati što dolazi"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "VISOKO",
@@ -2057,6 +2054,7 @@
       "etfs": "ETF-ovi",
       "netInflow": "NETO PRILIV",
       "netOutflow": "NETO ODLIV",
+      "netNeutral": "NETO NEUTRALNO",
       "table": {
         "ticker": "Oznaka",
         "issuer": "Izdavač",
@@ -2398,7 +2396,7 @@
       "infoTooltip": "<strong>Ekonomski kalendar</strong> Planirana makroekonomska objavljivanja: CPI, NFP, GDP, PMI i odluke središnjih banaka. Prikazuje prognozu naspram stvarnih vrijednosti naspram prethodnih. Događaji visokog utjecaja su označeni. Izvor: davatelji ekonomskih podataka."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indikator financijskog stresa</strong> Indeks financijskog stresa Federalne rezervne banke Kansas City (KCFSI): mjeri stres na američkim financijskim tržištima koristeći 11 indikatora uključujući razlike u prinosima, volatilnost i međukorelacije. Pozitivne vrijednosti ukazuju na stres iznad prosjeka. Izvor: Federalna rezervna banka Kansas City.",
+      "infoTooltip": "<strong>Pokazatelj financijskog stresa</strong> Omjer WorldMonitora između visokoprinosnih kredita i dugoročnih američkih državnih obveznica, prilagođen za volatilnost dionica i visokoprinosni raspon: (HYG / TLT) / (VIX × HY spread / 100). Ovo nije Indeks financijskog stresa Federalne rezerve Kansas Cityja. Očitavanje od 1.5 ili više znači nizak stres; ispod 0.3 znači visok stres.",
       "title": "Indikator financijskog stresa",
       "usFsiValue": "VRIJEDNOST US FSI",
       "cissTitle": "EU CISS (Sustavni stres evrske zone)",
