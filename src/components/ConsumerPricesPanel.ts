@@ -125,6 +125,7 @@ export class ConsumerPricesPanel extends Panel {
   private inflationFilter = '';
   private settings: PanelSettings = loadSettings();
   private fetchGeneration = 0;
+  private activeRequestKey: string | null = null;
 
   // CMD+K deep-link: switch to the requested tab (e.g. World) when opened via
   // the `panel:consumer-prices@world` command. Bound once so destroy() can drop it.
@@ -153,6 +154,8 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public destroy(): void {
+    this.fetchGeneration++;
+    this.activeRequestKey = null;
     if (typeof window !== 'undefined') {
       window.removeEventListener(OPEN_TAB_EVENT, this.openTabHandler);
     }
@@ -236,14 +239,17 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public async fetchData(): Promise<void> {
-    const generation = ++this.fetchGeneration;
-    this.showLoading();
-
     const captured = {
       market: this.settings.market,
       basket: this.settings.basket,
       range: this.settings.range,
     };
+    const requestKey = JSON.stringify([captured.market, captured.basket, captured.range]);
+    if (this.activeRequestKey === requestKey) return;
+    const generation = ++this.fetchGeneration;
+    this.activeRequestKey = requestKey;
+    this.showLoading();
+
     const stillCurrent = (): boolean => (
       generation === this.fetchGeneration
       && this.element?.isConnected === true
@@ -275,11 +281,17 @@ export class ConsumerPricesPanel extends Panel {
       this.movers = movers;
       this.spread = spread;
       this.freshness = freshness;
+      if ([overview, categories, movers, spread, freshness].some((response) => response.upstreamUnavailable)) {
+        this.showError(undefined, () => { void this.fetchData(); });
+        return;
+      }
       this.render();
     } catch (error) {
       if (!stillCurrent()) return;
       console.error('[ConsumerPrices] fetch failed:', error);
       this.showError(undefined, () => { void this.fetchData(); });
+    } finally {
+      if (generation === this.fetchGeneration) this.activeRequestKey = null;
     }
   }
 
