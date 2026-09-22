@@ -1143,6 +1143,9 @@
       "references": [
         {
           "path": "scripts/seed-economic-calendar.mjs"
+        },
+        {
+          "path": "scripts/seed-us-cpi.mjs"
         }
       ]
     },
@@ -4919,6 +4922,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "home.treasury.gov",
+      "provider": "home.treasury.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit home.treasury.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-us-treasury-par-yield.mjs"
         }
       ]
     },

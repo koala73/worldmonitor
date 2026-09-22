@@ -56,6 +56,12 @@ const MACRO_SECTIONS = [
   // 300_000 gives ~50s margin and matches peer sections. Pre-PR-#3415 the section
   // was 120_000 — too tight for the multi-tier fallback, would SIGTERM mid-fetch.
   { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
+  // Full CPI history is six FRED series from 1947. Kept at the tail so a slow
+  // FRED day cannot take the admission slot of an established member.
+  { label: 'US-CPI', script: 'seed-us-cpi.mjs', seedMetaKey: 'economic:us-cpi', canonicalKey: 'economic:us-cpi:v1', completionMetaKey: 'seed-completion:economic:us-cpi', intervalMs: DAY, timeoutMs: 180_000 },
+  // One Treasury XML document per year since 1990. The tail placement is the
+  // same admission choice as US-CPI.
+  { label: 'US-Treasury-Par-Yield', script: 'seed-us-treasury-par-yield.mjs', seedMetaKey: 'economic:us-treasury-par-yield', canonicalKey: 'economic:us-treasury-par-yield:v1', completionMetaKey: 'seed-completion:economic:us-treasury-par-yield', intervalMs: DAY, timeoutMs: 180_000 },
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark

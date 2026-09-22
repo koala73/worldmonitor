@@ -453,6 +453,10 @@ const STANDALONE_KEYS = {
   // Meta-only aggregate: payloads are sharded by country, so use the seed-meta
   // key as the probe target rather than pretending one country key is global.
   comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
+  // Meta-only probes. The CPI and par-curve documents are sharded, and the
+  // canonical curve is large enough to time out a health GET.
+  usCpiMonthly:          'seed-meta:economic:us-cpi',
+  usTreasuryParYield:    'seed-meta:economic:us-treasury-par-yield',
   // Authoritative shared cohort pointer read by all vulnerability RPCs. The
   // country and inverse manifests are compatibility projections; probing only
   // them can report OK while every public handler is unavailable.
@@ -1310,6 +1314,28 @@ const SEED_META = {
   eurostatIndProd:     { key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }, // daily cron, monthly data; 5d threshold matches TTL
   euGasStorage:      { key: 'seed-meta:economic:eu-gas-storage',      maxStaleMin: 2880 }, // daily seed (T+1); 2880min = 48h = 2x interval
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 4320 }, // daily seed (weekdays only); 4320min = 72h = covers Fri→Mon gap
+  usCpiMonthly: {
+    key: 'seed-meta:economic:us-cpi',
+    maxStaleMin: 4320, // daily macro-bundle tail; 72h covers one missed tick. CPI content age is separate.
+    activationKey: 'seed-activated:economic:us-cpi',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8480,
+      activationKey: 'seed-activated:economic:us-cpi',
+    },
+  },
+  usTreasuryParYield: {
+    key: 'seed-meta:economic:us-treasury-par-yield',
+    maxStaleMin: 4320, // daily macro-bundle tail; 72h covers one missed tick. Curve content age is separate.
+    activationKey: 'seed-activated:economic:us-treasury-par-yield',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8480,
+      activationKey: 'seed-activated:economic:us-treasury-par-yield',
+    },
+  },
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
@@ -1612,6 +1638,10 @@ const ON_DEMAND_KEYS = new Set([
   // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
+  // #8480. The macro bundle can ship the reader before the tail sections
+  // publish. Each marker is written after the first successful publish.
+  'usCpiMonthly',
+  'usTreasuryParYield',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
   // permanent marker after its first successful canonical publish; health is
   // strict from that point onward.
@@ -1716,6 +1746,8 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
+  usCpiMonthly: SEED_META.usCpiMonthly.activationKey,
+  usTreasuryParYield: SEED_META.usTreasuryParYield.activationKey,
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
   predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,

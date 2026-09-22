@@ -33,6 +33,8 @@ import "worldmonitor/economic/v1/get_oil_stocks_analysis.proto";
 import "worldmonitor/economic/v1/get_oil_inventories.proto";
 import "worldmonitor/economic/v1/get_energy_crisis_policies.proto";
 import "worldmonitor/economic/v1/list_global_tenders.proto";
+import "worldmonitor/economic/v1/get_us_cpi_monthly.proto";
+import "worldmonitor/economic/v1/get_us_treasury_par_yield_curve.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -188,5 +190,15 @@ service EconomicService {
   // ListGlobalTenders returns the Pro-gated, paginated, seed-backed canonical procurement feed.
   rpc ListGlobalTenders(ListGlobalTendersRequest) returns (ListGlobalTendersResponse) {
     option (sebuf.http.config) = {path: "/list-global-tenders", method: HTTP_METHOD_GET};
+  }
+
+  // GetUsCpiMonthly returns seasonally adjusted US CPI-U for headline, core, food, energy, shelter, and services. Month-over-month and year-over-year changes are computed from that index. history=false is the latest month. history=true is every month from 1947.
+  rpc GetUsCpiMonthly(GetUsCpiMonthlyRequest) returns (GetUsCpiMonthlyResponse) {
+    option (sebuf.http.config) = {path: "/get-us-cpi-monthly", method: HTTP_METHOD_GET};
+  }
+
+  // GetUsTreasuryParYieldCurve returns the daily Treasury par yield curve, 1-month through 30-year. A missing tenor was not published that day. history=false is the latest business day. history=true is every business day since 1990.
+  rpc GetUsTreasuryParYieldCurve(GetUsTreasuryParYieldCurveRequest) returns (GetUsTreasuryParYieldCurveResponse) {
+    option (sebuf.http.config) = {path: "/get-us-treasury-par-yield-curve", method: HTTP_METHOD_GET};
   }
 }

@@ -888,6 +888,62 @@ export interface TenderSourceStatus {
   paced: boolean;
 }
 
+export interface GetUsCpiMonthlyRequest {
+  history: boolean;
+}
+
+export interface GetUsCpiMonthlyResponse {
+  months: UsCpiMonth[];
+  unavailable: boolean;
+}
+
+export interface UsCpiMonth {
+  month: number;
+  headline?: UsCpiReading;
+  core?: UsCpiReading;
+  food?: UsCpiReading;
+  energy?: UsCpiReading;
+  shelter?: UsCpiReading;
+  services?: UsCpiReading;
+}
+
+export interface UsCpiReading {
+  index: number;
+  monthOverMonth?: UsCpiPercentChange;
+  yearOverYear?: UsCpiPercentChange;
+}
+
+export interface UsCpiPercentChange {
+  percent: number;
+}
+
+export interface GetUsTreasuryParYieldCurveRequest {
+  history: boolean;
+}
+
+export interface GetUsTreasuryParYieldCurveResponse {
+  curves: UsTreasuryParYieldCurve[];
+  unavailable: boolean;
+}
+
+export interface UsTreasuryParYieldCurve {
+  date: number;
+  oneMonth?: number;
+  oneAndAHalfMonth?: number;
+  twoMonth?: number;
+  threeMonth?: number;
+  fourMonth?: number;
+  sixMonth?: number;
+  oneYear?: number;
+  twoYear?: number;
+  threeYear?: number;
+  fiveYear?: number;
+  sevenYear?: number;
+  tenYear?: number;
+  twentyYear?: number;
+  thirtyYear?: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1668,6 +1724,56 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as ListGlobalTendersResponse;
+  }
+
+  async getUsCpiMonthly(req: GetUsCpiMonthlyRequest, options?: EconomicServiceCallOptions): Promise<GetUsCpiMonthlyResponse> {
+    let path = "/api/economic/v1/get-us-cpi-monthly";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsCpiMonthlyResponse;
+  }
+
+  async getUsTreasuryParYieldCurve(req: GetUsTreasuryParYieldCurveRequest, options?: EconomicServiceCallOptions): Promise<GetUsTreasuryParYieldCurveResponse> {
+    let path = "/api/economic/v1/get-us-treasury-par-yield-curve";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsTreasuryParYieldCurveResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 621;
-export const GENERATED_REQUEST_METHOD_COUNT = 169;
+export const GENERATED_REQUEST_METHOD_COUNT = 171;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -90,7 +90,9 @@ export const GENERATED_REQUEST_TYPES = {
   "getTradeBarriers": "worldmonitor.trade.v1.GetTradeBarriersRequest",
   "getTradeFlows": "worldmonitor.trade.v1.GetTradeFlowsRequest",
   "getTradeRestrictions": "worldmonitor.trade.v1.GetTradeRestrictionsRequest",
+  "getUsCpiMonthly": "worldmonitor.economic.v1.GetUsCpiMonthlyRequest",
   "getUSNIFleetReport": "worldmonitor.military.v1.GetUSNIFleetReportRequest",
+  "getUsTreasuryParYieldCurve": "worldmonitor.economic.v1.GetUsTreasuryParYieldCurveRequest",
   "getVesselSnapshot": "worldmonitor.maritime.v1.GetVesselSnapshotRequest",
   "getWebcamImage": "worldmonitor.webcam.v1.GetWebcamImageRequest",
   "getWingbitsLiveFlight": "worldmonitor.military.v1.GetWingbitsLiveFlightRequest",
@@ -1033,6 +1035,12 @@ export const GENERATED_MESSAGE_RULES = {
         "stringMaxBytes": 65536
       }
     }
+  },
+  "worldmonitor.economic.v1.GetUsCpiMonthlyRequest": {
+    "fields": {}
+  },
+  "worldmonitor.economic.v1.GetUsTreasuryParYieldCurveRequest": {
+    "fields": {}
   },
   "worldmonitor.economic.v1.ListGlobalTendersRequest": {
     "fields": {
