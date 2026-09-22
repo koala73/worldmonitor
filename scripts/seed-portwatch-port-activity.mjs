@@ -1917,7 +1917,16 @@ export function shouldAdvanceCanonicalForRun({
 export function classifyPublicationBlock(input) {
   if (shouldAdvanceCanonicalForRun(input)) return null;
   const refreshFailures = input?.coverage?.refreshFailures ?? [];
+  // `complete` is DERIVED by buildCoverageReport from missingCountries and
+  // unidentifiedMissingCount — fields this function is handed but never
+  // inspects. Re-asserting them here means the soft outcome rests on the
+  // evidence of full coverage rather than on a boolean it did not compute, so
+  // a coverage object that ever disagrees with itself takes the loud path
+  // instead of riding a green tick with a country genuinely missing.
+  const everyCountryStillCovered = (input?.coverage?.missingCountries?.length ?? 0) === 0
+    && (input?.coverage?.unidentifiedMissingCount ?? 0) === 0;
   const blockedOnlyByRefreshFailures = refreshFailures.length > 0
+    && everyCountryStillCovered
     && shouldAdvanceCanonicalForRun({
       ...input,
       coverage: { ...input.coverage, refreshFailures: [] },

@@ -84,6 +84,21 @@ describe('publication block classification (#8501)', () => {
     assert.equal(block.exitCode, 1);
   });
 
+  it('refuses the soft outcome when the coverage object contradicts its own complete flag', () => {
+    // `complete` is derived from missingCountries/unidentifiedMissingCount. If a
+    // coverage object ever arrives with complete:true and a country actually
+    // missing, the soft path would exit 76 and the bundle would go green over
+    // real data loss. The soft branch re-checks the evidence, not the flag.
+    assert.equal(classifyPublicationBlock({
+      ...stalledRotation,
+      coverage: { ...stalledRotation.coverage, missingCountries: ['MY'] },
+    })?.kind, 'coverage_shortfall');
+    assert.equal(classifyPublicationBlock({
+      ...stalledRotation,
+      coverage: { ...stalledRotation.coverage, unidentifiedMissingCount: 3 },
+    })?.kind, 'coverage_shortfall');
+  });
+
   it('keeps a hard failure when the run made no upstream contact at all', () => {
     const block = classifyPublicationBlock({ ...stalledRotation, upstreamContactCount: 0 });
     assert.equal(block?.kind, 'coverage_shortfall');
