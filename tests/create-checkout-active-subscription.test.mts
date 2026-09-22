@@ -43,6 +43,7 @@ it('reproduces the missing gateway credential 503 without using the ingestion ke
   const relayFetch = mock.fn(async () => Response.json({}));
   mod.__setCreateCheckoutDepsForTests({
     validateBearerToken: async () => ({ valid: true, userId: 'user_test' }),
+    checkRateLimit: async () => null,
     fetch: relayFetch,
   });
   const response = await mod.default(makeCheckoutRequest());
