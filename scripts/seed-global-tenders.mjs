@@ -145,22 +145,25 @@ function tedDate(value) {
 // non-federal keys). An hourly seed that fetches every tick — worse, with
 // in-run 429 retries — burns ~72 requests/day and pins the source at HTTP 429
 // permanently (#5444). Spread the budget instead: only hit the API when the
-// last ATTEMPT is older than this interval (~9.6 requests/day). The quota is
-// spent by attempts, not successes: a failed run carries lastSuccessfulAt
-// forward unchanged, so a gate measured from the last success stopped pacing
-// as soon as a failure was older than the interval and every hourly tick hit
-// SAM again (#8505). Because the enclosing bundle only checks this member
-// hourly, successful SAM publishes land roughly every 180 minutes; source
-// health allows one more hourly gate for normal scheduling jitter.
+// last ATTEMPT is older than this interval. The quota is spent by attempts,
+// not successes: a failed run carries lastSuccessfulAt forward unchanged, so a
+// gate measured from the last success stopped pacing as soon as a failure was
+// older than the interval and every hourly tick hit SAM again (#8505). Because
+// the enclosing bundle only checks this member hourly, the gate opens on every
+// third tick — 180 minutes apart, 8 requests/day against the 10/day budget —
+// and source health allows one more hourly gate for scheduling jitter.
 const SAM_MIN_FETCH_INTERVAL_MS = 150 * 60_000;
 
 function previousSamResult(previousSnapshot, now) {
   const status = (previousSnapshot?.sourceStatuses || []).find((entry) => entry?.source === 'sam');
-  // fetchedAt is the last real attempt on every path: sourceStatus() stamps a
-  // success, mergeTenderSourceResults stamps a failure, and a paced run
-  // carries the prior value through.
-  const lastAttemptMs = Date.parse(status?.fetchedAt || '');
-  if (!status || !Number.isFinite(lastAttemptMs)) return null;
+  // fetchedAt is the last attempt that spent a request: sourceStatus() stamps a
+  // success, mergeTenderSourceResults stamps a failure, and a paced run carries
+  // the prior value through. 'unavailable' is the one status written without a
+  // request (no API key), so it must not start the clock — a restored
+  // credential would otherwise wait out a full interval before fetching.
+  if (!status || status.state === 'unavailable') return null;
+  const lastAttemptMs = Date.parse(status.fetchedAt || '');
+  if (!Number.isFinite(lastAttemptMs)) return null;
   const records = (previousSnapshot?.tenders || [])
     .filter((tender) => tender.source === 'sam' && isOpenOpportunity(tender, now));
   return { status, records, lastAttemptMs };

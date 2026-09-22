@@ -158,6 +158,70 @@ test('fetchGlobalTenders retries a failing SAM source once per interval across h
   assert.equal(snapshot.sourceStatuses[0].error, 'request timeout');
 });
 
+// mergeTenderSourceResults has two failure branches and the outage above only
+// reaches the one that retains records. A SAM outage that outlives its retained
+// tenders (isOpenOpportunity drops them past responseDeadLine), or that starts
+// while SAM holds none, lands in the zero-record branch instead. Both must
+// report the paced status's own attempt time or the gate paces forever (#8505).
+test('a zero-record SAM source still retries once per interval across hourly ticks (#8505)', async () => {
+  const attempts = [];
+  let snapshot = {
+    tenders: [],
+    fetchedAt: NOW - 180 * 60_000,
+    sourceStatuses: [{
+      source: 'sam',
+      state: 'error',
+      recordCount: 0,
+      fetchedAt: new Date(NOW - 180 * 60_000).toISOString(),
+      lastSuccessfulAt: new Date(NOW - 13 * 3_600_000).toISOString(),
+      stale: false,
+    }],
+  };
+  for (let tick = 0; tick < 13; tick += 1) {
+    snapshot = await fetchGlobalTenders({
+      now: NOW + tick * 3_600_000,
+      previousSnapshot: snapshot,
+      adapters: [[
+        'sam',
+        (options) => fetchSam({
+          ...options,
+          apiKey: 'test-key',
+          fetchJsonFn: async () => {
+            attempts.push(tick);
+            throw new Error('request timeout');
+          },
+        }),
+      ]],
+    });
+  }
+
+  assert.deepEqual(attempts, [0, 3, 6, 9, 12], 'a zero-record SAM must keep retrying once per 150-minute window');
+  assert.equal(snapshot.sourceStatuses[0].recordCount, 0);
+});
+
+test('an unconfigured SAM run spends no request, so it does not start the pacing clock (#8505)', async () => {
+  const unconfigured = await fetchGlobalTenders({
+    now: NOW,
+    previousSnapshot: null,
+    adapters: [['sam', (options) => fetchSam({ ...options, apiKey: '' })]],
+  });
+  assert.equal(unconfigured.sourceStatuses[0].state, 'unavailable');
+
+  const calls = [];
+  const restored = await fetchSam({
+    apiKey: 'test-key',
+    now: NOW + 60 * 60_000,
+    fetchJsonFn: async () => {
+      calls.push(1);
+      return { opportunitiesData: [] };
+    },
+    previousSnapshot: unconfigured,
+  });
+
+  assert.equal(calls.length, 1, 'a restored credential must fetch at once, not wait out an interval it never spent');
+  assert.equal(restored.status.state, 'ok');
+});
+
 test('fetchSam skips the request while the previous success is inside the budget interval', async () => {
   const calls = [];
   const fetchJsonFn = async (url) => {
