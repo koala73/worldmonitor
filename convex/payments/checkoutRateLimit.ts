@@ -1,5 +1,32 @@
+import { APIConnectionTimeoutError } from "dodopayments";
+
 export const CHECKOUT_RATE_LIMITED = "CHECKOUT_RATE_LIMITED";
 export const CHECKOUT_RETRY_AFTER_SECONDS = 10;
+
+export const CHECKOUT_TIMED_OUT = "CHECKOUT_TIMED_OUT";
+
+export interface CheckoutTimedOutOutcome {
+  checkoutFailed: true;
+  code: typeof CHECKOUT_TIMED_OUT;
+}
+
+export function checkoutTimedOutOutcomeFromError(
+  error: unknown,
+): CheckoutTimedOutOutcome | null {
+  return error instanceof APIConnectionTimeoutError
+    ? { checkoutFailed: true, code: CHECKOUT_TIMED_OUT }
+    : null;
+}
+
+export function isCheckoutTimedOutOutcome(
+  value: unknown,
+): value is CheckoutTimedOutOutcome {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<CheckoutTimedOutOutcome>;
+  return (
+    candidate.checkoutFailed === true && candidate.code === CHECKOUT_TIMED_OUT
+  );
+}
 
 export interface CheckoutRateLimitedOutcome {
   checkoutFailed: true;
@@ -164,7 +191,10 @@ export interface CheckoutRateLimitRetryOptions {
 
 type CheckoutAttemptResult<T> =
   | { value: T }
-  | { rateLimited: CheckoutRateLimitedOutcome; retryAfterMs: number | null };
+  | {
+      failure: CheckoutRateLimitedOutcome | CheckoutTimedOutOutcome;
+      retryAfterMs: number | null;
+    };
 
 /** Single source for the absorb-vs-rethrow decision on a provider failure. */
 async function attemptCheckoutOnce<T>(
@@ -173,19 +203,21 @@ async function attemptCheckoutOnce<T>(
   try {
     return { value: await attempt() };
   } catch (err) {
-    const outcome = checkoutRateLimitedOutcomeFromError(err);
+    const outcome =
+      checkoutTimedOutOutcomeFromError(err) ?? checkoutRateLimitedOutcomeFromError(err);
     if (!outcome) throw err;
-    return { rateLimited: outcome, retryAfterMs: retryAfterMsFromError(err) };
+    return { failure: outcome, retryAfterMs: retryAfterMsFromError(err) };
   }
 }
 
 /**
- * Run the provider checkout call, absorbing 429s with the bounded ladder.
- * Returns the successful provider result, or the typed rate-limited outcome
- * once the ladder — attempts or time budget — is exhausted. Any non-429
- * failure rethrows immediately: a retry there could duplicate work the
- * provider may have already accepted, and the existing error channel
- * (ConvexError) already covers it.
+ * Run session creation, absorbing 429s and one timeout with the bounded ladder.
+ * Returns the successful provider result, or a typed failure outcome
+ * once the ladder — attempts or time budget — is exhausted. A typed SDK
+ * attempt timeout permits one immediate retry: session creation only returns
+ * a URL, so a duplicate leaves an unopened session, not a charge. Dodo has no
+ * documented request idempotency here. Never use this policy for payment or
+ * subscription mutations. Every other non-429 failure rethrows immediately.
  *
  * Wait per retry: jitter the ladder step +/-25% so concurrent checkouts on the
  * shared key don't re-collide in lockstep, then apply any advertised
@@ -195,21 +227,25 @@ async function attemptCheckoutOnce<T>(
 export async function runCheckoutWithRateLimitRetry<T>(
   attempt: () => Promise<T>,
   options: CheckoutRateLimitRetryOptions,
-): Promise<T | CheckoutRateLimitedOutcome> {
+): Promise<T | CheckoutRateLimitedOutcome | CheckoutTimedOutOutcome> {
   const deadline = checkoutRetryClock.now() + CHECKOUT_RATE_LIMIT_RETRY_BUDGET_MS;
+  let timeoutRetried = false;
   let result = await attemptCheckoutOnce(attempt);
   for (const delayMs of CHECKOUT_RATE_LIMIT_RETRY_DELAYS_MS) {
     if ("value" in result) break;
+    const timedOut = isCheckoutTimedOutOutcome(result.failure);
+    if (timedOut && timeoutRetried) break;
     const jitteredDelayMs = Math.round(
       delayMs * (0.75 + checkoutRetryClock.random() * 0.5),
     );
     const providerFloorMs = Math.ceil(result.retryAfterMs ?? 0);
-    const waitMs = Math.max(jitteredDelayMs, providerFloorMs);
+    const waitMs = timedOut ? 0 : Math.max(jitteredDelayMs, providerFloorMs);
     if (
       checkoutRetryClock.now() + waitMs + options.attemptTimeoutMs > deadline
     ) {
       break;
     }
+    if (timedOut) timeoutRetried = true;
     options.onRetry?.(waitMs);
     await checkoutRetryClock.sleep(waitMs);
     // Timers can wake late under event-loop pressure. Re-check the real clock
@@ -218,7 +254,7 @@ export async function runCheckoutWithRateLimitRetry<T>(
     if (checkoutRetryClock.now() + options.attemptTimeoutMs > deadline) break;
     result = await attemptCheckoutOnce(attempt);
   }
-  return "value" in result ? result.value : result.rateLimited;
+  return "value" in result ? result.value : result.failure;
 }
 
 export function isCheckoutRateLimitedOutcome(
@@ -229,6 +265,9 @@ export function isCheckoutRateLimitedOutcome(
   return (
     candidate.checkoutFailed === true &&
     candidate.code === CHECKOUT_RATE_LIMITED &&
-    candidate.retryAfterSeconds === CHECKOUT_RETRY_AFTER_SECONDS
+    typeof candidate.retryAfterSeconds === "number" &&
+    Number.isInteger(candidate.retryAfterSeconds) &&
+    candidate.retryAfterSeconds > 0 &&
+    candidate.retryAfterSeconds <= 9999
   );
 }

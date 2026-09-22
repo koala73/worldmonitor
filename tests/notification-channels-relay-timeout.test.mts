@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { hangUntilAbort } from './_lib/hang-until-abort.mjs';
 import { afterEach, describe, it, mock } from 'node:test';
 
 const originalEnv = { ...process.env };
@@ -57,6 +58,7 @@ function makeSetWebPushRequest(): Request {
 }
 
 type RedisCommand = string[];
+
 
 function installInMemoryUpstash() {
   const store = new Map<string, string>();
@@ -121,11 +123,7 @@ describe('/api/notification-channels relay timeout recovery', () => {
       relaySignals.push(signal);
       assert.equal(body.scheduleWelcome, true);
       if (mutationAttempt === 1) {
-        return await new Promise<Response>((_resolve, reject) => {
-          const rejectForAbort = () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError'));
-          if (signal.aborted) rejectForAbort();
-          else signal.addEventListener('abort', rejectForAbort, { once: true });
-        });
+        return hangUntilAbort(signal);
       }
       return Response.json({
         ok: true,

@@ -21,6 +21,15 @@ afterEach(() => {
 });
 
 describe('getInsiderTransactions handler', () => {
+  it('rejects malformed ticker inputs before provider or cache access', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    let calls = 0;
+    globalThis.fetch = (async () => { calls++; return mockFinnhubResponse([]); }) as typeof fetch;
+    for (const symbol of ['AAPL/anything', 'AAPL?x=1', 'A'.repeat(33), 'AA PL']) {
+      assert.equal((await getInsiderTransactions({} as never, { symbol })).unavailable, true);
+    }
+    assert.equal(calls, 0);
+  });
   it('returns unavailable when FINNHUB_API_KEY is missing', async () => {
     delete process.env.FINNHUB_API_KEY;
     const resp = await getInsiderTransactions({} as never, { symbol: 'AAPL' });

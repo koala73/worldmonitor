@@ -8,6 +8,8 @@ WorldMonitor provides specialized tracking of military vessels and aircraft, ide
 The system defines **10 active conflict zones** (Iran, Strait of Hormuz, Ukraine, Gaza, South Lebanon, Red Sea, Sudan, Myanmar, Korean DMZ, Pakistan-Afghanistan Border) and **4 military command hotspots** (INDO-PACIFIC, CENTCOM, EUCOM, ARCTIC). Different subsystems group these into theater lists tailored to their specific analysis, so theater counts vary by context throughout this page.
 </Note>
 
+For a step-by-step map workflow and an explanation of source coverage and history limits, read the [military flight-tracking guide for OSINT](https://www.worldmonitor.app/blog/posts/military-flight-tracking-osint/).
+
 ## Backed by endpoints
 
 The frontend uses generated MilitaryService clients for fresh or scoped reads, while some panels first consume bootstrap or circuit-breaker caches. These are the public REST RPC routes behind the military map layers, posture cards, aircraft enrichment, USNI fleet view, and defense R&D tile.

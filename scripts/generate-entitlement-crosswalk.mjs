@@ -135,7 +135,7 @@ const MAP = [
   [/^proFresh:/,                             { cap: 'freshness.market_quotes' }],
 
   // ---- API surfaces by domain
-  [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history)$/, { cap: 'markets.stock_analysis' }],
+  [/:(\/api\/market\/v1\/analyze-stock|\/api\/market\/v1\/get-stock-analysis-history|\/api\/market\/v1\/get-insider-transactions)$/, { cap: 'markets.stock_analysis' }],
   [/:(\/api\/market\/v1\/backtest-stock|\/api\/market\/v1\/list-stored-stock-backtests)$/, { cap: 'markets.backtest' }],
   [/:\/api\/intelligence\/v1\/list-market-implications$/, { cap: 'markets.implications' }],
   // WSB scanner RPC (#8043): same premium surface as panel wsb-ticker-scanner.

@@ -92,6 +92,15 @@ const accepts = (gate, args) => {
   }
 };
 
+it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
+  const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
+  const script = source.slice(source.indexOf('export async function compareAndDeleteRedisKey')).match(/const script = "([^"]+)";/)?.[1];
+  assert.ok(script);
+  const gate = buildGate();
+  assert.equal(accepts(gate, ['EVAL', script, '1', 'lock', 'token']), true);
+  assert.equal(accepts(gate, ['EVAL', `${script} `, '1', 'lock', 'token']), false);
+});
+
 // A Redis command array is [CMD, <key expression>, ...]. A label/enum/country
 // tuple is [ 'AAA', 'BBB', ... ] — every element a quoted literal. Requiring
 // the second element to be something other than a quoted string separates the
@@ -113,6 +122,11 @@ function proxyFacingFiles() {
   const out = execFileSync(
     'grep',
     ['-rl', '-e', 'runRedisPipeline', '-e', 'runRedisTransaction', '-e', '/pipeline', '-e', '/multi-exec',
+      // Vendido no instala deps aquí, pero un checkout de desarrollo sí
+      // (scripts/node_modules). Sin esto el scan lee sourcemaps de terceros
+      // (p.ej. convex cli.bundle.cjs.map) y "descubre" tokens que no son
+      // comandos Redis -- verde en CI (sin node_modules), rojo en local.
+      '--exclude-dir=node_modules',
       'server', 'scripts', 'shared', 'api'],
     { cwd: repoRoot, encoding: 'utf8' },
   );
@@ -144,10 +158,20 @@ describe('redis-rest-proxy command gate', () => {
     // without the pinned-script branch runCommand enforces.
     assert.match(proxySrc, /client\.sendCommand\(commandForExecution\(args\)\)/,
       'runCommand must delegate to the shared command gate');
-    assert.match(proxySrc, /multi\.sendCommand\(commandForExecution\(cmd\)\)/,
+    assert.match(proxySrc, /queuedCommand = commandForExecution\(cmd\)/,
       'the /multi-exec handler must delegate to the shared command gate');
+    assert.match(proxySrc, /multi\.addCommand\(queuedCommand\)/,
+      'the /multi-exec handler must queue the command the gate authorized, not the caller\'s array');
     assert.doesNotMatch(proxySrc, /if \(!ALLOWED_COMMANDS\.has\(cmdName\)\)/,
       '/multi-exec must not re-implement the allowlist check');
+    // #8265: this assertion used to pin `multi.sendCommand(...)` — a method that
+    // does not exist on node-redis v4's transaction chain — so the source scrape
+    // certified the call site that made every /multi-exec answer 403. A scrape
+    // can only prove the gate is wired in; whether the queued command actually
+    // reaches Redis is behavioral, and redis-rest-proxy-multi-exec.test.mjs
+    // proves that against a chain stub built from the real v4 surface.
+    assert.doesNotMatch(proxySrc, /multi\.sendCommand\(/,
+      'sendCommand is a node-redis CLIENT method; the v4 multi chain queues with addCommand');
   });
 
   it('accepts every Redis command the platform actually sends', () => {
