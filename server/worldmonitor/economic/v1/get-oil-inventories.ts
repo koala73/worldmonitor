@@ -4,7 +4,7 @@ import type {
   GetOilInventoriesResponse,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
-import { getCachedJson } from '../../../_shared/redis';
+import { logCacheReadError, readCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 // @ts-expect-error -- JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
@@ -71,14 +71,37 @@ export async function getOilInventories(
   _req: GetOilInventoriesRequest,
 ): Promise<GetOilInventoriesResponse> {
   try {
-    const [crudeRaw, sprRaw, natGasRaw, euGasRaw, ieaRaw, refineryRaw] = await Promise.all([
-      getCachedJson(CRUDE_KEY, true) as Promise<CrudeRaw | null>,
-      getCachedJson(SPR_KEY, true) as Promise<SprRaw | null>,
-      getCachedJson(NAT_GAS_KEY, true) as Promise<NatGasRaw | null>,
-      getCachedJson(EU_GAS_KEY, true) as Promise<EuGasRaw | null>,
-      getCachedJson(IEA_KEY, true) as Promise<IeaRaw | null>,
-      getCachedJson(REFINERY_KEY, true) as Promise<RefineryRaw | null>,
+    // Status-aware reads: a transient Redis error on one key must not look
+    // like "that section does not exist". Any error marks the whole response
+    // no-store, even when the other keys hit — otherwise the gateway's
+    // slow-tier cache (browser 300s, CDN 3600s) would persist the partial body.
+    const reads = await Promise.all([
+      readCachedJson(CRUDE_KEY, true),
+      readCachedJson(SPR_KEY, true),
+      readCachedJson(NAT_GAS_KEY, true),
+      readCachedJson(EU_GAS_KEY, true),
+      readCachedJson(IEA_KEY, true),
+      readCachedJson(REFINERY_KEY, true),
     ]);
+    const keys = [CRUDE_KEY, SPR_KEY, NAT_GAS_KEY, EU_GAS_KEY, IEA_KEY, REFINERY_KEY];
+    let readErrored = false;
+    for (let i = 0; i < reads.length; i++) {
+      const read = reads[i]!;
+      if (read.status === 'error') {
+        readErrored = true;
+        logCacheReadError(keys[i]!, read.error);
+      }
+    }
+    const value = (index: number) => {
+      const read = reads[index]!;
+      return read.status === 'hit' ? read.value : null;
+    };
+    const crudeRaw = value(0) as CrudeRaw | null;
+    const sprRaw = value(1) as SprRaw | null;
+    const natGasRaw = value(2) as NatGasRaw | null;
+    const euGasRaw = value(3) as EuGasRaw | null;
+    const ieaRaw = value(4) as IeaRaw | null;
+    const refineryRaw = value(5) as RefineryRaw | null;
 
     if (!crudeRaw && !sprRaw && !natGasRaw && !euGasRaw && !ieaRaw && !refineryRaw) {
       return markNoStoreFallbackResponse(ctx.request, { crudeWeeks: [], natGasWeeks: [], updatedAt: '' });
@@ -143,7 +166,7 @@ export async function getOilInventories(
 
     const updatedAt = new Date().toISOString();
 
-    return {
+    const response = {
       crudeWeeks,
       spr,
       natGasWeeks,
@@ -152,6 +175,18 @@ export async function getOilInventories(
       refinery,
       updatedAt,
     } as GetOilInventoriesResponse;
+    // A partial snapshot built over a failed read is not cacheable: the
+    // absent section is unknown, not empty. Only a fully-confirmed read
+    // (every absent key a genuine miss) may carry a fresh timestamp — so blank
+    // `updatedAt` alongside the no-store marking, matching the two sibling
+    // failure branches in this function. The header alone is not enough: it
+    // stops HTTP caches but never reaches the caller's rendered body, so a
+    // client (or an agent) reading `spr: undefined` beside an as-of-now stamp
+    // cannot tell "no SPR data this week" from "the SPR read just failed".
+    if (readErrored) {
+      return markNoStoreFallbackResponse(ctx.request, { ...response, updatedAt: '' });
+    }
+    return response;
   } catch (err) {
     console.error('[getOilInventories] Redis read failed:', err);
     captureSilentError(err, { tags: { handler: 'getOilInventories' } });

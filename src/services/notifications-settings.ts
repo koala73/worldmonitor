@@ -678,6 +678,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           countryPicker = mountCountryChipPicker(pickerRoot, {
             initial,
+            // The section description above already carries the empty-state hint.
+            showAllHint: false,
             onChange: () => {
               // Debounced save through the existing alertRule pipeline.
               if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);

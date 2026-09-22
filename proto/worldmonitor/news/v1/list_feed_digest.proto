@@ -8,7 +8,7 @@ import "worldmonitor/news/v1/news_item.proto";
 message ListFeedDigestRequest {
   // Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.
   string variant = 1 [(sebuf.http.query) = { name: "variant" }];
-  // ISO 639-1 language code (en, fr, ar, etc.)
+  // ISO 639-1 language code of a supported digest language (en, fr, ar, etc.). Unsupported codes are rejected with 400.
   string lang = 2 [(sebuf.http.query) = { name: "lang" }];
 }
 
