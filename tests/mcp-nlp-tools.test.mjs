@@ -12,6 +12,7 @@ import {
   makeProDeps,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -244,7 +245,7 @@ describe('#5697 NLP MCP tools', () => {
       byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('accelerators'),
       'get_news_clusters category enum must include Tech-only buckets',
     );
-    const clusterSchema = byName.get('get_news_clusters')?.outputSchema.properties.clusters.items;
+    const clusterSchema = documentedOutputSchema(byName.get('get_news_clusters')).properties.clusters.items;
     assert.ok(clusterSchema.required.includes('primarySourceProvenance'));
     assert.ok(clusterSchema.required.includes('sourceProvenance'));
     assert.ok(clusterSchema.required.includes('credibilityScore'));
@@ -268,7 +269,7 @@ describe('#5697 NLP MCP tools', () => {
       'staleReason',
     ];
     for (const toolName of ['extract_entities', 'get_news_clusters']) {
-      const coverageSchema = byName.get(toolName)?.outputSchema.properties.digestCoverage;
+      const coverageSchema = documentedOutputSchema(byName.get(toolName)).properties.digestCoverage;
       assert.equal(coverageSchema?.type, 'object', `${toolName} must advertise digestCoverage`);
       assert.equal(coverageSchema?.additionalProperties, false);
       assert.deepEqual(coverageSchema?.required, digestCoverageFields);
@@ -286,7 +287,7 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(coverageSchema?.properties.staleReason.type, 'string');
     }
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
-    const classifyOutput = byName.get('classify_event')?.outputSchema;
+    const classifyOutput = documentedOutputSchema(byName.get('classify_event'));
     assert.deepEqual(classifyOutput.properties.classification.required,
       ['category', 'level', 'severity', 'confidence']);
     assert.deepEqual(classifyOutput.properties.classification.properties.category.enum,
@@ -296,7 +297,7 @@ describe('#5697 NLP MCP tools', () => {
       ['critical', 'high', 'medium', 'low', 'info']);
     assert.deepEqual(classifyOutput.properties.classification.properties.severity.enum,
       ['SEVERITY_LEVEL_HIGH', 'SEVERITY_LEVEL_MEDIUM', 'SEVERITY_LEVEL_LOW']);
-    const spikeOutput = byName.get('get_keyword_spikes')?.outputSchema;
+    const spikeOutput = documentedOutputSchema(byName.get('get_keyword_spikes'));
     assert.ok(
       spikeOutput.required.includes('sample_truncated'),
       'sample_truncated must be required on every get_keyword_spikes response',

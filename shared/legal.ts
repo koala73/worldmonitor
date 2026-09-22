@@ -21,7 +21,7 @@
  * together and therefore carry ONE date — `tests/legal-version.test.mts`
  * enforces that they agree, so a single stamped version names all three.
  */
-export const TERMS_VERSION = '2026-09-05';
+export const TERMS_VERSION = '2026-09-21';
 
 /** The licence itself: what each plan grants, on every surface (#6983). */
 export const EULA_PATH = '/docs/eula';
@@ -69,10 +69,10 @@ export const LEGAL_FOOTER_LINKS: ReadonlyArray<{ label: string; path: string }> 
  * whitespace collapsed, so editorial notes do not force a version bump.
  */
 export const LEGAL_DOCUMENT_DIGESTS: Readonly<Record<string, string>> = {
-  'docs/eula.mdx': 'eb26ebeacdbb0582311451e8c6948b5f667e2c9b102d588af321cb416ac130db',
-  'docs/terms.mdx': '21b98065ef042c642c5b616cef21605177b08dd65aff9b42c0bd9b52e4cb4c08',
-  'docs/dpa.mdx': 'cbb7227328c92afe3636368210bb624db291bb00511867957167df3b38edc16b',
-  'docs/privacy.mdx': '68f2506512cc3afb6349ddd244d483b4e70e764a117b2b0529fe0864198f463d',
+  'docs/eula.mdx': '37bafd262dc6a792783a494fc1fa79b14b4a1e505a5412a3bd6afd840b690bc6',
+  'docs/terms.mdx': '37e453a7e654dc77966f1495255bac64c8b4e2bc8b0e761b6e3a839102e7df3c',
+  'docs/dpa.mdx': '46ea65cab19e2bf6d94f2ea162cefdf66b11ce7a6ef1704a93d46de7e91ba665',
+  'docs/privacy.mdx': 'bcd568abf4da4165228edec5ebd4debe10a7945c4041c12d677c3ed45eb30231',
 };
 
 /** Where the text behind any recorded version can be read back. */

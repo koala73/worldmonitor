@@ -32,7 +32,8 @@ vi.mock("../_shared/auth-session", () => ({
 }));
 
 const validateApiKey = vi.fn();
-vi.mock("../../api/_api-key.js", () => ({
+vi.mock("../../api/_api-key.js", async (importOriginal) => ({
+  ...await importOriginal<Record<string, unknown>>(),
   USER_API_KEY_GATEWAY_VALIDATION_ERROR: "User API key requires gateway validation",
   validateApiKey: (...a: unknown[]) => validateApiKey(...a),
 }));
