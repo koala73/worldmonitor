@@ -6,6 +6,7 @@ import {
 } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
+import { redactBillingPayload } from "../accountDeletion/registry";
 import {
   handleSubscriptionActive,
   handleSubscriptionRenewed,
@@ -19,6 +20,8 @@ import {
   resolvePlanKey,
   isCoveringAt,
   compareSubscriptionsByCoverage,
+  billingDeletionForEvent,
+  billingDeletionForUser,
 } from "./subscriptionHelpers";
 
 const MAX_FAILURE_MESSAGE_LENGTH = 1000;
@@ -548,6 +551,7 @@ export const processWebhookEvent = internalMutation({
     //    preventing partial writes (e.g., subscription without entitlements).
     //    The HTTP handler catches thrown errors and returns 500 to trigger retries.
     await dispatchWebhookEvent(ctx, args);
+    const deletion = await billingDeletionForEvent(ctx, asRecord(args.rawPayload)?.data);
 
     // 3. Record the event AFTER successful processing.
     //    If the handler threw, we never reach here — the transaction rolls back
@@ -555,7 +559,7 @@ export const processWebhookEvent = internalMutation({
     await ctx.db.insert("webhookEvents", {
       webhookId: args.webhookId,
       eventType: args.eventType,
-      rawPayload: args.rawPayload,
+      rawPayload: deletion ? redactBillingPayload(args.rawPayload) : args.rawPayload,
       processedAt: Date.now(),
       status: "processed",
     });
@@ -587,6 +591,9 @@ export const attributeUnattributedPayment = internalMutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (await billingDeletionForUser(ctx, args.userId)) {
+      throw new Error("[webhook] Cannot attribute billing to an account being deleted.");
+    }
     const record = await ctx.db.get(args.rowId);
     if (!record) {
       throw new Error(`[webhook] No unattributed event ${args.rowId}`);

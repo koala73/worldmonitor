@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
+import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
 import { getCorsHeaders, isAllowedOrigin } from '../server/cors.ts';
 import {
   getCorsHeaders as getCorsHeadersJs,
@@ -405,4 +406,41 @@ describe('gateway CORS error path (issue #3705)', () => {
       'cors fail-closed 500 must set Cache-Control: no-store',
     );
   });
+});
+
+// App hosts follow the existing checkout-return boundary. Vendor and future
+// sibling hosts must not inherit credentialed CORS access from the DNS suffix.
+describe('credentialed CORS app-host boundary', () => {
+  const checks = [
+    ['Edge', (origin: string) => !isDisallowedOriginJs(new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } }))],
+    ['gateway', isAllowedOrigin],
+    ['Worker', isAllowedOriginWorker],
+  ] as const;
+  for (const [surface, allows] of checks) {
+    it(`${surface} retains every supported app host and its translated form`, () => {
+      for (const appOrigin of TRUSTED_RETURN_URL_ORIGINS) {
+        const host = new URL(appOrigin).hostname;
+        for (const origin of [`https://${host}`, `https://${host}.`, `https://${host.replaceAll('.', '-')}.translate.goog`]) {
+          assert.equal(allows(origin), true, origin);
+        }
+      }
+    });
+    it(`${surface} rejects non-default ports on translated app origins`, () => {
+      assert.equal(allows('https://worldmonitor-app.translate.goog:8443'), false);
+      assert.equal(allows('https://tech-worldmonitor-app.translate.goog.:8443'), false);
+      assert.equal(allows('https://worldmonitor-app.translate.goog:443'), true);
+    });
+    it(`${surface} rejects vendor, unknown and nested hosts including translated forms`, () => {
+      for (const label of ['clerk.', 'abacus.', 'unknown.', 'nested.tech.']) {
+        const host = `${label}worldmonitor.app`;
+        for (const origin of [`https://${host}`, `https://${host}.`, `https://${host.replaceAll('.', '-')}.translate.goog`]) {
+          assert.equal(allows(origin), false, origin);
+          const request = new Request('https://api.worldmonitor.app/x', { headers: { Origin: origin } });
+          for (const headers of [getCorsHeaders(request), getCorsHeadersJs(request), buildCorsHeadersWorker(origin)]) {
+            assert.notEqual(headers['Access-Control-Allow-Origin'], origin, 'successful responses must not grant the refused origin');
+          }
+        }
+      }
+    });
+  }
 });

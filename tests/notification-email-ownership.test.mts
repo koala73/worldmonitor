@@ -20,7 +20,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     Object.assign(process.env, {
       UPSTASH_REDIS_REST_URL: 'https://upstash.test', UPSTASH_REDIS_REST_TOKEN: 'fake',
       CONVEX_URL: 'https://convex.test', CONVEX_SITE_URL: 'https://convex.test',
-      RELAY_SHARED_SECRET: 'fake', RESEND_API_KEY: 'fake', AI_IMPACT_ENABLED: 'false',
+      CONVEX_NOTIFICATION_RELAY_SECRET: 'fake', RESEND_API_KEY: 'fake', AI_IMPACT_ENABLED: 'false',
     });
     const sends: Array<{ to: string; subject: string; text: string }> = [];
     const loader = Module as unknown as { _load: (...args: any[]) => any };
@@ -75,8 +75,13 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     assert.equal(sends.length, proof === 'verified' ? 1 : 0);
     if (proof === 'verified') {
       assert.equal(sends[0].to, 'owner@example.com');
-      assert.match(sends[0].subject, /Synthetic market alert/);
-      assert.match(sends[0].text, /https:\/\/example.com\/alert/);
+      assert.equal(sends[0].subject, 'Community alert: Synthetic market alert');
+      // A caller's off-origin article link is delivered, but only with its
+      // destination host disclosed inline — that disclosure is the control,
+      // not collapsing the link (which destroyed real article links on the
+      // platform's own RSS alerts). The push click target is still
+      // first-party-only; see tests/notify-field-validation.test.mts.
+      assert.match(sends[0].text, /https:\/\/example\.com\/alert \(source: example\.com\)/);
     }
     await relay.processWelcome({ userId: 'owner', channelType: 'email', welcomeId: 'channel' });
     assert.equal(sends.length, proof === 'verified' ? 2 : 0);

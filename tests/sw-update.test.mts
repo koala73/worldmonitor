@@ -50,7 +50,7 @@ interface FakeEnv {
     body: {
       appendChild(el: FakeElement): void;
       contains(el: FakeElement | null): boolean;
-    };
+    } | null;
     addEventListener(type: string, cb: () => void): void;
     removeEventListener(type: string, cb: () => void): void;
   };
@@ -626,6 +626,34 @@ describe('installSwUpdateHandler', () => {
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
     assert.equal(env.reloadCalls.length, 1, 'reload fires when fallback reports not-rendered');
+  });
+
+  it('skips the toast when document.body is null and still appends when body exists', () => {
+    env.swContainer._controller = {};
+    install(env);
+    const body = env.doc.body;
+    assert.ok(body);
+
+    env.doc.body = null;
+    assert.doesNotThrow(() => env.swContainer.fireControllerChange());
+    assert.equal(env.appendedToasts.length, 0, 'no toast when body is missing');
+
+    env.doc.body = body;
+    env.swContainer.fireControllerChange();
+    assert.equal(env.appendedToasts.length, 1, 'toast appends once body is present');
+  });
+
+  it('does not auto-reload when document.body is gone after the toast is shown', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    assert.equal(env.appendedToasts.length, 1);
+    fireDwellTimer(env);
+
+    env.doc.body = null;
+    env.doc.setVisibilityState('hidden');
+    assert.doesNotThrow(() => fireVisibility(env));
+    assert.equal(env.reloadCalls.length, 0, 'auto-reload skipped when body is gone');
   });
 
   // --- listener leak regression -----------------------------------------------

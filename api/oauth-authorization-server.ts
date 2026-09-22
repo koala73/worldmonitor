@@ -61,6 +61,10 @@ export default function handler(req: Request): Response {
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
     scopes_supported: ['mcp'],
+    // RFC 9207: /oauth/authorize and /oauth/authorize-pro append `iss` to the
+    // authorization response. ChatGPT registers its stable redirect URI only
+    // with authorization servers that advertise this.
+    authorization_response_iss_parameter_supported: true,
     agent_auth: {
       skill: `${origin}/auth.md`,
       register_uri: `${origin}/oauth/register`,

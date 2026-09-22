@@ -4,7 +4,8 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 process.env.CLERK_JWT_ISSUER_DOMAIN = 'https://clerk.portal.test';
 process.env.CONVEX_SITE_URL = 'https://portal.convex.site';
-process.env.RELAY_SHARED_SECRET = 'synthetic-relay-secret';
+process.env.RELAY_SHARED_SECRET = 'synthetic-ingestion-secret';
+process.env.CONVEX_TENANT_RELAY_SECRET = 'synthetic-tenant-relay-secret';
 process.env.UPSTASH_REDIS_REST_URL = 'https://portal-redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 const { default: handler } = await import('../api/customer-portal.ts');
@@ -32,13 +33,18 @@ it('limits portal sessions per authenticated user before the relay, across token
           stored.set(storageKey, String(command[2]));
           return { result: 'OK' };
         }
-        const key = String(command[3]);
+        // Upstash's sliding-window key is `<identifier>:<windowIndex>`, and the
+        // index is floor(now / 60s). Counting per raw key reset the quota when a
+        // run crossed a wall-clock minute, and request six got 200. Count per
+        // identifier: this fake models one window, whatever the clock does.
+        const key = String(command[3]).replace(/:\d+$/, '');
         const count = (buckets.get(key) ?? 0) + 1;
         buckets.set(key, count);
         return { result: [5 - count, 5] };
       }));
     }
     assert.equal(url, 'https://portal.convex.site/relay/customer-portal');
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer synthetic-tenant-relay-secret');
     relayCalls++;
     return Response.json({ url: 'https://billing.test/session' });
   };

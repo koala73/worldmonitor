@@ -19,14 +19,14 @@
   "dependencies": {
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.1",
-    "astro": "^6.4.7",
+    "astro": "^7.2.8",
     "gray-matter": "^4.0.3",
     "satori": "^0.25.0",
     "sharp": "^0.35.0"
   },
   "overrides": {
     "sharp": "^0.35.0",
-    "devalue": "^5.8.1",
+    "devalue": "^5.9.2",
     "defu": "^6.1.5",
     "esbuild": "0.28.1",
     "fast-xml-parser": "^5.8.0",
@@ -34,7 +34,6 @@
     "picomatch": "^4.0.4",
     "postcss": "^8.5.18",
     "smol-toml": "^1.6.1",
-    "vite": "^7.3.2",
     "fflate": "0.7.5"
   }
 }

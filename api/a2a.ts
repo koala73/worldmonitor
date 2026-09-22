@@ -18,7 +18,7 @@ import { PUBLIC_RESOURCE_REGISTRY } from './mcp/resources/index';
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { safeJsonRpcId } from './mcp/utils';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
 
 // Re-exported so existing consumers (tests, api/ask.ts historically) keep a
 // stable import surface; the implementation lives in the route-less helper.
@@ -249,6 +249,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   const rpc = body as { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown } | undefined;
   const id = safeJsonRpcId(rpc?.id);
+  const proofDenied = checkIpScopedEdgeProof(req, CORS_HEADERS);
+  if (proofDenied) {
+    return rpcError(id, { code: -32003, message: 'Cloudflare edge proof required' }, 403, {
+      'X-RateLimit-Mode': 'edge-proof',
+    });
+  }
   const ip = getClientIp(req);
   // Redis-degraded scoped limits intentionally stay availability-first here:
   // this surface is anonymous, quota-free, and cheap (pure token matching

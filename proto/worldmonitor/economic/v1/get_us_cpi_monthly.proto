@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// UsCpiPercentChange is a simple percent change computed from the index.
+message UsCpiPercentChange {
+  // Percent change. 2.5 means 2.5 percent, not an annualized rate.
+  double percent = 1;
+}
+
+// UsCpiReading is one seasonally adjusted CPI-U index for one month.
+message UsCpiReading {
+  // Index level, 1982-84=100.
+  double index = 1;
+  // Change from the previous calendar month. Absent when that month has no index.
+  UsCpiPercentChange month_over_month = 2;
+  // Change from the same calendar month a year earlier. Absent until that month exists.
+  UsCpiPercentChange year_over_year = 3;
+}
+
+// UsCpiMonth is one month of the US CPI basket.
+message UsCpiMonth {
+  // UTC midnight on the first day of the observation month, as Unix epoch milliseconds.
+  int64 month = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // All items. CPIAUCSL, published from January 1947.
+  UsCpiReading headline = 2;
+  // All items less food and energy. CPILFESL.
+  UsCpiReading core = 3;
+  // Food. CPIUFDSL.
+  UsCpiReading food = 4;
+  // Energy. CPIENGSL.
+  UsCpiReading energy = 5;
+  // Shelter. CUSR0000SAH1.
+  UsCpiReading shelter = 6;
+  // Services. CUSR0000SAS.
+  UsCpiReading services = 7;
+}
+
+// GetUsCpiMonthlyRequest chooses the latest print or the full monthly history.
+message GetUsCpiMonthlyRequest {
+  // When true, return every stored month. When false, return only the latest month.
+  bool history = 1 [(sebuf.http.query) = {name: "history"}];
+}
+
+// GetUsCpiMonthlyResponse is the CPI basket for the requested window.
+message GetUsCpiMonthlyResponse {
+  // Months in ascending order. One element when history is false.
+  repeated UsCpiMonth months = 1;
+  // True when the seeded series is unavailable. An empty month list is not a zero print.
+  bool unavailable = 2;
+}

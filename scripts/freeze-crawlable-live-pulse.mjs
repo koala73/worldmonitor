@@ -45,6 +45,7 @@ import {
 import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.mjs';
 import { selectDeclaredScorecardFields } from './build-accuracy-page.mjs';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -570,7 +571,7 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
 // would leave a shortfall with no recorded cause, since the request itself
 // succeeded -- the operator would see a count and no reason.
 export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
-  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0 };
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0, duplicateUrl: 0 };
   const categories = payload && typeof payload === 'object' ? payload.categories : null;
   if (!categories || typeof categories !== 'object') return { rows: [], rejections };
   const rows = Object.values(categories)
@@ -595,10 +596,16 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
       || a.row.title.localeCompare(b.row.title)
-    ))
-    .slice(0, limit)
-    .map((entry) => entry.row);
-  return { rows, rejections };
+    ));
+
+  // Dedupe BEFORE the cap so a second edition of one story never occupies a
+  // slot the next distinct story could fill — the same ordering the digest uses
+  // for its own revoked-URL suppression. Ranked input means the surviving copy
+  // is the best-ranked one (#8339).
+  const deduped = dedupeByArticleUrl(rows, (entry) => entry.row.url);
+  rejections.duplicateUrl = rows.length - deduped.length;
+
+  return { rows: deduped.slice(0, limit).map((entry) => entry.row), rejections };
 }
 
 // Country matching is the shared matcher (shared/country-mention.js), the
@@ -1362,6 +1369,20 @@ export async function freezeCrawlableLivePulse({
         + firstCaptureCause(developmentsErrors),
       );
     }
+  }
+
+  // Strip invariant (#8339): the four published headlines must be four distinct
+  // articles. selectFrozenHeadlines already dedupes by normalized URL, so a
+  // duplicate here is a defect in that dedupe rather than an upstream
+  // condition, and it would put one story in two of the homepage's four rows.
+  // Unlike the coverage gates above this cannot be caused by a news outage, so
+  // it throws instead of recording a partial.
+  const duplicateHeadlineUrls = duplicateArticleUrls(snapshot.headlines, (row) => row?.url);
+  if (duplicateHeadlineUrls.length > 0) {
+    throw new Error(
+      `Pulse freeze selected ${snapshot.headlines.length} headlines carrying a repeated article: `
+      + `${duplicateHeadlineUrls.join(', ')}`,
+    );
   }
 
   const basename = OUTPUT_BASENAME || `crawlable-live-pulse-${capturedAt}.json`;

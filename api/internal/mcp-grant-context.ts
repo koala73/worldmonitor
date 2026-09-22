@@ -36,16 +36,19 @@
 
 export const config = { runtime: 'edge' };
 
-import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
 } from '../../server/_shared/entitlement-check';
 import {
   checkProMcpAccess,
+  grantSessionVerificationUnavailableResponse,
   proMcpGateDenialResponse,
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
+// @ts-expect-error — JS module, no declaration file
+import { redirectDisplayHost } from '../oauth/_redirect-uri.js';
 
 const NO_STORE_JSON: Record<string, string> = {
   'Content-Type': 'application/json',
@@ -80,7 +83,7 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
 }
 
 export interface ContextDeps {
-  resolveUserId: (req: Request) => Promise<string | null>;
+  resolveUserId: (req: Request) => Promise<string | Response | null>;
   redisGet: (key: string) => Promise<unknown | null>;
   getEntitlements: (userId: string) => Promise<ProMcpEntitlement | null>;
   now: () => number;
@@ -94,6 +97,7 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   }
 
   const userId = await deps.resolveUserId(req);
+  if (userId instanceof Response) return grantSessionVerificationUnavailableResponse();
   if (!userId) {
     return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
   }
@@ -180,7 +184,7 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
 
   let redirectHost = '';
   try {
-    redirectHost = new URL(nonceData.redirect_uri).hostname;
+    redirectHost = redirectDisplayHost(nonceData.redirect_uri);
   } catch {
     // Already validated at registration time; defense-in-depth catch.
     return jsonError('INVALID_REDIRECT_URI', 'The registered redirect URI is malformed.', 400);
@@ -197,7 +201,7 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
 
 export default async function handler(req: Request): Promise<Response> {
   return grantContextHandler(req, {
-    resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
+    resolveUserId: resolveSessionUserId,
     redisGet: rawRedisGet,
     getEntitlements: (userId) => getEntitlements(userId),
     now: () => Date.now(),

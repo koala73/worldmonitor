@@ -321,6 +321,7 @@ const HOST_ORIGINS = Object.freeze({
   'oc-media.org': 'GE',
   'oilprice.com': 'CA',
   'onemileatatime.com': 'US',
+  'open-meteo.caseyjhand.com': 'US', // Community MCP operator cyanheads is based in Seattle.
   'opensky-network.org': 'CH',
   'ottawacitizen.com': 'CA',
   'otx.alienvault.com': 'US',
@@ -479,6 +480,7 @@ const HOST_ORIGINS = Object.freeze({
   'www.irrawaddy.com': 'MM',
   'www.jeuneafrique.com': 'FR',
   'www.jodidata.org': null,
+  'api.publisher.jodidata.org': null,
   'www.jpost.com': 'IL',
   'www.lasillavacia.com': 'CO',
   'www.ledevoir.com': 'CA',
