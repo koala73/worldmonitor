@@ -15,6 +15,11 @@
  *  - Invalid signature → { valid: false }
  *  - Allowed audiences → accepted ('convex' template plus configured publishable/audience envs)
  *  - Unexpected audience → rejected
+ *  - Present azp on a trusted app/preview/desktop origin → accepted (#8178)
+ *  - Present azp on a foreign or vendor origin → rejected
+ *  - Absent azp → fail open (non-browser Clerk tokens omit it)
+ *  - Empty-string azp → fail open (intentional machine-token policy)
+ *  - Present non-string azp, including explicit null → rejected
  *  - JWKS transport failure → { valid: false, reason: 'unverifiable' }
  *  - JWKS resolver is reused across calls (module-scoped, not per-request)
  */
@@ -23,6 +28,7 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import { describe, it, before, after } from 'node:test';
 import { generateKeyPair, exportJWK, jwtVerify, SignJWT } from 'jose';
+import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
 import { userPrefsOptionsHttpHandler } from '../convex/http.ts';
 
 const EXPECTED_CLOCK_TOLERANCE_SECONDS = 5;
@@ -608,6 +614,111 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(r1.role, 'pro');
     assert.equal(r2.valid, true);
     assert.equal(r2.role, 'free');
+  });
+
+  // #8178 — Clerk browser session tokens set `azp` to the minting origin.
+  // Bind once in validateBearerToken; fail open when the claim is absent.
+  it('accepts a browser token whose azp is a TRUSTED_RETURN_URL_ORIGINS host', async () => {
+    for (const azp of TRUSTED_RETURN_URL_ORIGINS) {
+      const token = await signToken({ sub: `user_azp_${new URL(azp).hostname}`, plan: 'pro', azp });
+      const result = await validateBearerToken(token);
+      assert.equal(result.valid, true, `expected trusted azp accepted: ${azp}`);
+      assert.equal(result.role, 'pro');
+    }
+  });
+
+  it('accepts desktop and preview azp values surveyed in #8178', async () => {
+    for (const azp of [
+      'tauri://localhost',
+      'asset://localhost',
+      'https://tauri.localhost',
+      'https://worldmonitor-git-feat-azp-eliewm.vercel.app',
+      'https://worldmonitor-r6q9o-eliewm.vercel.app',
+    ]) {
+      const token = await signToken({ sub: 'user_azp_desktop_preview', plan: 'free', azp });
+      const result = await validateBearerToken(token);
+      assert.equal(result.valid, true, `expected surveyed azp accepted: ${azp}`);
+    }
+  });
+
+  it('accepts SITE_URL as azp for self-hosted / preview deploys', async () => {
+    const originalSite = process.env.SITE_URL;
+    process.env.SITE_URL = 'https://self-hosted.example';
+    try {
+      const token = await signToken({
+        sub: 'user_azp_site_url',
+        plan: 'pro',
+        azp: 'https://self-hosted.example',
+      });
+      const result = await validateBearerToken(token);
+      assert.equal(result.valid, true);
+    } finally {
+      if (originalSite === undefined) delete process.env.SITE_URL;
+      else process.env.SITE_URL = originalSite;
+    }
+  });
+
+  it('rejects a foreign or vendor-owned azp', async () => {
+    for (const azp of [
+      'https://evil.example',
+      'https://clerk.worldmonitor.app',
+      'https://abacus.worldmonitor.app',
+      'https://worldmonitor-feat-x-attacker.vercel.app',
+      'https://some-other-app-eliewm.vercel.app',
+    ]) {
+      const token = await signToken({ sub: 'user_azp_foreign', plan: 'pro', azp });
+      assert.deepEqual(
+        await validateBearerToken(token),
+        { valid: false, reason: 'invalid' },
+        `expected foreign azp rejected: ${azp}`,
+      );
+    }
+  });
+
+  it('fails open when azp is absent (non-browser Clerk tokens omit it)', async () => {
+    const token = await signToken({ sub: 'user_no_azp', plan: 'pro' });
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.userId, 'user_no_azp');
+  });
+
+  it('fails open when azp is an empty string', async () => {
+    const token = await signToken({ sub: 'user_empty_azp', plan: 'pro', azp: '' });
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.userId, 'user_empty_azp');
+  });
+
+  it('rejects a non-string azp claim', async () => {
+    for (const azp of [1, ['https://worldmonitor.app'], { origin: 'https://worldmonitor.app' }]) {
+      const token = await signToken({ sub: 'user_bad_azp_type', plan: 'pro', azp });
+      assert.deepEqual(
+        await validateBearerToken(token),
+        { valid: false, reason: 'invalid' },
+        `expected non-string azp rejected: ${JSON.stringify(azp)}`,
+      );
+    }
+  });
+
+  it('rejects an explicit null azp claim', async () => {
+    const token = await signToken({ sub: 'user_null_azp', plan: 'pro', azp: null });
+    assert.deepEqual(await validateBearerToken(token), { valid: false, reason: 'invalid' });
+  });
+
+  it('rejects SITE_URL mismatch when azp is outside the CORS allowlist', async () => {
+    const originalSite = process.env.SITE_URL;
+    process.env.SITE_URL = 'https://self-hosted.example';
+    try {
+      const token = await signToken({
+        sub: 'user_azp_site_mismatch',
+        plan: 'pro',
+        azp: 'https://other.example',
+      });
+      assert.deepEqual(await validateBearerToken(token), { valid: false, reason: 'invalid' });
+    } finally {
+      if (originalSite === undefined) delete process.env.SITE_URL;
+      else process.env.SITE_URL = originalSite;
+    }
   });
 });
 

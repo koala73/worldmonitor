@@ -11,6 +11,7 @@ import { getStreamQuality } from '@/services/ai-flow-settings';
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
+import { loadYouTubeIframeApi } from '@/services/live-video/youtube-iframe-api';
 import { track } from '@/services/analytics';
 import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -58,7 +59,6 @@ import { DIRECT_HLS_MAP, OPTIONAL_LIVE_CHANNELS, getDefaultLiveChannels, loadCha
 export { getDefaultLiveChannels, loadChannelsFromStorage } from '@/services/live-channels';
 
 export class LiveNewsPanel extends Panel {
-  private static apiPromise: Promise<void> | null = null;
   private channels: LiveChannel[] = [];
   private activeChannel!: LiveChannel;
   private channelSwitcher: HTMLElement | null = null;
@@ -1136,54 +1136,6 @@ export class LiveNewsPanel extends Panel {
     }
   }
 
-  private static loadYouTubeApi(): Promise<void> {
-    if (LiveNewsPanel.apiPromise) return LiveNewsPanel.apiPromise;
-
-    LiveNewsPanel.apiPromise = new Promise((resolve) => {
-      if (window.YT?.Player) {
-        resolve();
-        return;
-      }
-
-      const existingScript = document.querySelector<HTMLScriptElement>(
-        'script[data-youtube-iframe-api="true"]',
-      );
-
-      if (existingScript) {
-        if (window.YT?.Player) {
-          resolve();
-          return;
-        }
-        const previousReady = window.onYouTubeIframeAPIReady;
-        window.onYouTubeIframeAPIReady = () => {
-          previousReady?.();
-          resolve();
-        };
-        return;
-      }
-
-      const previousReady = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        previousReady?.();
-        resolve();
-      };
-
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      script.async = true;
-      script.dataset.youtubeIframeApi = 'true';
-      script.onerror = () => {
-        console.warn('[LiveNews] YouTube IFrame API failed to load (ad blocker or network issue)');
-        LiveNewsPanel.apiPromise = null;
-        script.remove();
-        resolve();
-      };
-      document.head.appendChild(script);
-    });
-
-    return LiveNewsPanel.apiPromise;
-  }
-
   private async initializePlayer(): Promise<void> {
     if (!this.useDesktopEmbedProxy && !this.nativeVideoElement && this.player) return;
 
@@ -1211,7 +1163,7 @@ export class LiveNewsPanel extends Panel {
       return;
     }
 
-    await LiveNewsPanel.loadYouTubeApi();
+    await loadYouTubeIframeApi();
     if (!this.element?.isConnected) return;
     if (!this.ownsLiveMediaSession(channelId, sessionToken)) return;
     if (this.player || !this.playerElement || !window.YT?.Player) return;

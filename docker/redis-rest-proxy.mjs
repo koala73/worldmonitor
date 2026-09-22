@@ -619,12 +619,21 @@ const READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT = [
   "local activityPttl = redis.call('PTTL', KEYS[3])",
   'return {calls or false, requests or false, activityPttl}',
 ].join('\n');
-// Pinned to compareAndDeleteRedisKey in server/_shared/redis.ts.
+// Pinned to shared/compare-and-delete-script.cjs. Kept inline: this file
+// connects to Redis at import time, and the command-gate tests eval the
+// source instead of importing it.
 const COMPARE_AND_DELETE_SCRIPT = [
   "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
 ].join('\n');
+// Seed lock release before the shared pin (#8490). Same compare-and-delete,
+// different bytes. Rewrite onto the pin so a proxy-only rollout still
+// releases locks held by the previous seeder text.
+const LEGACY_COMPARE_AND_DELETE_SCRIPT = [
+  'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end',
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
   COMPARE_AND_DELETE_SCRIPT,
+  LEGACY_COMPARE_AND_DELETE_SCRIPT,
   CABLE_HEALTH_REPAIR_SCRIPT,
   WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT,
   SOURCE_RETRY_CLAIM_SCRIPT,
@@ -644,6 +653,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
+  [LEGACY_COMPARE_AND_DELETE_SCRIPT, COMPARE_AND_DELETE_SCRIPT],
   [LEGACY_X_POST_BUDGET_RESERVE_SCRIPT, X_POST_BUDGET_RESERVE_SCRIPT],
   [LEGACY_X_POST_BUDGET_STATUS_SCRIPT, X_POST_BUDGET_STATUS_SCRIPT],
 ]);

@@ -493,7 +493,11 @@
       },
       "paused": "Webbkameror pausade",
       "play": "Spela",
-      "previewStatus": "Liveförhandsvisning"
+      "previewStatus": "Redo att spela",
+      "connecting": "Ansluter…",
+      "unverified": "Kan inte bekräfta att denna ström är live",
+      "offline": "{{city}} är offline just nu",
+      "noFeeds": "Inga aktiva webbkameror i denna region just nu"
     },
     "playback": {
       "live": "LIVE",

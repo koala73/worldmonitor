@@ -211,9 +211,9 @@ export async function requirePremiumRpcAccess<T extends RpcApiErrorLike>(
   request: Request,
   ApiErrorConstructor: RpcApiErrorConstructor<T>,
   fallbackMessage: string,
-): Promise<void> {
+): Promise<Extract<PremiumCallerIdentity, { isPremium: true }>> {
   const identity = await resolvePremiumCallerIdentity(request);
-  if (identity.isPremium) return;
+  if (identity.isPremium) return identity;
 
   const billingError = createPremiumRpcBillingDenialError(identity, ApiErrorConstructor);
   if (billingError) throw billingError;

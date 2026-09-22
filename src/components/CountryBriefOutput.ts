@@ -54,10 +54,21 @@ export function freezeBriefContent(source: HTMLElement): HTMLElement {
     }
     if (element.getAttribute('role') === 'tablist') element.removeAttribute('role');
   }
-  for (const link of clone.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    const href = link.getAttribute('href')!;
-    if (href.startsWith('#')) link.setAttribute('href', `#${idMap.get(href.slice(1)) ?? href.slice(1)}`);
-    else link.href = new URL(href, WEB_APP_ORIGIN).href;
+  const links = Array.from(clone.querySelectorAll<HTMLAnchorElement>('a[href]'));
+  if (clone instanceof HTMLAnchorElement && clone.hasAttribute('href')) links.unshift(clone);
+  for (const link of links) {
+    const href = link.getAttribute('href')!.trim();
+    if (href.startsWith('#')) {
+      link.setAttribute('href', `#${idMap.get(href.slice(1)) ?? href.slice(1)}`);
+      continue;
+    }
+    try {
+      const url = new URL(href, WEB_APP_ORIGIN);
+      if (url.protocol === 'http:' || url.protocol === 'https:') link.setAttribute('href', url.href);
+      else link.removeAttribute('href');
+    } catch {
+      link.removeAttribute('href');
+    }
   }
   for (const details of clone.querySelectorAll<HTMLElement>('script, iframe, object, embed, .cdp-summary-only, .cdp-card-help, .resilience-widget__help, .resilience-widget__retry, .cdp-inline-action')) details.remove();
   const controls = source.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select');

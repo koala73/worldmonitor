@@ -28,6 +28,7 @@ import { validateBearerToken } from '../server/auth-session';
 // From the canonical shared module, not via api/mcp/upgrade — the checkout edge
 // function has no reason to depend on the MCP transport tree (#6716).
 import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
+import { publicCheckoutError } from '../shared/checkout-errors';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
@@ -269,7 +270,7 @@ export default async function handler(
       const edgeStatus = resp.status === 500 ? 500 : 502;
       return completeStandaloneIdempotency(
         idempotency,
-        json({ error: data?.error || 'Checkout creation failed' }, edgeStatus, cors),
+        json({ error: publicCheckoutError(data?.error) }, edgeStatus, cors),
       );
     }
 

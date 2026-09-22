@@ -163,7 +163,9 @@ function executeYoutubeEmbedHtml(html) {
   assert.ok(script, 'youtube embed response must contain an executable script');
   const posted = [];
   const appendedScripts = [];
+  const messageListeners = [];
   let playerEvents = null;
+  let playerOptions = null;
   const parent = {};
   Object.defineProperty(parent, 'postMessage', {
     configurable: false,
@@ -174,7 +176,12 @@ function executeYoutubeEmbedHtml(html) {
   });
   const sandbox = {
     console: { log() {}, warn() {}, error() {} },
-    window: { parent, addEventListener() {} },
+    window: {
+      parent,
+      addEventListener(type, listener) {
+        if (type === 'message') messageListeners.push(listener);
+      },
+    },
     document: {
       createElement: () => ({}),
       head: { appendChild: (node) => appendedScripts.push(node) },
@@ -191,6 +198,7 @@ function executeYoutubeEmbedHtml(html) {
     YT: {
       Player: class {
         constructor(_elementId, options) {
+          playerOptions = options;
           playerEvents = options.events;
         }
 
@@ -198,6 +206,11 @@ function executeYoutubeEmbedHtml(html) {
         playVideo() {}
         isMuted() { return true; }
         getVolume() { return 0; }
+        getPlayerState() { return 1; }
+        getDuration() { return 4_056_940; }
+        getVideoData() {
+          return { video_id: 'gCNeDWCI0vo', isLive: true, title: 'Al Jazeera English | Live', author: 'Al Jazeera English' };
+        }
       },
     },
   };
@@ -206,8 +219,95 @@ function executeYoutubeEmbedHtml(html) {
   assert.equal(typeof sandbox.onYouTubeIframeAPIReady, 'function');
   sandbox.onYouTubeIframeAPIReady();
   playerEvents.onReady();
-  return { posted, appendedScripts };
+  const sendMessage = (data) => {
+    for (const listener of messageListeners) listener({ data, origin: 'https://tauri.localhost', source: parent });
+  };
+  return { posted, appendedScripts, playerOptions, sendMessage };
 }
+
+test('youtube embed bridge plays a channel live embed and rejects ambiguous or malformed ids', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const embed = (query) => fetch(`http://127.0.0.1:${port}/api/youtube-embed?${query}&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`);
+
+  try {
+    const channelResponse = await embed('channel=UCNye-wNBqNL5ZzHSJj3l8Bg');
+    assert.equal(channelResponse.status, 200);
+    const channel = executeYoutubeEmbedHtml(await channelResponse.text());
+    assert.equal(channel.playerOptions.videoId, 'live_stream');
+    assert.equal(channel.playerOptions.playerVars.channel, 'UCNye-wNBqNL5ZzHSJj3l8Bg');
+
+    const videoResponse = await embed('videoId=zp6LNSoq000');
+    const video = executeYoutubeEmbedHtml(await videoResponse.text());
+    assert.equal(video.playerOptions.videoId, 'zp6LNSoq000');
+    assert.equal(video.playerOptions.playerVars.channel, undefined);
+    // A tile that draws its own chrome asks for none; the default stays the native control bar.
+    assert.equal(video.playerOptions.playerVars.controls, 1);
+    const chromeless = executeYoutubeEmbedHtml(await (await embed('videoId=zp6LNSoq000&controls=0')).text());
+    assert.equal(chromeless.playerOptions.playerVars.controls, 0);
+
+    for (const query of [
+      'videoId=zp6LNSoq000&channel=UCNye-wNBqNL5ZzHSJj3l8Bg',
+      'autoplay=1',
+      'channel=UCshort',
+      'channel=%40AlJazeeraEnglish',
+      'videoId=zp6LNSoq000%22',
+    ]) {
+      const response = await embed(query);
+      assert.equal(response.status, 400, `${query} must be rejected`);
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('youtube embed bridge answers a probe with video data for the allowed parent only', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const allowedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=gCNeDWCI0vo&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`,
+    );
+    const allowed = executeYoutubeEmbedHtml(await allowedResponse.text());
+    allowed.sendMessage({ type: 'probe' });
+    const reply = allowed.posted.find(({ message }) => message?.type === 'yt-video-data');
+    // The message is built inside the sandbox's own realm; compare its JSON shape.
+    assert.deepEqual(JSON.parse(JSON.stringify(reply ?? null)), {
+      message: {
+        type: 'yt-video-data',
+        videoId: 'gCNeDWCI0vo',
+        isLive: true,
+        title: 'Al Jazeera English | Live',
+        author: 'Al Jazeera English',
+        duration: 4_056_940,
+        state: 1,
+      },
+      targetOrigin: 'https://tauri.localhost',
+    });
+
+    const rejectedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=gCNeDWCI0vo&parentOrigin=${encodeURIComponent('https://evil.example')}`,
+    );
+    const rejected = executeYoutubeEmbedHtml(await rejectedResponse.text());
+    rejected.sendMessage({ type: 'probe' });
+    assert.deepEqual(rejected.posted, [], 'a rejected parent must receive no video data');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
 
 test('youtube embed bridge accepts exact Tauri origin and no-ops rejected parents', async () => {
   const localApi = await setupApiDir({});

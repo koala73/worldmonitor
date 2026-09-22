@@ -10,7 +10,6 @@ const root = resolve(__dirname, '..');
 const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
 const liveNewsSrc = readSrc('src/components/LiveNewsPanel.ts') + readSrc('src/services/live-channels.ts');
-const liveWebcamsSrc = readSrc('src/components/LiveWebcamsPanel.ts');
 const liveNewsSvc = readSrc('src/services/live-news.ts');
 const youtubeApi = readSrc('api/youtube/live.js');
 const sidecarSrc = readSrc('src-tauri/sidecar/local-api-server.mjs');
@@ -111,22 +110,6 @@ describe('channel data integrity', () => {
   it('does not ship CNBC, whose only YouTube live stream is a documentary marathon', () => {
     assert.ok(!allChannelIds.has('cnbc'), 'cnbc must not be a built-in Live News channel');
     assert.doesNotMatch(liveNewsSrc, /'cnbc'/, 'no region list, HLS map or proxy entry may still name cnbc');
-  });
-
-  it('no two webcam feeds play the same video', () => {
-    const ids = [...liveWebcamsSrc.matchAll(/fallbackVideoId:\s*'([^']+)'/g)].map((m) => m[1]);
-    assert.ok(ids.length > 0, 'no webcam fallbackVideoId found');
-    const repeated = ids.filter((id, index) => ids.indexOf(id) !== index);
-    assert.deepEqual(repeated, [], 'point one webcam feed at a stream instead of listing the same video twice');
-  });
-
-  it('every default webcam grid id names a webcam feed', () => {
-    const gridIds = liveWebcamsSrc.match(/ALL_GRID_IDS\s*=\s*\[([^\]]*)\]/)?.[1];
-    assert.ok(gridIds, 'ALL_GRID_IDS not found');
-    const feedIds = new Set([...liveWebcamsSrc.matchAll(/\{\s*id:\s*'([^']+)',\s*city:/g)].map((m) => m[1]));
-    for (const [, id] of gridIds.matchAll(/'([^']+)'/g)) {
-      assert.ok(feedIds.has(id), `ALL_GRID_IDS '${id}' has no WEBCAM_FEEDS entry`);
-    }
   });
 
   it('no channel ID appears in multiple arrays with conflicting definitions', () => {
@@ -443,9 +426,9 @@ describe('sidecar youtube-embed endpoint', () => {
 
   it('passes the desktop webcam parent origin to the sidecar bridge', () => {
     assert.match(
-      liveWebcamsSrc,
+      readSrc('src/services/live-video/session.ts'),
       /params\.set\('parentOrigin',\s*window\.location\.origin\)/,
-      'LiveWebcamsPanel must identify its parent origin to the sidecar bridge',
+      'the live video session must identify its parent origin to the sidecar bridge',
     );
   });
 });

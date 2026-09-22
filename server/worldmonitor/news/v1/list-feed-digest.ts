@@ -110,6 +110,7 @@ import {
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 // #6428: entity corroboration must count publishers, not feed labels.
 import {
   MIN_CORROBORATING_PUBLISHERS,
@@ -122,8 +123,51 @@ import {
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
-const DIGEST_LANGUAGES = new Set(['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw']);
+// The one digest language set, shared with the gateway's public-shape
+// classifier so a CDN-shielded `?lang=xx&public=1` shape and the handler can
+// never disagree. Anything outside it is a 400 (#8360).
+const DIGEST_LANGUAGES = NEWS_LANGUAGES;
+const DEFAULT_DIGEST_LANG = 'en';
+const ISOLATE_FALLBACK_MAX_KEYS = 50;
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
+
+/**
+ * Move an entry to the back of the insertion order so it counts as recently
+ * used. Map has no reorder primitive, so delete + re-set is the idiom.
+ *
+ * #8385 review: recency used to be bumped only when a digest was REBUILT, not
+ * when one was served from this tier. `full:en` is the hottest key and the one
+ * degraded serving depends on, but it is rebuilt rarely — so it drifted to the
+ * front of the order and was evicted first, while being read on every request.
+ */
+function touchIsolateEntry(key: string): void {
+  const entry = fallbackDigestCache.get(key);
+  if (!entry) return;
+  fallbackDigestCache.delete(key);
+  fallbackDigestCache.set(key, entry);
+}
+
+/**
+ * Evict the least-recently-used entry, never the default-language shard.
+ *
+ * #8385 review: the cap (50) is below the legitimate key space — VALID_VARIANTS
+ * x DIGEST_LANGUAGES is 135 — so ordinary multi-locale traffic, not just
+ * abuse, can cycle past it. Pinning `<variant>:en` costs one slot per variant
+ * and keeps the shard every degraded serve falls back to, which is the whole
+ * point of this tier. Raising the cap to 135 instead would mean ~17MB of 126KB
+ * snapshots resident per isolate.
+ */
+function evictOldestIsolateEntry(): void {
+  for (const key of fallbackDigestCache.keys()) {
+    if (key.endsWith(`:${DEFAULT_DIGEST_LANG}`)) continue;
+    fallbackDigestCache.delete(key);
+    return;
+  }
+  // Every resident entry is a pinned default-lang shard: drop the oldest so the
+  // cache still cannot grow without bound.
+  const oldest = fallbackDigestCache.keys().next();
+  if (!oldest.done) fallbackDigestCache.delete(oldest.value);
+}
 const ITEMS_PER_FEED = 5;
 const COUNTRY_ITEMS_PER_FEED = 20;
 const MAX_ITEMS_PER_CATEGORY = 20;
@@ -2007,6 +2051,11 @@ export async function listFeedDigest(
       console.log(`[digest-serving] outcome=unavailable reason=${reason} variant=${variant} lang=${lang}`);
       return empty(at, reason);
     }
+    // A serve-time hit is the strongest possible signal this key is in use, so
+    // it must refresh recency — otherwise the tier evicts the very entry it
+    // exists to keep warm. Safe before the gates below: a key that later proves
+    // unservable is deleted outright by those branches.
+    touchIsolateEntry(fallbackKey);
     if (!revoked.readable) {
       // Same fail-closed rule as the durable tier: replayed content must not
       // go out unfiltered when the suppression set could not be read.
@@ -2192,7 +2241,18 @@ export async function listFeedDigest(
       return await serveDegraded('empty-rebuild', leaderFailure, source !== 'cache');
     }
 
-    if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
+    // LRU eviction: the legitimate variant x lang key space (135) exceeds the
+    // cap, so ordinary multi-locale traffic must not wipe the warm high-traffic
+    // keys (e.g. full:en) that degraded serving relies on when Redis is unreadable.
+    // Map preserves insertion order, so the first key is the least-recently-used;
+    // re-inserting the touched key refreshes its recency (touchIsolateEntry does
+    // the same on a serve-time hit, so a key being read every request cannot be
+    // evicted as "old" just because it is not due for a rebuild).
+    if (!fallbackDigestCache.has(fallbackKey) && fallbackDigestCache.size >= ISOLATE_FALLBACK_MAX_KEYS) {
+      evictOldestIsolateEntry();
+    } else {
+      fallbackDigestCache.delete(fallbackKey);
+    }
     // Anchor the isolate entry to the CONTENT clock, exactly like acceptedAt:
     // stamping Date.now() re-aged unchanged content on every cache hit, so a
     // steadily-hit digest never expired from this tier and a later replay
@@ -3354,6 +3414,8 @@ export const __testing__ = {
   readRevokedUrlSet,
   suppressRevoked,
   fallbackDigestCache,
+  evictOldestIsolateEntry,
+  touchIsolateEntry,
   markFallbackCoverageStale,
   settleBeforeDeadline,
   finishSuccessfulDigestAttempt,

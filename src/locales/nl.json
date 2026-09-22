@@ -493,7 +493,11 @@
       },
       "paused": "Webcams gepauzeerd",
       "play": "Afspelen",
-      "previewStatus": "Livevoorbeeld"
+      "previewStatus": "Klaar om af te spelen",
+      "connecting": "Verbinding wordt tot stand gebracht…",
+      "unverified": "Kan niet bevestigen dat deze stream live is",
+      "offline": "{{city}} is momenteel offline",
+      "noFeeds": "Geen live webcams in deze regio op dit moment"
     },
     "playback": {
       "live": "Live",

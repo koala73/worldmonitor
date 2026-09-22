@@ -272,9 +272,14 @@ export async function runWebMcpCancellationScenario(
   const lateLeakWindowMs = 1_500;
   await page.waitForTimeout(lateLeakWindowMs);
   if (!productionSmoke) {
-    // Intentional migration canary: Chrome through 151 cannot deliver the
-    // target-side signal, so the page still reaches eu/4. A future global/2
-    // result must fail this test and trigger a policy review.
+    // Chrome through 151 omitted the target-side AbortSignal, so set_map_view
+    // completed as a phantom apply to eu/4. Chrome 153+ (CI ubuntu-24.04
+    // 20260920+) delivers the signal, so the caller abort keeps the map at the
+    // cold-start global/2. Branch on the recorded support bit so both hosts
+    // stay green while unit tests keep covering the no-signal denial.
+    const expectedMap = targetCancellationSupported
+      ? { view: 'global', zoom: 2 }
+      : { view: 'eu', zoom: 4 };
     await expect.poll(async () => {
       afterMap = await page.evaluate(async () => {
         type ExecutableModelContext = WebMCP.ModelContext & {
@@ -294,7 +299,7 @@ export async function runWebMcpCancellationScenario(
         };
       });
       return afterMap;
-    }, { timeout: 30_000 }).toEqual({ view: 'eu', zoom: 4 });
+    }, { timeout: 30_000 }).toEqual(expectedMap);
   }
   const unhandledRejections = await page.evaluate(() => (
     (window as Window & {
@@ -344,10 +349,21 @@ export async function runWebMcpCancellationScenario(
     }
   }
   if (!productionSmoke) {
-    expect(
-      afterMap,
-      'an uncancellable set_map_view completes: the accepted phantom completion',
-    ).toEqual({ view: 'eu', zoom: 4 });
+    if (targetCancellationSupported) {
+      expect(
+        afterMap,
+        'a cancellable set_map_view must not leak the aborted eu/4 apply',
+      ).toEqual({ view: 'global', zoom: 2 });
+      expect(
+        cancellation.rejected,
+        'Chrome 153+ must reject the caller terminal with AbortError',
+      ).toBe(true);
+    } else {
+      expect(
+        afterMap,
+        'an uncancellable set_map_view completes: the accepted phantom completion',
+      ).toEqual({ view: 'eu', zoom: 4 });
+    }
   }
   expect(pageErrors, 'cancelled execution must not leak an unexpected pageerror').toEqual([]);
   expect(

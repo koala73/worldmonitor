@@ -877,7 +877,11 @@
       },
       "paused": "Cámaras en pausa",
       "play": "Reproducir",
-      "previewStatus": "Vista previa en vivo"
+      "previewStatus": "Listo para reproducir",
+      "connecting": "Conectando…",
+      "unverified": "No se puede confirmar que esta transmisión esté en directo",
+      "offline": "{{city}} está sin conexión en este momento",
+      "noFeeds": "No hay webcámaras en directo en esta región en este momento"
     },
     "regulation": {
       "timeline": "Línea de tiempo",

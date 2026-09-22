@@ -8,28 +8,24 @@ import { ApiError, ValidationError } from '../../../../src/generated/server/worl
 import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
-import { runRedisPipeline } from '../../../_shared/redis';
+import { runRedisPipeline, runRedisTransaction } from '../../../_shared/redis';
 import { setResponseHeader, setSuccessStatusOverride } from '../../../_shared/response-headers';
 import { getScenarioTemplate } from '../../supply-chain/v1/scenario-templates';
+import {
+  SCENARIO_RESULT_TTL_SECONDS,
+  generateScenarioJobId,
+  scenarioOwnerKey,
+  scenarioOwnerToken,
+} from './scenario-job';
 
 const QUEUE_KEY = 'scenario-queue:pending';
 const MAX_QUEUE_DEPTH = 100;
-const JOB_ID_CHARSET = 'abcdefghijklmnopqrstuvwxyz0123456789';
-
-function generateJobId(): string {
-  const ts = Date.now();
-  let suffix = '';
-  const array = new Uint8Array(8);
-  crypto.getRandomValues(array);
-  for (const byte of array) suffix += JOB_ID_CHARSET[byte % JOB_ID_CHARSET.length];
-  return `scenario:${ts}:${suffix}`;
-}
 
 export async function runScenario(
   ctx: ServerContext,
   req: RunScenarioRequest,
 ): Promise<RunScenarioResponse> {
-  await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
+  const identity = await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
 
   const scenarioId = (req.scenarioId ?? '').trim();
   if (!scenarioId) {
@@ -60,20 +56,33 @@ export async function runScenario(
     throw new ApiError(429, 'Scenario queue is at capacity, please try again later', '');
   }
 
-  const jobId = generateJobId();
+  const owner = await scenarioOwnerToken(identity, ctx.request);
+  if (!owner) {
+    throw new ApiError(403, 'PRO subscription required', '');
+  }
+
+  const jobId = generateScenarioJobId();
   const payload = JSON.stringify({
     jobId,
     scenarioId,
     iso2: iso2 || null,
     disruptionPct,
     enqueuedAt: Date.now(),
+    owner,
   });
 
-  // Upstash RPUSH returns the new list length; helper returns [] on transport
-  // failure. Either no entry or a non-numeric result means the enqueue never
-  // landed — surface as 502 so the caller retries.
-  const [pushEntry] = await runRedisPipeline([['RPUSH', QUEUE_KEY, payload]], true);
-  if (!pushEntry || typeof pushEntry.result !== 'number') {
+  // Bind the owner and enqueue in one MULTI/EXEC. A pipeline could RPUSH a
+  // job whose owner SET failed, leaving an unpollable job on the worker queue
+  // behind a 502. A transaction that does not confirm both writes must not
+  // return a job id: SET 'OK' is the owner record, RPUSH's length the enqueue.
+  const [setEntry, pushEntry] = await runRedisTransaction([
+    ['SET', scenarioOwnerKey(jobId), JSON.stringify(owner), 'EX', String(SCENARIO_RESULT_TTL_SECONDS)],
+    ['RPUSH', QUEUE_KEY, payload],
+  ], true);
+  if (
+    !setEntry || setEntry.error || setEntry.result !== 'OK'
+    || !pushEntry || pushEntry.error || typeof pushEntry.result !== 'number'
+  ) {
     throw new ApiError(502, 'Failed to enqueue scenario job', '');
   }
 

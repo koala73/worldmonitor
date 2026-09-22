@@ -196,6 +196,77 @@ async function executeDashboardTool(
   }, { toolName: name, payload: input });
 }
 
+async function readTargetCancellationSupported(page: Page, toolName: string): Promise<boolean> {
+  return page.evaluate((name) => {
+    const marks = (window as Window & {
+      __wmLcpDebug?: {
+        getSnapshot?: () => {
+          marks: Array<{
+            detail?: { targetCancellationSupported?: boolean; tool?: string };
+            name: string;
+          }>;
+        };
+      };
+    }).__wmLcpDebug?.getSnapshot?.().marks ?? [];
+    const supported = marks.filter((mark) => (
+      mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === name
+    )).at(-1)?.detail?.targetCancellationSupported;
+    if (typeof supported !== 'boolean') {
+      throw new Error(
+        `missing targetCancellationSupported mark for ${name}; install the LCP debug recorder before navigation`,
+      );
+    }
+    return supported;
+  }, toolName);
+}
+
+async function executeDashboardToolObserved(
+  page: Page,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<{ output: unknown; targetCancellationSupported: boolean }> {
+  return page.evaluate(async ({ toolName, payload }) => {
+    type ExecutableModelContext = WebMCP.ModelContext & {
+      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
+    };
+    const provider = document.modelContext as ExecutableModelContext | undefined;
+    if (!provider || typeof provider.executeTool !== 'function') {
+      throw new Error('Chrome WebMCP execution API is unavailable.');
+    }
+    const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+    if (!tool) throw new Error(`${toolName} was not discovered.`);
+    const raw = await provider.executeTool(tool, JSON.stringify(payload));
+    let output: unknown = raw;
+    if (typeof raw === 'string') {
+      try {
+        output = JSON.parse(raw);
+      } catch {
+        output = raw;
+      }
+    }
+    // Read the mark before returning. switch_monitor reloads on success, and
+    // a later evaluate can land on the next document, which has no mark.
+    const supported = (window as Window & {
+      __wmLcpDebug?: {
+        getSnapshot?: () => {
+          marks: Array<{
+            detail?: { targetCancellationSupported?: boolean; tool?: string };
+            name: string;
+          }>;
+        };
+      };
+    }).__wmLcpDebug?.getSnapshot?.().marks
+      ?.filter((mark) => mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === toolName)
+      .at(-1)?.detail?.targetCancellationSupported;
+    if (typeof supported !== 'boolean') {
+      throw new Error(
+        `missing targetCancellationSupported mark for ${toolName}; install the LCP debug recorder before navigation`,
+      );
+    }
+    return { output, targetCancellationSupported: supported };
+  }, { toolName: name, payload: input });
+}
+
 async function installReadinessRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('wm_lcp_debug', '1'));
 }
@@ -637,6 +708,7 @@ test.describe('dashboard tab persistence', () => {
 
   test('creates, renames, selects, and deletes a dashboard tab', async ({ page }) => {
     await dismissMissionPreset(page);
+    await installReadinessRecorder(page);
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     const tabBar = page.locator('.dashboard-tabs-bar');
@@ -659,22 +731,35 @@ test.describe('dashboard tab persistence', () => {
       });
       expect((listed.tabs as Array<{ id: string }>)[0]?.id).toMatch(/^tab-[a-z0-9]+-[a-z0-9]+$/);
 
-      // Current Chrome still omits the target-side AbortSignal, so persistent
-      // tab mutations fail closed. Prove the denial, then drive persistence
-      // through the visible tab bar like the model-free path.
+      // Branch on the tool-start mark, which records whether this call received
+      // a target AbortSignal. Chrome through 151 omits it; Chrome 153+ delivers
+      // it. A denial is only acceptable when that mark is false.
       const created = await executeDashboardTabTool(page, 'create_dashboard_tab', {
         name: 'Draft Workspace',
       });
-      expect(created).toMatchObject({
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-      });
-      await expect(labels).toHaveCount(1);
+      const cancellationSupported = await readTargetCancellationSupported(page, 'create_dashboard_tab');
+      if (!cancellationSupported) {
+        expect(created).toMatchObject({
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+        });
+        await expect(labels).toHaveCount(1);
+      } else {
+        expect(created).toMatchObject({
+          ok: true,
+          status: 'applied',
+          name: 'Draft Workspace',
+        });
+        await expect(labels).toHaveCount(2);
+        await expect(labels.nth(1)).toHaveText('Draft Workspace');
+      }
     }
 
-    await page.locator('.dashboard-tab-add').click();
-    await expect(labels).toHaveCount(2);
+    if (await labels.count() === 1) {
+      await page.locator('.dashboard-tab-add').click();
+      await expect(labels).toHaveCount(2);
+    }
     const createdName = (await labels.nth(1).innerText()).trim();
     expect(createdName).not.toBe(originalName);
 
@@ -1277,6 +1362,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
   test('validates monitor switches and opens settings and alerts through existing UI', async ({ page }, testInfo) => {
     test.skip(productionSmoke, 'Must not execute switch_monitor against a production origin.');
     testInfo.setTimeout(120_000);
+    await installReadinessRecorder(page);
     const response = await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     expect(response).not.toBeNull();
     await expect.poll(async () => page.evaluate(async () => (
@@ -1316,24 +1402,51 @@ test.describe('top-level WebMCP dashboard contract', () => {
 
     const historyBefore = await page.evaluate(() => window.history.length);
     const locationBefore = new URL(page.url());
-    const switchResult = await executeDashboardTool(page, 'switch_monitor', { monitor: 'tech' });
-    expect(switchResult).toMatchObject({
-      ok: false,
-      status: 'denied',
-      reason: 'target_cancellation_unsupported',
-    });
+    const observedSwitch = await executeDashboardToolObserved(page, 'switch_monitor', { monitor: 'tech' });
+    const switchResult = observedSwitch.output;
+    const { targetCancellationSupported } = observedSwitch;
 
-    const context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
-      variant?: string;
-    };
-    expect(context.variant).toBe('full');
-    await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
-    const locationAfter = new URL(page.url());
-    expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
-      origin: locationBefore.origin,
-      pathname: locationBefore.pathname,
-    });
-    expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
+    let context: { variant?: string } | null = null;
+    if (!targetCancellationSupported) {
+      // Chrome through 151: the tool-start mark says no AbortSignal arrived,
+      // so the switch must fail closed with no navigation.
+      expect(switchResult).toMatchObject({
+        ok: false,
+        status: 'denied',
+        reason: 'target_cancellation_unsupported',
+      });
+      context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
+        variant?: string;
+      };
+      expect(context.variant).toBe('full');
+      await expect(page.locator('.variant-option.active[data-variant="full"]')).toBeVisible();
+      const locationAfter = new URL(page.url());
+      expect({ origin: locationAfter.origin, pathname: locationAfter.pathname }).toEqual({
+        origin: locationBefore.origin,
+        pathname: locationBefore.pathname,
+      });
+      expect(await page.evaluate(() => window.history.length)).toBe(historyBefore);
+    } else {
+      // Chrome 153+: the same mark says the signal arrived, so the switch must
+      // apply and local/dev reloads into the staged tech variant.
+      expect(switchResult).toMatchObject({
+        ok: true,
+        status: 'applied',
+        destination: 'tech',
+      });
+      // stageVariantSelection + reload may already be in flight when executeTool
+      // resolves; wait on the post-reload tech chrome rather than loadState alone.
+      await expect(page.locator('.variant-option.active[data-variant="tech"]')).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect.poll(async () => page.evaluate(async () => (
+        (await document.modelContext?.getTools())?.map((tool) => tool.name).sort() ?? []
+      )), { timeout: 60_000 }).toEqual(DASHBOARD_TOOL_NAMES);
+      context = await executeDashboardTool(page, 'get_dashboard_context', {}) as {
+        variant?: string;
+      };
+      expect(context.variant).toBe('tech');
+    }
 
     await attachJsonEvidence(testInfo, 'webmcp-navigation.json', {
       invalid,
@@ -1341,6 +1454,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       alerts,
       switchResult,
       context,
+      targetCancellationSupported,
       url: page.url(),
       historyLength: await page.evaluate(() => window.history.length),
     });
@@ -1539,9 +1653,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
       test.skip(true, 'Host omitted the target-side AbortSignal; persist proof requires cancellation.');
     }
 
+    // full variant lists every bundled preset except finance-only nq-day-trader
+    // (8 after country-watcher landed in #7650).
     expect(first.listOutput).toMatchObject({
       ok: true,
-      count: 7,
+      count: 8,
     });
     expect(applyOutput).toMatchObject({
       ok: true,
@@ -1845,29 +1961,44 @@ test.describe('top-level WebMCP dashboard contract', () => {
     await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
     await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).toBeVisible();
 
-    // Chrome 149–151 invokes the page callback with the input alone, even when
-    // executeTool() is given `{ signal }`. set_map_mode stays gated there.
-    // Do not click the 2D/3D control as a substitute: that would hide a broken
-    // cancellation gate. Binding tests cover the apply path with a real signal.
+    // Branch on the tool-start mark, not the denial reason. Chrome 149–151
+    // invokes the callback without a target AbortSignal; Chrome 153+ delivers
+    // one. Do not click the 2D/3D control as a substitute.
     const to3d = await executeDashboardToolProbe(page, 'set_map_mode', { mode: '3d' });
-    expect(to3d).toMatchObject({
-      ok: true,
-      output: {
-        ok: false,
-        status: 'denied',
-        reason: 'target_cancellation_unsupported',
-      },
-    });
-    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
-    await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).not.toHaveClass(/active/);
-    expect(new URL(page.url()).searchParams.get('mapMode')).toBeNull();
+    const mapCancellationSupported = await readTargetCancellationSupported(page, 'set_map_mode');
+    if (!mapCancellationSupported) {
+      expect(to3d).toMatchObject({
+        ok: true,
+        output: {
+          ok: false,
+          status: 'denied',
+          reason: 'target_cancellation_unsupported',
+        },
+      });
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).toHaveClass(/active/);
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).not.toHaveClass(/active/);
+      expect(new URL(page.url()).searchParams.get('mapMode')).toBeNull();
+      expect(await storedMapMode(page)).not.toBe('globe');
+    } else {
+      expect(to3d).toMatchObject({
+        ok: true,
+        output: {
+          ok: true,
+          status: 'applied',
+          actionType: 'set_map_mode',
+        },
+      });
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="globe"]')).toHaveClass(/active/);
+      await expect(page.locator('#mapDimensionToggle .map-dim-btn[data-mode="flat"]')).not.toHaveClass(/active/);
+      expect(await storedMapMode(page)).toBe('globe');
+    }
     expect(new URL(page.url()).searchParams.get('timeRange')).toBe('6h');
-    expect(await storedMapMode(page)).not.toBe('globe');
 
     await attachJsonEvidence(testInfo, 'webmcp-map-view-state.json', {
       timeRange,
       focus,
       to3d,
+      targetCancellationSupported: mapCancellationSupported,
       urlAfterFocus: afterFocus.toString(),
     });
   });

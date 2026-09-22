@@ -27,9 +27,14 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 | `200` | `DEGRADED` | Critical keys empty, but ≤3% of all probed keys |
 | `200` | `UNHEALTHY` | Critical keys empty, >3% of all probed keys |
 | `401` | - | Detailed health or history requested without a valid operator/enterprise API key |
-| `503` | `REDIS_DOWN` | Could not connect to Redis — the **only** state that returns a non-200 code |
+| `503` | `REDIS_DOWN` | Redis could not provide the required health data |
+| `503` | `REFRESH_PENDING` | Another request owns the refresh lease and no earlier verdict is retained; retry after the `Retry-After` interval |
 
-> The overall health verdict lives in the JSON `status` field, not the HTTP code. Every state except `REDIS_DOWN` returns `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure.
+> The overall health verdict lives in the JSON `status` field, not the HTTP code. Evaluated health verdicts return `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure. `REFRESH_PENDING` also returns `503`, but only when no earlier verdict is retained while refresh is pending; it is not a confirmed Redis outage.
+
+On a cache miss, only the Redis lease owner performs the registry sweep. Other requests wait up to 3 seconds for its snapshot. If none lands, they return the last published verdict with HTTP `200`, plus `"stale": true` and `"staleReason": "REFRESH_PENDING"`. Its `status` and `checkedAt` are the ones that verdict was published with. The last verdict is retained for 10 minutes and is never served past a grace deadline. Only when no verdict is retained do they return `503` with `Retry-After: 3` and `{ "status": "REFRESH_PENDING", "error": "Health refresh is pending. Retry shortly.", "retryAfterSeconds": 3 }`. That response has no `checkedAt`, summary, or fabricated checks. Neither response is cached.
+
+Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
 
 The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data.
 
@@ -37,7 +42,7 @@ The top-level `status` describes user-visible platform availability, not perfect
 
 ```json
 {
-  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
+  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
     "total": 295,
     "ok": 295,
@@ -690,7 +695,7 @@ curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
 
 # UptimeRobot / monitoring: check HTTP status code
 curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?compact=1"
-# Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
+# Returns 503 for REDIS_DOWN or REFRESH_PENDING; 200 for evaluated health
 # state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
 ```
 
@@ -820,12 +825,13 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 
 ### UptimeRobot
 
-Use `/api/health?compact=1` as the public monitor URL. The HTTP status code only distinguishes a total Redis outage from everything else:
+Use `/api/health?compact=1` as the public monitor URL. The HTTP status code distinguishes an unavailable verdict from an evaluated verdict. Inspect the JSON status to identify the cause:
 
-- `503` = `REDIS_DOWN` (Redis unreachable — a true hard outage)
+- `503` + `REDIS_DOWN` = Redis health read failed.
+- `503` + `REFRESH_PENDING` = refresh contention; retry after 3 seconds.
 - `200` = every other state, including `DEGRADED` and `UNHEALTHY`
 
-So an HTTP-status-only monitor catches a full backend outage but **not** degraded/unhealthy availability. For those, add a keyword monitor.
+An HTTP-status-only monitor catches unavailable verdicts, including refresh contention, but **not** degraded/unhealthy availability. For those, add a keyword monitor.
 
 Point the keyword monitor at `https://api.worldmonitor.app/api/health?compact=1` and alert when the compact token `"status":"HEALTHY"` (no space after the colon) is **absent** from the response body. Compact mode serializes with no indentation, so this exact token is stable regardless of formatting.
 
@@ -854,7 +860,7 @@ fi
 | **Scope** | Data keys + seed metadata | Seed metadata only |
 | **Auth** | None (public) | API key or allowed origin |
 | **Data fetched** | Full Redis values (to count records) | Only `seed-meta:*` keys |
-| **HTTP 503** | Only `REDIS_DOWN` (DEGRADED/UNHEALTHY return 200) | No (always 200 unless Redis down) |
+| **HTTP 503** | `REDIS_DOWN` or `REFRESH_PENDING` (DEGRADED/UNHEALTHY return 200) | No (always 200 unless Redis down) |
 | **Best for** | Uptime monitoring, dashboard health | Debugging seed loop issues |
 | **Response size** | Larger (one entry per probed key, with record counts) | Smaller (seed-meta domains only) |
 

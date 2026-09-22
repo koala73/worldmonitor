@@ -22,6 +22,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('health freshness ingestion', () => {
+  it('does not synthesize healthy sources or a Redis outage while refresh is pending', async () => {
+    __resetHealthFreshnessForTests();
+    const before = structuredClone(dataFreshness.getSource('gdelt'));
+    await assert.rejects(refreshDataFreshnessFromHealth({
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({ status: 'REFRESH_PENDING', retryAfterSeconds: 3 }, 503),
+    }), /health freshness fetch failed: 503/);
+    assert.deepEqual(dataFreshness.getSource('gdelt'), before);
+  });
+
   it('identifies the weather source and outage gap as NWS/ECCC/WMO SWIC coverage', async () => {
     __resetHealthFreshnessForTests();
     await refreshDataFreshnessFromHealth({

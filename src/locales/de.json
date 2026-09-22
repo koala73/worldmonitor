@@ -874,7 +874,11 @@
       },
       "paused": "Webcams pausiert",
       "play": "Abspielen",
-      "previewStatus": "Live-Vorschau"
+      "previewStatus": "Bereit zum Abspielen",
+      "connecting": "Verbindung wird hergestellt…",
+      "unverified": "Dieser Stream kann nicht als live bestätigt werden",
+      "offline": "{{city}} ist gerade offline",
+      "noFeeds": "Keine Live-Webcams in dieser Region verfügbar"
     },
     "regulation": {
       "timeline": "Zeitleiste",

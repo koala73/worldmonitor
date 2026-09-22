@@ -38,14 +38,16 @@ describe('IMD snapshot boundary', () => {
   });
   it('drops malformed nested geometry and retains only known track fields', () => {
     const mapped = mapImdSnapshot({ generatedAt: 1000, cycloneEvents: [{
-      id: 'storm', lat: 10, lon: 70, date: 1e100,
+      // Records need a real timestamp (an invalid one rejects the whole record;
+      // see tests/imd-browser-boundary.test.mts), so use a valid date here.
+      id: 'storm', lat: 10, lon: 70, date: 2000,
       pastTrack: [null, { lat: 1000, lon: 70 }, { lat: 10, lon: 70, timestamp: 1000, extra: 'drop' }],
       conePolygon: [[[70, 10], [71, 11], [72, 12], [999, 10]]],
       windRadii: [null],
       agencyObservations: [{ lat: 10, lon: 70, sourceUrl: 'javascript:alert(1)', extra: 'drop' }],
     }] });
     const storm = mapped.cycloneEvents[0]!;
-    expect(storm.date.getTime()).toBe(1000);
+    expect(storm.date.getTime()).toBe(2000);
     expect(storm.pastTrack).toHaveLength(1);
     expect(storm.pastTrack?.[0]).not.toHaveProperty('extra');
     expect(storm.conePolygon).toEqual([]);
@@ -55,7 +57,7 @@ describe('IMD snapshot boundary', () => {
   });
   it('copies valid fields and drops extra keys and unsafe source URLs', () => {
     for (const sourceUrl of ['javascript:alert(1)', 'data:text/html,bad', 'https://evil.example']) {
-      const result = mapImdSnapshot({ generatedAt: 1000, cycloneEvents: [{ id: 'storm', title: 'Storm', lat: 10, lon: 70, sourceUrl, surprise: true }], portAlerts: [{ id: 'port', headline: 'Warning', sourceUrl, surprise: true, coordinates: [[70, 10], [999, 0]] }] } as never);
+      const result = mapImdSnapshot({ generatedAt: 1000, cycloneEvents: [{ id: 'storm', title: 'Storm', lat: 10, lon: 70, date: 1000, sourceUrl, surprise: true }], portAlerts: [{ id: 'port', headline: 'Warning', onset: 1000, expires: 2000, sourceUrl, surprise: true, coordinates: [[70, 10], [999, 0]] }] } as never);
       expect(result.cycloneEvents[0]).toMatchObject({ id: 'storm', title: 'Storm', lat: 10, lon: 70 });
       expect(result.cycloneEvents[0]).not.toHaveProperty('surprise');
       expect(result.cycloneEvents[0]?.sourceUrl).toBeUndefined();

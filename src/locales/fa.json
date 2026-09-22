@@ -926,7 +926,7 @@
     "webcams": {
       "paused": "Webcams paused",
       "play": "Play",
-      "previewStatus": "Live preview",
+      "previewStatus": "آماده برای پخش",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",
@@ -934,7 +934,11 @@
         "americas": "AMERICAS",
         "asia": "ASIA",
         "space": "SPACE"
-      }
+      },
+      "connecting": "در حال اتصال…",
+      "unverified": "نمی‌توان تأیید کرد که این پخش زنده است",
+      "offline": "{{city}} در حال حاضر آفلاین است",
+      "noFeeds": "هیچ وب‌کمی زنده در این منطقه وجود ندارد"
     },
     "pinnedWebcams": {
       "pinFromMap": "Pin a webcam from the map"

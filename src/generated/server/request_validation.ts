@@ -2257,7 +2257,7 @@ export const GENERATED_MESSAGE_RULES = {
       "jobId": {
         "kind": "string",
         "required": true,
-        "stringPattern": "^scenario:[0-9]{13}:[a-z0-9]{8}$",
+        "stringPattern": "^scenario:[0-9]{13}:([a-f0-9]{32}|[a-z0-9]{8})$",
         "stringMaxBytes": 65536
       }
     }

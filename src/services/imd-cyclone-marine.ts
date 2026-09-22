@@ -1,3 +1,4 @@
+import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 import type { NaturalEvent } from '@/types';
 import type { WeatherAlert } from '@/services/weather';
@@ -49,6 +50,17 @@ function asDate(value: unknown, fallback: number): Date {
     if (Number.isFinite(ms)) return new Date(ms);
   }
   return new Date(fallback);
+}
+
+// A record's own timestamp must be real: stamping an unparseable onset or
+// storm time with generatedAt would present it as current.
+function validDate(value: unknown): Date | undefined {
+  const ms = value instanceof Date ? value.getTime()
+    : typeof value === 'number' ? value
+      : typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(ms) || ms <= 0) return undefined;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -107,14 +119,17 @@ function positions(value: unknown): Record<string, unknown>[] {
   return records(value).filter(row => coordinate([row.lon, row.lat]));
 }
 
-function mapAlert(raw: Record<string, unknown>, generatedAt: number): WeatherAlert {
+function mapAlert(raw: Record<string, unknown>): WeatherAlert | undefined {
+  const onset = validDate(raw.onset);
+  const expires = validDate(raw.expires);
+  if (!onset || !expires) return undefined;
   const severity = text(raw.severity);
   const precision = raw.geometryPrecision;
   return {
     id: text(raw.id), event: text(raw.event), headline: text(raw.headline),
     description: text(raw.description), areaDesc: text(raw.areaDesc),
     severity: severity === 'Extreme' || severity === 'Severe' || severity === 'Moderate' || severity === 'Minor' ? severity : 'Unknown',
-    onset: asDate(raw.onset, generatedAt), expires: asDate(raw.expires, generatedAt),
+    onset, expires,
     coordinates: coordinates(raw.coordinates), centroid: coordinate(raw.centroid),
     countryCode: text(raw.countryCode), source: text(raw.source),
     geometryPrecision: precision === 'polygon' || precision === 'point' || precision === 'country' ? precision : undefined,
@@ -124,11 +139,14 @@ function mapAlert(raw: Record<string, unknown>, generatedAt: number): WeatherAle
   };
 }
 
-function mapCyclone(raw: Record<string, unknown>, generatedAt: number): NaturalEvent {
+function mapCyclone(raw: Record<string, unknown>, generatedAt: number): NaturalEvent | undefined {
+  if (!coordinate([raw.lon, raw.lat])) return undefined;
+  const date = validDate(raw.date);
+  if (!date) return undefined;
   return {
     id: text(raw.id), title: text(raw.title), description: text(raw.description),
     lat: raw.lat as number, lon: raw.lon as number,
-    date: asDate(raw.date, generatedAt), category: 'severeStorms',
+    date, category: 'severeStorms',
     categoryTitle: text(raw.categoryTitle) || 'Tropical Cyclone', closed: raw.closed === true,
     stormId: text(raw.stormId), stormName: text(raw.stormName), basin: text(raw.basin),
     classification: text(raw.classification), windKt: finite(raw.windKt),
@@ -156,21 +174,67 @@ function mapCyclone(raw: Record<string, unknown>, generatedAt: number): NaturalE
   };
 }
 
+/** Map one product list; `rejected` is true when it is not an array or any row was dropped. */
+function mapProducts<T>(value: unknown, map: (row: Record<string, unknown>) => T | undefined): { items: T[]; rejected: boolean } {
+  if (!Array.isArray(value)) return { items: [], rejected: true };
+  const items = value.flatMap(row => {
+    const item = isRecord(row) && text(row.id) ? map(row) : undefined;
+    return item === undefined ? [] : [item];
+  });
+  return { items, rejected: items.length !== value.length };
+}
+
+const COVERAGE_STATES = new Set(['ok', 'degraded', 'disabled', 'unavailable']);
+
 export function mapImdSnapshot(snapshot: unknown): ImdMappedProducts {
   if (!isRecord(snapshot)) return { ...EMPTY, cycloneEvents: [], portAlerts: [], marineBulletins: [] };
   const generatedAt = asDate(snapshot.generatedAt, Date.now()).getTime();
+  const cyclones = mapProducts(snapshot.cycloneEvents, event => mapCyclone(event, generatedAt));
+  const ports = mapProducts(snapshot.portAlerts, mapAlert);
+  const marine = mapProducts(snapshot.marineBulletins, mapAlert);
+  // The producer's coverage claim only holds for what survived mapping: a
+  // malformed collection or a rejected record downgrades ok/degraded, so the
+  // layer never reports healthy coverage over missing data.
+  const reported = text(snapshot.coverageState);
+  let coverageState = COVERAGE_STATES.has(reported) ? reported : 'unavailable';
+  if ((coverageState === 'ok' || coverageState === 'degraded')
+    && (cyclones.rejected || ports.rejected || marine.rejected)) {
+    coverageState = cyclones.items.length + ports.items.length + marine.items.length > 0 ? 'degraded' : 'unavailable';
+  }
   return {
-    coverageState: text(snapshot.coverageState) || 'unavailable',
-    cycloneEvents: positions(snapshot.cycloneEvents).filter(row => text(row.id)).map(event => mapCyclone(event, generatedAt)),
-    portAlerts: records(snapshot.portAlerts).filter(row => text(row.id)).map(alert => mapAlert(alert, generatedAt)),
-    marineBulletins: records(snapshot.marineBulletins).filter(row => text(row.id)).map(alert => mapAlert(alert, generatedAt)),
+    coverageState,
+    cycloneEvents: cyclones.items,
+    portAlerts: ports.items,
+    marineBulletins: marine.items,
     sourceName: text(snapshot.sourceName) || EMPTY.sourceName,
     sourceUrl: sourceUrl(snapshot.sourceUrl) || EMPTY.sourceUrl,
   };
 }
 
+// getHydratedData() deletes a value when read, so the first of the two
+// parallel loaders (weather + natural, data-loader.ts) drained the consume-once
+// slot and the second fell through to the on-demand fetch or EMPTY. Both
+// layers must share one accepted snapshot for the TTL window (#8354).
+const hydrationHandoff = createHydrationHandoff<ImdMappedProducts>(
+  'imdCycloneMarine',
+  (value) => {
+    const mapped = mapImdSnapshot(value as ImdCycloneMarineSnapshot | null | undefined);
+    return mapped.coverageState === 'unavailable' &&
+      mapped.cycloneEvents.length === 0 &&
+      mapped.portAlerts.length === 0 &&
+      mapped.marineBulletins.length === 0
+      ? null
+      : mapped;
+  },
+  // Only bridge the same-tick weather + natural loaders; a later refresh goes
+  // back to the load path instead of replaying one snapshot for 30 minutes.
+  { ttlMs: 60_000 },
+);
+
 export async function fetchImdCycloneMarine(): Promise<ImdMappedProducts> {
-  const hydrated = (getHydratedData('imdCycloneMarine') ?? await ensureHydrated('imdCycloneMarine')) as ImdCycloneMarineSnapshot | undefined;
-  if (!hydrated) return EMPTY;
-  return mapImdSnapshot(hydrated);
+  return hydrationHandoff.getOrLoad(async () => {
+    const hydrated = (getHydratedData('imdCycloneMarine') ?? await ensureHydrated('imdCycloneMarine')) as ImdCycloneMarineSnapshot | undefined;
+    if (!hydrated) return EMPTY;
+    return mapImdSnapshot(hydrated);
+  }, EMPTY);
 }

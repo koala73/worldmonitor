@@ -34,6 +34,19 @@ describe('isAnalyzableSymbol', () => {
 });
 
 describe('selectStockAnalysisTargets', () => {
+  it('deduplicates case variants across picks and default top-ups', () => {
+    const targets = selectStockAnalysisTargets([{ symbol: 'aapl' }, { symbol: 'AAPL' }], DEFAULTS, { isPro: true });
+    assert.deepEqual(symbolsOf(targets), ['aapl', 'MSFT', 'NVDA', 'GOOGL']);
+  });
+
+  it('deduplicates with the same ticker rule the stored snapshots are keyed by', () => {
+    // Stored history/backtests are keyed by normalizeStockSymbol (trim + strip
+    // whitespace + uppercase), so ' aapl ' and 'AAPL' are the same stored row.
+    const picks = [{ symbol: ' aapl ' }, { symbol: 'AAPL' }, ...Array.from({ length: 4 }, (_, i) => ({ symbol: `T${i}` }))];
+    const targets = selectStockAnalysisTargets(picks, DEFAULTS, { isPro: true });
+    assert.deepEqual(symbolsOf(targets), [' aapl ', 'T0', 'T1', 'T2', 'T3']);
+  });
+
   it('free tier with empty watchlist falls back to the first 4 analysable defaults', () => {
     const targets = selectStockAnalysisTargets([], DEFAULTS, { isPro: false });
     assert.deepEqual(symbolsOf(targets), ['AAPL', 'MSFT', 'NVDA', 'GOOGL']);

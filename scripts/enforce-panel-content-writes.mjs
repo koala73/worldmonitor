@@ -139,8 +139,6 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/LatestBriefPanel.ts :: this.content.appendChild(…) x1',
   'src/components/LiveNewsPanel.ts :: setTrustedHtml(this.content, …) x3',
   'src/components/LiveNewsPanel.ts :: this.content.appendChild(…) x3',
-  'src/components/LiveWebcamsPanel.ts :: setTrustedHtml(this.content, …) x2',
-  'src/components/LiveWebcamsPanel.ts :: this.content.appendChild(…) x3',
   'src/components/ProgressChartsPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/ProgressChartsPanel.ts :: setTrustedHtml(this.content, …) x1',
   'src/components/ProgressChartsPanel.ts :: this.content.appendChild(…) x3',

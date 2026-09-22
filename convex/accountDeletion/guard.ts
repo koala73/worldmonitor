@@ -20,6 +20,9 @@ export async function assertAccountWritable(
   userId: string,
 ): Promise<void> {
   if (await isAccountDeleting(ctx, userId)) {
-    throw new ConvexError("ACCOUNT_DELETION_IN_PROGRESS");
+    // Object data: Convex's HTTP client drops string-data `errorData`, so an
+    // Edge caller saw an opaque "Server Error" and retried it as a transient
+    // 503 (WORLDMONITOR-PD). `kind` routes via api/_convex-error.js.
+    throw new ConvexError({ kind: "ACCOUNT_DELETION_IN_PROGRESS" });
   }
 }

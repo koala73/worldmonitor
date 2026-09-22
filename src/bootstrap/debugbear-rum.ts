@@ -18,6 +18,7 @@ export const DEBUGBEAR_RUM_HOSTS = new Set([
 ]);
 
 import type { BootstrapTransferRumSample } from './bootstrap-transfer-rum';
+import { whenUrlFreeOfSensitiveParams } from '../../shared/sensitive-url-params';
 
 type DebugBearRumEvent =
   | ['presampling', number]
@@ -54,17 +55,21 @@ function loadDebugBearRumScript(): void {
   if ('fetchPriority' in script) {
     script.fetchPriority = 'low';
   }
-  script.onerror = () => {
-    removeErrorListeners?.();
-    const queue = window.dbbRum;
-    if (Array.isArray(queue)) {
-      for (let i = queue.length - 1; i >= 0; i--) {
-        if (queue[i]?.[0] === 'error' || queue[i]?.[0] === 'unhandledrejection') queue.splice(i, 1);
-      }
-    }
-    debugBearRumStarted = false;
-  };
+  script.onerror = abandonDebugBearRum;
   document.head.appendChild(script);
+}
+
+/** Drop the pre-script error buffer and listeners when the collector will
+ * never run (load failure, or a URL that never sheds its sensitive params). */
+function abandonDebugBearRum(): void {
+  removeErrorListeners?.();
+  const queue = window.dbbRum;
+  if (Array.isArray(queue)) {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (queue[i]?.[0] === 'error' || queue[i]?.[0] === 'unhandledrejection') queue.splice(i, 1);
+    }
+  }
+  debugBearRumStarted = false;
 }
 
 export function initDebugBearRum(): void {
@@ -93,7 +98,11 @@ export function initDebugBearRum(): void {
     removeErrorListeners = undefined;
   };
 
-  loadDebugBearRumScript();
+  // The collector reads location.search/href once, when it evaluates, and
+  // has no redaction hook. Referral, invite, checkout-intent and Clerk params
+  // have deferred readers that remove them, so hold the script until they
+  // are gone rather than strip them from under their consumers.
+  whenUrlFreeOfSensitiveParams(() => window.location.href, loadDebugBearRumScript, abandonDebugBearRum);
 }
 
 export function isDebugBearRumActive(): boolean {

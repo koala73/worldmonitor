@@ -171,7 +171,7 @@ const ANALYSIS_CACHE_STATUS_PROPERTIES = {
   unavailable_inputs: {
     type: 'array',
     items: { type: 'string' },
-    description: 'Required cache keys that were missing or unreadable; their contribution is not treated as quiet.',
+    description: 'Required cache keys whose data was missing, unreadable, or withheld from redistribution; their contribution is not treated as quiet.',
   },
   failed_inputs: {
     type: 'array',
@@ -886,15 +886,22 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         payloads: [riskScores, surges, cableHealth, outages, temporal, thermal, stress, historyPayload],
         freshness,
       } = await readCachesWithFreshness(keys, checks);
+      const redistributableSurges = hasRedistributableProviderAttribution(
+        (surges as { sourceVersion?: unknown } | null)?.sourceVersion,
+      ) ? surges : null;
+      if (surges !== null && redistributableSurges === null) {
+        freshness.stale = true;
+        freshness.unavailable_inputs.push('military:surges:v1');
+      }
       requireAnyInput(
-        [riskScores, surges, cableHealth, outages, temporal, thermal, stress],
+        [riskScores, redistributableSurges, cableHealth, outages, temporal, thermal, stress],
         freshness,
         'No digest input feeds are available',
       );
 
       const now = Date.now();
       const digest = buildAlertDigest(
-        buildDigestInputs({ riskScores, surges, cableHealth, outages, temporal, thermal, stress }),
+        buildDigestInputs({ riskScores, surges: redistributableSurges, cableHealth, outages, temporal, thermal, stress }),
         now,
       );
 

@@ -934,7 +934,11 @@
         "space": "VILÁGŰR"
       },
       "play": "Lejátszás",
-      "previewStatus": "Élő előnézet"
+      "previewStatus": "Készen áll a lejátszásra",
+      "connecting": "Csatlakozás…",
+      "unverified": "Nem tudjuk megerősíteni, hogy ez az élő közvetítés",
+      "offline": "{{city}} jelenleg offline",
+      "noFeeds": "Ebben a régióban jelenleg nincsenek élő webkamerák"
     },
     "pinnedWebcams": {
       "pinFromMap": "Rögzítsen egy webkamerát a térképről"

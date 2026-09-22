@@ -926,7 +926,11 @@
     "webcams": {
       "paused": "Webcams paused",
       "play": "Play",
-      "previewStatus": "Live preview",
+      "previewStatus": "Ready to play",
+      "connecting": "Connecting…",
+      "unverified": "Can’t confirm this stream is live",
+      "offline": "{{city}} is offline right now",
+      "noFeeds": "No live webcams in this region right now",
       "regions": {
         "all": "ALL",
         "mideast": "MIDEAST",

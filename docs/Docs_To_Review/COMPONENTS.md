@@ -214,7 +214,7 @@ const map = new DeckGLMap(container, initialState);
 #### Rendering Stack
 
 Built on **MapLibre GL JS** (`maplibregl.Map`) with a **deck.gl** overlay
-(`MapboxOverlay` from `@deck.gl/mapbox`). The following deck.gl layer types
+(`MapLibreOverlay` from `@deck.gl/maplibre`). The following deck.gl layer types
 are used:
 
 - `GeoJsonLayer` — country polygons, cables, pipelines, waterways

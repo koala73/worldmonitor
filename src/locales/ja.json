@@ -862,7 +862,11 @@
         "space": "宇宙"
       },
       "play": "再生",
-      "previewStatus": "ライブプレビュー"
+      "previewStatus": "再生準備完了",
+      "connecting": "接続中…",
+      "unverified": "このストリームがライブ配信中であることを確認できません",
+      "offline": "{{city}} は現在オフラインです",
+      "noFeeds": "この地域に現在ライブウェブカメラがありません"
     },
     "positiveNewsFeed": {
       "noStories": "このカテゴリにはまだ記事がありません"

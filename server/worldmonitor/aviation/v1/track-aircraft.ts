@@ -61,6 +61,17 @@ function isDegenerateBbox(req: TrackAircraftRequest): boolean {
     return req.swLat === req.neLat && req.swLon === req.neLon;
 }
 
+// The Wingbits relay tiles a viewport into 30-degree areas and rejects more
+// than 36 (scripts/ais-relay.cjs WINGBITS_MAX_VIEWPORT_AREAS). Expects the
+// clamped, sorted viewport trackAircraft builds.
+const RELAY_TILE_DEGREES = 30;
+const RELAY_MAX_VIEWPORT_AREAS = 36;
+function exceedsRelayAreaLimit(req: TrackAircraftRequest): boolean {
+    const latTiles = Math.max(1, Math.ceil((req.neLat - req.swLat) / RELAY_TILE_DEGREES));
+    const lonTiles = Math.max(1, Math.ceil((req.neLon - req.swLon) / RELAY_TILE_DEGREES));
+    return latTiles * lonTiles > RELAY_MAX_VIEWPORT_AREAS;
+}
+
 interface OpenSkyResponse {
     states?: unknown[][];
 }
@@ -127,6 +138,12 @@ export async function trackAircraft(
     const lon1 = Math.max(-180, Math.min(180, req.swLon));
     const lon2 = Math.max(-180, Math.min(180, req.neLon));
     req = { ...req, icao24, callsign, swLat: Math.min(lat1, lat2), neLat: Math.max(lat1, lat2), swLon: Math.min(lon1, lon2), neLon: Math.max(lon1, lon2) };
+    // An oversized viewport gets an empty answer, not a 4xx: the client's
+    // track breaker opens after two failures and would blank the flights
+    // layer for five minutes after one zoom-out. Identifier lookups keep their
+    // own provider tiers.
+    const oversizedViewport = exceedsRelayAreaLimit(req);
+    if (oversizedViewport && !icao24 && !callsign) return { positions: [], source: 'none', updatedAt: Date.now() };
     if (icao24 || callsign) await admitIdentifierLookup(ctx.request);
 
     const redistributableOnly = requiresRedistributableProviders(ctx.request);
@@ -171,7 +188,7 @@ export async function trackAircraft(
                 // absent query params to 0 rather than leaving them null, so an icao24-only
                 // request would otherwise issue a real authenticated bbox relay call for
                 // `lamin=0&lomin=0&lamax=0&lomax=0` before reaching its own 8s tier.
-                if (!isCallsignOnly && relayBase && !isDegenerateBbox(req)) {
+                if (!isCallsignOnly && relayBase && !isDegenerateBbox(req) && !oversizedViewport) {
                     const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
                     try {
                         const wbResp = await fetch(wbUrl, {
@@ -182,6 +199,9 @@ export async function trackAircraft(
                             const wbData = await wbResp.json() as WingbitsRelayResponse;
                             return { positions: wbData.positions ?? [], source: 'wingbits' };
                         }
+                        // Invalid/admission/auth requests are not provider outages.
+                        if (wbResp.status >= 400 && wbResp.status < 500
+                            && wbResp.status !== 408 && wbResp.status !== 429) return null;
                     } catch (err) {
                         // sentry-coverage-ok: provider failure is expected here and the bounded OpenSky fallback owns recovery.
                         console.warn(`[Aviation] Wingbits bbox relay failed: ${err instanceof Error ? err.message : err}`);

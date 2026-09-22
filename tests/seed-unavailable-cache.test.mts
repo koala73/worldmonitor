@@ -163,6 +163,35 @@ it('preserves a valid empty crypto sector collection', async () => {
   assert.deepEqual(await response.json(), { sectors: [] });
 });
 
+it('keeps a partial oil snapshot over a failed section read out of HTTP caches', async () => {
+  // One errored section (SPR 503) with the other keys hitting must not look
+  // like "SPR does not exist": the partial body carries a fresh updatedAt but
+  // must be no-store so the slow-tier cache cannot persist the partial lie.
+  const key = 'economic:crude-inventories:v1';
+  cache.set(key, { weeks: [{ period: '2026-09-01', stocksMb: 440 }] });
+  const sprUrl = 'https://cache-redis.invalid/get/economic%3Aspr%3Av1';
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: unknown, init?: unknown) => {
+    if (String(input) === sprUrl) return new Response('', { status: 503 });
+    return (realFetch as typeof fetch)(input as never, init as never);
+  }) as typeof fetch;
+  try {
+    mode = 'hit';
+    const partial = await request('economic/v1/get-oil-inventories');
+    assertNoStore(partial);
+    const partialBody = await partial.json();
+    assert.equal(partialBody.crudeWeeks[0].stocksMb, 440);
+    assert.equal(partialBody.spr, undefined);
+    // The absent section is UNKNOWN, not empty, so the snapshot must not claim
+    // an as-of-now freshness the failed read cannot support. The no-store
+    // header stops HTTP caches; blanking updatedAt is what tells the caller,
+    // matching the two sibling failure branches in the same handler.
+    assert.equal(partialBody.updatedAt, '', 'a partial snapshot must not claim a fresh timestamp');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 it('keeps an oil mapping exception out of HTTP caches without a fresh timestamp', async () => {
   mode = 'hit';
   cache.set('economic:crude-inventories:v1', { weeks: [null] });
@@ -176,7 +205,7 @@ const requiredCases = [
   ['intelligence/v1/get-social-velocity', 'intelligence:social:reddit:v1', { posts: [], fetchedAt: 123 }, 'posts'],
   ['intelligence/v1/list-cross-source-signals', 'intelligence:cross-source-signals:v1', { signals: [] }, 'signals'],
   ['intelligence/v1/list-satellites', 'intelligence:satellites:tle:v1', { satellites: [] }, 'satellites'],
-  ['intelligence/v1/list-security-advisories', 'intelligence:advisories:v1', { advisories: [] }, 'advisories'],
+  ['intelligence/v1/list-security-advisories', 'intelligence:advisories:v1', { advisories: [], byCountry: {} }, 'advisories'],
   ['seismology/v1/list-earthquakes', 'seismology:earthquakes:v1', { earthquakes: [] }, 'earthquakes'],
   ['unrest/v1/list-unrest-events', 'unrest:events:v1', { events: [] }, 'events'],
   ['market/v1/get-sector-summary', 'market:sectors:v2', { sectors: [] }, 'sectors'],

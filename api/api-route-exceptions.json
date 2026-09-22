@@ -656,6 +656,13 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
+    {
+      "path": "api/notification-suppressions.js",
+      "category": "internal-helper",
+      "reason": "Anonymous operator incident-control read for the service worker: serves the Redis notification link-suppression set (blocked URLs/hosts) so already-delivered push payloads stop navigating on click. Kept outside sebuf because the SW consults it via a plain GET with no auth context at click time, and the shape is an unversioned incident snapshot rather than a typed domain RPC.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
 
     {
       "path": "api/bootstrap.js",
