@@ -86,6 +86,98 @@ describe('parseRssXml carries the RSS <source> element (#6430)', () => {
   });
 });
 
+describe('parseRssXml publisher-link gate (#8398)', () => {
+  it('blanks a digest link that leaves its publisher domain while keeping the title signal', () => {
+    const xml = rss(`<item>
+      <title>Oil prices climb as supply concerns mount</title>
+      <link>https://evil.example/phish</link>
+      <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
+      <source url="https://www.spglobal.com">S&amp;P Global</source>
+    </item>`);
+    const parsed = parseRssXml(xml, FEED, 'full');
+    assert.ok(parsed && parsed.items.length === 1);
+    assert.equal(parsed.items[0]!.link, '');
+    // Title signal survives: corroboration/brief still see the story.
+    assert.equal(parsed.items[0]!.title, 'Oil prices climb as supply concerns mount');
+  });
+
+  it('keeps a digest link on the trusted origin publisher domain', () => {
+    const xml = rss(`<item>
+      <title>Oil prices climb as supply concerns mount</title>
+      <link>https://www.spglobal.com/commodityinsights/en/market-insights/x</link>
+      <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
+      <source url="https://www.spglobal.com">S&amp;P Global</source>
+    </item>`);
+    const parsed = parseRssXml(xml, FEED, 'full');
+    assert.ok(parsed && parsed.items.length === 1);
+    assert.equal(parsed.items[0]!.link, 'https://www.spglobal.com/commodityinsights/en/market-insights/x');
+  });
+
+  it('keeps a digest link on the feed URL host', () => {
+    const direct = { url: 'https://feeds.npr.org/1001/rss.xml', name: 'NPR News', lang: 'en' };
+    const xml = rss(`<item>
+      <title>NPR headline about a newsworthy event</title>
+      <link>https://feeds.npr.org/story/x</link>
+      <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
+    </item>`);
+    const parsed = parseRssXml(xml, direct, 'full');
+    assert.ok(parsed && parsed.items.length === 1);
+    assert.equal(parsed.items[0]!.link, 'https://feeds.npr.org/story/x');
+  });
+
+  it('keeps a WSJ digest link on the publisher apex, not the delivery host (#8398 review)', () => {
+    // The WSJ feed URL is a Dow Jones delivery host
+    // (feeds.content.dowjones.io) but item links point at wsj.com. The
+    // feed-host leg alone would blank every WSJ link; the domain-only
+    // 'wsj' family carries the apex allowance.
+    const wsj = { url: 'https://feeds.content.dowjones.io/public/rss/RSSUSnews', name: 'Wall Street Journal', lang: 'en' };
+    const xml = rss(`<item>
+      <title>Markets rally on trade optimism</title>
+      <link>https://www.wsj.com/articles/markets-rally-x</link>
+      <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
+    </item>`);
+    const parsed = parseRssXml(xml, wsj, 'full');
+    assert.ok(parsed && parsed.items.length === 1);
+    assert.equal(parsed.items[0]!.link, 'https://www.wsj.com/articles/markets-rally-x');
+  });
+
+  it('drops a country-pool item whose link leaves its publisher domain', () => {
+    // Six same-host items: five fill the digest window, the sixth lands in
+    // the country pool, then the hostile seventh is dropped by the
+    // country-pool branch of the gate.
+    const good = (n: number) =>
+      `<item><title>Headline ${n} about Kenya talks</title><link>https://feeds.npr.org/kenya-${n}</link><pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate></item>`;
+    const xml = rss(
+      good(1) + good(2) + good(3) + good(4) + good(5) + good(6)
+        + `<item><title>Late hostile headline about Kenya talks</title><link>https://evil.example/phish</link><pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate></item>`,
+    );
+    const direct = { url: 'https://feeds.npr.org/1001/rss.xml', name: 'NPR News', lang: 'en' };
+    const parsed = parseRssXml(xml, direct, 'full');
+    assert.ok(parsed);
+    assert.deepEqual((parsed.countryItems ?? []).map(item => item.link), [
+      'https://feeds.npr.org/kenya-6',
+    ]);
+  });
+
+  it('does not let an untrusted RSS <source> attest a foreign link', () => {
+    const xml = rss(`<item>
+      <title>Oil prices climb as supply concerns mount</title>
+      <link>https://www.spglobal.com/x</link>
+      <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
+      <source>S&amp;P Global</source>
+    </item>`);
+    const parsed = parseRssXml(
+      xml,
+      { url: 'https://ordinary.example/rss.xml', name: 'Ordinary Feed' },
+      'full',
+    );
+    assert.ok(parsed && parsed.items.length === 1);
+    // The untrusted <source> cannot self-attest spglobal.com, and the feed
+    // host (ordinary.example) does not match either — link is blanked.
+    assert.equal(parsed.items[0]!.link, '');
+  });
+});
+
 describe('publisherFamilyFor resolves curated publisher names (#6430)', () => {
   it('folds an origin NAME into the family of the labels it syndicates through', () => {
     assert.equal(publisherFamilyFor('Reuters'), publisherFamilyFor('Reuters Energy'));

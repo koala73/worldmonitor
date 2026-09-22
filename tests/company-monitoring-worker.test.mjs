@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { ConvexHttpClient } from 'convex/browser';
+import { __testing__ as healthApi } from '../api/health.js';
+import { findOperationalProblems, findPendingDiagnostics } from '../scripts/check-seed-freshness.mjs';
 
 import {
   COMPANY_MONITORING_CLASSIFIER_RUNTIME_APPROVED,
@@ -687,5 +690,213 @@ describe('company monitoring worker health projection', () => {
     for (const body of bodies) {
       assert.equal(body.some((command) => command[1] === COMPANY_MONITORING_WORKER_ACTIVATION_KEY), false);
     }
+  });
+});
+
+describe('company monitoring claim failure resilience', () => {
+  const baseline = 1_800_000_000_000;
+  const timeout = () => new DOMException('private request details', 'TimeoutError');
+  const success = (value) => new Response(JSON.stringify({ status: 'success', value }));
+
+  function fixture(responses, options = {}) {
+    let now = baseline;
+    let meta;
+    let payload;
+    const logs = [];
+    const client = new ConvexHttpClient('https://fixture.convex.cloud', {
+      logger: false,
+      fetch: createConvexFetch(async () => {
+        assert.ok(responses.length, 'unexpected request');
+        const response = responses.shift();
+        if (response instanceof Error) throw response;
+        return response instanceof Response ? response : success(response);
+      }),
+    });
+    const publishHealth = createRedisHealthPublisher({
+      env: { UPSTASH_REDIS_REST_URL: 'https://fixture.invalid', UPSTASH_REDIS_REST_TOKEN: 'private-token' },
+      now: () => now,
+      fetchImpl: async (_url, init) => {
+        const commands = JSON.parse(init.body);
+        payload = commands[0][2];
+        meta = JSON.parse(commands[1][2]);
+        return { ok: true, json: async () => commands.map(() => ({ result: 'OK' })) };
+      },
+    });
+    const worker = createCompanyMonitoringWorker({
+      client, secret: 'private-secret', workerId: 'private-worker',
+      publishHealth, now: () => now, logger: { warn: (...args) => logs.push(args) },
+      ...options,
+    });
+    return {
+      worker, logs,
+      setNow: (value) => { now = value; },
+      read: ({ missingPayload = false, patchMeta = {} } = {}) => {
+        const entry = healthApi.classifyKey('companyMonitoringWorker', COMPANY_MONITORING_WORKER_HEALTH_KEY,
+          { allowOnDemand: true }, {
+            keyStrens: new Map([[COMPANY_MONITORING_WORKER_HEALTH_KEY, missingPayload ? 0 : payload.length]]),
+            keyErrors: new Map(), keyMetaErrors: new Map(),
+            keyMetaValues: new Map([[COMPANY_MONITORING_WORKER_META_KEY, JSON.stringify({ ...meta, ...patchMeta })]]),
+            activationStates: new Map([['companyMonitoringWorker', true]]), now,
+          });
+        const bucket = healthApi.healthStatusBucket(entry, now);
+        const status = healthApi.computeOverallStatus({
+          warn: bucket === 'warn' ? 1 : 0, crit: bucket === 'crit' ? 1 : 0,
+          onDemandWarn: 0, containedWarn: 0,
+        }, 292).overall;
+        const compact = healthApi.buildCompactVerdictSnapshot({
+          status, summary: {}, checkedAt: new Date(now).toISOString(),
+          checks: { companyMonitoringWorker: entry },
+        });
+        return { entry, status, compact, meta };
+      },
+    };
+  }
+
+  it('keeps a transient claim failure visible as pending and clears it on genuine recovery', async () => {
+    const f = fixture([{ status: 'disabled' }, timeout(), { status: 'disabled' }]);
+    await f.worker.tick();
+    assert.equal(f.read().status, 'HEALTHY');
+    f.setNow(baseline + 5_000);
+    await f.worker.tick();
+    const pending = f.read();
+    assert.equal(pending.status, 'HEALTHY');
+    assert.equal(pending.entry.status, 'SEED_ERROR');
+    assert.equal(pending.compact.problems, undefined);
+    assert.deepEqual(pending.compact.pending.companyMonitoringWorker, pending.entry);
+    assert.deepEqual(findOperationalProblems(pending.compact, baseline + 5_000), []);
+    assert.equal(findPendingDiagnostics(pending.compact, baseline + 5_000).length, 1);
+    assert.deepEqual(pending.entry.workerControl.subsystems.scan.claimFailure, {
+      kind: 'timeout', httpStatus: null, consecutiveFailures: 1, lastHealthyAt: baseline,
+    });
+    assert.equal(pending.entry.workerControlPendingUntil, new Date(baseline + 300_000).toISOString());
+    assert.equal(pending.meta.counters.claims, 0);
+    assert.equal(pending.meta.counters.claimErrors, 1);
+    assert.equal(JSON.stringify([pending, f.logs]).includes('private-'), false);
+    assert.equal(JSON.stringify(f.logs).includes('timeout'), true);
+    f.setNow(baseline + 10_000);
+    await f.worker.tick();
+    assert.equal(f.read().entry.status, 'OK');
+    assert.equal(f.read().compact.pending, undefined);
+  });
+
+  it('warns on the third consecutive failure even if its category changes, and resets after success', async () => {
+    const f = fixture([
+      { status: 'idle' }, timeout(), new Response('private-body', { status: 503 }),
+      new TypeError('private-network', { cause: { code: 'ECONNRESET' } }),
+      { status: 'idle' }, timeout(),
+    ]);
+    await f.worker.tick();
+    for (let i = 1; i <= 3; i += 1) {
+      f.setNow(baseline + i * 5_000);
+      await f.worker.tick();
+      const read = f.read();
+      assert.equal(read.status, i < 3 ? 'HEALTHY' : 'WARNING');
+      assert.equal(read.entry.workerControl.subsystems.scan.claimFailure.consecutiveFailures, i);
+      if (i === 2) assert.equal(read.entry.workerControl.subsystems.scan.claimFailure.httpStatus, 503);
+    }
+    await f.worker.tick();
+    await f.worker.tick();
+    assert.equal(f.read().status, 'HEALTHY');
+    assert.equal(f.read().entry.workerControl.subsystems.scan.claimFailure.consecutiveFailures, 1);
+  });
+
+  it('expires pending from the original healthy clock in live and cached reads', async () => {
+    const f = fixture([{ status: 'idle' }, timeout(), timeout()]);
+    await f.worker.tick();
+    f.setNow(baseline + 280_000);
+    await f.worker.tick();
+    const { compact, entry } = f.read();
+    assert.equal(healthApi.snapshotTtlSeconds(compact, baseline + 280_000), 20);
+    f.setNow(baseline + 300_000);
+    assert.equal(healthApi.hasExpiredActivationGrace(compact, baseline + 300_000), true);
+    assert.equal(findOperationalProblems(compact, baseline + 300_000).length, 1);
+    assert.equal(healthApi.healthStatusBucket(entry, baseline + 300_000), 'warn');
+    assert.equal(f.read().status, 'WARNING');
+    await f.worker.tick();
+    assert.equal(f.read().status, 'WARNING', 'a new failed heartbeat must not renew the baseline');
+  });
+
+  it('does not grant pending without a baseline, a payload, or valid success evidence', async () => {
+    const startup = fixture([timeout()]);
+    await startup.worker.tick();
+    assert.equal(startup.read().status, 'WARNING');
+    const f = fixture([{ status: 'idle' }, timeout()]);
+    await f.worker.tick();
+    f.setNow(baseline + 5_000);
+    await f.worker.tick();
+    assert.notEqual(f.read({ missingPayload: true }).status, 'HEALTHY');
+    assert.equal(f.read({ patchMeta: { observedAt: baseline + 6_000, fetchedAt: baseline + 6_000 } }).status, 'WARNING');
+    assert.equal(f.read({ patchMeta: { observedAt: baseline + 4_000 } }).status, 'WARNING');
+    for (const lastHealthyAt of [null, '1800000000000', baseline + 6_000, -1]) {
+      const meta = f.read().meta;
+      const scan = meta.subsystems.scan;
+      assert.equal(f.read({ patchMeta: { subsystems: {
+        ...meta.subsystems, scan: { ...scan, claimFailure: { ...scan.claimFailure, lastHealthyAt } },
+      } } }).status, 'WARNING');
+    }
+    const meta = f.read().meta;
+    const scan = meta.subsystems.scan;
+    for (const invalid of [
+      { consecutiveFailures: null }, { consecutiveFailures: '1' }, { consecutiveFailures: 0 },
+      { kind: 'unexpected' }, { kind: 'http_transient', httpStatus: 401 },
+      { kind: 'network', httpStatus: 401 }, { httpStatus: 'private-status' }, { httpStatus: 999 },
+    ]) {
+      assert.equal(f.read({ patchMeta: { subsystems: {
+        ...meta.subsystems, scan: { ...scan, claimFailure: { ...scan.claimFailure, ...invalid } },
+      } } }).status, 'WARNING');
+    }
+    const entry = f.read().entry;
+    for (const patch of [
+      { records: 0 }, { maxStaleMin: 10 },
+      { workerControlPendingUntil: new Date(baseline + 600_000).toISOString() },
+      { workerControlPendingUntil: 'bad' },
+      { workerControl: { ...entry.workerControl, status: 'ok' } },
+    ]) {
+      assert.equal(findOperationalProblems({ status: 'HEALTHY', pending: {
+        companyMonitoringWorker: { ...entry, ...patch },
+      } }, baseline + 5_000).length, 1);
+    }
+  });
+
+  it('keeps permanent, malformed and unknown claim failures immediate until a healthy result', async () => {
+    for (const failure of [
+      new Response('private-auth', { status: 401 }), new Response('private-auth', { status: 403 }),
+      new Response('private-bad-request', { status: 400 }), new Response('not-json'),
+      new Response(JSON.stringify({ status: 'error', errorMessage: 'private-function-error' }), { status: 560 }),
+      { status: 'unexpected', secret: 'private-secret' }, new Error('private-unknown'),
+    ]) {
+      const f = fixture([{ status: 'idle' }, failure, timeout(), { status: 'idle' }, timeout()]);
+      await f.worker.tick();
+      await f.worker.tick();
+      assert.equal(f.read().status, 'WARNING');
+      await f.worker.tick();
+      assert.equal(f.read().status, 'WARNING', 'a transient error cannot erase an earlier hard failure');
+      await f.worker.tick();
+      await f.worker.tick();
+      assert.equal(f.read().status, 'HEALTHY');
+      assert.equal(JSON.stringify(f.logs).includes('private-'), false);
+    }
+  });
+
+  it('never softens scan or admission finalization failures', async () => {
+    const scan = fixture([{ status: 'idle' }, CLAIM, timeout(), timeout()], {
+      executeClaim: async () => COMPLETE_RESULT,
+    });
+    await scan.worker.tick();
+    await scan.worker.tick();
+    assert.equal(scan.read().entry.workerControl.outcome, 'finalize_error');
+    assert.equal(scan.read().status, 'WARNING');
+    await scan.worker.tick();
+    assert.equal(scan.read().status, 'WARNING');
+
+    const admission = fixture([{ status: 'idle' }, ADMISSION_CLAIM, timeout(), timeout()], {
+      executeAdmission: async () => ({ requestedModelVersion: 'v1', modelVersion: 'v1', modelOutput: '{}' }),
+      admissionModelVersion: 'v1',
+    });
+    await admission.worker.tick();
+    await admission.worker.admissionTick();
+    await admission.worker.tick();
+    assert.equal(admission.read().status, 'WARNING');
+    assert.equal(admission.read().entry.workerControlPendingUntil, undefined);
   });
 });

@@ -389,6 +389,33 @@ describe('reverse-geocode cache identity helper', () => {
 });
 
 describe('browser reverse-geocode memoization', () => {
+  for (const failure of [502, 500, 429, 503, 'network', 'json', 'malformed', 'error'] as const) {
+    it(`retries after ${failure} instead of caching a missing country`, async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls++;
+        if (calls > 1) return json({ country: 'Canada', code: 'CA' });
+        if (typeof failure === 'number') return new Response('', { status: failure });
+        if (failure === 'network') throw new Error('offline');
+        if (failure === 'json') return new Response('{');
+        if (failure === 'error') return json({ country: '', code: '', error: 'unavailable' });
+        return json({});
+      }) as typeof fetch;
+      assert.equal(await reverseGeocodeBrowser(49, -97), null);
+      assert.equal((await reverseGeocodeBrowser(49, -97))?.code, 'CA');
+      assert.equal((await reverseGeocodeBrowser(49, -97))?.code, 'CA');
+      assert.equal(calls, 2, 'successful retry is memoized');
+    });
+  }
+
+  it('memoizes a successful empty country result', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => { calls++; return json({ country: '', code: '', error: '' }); }) as typeof fetch;
+    assert.equal(await reverseGeocodeBrowser(0, 0), null);
+    assert.equal(await reverseGeocodeBrowser(0, 0), null);
+    assert.equal(calls, 1);
+  });
+
   it('does not reuse a former 0.1-degree cell across a country border', async () => {
     const urls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -416,5 +443,36 @@ describe('browser reverse-geocode memoization', () => {
       displayName: 'Manitoba, Canada',
     });
     assert.equal(urls.length, 2, 'each side of the border must miss the in-memory cell cache');
+  });
+
+  it('does not memoize retryable HTTP failures or thrown fetches', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response('bad gateway', { status: 502 });
+      if (calls === 2) throw new Error('network down');
+      return json({ country: 'Canada', code: 'CA', displayName: 'Canada' });
+    }) as typeof fetch;
+
+    assert.equal(await reverseGeocodeBrowser(10.123, 20.456), null);
+    assert.equal(await reverseGeocodeBrowser(10.123, 20.456), null);
+    assert.deepEqual(await reverseGeocodeBrowser(10.123, 20.456), {
+      country: 'Canada',
+      code: 'CA',
+      displayName: 'Canada',
+    });
+    assert.equal(calls, 3);
+  });
+
+  it('still memoizes a genuine 200 with no country', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return json({ country: '', code: '' });
+    }) as typeof fetch;
+
+    assert.equal(await reverseGeocodeBrowser(1.234, 2.345), null);
+    assert.equal(await reverseGeocodeBrowser(1.234, 2.345), null);
+    assert.equal(calls, 1);
   });
 });

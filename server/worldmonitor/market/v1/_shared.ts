@@ -1,6 +1,7 @@
 /**
  * Shared helpers, types, and constants for the market service handler RPCs.
  */
+import { normalizeStockSymbol } from '../../../../shared/stock-symbol';
 import { CHROME_UA } from '../../../_shared/constants';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 export { getRelayBaseUrl, getRelayHeaders };
@@ -15,7 +16,7 @@ export { parseStringArray } from '../../../_shared/parse-string-array';
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 export function sanitizeSymbol(raw: string): string {
-  return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
+  return normalizeStockSymbol(raw);
 }
 
 // The Yahoo-only symbol list that used to live here was dead after #1684 (the

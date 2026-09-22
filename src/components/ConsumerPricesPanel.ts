@@ -124,7 +124,7 @@ export class ConsumerPricesPanel extends Panel {
   private inflationLoading = false;
   private inflationFilter = '';
   private settings: PanelSettings = loadSettings();
-  private requestGeneration = 0;
+  private fetchGeneration = 0;
   private activeRequestKey: string | null = null;
 
   // CMD+K deep-link: switch to the requested tab (e.g. World) when opened via
@@ -154,7 +154,7 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public destroy(): void {
-    this.requestGeneration++;
+    this.fetchGeneration++;
     this.activeRequestKey = null;
     if (typeof window !== 'undefined') {
       window.removeEventListener(OPEN_TAB_EVENT, this.openTabHandler);
@@ -239,44 +239,59 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   public async fetchData(): Promise<void> {
-    const { market, basket, range } = this.settings;
-    const requestKey = JSON.stringify([market, basket, range]);
+    const captured = {
+      market: this.settings.market,
+      basket: this.settings.basket,
+      range: this.settings.range,
+    };
+    const requestKey = JSON.stringify([captured.market, captured.basket, captured.range]);
     if (this.activeRequestKey === requestKey) return;
-    const generation = ++this.requestGeneration;
+    const generation = ++this.fetchGeneration;
     this.activeRequestKey = requestKey;
     this.showLoading();
 
+    const stillCurrent = (): boolean => (
+      generation === this.fetchGeneration
+      && this.element?.isConnected === true
+      && this.settings.market === captured.market
+      && this.settings.basket === captured.basket
+      && this.settings.range === captured.range
+    );
+
     try {
-      if (market === 'all') {
+      if (captured.market === 'all') {
         const results = await fetchAllMarketsOverview();
-        if (generation !== this.requestGeneration || !this.element?.isConnected) return;
+        if (!stillCurrent()) return;
         this.allMarkets = results;
-      } else {
-        const [overview, categories, movers, spread, freshness] = await Promise.all([
-          fetchConsumerPriceOverview(market, basket),
-          fetchConsumerPriceCategories(market, basket, range),
-          fetchConsumerPriceMovers(market, range),
-          fetchRetailerPriceSpreads(market, basket),
-          fetchConsumerPriceFreshness(market),
-        ]);
-        if (generation !== this.requestGeneration || !this.element?.isConnected) return;
-        this.overview = overview;
-        this.categories = categories;
-        this.movers = movers;
-        this.spread = spread;
-        this.freshness = freshness;
-        if ([overview, categories, movers, spread, freshness].some((response) => response.upstreamUnavailable)) {
-          this.showError(undefined, () => void this.fetchData());
-          return;
-        }
+        this.render();
+        return;
+      }
+
+      const [overview, categories, movers, spread, freshness] = await Promise.all([
+        fetchConsumerPriceOverview(captured.market, captured.basket),
+        fetchConsumerPriceCategories(captured.market, captured.basket, captured.range),
+        fetchConsumerPriceMovers(captured.market, captured.range),
+        fetchRetailerPriceSpreads(captured.market, captured.basket),
+        fetchConsumerPriceFreshness(captured.market),
+      ]);
+
+      if (!stillCurrent()) return;
+      this.overview = overview;
+      this.categories = categories;
+      this.movers = movers;
+      this.spread = spread;
+      this.freshness = freshness;
+      if ([overview, categories, movers, spread, freshness].some((response) => response.upstreamUnavailable)) {
+        this.showError(undefined, () => { void this.fetchData(); });
+        return;
       }
       this.render();
-    } catch {
-      if (generation === this.requestGeneration && this.element?.isConnected) {
-        this.showError(undefined, () => void this.fetchData());
-      }
+    } catch (error) {
+      if (!stillCurrent()) return;
+      console.error('[ConsumerPrices] fetch failed:', error);
+      this.showError(undefined, () => { void this.fetchData(); });
     } finally {
-      if (generation === this.requestGeneration) this.activeRequestKey = null;
+      if (generation === this.fetchGeneration) this.activeRequestKey = null;
     }
   }
 

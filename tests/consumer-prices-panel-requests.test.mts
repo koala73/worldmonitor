@@ -25,7 +25,7 @@ async function harness() {
   (globalThis as any).__priceRequests = (name: string, args: string[]) => new Promise((resolve, reject) => requests.push({ name, args, resolve, reject }));
   const panel = Object.assign(Object.create(ConsumerPricesPanel.prototype), {
     element: { isConnected: true }, settings: { market: 'ae', basket: 'essentials-ae', range: '30d' },
-    loading: false, requestGeneration: 0, activeRequestKey: null,
+    loading: false, fetchGeneration: 0, activeRequestKey: null,
     showLoading() {}, render() { this.renders = (this.renders ?? 0) + 1; },
     showError(_message: string, retry: () => void) { this.retry = retry; },
   });

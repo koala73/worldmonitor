@@ -17,13 +17,12 @@ How to reach World Monitor, by concern. Human-readable version: https://www.worl
 | General support, account or billing issues | support@worldmonitor.app | Primary support channel for all plans |
 | Enterprise, sales, custom quotas | enterprise@worldmonitor.app | Custom pricing, deployments, higher API limits |
 | Bug reports & feature requests | https://github.com/koala73/worldmonitor/issues | Public open-source repository |
-| Community & quick questions | https://discord.gg/re63kWKxaz | Community Discord |
 | Service status & incidents | https://status.worldmonitor.app | Email subscription available on the page |
 | In-app contact form | Form on https://www.worldmonitor.app/pro | Submits `POST /api/leads/v1/submit-contact`; Turnstile-protected, intended for humans in a browser — agents should email support@ instead |
 
 ## Response Expectations
 
-- Free and Pro: best-effort support via email, GitHub and Discord. No formal SLA.
+- Free and Pro: best-effort support via email and GitHub. No formal SLA.
 - API: best-effort support via email; include your key prefix (never the full key) and request IDs.
 - Enterprise: dedicated support with committed response times, agreed per contract — contact enterprise@worldmonitor.app.
 
@@ -43,7 +42,6 @@ How to reach World Monitor, by concern. Human-readable version: https://www.worl
   "support_email": "support@worldmonitor.app",
   "enterprise_email": "enterprise@worldmonitor.app",
   "issues_url": "https://github.com/koala73/worldmonitor/issues",
-  "community_url": "https://discord.gg/re63kWKxaz",
   "status_url": "https://status.worldmonitor.app",
   "security_txt": "https://www.worldmonitor.app/.well-known/security.txt",
   "sla": { "free": "best-effort", "pro": "best-effort", "api": "best-effort", "enterprise": "contracted" }

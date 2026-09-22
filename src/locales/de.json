@@ -1295,9 +1295,6 @@
       "base": "Basis",
       "nuclear": "Nuklear"
     },
-    "community": {
-      "joinDiscussion": "Gestalten Sie mit, was als Nächstes kommt"
-    },
     "threatLabels": {
       "critical": "KRIT",
       "high": "HOCH",
@@ -1852,6 +1849,7 @@
       "etfs": "ETFs",
       "netInflow": "NETTO-ZUFLUSS",
       "netOutflow": "NETTO-ABFLUSS",
+      "netNeutral": "NETTO-NEUTRAL",
       "table": {
         "ticker": "Ticker",
         "issuer": "Emittent",
@@ -2175,7 +2173,7 @@
       "infoTooltip": "<strong>Wirtschaftskalender</strong> Geplante makroökonomische Veröffentlichungen: CPI, NFP, GDP, PMI und Zentralbankentscheidungen. Zeigt Prognose vs. Ist vs. Vorwert. Ereignisse mit hoher Auswirkung hervorgehoben. Quelle: Wirtschaftsdatenanbieter."
     },
     "fsi": {
-      "infoTooltip": "<strong>Finanzstress-Indikator</strong> Kansas City Fed Financial Stress Index (KCFSI): misst Stress an US-Finanzmärkten anhand von 11 Indikatoren, darunter Renditespreads, Volatilität und Kreuzkorrelationen. Positive Werte zeigen überdurchschnittlichen Stress an. Quelle: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Finanzstressindikator</strong> WorldMonitor-Verhältnis von Hochzinsanleihen zu langfristigen US-Staatsanleihen, bereinigt um Aktienvolatilität und den Hochzins-Spread: (HYG / TLT) / (VIX × HY spread / 100). Dies ist nicht der Financial Stress Index der Federal Reserve Bank von Kansas City. Ein Wert von 1.5 oder höher bedeutet niedrigen Stress; unter 0.3 bedeutet hohen Stress.",
       "title": "Finanzstress-Indikator",
       "usFsiValue": "US-FSI-WERT",
       "cissTitle": "EU CISS (systemischer Stressindikator Euroraum)",
