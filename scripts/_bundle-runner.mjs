@@ -36,6 +36,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BUNDLE_COMPLETION_META_KEY_ENV,
+  BUNDLE_SECTION_TIMEOUT_MS_ENV,
   GRACEFUL_FETCH_FAILURE_EXIT_CODE,
   loadEnvFile,
   PUBLISH_BLOCKED_EXIT_CODE,
@@ -371,6 +372,9 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
       env: {
         ...process.env,
         BUNDLE_RUN_STARTED_AT_MS: String(bundleStartedAtMs ?? Date.now()),
+        // Lets runSeed clamp its fetch deadline inside this wall clock so the
+        // graceful path fires before we SIGTERM (#8479).
+        [BUNDLE_SECTION_TIMEOUT_MS_ENV]: String(timeoutMs),
         [BUNDLE_COMPLETION_META_KEY_ENV]: completionMetaKey || '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],

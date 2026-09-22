@@ -1608,6 +1608,26 @@ test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bound
   }
 });
 
+test('injects BUNDLE_SECTION_TIMEOUT_MS env into child as the section timeoutMs (#8479)', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-section-timeout-env.mjs',
+    `console.log('BUNDLE_SECTION_TIMEOUT_MS=' + process.env.BUNDLE_SECTION_TIMEOUT_MS);\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'SECTION_TO', script: '_bundle-fixture-section-timeout-env.mjs', intervalMs: 1, timeoutMs: 12_345 },
+    ]);
+    assert.equal(code, 0);
+    assert.match(
+      stdout,
+      /BUNDLE_SECTION_TIMEOUT_MS=12345/,
+      `expected section timeout env in child stdout; got:\n${stdout}`,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
 test('injects only canonical-clock completion markers into child seeders', async () => {
   const cleanup = writeFixture(
     '_bundle-fixture-completion-env.mjs',

@@ -2348,12 +2348,23 @@ export function findLeakedPrePublishFields(rawData, publishData, ekData, ek = {}
 // converts that hang into a normal rejection, which the existing graceful path
 // turns into exit 75 (TTL extended, last-good served, no data lost).
 //
-// The deadline is tied to lockTtlMs — never a fixed value — because seeders
-// legitimately run from ~1min to 40min. A healthy seeder is designed never to
-// outlive its own lock, so lockTtlMs + margin exceeds any legitimate run; the
-// only thing that trips it is a genuine hang. A false trip is itself graceful
-// (exit 75), so the margin errs generous.
+// The standalone deadline is tied to lockTtlMs — never a fixed value — because
+// seeders legitimately run from ~1min to 40min. A healthy seeder is designed
+// never to outlive its own lock, so lockTtlMs + margin exceeds any legitimate
+// run; the only thing that trips it is a genuine hang. A false trip is itself
+// graceful (exit 75), so the margin errs generous.
+//
+// When spawned as a bundle section, that lock-derived ceiling can outlast the
+// runner's section timeoutMs (#8479). resolveFetchDeadlineMs then clamps the
+// fetch deadline to leave FETCH_PHASE_PUBLISH_RESERVE_MS for publish or
+// graceful cleanup before the runner SIGTERMs.
 export const FETCH_PHASE_DEADLINE_MARGIN_MS = 120_000;
+
+// Time left between the fetch-phase deadline and the bundle section timeout so
+// publish (success) or releaseLock + TTL extend (graceful fetch failure) can
+// finish before `_bundle-runner` sends SIGTERM. Sized to match the headroom
+// already used by education-attainment and cross-strait activity seeders.
+export const FETCH_PHASE_PUBLISH_RESERVE_MS = 30_000;
 
 export function raceFetchDeadline(promise, ms, label) {
   let timer;
@@ -2366,9 +2377,55 @@ export function raceFetchDeadline(promise, ms, label) {
   return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Resolve the fetch-phase wall-clock budget for runSeed.
+ *
+ * Standalone: explicit `fetchPhaseTimeoutMs`, else `lockTtlMs + margin`.
+ * Bundle section: also clamp to `sectionTimeoutMs - publish reserve` so the
+ * graceful path is reachable before the runner's SIGTERM (#8479).
+ *
+ * @param {{
+ *   fetchPhaseTimeoutMs?: number | null,
+ *   lockTtlMs: number,
+ *   sectionTimeoutMs?: number | null,
+ * }} opts
+ * @returns {number}
+ */
+export function resolveFetchDeadlineMs({
+  fetchPhaseTimeoutMs,
+  lockTtlMs,
+  sectionTimeoutMs = null,
+}) {
+  const configured = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
+    ? fetchPhaseTimeoutMs
+    : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
+  if (!Number.isFinite(sectionTimeoutMs) || sectionTimeoutMs <= 0) {
+    return configured;
+  }
+  // A section shorter than the reserve still needs a positive race target so
+  // hang detection fires rather than waiting forever for SIGTERM.
+  const sectionCap = Math.max(1, sectionTimeoutMs - FETCH_PHASE_PUBLISH_RESERVE_MS);
+  return Math.min(configured, sectionCap);
+}
+
 // Set by _bundle-runner for canonical-clock members that need proof that every
 // publish side effect completed. Standalone seed runs leave it unset.
 export const BUNDLE_COMPLETION_META_KEY_ENV = 'WM_BUNDLE_COMPLETION_META_KEY';
+
+// Set by _bundle-runner to the section's timeoutMs so runSeed can clamp its
+// fetch deadline inside the wall clock that will SIGTERM the child (#8479).
+export const BUNDLE_SECTION_TIMEOUT_MS_ENV = 'BUNDLE_SECTION_TIMEOUT_MS';
+
+/**
+ * Section timeoutMs injected by `_bundle-runner` for the current child.
+ * Standalone seed runs leave it unset.
+ *
+ * @returns {number | null}
+ */
+export function getBundleSectionTimeoutMs() {
+  const raw = Number(process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV]);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
 
 export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}) {
   const {
@@ -2615,9 +2672,23 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // Raced against a wall-clock deadline so a non-settling await inside fetchFn
   // (see raceFetchDeadline above, issue #4786) surfaces as a catchable
   // rejection instead of hanging the process into an exit-13 red badge.
-  const fetchDeadlineMs = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
+  // When spawned by the bundle runner, also clamp to the section timeout so
+  // this graceful path fires before the runner's SIGTERM (#8479).
+  const sectionTimeoutMs = getBundleSectionTimeoutMs();
+  const fetchDeadlineMs = resolveFetchDeadlineMs({
+    fetchPhaseTimeoutMs,
+    lockTtlMs,
+    sectionTimeoutMs,
+  });
+  const unconstrainedDeadlineMs = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
     ? fetchPhaseTimeoutMs
     : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
+  if (sectionTimeoutMs != null && fetchDeadlineMs < unconstrainedDeadlineMs) {
+    console.warn(
+      `  [${domain}:${resource}] fetch deadline clamped ${unconstrainedDeadlineMs}ms → ${fetchDeadlineMs}ms `
+      + `to fit bundle section timeout ${sectionTimeoutMs}ms (issue #8479)`,
+    );
+  }
   let data;
   try {
     data = await raceFetchDeadline(
