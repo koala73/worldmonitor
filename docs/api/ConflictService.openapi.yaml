@@ -238,8 +238,8 @@ paths:
                             example:
                                 "events":
                                     - "country": "US"
-                                      "dateEnd": 1
-                                      "dateStart": 1
+                                      "dateEnd": 1717200000000
+                                      "dateStart": 1717200000000
                                       "deathsBest": 1
                                       "deathsHigh": 1
                                       "id": "example-id"

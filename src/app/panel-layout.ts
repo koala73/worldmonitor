@@ -1,3 +1,5 @@
+import { clearTelegramIntelCache } from '@/services/telegram-intel';
+import { subscribeRuntimeConfig } from '@/services/runtime-config';
 import type { AppContext, AppModule } from '@/app/app-context';
 import { CORRELATION_DOMAINS } from '@/types/correlation';
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
@@ -422,6 +424,7 @@ export interface PanelLayoutManagerCallbacks {
   primeVisiblePanelData: () => void;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
+  loadTelegramIntel?: () => Promise<void>;
   applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
   isFreeTierFallbackActive?: () => boolean;
 }
@@ -465,11 +468,14 @@ export class PanelLayoutManager implements AppModule {
   private tabsState: TabsState | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
+  private unsubscribeRuntimeConfig: (() => void) | null = null;
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
+  private gatingPrincipal: string | null | undefined = undefined;
+  private premiumPanelsUnlocked = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
@@ -714,6 +720,10 @@ export class PanelLayoutManager implements AppModule {
       this.updatePanelGating(state);
     });
 
+    this.unsubscribeRuntimeConfig = subscribeRuntimeConfig(() => {
+      this.updatePanelGating(getAuthState());
+    });
+
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
       void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
@@ -805,6 +815,8 @@ export class PanelLayoutManager implements AppModule {
     this.checkoutReturnFocusController.abort();
     clearAllPendingCalls();
     this.applyTimeRangeFilterDebounced.cancel();
+    this.unsubscribeRuntimeConfig?.();
+    this.unsubscribeRuntimeConfig = null;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
     this.proBlockUnsubscribe?.();
@@ -926,13 +938,16 @@ export class PanelLayoutManager implements AppModule {
 
   /** Reactively update premium panel gating based on auth state. */
   private updatePanelGating(state: AuthSession): void {
+    // Also invalidate requests and queued calls when Telegram has not mounted yet.
+    if (this.ctx.isDesktopApp && !hasPremiumAccess(state)) clearTelegramIntelCache();
     // #4771: resolve the billing-aware refinement of FREE_TIER once per pass
     // — the inputs (subscription/entitlement snapshots, now) are invariant
     // across the panel loop, and a single Date.now() keeps every panel on
     // the same verdict at a period-end boundary.
     const billingAwareFreeTier = resolveBillingAwareGateReason(PanelGateReason.FREE_TIER);
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
-      const isPremium = WEB_PREMIUM_PANELS.has(key);
+      const isPremium = WEB_PREMIUM_PANELS.has(key)
+        || (this.ctx.isDesktopApp && key === 'telegram-intel');
       let reason = getPanelGateReason(state, isPremium);
 
       // Clerk-pro-only panels: even when hasPremiumAccess() returns
@@ -967,17 +982,31 @@ export class PanelLayoutManager implements AppModule {
       // resubscribe) so we never push a paying user toward duplicate checkout.
       if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
 
+      const gatedPanel = panel as Panel;
+      const principal = state.user?.id ?? null;
+      const principalChanged = this.gatingPrincipal !== undefined && this.gatingPrincipal !== principal;
+      const hadUnlockedPayload = isPremium && this.premiumPanelsUnlocked.has(key);
+      if (hadUnlockedPayload && (principalChanged || reason !== PanelGateReason.NONE)) {
+        gatedPanel.clearSensitiveContent();
+      }
+
       if (reason === PanelGateReason.NONE) {
-        // User has access -- unlock if previously locked
-        (panel as Panel).unlockPanel();
+        // Bind before unlock so a snapshot taken under another user is refused.
+        gatedPanel.bindContentPrincipal(principal);
+        gatedPanel.unlockPanel();
+        if (isPremium) this.premiumPanelsUnlocked.add(key);
       } else {
-        // User does NOT have access -- show appropriate CTA
+        // Snapshot while the previous principal is still bound, then record
+        // the user who is now locked out.
         const onAction = resolveGateAction(reason, {
           openAuthModal: () => this.ctx.authModal?.open(),
         });
-        (panel as Panel).showGatedCta(reason, onAction);
+        gatedPanel.showGatedCta(reason, onAction);
+        gatedPanel.bindContentPrincipal(principal);
+        this.premiumPanelsUnlocked.delete(key);
       }
     }
+    this.gatingPrincipal = state.user?.id ?? null;
 
     // KTD8: the tab cap rides the SAME pass, so it re-evaluates on both
     // subscribeAuthState and onEntitlementChange (plus onSubscriptionChange).
@@ -1292,7 +1321,6 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://www.worldmonitor.app/docs/documentation" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
           ${this.ctx.isDesktopApp ? '' : `<span id="footerDownloadMount"></span>`}
         </nav>
@@ -2992,8 +3020,7 @@ export class PanelLayoutManager implements AppModule {
       'telegram-intel',
       () => import('@/components/TelegramIntelPanel'),
       'TelegramIntelPanel',
-      undefined,
-      _lockPanels ? [t('premium.features.telegramIntel1'), t('premium.features.telegramIntel2')] : undefined,
+      (panel) => panel.setAccessGrantedHandler(() => { void this.callbacks.loadTelegramIntel?.(); }),
     );
 
     this.lazyDefaultPanel(
@@ -3063,7 +3090,11 @@ export class PanelLayoutManager implements AppModule {
         'events',
         () => import('@/components/TechEventsPanel'),
         'TechEventsPanel',
-        (TechEventsPanel) => new TechEventsPanel('events', () => this.ctx.allNews),
+        (TechEventsPanel) => {
+          const panel = new TechEventsPanel('events', () => this.ctx.allNews);
+          panel.setMapNavigateHandler((lat, lng) => { this.ctx.map?.setCenter(lat, lng, 10); });
+          return panel;
+        },
       ),
     );
     this.lazyDefaultPanel('internet-disruptions', () => import('@/components/InternetDisruptionsPanel'), 'InternetDisruptionsPanel');

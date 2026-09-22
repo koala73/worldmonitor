@@ -141,9 +141,13 @@ test('bounds lookback and canonicalizes equivalent defaults', async () => {
   const currentYear = new Date().getFullYear();
   expect(providerUrls.map(url => url.searchParams.get('date'))).toEqual([`${currentYear - 5}:${currentYear}`, `${currentYear - 30}:${currentYear}`]);
 });
-test('retains the empty response on provider failure', async () => {
+test('reports provider failure without caching empty data and recovers on the next read', async () => {
   providerStatus = 503;
-  expect(await request()).toEqual({ data: [], pagination: undefined });
+  await expect(request()).rejects.toMatchObject({ statusCode: 503 });
+  expect(writes).toHaveLength(0);
+  providerStatus = 200;
+  expect((await request()).data[0]?.countryCode).toBe('USA');
+  expect(providerUrls).toHaveLength(2);
 });
 for (const year of [NaN, Infinity, 1.5]) {
   test(`rejects non-integer lookback ${year} before I/O`, async () => {

@@ -75,8 +75,13 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     assert.equal(sends.length, proof === 'verified' ? 1 : 0);
     if (proof === 'verified') {
       assert.equal(sends[0].to, 'owner@example.com');
-      assert.match(sends[0].subject, /Synthetic market alert/);
-      assert.match(sends[0].text, /https:\/\/example.com\/alert/);
+      assert.equal(sends[0].subject, 'Community alert: Synthetic market alert');
+      // A caller's off-origin article link is delivered, but only with its
+      // destination host disclosed inline — that disclosure is the control,
+      // not collapsing the link (which destroyed real article links on the
+      // platform's own RSS alerts). The push click target is still
+      // first-party-only; see tests/notify-field-validation.test.mts.
+      assert.match(sends[0].text, /https:\/\/example\.com\/alert \(source: example\.com\)/);
     }
     await relay.processWelcome({ userId: 'owner', channelType: 'email', welcomeId: 'channel' });
     assert.equal(sends.length, proof === 'verified' ? 2 : 0);

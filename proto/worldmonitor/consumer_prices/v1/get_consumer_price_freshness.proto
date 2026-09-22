@@ -3,12 +3,13 @@ syntax = "proto3";
 package worldmonitor.consumer_prices.v1;
 
 import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
 
 // GetConsumerPriceFreshnessRequest parameters for the freshness RPC.
 message GetConsumerPriceFreshnessRequest {
   // market_code is the ISO 3166-1 alpha-2 market identifier.
-  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }, (buf.validate.field).string = {max_len: 2, pattern: "^([A-Za-z]{2})?$"}];
 }
 
 // GetConsumerPriceFreshnessResponse describes feed health for all retailers.

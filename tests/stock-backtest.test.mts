@@ -16,9 +16,15 @@ import {
   STOCK_BACKTEST_ENGINE_VERSION,
   STOCK_BACKTEST_RATING_BASIS,
 } from '../server/worldmonitor/market/v1/backtest-stock.ts';
-import { getMissingOrStaleStoredStockBacktests, hasFreshStoredStockBacktests } from '../src/services/stock-backtest.ts';
 import { listStoredStockBacktests } from '../server/worldmonitor/market/v1/list-stored-stock-backtests.ts';
+import { storeStockBacktestSnapshot } from '../server/worldmonitor/market/v1/premium-stock-store.ts';
 import { ApiError } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
+import type { BacktestStockResponse } from '../src/generated/server/worldmonitor/market/v1/service_server.ts';
+import { STOCK_ANALYSIS_PRO_LIMIT } from '../src/services/stock-analysis-targets.ts';
+import {
+  getMissingOrStaleStoredStockBacktests,
+  hasFreshStoredStockBacktests,
+} from '../src/services/stock-backtest.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
 
 const originalFetch = globalThis.fetch;
@@ -292,24 +298,17 @@ describe('server-backed stored stock backtests', () => {
 
     assert.equal(stored.items.length, 1);
     assert.equal(stored.items[0]?.symbol, 'AAPL');
+    assert.equal(response.name, 'Apple');
+    assert.equal(stored.items[0]?.name, 'AAPL');
+    const snapshotKey = [...redisFetch.redis.keys()].find(key => key.includes('stock-backtest-store:'))!;
+    const snapshot = JSON.parse(redisFetch.redis.get(snapshotKey)!);
+    assert.equal(snapshot.name, 'AAPL');
+    redisFetch.redis.set(snapshotKey, JSON.stringify({ ...snapshot, name: '<img src=x>' }));
+    const legacy = await listStoredStockBacktests({} as never, { symbols: ['AAPL'], evalWindowDays: 10 });
+    assert.equal(legacy.items[0]?.name, 'AAPL');
     assert.equal(stored.items[0]?.latestSignal, response.latestSignal);
     assert.equal(stored.items[0]?.ratingBasis, 'technical_only');
     assert.equal(stored.items[0]?.engineVersion, 'v3-technical-only');
-    for (const count of [12, 50, 51]) {
-      const symbols = Array.from({ length: count }, (_, i) => `SYM${i}`);
-      for (const symbol of symbols) {
-        redisFetch.redis.set(`market:stock-backtest-store:v3:${symbol}:10`, JSON.stringify({ ...response, symbol }));
-      }
-      const batch = await listStoredStockBacktests({} as never, {
-        symbols: symbols.map(s => s.toLowerCase()), evalWindowDays: 10,
-      });
-      assert.deepEqual(batch.items.map(item => item.symbol).sort(), symbols.slice(0, 50).sort());
-    }
-    assert.equal(hasFreshStoredStockBacktests([response], ['aApL']), true);
-    assert.deepEqual(getMissingOrStaleStoredStockBacktests([response], ['aapl', 'msft']), ['msft']);
-    assert.deepEqual(getMissingOrStaleStoredStockBacktests([
-      { ...response, generatedAt: '2020-01-01T00:00:00Z' },
-    ], ['aapl']), ['aapl']);
     assert.equal(redisFetch.llmQuotaKeyCount(), 0);
     assert.equal(
       redisFetch.redis.get(backtestStockProviderQuotaKey('user_pro')),
@@ -851,5 +850,65 @@ describe('MarketServiceClient listStoredStockBacktests', () => {
     assert.match(requestedUrl, /\/api\/market\/v1\/list-stored-stock-backtests\?/);
     assert.match(requestedUrl, /symbols=MSFT&symbols=NVDA/);
     assert.match(requestedUrl, /eval_window_days=7/);
+  });
+});
+
+function storedBacktest(symbol: string): BacktestStockResponse {
+  return {
+    available: true,
+    symbol,
+    name: symbol,
+    display: symbol,
+    currency: 'USD',
+    evalWindowDays: 10,
+    evaluationsRun: 1,
+    actionableEvaluations: 1,
+    winRate: 1,
+    directionAccuracy: 1,
+    avgSimulatedReturnPct: 1,
+    cumulativeSimulatedReturnPct: 1,
+    latestSignal: 'Buy',
+    latestSignalScore: 70,
+    summary: 'ok',
+    generatedAt: new Date().toISOString(),
+    evaluations: [],
+    engineVersion: 'v3-technical-only',
+    ratingBasis: 'technical_only',
+  };
+}
+
+describe('stored stock backtest batch cap', () => {
+  it('returns every stored symbol when the request is larger than the old 8-symbol slice', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = createRedisAwareBacktestFetch({}).fetch;
+
+    const symbols = Array.from({ length: 9 }, (_, index) => `B${String(index).padStart(2, '0')}`);
+    for (const symbol of symbols) {
+      await storeStockBacktestSnapshot(storedBacktest(symbol));
+    }
+
+    const stored = await listStoredStockBacktests({} as never, {
+      symbols,
+      evalWindowDays: 10,
+    });
+
+    assert.deepEqual(stored.items.map((item) => item.symbol).sort(), [...symbols].sort());
+  });
+
+  it('rejects a symbol list above the Pro watchlist cap instead of slicing it', async () => {
+    const symbols = Array.from({ length: STOCK_ANALYSIS_PRO_LIMIT + 1 }, (_, index) => `C${index}`);
+    await assert.rejects(
+      () => listStoredStockBacktests({} as never, { symbols, evalWindowDays: 10 }),
+      (error: unknown) => error instanceof ApiError && error.statusCode === 400,
+    );
+  });
+});
+
+describe('stored stock backtest freshness keys', () => {
+  it('matches server-uppercased tickers against mixed-case watchlist symbols', () => {
+    const item = storedBacktest('AAPL');
+    assert.equal(hasFreshStoredStockBacktests([item], ['aapl']), true);
+    assert.deepEqual(getMissingOrStaleStoredStockBacktests([item], ['aapl', 'msft']), ['msft']);
   });
 });

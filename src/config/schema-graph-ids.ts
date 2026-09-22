@@ -66,7 +66,6 @@ export const SOFTWARE_SHARED_PROPERTIES = {
     'https://www.npmjs.com/package/worldmonitor',
     'https://www.wikidata.org/wiki/Q141237754',
     'https://x.com/worldmonitorai',
-    'https://discord.gg/re63kWKxaz',
     'https://www.wired.com/story/world-monitor-elie-habib/',
   ],
 } as const;

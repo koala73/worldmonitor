@@ -116,10 +116,13 @@ function fakeUpstash(options: { coverage?: unknown; failEvidence?: boolean } = {
 
 function storyItem(overrides: Record<string, unknown> = {}) {
   return {
-    source: 'Example Wire',
-    originPublisher: 'Example Wire',
+    // Reuters World + reuters.com is a curated family pair. After #8398 the
+    // evidence archive rides storyTrackLinkForPersist, so a news.example
+    // fixture is blanked (no server-known host) and the member is dropped.
+    source: 'Reuters World',
+    originPublisher: 'Reuters World',
     title: 'Central bank holds rates',
-    link: 'https://news.example/rates',
+    link: 'https://www.reuters.com/world/europe/x-123',
     publishedAt: nowMs - 60_000,
     isAlert: false,
     level: 'low',
@@ -197,7 +200,30 @@ describe('forecast evidence publication wiring (#7082)', () => {
     // the whole point of the archive (those rows expire at 7 days).
     const payload = JSON.parse(String(sets[0][2]));
     assert.equal(payload.title, 'Central bank holds rates');
-    assert.equal(payload.link, 'https://news.example/rates');
+    assert.equal(payload.link, 'https://www.reuters.com/world/europe/x-123');
+  });
+
+  it('does not archive a hostile off-publisher link the persist gate blanks (#8398)', async () => {
+    // The evidence member is a second stored copy of the link, with no
+    // story:track dependency. A raw representative.link would keep a
+    // phishing URL the track row blanks; the persist gate must drop it
+    // here too (empty link makes the member unbuildable).
+    const redis = await runWriter({
+      coverage,
+      items: [storyItem({ link: 'https://evil.example/phish' })],
+    });
+    assert.deepEqual(
+      redis.commandsOf((verb, key) => verb === 'SET' && key.startsWith('forecast:evidence:record:v1:')),
+      [],
+    );
+    assert.deepEqual(
+      redis.commandsOf((verb, key) => verb === 'ZADD' && key === 'forecast:evidence:v1'),
+      [],
+    );
+    const markerSets = redis.commandsOf((verb, key) => verb === 'SET' && key === 'forecast:evidence:coverage:v1');
+    assert.equal(markerSets.length, 1, 'the marker is still re-SET to refresh its TTL');
+    const written = JSON.parse(String(markerSets[0][2]));
+    assert.equal(written.coverageEndMs, coverage.coverageEndMs, 'hostile-link drop blocks the coverage advance');
   });
 
   it('writes NOTHING to the archive from a preview deployment', async () => {

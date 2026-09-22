@@ -212,6 +212,19 @@ const WEB_FAST_TIER_DEADLINE_MS = 1_200;
 
 const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
 
+/** Playwright can throw a GUID bind error synchronously on a dead Route. */
+async function ignoreDeadRoute(work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/Target closed|Route is already handled|Cannot find context with specified id|guid/i.test(message)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 
@@ -242,19 +255,36 @@ async function installHydrationRequestAccounting(
   // decide whether a request-budget assertion passes.
   await page.route(
     /^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i,
-    (route) => route.abort('blockedbyclient'),
+    (route) => ignoreDeadRoute(() => route.abort('blockedbyclient')),
   );
 
   await page.route('**/api/bootstrap*', async (route) => {
     log.inflight += 1;
     try {
-      const url = new URL(route.request().url());
+      let url: URL;
+      try {
+        url = new URL(route.request().url());
+      } catch {
+        return;
+      }
       const tier = url.searchParams.get('tier');
 
       if (tier === 'fast' || tier === 'slow') {
         log.tiers.push(tier);
         if (tier === 'fast' && options.fastTierDelayMs) {
-          await new Promise((resolve) => setTimeout(resolve, options.fastTierDelayMs));
+          await new Promise<void>((resolve) => {
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              page.off('close', finish);
+              resolve();
+            };
+            const timer = setTimeout(finish, options.fastTierDelayMs);
+            page.once('close', finish);
+          });
+          if (page.isClosed()) return;
         }
         const data: Record<string, unknown> = {};
         const missing: string[] = [];
@@ -264,20 +294,21 @@ async function installHydrationRequestAccounting(
           else missing.push(dataset.key);
         }
         if (tier === 'slow') Object.assign(data, options.extraSlowTierData ?? {});
-        // The client aborts the fast tier at its deadline, which rejects the
-        // fulfill of a request that no longer exists. That rejection IS the
+        // The client aborts the fast tier at its deadline. Fulfill then
+        // throws on a request that no longer exists, either as a rejected
+        // promise or a synchronous Playwright GUID bind error. That IS the
         // scenario under test, not a spec failure.
-        await route.fulfill({
+        await ignoreDeadRoute(() => route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ data, missing }),
-        }).catch(() => {});
+        }));
         return;
       }
 
       const keys = requestedKeys(url.href);
       for (const key of keys) log.counts[key] = (log.counts[key] ?? 0) + 1;
-      await route.fulfill({
+      await ignoreDeadRoute(() => route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
@@ -291,7 +322,7 @@ async function installHydrationRequestAccounting(
           ])),
           missing: [],
         }),
-      }).catch(() => {});
+      }));
     } finally {
       log.inflight -= 1;
     }
@@ -306,13 +337,13 @@ async function installHydrationRequestAccounting(
       log.inflight += 1;
       try {
         log.counts[dataset.key] = (log.counts[dataset.key] ?? 0) + 1;
-        await route.fulfill({
+        await ignoreDeadRoute(() => route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(
             options.uncacheableFallbacks ? EMPTY_FALLBACK_PAYLOAD : dataset.payload,
           ),
-        }).catch(() => {});
+        }));
       } finally {
         log.inflight -= 1;
       }
