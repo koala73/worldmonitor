@@ -105,7 +105,7 @@ describe('map country drag/click guard', () => {
     );
     assert.match(
       fallbackMatch[0],
-      /try \{[\s\S]*new DeckCompatibleMap\([\s\S]*\} catch \(error\)/,
+      /try \{[\s\S]*new maplibregl\.Map\([\s\S]*\} catch \(error\)/,
       'fallback MapLibre construction must catch GPUInitializationError instead of leaking to window.onerror',
     );
     assert.match(
