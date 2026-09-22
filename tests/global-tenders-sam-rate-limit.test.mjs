@@ -208,18 +208,24 @@ test('an unconfigured SAM run spends no request, so it does not start the pacing
   assert.equal(unconfigured.sourceStatuses[0].state, 'unavailable');
 
   const calls = [];
-  const restored = await fetchSam({
-    apiKey: 'test-key',
+  const restored = await fetchGlobalTenders({
     now: NOW + 60 * 60_000,
-    fetchJsonFn: async () => {
-      calls.push(1);
-      return { opportunitiesData: [] };
-    },
     previousSnapshot: unconfigured,
+    adapters: [[
+      'sam',
+      (options) => fetchSam({
+        ...options,
+        apiKey: 'test-key',
+        fetchJsonFn: async () => {
+          calls.push(1);
+          return { opportunitiesData: [] };
+        },
+      }),
+    ]],
   });
 
   assert.equal(calls.length, 1, 'a restored credential must fetch at once, not wait out an interval it never spent');
-  assert.equal(restored.status.state, 'ok');
+  assert.equal(restored.sourceStatuses[0].state, 'ok');
 });
 
 test('fetchSam skips the request while the previous success is inside the budget interval', async () => {
