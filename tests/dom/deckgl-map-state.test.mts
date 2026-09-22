@@ -172,8 +172,8 @@ vi.mock('maplibre-gl', () => {
   return { default: namespace, ...namespace };
 });
 
-vi.mock('@deck.gl/mapbox', () => ({
-  MapboxOverlay: class {
+vi.mock('@deck.gl/maplibre', () => ({
+  MapLibreOverlay: class {
     props: Record<string, unknown>;
     constructor(props: Record<string, unknown>) { this.props = props; }
     setProps(props: Record<string, unknown>): void { Object.assign(this.props, props); }

@@ -56,7 +56,8 @@ describe('GDELT request cache identity through the real breaker', () => {
     const service = await import('@/services/gdelt-intel');
     const fetch = kind === 'normal' ? service.fetchGdeltArticles : service.fetchPositiveGdeltArticles;
     search.mockResolvedValueOnce({ articles: [], query: 'military', error: 'seed-unavailable' });
-    expect(await fetch('military')).toEqual([]);
+    // Unavailable with no last-good articles is an error, not a confirmed empty result.
+    await expect(fetch('military')).rejects.toThrow(/unavailable/);
     expect(await fetch('military')).toHaveLength(1);
     expect(search).toHaveBeenCalledTimes(2);
   });
@@ -66,13 +67,13 @@ describe('GDELT request cache identity through the real breaker', () => {
     const service = await import('@/services/gdelt-intel');
     const fetch = kind === 'normal' ? service.fetchGdeltArticles : service.fetchPositiveGdeltArticles;
     search.mockRejectedValueOnce(new Error('offline'));
-    expect(await fetch('retry')).toEqual([]);
+    await expect(fetch('retry')).rejects.toThrow(/unavailable/);
     expect(await fetch('retry')).toHaveLength(1);
     search.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'));
-    await fetch('failure-one');
-    await fetch('failure-two');
+    await expect(fetch('failure-one')).rejects.toThrow(/unavailable/);
+    await expect(fetch('failure-two')).rejects.toThrow(/unavailable/);
     vi.setSystemTime(Date.now() + 4 * 60 * 1000);
-    expect(await fetch('cooldown-query')).toEqual([]);
+    await expect(fetch('cooldown-query')).rejects.toThrow(/unavailable/);
     vi.setSystemTime(Date.now() + 61 * 1000);
     expect(await fetch('cooldown-query')).toHaveLength(1);
     expect(search).toHaveBeenCalledTimes(5);

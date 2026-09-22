@@ -582,6 +582,38 @@ export function formatAcceptanceMarkdown({ checkedAt, acceptance, report, graced
   return `${lines.join('\n')}\n`;
 }
 
+// Cover an abandoned 30s refresh lease plus its replacement sweep, without
+// turning a persistent outage into an unbounded scheduled job.
+export async function fetchCompactHealth(healthUrl, {
+  fetchFn = (...args) => globalThis.fetch(...args),
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const deadline = now() + 45_000;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const remainingMs = deadline - now();
+    if (remainingMs <= 0) break;
+    const response = await fetchFn(healthUrl, {
+      headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
+      signal: AbortSignal.timeout(Math.min(20_000, remainingMs)),
+    });
+    if (response.ok) return response.json();
+    const payload = response.status === 503 ? await response.json() : null;
+    if (payload?.status !== 'REFRESH_PENDING') {
+      throw new Error(`Compact health request failed: HTTP ${response.status}`);
+    }
+    const retryAfter = response.headers.get('Retry-After');
+    let delayMs = 3_000;
+    if (retryAfter && /^\d+$/.test(retryAfter)) delayMs = Number(retryAfter) * 1_000;
+    else if (retryAfter && /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(retryAfter)
+      && Number.isFinite(Date.parse(retryAfter))) delayMs = Date.parse(retryAfter) - now();
+    delayMs = Math.max(100, delayMs);
+    if (attempt === 11 || delayMs >= deadline - now()) break;
+    await sleep(delayMs);
+  }
+  throw new Error('Compact health refresh remained pending within the retry budget');
+}
+
 async function main() {
   const { values } = parseArgs({
     args: process.argv.slice(2),
@@ -592,15 +624,7 @@ async function main() {
     strict: true,
   });
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
-  const response = await fetch(healthUrl, {
-    headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Compact health request failed: HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
+  const payload = await fetchCompactHealth(healthUrl);
   const observation = buildAcceptanceObservation(payload, readAcceptanceBaseline());
   const outputPath = values['json-output'];
   if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);

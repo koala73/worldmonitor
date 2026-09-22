@@ -278,7 +278,11 @@ test.describe('DeckGL map harness', () => {
       }
     });
 
+    const workerReady = page.waitForEvent('worker', {
+      predicate: (worker) => worker.url().includes('maplibre-gl-worker'),
+    }).then((worker) => worker.evaluate(() => typeof self.addEventListener));
     await waitForHarnessReady(page);
+    expect(await workerReady).toBe('function');
     await page.waitForTimeout(1000);
 
     const unexpectedPageErrors = pageErrors.filter(

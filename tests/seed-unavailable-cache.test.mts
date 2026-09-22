@@ -205,7 +205,7 @@ const requiredCases = [
   ['intelligence/v1/get-social-velocity', 'intelligence:social:reddit:v1', { posts: [], fetchedAt: 123 }, 'posts'],
   ['intelligence/v1/list-cross-source-signals', 'intelligence:cross-source-signals:v1', { signals: [] }, 'signals'],
   ['intelligence/v1/list-satellites', 'intelligence:satellites:tle:v1', { satellites: [] }, 'satellites'],
-  ['intelligence/v1/list-security-advisories', 'intelligence:advisories:v1', { advisories: [] }, 'advisories'],
+  ['intelligence/v1/list-security-advisories', 'intelligence:advisories:v1', { advisories: [], byCountry: {} }, 'advisories'],
   ['seismology/v1/list-earthquakes', 'seismology:earthquakes:v1', { earthquakes: [] }, 'earthquakes'],
   ['unrest/v1/list-unrest-events', 'unrest:events:v1', { events: [] }, 'events'],
   ['market/v1/get-sector-summary', 'market:sectors:v2', { sectors: [] }, 'sectors'],

@@ -70,9 +70,9 @@ Internal. Invalidates Redis cache keys by explicit list or glob patterns.
 
 ### `GET /api/health`
 
-Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING`, `DEGRADED`, `UNHEALTHY`, or `REDIS_DOWN` in the JSON `status` field. The top-level status describes user-visible platform availability, so `HEALTHY` can coexist with contained source warnings that still serve usable last-good data.
+Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING`, `DEGRADED`, `UNHEALTHY`, `REDIS_DOWN`, or `REFRESH_PENDING` in the JSON `status` field. The top-level status describes user-visible platform availability, so `HEALTHY` can coexist with contained source warnings that still serve usable last-good data.
 
-All states except `REDIS_DOWN` return HTTP 200; `REDIS_DOWN` returns HTTP 503 because Redis was unreachable and the endpoint could not assess seed state. Responses are not cached (`private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`).
+Evaluated verdicts return HTTP 200. HTTP 503 with `REDIS_DOWN` means the required Redis health read failed; While a refresh is pending, a request that does not own it gets the last published verdict with HTTP 200 and `"stale": true`. HTTP 503 with `REFRESH_PENDING` means no verdict is retained while refresh is pending. Retry pending responses after `Retry-After: 3`; they contain no evaluated summary or `checkedAt`. The scheduled freshness monitor retries only pending responses within a bounded 45-second window (at most 12 requests), then fails if no verdict becomes available. Responses are not cached (`private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`).
 
 Monitor availability via UptimeRobot / Better Stack with `?compact=1` and alert on any status other than `HEALTHY`. Strict data-quality monitors must also inspect `summary.warn` and `problems`, because contained warnings remain visible there. The full detailed view requires an operator/enterprise API key because it includes canonical cache key names and freshness thresholds.
 
