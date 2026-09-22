@@ -185,6 +185,7 @@ export class UnifiedSettings {
   private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
   private deletionDialog: HTMLElement | null = null;
+  private deletionFocusTrap: FocusTrap | null = null;
   private deletionBusy = false;
   private deletionError = '';
   private deletionPhraseHandler: (() => void) | null = null;
@@ -692,6 +693,22 @@ export class UnifiedSettings {
 
   public close(origin: OverlayCloseOrigin = 'control'): void {
     if (origin === 'history') this.historyRegistered = false;
+    // An in-flight deletion owns the overlay until it settles. The overlay
+    // click handler and escapeHandler already refuse while deletionBusy is
+    // set; without this guard the mobile back gesture reaches teardownSettings
+    // -> closeDeletionDialog, which clears the latch mid-await and re-permits
+    // a second confirmAccountDeletion against the same account. Re-arm the
+    // history entry the gesture just consumed, matching the unsaved-changes
+    // branch below, so a later back press still closes the overlay. This sits
+    // after the flag is cleared above, because that is what makes the
+    // re-registration condition reachable.
+    if (this.deletionBusy) {
+      if (origin === 'history' && !this.historyRegistered) {
+        this.historyRegistered = true;
+        overlayHistory.open('settings', (nextOrigin) => this.close(nextOrigin));
+      }
+      return;
+    }
     // Unsaved panel changes → confirm before tearing down. The confirm is a
     // non-blocking in-app dialog (#4559): close() stays synchronous (8 callers)
     // and defers teardown to the user's choice instead of a blocking confirm().
@@ -1203,7 +1220,7 @@ export class UnifiedSettings {
     return `
       <section class="account-deletion-zone" data-account-deletion>
         <h3 class="account-deletion-title">Delete account</h3>
-        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; your login account is disconnected from them. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
+        <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
         <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
       </section>
     `;
@@ -1236,7 +1253,7 @@ export class UnifiedSettings {
         `
       <div class="account-deletion-dialog">
         <h2 id="account-deletion-dialog-title" class="account-deletion-dialog-title">Delete this account?</h2>
-        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records stay without personal fields. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
+        <p class="account-deletion-dialog-copy">This cannot be undone. Subscriptions cancel, keys stop working immediately, and billing records are kept for accounting, disputes, and lawful requests — including the contact details they carry. Sign out on other devices and clear this device's site data afterwards — those are out of server reach.</p>
         <label class="account-deletion-dialog-label" for="account-deletion-phrase">Type DELETE to confirm</label>
         <input id="account-deletion-phrase" class="account-deletion-dialog-input" data-deletion-phrase type="text" autocomplete="off" spellcheck="false" />
         <p class="account-deletion-dialog-error" data-deletion-error role="alert"></p>
@@ -1264,7 +1281,12 @@ export class UnifiedSettings {
     input?.addEventListener('input', this.deletionPhraseHandler);
     document.body.appendChild(overlay);
     this.syncDeletionConfirmEnabled();
-    input?.focus();
+    // aria-modal is a promise to the keyboard: without a trap, Tab walks out
+    // of a destructive-action dialog into the settings modal behind it, which
+    // is still interactive. Escape stays with escapeHandler (no onEscape here)
+    // so an in-flight deletion still cannot be dismissed.
+    this.deletionFocusTrap = createFocusTrap(overlay, { initialFocus: () => input });
+    this.deletionFocusTrap.activate();
   }
 
   private closeDeletionDialog(): void {
@@ -1275,6 +1297,10 @@ export class UnifiedSettings {
       input.removeEventListener('input', this.deletionPhraseHandler);
     }
     this.deletionPhraseHandler = null;
+    // Deactivate before the node leaves the document so the trap can hand
+    // focus back to the [data-delete-account] button that opened it.
+    this.deletionFocusTrap?.deactivate();
+    this.deletionFocusTrap = null;
     overlay.remove();
     this.deletionDialog = null;
     this.deletionBusy = false;

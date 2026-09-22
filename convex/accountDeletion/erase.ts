@@ -18,6 +18,15 @@ import {
   sha256Hex,
 } from "./registry";
 
+/**
+ * How stale a `pending` row must be before an entry point re-arms its worker.
+ *
+ * Must stay above the longest legitimate gap between continuations — the
+ * external retry ladder's RETRY_MAX_DELAY_MS (5 min) — so a live backoff is
+ * never doubled by a user clicking again.
+ */
+const PENDING_STALE_AFTER_MS = 10 * 60_000;
+
 const eraseSourceValidator = v.union(
   v.literal("support"),
   v.literal("clerk_webhook"),
@@ -36,6 +45,20 @@ type EraseResult = {
   status: "pending" | "complete" | "already_deleted";
   userIdHash: string;
 };
+
+/**
+ * Reduce a stored `lastError` to the stable code the client can act on.
+ *
+ * The row keeps the full `DODO_TIMEOUT:<provider message>;REDIS:<...>` string
+ * for the runbook's triage step, but `getOwnDeletionStatus` is public: raw
+ * provider text is verbatim third-party output and does not belong in a
+ * response, so only the leading code crosses the boundary.
+ */
+function publicErrorCode(lastError: string | undefined): string | undefined {
+  if (!lastError) return undefined;
+  const code = lastError.split(/[:;]/, 1)[0]?.trim();
+  return code ? code : undefined;
+}
 
 function requireNonEmptyUserId(userId: string): string {
   const trimmed = userId.trim();
@@ -78,6 +101,22 @@ async function beginErase(
   }
 
   if (existing?.status === "pending") {
+    // A pending row normally has a scheduled continuation, so returning early
+    // is what keeps a repeat request from spawning a duplicate worker. But if
+    // that continuation was ever lost — a deploy landing during the external
+    // backoff, a dropped job — nothing else re-arms it: the user's repeat
+    // click, the Clerk webhook, and the support runbook command all funnel
+    // here, and no cron reads `by_status_updatedAt`. The row then sits pending
+    // forever with the write fence on while Dodo keeps billing. Re-arm only
+    // once the row is staler than the longest legitimate backoff, so a live
+    // retry is never doubled.
+    if (Date.now() - existing.updatedAt > PENDING_STALE_AFTER_MS) {
+      // Bump first: the stamp is the staleness clock, so writing it before
+      // scheduling means a burst of repeat clicks re-arms once, not once each.
+      await ctx.db.patch(existing._id, { updatedAt: Date.now() });
+      const rearmed = await ctx.db.get(existing._id);
+      if (rearmed) await scheduleEraseContinuation(ctx, rearmed);
+    }
     return { status: "pending", userIdHash: existing.userIdHash };
   }
 
@@ -241,6 +280,12 @@ const deletionStatusValidator = v.union(
       v.literal("complete"),
     ),
     userIdHash: v.string(),
+    // Set once the Clerk user is gone. The client needs server proof before
+    // it may treat a vanished session as a finished deletion and sign out;
+    // a bare null Clerk user is also what an SDK reload or a multi-session
+    // setActive() looks like, and signing out on that ends whichever session
+    // is current, not necessarily the deleted one.
+    clerkDeletedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
   }),
 );
@@ -260,7 +305,10 @@ export const getOwnDeletionStatus = query({
       status: row.status,
       step: row.step,
       userIdHash: row.userIdHash,
-      lastError: row.lastError,
+      clerkDeletedAt: row.clerkDeletedAt,
+      // Only the stable prefix (DODO_TIMEOUT, REDIS, ...) crosses the public
+      // boundary; the raw provider text stays on the row for the runbook.
+      lastError: publicErrorCode(row.lastError),
     };
   },
 });

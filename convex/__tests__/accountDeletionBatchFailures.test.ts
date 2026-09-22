@@ -35,27 +35,42 @@ async function setup() {
   return { t, ...ids };
 }
 
-test("failed batch rolls back its writes, records failed, and stops scheduling", async () => {
+test("a failed batch rolls back its writes and retries before going terminal", async () => {
   const { t, deletionId, grantId } = await setup();
   await t.action(internal.accountDeletion.batches.advanceEraseSafely, { deletionId });
+
+  // A single batch throw is usually a lost optimistic-concurrency retry on a
+  // shared aggregate row, not a broken deletion. Going terminal here would
+  // strand a half-erased account behind the write fence with its subscription
+  // still billing, so the first failure stays pending with a scheduled retry.
   await t.run(async (ctx) => {
     expect(await ctx.db.get(grantId)).not.toBeNull();
     expect(await ctx.db.get(deletionId)).toMatchObject({
-      status: "failed", step: "grants", lastError: "ERASE_BATCH_FAILED",
+      status: "pending", step: "grants", lastError: "ERASE_BATCH_RETRY", batchAttempts: 1,
     });
-    expect(await ctx.db.system.query("_scheduled_functions").collect()).toEqual([]);
+    expect(await ctx.db.system.query("_scheduled_functions").collect()).toHaveLength(1);
   });
-  await t.action(internal.accountDeletion.batches.advanceEraseSafely, { deletionId });
-  await t.mutation(internal.accountDeletion.batches.advanceErase, { deletionId });
-  expect(recompute).toHaveBeenCalledTimes(1);
 
-  // Explicit retry restores pending; the same batch can then finish.
+  // Exhausting the ladder is what goes terminal, and it stops scheduling.
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(grantId)).not.toBeNull();
+    expect(await ctx.db.get(deletionId)).toMatchObject({
+      status: "failed", step: "grants", lastError: "ERASE_BATCH_FAILED", batchAttempts: 5,
+    });
+    expect(await ctx.db.system.query("_scheduled_functions").collect()
+      .then((jobs) => jobs.filter((job) => job.state.kind === "pending"))).toEqual([]);
+  });
+
+  // Explicit retry restores pending; the same batch can then finish, and
+  // committed progress clears the counter so the next failure starts fresh.
   recompute.mockResolvedValue(undefined);
   await t.run((ctx) => ctx.db.patch(deletionId, { status: "pending", lastError: undefined }));
   await t.action(internal.accountDeletion.batches.advanceEraseSafely, { deletionId });
   await t.run(async (ctx) => {
     expect(await ctx.db.get(grantId)).toBeNull();
     expect(await ctx.db.get(deletionId)).toMatchObject({ status: "pending", step: "external" });
+    expect((await ctx.db.get(deletionId))?.batchAttempts).toBeUndefined();
   });
 });
 
@@ -70,9 +85,14 @@ test.each(["step", "cursor", "updatedAt", "complete"])(
       ...(change === "updatedAt" ? { updatedAt: 2 } : {}),
       ...(change === "complete" ? { status: "complete" as const } : {}),
     }));
-    await t.mutation(internal.accountDeletion.batches.markBatchFailed, { deletionId, ...snapshot! });
+    // Assert the rejection reason, not just the resulting status: a retrying
+    // (non-stale) call also leaves the row pending, so status alone no longer
+    // discriminates a refused stale write from an accepted one.
+    expect(await t.mutation(internal.accountDeletion.batches.markBatchFailed,
+      { deletionId, ...snapshot! })).toBe("stale");
     expect((await t.run((ctx) => ctx.db.get(deletionId)))?.status)
       .toBe(change === "complete" ? "complete" : "pending");
+    expect((await t.run((ctx) => ctx.db.get(deletionId)))?.batchAttempts).toBeUndefined();
   },
 );
 
@@ -98,7 +118,8 @@ test("same-step pages stamp distinct progress even in the same millisecond", asy
   expect(secondPage).toMatchObject({ step: "personal", personalTableIndex: 0 });
   expect(firstPage!.updatedAt).toBeGreaterThan(start!.updatedAt);
   expect(secondPage!.updatedAt).toBeGreaterThan(firstPage!.updatedAt);
-  await t.mutation(internal.accountDeletion.batches.markBatchFailed, { deletionId, ...firstPage! });
+  expect(await t.mutation(internal.accountDeletion.batches.markBatchFailed,
+    { deletionId, ...firstPage! })).toBe("stale");
   await t.run(async (ctx) => {
     expect((await ctx.db.get(deletionId))?.status).toBe("pending");
     expect(await ctx.db.query("userPreferences").collect()).toHaveLength(1);

@@ -2,7 +2,12 @@ import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
 
-const CLERK_SKEW_SECONDS = 300;
+/**
+ * Replay window for a Svix delivery. This is the only defense against
+ * re-playing a validly-signed `user.deleted` against an irreversible erase,
+ * so it is exported for the test that pins it rather than duplicated there.
+ */
+export const CLERK_SKEW_SECONDS = 300;
 
 async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();

@@ -324,6 +324,64 @@ describe('UnifiedSettings account deletion', () => {
     expect(dialogZ).toBeGreaterThan(overlayZ);
   });
 
+  it('keeps confirm disabled for same-length near-miss phrases', () => {
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]');
+    // The gate is a strict equality on the trimmed value. A future change to
+    // prefix or includes matching would let each of these through.
+    for (const phrase of ['DELETEX', 'DELETE!', 'XDELETE', 'DELETE DELETE', 'DELET']) {
+      typePhrase(phrase);
+      expect(confirm?.disabled, `phrase ${phrase} must not enable confirm`).toBe(true);
+    }
+    // Surrounding whitespace is trimmed, so this one is a real confirmation.
+    typePhrase('  DELETE  ');
+    expect(confirm?.disabled).toBe(false);
+    expect(deletionMocks.request).not.toHaveBeenCalled();
+  });
+
+  it('traps focus inside the dialog and restores it on close', () => {
+    settings.open('billing');
+    const trigger = document.querySelector<HTMLButtonElement>('[data-delete-account]')!;
+    trigger.focus();
+    trigger.click();
+    const overlay = document.querySelector('.account-deletion-dialog-overlay')!;
+    // aria-modal is a promise to the keyboard; without a trap Tab walks out of
+    // a destructive dialog into the still-interactive settings modal behind it.
+    expect(overlay.getAttribute('aria-modal')).toBe('true');
+    expect(overlay.contains(document.activeElement)).toBe(true);
+    document.querySelector<HTMLButtonElement>('[data-deletion-cancel]')!.click();
+    expect(document.querySelector('.account-deletion-dialog-overlay')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('survives a back gesture mid-deletion without clearing the busy latch', async () => {
+    let resolveRequest!: (value: { status: string; userIdHash: string }) => void;
+    deletionMocks.request.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve; }));
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    typePhrase('DELETE');
+    const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!;
+    confirm.click();
+    expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+
+    // The mobile back gesture reaches close('history') through popstate — a
+    // path neither the click handler nor escapeHandler covers. It used to run
+    // teardownSettings -> closeDeletionDialog, clearing deletionBusy mid-await
+    // and re-permitting a second confirmation against the same account.
+    settings.close('history');
+    expect(document.querySelector('[data-deletion-confirm]')).toBe(confirm);
+    expect(confirm.disabled).toBe(true);
+
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')?.click();
+    confirm.click();
+    expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+    expect(signOutMock).not.toHaveBeenCalled();
+
+    resolveRequest({ status: 'complete', userIdHash: 'abc' });
+    await vi.waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
+  });
+
   it('shows a retryable error and keeps the session on failure', async () => {
     deletionMocks.request.mockRejectedValue(new Error('Convex unavailable'));
     settings.open('billing');

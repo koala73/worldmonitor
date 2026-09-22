@@ -1030,6 +1030,11 @@ export default defineSchema({
     clerkDeletedAt: v.optional(v.number()),
     fenceAppliedAt: v.optional(v.number()),
     externalAttempts: v.optional(v.number()),
+    // Consecutive failures of the Convex-side batch stepper. A write conflict
+    // on a globally shared aggregate row is routine, so a batch failure is
+    // retried a bounded number of times before the row goes terminal.
+    // Reset whenever a batch commits progress.
+    batchAttempts: v.optional(v.number()),
     lastError: v.optional(v.string()),
     startedAt: v.number(),
     updatedAt: v.number(),

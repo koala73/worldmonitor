@@ -9,6 +9,7 @@
 import { DodoPayments, NotFoundError, APIConnectionTimeoutError, APIConnectionError } from "dodopayments";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import { internalAction, internalMutation } from "../_generated/server";
 import { mergeUniqueStrings } from "./registry";
 
@@ -26,6 +27,25 @@ class ProviderError extends Error {
     super(message);
   }
 }
+
+/**
+ * Shape of `accountDeletion.erase.getExternalEraseSnapshot`. Declared locally
+ * rather than imported so this module keeps no import edge back to erase.ts,
+ * which reaches sideEffects through `internal.*`.
+ */
+type ExternalEraseSnapshot = {
+  deletionId: Id<"accountDeletions">;
+  userId: string;
+  status: "pending" | "complete" | "failed";
+  step: Doc<"accountDeletions">["step"];
+  dodoSubscriptionIds: string[];
+  cancelledDodoSubscriptionIds: string[];
+  keyHashes: string[];
+  embedKeyHashes: string[];
+  mcpTokenIds: string[];
+  redisClearedAt?: number;
+  clerkDeletedAt?: number;
+};
 
 function isRetryable(err: unknown): boolean {
   if (isTimeout(err)) return true;
@@ -182,14 +202,28 @@ async function redisResult(response: Response, operation: string): Promise<unkno
   return body;
 }
 
-async function redisDel(keys: string[]): Promise<void> {
-  if (keys.length === 0) return;
-  const unique = mergeUniqueStrings([], keys);
-  const commands = unique.map((key) => ["DEL", key]);
+/**
+ * One pipelined round trip for the whole revocation set.
+ *
+ * Upstash counts its request-size cap per command, not per pipeline, and this
+ * set is bounded by the account's own key/token counts, so batching is safe.
+ */
+async function redisRevoke(
+  delKeys: string[],
+  setExEntries: Array<{ key: string; value: string; ttlSeconds: number }>,
+): Promise<void> {
+  const uniqueDels = mergeUniqueStrings([], delKeys);
+  const commands: string[][] = [
+    ...uniqueDels.map((key) => ["DEL", key]),
+    ...setExEntries.map(({ key, value, ttlSeconds }) => [
+      "SET", key, value, "EX", String(ttlSeconds),
+    ]),
+  ];
+  if (commands.length === 0) return;
   const response = await redisCommand("/pipeline", {
     body: JSON.stringify(commands),
   });
-  await redisResult(response, "DEL");
+  await redisResult(response, "REVOKE");
 }
 
 async function redisGetJson(key: string): Promise<unknown> {
@@ -202,13 +236,6 @@ async function redisGetJson(key: string): Promise<unknown> {
   } catch {
     return raw;
   }
-}
-
-async function redisSetEx(key: string, value: string, ttlSeconds: number): Promise<void> {
-  const response = await redisCommand(
-    `/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/EX/${ttlSeconds}`,
-  );
-  await redisResult(response, "SET");
 }
 
 async function deleteAccountRedisKeys(args: {
@@ -236,11 +263,18 @@ async function deleteAccountRedisKeys(args: {
         : null;
   if (slot) keys.push(`brief:${args.userId}:${slot}`);
 
-  await redisDel(keys);
-
-  for (const tokenId of args.mcpTokenIds) {
-    await redisSetEx(`pro-mcp-token-neg:${tokenId}`, "1", MCP_NEG_CACHE_TTL_SECONDS);
-  }
+  // Deletes and the MCP negative-cache sentinels go in one pipeline. The
+  // sentinels used to be a per-token await, each its own fetch with its own
+  // 5s budget, serialized inside the same action that still has to reach Dodo
+  // and Clerk.
+  await redisRevoke(
+    keys,
+    args.mcpTokenIds.map((tokenId) => ({
+      key: `pro-mcp-token-neg:${tokenId}`,
+      value: "1",
+      ttlSeconds: MCP_NEG_CACHE_TTL_SECONDS,
+    })),
+  );
 }
 
 async function deleteClerkUser(userId: string): Promise<"deleted" | "missing"> {
@@ -279,21 +313,49 @@ export const runExternalErase = internalAction({
   args: { deletionId: v.id("accountDeletions") },
   returns: runResultValidator,
   handler: async (ctx, args): Promise<{ status: "pending" | "complete" | "already_deleted" | "failed" }> => {
-    const snapshot = await ctx.runQuery(
-      internal.accountDeletion.erase.getExternalEraseSnapshot,
-      { deletionId: args.deletionId },
-    );
-    if (!snapshot) {
-      return { status: "already_deleted" as const };
+    // These two RPCs used to sit outside every try. An RPC-level throw here —
+    // a transient Convex failure, an exhausted OCC retry, a stale internal.*
+    // reference after a deploy — recorded no failure and scheduled nothing,
+    // leaving the row at pending/external, indistinguishable from a healthy
+    // in-progress deletion, with the fence on and the Clerk login still live.
+    let snapshot: ExternalEraseSnapshot | null;
+    let started: boolean;
+    try {
+      snapshot = await ctx.runQuery(
+        internal.accountDeletion.erase.getExternalEraseSnapshot,
+        { deletionId: args.deletionId },
+      );
+      if (!snapshot) {
+        return { status: "already_deleted" as const };
+      }
+      if (snapshot.status === "complete") {
+        return { status: "already_deleted" as const };
+      }
+      if (snapshot.status === "failed") return { status: "failed" as const };
+      if (snapshot.step !== "external") {
+        return { status: "pending" as const };
+      }
+      started = await ctx.runMutation(internal.accountDeletion.sideEffects.beginExternalAttempt, args);
+    } catch (err) {
+      // No attempt was consumed and no provider was touched, so this is safe
+      // to retry. Record it so the row carries a failure and a schedule
+      // instead of silently stalling.
+      // sentry-coverage-ok: structured console.error is forwarded by Convex,
+      // and re-throwing would abandon the row at pending/external with no
+      // failure recorded and nothing scheduled — the exact stall this catch
+      // exists to close.
+      console.error(JSON.stringify({
+        breadcrumb: "account_deletion_external_setup_failed",
+        deletionId: args.deletionId,
+        error: errorMessage(err),
+      }));
+      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
+        deletionId: args.deletionId,
+        lastError: `EXTERNAL_SETUP:${errorMessage(err)}`,
+        retryable: true,
+      }).catch(() => "failed" as const);
+      return { status };
     }
-    if (snapshot.status === "complete") {
-      return { status: "already_deleted" as const };
-    }
-    if (snapshot.status === "failed") return { status: "failed" as const };
-    if (snapshot.step !== "external") {
-      return { status: "pending" as const };
-    }
-    const started = await ctx.runMutation(internal.accountDeletion.sideEffects.beginExternalAttempt, args);
     if (!started) return { status: "failed" as const };
 
     let cancelled = [...snapshot.cancelledDodoSubscriptionIds];

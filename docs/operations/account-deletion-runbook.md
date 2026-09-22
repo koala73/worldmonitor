@@ -52,7 +52,20 @@ Do **not** pass an email argument. Extra fields are rejected.
   customer contact data (email, name, phone, billing address) stays in the
   customers, subscriptions, paymentEvents, webhookEvents, and dunningEmails
   rows; the live `userId` link is replaced by the `deleted:<sha256>`
-  tombstone, and signed identity markers are stripped from stored payloads.
+  tombstone on customers, subscriptions, paymentEvents, and
+  deletedSubscriptionCustomers, and signed identity markers are stripped from
+  the payloads stored on those rows.
+- `webhookEvents` is the exception, and it is deliberate. The raw provider
+  archive is keyed by `webhookId` with no per-user index, so rows written
+  **before** a deletion request keep the `wm_user_id` / `wm_login_email`
+  identity bridge Dodo echoed back to us; only events processed **after** the
+  deletion row exists are redacted on the way in. Treat the tombstone as
+  "these billing rows no longer name the account", not as an assertion that no
+  record anywhere can be re-joined to the original Clerk subject. The
+  `accountDeletions` row itself also keeps the plaintext `userId` indefinitely,
+  because `billingDeletionForUser` needs that reverse map. If a lawful erasure
+  request requires the webhook archive too, that is a manual operation — see
+  the registry entry for `webhookEvents`.
 
 ## After the row is complete
 

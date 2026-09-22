@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
+import { CLERK_SKEW_SECONDS } from "../accountDeletion/clerkWebhook";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -122,6 +123,55 @@ describe("Clerk account-deletion webhook", () => {
     const res = await postClerkWebhook(t, {
       payload,
       signature: "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    });
+    expect(res.status).toBe(401);
+    const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  // The skew guard is the only replay defense on an irreversible erase, and it
+  // had no coverage: an inverted comparison, a wrong divisor, or a deleted
+  // check would all have shipped green. Each case below signs the SAME
+  // timestamp it sends, so a rejection can only come from the window check.
+  test("a validly signed but stale delivery 401s before any erase", async () => {
+    process.env.CLERK_WEBHOOK_SECRET = CLERK_WEBHOOK_SECRET;
+    const t = convexTest(schema, modules);
+    const payload = deletedPayload();
+    const timestamp = String(TEST_NOW_SECONDS - CLERK_SKEW_SECONDS - 1);
+    const res = await postClerkWebhook(t, {
+      payload,
+      timestamp,
+      signature: `v1,${await signPayload(payload, { timestamp })}`,
+    });
+    expect(res.status).toBe(401);
+    const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("a validly signed delivery from the future 401s before any erase", async () => {
+    process.env.CLERK_WEBHOOK_SECRET = CLERK_WEBHOOK_SECRET;
+    const t = convexTest(schema, modules);
+    const payload = deletedPayload();
+    const timestamp = String(TEST_NOW_SECONDS + CLERK_SKEW_SECONDS + 1);
+    const res = await postClerkWebhook(t, {
+      payload,
+      timestamp,
+      signature: `v1,${await signPayload(payload, { timestamp })}`,
+    });
+    expect(res.status).toBe(401);
+    const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());
+    expect(rows).toHaveLength(0);
+  });
+
+  test("a non-numeric timestamp 401s before any erase", async () => {
+    process.env.CLERK_WEBHOOK_SECRET = CLERK_WEBHOOK_SECRET;
+    const t = convexTest(schema, modules);
+    const payload = deletedPayload();
+    const timestamp = "not-a-timestamp";
+    const res = await postClerkWebhook(t, {
+      payload,
+      timestamp,
+      signature: `v1,${await signPayload(payload, { timestamp })}`,
     });
     expect(res.status).toBe(401);
     const rows = await t.run(async (ctx) => ctx.db.query("accountDeletions").collect());

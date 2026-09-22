@@ -16,7 +16,14 @@ import {
   tombstoneUserId,
 } from "./registry";
 
-const PERSONAL_DELETE_TABLES = [
+/**
+ * Tables the generic personal-delete stepper walks.
+ *
+ * Exported so `accountDeletion.test.ts` can cross-check it against
+ * ACCOUNT_DELETION_REGISTRY. The registry's header states that adding a table
+ * means updating both files, and nothing enforced that until that test existed.
+ */
+export const PERSONAL_DELETE_TABLES = [
   "userPreferences",
   "userPreferenceWriteRateLimits",
   "notificationChannels",
@@ -36,6 +43,18 @@ const PERSONAL_DELETE_TABLES = [
 ] as const;
 
 type PersonalDeleteTable = (typeof PERSONAL_DELETE_TABLES)[number];
+
+/** Bounded retries for a thrown batch before the deletion goes terminal. */
+const MAX_BATCH_ATTEMPTS = 5;
+const BATCH_RETRY_BASE_DELAY_MS = 2_000;
+const BATCH_RETRY_MAX_DELAY_MS = 60_000;
+
+function batchRetryDelayMs(attempts: number): number {
+  return Math.min(
+    BATCH_RETRY_MAX_DELAY_MS,
+    BATCH_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempts - 1),
+  );
+}
 
 type DeletionDoc = Doc<"accountDeletions">;
 
@@ -205,11 +224,17 @@ async function eraseFollows(
   deletion: DeletionDoc,
   budget: number,
 ): Promise<{ writes: number; done: boolean }> {
-  const followBudget = Math.max(1, Math.floor(budget / 4));
+  // One country per transaction. followedCountriesCounts and its country lock
+  // are globally shared, write-hot rows (convex/users.ts documents 1,618
+  // conflicts in a day on this table class), so batching many of them into one
+  // transaction multiplies the chance that the whole batch loses an optimistic
+  // -concurrency retry. Paging one at a time keeps each transaction's shared
+  // write set at a single aggregate row plus its lock; the step repeats until
+  // `done`, so the extra transactions cost scheduling, not correctness.
   const rows = await ctx.db
     .query("followedCountries")
     .withIndex("by_user", (q) => q.eq("userId", deletion.userId))
-    .take(followBudget);
+    .take(1);
   if (rows.length === 0) {
     return { writes: 0, done: true };
   }
@@ -221,12 +246,17 @@ async function eraseFollows(
     writes += await decrementCountryCountIfSeeded(ctx, row.country);
     if (writes >= budget) break;
   }
-  writes += await touchFollowShardIfSeeded(ctx, deletion.userId);
   const remaining = await ctx.db
     .query("followedCountries")
     .withIndex("by_user", (q) => q.eq("userId", deletion.userId))
     .take(1);
-  return { writes, done: remaining.length === 0 };
+  const done = remaining.length === 0;
+  // The shard row is shared by every user in the shard, so touch it once when
+  // the step finishes rather than on each single-country page.
+  if (done) {
+    writes += await touchFollowShardIfSeeded(ctx, deletion.userId);
+  }
+  return { writes, done };
 }
 
 async function erasePersonal(
@@ -674,7 +704,10 @@ export const advanceErase = internalMutation({
       // A page can delete rows without advancing its table/step cursor. Stamp
       // every committed page, even within one millisecond, so a stale action's
       // failure cannot overwrite this transaction's successful progress.
+      // Committed progress also clears the retry counter: the ladder in
+      // markBatchFailed counts consecutive failures, not lifetime ones.
       await ctx.db.patch(after._id, {
+        batchAttempts: undefined,
         updatedAt: Math.max(Date.now(), before?.updatedAt ?? 0, after.updatedAt) + 1,
       });
     }
@@ -683,13 +716,15 @@ export const advanceErase = internalMutation({
   },
 });
 
+type BatchSnapshot = {
+  step: DeletionDoc["step"];
+  personalTableIndex?: number;
+  updatedAt: number;
+};
+
 export const getBatchSnapshot = internalQuery({
   args: { deletionId: v.id("accountDeletions") },
-  handler: async (ctx, args): Promise<{
-    step: DeletionDoc["step"];
-    personalTableIndex?: number;
-    updatedAt: number;
-  } | null> => {
+  handler: async (ctx, args): Promise<BatchSnapshot | null> => {
     const row = await ctx.db.get(args.deletionId);
     if (!row || row.status !== "pending") return null;
     return { step: row.step, personalTableIndex: row.personalTableIndex, updatedAt: row.updatedAt };
@@ -703,34 +738,92 @@ export const markBatchFailed = internalMutation({
     personalTableIndex: v.optional(v.number()),
     updatedAt: v.number(),
   },
-  handler: async (ctx, args) => {
+  returns: v.union(v.literal("retrying"), v.literal("failed"), v.literal("stale")),
+  handler: async (ctx, args): Promise<"retrying" | "failed" | "stale"> => {
     const row = await ctx.db.get(args.deletionId);
     // A separate continuation or explicit retry may have advanced since the
     // action read its snapshot. Never overwrite that newer progress.
     if (!row || row.status !== "pending" || row.step !== args.step
-      || row.personalTableIndex !== args.personalTableIndex || row.updatedAt !== args.updatedAt) return;
+      || row.personalTableIndex !== args.personalTableIndex || row.updatedAt !== args.updatedAt) return "stale";
+
+    // A batch throw is usually a lost optimistic-concurrency retry on a shared
+    // aggregate row, not a broken deletion. Going terminal on the first one
+    // strands a half-erased account behind the write fence with its
+    // subscription still billing, so retry a bounded number of times first.
+    // Counted rather than classified on purpose: Convex does not expose a
+    // stable, documented discriminator for an exhausted OCC retry, and a
+    // counter is correct whatever the cause.
+    const attempts = (row.batchAttempts ?? 0) + 1;
+    if (attempts < MAX_BATCH_ATTEMPTS) {
+      await ctx.db.patch(row._id, {
+        batchAttempts: attempts,
+        lastError: "ERASE_BATCH_RETRY",
+        // Advance past the stamp this call matched on, the same guarantee
+        // advanceErase makes. A bare Date.now() can land in the same
+        // millisecond, leaving the row matchable by another in-flight action
+        // holding the identical snapshot, which would burn a second attempt
+        // for one failure.
+        updatedAt: Math.max(Date.now(), row.updatedAt) + 1,
+      });
+      await ctx.scheduler.runAfter(
+        batchRetryDelayMs(attempts),
+        internal.accountDeletion.batches.advanceEraseSafely,
+        { deletionId: row._id },
+      );
+      return "retrying";
+    }
+
     await ctx.db.patch(row._id, {
       status: "failed",
+      batchAttempts: attempts,
       lastError: "ERASE_BATCH_FAILED",
       updatedAt: Date.now(),
     });
+    return "failed";
   },
 });
 
 export const advanceEraseSafely = internalAction({
   args: { deletionId: v.id("accountDeletions") },
   handler: async (ctx, args): Promise<void> => {
-    const snapshot = await ctx.runQuery(internal.accountDeletion.batches.getBatchSnapshot, args);
-    if (!snapshot) return;
+    // The snapshot read is inside the try with everything else: a throw here
+    // (a transient Convex failure, an exhausted OCC retry, a stale internal.*
+    // reference after a deploy) used to escape the handler, recording no
+    // failure and scheduling nothing. The row then sat at `pending` looking
+    // like a healthy in-progress deletion, with the write fence on and the
+    // Clerk login still live, and beginErase's early return made re-running
+    // the operator command a no-op.
+    let snapshot: BatchSnapshot | null = null;
     try {
+      snapshot = await ctx.runQuery(internal.accountDeletion.batches.getBatchSnapshot, args);
+      if (!snapshot) return;
       await ctx.runMutation(internal.accountDeletion.batches.advanceErase, args);
-    } catch {
-      // sentry-coverage-ok: persist the failure for the status UI and explicit
-      // retry. The failed mutation rolls back all batch writes before this
-      // separate transaction records failure; no unbounded retry is queued.
-      await ctx.runMutation(internal.accountDeletion.batches.markBatchFailed, {
+    } catch (err) {
+      if (!snapshot) {
+        // The snapshot read itself failed, so there is no cursor to match on
+        // and markBatchFailed would be unsafe. Leave the row untouched and let
+        // the staleness re-arm in beginErase recover it.
+        console.error(JSON.stringify({
+          breadcrumb: "account_deletion_batch_snapshot_failed",
+          deletionId: args.deletionId,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+        return;
+      }
+      // sentry-coverage-ok: persist the failure for the status UI and the
+      // bounded retry ladder. The failed mutation rolls back all batch writes
+      // before this separate transaction records the attempt.
+      const outcome = await ctx.runMutation(internal.accountDeletion.batches.markBatchFailed, {
         ...args, ...snapshot,
       });
+      if (outcome === "failed") {
+        console.error(JSON.stringify({
+          breadcrumb: "account_deletion_batch_failed",
+          deletionId: args.deletionId,
+          step: snapshot.step,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      }
     }
   },
 });

@@ -8,7 +8,12 @@ import {
   modules,
   schema,
 } from "./companyMonitoring.helpers";
-import { sha256Hex, tombstoneUserId } from "../accountDeletion/registry";
+import {
+  ACCOUNT_DELETION_REGISTRY,
+  sha256Hex,
+  tombstoneUserId,
+} from "../accountDeletion/registry";
+import { PERSONAL_DELETE_TABLES } from "../accountDeletion/batches";
 
 const { dodoUpdateMock } = vi.hoisted(() => ({
   dodoUpdateMock: vi.fn(async () => ({ status: "cancelled" })),
@@ -847,5 +852,88 @@ describe("account deletion — continuation ownership", () => {
     expect(dodoUpdateMock).toHaveBeenCalledWith("sub-late", { status: "cancelled" });
     expect(dodoUpdateMock).not.toHaveBeenCalledWith("sub-first", expect.anything());
     expect((await t.run(ctx => ctx.db.get(deletionId)))?.status).toBe("complete");
+  });
+});
+
+/**
+ * The registry's header comment claims a closed world: "Every user-scoped
+ * Convex table must appear here ... adding a table means updating both files."
+ * Nothing enforced that — ACCOUNT_DELETION_REGISTRY was declared once and
+ * imported nowhere, while batches.ts erased from its own PERSONAL_DELETE_TABLES
+ * — so the two could drift silently and a new user-scoped table could ship with
+ * no erasure decision at all. These tests are what make the claim true.
+ */
+describe("account deletion registry is enforced, not documentation", () => {
+  // Registry targets that name an external system rather than a Convex table.
+  const EXTERNAL_TARGET_PREFIXES = ["redis:", "clerk.", "dodo.", "workos."];
+
+  // `delete` targets erased by a dedicated stepper instead of the generic
+  // personal-table walk. Adding one here is a deliberate, reviewable act.
+  const DEDICATED_DELETE_STEPS = new Set([
+    "followedCountries",        // eraseFollows: also decrements country aggregates
+    "businessProGrants",        // eraseGrants: owner vs invitee, recomputes seats
+    "proActivationPresentations", // eraseGrants
+    "registrations",            // eraseEmailKeyed: verified-email keyed
+    "contactMessages",          // eraseEmailKeyed: verified-email keyed
+  ]);
+
+  const isExternal = (target: string): boolean =>
+    EXTERNAL_TARGET_PREFIXES.some((prefix) => target.startsWith(prefix));
+
+  const registryTables = new Set(
+    ACCOUNT_DELETION_REGISTRY.filter((e) => !isExternal(e.target)).map((e) => e.target),
+  );
+  const schemaTables = Object.keys(schema.tables);
+
+  test("every Convex table has an erasure decision in the registry", () => {
+    const undecided = schemaTables.filter((name) => !registryTables.has(name));
+    expect(
+      undecided,
+      `These tables are in convex/schema.ts but have no ACCOUNT_DELETION_REGISTRY entry. `
+      + `Add one with action delete, anonymize, retain, delegate, or skip — and if it is `
+      + `delete, wire it into batches.ts too: ${undecided.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  test("every registry target names a real table or external system", () => {
+    const known = new Set(schemaTables);
+    const unknown = [...registryTables].filter((target) => !known.has(target));
+    expect(
+      unknown,
+      `These ACCOUNT_DELETION_REGISTRY targets match no table in convex/schema.ts. `
+      + `A renamed or dropped table leaves the registry asserting coverage it does not `
+      + `have: ${unknown.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  test("every registry delete target is actually erased by a stepper", () => {
+    const stepperTables = new Set<string>(PERSONAL_DELETE_TABLES);
+    const orphaned = ACCOUNT_DELETION_REGISTRY
+      .filter((e) => e.action === "delete" && !isExternal(e.target))
+      .map((e) => e.target)
+      .filter((target) => !stepperTables.has(target) && !DEDICATED_DELETE_STEPS.has(target));
+    expect(
+      orphaned,
+      `The registry promises these tables are deleted, but no stepper erases them. `
+      + `Add each to PERSONAL_DELETE_TABLES in batches.ts, or to DEDICATED_DELETE_STEPS `
+      + `in this test if a dedicated step owns it: ${orphaned.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  test("the generic stepper only erases tables the registry marks delete", () => {
+    const byTarget = new Map(ACCOUNT_DELETION_REGISTRY.map((e) => [e.target, e.action]));
+    const mismatched = PERSONAL_DELETE_TABLES
+      .filter((table) => byTarget.get(table) !== "delete");
+    expect(
+      mismatched,
+      `batches.ts erases these tables but the registry does not mark them delete. `
+      + `One of the two is wrong: ${mismatched.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  test("webhookEvents carries the retention decision the docs now state", () => {
+    const entry = ACCOUNT_DELETION_REGISTRY.find((e) => e.target === "webhookEvents");
+    expect(entry?.action).toBe("retain");
+    expect(entry?.notes).toMatch(/before the request/i);
   });
 });

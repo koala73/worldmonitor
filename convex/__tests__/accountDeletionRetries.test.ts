@@ -148,7 +148,45 @@ describe("external account deletion retry policy", () => {
     expect(dodoUpdate.mock.calls.map(([id]) => id)).toEqual(["sub_a", "sub_b", "sub_b"]);
   });
 
-  test.each(["/get/", "/pipeline", "/set/"])("Redis HTTP 200 error on %s cannot complete deletion", async (operation) => {
+  // The MCP negative-cache sentinels are SET commands inside the same
+  // revocation pipeline as the DELs, so a per-command error on one of them —
+  // Upstash answers HTTP 200 and reports the failure in the body — must still
+  // block completion. Only the SET results are poisoned here; the DELs report
+  // success, so this fails for the reason it claims to.
+  test("an HTTP 200 error on the MCP sentinel write cannot complete deletion", async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      if (!isRedisPipelineUrl(String(input))) return success(input);
+      const commands = JSON.parse(String(init?.body ?? "[]")) as string[][];
+      return Response.json(commands.map((command) => command[0] === "SET"
+        ? { error: "ERR denied" }
+        : { result: 1 }));
+    });
+    const { t, deletionId, row } = await setup();
+    await t.run((ctx) => ctx.db.patch(deletionId, { mcpTokenIds: ["token_1"] }));
+    expect(await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId }))
+      .toEqual({ status: "failed" });
+    expect((await row())?.redisClearedAt).toBeUndefined();
+    expect(fetchMock.mock.calls.some(([input]) => isClerkApiUrl(String(input)))).toBe(false);
+    expect(await pendingJobs(t)).toHaveLength(0);
+  });
+
+  test("the revocation pipeline carries the MCP sentinels in one round trip", async () => {
+    const { t, deletionId } = await setup();
+    await t.run((ctx) => ctx.db.patch(deletionId, { mcpTokenIds: ["token_1", "token_2"] }));
+    await t.action(internal.accountDeletion.sideEffects.runExternalErase, { deletionId });
+    const pipelines = fetchMock.mock.calls
+      .filter(([input]) => isRedisPipelineUrl(String(input)))
+      .map(([, init]) => JSON.parse(String(init?.body ?? "[]")) as string[][]);
+    // One pipeline for the whole revocation set, not one fetch per token.
+    const withSets = pipelines.filter((commands) => commands.some((c) => c[0] === "SET"));
+    expect(withSets).toHaveLength(1);
+    expect(withSets[0]?.filter((c) => c[0] === "SET").map((c) => c[1])).toEqual([
+      "pro-mcp-token-neg:token_1",
+      "pro-mcp-token-neg:token_2",
+    ]);
+  });
+
+  test.each(["/get/", "/pipeline"])("Redis HTTP 200 error on %s cannot complete deletion", async (operation) => {
     fetchMock.mockImplementation((input) => String(input).includes(operation)
       ? Promise.resolve(Response.json(operation === "/pipeline" ? [{ error: "ERR denied" }] : { error: "ERR denied" }))
       : success(input));

@@ -126,6 +126,18 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     notes: "Contact form rows matching verified account email",
   },
   {
+    target: "webhookEvents",
+    action: "retain",
+    notes:
+      "Raw provider archive, keyed by webhookId with no per-user index. Events "
+      + "processed after the deletion row exists are redacted on insert "
+      + "(webhookMutations.processWebhookEvent); rows written before the request "
+      + "keep the identity bridge Dodo echoed back and are retained as delivered "
+      + "(owner decision 2026-09-22). Sweeping them needs a denormalized "
+      + "customer id plus an index; until then the tombstone means the billing "
+      + "rows stop naming the account, not that no record can be re-joined.",
+  },
+  {
     target: "emailSuppressions",
     action: "retain",
     notes: "Bounce/complaint (and other) suppressions stay so we do not re-mail",
@@ -185,6 +197,66 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
     action: "skip",
     notes: "Consumer identity is the Clerk subject; no separate WorkOS user row",
   },
+
+  // --- Closed-world completions (2026-09-22) -------------------------------
+  // The header above promised every table appears here, but 24 did not, so the
+  // promise was unenforceable and a new user-scoped table could ship with no
+  // erasure decision. `accountDeletion.test.ts` now walks convex/schema.ts
+  // against this list; these entries are what make that gate pass honestly.
+  {
+    target: "accountDeletions",
+    action: "retain",
+    notes:
+      "The deletion ledger itself. Keeps the plaintext userId indefinitely on "
+      + "purpose: billingDeletionForUser resolves a deleted:<sha256> tombstone "
+      + "back through by_userIdHash, and the write fence reads it to reject new "
+      + "personal writes. Only verifiedEmail is cleared on complete.",
+  },
+  {
+    target: "unattributedPaymentEvents",
+    action: "retain",
+    notes:
+      "Operator repair queue for payments no account could be attributed to. "
+      + "Holds customerEmail, customerName, the raw Dodo payload, and a "
+      + "resolvedUserId once repaired, so it is user-scoped in substance — "
+      + "retained under the same billing-evidence decision as webhookEvents, "
+      + "not swept. Deleting it would destroy the evidence that someone paid "
+      + "and holds no access.",
+  },
+  {
+    target: "paymentWebhookFailures",
+    action: "retain",
+    notes: "Dead-letter projection: Dodo ids, error text, and dataKeys only; no payload",
+  },
+  {
+    target: "paymentWebhookFailureSummary",
+    action: "retain",
+    notes: "Aggregate failure counters; carries no per-user field",
+  },
+  { target: "productPlans", action: "skip", notes: "Global product catalog" },
+  { target: "counters", action: "skip", notes: "Global counters" },
+  { target: "businessSeatLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "broadcastRampConfig", action: "skip", notes: "Global broadcast ramp settings" },
+  { target: "broadcastEvents", action: "skip", notes: "Broadcast send log; not the account record" },
+  { target: "waveRuns", action: "skip", notes: "Broadcast wave runs; not the account record" },
+  { target: "intelHistory", action: "skip", notes: "Global intel corpus, not user-scoped" },
+  { target: "intelHistoryRetractions", action: "skip", notes: "Global intel corpus" },
+  { target: "intelHistoryAppendLocks", action: "skip", notes: "Global OCC locks" },
+  // Company Monitoring children follow their account row, which is `delegate`
+  // above. markOwnerDeleted / advanceAccountPurge owns their lifecycle; this
+  // PR only refactored the entry point into applyOwnerDeletedFence and did not
+  // change that cleanup's scope.
+  { target: "companyMonitoringCompanies", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringClaims", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringEvidence", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringCandidates", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringAdmissionDecisions", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringScanObligations", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringScanReceiptLinks", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringScanWorkItems", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringXIdentities", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringXEvidence", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
+  { target: "companyMonitoringXPostAliases", action: "delegate", notes: "Via companyMonitoringAccounts purge" },
 ] as const;
 
 export const ERASE_WRITE_BUDGET = 64;
