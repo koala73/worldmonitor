@@ -334,7 +334,7 @@ paths:
                     type: string
                 - name: lang
                   in: query
-                  description: ISO 639-1 language code (en, fr, ar, etc.)
+                  description: ISO 639-1 language code of a supported digest language (en, fr, ar, etc.). Unsupported codes are rejected with 400.
                   required: false
                   example: "en"
                   schema:
@@ -833,7 +833,7 @@ components:
                     description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                 lang:
                     type: string
-                    description: ISO 639-1 language code (en, fr, ar, etc.)
+                    description: ISO 639-1 language code of a supported digest language (en, fr, ar, etc.). Unsupported codes are rejected with 400.
         ListFeedDigestResponse:
             type: object
             properties:

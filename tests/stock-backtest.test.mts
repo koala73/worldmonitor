@@ -745,16 +745,20 @@ describe('backtestStock provider-work quota', () => {
     );
   });
 
-  it('rolls back the reservation when Yahoo work throws after a cache miss', async () => {
+  it('keeps a transient Yahoo outage out of the negative cache', async () => {
+    // A short Yahoo blip (502) must not become a shared 120s cached lie of
+    // `available: false`: only invalid-symbol / insufficient-history may be
+    // negatively cached. The fetcher now throws on `unavailable` so
+    // `cacheFetcherErrors: false` keeps the outage out of Redis.
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-    const redisFetch = createRedisAwareBacktestFetch(mockChartPayload());
+    const redisFetch = createRedisAwareBacktestFetch({ chart: { result: null } });
     let yahooAttempts = 0;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.includes('query1.finance.yahoo.com')) {
         yahooAttempts += 1;
-        throw new Error('yahoo unavailable');
+        return new Response('gateway blip', { status: 502 });
       }
       return redisFetch.fetch(input, init);
     }) as typeof fetch;
@@ -767,6 +771,24 @@ describe('backtestStock provider-work quota', () => {
 
     assert.equal(response.available, false);
     assert.equal(yahooAttempts, 1);
+    assert.equal(
+      [...redisFetch.redis.values()].filter((value) => value.includes('__WM_NEG__')).length,
+      0,
+      'a transient Yahoo failure must not write a negative sentinel',
+    );
+    assert.ok(
+      ![...redisFetch.redis.keys()].some((key) => key.startsWith('market:backtest:')),
+      'a transient Yahoo failure must not write the shared backtest entry',
+    );
+    // This also covers the reservation rollback on a fetcher throw: the quota
+    // was reserved before computeBacktest ran, the throw unwound through the
+    // outer catch, and the budget is back to 0. (#8385 review: a separate test
+    // used to assert this by arming an exported mutable flag in the production
+    // handler to throw a quota ApiError from INSIDE the fetcher — a state
+    // production cannot reach, since a real quota failure throws from
+    // reserveProviderWork before `quotaHold.reservation` is ever assigned. The
+    // hook and that test are gone; this assertion covers the reachable path,
+    // and the 429/503 quota-rejection cases are covered above.)
     assert.equal(
       Number(redisFetch.redis.get(backtestStockProviderQuotaKey('user_pro')) || '0'),
       0,
