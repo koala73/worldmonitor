@@ -738,10 +738,7 @@ export async function readMaterializedGdeltConflictEvents({
 // ─── Humanitarian Summary (HAPI) ───
 
 async function defaultPreserveHapiLastGood() {
-  await extendExistingTtl(
-    HAPI_COUNTRIES.map((countryCode) => `${HAPI_CACHE_KEY_PREFIX}:${countryCode}`),
-    HAPI_TTL,
-  );
+  // Keep diagnostics, but never renew the lifetime of retained country data.
   await extendExistingTtl(
     [HAPI_CACHE_KEY_PREFIX, HAPI_SEED_META_KEY],
     HAPI_SEED_META_TTL_SECONDS,
@@ -754,6 +751,10 @@ function hapiFailureReason(status, providerMessage = '') {
   }
   if (Number(status) === 429) return 'HAPI_RATE_LIMIT';
   return Number.isInteger(Number(status)) ? `HTTP_${Number(status)}` : 'HAPI_FETCH_FAILED';
+}
+
+function isHapiTerminalRejection(error) {
+  return error?.status === 403 || error?.status === 429 || error?.reasonCode === 'HAPI_BOT_BLOCK';
 }
 
 async function hapiResponseError(resp) {
@@ -882,7 +883,7 @@ export async function fetchAllHumanitarianSummaries({
   // are the ones already published less than HAPI_REFRESH_INTERVAL_MS ago, so
   // re-sweeping for them costs two global requests per tick — 8x the designed
   // cadence — on the shared app_identifier that #5554 got throttled for exactly
-  // that kind of burst, and a resulting 429 takes BOTH channels dark.
+  // that kind of burst.
   const demotedVintageStillFresh = previousWasDemoted
     && Number.isFinite(previousMarkerAgeMs)
     && previousMarkerAgeMs < HAPI_REFRESH_INTERVAL_MS;
@@ -903,9 +904,23 @@ export async function fetchAllHumanitarianSummaries({
     console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
     return null;
   }
-  if (apiBackoffActive && !demotedSnapshotRetryDue) {
-    console.log(`  Humanitarian: provider backoff active until ${new Date(failureBackoff.retryAt).toISOString()}`);
-    return null;
+  if (apiBackoffActive) {
+    const snapshotRetryAt = failureBackoff.nextSnapshotRetryAt
+      ?? (Number.isFinite(failureBackoff.failedAt)
+        ? nextFixedIntervalBoundary(failureBackoff.failedAt, HAPI_DEMOTED_REFRESH_INTERVAL_MS)
+        : previousWasDemoted ? nextSnapshotRetryAt : failureBackoff.retryAt);
+    if (!Number.isFinite(snapshotRetryAt) || nowMs < snapshotRetryAt) return null;
+    // Persist the probe deadline before network I/O. A failed write must not
+    // turn repeated worker invocations into unpaced snapshot requests.
+    try {
+      await writeFailureBackoff({
+        ...failureBackoff,
+        nextSnapshotRetryAt: nextFixedIntervalBoundary(nowMs, HAPI_DEMOTED_REFRESH_INTERVAL_MS),
+      });
+    } catch (error) {
+      console.warn(`  HAPI snapshot probe scheduling failed: ${error.message}`);
+      return null;
+    }
   }
 
   // #7658: the channel is chosen HERE, once, before any row is aggregated —
@@ -997,6 +1012,7 @@ export async function fetchAllHumanitarianSummaries({
       }
     } catch (snapshotFailure) {
       snapshotFailureReason = hapiHdxFailureReason(snapshotFailure);
+      if (apiBackoffActive) throw snapshotFailure;
       // Same "may not LAUNCH after the cutoff" gate the fan-out below uses, for
       // the same reason: the snapshot's own timeouts allow it to burn 60s of
       // metadata plus two 120s annual downloads before failing, and stacking two
@@ -1021,21 +1037,13 @@ export async function fetchAllHumanitarianSummaries({
       // Still down, and the demoted rows this tick would re-fetch are younger
       // than the normal refresh interval. Retry the snapshot again next tick
       // rather than re-sweeping the lagging channel for rows we already have —
-      // see demotedVintageStillFresh. Last-good keeps serving (TTL extended,
-      // fetchedAt untouched, so staleness still advances honestly) and the
+      // see demotedVintageStillFresh. Last-good keeps serving until its original expiry
+      // (fetchedAt untouched, so staleness still advances honestly) and the
       // previous seed-meta's sourceState 'degraded' keeps the health warning up.
       if (demotedVintageStillFresh) {
         console.log(
           `  Humanitarian: HDX still down (${snapshotFailureReason}); demoted rows are`
           + ` ${Math.round(previousMarkerAgeMs / 60_000)}min old — preserving them instead of re-sweeping the JSON API`,
-        );
-        await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
-        return null;
-      }
-      if (apiBackoffActive) {
-        console.log(
-          `  Humanitarian: HDX still down (${snapshotFailureReason}); API backoff remains active until`
-          + ` ${new Date(failureBackoff.retryAt).toISOString()} — preserving last-good data`,
         );
         await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
         return null;
@@ -1095,6 +1103,7 @@ export async function fetchAllHumanitarianSummaries({
     let fallbackFailure = sweepFailure;
     let fallbackRows = 0;
     for (let i = 0; i < missingCountries.length; i += 1) {
+      if (isHapiTerminalRejection(fallbackFailure)) break;
       const countryCode = missingCountries[i];
       // Snapshot-backed iterations issue no network request — they filter rows
       // already in memory — so they are not what this budget bounds, and gating
@@ -1126,7 +1135,7 @@ export async function fetchAllHumanitarianSummaries({
       } catch (error) {
         fallbackFailure = error;
         console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
-        if (error.status === 429 || error.status === 403) break;
+        if (isHapiTerminalRejection(error)) break;
       }
       if (i < missingCountries.length - 1 && sourceChannel !== HAPI_SNAPSHOT_CHANNEL) {
         await pace(HAPI_REQUEST_DELAY_MS);
@@ -1167,18 +1176,22 @@ export async function fetchAllHumanitarianSummaries({
     failure = withChannelProvenance(error);
   }
 
-  const retryAt = nowMs + HAPI_FAILURE_BACKOFF_MS;
-  const reasonCode = failure?.reasonCode ?? 'HAPI_FETCH_FAILED';
+  const retryAt = apiBackoffActive ? failureBackoff.retryAt : nowMs + HAPI_FAILURE_BACKOFF_MS;
+  const reasonCode = (apiBackoffActive ? failureBackoff.reasonCode : failure?.reasonCode) ?? 'HAPI_FETCH_FAILED';
+  const lastSuccessAt = previousMarker?.updatedAt;
+  const hasPreviousSuccess = Number.isSafeInteger(lastSuccessAt) && lastSuccessAt > 0 && lastSuccessAt <= nowMs;
+
   console.warn(`  HAPI bulk failed: ${failure.message} — preserving last-good data and backing off until ${new Date(retryAt).toISOString()}`);
   await writeFailureMeta({
-    fetchedAt: nowMs,
+    fetchedAt: hasPreviousSuccess ? lastSuccessAt : nowMs,
     recordCount: Number(previousMarker?.requiredCountriesCovered) || 0,
-    status: 'error',
+    ...(hasPreviousSuccess ? { sourceState: 'degraded' } : { status: 'error' }),
+    requiredCountryCodes: requiredCountryContract,
+    lastSourceAttemptAt: nowMs,
+    retryAt,
     errorReason: reasonCode,
     failedAt: nowMs,
-    ...(Number.isFinite(Number(previousMarker?.updatedAt))
-      ? { lastSuccessAt: Number(previousMarker.updatedAt) }
-      : {}),
+    ...(hasPreviousSuccess ? { lastSuccessAt } : {}),
     // `attemptedChannel`, NOT `sourceChannel`: this run published nothing, so
     // the pages are still serving last-good from whichever channel last
     // succeeded — naming this one `sourceChannel` would claim the failed
@@ -1195,11 +1208,12 @@ export async function fetchAllHumanitarianSummaries({
       : {}),
     ...(/^[A-Z0-9_]{1,64}$/.test(reasonCode) ? { errorCode: reasonCode } : {}),
   }).catch((error) => console.warn(`  HAPI failure health write failed: ${error.message}`));
-  await writeFailureBackoff({
+  if (!apiBackoffActive) await writeFailureBackoff({
     status: Number.isFinite(Number(failure.status)) ? Number(failure.status) : 0,
     reasonCode,
     failedAt: nowMs,
     retryAt,
+    nextSnapshotRetryAt: nextFixedIntervalBoundary(nowMs, HAPI_DEMOTED_REFRESH_INTERVAL_MS),
   }).catch((error) => console.warn(`  HAPI backoff write failed: ${error.message}`));
   await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
   return null;
@@ -1321,6 +1335,7 @@ export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {
     (countryCode) => summaries[countryCode],
   ).length;
   const channelProvenance = {
+    requiredCountryCodes: [...HAPI_REQUIRED_COUNTRIES].sort(),
     sourceChannel: humanitarian?.sourceChannel,
     ...(humanitarian?.snapshotFailureReason
       ? {
@@ -1341,7 +1356,6 @@ export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {
       countriesCovered: Object.keys(summaries).length,
       countriesTotal: HAPI_COUNTRIES.length,
       requiredCountriesCovered,
-      requiredCountryCodes: [...HAPI_REQUIRED_COUNTRIES].sort(),
       requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
       ...channelProvenance,
       ...(humanitarian?.sourceChannel === HAPI_API_CHANNEL

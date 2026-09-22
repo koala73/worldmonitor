@@ -2,7 +2,7 @@
  * Standalone channel management window (LIVE panel: add/remove/reorder channels).
  * Loaded when the app is opened with ?live-channels=1 (e.g. from "Manage channels" button).
  */
-import type { LiveChannel } from '@/components/LiveNewsPanel';
+import type { LiveChannel } from '@/services/live-channels';
 import {
   loadChannelsFromStorage,
   saveChannelsToStorage,
@@ -10,7 +10,7 @@ import {
   getDefaultLiveChannels,
   getFilteredOptionalChannels,
   getFilteredChannelRegions,
-} from '@/components/LiveNewsPanel';
+} from '@/services/live-channels';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';

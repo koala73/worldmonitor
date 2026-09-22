@@ -1175,9 +1175,6 @@
       "base": "基地",
       "nuclear": "核施設"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
       "critical": "危険",
       "high": "高",
@@ -1901,6 +1898,7 @@
       "etfs": "ETFs",
       "netInflow": "純流入",
       "netOutflow": "純流出",
+      "netNeutral": "純中立",
       "table": {
         "ticker": "ティッカー",
         "issuer": "発行体",
@@ -2166,7 +2164,7 @@
       "infoTooltip": "<strong>経済カレンダー</strong> 予定されたマクロ経済発表：CPI、NFP、GDP、PMIおよび中央銀行の決定。予想 vs 実績 vs 前回を表示。高インパクトイベントはハイライト表示。ソース：経済データプロバイダー。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融ストレス指標</strong> カンザスシティ連銀金融ストレス指数（KCFSI）：利回りスプレッド、ボラティリティ、クロス相関を含む11の指標を用いて米国金融市場のストレスを測定。正の値は平均以上のストレスを示す。ソース：カンザスシティ連邦準備銀行。",
+      "infoTooltip": "<strong>金融ストレス指標</strong> 株式ボラティリティとハイイールド・スプレッドで調整した、ハイイールド債券と長期米国債のWorldMonitor比率: (HYG / TLT) / (VIX × HY spread / 100)。これはカンザスシティ連邦準備銀行の金融ストレス指数ではありません。1.5以上は低ストレス、0.3未満は高ストレスを示します。",
       "title": "金融ストレス指数",
       "usFsiValue": "米国FSI値",
       "cissTitle": "EU CISS(ユーロ圏システミックストレス)",

@@ -52,8 +52,8 @@ const story = (over = {}) => ({
   hash: 'h1',
   title: 'Microsoft faces new antitrust probe',
   description: '',
-  link: 'https://example.com/a',
-  source: 'Example Wire',
+  link: 'https://www.reuters.com/technology/x-1',
+  source: 'Reuters Business',
   currentScore: 74,
   ...over,
 });
@@ -66,8 +66,8 @@ describe('buildWatchlistStoryEvents — pure builder', () => {
     assert.equal(ev.eventType, WATCHLIST_STORY_EVENT_TYPE);
     assert.deepEqual(ev.payload, {
       title: 'Microsoft faces new antitrust probe',
-      link: 'https://example.com/a',
-      source: 'Example Wire',
+      link: 'https://www.reuters.com/technology/x-1',
+      source: 'Reuters Business',
       tickers: ['MSFT'],
       importanceScore: 74,
       coalesceKey: 'watchlist:h1',
@@ -129,6 +129,62 @@ describe('buildWatchlistStoryEvents — pure builder', () => {
       69,
     );
     assert.equal(events.length, 1);
+  });
+});
+
+describe('buildWatchlistStoryEvents — publisher-link gate (#8398)', () => {
+  it('blanks an off-publisher link while the title/tickers still alert', () => {
+    // A feed item with an off-publisher link must not produce a
+    // notification carrying that link (acceptance criterion).
+    const events = buildWatchlistStoryEvents(
+      [story({ source: 'Reuters Business', link: 'https://evil.example/phish' })],
+      DICT,
+      69,
+    );
+    assert.equal(events.length, 1);
+    assert.equal(events[0].payload.link, '');
+    assert.equal(events[0].payload.title, 'Microsoft faces new antitrust probe');
+    assert.deepEqual(events[0].payload.tickers, ['MSFT']);
+  });
+
+  it('keeps a link on the source publisher family domain', () => {
+    const events = buildWatchlistStoryEvents(
+      [story({ source: 'Reuters Business', link: 'https://www.reuters.com/technology/x-1' })],
+      DICT,
+      69,
+    );
+    assert.equal(events[0].payload.link, 'https://www.reuters.com/technology/x-1');
+  });
+
+  it('blanks links for unresolvable or unlisted sources (fail-closed)', () => {
+    assert.equal(
+      buildWatchlistStoryEvents(
+        [story({ source: '', link: 'https://example.com/a' })],
+        DICT,
+        69,
+      )[0].payload.link,
+      '',
+    );
+    assert.equal(
+      buildWatchlistStoryEvents(
+        [story({ source: 'Some Brand New Feed', link: 'https://somebrandnewfeed.example/a' })],
+        DICT,
+        69,
+      )[0].payload.link,
+      '',
+    );
+  });
+
+  it('does not let a forged source attest a foreign link', () => {
+    // Same hostile link, but the story claims a publisher whose domains do
+    // not include the link host — the gate is on the server-known family
+    // domains, not on the claim itself.
+    const events = buildWatchlistStoryEvents(
+      [story({ source: 'BBC World', link: 'https://www.reuters.com/technology/x-1' })],
+      DICT,
+      69,
+    );
+    assert.equal(events[0].payload.link, '');
   });
 });
 
@@ -220,8 +276,17 @@ describe('seed-digest-notifications.mjs — enqueue wiring (source-grep contract
     assert.match(scanSrc, /resolveWatchlistScoreMin\(env\)/);
   });
 
-  it('hydrates sources using the candidate hash rather than parsing coalesceKey', () => {
-    assert.ok(scanSrc.includes('sourceKey: `story:sources:v1:${candidate.hash}`'));
+  it('hydrates sources using the candidate hash BEFORE building events (#8398 source reorder)', () => {
+    assert.ok(scanSrc.includes("candidates.map(({ hash }) => ['SMEMBERS', `story:sources:v1:${hash}`])"));
     assert.doesNotMatch(scanSrc, /coalesceKey\)\.slice\('watchlist:'/);
+    // The builder gates the link against the resolved source, so the source
+    // must be known at build time — a post-build hydration (payload.source
+    // assignment after buildWatchlistStoryEvents) cannot gate.
+    assert.doesNotMatch(scanSrc, /event\.payload\.source\s*=/);
+    assert.match(scanSrc, /buildWatchlistStoryEvents\(\[candidate\]/);
+  });
+
+  it('scan gates the relay link helper on the publisher-link relay gate', () => {
+    assert.match(scanSrc, /publisher-link-relay-gate\.cjs/);
   });
 });

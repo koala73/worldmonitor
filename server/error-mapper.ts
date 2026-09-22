@@ -107,6 +107,7 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     const message = (statusCode >= 400 && statusCode < 500) || exposesRetryableUnavailable ? error.message : 'Internal server error';
     const extras: Record<string, unknown> = {};
     const headers: Record<string, string> = {};
+    if (statusCode === 503) headers['Cache-Control'] = 'no-store';
 
     // Rate limit: include retryAfter if present
     if (retryAfter != null && Number.isFinite(retryAfter)) {

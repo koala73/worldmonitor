@@ -376,14 +376,29 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       `authentication.resource ${auth.resource} is not an origin resolveMetadataOrigin can return`,
     );
 
+    // The card describes the MCP endpoint, so its `resource` is the endpoint's
+    // own identifier — the one the path-scoped document (RFC 9728 §3.1) and the
+    // connect-time challenge name — not the bare origin. A client that compares
+    // the card against the document it was challenged with must see one value.
+    assert.equal(
+      auth.resource,
+      card.transport.endpoint,
+      'authentication.resource must be the MCP endpoint the card advertises',
+    );
+
     const prm = (await import('../api/oauth-protected-resource.ts')).default;
     const emitted = await (
       await prm(
-        new Request(`${resource.origin}/.well-known/oauth-protected-resource`, {
+        new Request(`${resource.origin}/.well-known/oauth-protected-resource${resource.pathname}`, {
           headers: { host: resource.host },
         }),
       )
     ).json();
+    assert.equal(
+      emitted.resource,
+      auth.resource,
+      'authentication.resource must equal the resource the path-scoped PRM document emits',
+    );
     assert.deepEqual(
       auth.authorization_servers,
       emitted.authorization_servers,

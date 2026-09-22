@@ -1,6 +1,7 @@
 import { getSnapshotTimestamps, getSnapshotAt, type DashboardSnapshot } from '@/services/storage';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 
 export class PlaybackControl {
@@ -9,6 +10,8 @@ export class PlaybackControl {
   private timestamps: number[] = [];
   private currentIndex = 0;
   private onSnapshotChange: ((snapshot: DashboardSnapshot | null) => void) | null = null;
+  private snapshotGuard = new LatestRequestGuard();
+  private timestampGuard = new LatestRequestGuard();
 
   constructor() {
     this.element = document.createElement('div');
@@ -49,10 +52,13 @@ export class PlaybackControl {
       panel.classList.toggle('hidden');
       if (!panel.classList.contains('hidden')) {
         await this.loadTimestamps();
+      } else {
+        this.timestampGuard.begin();
       }
     });
 
     closeBtn.addEventListener('click', () => {
+      this.timestampGuard.begin();
       panel.classList.add('hidden');
       this.goLive();
     });
@@ -72,8 +78,10 @@ export class PlaybackControl {
   }
 
   private async loadTimestamps(): Promise<void> {
-    this.timestamps = await getSnapshotTimestamps();
-    if (!this.element?.isConnected) return;
+    const requestId = this.timestampGuard.begin();
+    const timestamps = await getSnapshotTimestamps();
+    if (!this.timestampGuard.isCurrent(requestId) || !this.element?.isConnected) return;
+    this.timestamps = timestamps;
     this.timestamps.sort((a, b) => a - b);
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
@@ -96,11 +104,12 @@ export class PlaybackControl {
       return;
     }
 
+    const requestId = this.snapshotGuard.begin();
     this.isPlaybackMode = true;
     this.updateTimeDisplay();
 
     const snapshot = await getSnapshotAt(timestamp);
-    if (!this.element?.isConnected) return;
+    if (!this.snapshotGuard.isCurrent(requestId) || !this.isPlaybackMode || !this.element?.isConnected) return;
     this.onSnapshotChange?.(snapshot);
 
     document.body.classList.add('playback-mode');
@@ -108,6 +117,7 @@ export class PlaybackControl {
   }
 
   private goLive(): void {
+    this.snapshotGuard.begin();
     this.isPlaybackMode = false;
     this.currentIndex = this.timestamps.length - 1;
 

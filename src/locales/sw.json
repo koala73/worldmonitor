@@ -1319,9 +1319,6 @@
       "base": "Msingi",
       "nuclear": "Nyuklia"
     },
-    "community": {
-      "joinDiscussion": "Msaada Kuunda Kinachofuata"
-    },
     "threatLabels": {
       "critical": "CRIT",
       "high": "JUU",
@@ -2049,6 +2046,7 @@
       "etfs": "ETFs",
       "netInflow": "NET",
       "netOutflow": "NET OUTFLOW",
+      "netNeutral": "MTIRIRIKO SAWA",
       "table": {
         "ticker": "Ticker",
         "issuer": "Mtoaji",
@@ -2385,7 +2383,7 @@
       "infoTooltip": "<strong>Kalenda ya Kiuchumi</strong> Matoleo yaliyoratibiwa ya uchumi mkuu: CPI, NFP, GDP, PMI na maamuzi ya benki kuu. Inaonyesha utabiri dhidi ya halisi dhidi ya awali. Matukio yenye athari ya juu yameangaziwa. Chanzo: watoa data za kiuchumi."
     },
     "fsi": {
-      "infoTooltip": "<strong>Kiashiria cha Mfadhaiko wa Kifedha</strong> Kielezo cha Mfadhaiko wa Kifedha cha Kansas City Fed Financial Stress (KCFSI): hupima dhiki katika masoko ya fedha ya Marekani kwa kutumia viashirio 11 ikiwa ni pamoja na kuenea kwa mavuno, tete na uwiano tofauti. Thamani chanya zinaonyesha dhiki ya juu ya wastani. Chanzo: Benki ya Hifadhi ya Shirikisho ya Kansas City.",
+      "infoTooltip": "<strong>Kiashiria cha Mkazo wa Kifedha</strong> Uwiano wa WorldMonitor wa mikopo yenye mavuno makubwa kwa dhamana za Hazina ya Marekani za muda mrefu, uliorekebishwa kwa mabadiliko ya bei ya hisa na tofauti ya mavuno makubwa: (HYG / TLT) / (VIX × HY spread / 100). Hiki si Kielezo cha Mkazo wa Kifedha cha Benki ya Akiba ya Shirikisho ya Kansas City. Kipimo cha 1.5 au zaidi ni mkazo mdogo; chini ya 0.3 ni mkazo mkubwa.",
       "title": "Kiashiria cha Dhiki ya Kifedha",
       "usFsiValue": "THAMANI ya FSI ya Marekani",
       "cissTitle": "EU CISS (Mfadhaiko wa Mfumo wa Eneo la Euro)",

@@ -11,7 +11,8 @@ function sanitizeVideoId(value) {
 }
 
 const ALLOWED_ORIGINS = [
-  /^https:\/\/(.*\.)?worldmonitor\.app$/,
+  // App hosts only: clerk and abacus are vendor CNAMEs, not trusted parents.
+  /^https:\/\/(www\.|app\.|api\.|tech\.|finance\.|commodity\.|happy\.|energy\.)?worldmonitor\.app$/,
   /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   // Team-pinned only (mirrors public/wm-widget-sandbox.html): the unprefixed
   // worldmonitor-[a-z0-9-].vercel.app pattern matched ANY Vercel team's

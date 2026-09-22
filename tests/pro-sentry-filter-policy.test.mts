@@ -303,6 +303,42 @@ describe('marketingBeforeSend — stale chunk after deploy', () => {
     }
   });
 
+  // One runtime condition — a chunk imports a named export a sibling no longer
+  // provides after a deploy — spelled three ways. The dashboard covered WebKit's
+  // and Gecko's and still reported V8's for months on `does not` vs `doesn't`
+  // (WORLDMONITOR-149); this surface covered neither `requested module` wording.
+  // Pinned as a set so the next engine variant is a decision, not a silent gap.
+  const MODULE_LINK_SPELLINGS = [
+    "The requested module './feeds-BoXv5LqL.js' does not provide an export named 's'",
+    "The requested module './feeds-BoXv5LqL.js' doesn't provide an export named: 's'",
+    "Importing binding name 's' is not found.",
+  ];
+
+  it('drops every engine spelling of the module-LINK failure', () => {
+    for (const value of MODULE_LINK_SPELLINGS) {
+      assert.equal(marketingBeforeSend(event(value)), null, `expected ${value} dropped`);
+    }
+  });
+
+  // Preservation counterpart for the spellings added above: the `!hasFirstParty`
+  // gate must still hand back a link failure attributable to this bundle.
+  it('keeps every engine spelling of the module-LINK failure on a marketing frame', () => {
+    for (const value of MODULE_LINK_SPELLINGS) {
+      const kept = event(value, ['/pro/assets/index-a1b2c3.js']);
+      assert.equal(marketingBeforeSend(kept), kept, `expected ${value} kept`);
+    }
+  });
+
+  // The rule keys on the runtime sentence, not on the phrase appearing anywhere
+  // in a message this bundle produced itself.
+  it('keeps a first-party error that merely mentions the export wording', () => {
+    const kept = event(
+      "Config validation failed: './plans.ts' does not provide an export named 'PLANS'",
+      ['pro-test/src/WelcomeApp.tsx'],
+    );
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
   it('ignores the Sentry SDK chunk when deciding first-partyness', () => {
     // Only frame is Sentry's own hashed chunk → still no first-party evidence.
     assert.equal(

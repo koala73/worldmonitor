@@ -221,10 +221,8 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
 
   const isLoading = loadingProductId === cta.productId;
   const isDisabled = isLoading || rateLimited;
-  // Only the clicked tier disables during creating_checkout.
-  // Sibling tiers stay clickable; if the user changes their
-  // mind mid-flow, their next click simply updates the
-  // pending intent. The pricing page is never hard-locked.
+  // Only the clicked tier disables while sign-in or checkout is loading.
+  // The service guards repeated clicks until that attempt settles.
   // Assent sits immediately above the button, inside the same fragment, so a
   // card can never render the CTA without it (#6976).
   return (
@@ -273,13 +271,14 @@ export function PricingSection({
     return planKey?.endsWith('_annual') ? 'annual' : 'monthly';
   });
   // Loading state is driven by the service's checkout phase. Only the
-  // `creating_checkout` phase (post-auth, inside doCheckout) disables
-  // the clicked CTA. During the Clerk modal window, phase stays idle —
+  // auth loading and `creating_checkout` phases disable the clicked CTA.
+  // During the Clerk modal window, phase stays idle —
   // the modal backdrop is the user's feedback, so locking the pricing
   // section underneath adds no value and creates recovery problems
   // (watchdogs, DOM polling) that we don't need.
   const [phase, setPhase] = useState<CheckoutPhase>({ kind: 'idle' });
-  const loadingProductId = phase.kind === 'creating_checkout' ? phase.productId : null;
+  const loadingProductId = phase.kind === 'loading_auth' || phase.kind === 'creating_checkout'
+    ? phase.productId : null;
   const rateLimited = phase.kind === 'rate_limited';
   const TIERS = usePricingData();
   // Enterprise leaves the card grid and renders as a full-width band below
