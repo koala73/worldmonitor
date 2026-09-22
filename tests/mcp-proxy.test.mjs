@@ -2015,16 +2015,32 @@ describe('api/mcp-proxy — observability', () => {
 
     assert.deepEqual(
       proxyFailureFor(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
-      { isTimeout: true, level: 'warning' },
+      { isTimeout: true, level: 'warning', errorClass: 'timeout' },
     );
     assert.deepEqual(
       proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')),
-      { isTimeout: false, level: 'warning' },
+      { isTimeout: false, level: 'warning', errorClass: 'McpProxyUpstreamError' },
     );
     assert.deepEqual(
       proxyFailureFor(new Error('unexpected local invariant failure')),
-      { isTimeout: false, level: 'error' },
+      { isTimeout: false, level: 'error', errorClass: 'Error' },
     );
+  });
+
+  // The Sentry fingerprint keys on errorClass, so expected upstream warnings,
+  // timeouts and unknown proxy defects land in separate issues. A timeout
+  // detected only from its message still buckets as 'timeout', and a thrown
+  // non-Error cannot put an arbitrary value into the fingerprint.
+  it('classifies failures into bounded fingerprint classes', async () => {
+    const { proxyFailureFor } = await import(`../api/mcp-proxy.ts?failure-class=${Date.now()}`);
+    const { ResponseBodyTooLargeError } = await import('../api/mcp/bounded-body.ts');
+    const { McpProxyJsonDepthError } = await import('../api/mcp/bounded-json.ts');
+
+    assert.equal(proxyFailureFor(new Error('MCP server timed out after 10s')).errorClass, 'timeout');
+    assert.equal(proxyFailureFor(new ResponseBodyTooLargeError(1024)).errorClass, 'ResponseBodyTooLargeError');
+    assert.equal(proxyFailureFor(new McpProxyJsonDepthError(128)).errorClass, 'McpProxyJsonDepthError');
+    assert.equal(proxyFailureFor(new TypeError('x is undefined')).errorClass, 'TypeError');
+    assert.equal(proxyFailureFor('https://attacker.example/some/path').errorClass, 'Error');
   });
 
   // Every value below must be a member of the RequestReason union in
@@ -2059,6 +2075,11 @@ describe('api/mcp-proxy — observability', () => {
 
     assert.match(tail, /captureSilentError\(new Error\(/, 'a swallowed handler fault must not be silent');
     assert.match(tail, /step:\s*'proxy-dispatch'/);
+    assert.match(
+      tail,
+      /fingerprint:\s*\['api\/mcp-proxy', 'proxy-dispatch', failure\.errorClass\]/,
+      'timeouts, expected upstream failures and proxy defects must not share one Sentry issue',
+    );
     assert.match(
       tail,
       /level:\s*failure\.level/,

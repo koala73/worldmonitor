@@ -69,9 +69,18 @@ function callEnd(source, openIndex) {
   throw new Error(`unclosed call at ${openIndex}`);
 }
 
+// A renamed binding (`captureSilentError as capture`, `{ captureSilentError: capture }`)
+// would otherwise escape a literal-name scan.
+function captureNames(source) {
+  const names = new Set(['captureSilentError']);
+  for (const [, alias] of source.matchAll(/\bcaptureSilentError\s+as\s+([A-Za-z_$][\w$]*)/g)) names.add(alias);
+  for (const [, alias] of source.matchAll(/\bcaptureSilentError\s*:\s*([A-Za-z_$][\w$]*)\s*[,}]/g)) names.add(alias);
+  return [...names];
+}
+
 function captures(source) {
   const calls = [];
-  const marker = /(?:^|[^\w$])captureSilentError\s*\(/g;
+  const marker = new RegExp(`(?<![\\w$])(?:${captureNames(source).join('|')})\\s*\\(`, 'g');
   let match;
   while ((match = marker.exec(source))) {
     const openIndex = source.indexOf('(', match.index);
@@ -98,7 +107,7 @@ function fingerprintViolation(call) {
     const tuple = value.slice(0, end + 1);
     if (/^\[\s*\]$/.test(tuple)) return 'empty fingerprint array';
     const expressions = tuple.replace(/(['"])(?:\\.|(?!\1).)*\1/g, '');
-    if (/\b(?:url|userId|token|requestId|message|status)\b/i.test(expressions)) {
+    if (/\b(?:url|userId|token|requestId|message|status|q|query|issueSlot|label|page|host|targetHost|path|targetPath|email)\b/i.test(expressions)) {
       return `high-cardinality fingerprint value: ${tuple}`;
     }
     return null;
@@ -157,11 +166,28 @@ test('fingerprint guard rejects malformed and high-cardinality policies', () => 
     fingerprintViolation("captureSilentError(err, { fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err) })"),
     null,
   );
+  for (const value of ['q', 'query', 'issueSlot', 'label', 'page', 'targetHost', 'meta.targetPath', 'email']) {
+    assert.match(
+      fingerprintViolation(`captureSilentError(err, { fingerprint: ['api/x', ${value}, 'Error'] })`) ?? '',
+      /high-cardinality/,
+      `${value} must not be accepted as a fingerprint value`,
+    );
+  }
+});
+
+test('fingerprint guard follows renamed capture bindings', () => {
+  const imported = "import { captureSilentError as capture } from './_sentry-edge.js';\ncapture(err, { tags: {} });";
+  assert.deepEqual(captures(imported), ['capture(err, { tags: {} })']);
+  const destructured = "const { captureSilentError: report } = deps;\nreport(err, { fingerprint: ['api/x', 'y', 'Error'] });";
+  assert.deepEqual(captures(destructured), ["report(err, { fingerprint: ['api/x', 'y', 'Error'] })"]);
 });
 
 test('fingerprint guard catches a mutated production call', async () => {
   const source = await readFile(join(apiRoot, '_relay.js'), 'utf8');
-  if (!source.includes("fingerprint: ['api/_relay', 'relay-fetch'")) return;
+  assert.ok(
+    source.includes("fingerprint: ['api/_relay', 'relay-fetch'"),
+    'mutation target moved: repoint this test at a current production fingerprint',
+  );
   const mutated = source.replace(
     /fingerprint:\s*\['api\/_relay', 'relay-fetch', error instanceof Error \? error\.name : 'Error'\]/,
     "fingerprint: ['api/_relay', request.url, 'Error']",
