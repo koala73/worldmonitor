@@ -858,6 +858,44 @@ describe("account deletion — continuation ownership", () => {
   });
 });
 
+describe("operator visibility into a failed deletion", () => {
+  // The runbook tells support to "inspect lastError, then re-run". That step
+  // had no command behind it: eraseConfirmedUser can only answer
+  // pending/complete/already_deleted, and getOwnDeletionStatus authenticates
+  // as the subject, who by then may not exist.
+  test("the operator query reports a failed deletion and its error", async () => {
+    const t = await makeT();
+    await t.run((ctx) => ctx.db.insert("accountDeletions", {
+      userId: USER_A.subject, userIdHash: "hash-a", source: "support",
+      status: "failed", step: "external",
+      lastError: "DODO_CANCEL:upstream refused",
+      externalAttempts: 5, batchAttempts: 2,
+      startedAt: Date.now() - 10, updatedAt: Date.now(),
+    }));
+
+    const row = await t.query(
+      internal.accountDeletion.erase.getDeletionStatusForOperator,
+      { userId: USER_A.subject },
+    );
+    expect(row).toMatchObject({
+      status: "failed",
+      step: "external",
+      // The full provider text, not the reduced code the public query returns.
+      lastError: "DODO_CANCEL:upstream refused",
+      externalAttempts: 5,
+      batchAttempts: 2,
+    });
+  });
+
+  test("the operator query is null for a subject with no deletion", async () => {
+    const t = await makeT();
+    expect(await t.query(
+      internal.accountDeletion.erase.getDeletionStatusForOperator,
+      { userId: "user_never_requested" },
+    )).toBeNull();
+  });
+});
+
 /**
  * The registry's header comment claims a closed world: "Every user-scoped
  * Convex table must appear here ... adding a table means updating both files."
@@ -889,6 +927,11 @@ describe("account deletion registry is enforced, not documentation", () => {
   const schemaTables = Object.keys(schema.tables);
 
   test("every Convex table has an erasure decision in the registry", () => {
+    // Guard the enumerator itself: if schema.tables ever came back empty, every
+    // completeness assertion in this block would pass vacuously and the gate
+    // would silently stop gating (docs/solutions/design-patterns/
+    // closed-world-classification-gate-for-config-completeness.md).
+    expect(schemaTables.length).toBeGreaterThan(20);
     const undecided = schemaTables.filter((name) => !registryTables.has(name));
     expect(
       undecided,

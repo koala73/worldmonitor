@@ -125,6 +125,20 @@ async function beginErase(
   let deletionId: Id<"accountDeletions">;
   if (existing) {
     deletionId = existing._id;
+    if (existing.status === "failed" && existing.lastError) {
+      // The resume below clears lastError, and that field is the only record
+      // of why the deletion stopped. Emit it before it is overwritten, or the
+      // documented recovery action destroys its own diagnostic.
+      // sentry-coverage-ok: structured console.error is forwarded by Convex.
+      console.error(JSON.stringify({
+        breadcrumb: "account_deletion_resumed_after_failure",
+        userIdHash: existing.userIdHash,
+        step: existing.step,
+        previousError: existing.lastError,
+        externalAttempts: existing.externalAttempts,
+        batchAttempts: existing.batchAttempts,
+      }));
+    }
     await ctx.db.patch(existing._id, {
       source: existing.source,
       status: "pending",
@@ -185,6 +199,52 @@ export const hasDeletionRecord = internalQuery({
   returns: v.boolean(),
   handler: async (ctx, args) => Boolean(await ctx.db.query("accountDeletions")
     .withIndex("by_userId", q => q.eq("userId", args.userId)).unique()),
+});
+
+/**
+ * Operator view of a deletion, by Clerk userId.
+ *
+ * `getOwnDeletionStatus` authenticates as the subject, so it is useless to
+ * support — especially after the Clerk user is gone. And `eraseConfirmedUser`
+ * can only ever answer pending/complete/already_deleted, so the runbook's
+ * "inspect lastError, then re-run" step had no command behind it. This is that
+ * command. Internal-only: it takes a raw userId and returns the full error
+ * text, neither of which belongs on a public surface.
+ */
+export const getDeletionStatusForOperator = internalQuery({
+  args: { userId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      status: v.union(v.literal("pending"), v.literal("complete"), v.literal("failed")),
+      step: v.string(),
+      userIdHash: v.string(),
+      lastError: v.optional(v.string()),
+      externalAttempts: v.optional(v.number()),
+      batchAttempts: v.optional(v.number()),
+      startedAt: v.number(),
+      updatedAt: v.number(),
+      completedAt: v.optional(v.number()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", requireNonEmptyUserId(args.userId)))
+      .unique();
+    if (!row) return null;
+    return {
+      status: row.status,
+      step: row.step,
+      userIdHash: row.userIdHash,
+      lastError: row.lastError,
+      externalAttempts: row.externalAttempts,
+      batchAttempts: row.batchAttempts,
+      startedAt: row.startedAt,
+      updatedAt: row.updatedAt,
+      completedAt: row.completedAt,
+    };
+  },
 });
 
 export const beginConfirmedErase = internalMutation({

@@ -30,10 +30,26 @@ npx convex run accountDeletion/erase:eraseConfirmedUser '{"userId":"user_...","s
 
 Then wait until `accountDeletions.status === "complete"` for that `userId`.
 A second run after completion returns `already_deleted`. A request already in
-progress returns `pending` without creating another worker chain. If the row is
-`failed`, inspect `lastError`, correct the provider configuration or failure, and
-run the same command to resume from its saved progress. Provider calls use at
-most five attempts with exponential backoff; permanent failures stop immediately.
+progress returns `pending` without creating another worker chain.
+
+To read the row — including `lastError` — use the operator query. `eraseConfirmedUser`
+only ever answers `pending` / `complete` / `already_deleted`, so it cannot tell you
+that a deletion failed or why:
+
+```bash
+npx convex run accountDeletion/erase:getDeletionStatusForOperator '{"userId":"user_..."}'
+```
+
+It returns `status`, `step`, `lastError`, `externalAttempts`, `batchAttempts`, and
+timestamps, or `null` when no deletion was ever requested for that subject.
+
+If the row is `failed`, inspect `lastError` **with that command first**, correct the
+provider configuration or failure, then re-run `eraseConfirmedUser` to resume from
+its saved progress. Resuming clears `lastError` and both attempt counters so the
+retry ladders start fresh — the previous error is written to the logs as
+`account_deletion_resumed_after_failure` before it is cleared, but the row itself
+will no longer show it. Provider calls use at most five attempts with exponential
+backoff; permanent failures stop immediately.
 
 Do **not** pass an email argument. Extra fields are rejected.
 

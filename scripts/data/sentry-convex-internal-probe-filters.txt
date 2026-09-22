@@ -10,6 +10,7 @@
 *Could not find public function for 'accountDeletion/batches:reapStalledDeletions'*
 *Could not find public function for 'accountDeletion/erase:beginConfirmedErase'*
 *Could not find public function for 'accountDeletion/erase:eraseConfirmedUser'*
+*Could not find public function for 'accountDeletion/erase:getDeletionStatusForOperator'*
 *Could not find public function for 'accountDeletion/erase:getExternalEraseSnapshot'*
 *Could not find public function for 'accountDeletion/erase:hasDeletionRecord'*
 *Could not find public function for 'accountDeletion/erase:ingestClerkUserDeleted'*
