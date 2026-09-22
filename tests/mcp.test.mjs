@@ -13,6 +13,7 @@ import {
 } from './helpers/mcp-pro-deps.mjs';
 import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
@@ -1908,6 +1909,109 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const full = await callTool('get_displacement_data', { limit: 0 });
     assert.equal(full.data.summary.countries.length, 60, 'limit: 0 → full countries array');
     assert.equal(full.data.summary.topFlows.length, 60, 'limit: 0 → full topFlows array');
+  });
+
+  // The seeder writes `{ summary: { year, globalTotals, countries, topFlows } }`
+  // and executeTool files that value under the cache-key label `summary`, so
+  // the wire shape is `data.summary.summary.*` until the tool hoists it.
+  // Issue #8489: caps, country filters, and summary:true all look one level
+  // too high, so a default call returns `_budget_exceeded` (~730 KB).
+  it('get_displacement_data hoists the seeder summary wrapper (#8489)', async () => {
+    const currentYear = new Date().getUTCFullYear();
+    const dataKey = `displacement:summary:v1:${currentYear}`;
+    const meta = { 'seed-meta:displacement:summary': { fetchedAt: Date.now() - 60_000, recordCount: 212 } };
+    const seeded = (countries, topFlows) => ({
+      summary: {
+        year: currentYear,
+        globalTotals: { refugees: 1, asylumSeekers: 2, idps: 3, stateless: 4, total: 10 },
+        countries,
+        topFlows,
+      },
+    });
+
+    const manyCountries = Array.from({ length: 212 }, (_, i) => ({
+      code: `C${String(i).padStart(2, '0')}`,
+      name: `Country ${i}`,
+      refugees: i,
+      totalDisplaced: i * 10,
+    }));
+    const manyFlows = Array.from({ length: 4837 }, (_, i) => ({
+      originCode: `O${i}`,
+      originName: `Origin ${i}`,
+      asylumCode: `A${i}`,
+      asylumName: `Asylum ${i}`,
+      refugees: 1_000_000 - i,
+    }));
+
+    async function callDisplacement(args, cacheValue) {
+      mockCacheKeys({ [dataKey]: cacheValue }, meta);
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      const freshMod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+      const res = await freshMod.default(makeReq('POST', {
+        jsonrpc: '2.0', id: 8489, method: 'tools/call',
+        params: { name: 'get_displacement_data', arguments: args },
+      }));
+      const body = await res.json();
+      assert.ok(body.result?.content?.[0]?.text, `${JSON.stringify(body.error)}`);
+      const text = JSON.parse(body.result.content[0].text);
+      return { text, structuredContent: body.result.structuredContent, mod: freshMod };
+    }
+
+    const plain = await callDisplacement({}, seeded(manyCountries, manyFlows));
+    assert.equal(plain.text._budget_exceeded, undefined, 'default args must return data, not _budget_exceeded');
+    assert.deepEqual(plain.structuredContent, plain.text, 'a plain call sends the documented document as structuredContent');
+    assert.equal(plain.text.data.summary.summary, undefined, 'seeder wrapper must be hoisted off data.summary');
+    assert.equal(plain.text.data.summary.year, currentYear);
+    assert.equal(plain.text.data.summary.globalTotals.total, 10);
+    assert.equal(plain.text.data.summary.countries.length, 30, 'default limit caps countries');
+    assert.equal(plain.text.data.summary.topFlows.length, 30, 'default limit caps topFlows');
+    const cappedCountry = plain.text.data.summary.countries[0];
+    const cappedFlow = plain.text.data.summary.topFlows[0];
+    assert.equal(cappedCountry.totalDisplaced, 0, 'country rows expose the seeder totalDisplaced count');
+    assert.equal(Object.hasOwn(cappedCountry, 'total'), false, 'country rows do not use a total field');
+    assert.equal(cappedFlow.refugees, 1_000_000, 'flows expose the seeder refugees count');
+    assert.equal(Object.hasOwn(cappedFlow, 'value'), false, 'flows do not use a value field');
+    assert.ok(Buffer.byteLength(JSON.stringify(plain.text)) <= 131072, 'default payload must fit the 128 KiB budget');
+    const publicTool = plain.mod.TOOL_LIST_RESPONSE.find((tool) => tool.name === 'get_displacement_data');
+    const validateDocumented = new Ajv2020({
+      allErrors: true, allowUnionTypes: true, strict: true, strictRequired: false, validateFormats: false,
+    }).compile(documentedOutputSchema(publicTool));
+    assert.equal(validateDocumented(plain.structuredContent), true,
+      `structuredContent must match the documented outputSchema: ${JSON.stringify(validateDocumented.errors)}`);
+
+    const limited = await callDisplacement({ limit: 3 }, seeded(manyCountries, manyFlows));
+    assert.equal(limited.text.data.summary.countries.length, 3);
+    assert.equal(limited.text.data.summary.topFlows.length, 3);
+
+    const optedOut = await callDisplacement({ limit: 0 }, seeded(
+      manyCountries.slice(0, 4),
+      manyFlows.slice(0, 4),
+    ));
+    assert.equal(optedOut.text.data.summary.countries.length, 4, 'limit: 0 keeps the hoisted lists whole');
+    assert.equal(optedOut.text.data.summary.topFlows.length, 4);
+
+    const filtered = await callDisplacement({ countries: ['Iraq'] }, seeded(
+      [{ code: 'IRQ', refugees: 1 }, { code: 'SYR', refugees: 2 }],
+      [
+        { originCode: 'IRQ', asylumCode: 'DEU', refugees: 9 },
+        { originCode: 'SYR', asylumCode: 'TUR', refugees: 8 },
+        { originCode: 'AFG', asylumCode: 'IRQ', refugees: 7 },
+      ],
+    ));
+    assert.deepEqual(filtered.text.data.summary.countries.map((row) => row.code), ['IRQ']);
+    assert.deepEqual(
+      filtered.text.data.summary.topFlows.map((row) => `${row.originCode}->${row.asylumCode}`),
+      ['IRQ->DEU', 'AFG->IRQ'],
+    );
+
+    const summarized = await callDisplacement({ summary: true }, seeded(manyCountries, manyFlows));
+    assert.equal(summarized.text.data.summary.countries.count, 30, 'summary count is the post-cap list');
+    assert.equal(summarized.text.data.summary.countries.sample.length, 3);
+    assert.equal(summarized.text.data.summary.topFlows.count, 30);
+    assert.equal(summarized.text.data.summary.topFlows.sample.length, 3);
+    assert.equal(summarized.text.data.summary.year, currentYear, 'scalars survive summary mode');
+    assert.deepEqual(summarized.structuredContent, { projection: summarized.text });
   });
 
   it('summary mode: collapses arrays to {count, sample} and large entity maps to {count, sample_keys}', async () => {

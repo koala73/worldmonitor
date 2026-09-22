@@ -76,6 +76,20 @@ function resolveEurostatCountryFilter(raw: unknown): string[] {
   });
 }
 
+// The UNHCR seeder stores `{ summary: { year, globalTotals, countries, topFlows } }`.
+// executeTool then files that value under the cache-key label `summary`, so the
+// lists live at `data.summary.summary.*`. Hoist the inner object so `limit`,
+// `countries`, and `summary: true` reach the arrays the outputSchema describes.
+function hoistDisplacementSeed(data: Record<string, unknown>): void {
+  const outer = data.summary;
+  if (!outer || typeof outer !== 'object' || Array.isArray(outer)) return;
+  const inner = (outer as Record<string, unknown>).summary;
+  if (!inner || typeof inner !== 'object' || Array.isArray(inner)) return;
+  const seeded = inner as Record<string, unknown>;
+  if (!Array.isArray(seeded.countries) && !Array.isArray(seeded.topFlows)) return;
+  data.summary = seeded;
+}
+
 // Iran-events domain sunset (war ended 2026-07). Default OFF: drop the dormant
 // conflict:iran-events:v1 key from the get_conflict_events cache set so the MCP
 // tool stops serving the stale snapshot that lingers for the key's 14-day TTL.
@@ -1859,17 +1873,30 @@ export const CACHE_TOOLS: ToolDef[] = [
       summary: {
         type: ['object', 'null'],
         properties: {
+          year: { type: 'number' },
+          globalTotals: { type: 'object', properties: {
+            refugees: { type: 'number' }, asylumSeekers: { type: 'number' }, idps: { type: 'number' },
+            stateless: { type: 'number' }, total: { type: 'number' },
+          } },
           countries: { type: 'array', items: { type: 'object', properties: {
-            code: { type: 'string' }, total: { type: ['number', 'null'] }, year: { type: ['number', 'string'] },
+            code: { type: 'string' }, name: { type: 'string' },
+            refugees: { type: 'number' }, asylumSeekers: { type: 'number' }, idps: { type: 'number' },
+            stateless: { type: 'number' }, totalDisplaced: { type: 'number' },
+            hostRefugees: { type: 'number' }, hostAsylumSeekers: { type: 'number' }, hostTotal: { type: 'number' },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
           } } },
           topFlows: { type: 'array', items: { type: 'object', properties: {
-            originCode: { type: 'string' }, asylumCode: { type: 'string' }, value: { type: ['number', 'null'] },
+            originCode: { type: 'string' }, originName: { type: 'string' },
+            asylumCode: { type: 'string' }, asylumName: { type: 'string' }, refugees: { type: 'number' },
+            originLocation: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            asylumLocation: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
           } } },
         },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      hoistDisplacementSeed(data);
       const countries = resolveCountryFilter(params.countries, 'countries');
       const codes = [...countries, ...compact(countries.map((code) => ISO2_TO_ISO3[code.toUpperCase()]?.toLowerCase()))];
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
