@@ -6,6 +6,7 @@ import type {
   Satellite,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { readRequiredSeed } from '../../../_shared/required-seed';
+import { normalizeSatelliteSnapshot } from '../../../../shared/intelligence-snapshots.js';
 
 const REDIS_KEY = 'intelligence:satellites:tle:v1';
 
@@ -23,7 +24,7 @@ interface SatelliteCacheItem {
 }
 
 interface SatelliteCacheResponse {
-  satellites?: SatelliteCacheItem[];
+  satellites: SatelliteCacheItem[];
 }
 
 function toNumber(value: number | string | undefined): number {
@@ -49,10 +50,11 @@ export const listSatellites: IntelligenceServiceHandler['listSatellites'] = asyn
   _ctx: ServerContext,
   req: ListSatellitesRequest,
 ): Promise<ListSatellitesResponse> => {
-  const payload = await readRequiredSeed(REDIS_KEY, value => {
-    const data = value as SatelliteCacheResponse | null;
-    return data && Array.isArray(data.satellites) ? { satellites: data.satellites } : undefined;
-  });
+  // Invalid TLE records are dropped; a malformed or all-invalid snapshot is 503.
+  const payload: SatelliteCacheResponse = await readRequiredSeed(
+    REDIS_KEY,
+    value => normalizeSatelliteSnapshot(value) ?? undefined,
+  );
 
   const filterCountry = req.country?.trim().toUpperCase();
   const satellites = payload.satellites

@@ -297,7 +297,8 @@ test('full health sweep reads served countries and cannot retain containment acr
       }
       if (op === 'GET' && key.includes('health:verdict:')) return { result: null };
       if (op === 'GET') return { result: JSON.stringify({ fetchedAt: NOW, recordCount: 41 }) };
-      if (op === 'SET' && key.includes('health:verdict:') && !key.endsWith(':refresh-lock') && expireDuringWrite) clock = NOW + 1001;
+      // The verdict snapshots are published by one fenced EVAL (#8268).
+      if (op === 'EVAL' && key === __testing__.HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT && expireDuringWrite) clock = NOW + 1001;
       return { result: 'OK' };
     }));
   };

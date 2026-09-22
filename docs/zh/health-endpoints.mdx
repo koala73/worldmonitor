@@ -26,9 +26,10 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 | `200` | `DEGRADED` | 关键键为空，但 ≤3% 的所有探测键 |
 | `200` | `UNHEALTHY` | 关键键为空，>3% 的所有探测键 |
 | `401` | - | 无有效运维/企业 API 密钥时请求详细健康检查或历史记录 |
-| `503` | `REDIS_DOWN` | 无法连接到 Redis —— 这是**唯一**返回非 200 状态码的状态 |
+| `503` | `REDIS_DOWN` | 所需的 Redis 健康数据读取失败 |
+| `503` | `REFRESH_PENDING` | 刷新尚未完成且没有保留的上一次判定；按 `Retry-After: 3` 等待后重试 |
 
-> 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。除 `REDIS_DOWN` 外的每种状态都返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。
+> 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。已完成评估的健康状态返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。 刷新进行中时，未持有刷新租约的请求返回上一次发布的判定：HTTP `200`，并带有 `"stale": true` 和 `"staleReason": "REFRESH_PENDING"`，其 `status` 与 `checkedAt` 保持该判定发布时的值。上一次判定保留 10 分钟，且超过宽限截止时间后不再提供。只有在没有保留的判定时才返回 `503` 的 `REFRESH_PENDING`，这并不证明 Redis 中断。此响应不包含 `checkedAt`、汇总或虚构的检查结果。两种响应都不会被缓存。定时新鲜度监控器仅对此状态进行有界重试：最多 12 次请求，总窗口为 45 秒；其他错误仍会失败。
 
 顶层 `status` 表示用户可见平台的可用性，而不是所有数据源都完全正常。因此，当警告由可用的最后一次正常数据控制时，`HEALTHY` 可以与 `summary` 和 `problems` 中的警告同时出现。
 
@@ -36,7 +37,7 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 
 ```json
 {
-  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
+  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
     "total": 295,
     "ok": 295,
@@ -271,7 +272,7 @@ curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
 
 # UptimeRobot / monitoring: check HTTP status code
 curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?compact=1"
-# Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
+# Returns 503 for REDIS_DOWN or REFRESH_PENDING; 200 for evaluated health
 # state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
 ```
 
@@ -399,12 +400,13 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 
 ### UptimeRobot
 
-使用 `/api/health?compact=1` 作为公开监控器 URL。HTTP 状态码仅区分 Redis 完全中断与其他所有情况：
+使用 `/api/health?compact=1` 作为公开监控器 URL。HTTP 状态码区分是否有可用的评估结果；具体原因由 JSON 状态说明：
 
-- `503` = `REDIS_DOWN`（Redis 不可达 —— 真正的硬中断）
+- `503` + `REDIS_DOWN` = Redis 健康数据读取失败。
+- `503` + `REFRESH_PENDING` = 刷新尚未完成；按 `Retry-After: 3` 等待后重试。
 - `200` = 其他所有状态，包括 `DEGRADED` 和 `UNHEALTHY`
 
-因此，仅基于 HTTP 状态的监控器能捕获完全的后端中断，但**不能**捕获降级/不健康的可用性。对于这些情况，请添加关键字监控器。
+因此，仅基于 HTTP 状态的监控器会报告结果不可用，包括短暂的刷新等待，但**不能**捕获降级/不健康的可用性。对于这些情况，请添加关键字监控器。
 
 将关键字监控器指向 `https://api.worldmonitor.app/api/health?compact=1`，并在紧凑令牌 `"status":"HEALTHY"`（冒号后无空格）从响应体中**缺失**时告警。紧凑模式序列化时不带缩进，因此无论格式如何，此确切令牌都是稳定的。
 
@@ -433,6 +435,6 @@ fi
 | **范围** | 数据键 + 种子元数据 | 仅种子元数据 |
 | **身份验证** | 无（公开） | API 密钥或允许的来源 |
 | **获取的数据** | 完整 Redis 值（用于计数记录） | 仅 `seed-meta:*` 键 |
-| **HTTP 503** | 仅 `REDIS_DOWN`（DEGRADED/UNHEALTHY 返回 200） | 否（除非 Redis 宕机，否则始终为 200） |
+| **HTTP 503** | `REDIS_DOWN` 或 `REFRESH_PENDING`（DEGRADED/UNHEALTHY 返回 200） | 否（除非 Redis 宕机，否则始终为 200） |
 | **最适合** | 正常运行时间监控、仪表板健康状态 | 调试种子循环问题 |
 | **响应大小** | 较大（每个探测键一个条目，含记录计数） | 较小（仅 seed-meta 领域） |

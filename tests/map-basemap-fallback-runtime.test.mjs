@@ -22,7 +22,21 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
   const warnings = [];
   const canvasEvents = {};
   const dependencies = {
-    maplibregl: { setWorkerUrl() {} },
+    maplibregl: {
+      setWorkerUrl() {},
+      Map: class {
+        constructor(options) {
+          constructions++;
+          if (constructions > 1 && failReplacement) throw new Error('WebGL2 is required');
+          cameras.push({ center: options.center, zoom: options.zoom });
+        }
+        on() {}
+        getCanvas() { return { addEventListener: (event, callback) => { canvasEvents[event] = callback; } }; }
+        getCenter() { return { lat: 48, lng: 12 }; }
+        getZoom() { return 5; }
+        remove() { removals++; }
+      },
+    },
     maplibreWorkerUrl: '',
     VIEW_PRESETS: { global: { latitude: 0, longitude: 0, zoom: 2 } },
     isHappyVariant: false,
@@ -38,18 +52,6 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
     clearTimeout() {},
     queueMicrotask: scheduleMicrotask,
     console: { warn: (...args) => warnings.push(args) },
-    DeckCompatibleMap: class {
-      constructor(options) {
-        constructions++;
-        if (constructions > 1 && failReplacement) throw new Error('WebGL2 is required');
-        cameras.push({ center: options.center, zoom: options.zoom });
-      }
-      on() {}
-      getCanvas() { return { addEventListener: (event, callback) => { canvasEvents[event] = callback; } }; }
-      getCenter() { return { lat: 48, lng: 12 }; }
-      getZoom() { return 5; }
-      remove() { removals++; }
-    },
   };
   const Harness = new Function(...Object.keys(dependencies), `${javascript}; return Harness;`)(...Object.values(dependencies));
   const map = new Harness();
