@@ -34,7 +34,7 @@ describe('LiveNewsPanel instantiation guard', () => {
   // -------------------------------------------------------------------------
 
   it('DEFAULT_LIVE_CHANNELS is [] on happy variant (crash source)', () => {
-    const liveNews = src('src/components/LiveNewsPanel.ts');
+    const liveNews = src('src/services/live-channels.ts');
     const match = liveNews.match(/DEFAULT_LIVE_CHANNELS\s*=\s*SITE_VARIANT\s*===\s*['"]tech['"]\s*\?[^:]+:\s*SITE_VARIANT\s*===\s*['"]happy['"]\s*\?\s*(\[[^\]]*\])/);
     assert.ok(match, 'DEFAULT_LIVE_CHANNELS assignment not found');
     assert.equal(match[1].replace(/\s/g, ''), '[]', 'happy variant DEFAULT_LIVE_CHANNELS must be []');

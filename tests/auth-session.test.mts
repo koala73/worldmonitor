@@ -738,7 +738,7 @@ describe('userPrefsOptionsHttpHandler CORS', () => {
   it('emits CORS headers for each trusted origin shape', async () => {
     for (const origin of [
       'https://worldmonitor.app',
-      'https://preview-xyz.worldmonitor.app',
+      'https://worldmonitor-git-preview-xyz-eliewm.vercel.app',
       'http://localhost:3000',
     ]) {
       const response = await invokePreflight(origin);
@@ -752,6 +752,9 @@ describe('userPrefsOptionsHttpHandler CORS', () => {
     for (const origin of [
       'https://evil.com',
       'https://attackerworldmonitor.app',
+      'https://preview-xyz.worldmonitor.app',
+      'https://clerk.worldmonitor.app',
+      'https://abacus.worldmonitor.app',
       undefined,
     ]) {
       const response = await invokePreflight(origin);

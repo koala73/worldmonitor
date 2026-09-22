@@ -888,6 +888,81 @@ export interface TenderSourceStatus {
   paced: boolean;
 }
 
+export interface GetUsCpiMonthlyRequest {
+  history: boolean;
+}
+
+export interface GetUsCpiMonthlyResponse {
+  months: UsCpiMonth[];
+  unavailable: boolean;
+}
+
+export interface UsCpiMonth {
+  month: number;
+  headline?: UsCpiReading;
+  core?: UsCpiReading;
+  food?: UsCpiReading;
+  energy?: UsCpiReading;
+  shelter?: UsCpiReading;
+  services?: UsCpiReading;
+}
+
+export interface UsCpiReading {
+  index: number;
+  monthOverMonth?: UsCpiPercentChange;
+  yearOverYear?: UsCpiPercentChange;
+}
+
+export interface UsCpiPercentChange {
+  percent: number;
+}
+
+export interface GetUsTreasuryParYieldCurveRequest {
+  history: boolean;
+}
+
+export interface GetUsTreasuryParYieldCurveResponse {
+  curves: UsTreasuryParYieldCurve[];
+  unavailable: boolean;
+}
+
+export interface UsTreasuryParYieldCurve {
+  date: number;
+  oneMonth?: number;
+  oneAndAHalfMonth?: number;
+  twoMonth?: number;
+  threeMonth?: number;
+  fourMonth?: number;
+  sixMonth?: number;
+  oneYear?: number;
+  twoYear?: number;
+  threeYear?: number;
+  fiveYear?: number;
+  sevenYear?: number;
+  tenYear?: number;
+  twentyYear?: number;
+  thirtyYear?: number;
+}
+
+export interface GetUsInterestRatesRequest {
+  history: boolean;
+}
+
+export interface GetUsInterestRatesResponse {
+  series: UsInterestRateSeries[];
+  unavailable: boolean;
+}
+
+export interface UsInterestRateSeries {
+  id: string;
+  points: UsInterestRateObservation[];
+}
+
+export interface UsInterestRateObservation {
+  date: number;
+  percent: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -963,6 +1038,9 @@ export interface EconomicServiceHandler {
   getOilInventories(ctx: ServerContext, req: GetOilInventoriesRequest): Promise<GetOilInventoriesResponse>;
   getEnergyCrisisPolicies(ctx: ServerContext, req: GetEnergyCrisisPoliciesRequest): Promise<GetEnergyCrisisPoliciesResponse>;
   listGlobalTenders(ctx: ServerContext, req: ListGlobalTendersRequest): Promise<ListGlobalTendersResponse>;
+  getUsCpiMonthly(ctx: ServerContext, req: GetUsCpiMonthlyRequest): Promise<GetUsCpiMonthlyResponse>;
+  getUsTreasuryParYieldCurve(ctx: ServerContext, req: GetUsTreasuryParYieldCurveRequest): Promise<GetUsTreasuryParYieldCurveResponse>;
+  getUsInterestRates(ctx: ServerContext, req: GetUsInterestRatesRequest): Promise<GetUsInterestRatesResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -2172,6 +2250,147 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.listGlobalTenders(ctx, body);
           return new Response(JSON.stringify(result as ListGlobalTendersResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-us-cpi-monthly",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetUsCpiMonthlyRequest = {
+            history: params.get("history") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getUsCpiMonthly", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getUsCpiMonthly(ctx, body);
+          return new Response(JSON.stringify(result as GetUsCpiMonthlyResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-us-treasury-par-yield-curve",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetUsTreasuryParYieldCurveRequest = {
+            history: params.get("history") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getUsTreasuryParYieldCurve", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getUsTreasuryParYieldCurve(ctx, body);
+          return new Response(JSON.stringify(result as GetUsTreasuryParYieldCurveResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-us-interest-rates",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetUsInterestRatesRequest = {
+            history: params.get("history") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getUsInterestRates", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getUsInterestRates(ctx, body);
+          return new Response(JSON.stringify(result as GetUsInterestRatesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

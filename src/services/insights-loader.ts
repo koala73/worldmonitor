@@ -117,11 +117,26 @@ function abortInFlightRequest(): void {
   }
   if (!inFlightAbort || inFlightAbort.signal.aborted) return;
   try {
-    inFlightAbort.abort(
-      typeof DOMException === 'function'
-        ? new DOMException('signal timed out', 'TimeoutError')
-        : undefined,
-    );
+    let reason: DOMException | undefined;
+    if (typeof DOMException === 'function') {
+      reason = new DOMException('signal timed out', 'TimeoutError');
+      // Match AbortSignal.timeout's native reason, whose stack is the header
+      // only. Chromium leaves a JS-built DOMException stackless, and Sentry's
+      // fetch instrumentation backfills a stackless rejection with the fetch
+      // call site — so a browser extension's fetch hook that leaks this reason
+      // reported as a first-party insights-loader rejection
+      // (WORLDMONITOR-125/12Z/11N) instead of the zero-frame timeout it is.
+      try {
+        Object.defineProperty(reason, 'stack', {
+          value: 'TimeoutError: signal timed out',
+          configurable: true,
+          writable: true,
+        });
+      } catch {
+        /* engine pins `stack`; an unstamped reason must still abort below */
+      }
+    }
+    inFlightAbort.abort(reason);
   } catch {
     /* already aborted or exotic AbortController */
   }

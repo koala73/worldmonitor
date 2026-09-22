@@ -426,7 +426,8 @@ describe('getCableHealth cache publication', { concurrency: 1 }, () => {
   it('does not claim a successful empty observation when the first upstream fetch fails', async () => {
     const f = clockFixture();
     f.failUpstream();
-    await getCableHealth({} as never, {} as never);
+    const response = await getCableHealth({} as never, {} as never);
+    assert.deepEqual(response, { generatedAt: 0, cables: {} });
     assert.equal(f.read(CACHE_KEY), null);
     assert.equal(f.read(META_KEY), null);
     assert.notEqual(f.verdict().status, 'OK');

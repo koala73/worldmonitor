@@ -69,6 +69,53 @@ export function coingeckoEndpoint(extraHeaders = {}) {
 }
 
 /**
+ * Fetch a CoinGecko URL, retrying 429s only while the whole phase still fits
+ * `budgetMs`.
+ *
+ * The budget is a ceiling on the phase, in-flight request included: before
+ * each backoff sleep the next attempt's full request timeout is charged
+ * alongside the sleep, and the loop gives up when they would not fit. A seeder
+ * run as a bundle section can therefore size `budgetMs` so its CoinPaprika
+ * fallback still fits the section's timeoutMs (tests/seed-fetch-budget.test.mjs
+ * gates that arithmetic). Retrying by attempt count instead let identical
+ * copies of this loop sleep 150s into a 120s section (2026-04-14, 2026-09-20).
+ *
+ * @param {string} url
+ * @param {{ headers?: Record<string, string>, requestTimeoutMs: number, budgetMs: number, fetchFn?: typeof fetch, sleepFn?: (ms: number) => Promise<void>, now?: () => number }} options
+ * @returns {Promise<Response>} the first OK response; any non-429 error status throws
+ */
+export async function fetchCoinGeckoWithRetryBudget(url, {
+  headers = { Accept: 'application/json', 'User-Agent': CHROME_UA },
+  requestTimeoutMs,
+  budgetMs,
+  fetchFn = fetch,
+  sleepFn = sleep,
+  now = Date.now,
+}) {
+  // An undefined budget would compare NaN and retry forever, which is the
+  // failure this helper exists to rule out.
+  for (const [name, value] of Object.entries({ requestTimeoutMs, budgetMs })) {
+    if (!Number.isFinite(value) || value <= 0) throw new TypeError(`fetchCoinGeckoWithRetryBudget: ${name} must be a positive number, got ${value}`);
+  }
+  const startedAt = now();
+  for (let attempt = 1; ; attempt++) {
+    const resp = await fetchFn(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
+    if (resp.status === 429) {
+      const elapsed = now() - startedAt;
+      const wait = Math.min(5_000 * 2 ** (attempt - 1), 60_000);
+      if (elapsed + wait + requestTimeoutMs > budgetMs) {
+        throw new Error(`CoinGecko rate limit exceeded after ${attempt} attempt(s) in ${Math.round(elapsed / 1000)}s (${budgetMs / 1000}s retry budget)`);
+      }
+      console.warn(`  CoinGecko 429 — waiting ${wait / 1000}s (attempt ${attempt}, ${Math.round(elapsed / 1000)}s of ${budgetMs / 1000}s budget)`);
+      await sleepFn(wait);
+      continue;
+    }
+    if (!resp.ok) throw new Error(`CoinGecko HTTP ${resp.status}`);
+    return resp;
+  }
+}
+
+/**
  * Unwrap fetch / network errors so log lines surface the actual cause
  * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
  * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
@@ -1090,6 +1137,32 @@ export function resolveSeedMetaTtl(metaTtlSeconds, dataTtlSeconds) {
   return metaTtlSeconds ?? Math.max(SEED_META_MIN_TTL_SECONDS, dataTtlSeconds || 0);
 }
 
+export const SEED_META_KEY_PREFIX = 'seed-meta:';
+
+/**
+ * Resolve the seed-meta key for a data key. With no override the meta key is
+ * derived (`seed-meta:<dataKey minus :vN>`); an override must be a DISTINCT key
+ * inside the `seed-meta:` namespace.
+ *
+ * #8424: seed-bls-series passed its own data key as the override, so every run
+ * overwrote the series it had just written with the 44-byte heartbeat, on the
+ * 7-day meta TTL, while health — watching the canonical key — read OK for six
+ * months. A wrong override now fails the run before any byte is written
+ * instead of silently erasing the payload it describes.
+ */
+export function resolveSeedMetaKey(dataKey, metaKeyOverride) {
+  if (metaKeyOverride === undefined || metaKeyOverride === null || metaKeyOverride === '') {
+    return `${SEED_META_KEY_PREFIX}${dataKey.replace(/:v\d+$/, '')}`;
+  }
+  if (typeof metaKeyOverride !== 'string' || !metaKeyOverride.startsWith(SEED_META_KEY_PREFIX) || metaKeyOverride === dataKey) {
+    throw new Error(
+      `seed-meta key for ${dataKey} must be a distinct ${SEED_META_KEY_PREFIX}* key, got ${String(metaKeyOverride)} `
+      + '(a colliding override overwrites the data it describes, #8424)',
+    );
+  }
+  return metaKeyOverride;
+}
+
 function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
   const meta = { fetchedAt, recordCount: recordCount ?? 0 };
   if (coverage) meta.coverage = coverage;
@@ -1108,7 +1181,7 @@ function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
 
 export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
   const { url, token } = getRedisCredentials();
-  const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
+  const metaKey = resolveSeedMetaKey(dataKey, metaKeyOverride);
   const meta = buildSeedMeta(recordCount, coverage, extra);
   // No data TTL is in scope here — callers that know one resolve it through
   // `resolveSeedMetaTtl` before calling. Bare floor otherwise.
@@ -1131,6 +1204,9 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
 }
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
+  // Resolve (and reject) the meta key BEFORE the data write: a colliding pair
+  // must fail the run with the previous value intact, not after erasing it.
+  const metaKey = resolveSeedMetaKey(key, metaKeyOverride);
   await writeExtraKey(key, data, ttl);
   // The data TTL is right here, so the meta never has to be the shorter of the
   // two. seed-economy's four EIA weekly keys (21d data, 14d health budget) rode
@@ -1138,7 +1214,7 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
   // `extra` carries the same optional producer diagnostics writeSeedMeta accepts
   // directly (see its contract note) — provenance a caller needs on the meta
   // record, not just inside the data payload.
-  return writeSeedMeta(key, recordCount, metaKeyOverride, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage, extra);
+  return writeSeedMeta(key, recordCount, metaKey, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage, extra);
 }
 
 // Some aggregate keys are both the data pointer and the provenance source for
@@ -1165,7 +1241,7 @@ export async function writeExtraKeyWithMetaAtomically({
     throw new Error('Atomic seed-meta publish requires a positive integer TTL');
   }
 
-  const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
+  const metaKey = resolveSeedMetaKey(key, metaKeyOverride);
   const commands = [
     ['SET', key, JSON.stringify(data), 'EX', dataTtl],
     ['SET', metaKey, JSON.stringify(buildSeedMeta(recordCount, coverage, extra, fetchedAt)), 'EX', metaTtl],
@@ -2272,12 +2348,23 @@ export function findLeakedPrePublishFields(rawData, publishData, ekData, ek = {}
 // converts that hang into a normal rejection, which the existing graceful path
 // turns into exit 75 (TTL extended, last-good served, no data lost).
 //
-// The deadline is tied to lockTtlMs — never a fixed value — because seeders
-// legitimately run from ~1min to 40min. A healthy seeder is designed never to
-// outlive its own lock, so lockTtlMs + margin exceeds any legitimate run; the
-// only thing that trips it is a genuine hang. A false trip is itself graceful
-// (exit 75), so the margin errs generous.
+// The standalone deadline is tied to lockTtlMs — never a fixed value — because
+// seeders legitimately run from ~1min to 40min. A healthy seeder is designed
+// never to outlive its own lock, so lockTtlMs + margin exceeds any legitimate
+// run; the only thing that trips it is a genuine hang. A false trip is itself
+// graceful (exit 75), so the margin errs generous.
+//
+// When spawned as a bundle section, that lock-derived ceiling can outlast the
+// runner's section timeoutMs (#8479). resolveFetchDeadlineMs then clamps the
+// fetch deadline to leave FETCH_PHASE_PUBLISH_RESERVE_MS for publish or
+// graceful cleanup before the runner SIGTERMs.
 export const FETCH_PHASE_DEADLINE_MARGIN_MS = 120_000;
+
+// Time left between the fetch-phase deadline and the bundle section timeout so
+// publish (success) or releaseLock + TTL extend (graceful fetch failure) can
+// finish before `_bundle-runner` sends SIGTERM. Matches the 40s headroom used
+// by education-attainment and cross-strait activity seeders.
+export const FETCH_PHASE_PUBLISH_RESERVE_MS = 40_000;
 
 export function raceFetchDeadline(promise, ms, label) {
   let timer;
@@ -2290,9 +2377,55 @@ export function raceFetchDeadline(promise, ms, label) {
   return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Resolve the fetch-phase wall-clock budget for runSeed.
+ *
+ * Standalone: explicit `fetchPhaseTimeoutMs`, else `lockTtlMs + margin`.
+ * Bundle section: also clamp to `sectionTimeoutMs - publish reserve` so the
+ * graceful path is reachable before the runner's SIGTERM (#8479).
+ *
+ * @param {{
+ *   fetchPhaseTimeoutMs?: number | null,
+ *   lockTtlMs: number,
+ *   sectionTimeoutMs?: number | null,
+ * }} opts
+ * @returns {number}
+ */
+export function resolveFetchDeadlineMs({
+  fetchPhaseTimeoutMs,
+  lockTtlMs,
+  sectionTimeoutMs = null,
+}) {
+  const configured = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
+    ? fetchPhaseTimeoutMs
+    : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
+  if (!Number.isFinite(sectionTimeoutMs) || sectionTimeoutMs <= 0) {
+    return configured;
+  }
+  // A section shorter than the reserve still needs a positive race target so
+  // hang detection fires rather than waiting forever for SIGTERM.
+  const sectionCap = Math.max(1, sectionTimeoutMs - FETCH_PHASE_PUBLISH_RESERVE_MS);
+  return Math.min(configured, sectionCap);
+}
+
 // Set by _bundle-runner for canonical-clock members that need proof that every
 // publish side effect completed. Standalone seed runs leave it unset.
 export const BUNDLE_COMPLETION_META_KEY_ENV = 'WM_BUNDLE_COMPLETION_META_KEY';
+
+// Set by _bundle-runner to the section's timeoutMs so runSeed can clamp its
+// fetch deadline inside the wall clock that will SIGTERM the child (#8479).
+export const BUNDLE_SECTION_TIMEOUT_MS_ENV = 'BUNDLE_SECTION_TIMEOUT_MS';
+
+/**
+ * Section timeoutMs injected by `_bundle-runner` for the current child.
+ * Standalone seed runs leave it unset.
+ *
+ * @returns {number | null}
+ */
+export function getBundleSectionTimeoutMs() {
+  const raw = Number(process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV]);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
 
 export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}) {
   const {
@@ -2329,6 +2462,18 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   if (extraKeys && !Array.isArray(extraKeys)) {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} extraKeys must be an array`);
     process.exit(1);
+  }
+  // A colliding or un-namespaced extraKey meta key would be caught by
+  // writeSeedMeta, but only after the provider fetches and the data write.
+  // Refuse it at config time instead, before any upstream call is spent.
+  for (const ek of Array.isArray(extraKeys) ? extraKeys : []) {
+    if (ek?.metaKey === undefined || ek?.metaKey === null) continue;
+    try {
+      resolveSeedMetaKey(ek.key, ek.metaKey);
+    } catch (err) {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} ${err.message}`);
+      process.exit(1);
+    }
   }
   if (afterPublish && typeof afterPublish !== 'function') {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterPublish must be a function`);
@@ -2527,9 +2672,25 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // Raced against a wall-clock deadline so a non-settling await inside fetchFn
   // (see raceFetchDeadline above, issue #4786) surfaces as a catchable
   // rejection instead of hanging the process into an exit-13 red badge.
-  const fetchDeadlineMs = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
-    ? fetchPhaseTimeoutMs
-    : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
+  // When spawned by the bundle runner, also clamp to the section timeout so
+  // this graceful path fires before the runner's SIGTERM (#8479).
+  const sectionTimeoutMs = getBundleSectionTimeoutMs();
+  const unconstrainedDeadlineMs = resolveFetchDeadlineMs({
+    fetchPhaseTimeoutMs,
+    lockTtlMs,
+    sectionTimeoutMs: null,
+  });
+  const fetchDeadlineMs = resolveFetchDeadlineMs({
+    fetchPhaseTimeoutMs,
+    lockTtlMs,
+    sectionTimeoutMs,
+  });
+  if (sectionTimeoutMs != null && fetchDeadlineMs < unconstrainedDeadlineMs) {
+    console.warn(
+      `  [${domain}:${resource}] fetch deadline clamped ${unconstrainedDeadlineMs}ms → ${fetchDeadlineMs}ms `
+      + `to fit bundle section timeout ${sectionTimeoutMs}ms (issue #8479)`,
+    );
+  }
   let data;
   try {
     data = await raceFetchDeadline(

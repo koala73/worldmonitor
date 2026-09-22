@@ -31,6 +31,12 @@ const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 const _originalFetch = globalThis.fetch;
 const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
 const sidecarAllowedPrivateFetchOrigins = new Set();
+// The sidecar's own listen origins. A fetch to one of these is a nested call
+// into this same process (MCP registry tools call sibling /api routes this
+// way), not an upstream request, so it must not hold an upstream slot: the
+// nested handler's own upstream fetches draw from the same pool, and six
+// concurrent self-calls would otherwise wedge until their timeouts fire.
+const sidecarSelfFetchOrigins = new Set();
 
 function normalizeRequestBody(body) {
   if (body == null) return null;
@@ -181,14 +187,19 @@ function makePinnedLookup(address, family = 4) {
 }
 
 function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
-  const origins = [
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
-    ...extraOrigins,
+  // Normalize through URL so a default port (80) compares equal to
+  // `url.origin`, which omits it: `http://127.0.0.1:80` never matches
+  // `new URL('http://127.0.0.1:80/x').origin === 'http://127.0.0.1'`.
+  const selfOrigins = [
+    new URL(`http://127.0.0.1:${port}`).origin,
+    new URL(`http://localhost:${port}`).origin,
   ];
+  const origins = [...selfOrigins, ...extraOrigins];
   for (const origin of origins) sidecarAllowedPrivateFetchOrigins.add(origin);
+  for (const origin of selfOrigins) sidecarSelfFetchOrigins.add(origin);
   return () => {
     for (const origin of origins) sidecarAllowedPrivateFetchOrigins.delete(origin);
+    for (const origin of selfOrigins) sidecarSelfFetchOrigins.delete(origin);
   };
 }
 
@@ -218,7 +229,8 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     ? { safe: true, resolvedAddresses: [url.hostname] }
     : await assertSafeSidecarFetchUrl(url);
   if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
-  await acquireUpstreamSlot();
+  const holdsUpstreamSlot = !sidecarSelfFetchOrigins.has(url.origin);
+  if (holdsUpstreamSlot) await acquireUpstreamSlot();
   try {
     const mod = url.protocol === 'https:' ? https : http;
     const method = init?.method || (isRequest ? input.method : 'GET');
@@ -295,7 +307,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       req.end();
     });
   } finally {
-    releaseUpstreamSlot();
+    if (holdsUpstreamSlot) releaseUpstreamSlot();
   }
 };
 

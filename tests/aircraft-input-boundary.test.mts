@@ -318,3 +318,38 @@ test('native HTTP identifier admission preserves real auth, data, cache and wind
     await app.close();
   }
 });
+
+test('nearby exact viewports keep separate data and filter provider overfetch on cache hits', async () => {
+  wingbitsPositions = [{ ...wingbitsPosition, lat: 25.2, lon: 55.2 }, { ...wingbitsPosition, lat: 25.8, lon: 55.8 }];
+  const west = { swLat: 25.1, swLon: 55.1, neLat: 25.5, neLon: 55.5 };
+  const east = { swLat: 25.6, swLon: 55.6, neLat: 25.9, neLon: 55.9 };
+  assert.deepEqual((await read(west)).positions.map(p => p.lat), [25.2]);
+  assert.deepEqual((await read(east)).positions.map(p => p.lat), [25.8]);
+  assert.deepEqual((await read(west)).positions.map(p => p.lat), [25.2]);
+  assert.equal(providers().length, 2);
+  assert.equal(providers()[0]!.searchParams.get('lamin'), '25.1');
+  assert.equal(providers()[1]!.searchParams.get('lamin'), '25.6');
+});
+
+test('viewport fetch identity includes identifiers and stays separate from identifier-only data', async () => {
+  await read({ icao24: 'abc123' });
+  const bbox = { swLat: 24, swLon: 54, neLat: 26, neLon: 56 };
+  assert.equal((await read({ ...bbox, icao24: 'abc123' })).source, 'wingbits');
+  await read({ ...bbox, icao24: 'def456' });
+  assert.equal(providers().length, 3);
+});
+
+test('normalized viewport coordinates determine both cache identity and relay query', async () => {
+  const reversed = { swLat: 100, swLon: 200, neLat: 24, neLon: 54 };
+  await read(reversed);
+  await read({ swLat: 24, swLon: 54, neLat: 90, neLon: 180 });
+  assert.equal(providers().length, 1);
+  assert.equal(providers()[0]!.search, '?lamin=24&lomin=54&lamax=90&lomax=180');
+});
+
+test('nonfinite viewport coordinates reject before cache or provider work', async () => {
+  for (const swLat of [NaN, Infinity, -Infinity]) {
+    await assert.rejects(read({ swLat, neLat: 26, swLon: 54, neLon: 56 }), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+    assert.equal(calls.length, 0);
+  }
+});

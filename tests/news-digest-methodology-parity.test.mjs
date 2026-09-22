@@ -56,6 +56,10 @@ const digestSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/list-feed-digest.ts'),
   'utf8',
 );
+const briefLlmSrc = readFileSync(
+  resolve(repoRoot, 'scripts/lib/brief-llm.mjs'),
+  'utf8',
+);
 const rssCacheSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/_rss-cache.ts'),
   'utf8',
@@ -911,8 +915,10 @@ describe('news digest methodology parity', () => {
       /intentionally differ[\s\S]*digest prose and `whyMatters` surfaces/,
       'regional weekly brief chain differs from digest prose and whyMatters',
     );
+    const briefModel = briefLlmSrc.match(/BRIEF_LLM_OPENROUTER_MODEL = process\.env\.BRIEF_LLM_OPENROUTER_MODEL \|\| '([^']+)'/)?.[1];
+    assert.ok(briefModel, 'BRIEF_LLM_OPENROUTER_MODEL must default to a string literal');
     assertDocMatches(
-      /provider chain to OpenRouter by skipping Ollama and Groq[\s\S]*`google\/gemini-2\.5-flash`/,
+      new RegExp(`provider chain to OpenRouter by skipping Ollama and Groq[\\s\\S]*\`${briefModel.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\``),
       'digest prose and whyMatters OpenRouter-only posture',
     );
   });
