@@ -10,6 +10,8 @@ import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
+// scripts/shared mirror, not ../shared: seeders deploy with rootDirectory=scripts.
+import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cjs';
 
 // process.exit does not drain in-flight promises — drain any fire-and-forget
 // llm_call telemetry first (bounded by its 1.5s fetch timeout; a no-op when
@@ -552,11 +554,13 @@ export async function acquireLockSafely(domain, runId, ttlMs, opts = {}) {
 export async function releaseLock(domain, runId) {
   const { url, token } = getRedisCredentials();
   const lockKey = `seed-lock:${domain}`;
-  const script = `if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end`;
   try {
-    await redisCommand(url, token, ['EVAL', script, 1, lockKey, runId]);
-  } catch {
-    // Best-effort release; lock will expire via TTL
+    await redisCommand(url, token, ['EVAL', COMPARE_AND_DELETE_SCRIPT, 1, lockKey, runId]);
+  } catch (err) {
+    // Best-effort release; the lock still expires via TTL. Log the failure:
+    // an empty catch hid a pinned-script mismatch until the TTL (#8490).
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`  releaseLock failed for ${lockKey}: ${message}`);
   }
 }
 
