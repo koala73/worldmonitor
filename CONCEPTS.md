@@ -1007,15 +1007,15 @@ The comparison needs enough accumulated history to be meaningful and is suppress
 
 ### Live Detection
 
-Working out which broadcast a news channel is airing at the moment a viewer asks, instead of trusting an identifier recorded when the channel was added. A channel with its own stream address plays that first; detection runs when there is none or it fails, and a Fallback Stream plays when detection returns nothing.
+A retired process that worked out which broadcast a news channel was airing at the moment a viewer asked, instead of trusting an identifier recorded when the channel was added. It scraped youtube.com channel pages through a residential proxy and was retired after #5503 flagged that as a YouTube Terms of Service violation; a channel lookup on `/api/youtube/live` now answers 410 `channel_live_detection_retired`. Live News and webcams instead play verified streams listed in `src/config/live-video-sources.ts`, and the live video session labels a stream live only after the official player or the stream playlist confirms it in the viewer's browser.
 
-Broken detection does not look broken on the dashboard. An empty answer cannot be told apart from "this channel is not live right now", so every channel that depends on detection quietly falls through to its Fallback Stream at once, and the only visible symptom is pinned broadcasts playing ended or unrelated video. Detection health must be checked against channels known to be live, never inferred from the absence of errors. See also: Fallback Stream.
+Its failure mode applies to any live check. An empty detection answer could not be told apart from "this channel is not live right now", so broken detection quietly sent every dependent channel to its Fallback Stream at once, and the only visible symptom was pinned broadcasts playing ended or unrelated video. Live status must be checked against a positive signal, never inferred from the absence of errors. See also: Fallback Stream.
 
 ### Fallback Stream
 
-A specific broadcast identifier pinned to a channel or camera and played when Live Detection yields nothing. Webcam tiles play only their Fallback Streams. News channels marked to skip detection play their own stream address when they have one, otherwise their Fallback Stream, and never run Live Detection.
+A specific broadcast identifier pinned to a Live News channel or webcam slot. Before Live Detection was retired, it played only when detection yielded nothing. Each slot is now an ordered list of sources in `src/config/live-video-sources.ts` (a stream address, a pinned broadcast, or a channel's live embed), tried in order until one is verified live; dead, ended, and unembeddable sources are skipped and never shown as live.
 
-A Fallback Stream decays with no code change. The provider ends the broadcast, restarts it under a new identifier, deletes it, or reassigns it, and the pinned identifier then plays an error card, a years-old recording under a live label, or another channel's content. For news channels that run detection, a dead Fallback Stream stays hidden until Live Detection fails, and then every dead one surfaces together. Keeping them honest takes a recurring liveness check against the provider, not code review. See also: Live Detection.
+A Fallback Stream decays with no code change. The provider ends the broadcast, restarts it under a new identifier, deletes it, or reassigns it, and the pinned identifier then points at an error, an ended recording, or another channel's content. Verification keeps an ended or deleted source from playing under a live label, but a dead source is skipped in favour of the next one, so the dashboard shows a problem only once no source in the slot is left. Keeping sources honest takes a recurring liveness check against the provider (`npm run live-video:check -- --all` reports entries that are not live and slots with no entries), not code review. See also: Live Detection.
 
 ### Idle Pause
 

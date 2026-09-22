@@ -11,7 +11,6 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 
 const liveNewsSrc = readSrc('src/components/LiveNewsPanel.ts') + readSrc('src/services/live-channels.ts');
 const channelsWindowSrc = readSrc('src/live-channels-window.ts');
-const youtubeApi = readSrc('api/youtube/live.js');
 const sidecarSrc = readSrc('src-tauri/sidecar/local-api-server.mjs');
 const vercelConfig = JSON.parse(readSrc('vercel.json'));
 const tauriConfig = JSON.parse(readSrc('src-tauri/tauri.conf.json'));
@@ -134,31 +133,7 @@ describe('Live News playback', () => {
   });
 });
 
-// ── 3. YouTube API: hlsUrl extraction ──
-
-describe('YouTube API hlsManifestUrl extraction', () => {
-  it('extracts hlsManifestUrl from page HTML', () => {
-    assert.match(youtubeApi, /hlsManifestUrl/,
-      'API must extract hlsManifestUrl');
-  });
-
-  it('unescapes \\u0026 in HLS URL', () => {
-    assert.match(youtubeApi, /\\\\u0026/,
-      'Must unescape \\u0026 to & in HLS URLs');
-  });
-
-  it('only sets hlsUrl when videoId is present', () => {
-    assert.match(youtubeApi, /hlsMatch\s*&&\s*videoId/,
-      'hlsUrl must only be set when a live videoId was found');
-  });
-
-  it('includes hlsUrl in response JSON', () => {
-    assert.match(youtubeApi, /JSON\.stringify\(\{[^}]*hlsUrl/,
-      'Response must include hlsUrl field');
-  });
-});
-
-// ── 4. Sidecar YouTube embed endpoint ──
+// ── 3. Sidecar YouTube embed endpoint ──
 
 describe('sidecar youtube-embed endpoint', () => {
   it('registers /api/youtube-embed route', () => {
@@ -244,7 +219,7 @@ describe('sidecar youtube-embed endpoint', () => {
   });
 });
 
-// ── 5. CSP allows HLS media and desktop sidecar iframe ──
+// ── 4. CSP allows HLS media and desktop sidecar iframe ──
 
 describe('CSP configuration', () => {
   it('web header media-src allows https: for CDN HLS streams', () => {

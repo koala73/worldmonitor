@@ -39,7 +39,7 @@ describe('LiveWebcamsPanel postMessage origin guard', () => {
 
   it('rejects loopback messages that do not match the expected sidecar endpoint and port', () => {
     const sidecarSrc = 'http://localhost:14567/api/youtube-embed?videoId=e34xb-Fbl0U';
-    const otherLocalEndpoint = 'http://localhost:14567/api/hls-proxy?url=https%3A%2F%2Fexample.com%2Fstream.m3u8';
+    const otherLocalEndpoint = 'http://localhost:14567/api/rss-proxy?url=https%3A%2F%2Fexample.com%2Ffeed.xml';
 
     assert.equal(isAllowedWebcamEmbedMessageOrigin('http://localhost:9999', sidecarSrc), false);
     assert.equal(isAllowedWebcamEmbedMessageOrigin('http://localhost:14567', otherLocalEndpoint), false);
