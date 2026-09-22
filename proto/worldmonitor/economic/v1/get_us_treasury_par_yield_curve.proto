@@ -49,6 +49,6 @@ message GetUsTreasuryParYieldCurveRequest {
 message GetUsTreasuryParYieldCurveResponse {
   // Business days in ascending order. One element when history is false.
   repeated UsTreasuryParYieldCurve curves = 1;
-  // True when the seeded curve is missing. An empty list is not a zero yield.
+  // True when the seeded curve is unavailable. An empty list is not a zero yield.
   bool unavailable = 2;
 }

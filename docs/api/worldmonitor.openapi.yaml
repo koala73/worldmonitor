@@ -42416,7 +42416,7 @@ components:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_UsCpiMonth'
                 unavailable:
                     type: boolean
-                    description: True when the seeded series is missing. An empty month list is not a zero print.
+                    description: True when the seeded series is unavailable. An empty month list is not a zero print.
             description: GetUsCpiMonthlyResponse is the CPI basket for the requested window.
         worldmonitor_economic_v1_UsCpiMonth:
             type: object
@@ -42474,7 +42474,7 @@ components:
                         $ref: '#/components/schemas/worldmonitor_economic_v1_UsTreasuryParYieldCurve'
                 unavailable:
                     type: boolean
-                    description: True when the seeded curve is missing. An empty list is not a zero yield.
+                    description: True when the seeded curve is unavailable. An empty list is not a zero yield.
             description: GetUsTreasuryParYieldCurveResponse is the par curve for the requested window.
         worldmonitor_economic_v1_UsTreasuryParYieldCurve:
             type: object

@@ -48,6 +48,6 @@ message GetUsCpiMonthlyRequest {
 message GetUsCpiMonthlyResponse {
   // Months in ascending order. One element when history is false.
   repeated UsCpiMonth months = 1;
-  // True when the seeded series is missing. An empty month list is not a zero print.
+  // True when the seeded series is unavailable. An empty month list is not a zero print.
   bool unavailable = 2;
 }
