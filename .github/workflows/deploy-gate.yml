@@ -124,9 +124,13 @@ jobs:
       queue: max
       cancel-in-progress: false
     steps:
+      # The base-drift comparison needs real history: full commit graph for
+      # `merge-base`, trees for `diff --name-only`, and no blobs at all.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
       - name: Check required PR gates passed for this SHA
         env:

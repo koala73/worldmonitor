@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -17,7 +17,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const gateScriptPath = resolve(repoRoot, '.github/scripts/deploy-gate.sh');
 const gateScript = readFileSync(gateScriptPath, 'utf8');
 const SHA = 'fedcba9876543210fedcba9876543210fedcba98';
-const MERGE_BASE = '0123456789abcdef0123456789abcdef01234567';
+const MAIN_TIP = '0123456789abcdef0123456789abcdef01234567';
+const HEAD_TIP = '89abcdef0123456789abcdef0123456789abcdef';
+const OLD_BASE = 'abcdef0123456789abcdef0123456789abcdef01';
 
 // The whole required list, read from the script so the test cannot pass by
 // pinning a shorter list than production actually gates on.
@@ -176,9 +178,7 @@ function runGate(conclusions, {
   exhaustedSha = '',
   sweepStatus,
   sweepStatuses,
-  compareHead,
-  compareBase,
-  compareFailures = 0,
+  drift,
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -196,9 +196,8 @@ function runGate(conclusions, {
   const currentStatusesFile = join(tempDir, 'current-statuses.json');
   const statusReadFailuresFile = join(tempDir, 'status-read-failures');
   const summaryFile = join(tempDir, 'summary');
-  const compareHeadFile = join(tempDir, 'compare-head.json');
-  const compareBaseFile = join(tempDir, 'compare-base.json');
-  const compareFailuresFile = join(tempDir, 'compare-failures');
+  const driftHeadFilesFile = join(tempDir, 'drift-head-files');
+  const driftMainFilesFile = join(tempDir, 'drift-main-files');
 
   try {
     mkdirSync(fakeBin);
@@ -213,13 +212,13 @@ function runGate(conclusions, {
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
     writeFileSync(summaryFile, '');
-    writeFileSync(compareFailuresFile, String(compareFailures));
-    writeFileSync(compareHeadFile, JSON.stringify(compareHead ?? {
-      status: 'ahead',
-      merge_base_commit: { sha: MERGE_BASE },
-      files: [],
-    }));
-    writeFileSync(compareBaseFile, JSON.stringify(compareBase ?? { files: [] }));
+    const drifting = {
+      mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
+      headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
+      ...drift,
+    };
+    writeFileSync(driftHeadFilesFile, `${drifting.headFiles.join('\n')}\n`);
+    writeFileSync(driftMainFilesFile, `${drifting.mainFiles.join('\n')}\n`);
     writeFileSync(statusReadFailuresFile, String(statusReadFailures));
     writeFileSync(currentStatusesFile, JSON.stringify(Object.fromEntries(
       (sweepStatuses ?? [{ sha: SHA, status: previousStatus ?? sweepStatus }])
@@ -435,22 +434,6 @@ function runGate(conclusions, {
         '    fi',
         '    exit 0',
         '    ;;',
-        '  *"/compare/main..."*)',
-        '    echo "compare-head" >> "$FAKE_CALLS"',
-        '    compare_failures=$(cat "$FAKE_COMPARE_FAILURES")',
-        '    if [ "$compare_failures" -gt 0 ]; then',
-        '      echo $((compare_failures - 1)) > "$FAKE_COMPARE_FAILURES"',
-        '      echo "gh: forced compare failure (HTTP 503)" >&2',
-        '      exit 1',
-        '    fi',
-        '    cat "$FAKE_COMPARE_HEAD"',
-        '    exit 0',
-        '    ;;',
-        '  *"/compare/"*)',
-        '    echo "compare-base" >> "$FAKE_CALLS"',
-        '    cat "$FAKE_COMPARE_BASE"',
-        '    exit 0',
-        '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
         '    echo "rest-failed-runs-page" >> "$FAKE_CALLS"',
         '    printf \'[{"workflow_runs":[{"created_at":"%s","display_title":"Deploy Gate %s"}]}]\' "$FAKE_FAILED_RUN_CREATED_AT" "$FAKE_FAILED_RUN_SHA"',
@@ -518,6 +501,44 @@ function runGate(conclusions, {
     );
     // The step sleeps between poll attempts and may wait for a rate-limit reset;
     // neither delay should slow this deterministic harness.
+    // The drift step reads the two file sets with git. The synthetic SHAs this
+    // harness uses cannot exist in a real repository, so the git semantics are
+    // pinned separately, below, against a real fixture through the `drift`
+    // phase; here the commands are stubbed so the STATUS logic can be driven.
+    writeFileSync(join(fakeBin, 'git'), [
+      '#!/bin/sh',
+      'case "$1 $2" in',
+      '  "fetch --no-tags")',
+      '    echo "git-fetch" >> "$FAKE_CALLS"',
+      '    [ "$FAKE_GIT_FETCH_FAILS" = "1" ] && { echo "fatal: forced fetch failure" >&2; exit 128; }',
+      '    exit 0',
+      '    ;;',
+      'esac',
+      'case "$1" in',
+      '  rev-parse)',
+      '    case "$*" in',
+      '      *head*) printf \'%s\\n\' "$FAKE_GIT_HEAD_TIP" ;;',
+      '      *) printf \'%s\\n\' "$FAKE_GIT_MAIN_TIP" ;;',
+      '    esac',
+      '    exit 0',
+      '    ;;',
+      '  merge-base)',
+      '    echo "git-merge-base" >> "$FAKE_CALLS"',
+      '    [ "$FAKE_GIT_MERGE_BASE_FAILS" = "1" ] && exit 1',
+      '    printf \'%s\\n\' "$FAKE_GIT_MERGE_BASE"',
+      '    exit 0',
+      '    ;;',
+      '  diff)',
+      '    case "$*" in',
+      '      *head*) cat "$FAKE_GIT_HEAD_FILES" ;;',
+      '      *) cat "$FAKE_GIT_MAIN_FILES" ;;',
+      '    esac',
+      '    exit 0',
+      '    ;;',
+      'esac',
+      'exit 91',
+      '',
+    ].join('\n'));
     writeFileSync(join(fakeBin, 'date'), [
       '#!/bin/sh',
       'case "$*" in',
@@ -532,7 +553,7 @@ function runGate(conclusions, {
       'exit 0',
       '',
     ].join('\n'));
-    for (const command of ['gh', 'date', 'sleep']) chmodSync(join(fakeBin, command), 0o755);
+    for (const command of ['gh', 'git', 'date', 'sleep']) chmodSync(join(fakeBin, command), 0o755);
 
     let result;
     const exitCodes = [];
@@ -549,9 +570,13 @@ function runGate(conclusions, {
           FAKE_MALFORMED_STATUS: malformedStatusResponse ? '1' : '0',
           FAKE_EXHAUSTED_SHA: exhaustedSha,
           FAKE_CHECK_RUNS: runsFile,
-          FAKE_COMPARE_BASE: compareBaseFile,
-          FAKE_COMPARE_FAILURES: compareFailuresFile,
-          FAKE_COMPARE_HEAD: compareHeadFile,
+          FAKE_GIT_FETCH_FAILS: drifting.fetchFails ? '1' : '0',
+          FAKE_GIT_HEAD_FILES: driftHeadFilesFile,
+          FAKE_GIT_HEAD_TIP: drifting.headTip,
+          FAKE_GIT_MAIN_FILES: driftMainFilesFile,
+          FAKE_GIT_MAIN_TIP: drifting.mainTip,
+          FAKE_GIT_MERGE_BASE: drifting.mergeBase,
+          FAKE_GIT_MERGE_BASE_FAILS: drifting.mergeBaseFails ? '1' : '0',
           FAKE_FIRST_CHECK_RUNS: firstRunsFile,
           FAKE_CUTOFF_ISO: '2026-08-11T12:30:00Z',
           FAKE_FAILED_RUN_CREATED_AT: failedRunCreatedAt,
@@ -904,7 +929,9 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.posted, [
       { state: 'success', description: stamped('All required PR gates passed') },
     ]);
-    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'compare-head', 'status:success']);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page', 'graphql-check-page', 'git-fetch', 'git-merge-base', 'status:success',
+    ]);
   });
 
   it('does not let an older completed run mask a newer pending rerun', () => {
@@ -927,7 +954,8 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'rest-check-runs-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
     ]);
   });
@@ -997,11 +1025,13 @@ describe('deploy gate commit-status description', () => {
       'status:pending',
       'graphql-check-page',
       'graphql-check-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
       'graphql-check-page',
       'graphql-check-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
     ]);
     assert.deepEqual(result.posted, [
@@ -1134,7 +1164,8 @@ describe('deploy gate commit-status description', () => {
       'sleep:15',
       'graphql-check-page',
       'graphql-check-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
     ]);
   });
@@ -1185,7 +1216,8 @@ describe('deploy gate commit-status description', () => {
       'graphql-check-page',
       'rate-limit:graphql',
       'rest-check-runs-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
     ]);
     assert.deepEqual(result.posted, [
@@ -1200,7 +1232,8 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
       'status:pending',
     ]);
@@ -1219,7 +1252,8 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'graphql-check-page',
-      'compare-head',
+      'git-fetch',
+      'git-merge-base',
       'status:success',
       'rate-limit:core',
       'sleep:15',
@@ -1283,23 +1317,16 @@ describe('deploy gate commit-status description', () => {
 // required check that re-evaluates after a branch goes green, so the staleness
 // predicate belongs here rather than in a one-shot PR job.
 describe('deploy gate stale-base drift', () => {
-  const diverged = (files) => ({
-    status: 'diverged',
-    merge_base_commit: { sha: MERGE_BASE },
-    files: files.map((filename) => ({ filename })),
-  });
-  const mainFiles = (files) => ({ files: files.map((filename) => ({ filename })) });
+  const diverged = (extra) => ({ mergeBase: OLD_BASE, ...extra });
 
   it('blocks a head whose files main changed since its merge base', () => {
     // Two overlaps and a non-overlap on each side: the verdict must name the
     // intersection, separated, and neither side's exclusive files.
     const result = runGate(conclusionsFor('success'), {
-      compareHead: diverged([
-        'api/widget-agent.ts', 'tests/widget-agent-auth.test.mts', 'docs/head-only.md',
-      ]),
-      compareBase: mainFiles([
-        'api/widget-agent.ts', 'tests/widget-agent-auth.test.mts', 'server/gateway.ts',
-      ]),
+      drift: diverged({
+        headFiles: ['api/widget-agent.ts', 'docs/head-only.md', 'tests/widget-agent-auth.test.mts'],
+        mainFiles: ['api/widget-agent.ts', 'server/gateway.ts', 'tests/widget-agent-auth.test.mts'],
+      }),
     });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.posted, [{
@@ -1310,10 +1337,12 @@ describe('deploy gate stale-base drift', () => {
     }]);
   });
 
-  it('passes a diverged head that shares no file with main\'s drift', () => {
+  it("passes a diverged head that shares no file with main's drift", () => {
     const result = runGate(conclusionsFor('success'), {
-      compareHead: diverged(['src/services/oref-alerts.ts']),
-      compareBase: mainFiles(['api/widget-agent.ts', 'server/gateway.ts']),
+      drift: diverged({
+        headFiles: ['src/services/oref-alerts.ts'],
+        mainFiles: ['api/widget-agent.ts', 'server/gateway.ts'],
+      }),
     });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.posted, [{
@@ -1321,70 +1350,45 @@ describe('deploy gate stale-base drift', () => {
     }]);
   });
 
-  it('never compares a head already contained in main', () => {
+  it('never diffs a head that is already up to date or contained in main', () => {
     // Deploy Gate evaluates push-to-main commits too, and a commit cannot be
     // stale against the branch that contains it.
-    for (const status of ['behind', 'identical', 'ahead']) {
+    for (const mergeBase of [MAIN_TIP, HEAD_TIP]) {
       const result = runGate(conclusionsFor('success'), {
-        compareHead: { ...diverged(['api/widget-agent.ts']), status },
-        compareBase: mainFiles(['api/widget-agent.ts']),
+        drift: {
+          mergeBase,
+          headFiles: ['api/widget-agent.ts'],
+          mainFiles: ['api/widget-agent.ts'],
+        },
       });
       assert.equal(result.status, 0, result.stderr);
       assert.deepEqual(result.posted, [{
         state: 'success', description: stamped('All required PR gates passed'),
-      }], status);
-      assert.equal(result.calls.filter((call) => call === 'compare-base').length, 0, status);
+      }], mergeBase);
     }
   });
 
-  it('blocks rather than guesses when a comparison hits the 300-file cap', () => {
-    const many = Array.from({ length: 300 }, (_, index) => `src/file-${index}.ts`);
-    for (const [head, base] of [[many, ['docs/x.md']], [['docs/x.md'], many]]) {
-      const result = runGate(conclusionsFor('success'), {
-        compareHead: diverged(head),
-        compareBase: mainFiles(base),
-      });
-      assert.equal(result.status, 0, result.stderr);
-      assert.deepEqual(result.posted, [{
-        state: 'failure',
-        description: stamped('Stale base (comparison truncated at 300 files): update the branch'),
-      }]);
-    }
-  });
-
-  it('refuses to read a comparison whose status it does not recognise', () => {
-    // An empty or unexpected `status` must not be mistaken for "not diverged":
-    // that arm publishes a success, and this function proved nothing.
-    for (const compareHead of [{}, { status: '' }, { status: 'unknown' }, { files: [] }]) {
-      const result = runGate(conclusionsFor('success'), { compareHead });
+  it('leaves the gate pending when the comparison cannot be made', () => {
+    // Fail closed: an unreadable history must never publish a success the gate
+    // did not establish.
+    for (const broken of [{ fetchFails: true }, { mergeBaseFails: true }]) {
+      const result = runGate(conclusionsFor('success'), { drift: diverged(broken) });
       assert.equal(result.status, 0, result.stderr);
       assert.deepEqual(result.posted, [{
         state: 'pending',
         description: stamped('Deploy Gate could not compare this head against main; retry scheduled'),
-      }], JSON.stringify(compareHead));
+      }], JSON.stringify(broken));
     }
-  });
-
-  it('leaves the gate pending when GitHub cannot answer the comparison', () => {
-    // Fail closed: an unreadable comparison must never publish a success the
-    // gate did not establish.
-    const result = runGate(conclusionsFor('success'), { compareFailures: 3 });
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(result.posted, [{
-      state: 'pending',
-      description: stamped('Deploy Gate could not compare this head against main; retry scheduled'),
-    }]);
   });
 
   it('does not spend a comparison on a head that is already failing', () => {
     const result = runGate({ ...conclusionsFor('success'), unit: 'failure' }, {
-      compareHead: diverged(['api/widget-agent.ts']),
-      compareBase: mainFiles(['api/widget-agent.ts']),
+      drift: diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] }),
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.posted[0].state, 'failure');
     assert.match(result.posted[0].description, /Required PR gates did not pass/);
-    assert.equal(result.calls.filter((call) => call.startsWith('compare-')).length, 0);
+    assert.equal(result.calls.filter((call) => call.startsWith('git-')).length, 0);
   });
 
   it('invalidates greens stamped under the previous rules', () => {
@@ -1399,5 +1403,152 @@ describe('deploy gate stale-base drift', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.posted[0].state, 'pending');
     assert.match(result.posted[0].description, /contract changed/);
+  });
+});
+
+/**
+ * The same predicate against a REAL repository, through the `drift` phase.
+ *
+ * The suite above stubs git so the status logic can be driven with synthetic
+ * SHAs. This one uses actual commits, so `merge-base` and `diff --name-only`
+ * are the real thing — which is what the previous implementation got wrong:
+ * it read the file sets from the compare API, whose `files` array is capped at
+ * 300 and does not paginate, and `main` moves far more than that between a
+ * PR's base and its tip.
+ */
+describe('deploy gate stale-base drift over a real repository', () => {
+  const git = (cwd, ...args) => execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'gate', GIT_AUTHOR_EMAIL: 'gate@example.invalid',
+      GIT_COMMITTER_NAME: 'gate', GIT_COMMITTER_EMAIL: 'gate@example.invalid',
+      GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
+    },
+  });
+
+  /**
+   * `shape` is { base, main, head }: files touched by the shared commit, then
+   * by main's commit, then by the head's. An empty `head` leaves the head at
+   * the base (contained in main); an empty `main` leaves the head up to date.
+   */
+  function fixture(root, shape) {
+    const remote = join(root, 'remote');
+    const work = join(root, 'work');
+    mkdirSync(remote, { recursive: true });
+    mkdirSync(work, { recursive: true });
+    const commit = (files, message) => {
+      for (const file of files) {
+        const path = join(remote, file);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, `${message}\n`);
+      }
+      git(remote, 'add', '-A');
+      git(remote, 'commit', '-q', '-m', message);
+    };
+    git(remote, 'init', '-q', '--initial-branch=main');
+    // A local remote has to opt into both, exactly as github.com does.
+    git(remote, 'config', 'uploadpack.allowFilter', 'true');
+    git(remote, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+    commit(shape.base ?? ['README.md'], 'base');
+    git(remote, 'checkout', '-q', '-b', 'feature');
+    if ((shape.head ?? []).length > 0) commit(shape.head, 'head');
+    const headSha = git(remote, 'rev-parse', 'HEAD').trim();
+    git(remote, 'checkout', '-q', 'main');
+    if ((shape.main ?? []).length > 0) commit(shape.main, 'main');
+    git(work, 'init', '-q');
+    // A partial clone needs a NAMED promisor remote: git refuses to register
+    // one whose name is a path, so the fixture wires `origin` the way a real
+    // checkout has it.
+    git(work, 'remote', 'add', 'origin', remote);
+    return { remote, work, headSha };
+  }
+
+  const drift = (shape) => {
+    const root = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-git-'));
+    try {
+      const { remote, work, headSha } = fixture(root, shape);
+      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift'], {
+        cwd: work,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          BASE_DRIFT_REMOTE: 'origin',
+          GITHUB_OUTPUT: join(root, 'output'),
+          REPO: 'koala73/worldmonitor',
+          RUNNER_TEMP: root,
+          SHA: headSha,
+        },
+      });
+      return { ...result, stdout: result.stdout.trim() };
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it('names exactly the files both sides touched', () => {
+    const result = drift({
+      base: ['api/widget-agent.ts', 'server/gateway.ts', 'docs/x.md'],
+      head: ['api/widget-agent.ts', 'docs/x.md'],
+      main: ['api/widget-agent.ts', 'server/gateway.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'api/widget-agent.ts');
+  });
+
+  it('stays silent when the two sides are disjoint', () => {
+    const result = drift({
+      base: ['a.ts', 'b.ts'],
+      head: ['a.ts'],
+      main: ['b.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+  });
+
+  it('sees past the 300 files the compare API would have truncated at', () => {
+    // The defect this replaced: `main` moved 577 files in 90 commits, the API
+    // returned its first 300, and the check reported truncation instead of
+    // drift. The overlapping file here sorts last, so a 300-file window that
+    // stopped early would miss it.
+    const bulk = Array.from({ length: 400 }, (_, index) => `src/bulk-${String(index).padStart(4, '0')}.ts`);
+    const result = drift({
+      base: [...bulk, 'zz-shared.ts'],
+      head: ['zz-shared.ts'],
+      main: [...bulk, 'zz-shared.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'zz-shared.ts');
+  });
+
+  it('says nothing for a head main already contains, or one that is up to date', () => {
+    assert.equal(drift({ base: ['a.ts'], head: [], main: ['b.ts'] }).stdout, '');
+    assert.equal(drift({ base: ['a.ts'], head: ['a.ts'], main: [] }).stdout, '');
+  });
+
+  it('fails rather than passes when the remote cannot be read', () => {
+    const root = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-git-'));
+    try {
+      const { work, headSha } = fixture(root, { base: ['a.ts'], head: ['a.ts'], main: ['a.ts'] });
+      const result = spawnSync('bash', ['-e', gateScriptPath, 'drift'], {
+        cwd: work,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          BASE_DRIFT_REMOTE: 'no-such-remote',
+          GITHUB_OUTPUT: join(root, 'output'),
+          REPO: 'koala73/worldmonitor',
+          RUNNER_TEMP: root,
+          SHA: headSha,
+        },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Could not fetch main/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -157,9 +157,10 @@ required='["changes","typecheck-changes","lint-changes","docs-stats","unit","con
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='base-drift-v1'
+gate_rules='base-drift-v2'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
+BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
 repo_owner=${REPO%%/*}
 repo_name=${REPO#*/}
 # A green check set proves the BRANCH, not the merge. GitHub computes
@@ -176,50 +177,54 @@ repo_name=${REPO#*/}
 #
 # GitHub caps a comparison's `files` at 300. A truncated list cannot prove the
 # absence of an overlap, so it blocks too — the same branch update clears it.
-BASE_DRIFT_FILE_CAP=300
+# Refs this function fetches into. Namespaced so nothing else in the checkout
+# can be disturbed by an evaluation.
+BASE_DRIFT_MAIN_REF=refs/deploy-gate/main
+BASE_DRIFT_HEAD_REF=refs/deploy-gate/head
 drift_files=""
-base_drift_reason=""
 # Echoes the overlapping paths, or nothing when the head is safe to merge.
-# Returns non-zero only when GitHub could not answer, so the caller can leave
-# the gate pending instead of publishing a success it did not establish.
+# Returns non-zero only when the comparison could not be made, so the caller can
+# leave the gate pending instead of publishing a success it never established.
+#
+# This reads the two file sets with git, NOT the compare API. That endpoint caps
+# `files` at 300 and does not paginate past it, and `main` here moves ~577 files
+# in 90 commits — so the cap fired on 72 of 142 open PRs and published a verdict
+# about truncation rather than about drift. git has no such cap.
 base_drift() {
   local head="$1"
-  local head_cmp base_cmp merge_base cmp_status
+  local merge_base main_tip head_tip head_list main_list
   drift_files=""
-  base_drift_reason=""
-  head_cmp=$(gh_api_with_rate_limit_retry core \
-    "repos/$REPO/compare/main...$head?per_page=$BASE_DRIFT_FILE_CAP") || return $?
-  cmp_status=$(printf '%s\n' "$head_cmp" | jq -r '.status // empty')
-  # Read the status as an allow-list. A truncated or malformed body yields an
-  # empty string, and treating that as "not diverged" would publish a success
-  # this function never established.
-  case "$cmp_status" in
-    # Already contained in main: a push to main evaluates here too, and a commit
-    # cannot be stale against the branch that contains it.
-    behind | identical) return 0 ;;
-    # The merge base already is main's tip, so nothing has drifted under it.
-    ahead) return 0 ;;
-    diverged) ;;
-    *)
-      echo "::error::Unusable comparison status '$cmp_status' for $head" >&2
-      return 1
-      ;;
-  esac
-  merge_base=$(printf '%s\n' "$head_cmp" | jq -r '.merge_base_commit.sha // empty')
-  if ! [[ "$merge_base" =~ ^[0-9a-f]{40}$ ]]; then
+  # Trees are needed, file contents never are, so filter the blobs out. The
+  # fetch is unauthenticated (the checkout runs with persist-credentials:false)
+  # which this public repo allows; a private fork would need a token here.
+  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
+    "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
+    echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
+    return 1
+  fi
+  main_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_MAIN_REF") || return 1
+  head_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_HEAD_REF") || return 1
+  if ! merge_base=$(git merge-base "$BASE_DRIFT_MAIN_REF" "$BASE_DRIFT_HEAD_REF"); then
     echo "::error::Could not resolve the merge base for $head" >&2
     return 1
   fi
-  base_cmp=$(gh_api_with_rate_limit_retry core \
-    "repos/$REPO/compare/$merge_base...main?per_page=$BASE_DRIFT_FILE_CAP") || return $?
-  if printf '%s\n' "$head_cmp" "$base_cmp" |
-    jq -se --argjson cap "$BASE_DRIFT_FILE_CAP" 'any(.[]; (.files | length) >= $cap)' >/dev/null; then
-    base_drift_reason="comparison truncated at $BASE_DRIFT_FILE_CAP files"
+  # A head contained in main — push-to-main evaluates here too — and a head
+  # whose merge base already is main's tip both have nothing above them.
+  if [ "$merge_base" = "$head_tip" ] || [ "$merge_base" = "$main_tip" ]; then
     return 0
   fi
-  drift_files=$(printf '%s\n' "$head_cmp" "$base_cmp" | jq -sr '
-    ([.[0].files[]?.filename] - ([.[0].files[]?.filename] - [.[1].files[]?.filename]))
-    | unique | join(",")')
+  head_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-head.XXXXXX")
+  main_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-main.XXXXXX")
+  if ! git diff --name-only "$merge_base" "$BASE_DRIFT_HEAD_REF" | sort -u > "$head_list" ||
+    ! git diff --name-only "$merge_base" "$BASE_DRIFT_MAIN_REF" | sort -u > "$main_list"; then
+    rm -f "$head_list" "$main_list"
+    echo "::error::Could not list the changed files for $head" >&2
+    return 1
+  fi
+  # `grep -Fxf` exits 1 on no match, which under pipefail would read as an
+  # error; an empty intersection is the passing case, not a failure.
+  drift_files=$(grep -Fxf "$main_list" "$head_list" | paste -sd, - || true)
+  rm -f "$head_list" "$main_list"
   return 0
 }
 # GraphQL is the cheap rollup, but GitHub outages often 503 the
@@ -554,12 +559,6 @@ if ! base_drift "$SHA"; then
   return 0
 fi
 
-if [ -n "$base_drift_reason" ]; then
-  post_gate_status "failure" "Stale base ($base_drift_reason): update the branch"
-  active_sha=""
-  return 0
-fi
-
 if [ -n "$drift_files" ]; then
   post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
   active_sha=""
@@ -578,6 +577,14 @@ case "${1:-}" in
     validate_sha
     [[ "${CHECK_ATTEMPTS:-2}" =~ ^[12]$ ]]
     evaluate_sha
+    ;;
+  # Answer the drift question for one head and nothing else. Useful on its own
+  # when a blocked PR needs explaining, and it lets the semantics behind
+  # `base_drift` be tested against a real repository with real SHAs.
+  drift)
+    validate_sha
+    base_drift "$SHA" || exit 1
+    printf '%s\n' "$drift_files"
     ;;
   *) echo "::error::Unknown Deploy Gate phase" >&2; exit 2 ;;
 esac
