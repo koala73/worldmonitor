@@ -41,6 +41,20 @@ browser variables, source code, logs, PR descriptions or screenshots.
    history ingestion and confirm retraction remains independently gated. Check
    for relay 401s without recording headers or secret values.
 
+Every deploy in steps 2 and 3 must happen **after** its key is provisioned, and
+a key added or rotated later needs a **new deploy on both platforms** — presence
+in the store is not enough. Both halves of #8208 were this: a Convex variable
+written after the last `convex deploy` reads as `undefined` inside deployed
+functions until the next push, and a Vercel variable set after the build never
+reaches the running build because a same-commit redeploy is cancelled by the
+ignored-build step (#8216). The acceptance signal is `/api/health`: its
+`relayGatewayGate` entry sends one credentialed, body-less
+`POST /relay/create-checkout` per verdict snapshot and reports
+`RELAY_GATE_MISCONFIGURED` (Vercel build cannot see the secret) or
+`RELAY_GATE_REJECTED` (Convex gate does not admit it) as a critical problem,
+which the 15-minute seed-freshness monitor pages on. Do not consider the cutover
+finished until that entry reads `OK` (#8217).
+
 If a consumer fails, repair its configuration or release while keeping Convex's
 new gate. Rolling Convex back restores the old broad authority; treat that as a
 separate security decision. Removing the new credentials fails closed. Do not

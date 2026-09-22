@@ -321,7 +321,7 @@ describe('ShippingV2Service handlers', () => {
       const calls = stubRedisOk();
       await registerWebhook(makeCtx({
         'X-WorldMonitor-Key': 'wms_automatic-anonymous-session',
-        Cookie: 'wm-pro-key=pro-test-key',
+        Cookie: '__Host-wm-pro-key=pro-test-key',
       }), {
         callbackUrl: 'https://93.184.216.34/wm',
         chokepointIds: [],

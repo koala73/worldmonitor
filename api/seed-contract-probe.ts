@@ -21,7 +21,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders } from './_cors.js';
+import { getCorsHeaders, isHostedAppOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
@@ -217,6 +217,12 @@ export async function checkPublicBoundary(
   origin: string,
   retryDelayMs: number = RETRY_DELAY_MS,
 ): Promise<BoundaryResult[]> {
+  if (!isHostedAppOrigin(origin)) {
+    return BOUNDARY_CHECKS.map(({ endpoint }) => ({ endpoint, pass: false, reason: 'untrusted-origin' }));
+  }
+  // The apex redirects to www in production. Select that known destination
+  // before attaching credentials; arbitrary redirects remain forbidden.
+  if (origin === 'https://worldmonitor.app') origin = 'https://www.worldmonitor.app';
   // Endpoints behind validateApiKey() (e.g. /api/bootstrap) used to accept the
   // trusted-browser-origin path without a key. PR #3557 closed that bypass: the
   // ONLY no-Pro path now is a wms_-prefixed HMAC-signed session token. Mint one
@@ -251,9 +257,20 @@ async function probeBoundaryOnce(
 ): Promise<BoundaryResult> {
   try {
     const r = await fetch(`${origin}${endpoint}`, {
+      // The edge runtime refuses `redirect: 'error'` outright — fetch throws a
+      // TypeError before the request leaves the function, which fails BOTH
+      // boundary checks and 503s the probe on every poll. 'manual' is the
+      // supported way to not follow a redirect; we enforce the same guarantee
+      // by rejecting any 3xx ourselves, so credentials never chase a Location.
+      redirect: 'manual',
       signal: AbortSignal.timeout(5_000),
       headers,
     });
+    // An opaque-redirect response reports status 0 and a null body, so check
+    // this before reading text().
+    if (r.type === 'opaqueredirect' || (r.status >= 300 && r.status < 400)) {
+      return { endpoint, pass: false, status: r.status, reason: 'redirect' };
+    }
     const text = await r.text();
     // Detect any envelope leak in the response body. A substring match on
     // the literal `"_seed":` is sufficient because `_seed` only appears on
@@ -300,7 +317,7 @@ export default async function handler(req: Request): Promise<Response> {
     // timeout, cold-start, mid-rewrite key) doesn't flap the probe to 503.
     const [checks, boundary] = await Promise.all([
       Promise.all(DEFAULT_PROBES.map((spec) => withRetry(() => checkProbe(spec)))),
-      checkPublicBoundary(new URL(req.url).origin),
+      checkPublicBoundary((process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://www.worldmonitor.app').replace(/\/+$/, '')),
     ]);
 
     const passedKeys = checks.filter(c => c.pass).length;
