@@ -20,6 +20,7 @@ import { callLlmReasoning } from '../../../_shared/llm';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 import { isCallerPremium } from '../../../_shared/premium-check';
+import { markUnservedLlmResponse } from '../../../_shared/response-headers';
 
 const PREDICTION_BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const MAX_PREDICTION_MARKETS = 7;
@@ -113,7 +114,10 @@ export async function deductSituation(
     const isPremium = await isCallerPremium(ctx.request);
     const framework = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, MAX_FRAMEWORK_LEN) : '';
 
-    if (!query) return { analysis: '', model: '', provider: 'skipped' };
+    if (!query) {
+        markUnservedLlmResponse(ctx.request);
+        return { analysis: '', model: '', provider: 'skipped' };
+    }
 
     const [queryHash, frameworkHashFull, predictionBootstrap] = await Promise.all([
         sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase()),
@@ -159,6 +163,10 @@ export async function deductSituation(
     );
 
     if (!cached?.analysis) {
+        // The LLM budget expired or the provider failed: the caller receives
+        // no analysis, so the daily-quota slot the gateway reserved for this
+        // call is released (see markUnservedLlmResponse).
+        markUnservedLlmResponse(ctx.request);
         return { analysis: '', model: '', provider: 'error' };
     }
 
