@@ -75,6 +75,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     skipProofPaths: Object.freeze([
       'convex/',
       'shared/cloud-preferences-contract.ts',
+      'shared/pinned-webcams.ts',
       'shared/mcp-attribution.ts',
       'shared/company-monitoring-contract.ts',
       'shared/company-monitoring-evidence.ts',

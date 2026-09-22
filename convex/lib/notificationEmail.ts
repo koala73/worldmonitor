@@ -9,13 +9,14 @@ export function requireVerifiedAccountEmail(requested: string | undefined, verif
   return email;
 }
 
-export async function lookupVerifiedAccountEmail(userId: string): Promise<string | undefined> {
+export async function lookupVerifiedAccountEmail(userId: string, options: { allowMissingUser?: boolean } = {}): Promise<string | undefined> {
   const secret = process.env.CLERK_SECRET_KEY;
   if (!secret) throw new Error("EMAIL_VERIFICATION_UNAVAILABLE");
   const response = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(userId)}`, {
     headers: { Authorization: `Bearer ${secret}`, "User-Agent": "worldmonitor-convex/1.0" },
     signal: AbortSignal.timeout(5_000),
   });
+  if (response.status === 404 && options.allowMissingUser) return undefined;
   if (!response.ok) throw new Error("EMAIL_VERIFICATION_UNAVAILABLE");
   const user = await response.json() as {
     id?: string;

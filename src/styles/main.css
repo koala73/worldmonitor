@@ -2132,11 +2132,13 @@ body.panel-resize-active iframe {
 }
 
 /* The resize strips are keyboard-focusable separators (arrow keys resize);
-   show where focus is when it lands on one. */
+   show where focus is when it lands on one. Panel content is a tab stop so
+   overflow-y:auto regions stay keyboard-scrollable (#8460). */
 .panel-resize-handle:focus-visible,
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
-.map-width-resize-handle:focus-visible {
+.map-width-resize-handle:focus-visible,
+.panel-content:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
@@ -26339,6 +26341,117 @@ body.map-width-resizing {
 }
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
+
+.account-deletion-zone {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--danger, #d64545) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger, #d64545) 6%, var(--surface));
+}
+
+.account-deletion-title {
+  font-weight: 600;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  color: var(--danger, #d64545);
+  margin: 0 0 8px;
+}
+
+.account-deletion-desc {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.delete-account-btn {
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--danger, #d64545);
+  background: transparent;
+  color: var(--danger, #d64545);
+  font-weight: 600;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.delete-account-btn:hover {
+  background: color-mix(in srgb, var(--danger, #d64545) 12%, transparent);
+}
+
+.account-deletion-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim, rgb(0 0 0 / 50%));
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* Appended to document.body, not nested in #unifiedSettingsModal.
+     Must sit above .modal-overlay (9999) or the type-DELETE dialog is
+     invisible behind Settings. */
+  z-index: 10050;
+  padding: 20px;
+}
+
+.account-deletion-dialog-overlay.active {
+  display: flex;
+}
+
+.account-deletion-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 32px var(--shadow-color);
+  padding: 20px 20px 16px;
+}
+
+.account-deletion-dialog-title {
+  margin: 0 0 10px;
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+}
+
+.account-deletion-dialog-copy,
+.account-deletion-dialog-label {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+}
+
+.account-deletion-dialog-label {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.account-deletion-dialog-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+}
+
+.account-deletion-dialog-error {
+  min-height: 1.2em;
+  margin: 0 0 12px;
+  color: var(--danger, #d64545);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.account-deletion-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
 
 /* -- Legal links + pre-payment assent (#6976) -- */
 /* The dashboard had no path to the Terms at all, and every upgrade CTA jumped

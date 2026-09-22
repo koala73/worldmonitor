@@ -213,6 +213,30 @@ describe('ScenarioService handlers', () => {
       assert.equal(payload.owner, PRO_OWNER);
     });
 
+    it('does not queue a job whose owner binding failed (MULTI/EXEC, not a pipeline)', async () => {
+      // Fake store: /pipeline applies each command independently; /multi-exec
+      // aborts the whole EXEC when a command is rejected at queue time.
+      const queue = [];
+      globalThis.fetch = async (url, init) => {
+        const commands = JSON.parse(String(init?.body));
+        const reject = (cmd) => cmd[0] === 'SET';
+        if (String(url).endsWith('/multi-exec') && commands.some(reject)) {
+          return Response.json({ error: 'EXECABORT Transaction discarded because of previous errors.' }, { status: 400 });
+        }
+        return Response.json(commands.map((cmd) => {
+          if (cmd[0] === 'LLEN') return { result: 0 };
+          if (reject(cmd)) return { error: 'OOM command not allowed when used memory > maxmemory' };
+          if (cmd[0] === 'RPUSH') { queue.push(cmd[2]); return { result: queue.length }; }
+          return { result: 1 };
+        }));
+      };
+      await assert.rejects(
+        () => runScenario(proCtx(), { scenarioId: 'taiwan-strait-full-closure', iso2: '' }),
+        (err) => err instanceof ApiError && err.statusCode === 502,
+      );
+      assert.equal(queue.length, 0, 'an ownerless job must not reach the worker queue');
+    });
+
     it('rejects when queue depth exceeds 100 with 429 ApiError', async () => {
       globalThis.fetch = async () =>
         new Response(JSON.stringify([{ result: 101 }]), { status: 200 });

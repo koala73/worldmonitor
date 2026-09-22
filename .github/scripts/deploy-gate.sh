@@ -152,10 +152,87 @@ trap post_pending_on_exit EXIT
 # `typecheck-changes` / `lint-changes` so all three are evaluated
 # instead of two being masked by the third (#5822).
 required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
-gate_contract=$(REQUIRED_JOBS="$required" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["REQUIRED_JOBS"].encode()).hexdigest()[:12])')
+# The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
+# names it inspects. A rules change that left the stamp alone would inherit
+# every success earned under the old rules, because the sweep only re-evaluates
+# a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
+# passing gate changes.
+gate_rules='base-drift-v2'
+gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
+BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
 repo_owner=${REPO%%/*}
 repo_name=${REPO#*/}
+# A green check set proves the BRANCH, not the merge. GitHub computes
+# refs/pull/N/merge once per push and never recomputes it when the base moves,
+# and `main` here is `strict: false`, so a branch can merge on checks that
+# never saw the commits it lands on. When two such branches touch the same file
+# from different bases the 3-way merge has nothing to conflict on and `main`
+# goes red with both PRs green — #8269 deleted a declaration that #8376 had
+# added a use of, reddening biome, typecheck and two unit shards at once.
+#
+# The predicate: has `main` changed a file this head also changes, since this
+# head's merge base? Updating the branch always clears it, because the merge
+# base then IS `main` and the comparison below reports `ahead`.
+#
+# GitHub caps a comparison's `files` at 300. A truncated list cannot prove the
+# absence of an overlap, so it blocks too — the same branch update clears it.
+# Refs this function fetches into. Namespaced so nothing else in the checkout
+# can be disturbed by an evaluation.
+BASE_DRIFT_MAIN_REF=refs/deploy-gate/main
+BASE_DRIFT_HEAD_REF=refs/deploy-gate/head
+drift_files=""
+# Echoes the overlapping paths, or nothing when the head is safe to merge.
+# Returns non-zero only when the comparison could not be made, so the caller can
+# leave the gate pending instead of publishing a success it never established.
+#
+# This reads the two file sets with git, NOT the compare API. That endpoint caps
+# `files` at 300 and does not paginate past it, and `main` here moves ~577 files
+# in 90 commits — so the cap fired on 72 of 142 open PRs and published a verdict
+# about truncation rather than about drift. git has no such cap.
+base_drift() {
+  local head="$1"
+  local merge_base main_tip head_tip head_list main_list
+  drift_files=""
+  # Trees are needed, file contents never are, so filter the blobs out. The
+  # fetch is unauthenticated (the checkout runs with persist-credentials:false)
+  # which this public repo allows; a private fork would need a token here.
+  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
+    "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
+    echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
+    return 1
+  fi
+  main_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_MAIN_REF") || return 1
+  head_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_HEAD_REF") || return 1
+  if ! merge_base=$(git merge-base "$BASE_DRIFT_MAIN_REF" "$BASE_DRIFT_HEAD_REF"); then
+    echo "::error::Could not resolve the merge base for $head" >&2
+    return 1
+  fi
+  # A head contained in main — push-to-main evaluates here too — and a head
+  # whose merge base already is main's tip both have nothing above them.
+  if [ "$merge_base" = "$head_tip" ] || [ "$merge_base" = "$main_tip" ]; then
+    return 0
+  fi
+  head_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-head.XXXXXX")
+  main_list=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-main.XXXXXX")
+  # --no-renames, because rename detection is on by default and --name-only
+  # prints the POST-image path. If main renames a.ts to b.ts while the head
+  # edits a.ts, main's side lists only b.ts, the intersection comes out empty,
+  # and the gate publishes a success for a head that in fact collides — that
+  # pair conflicts on merge. Without detection the rename is a delete plus an
+  # add, so a.ts appears on both sides and the overlap is seen.
+  if ! git diff --name-only --no-renames "$merge_base" "$BASE_DRIFT_HEAD_REF" | sort -u > "$head_list" ||
+    ! git diff --name-only --no-renames "$merge_base" "$BASE_DRIFT_MAIN_REF" | sort -u > "$main_list"; then
+    rm -f "$head_list" "$main_list"
+    echo "::error::Could not list the changed files for $head" >&2
+    return 1
+  fi
+  # `grep -Fxf` exits 1 on no match, which under pipefail would read as an
+  # error; an empty intersection is the passing case, not a failure.
+  drift_files=$(grep -Fxf "$main_list" "$head_list" | paste -sd, - || true)
+  rm -f "$head_list" "$main_list"
+  return 0
+}
 # GraphQL is the cheap rollup, but GitHub outages often 503 the
 # query endpoint while REST check-runs still answers. Falling back
 # lets a SHA-specific dispatch post `gate` instead of stranding the
@@ -482,6 +559,18 @@ if [ -n "$failed" ]; then
   return 0
 fi
 
+if ! base_drift "$SHA"; then
+  post_gate_status "pending" "Deploy Gate could not compare this head against main; retry scheduled"
+  active_sha=""
+  return 0
+fi
+
+if [ -n "$drift_files" ]; then
+  post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
+  active_sha=""
+  return 0
+fi
+
 post_gate_status "success" "All required PR gates passed"
 active_sha=""
 }
@@ -494,6 +583,14 @@ case "${1:-}" in
     validate_sha
     [[ "${CHECK_ATTEMPTS:-2}" =~ ^[12]$ ]]
     evaluate_sha
+    ;;
+  # Answer the drift question for one head and nothing else. Useful on its own
+  # when a blocked PR needs explaining, and it lets the semantics behind
+  # `base_drift` be tested against a real repository with real SHAs.
+  drift)
+    validate_sha
+    base_drift "$SHA" || exit 1
+    printf '%s\n' "$drift_files"
     ;;
   *) echo "::error::Unknown Deploy Gate phase" >&2; exit 2 ;;
 esac

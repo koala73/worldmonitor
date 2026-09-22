@@ -15,12 +15,13 @@ import { describe, it } from 'node:test';
 import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 
 import { DIGEST_LASTGOOD_PUBLISH_SCRIPT } from '../shared/digest-lastgood-publish-script.mjs';
-import { LASTGOOD_MAX_AGE_MS, LASTGOOD_TTL_S } from '../server/worldmonitor/news/v1/_lastgood.ts';
+import { ATTEMPT_META_TTL_S, LASTGOOD_MAX_AGE_MS, LASTGOOD_TTL_S } from '../server/worldmonitor/news/v1/_lastgood.ts';
 
 const NOW = Date.UTC(2026, 7, 22, 12, 0, 0);
 const GENERATED_AT = new Date(NOW).toISOString();
 const BODY_KEY = 'news:digest:lastgood:v1:full:en';
 const CANONICAL_KEY = 'news:digest:v1:full:en';
+const ATTEMPT_KEY = 'news:digest:attempt:v1:full:en';
 const REVOKED_KEY = 'news:digest:revoked-urls:v1';
 
 /**
@@ -167,14 +168,14 @@ function runScript({ keys, argv, redis }) {
 
 const publish = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
   runScript({
-    keys: [BODY_KEY, REVOKED_KEY],
-    argv: [now, LASTGOOD_MAX_AGE_MS, acceptedAt, LASTGOOD_TTL_S, JSON.stringify(data)],
+    keys: [BODY_KEY, REVOKED_KEY, ATTEMPT_KEY],
+    argv: [now, LASTGOOD_MAX_AGE_MS, acceptedAt, LASTGOOD_TTL_S, JSON.stringify(data), 900, '', '', 120, ATTEMPT_META_TTL_S],
     redis: makeRedis(initial),
   });
 
 const publishCanonicalAndLastGood = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
   runScript({
-    keys: [BODY_KEY, REVOKED_KEY, CANONICAL_KEY],
+    keys: [BODY_KEY, REVOKED_KEY, ATTEMPT_KEY, CANONICAL_KEY],
     argv: [
       now,
       LASTGOOD_MAX_AGE_MS,
@@ -185,6 +186,7 @@ const publishCanonicalAndLastGood = ({ data, acceptedAt = NOW, now = NOW, initia
       new Date(now - LASTGOOD_MAX_AGE_MS).toISOString(),
       new Date(now).toISOString(),
       120,
+      ATTEMPT_META_TTL_S,
     ],
     redis: makeRedis(initial),
   });
@@ -251,6 +253,7 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
       initial: Object.fromEntries(first.redis.store),
     });
     assert.equal(second.result, 0, 'the shared decision must reject a live narrower candidate');
+    assert.equal(JSON.parse(second.redis.store.get(ATTEMPT_KEY)).outcome, 'gate-held');
     assert.equal(second.redis.store.get(CANONICAL_KEY), JSON.stringify(rich));
     assert.deepEqual(JSON.parse(second.redis.store.get(BODY_KEY)).data, rich);
   });
@@ -265,11 +268,16 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     };
     const { result, redis } = publishCanonicalAndLastGood({
       data: bodyOf(['https://c.test/1']),
-      initial: { [BODY_KEY]: snapshot(rich, NOW - 60_000) },
+      initial: {
+        [BODY_KEY]: snapshot(rich, NOW - 60_000),
+        [ATTEMPT_KEY]: JSON.stringify({ ts: NOW - 7_200_000, outcome: 'build-error' }),
+      },
     });
     assert.equal(result, 0);
     assert.equal(redis.store.get(CANONICAL_KEY), JSON.stringify('__WM_NEG__'));
     assert.equal(redis.ttls.get(CANONICAL_KEY), 120);
+    assert.deepEqual(JSON.parse(redis.store.get(ATTEMPT_KEY)), { ts: NOW, outcome: 'gate-held' });
+    assert.equal(redis.ttls.get(ATTEMPT_KEY), ATTEMPT_META_TTL_S);
     assert.deepEqual(JSON.parse(redis.store.get(BODY_KEY)).data, rich);
   });
 
@@ -526,6 +534,7 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     });
     assert.equal(result, -1, 'a fully-revoked candidate has no servable items');
     assert.equal(redis.store.get(BODY_KEY), undefined, 'nothing may be written on rejection');
+    assert.equal(redis.store.get(ATTEMPT_KEY), undefined, 'revocation is not a gate hold');
   });
 
   it('rejects a candidate with zero categories', () => {
@@ -594,8 +603,8 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     const inner = redis.call.bind(redis);
     redis.call = (cmd, args) => { seen.push(String(cmd).toUpperCase()); return inner(cmd, args); };
     runScript({
-      keys: [BODY_KEY, REVOKED_KEY],
-      argv: [NOW, LASTGOOD_MAX_AGE_MS, NOW, LASTGOOD_TTL_S, JSON.stringify(data)],
+      keys: [BODY_KEY, REVOKED_KEY, ATTEMPT_KEY],
+      argv: [NOW, LASTGOOD_MAX_AGE_MS, NOW, LASTGOOD_TTL_S, JSON.stringify(data), 900, '', '', 120, ATTEMPT_META_TTL_S],
       redis,
     });
     assert.deepEqual(seen, ['SMEMBERS', 'GET', 'SET'], 'the atomic gate must stay a three-command operation');

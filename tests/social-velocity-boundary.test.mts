@@ -5,6 +5,7 @@ import { afterEach, test } from 'node:test';
 import { getSocialVelocity } from '../server/worldmonitor/intelligence/v1/get-social-velocity.ts';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { normalizeSocialVelocity } from '../api/_social-velocity.js';
 import { sanitizeBootstrapValue } from '../api/_bootstrap-public-payload.js';
 import { assembleBootstrapTierPayload } from '../scripts/publish-bootstrap-tiers.mjs';
 
@@ -30,7 +31,11 @@ afterEach(() => {
 
 test('rejects malformed cache envelopes and preserves a valid empty observation', async () => {
   for (const value of [null, [], 'bad', { posts: 'bad', fetchedAt: 123 }, { posts: [null], fetchedAt: 123 }, { extra: true }]) {
-    assert.deepEqual(await read(value), { posts: [], fetchedAt: 0 });
+    if (value && typeof value === 'object' && 'posts' in value && Array.isArray(value.posts)) {
+      assert.deepEqual(await read(value), { posts: [], fetchedAt: 0 });
+    } else {
+      await assert.rejects(read(value), { name: 'SeedUnavailableError', statusCode: 503 });
+    }
   }
   assert.deepEqual(await read({ posts: [], fetchedAt: 123 }), { posts: [], fetchedAt: 123 });
 });
@@ -77,7 +82,7 @@ test('bootstrap and MCP sanitize the same cached posts while preserving missing 
   assert.deepEqual(tool._postFilter({ reddit: null }, {}), { reddit: null });
   assert.deepEqual(tool._postFilter({ reddit: bad }, { subreddit: 'geopolitics' }), { reddit: { posts: [], fetchedAt: 123 } });
   for (const value of [[], 'bad', { posts: 'bad', fetchedAt: 123 }, { posts: [null], fetchedAt: 123 }, { posts: [], fetchedAt: 123 }]) {
-    const normalized = await read(value);
+    const normalized = normalizeSocialVelocity(value);
     assert.deepEqual(sanitizeBootstrapValue('socialVelocity', value), normalized);
     assert.deepEqual(tool._postFilter({ reddit: value }, {}), { reddit: normalized });
   }
@@ -117,7 +122,7 @@ test('KV publisher normalizes the actual assembled fast-tier social payload', as
       env: { UPSTASH_REDIS_REST_URL: 'https://redis.example', UPSTASH_REDIS_REST_TOKEN: 'synthetic' },
       fetchFn: async () => Response.json([{ result: JSON.stringify({ _seed: { fetchedAt: 123 }, data: value }) }]),
     });
-    assert.deepEqual(payload, { data: { socialVelocity: await read(value) }, missing: [] });
+    assert.deepEqual(payload, { data: { socialVelocity: normalizeSocialVelocity(value) }, missing: [] });
   }
 });
 

@@ -8,7 +8,7 @@ import { ApiError, ValidationError } from '../../../../src/generated/server/worl
 import {
   requirePremiumRpcAccess,
 } from '../../../_shared/premium-check';
-import { runRedisPipeline } from '../../../_shared/redis';
+import { runRedisPipeline, runRedisTransaction } from '../../../_shared/redis';
 import { setResponseHeader, setSuccessStatusOverride } from '../../../_shared/response-headers';
 import { getScenarioTemplate } from '../../supply-chain/v1/scenario-templates';
 import {
@@ -71,10 +71,11 @@ export async function runScenario(
     owner,
   });
 
-  // Bind the owner before the job is visible on the queue. A pipeline that
-  // does not confirm both writes must not return a job id: SET 'OK' is the
-  // owner record, RPUSH's numeric length is the enqueue.
-  const [setEntry, pushEntry] = await runRedisPipeline([
+  // Bind the owner and enqueue in one MULTI/EXEC. A pipeline could RPUSH a
+  // job whose owner SET failed, leaving an unpollable job on the worker queue
+  // behind a 502. A transaction that does not confirm both writes must not
+  // return a job id: SET 'OK' is the owner record, RPUSH's length the enqueue.
+  const [setEntry, pushEntry] = await runRedisTransaction([
     ['SET', scenarioOwnerKey(jobId), JSON.stringify(owner), 'EX', String(SCENARIO_RESULT_TTL_SECONDS)],
     ['RPUSH', QUEUE_KEY, payload],
   ], true);

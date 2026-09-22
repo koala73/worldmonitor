@@ -95,6 +95,57 @@ export class LiveNewsPanel extends Panel {
   private desktopEmbedRenderToken = 0;
   private channelSwitchGeneration = 0;
   private suppressChannelClick = false;
+  private channelDragTarget: HTMLElement | null = null;
+  private channelDragStarted = false;
+  private channelDragStartX = 0;
+  private channelDragListenersAttached = false;
+  private readonly boundChannelDragMove = (e: MouseEvent): void => {
+    if (!this.channelDragTarget || !this.channelSwitcher) return;
+    if (!this.channelDragStarted) {
+      if (Math.abs(e.clientX - this.channelDragStartX) < 6) return;
+      this.channelDragStarted = true;
+      this.channelDragTarget.classList.add('live-channel-dragging');
+    }
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
+    if (!target || target === this.channelDragTarget) return;
+    const all = Array.from(this.channelSwitcher.querySelectorAll('.live-channel-btn'));
+    const idx = all.indexOf(this.channelDragTarget);
+    const targetIdx = all.indexOf(target);
+    if (idx === -1 || targetIdx === -1) return;
+    if (idx < targetIdx) {
+      target.parentElement?.insertBefore(this.channelDragTarget, target.nextSibling);
+    } else {
+      target.parentElement?.insertBefore(this.channelDragTarget, target);
+    }
+  };
+  private readonly boundChannelDragUp = (): void => {
+    if (!this.channelDragTarget) return;
+    if (this.channelDragStarted) {
+      this.channelDragTarget.classList.remove('live-channel-dragging');
+      this.applyChannelOrderFromDom();
+      this.suppressChannelClick = true;
+      setTimeout(() => {
+        this.suppressChannelClick = false;
+      }, 0);
+    }
+    this.channelDragTarget = null;
+    this.channelDragStarted = false;
+    this.detachChannelDragListeners();
+  };
+
+  private attachChannelDragListeners(): void {
+    if (this.channelDragListenersAttached) return;
+    document.addEventListener('mousemove', this.boundChannelDragMove);
+    document.addEventListener('mouseup', this.boundChannelDragUp);
+    this.channelDragListenersAttached = true;
+  }
+
+  private detachChannelDragListeners(): void {
+    if (!this.channelDragListenersAttached) return;
+    document.removeEventListener('mousemove', this.boundChannelDragMove);
+    document.removeEventListener('mouseup', this.boundChannelDragUp);
+    this.channelDragListenersAttached = false;
+  }
   private boundMessageHandler!: (e: MessageEvent) => void;
   private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
   private static readonly MUTE_SYNC_POLL_MS = 500;
@@ -128,7 +179,7 @@ export class LiveNewsPanel extends Panel {
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
     const savedChannelId = loadFromStorage<string>(STORAGE_KEYS.activeChannel, '');
     const savedChannel = savedChannelId ? this.channels.find(c => c.id === savedChannelId) : null;
-    this.activeChannel = savedChannel ?? this.channels[0]!;
+    this.activeChannel = savedChannel ?? this.channels[0] ?? { id: '', name: '' };
     this.createLiveButton();
     this.createMuteButton();
     this.createChannelSwitcher();
@@ -608,55 +659,16 @@ export class LiveNewsPanel extends Panel {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
 
-    // Mouse-based drag reorder (works in WKWebView/Tauri)
-    let dragging: HTMLElement | null = null;
-    let dragStarted = false;
-    let startX = 0;
-    const THRESHOLD = 6;
-
     this.channelSwitcher.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       const btn = (e.target as HTMLElement).closest('.live-channel-btn') as HTMLElement | null;
       if (!btn) return;
       this.suppressChannelClick = false;
-      dragging = btn;
-      dragStarted = false;
-      startX = e.clientX;
+      this.channelDragTarget = btn;
+      this.channelDragStarted = false;
+      this.channelDragStartX = e.clientX;
+      this.attachChannelDragListeners();
       e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!dragging || !this.channelSwitcher) return;
-      if (!dragStarted) {
-        if (Math.abs(e.clientX - startX) < THRESHOLD) return;
-        dragStarted = true;
-        dragging.classList.add('live-channel-dragging');
-      }
-      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
-      if (!target || target === dragging) return;
-      const all = Array.from(this.channelSwitcher!.querySelectorAll('.live-channel-btn'));
-      const idx = all.indexOf(dragging);
-      const targetIdx = all.indexOf(target);
-      if (idx === -1 || targetIdx === -1) return;
-      if (idx < targetIdx) {
-        target.parentElement?.insertBefore(dragging, target.nextSibling);
-      } else {
-        target.parentElement?.insertBefore(dragging, target);
-      }
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      if (dragStarted) {
-        dragging.classList.remove('live-channel-dragging');
-        this.applyChannelOrderFromDom();
-        this.suppressChannelClick = true;
-        setTimeout(() => {
-          this.suppressChannelClick = false;
-        }, 0);
-      }
-      dragging = null;
-      dragStarted = false;
     });
 
     const toolbar = document.createElement('div');
@@ -1487,11 +1499,14 @@ export class LiveNewsPanel extends Panel {
   public refreshChannelsFromStorage(): void {
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
-    if (!this.channels.some((c) => c.id === this.activeChannel.id)) {
-      this.activeChannel = this.channels[0]!;
-      void this.switchChannel(this.activeChannel);
-    }
     this.refreshChannelSwitcher();
+    if (this.channels.length === 0) {
+      this.renderPlaceholder();
+      return;
+    }
+    if (!this.channels.some((c) => c.id === this.activeChannel.id)) {
+      void this.switchChannel(this.channels[0]!);
+    }
   }
 
   public stopLiveMediaForClose(): void {
@@ -1535,6 +1550,7 @@ export class LiveNewsPanel extends Panel {
 
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
+    this.detachChannelDragListeners();
     window.removeEventListener('message', this.boundMessageHandler);
     if (this.isFullscreen) this.setFullscreen(false);
 

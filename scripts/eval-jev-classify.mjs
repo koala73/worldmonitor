@@ -71,7 +71,7 @@ const cacheKey = (title) =>
 
 async function shadowReport() {
   const rows = (await redis(['LRANGE', 'classify:jev-shadow:v1', 0, LIMIT - 1]) ?? []).map(parseMaybe).filter(Boolean);
-  if (rows.length === 0) { console.log('shadow log is empty (is TYPESAFE_API_KEY set on the relay?)'); return; }
+  if (rows.length === 0) { console.log('shadow log is empty (is TYPESAFE_API_KEY set on the ais-relay Railway service?)'); return; }
   const flips = rows.filter((r) => r.alertFlip);
   const span = `${new Date(rows.at(-1).at).toISOString()} .. ${new Date(rows[0].at).toISOString()}`;
   console.log(`${rows.length} disagreements, ${flips.length} alert flips, ${span}`);

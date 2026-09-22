@@ -1,3 +1,4 @@
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -167,6 +168,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/intelligence/v1/get-similar-events': 1,
   '/api/market/v1/analyze-stock': 1,
   '/api/market/v1/get-stock-analysis-history': 1,
+  '/api/market/v1/get-insider-transactions': 1,
   '/api/market/v1/backtest-stock': 1,
   '/api/market/v1/list-stored-stock-backtests': 1,
   '/api/economic/v1/list-global-tenders': 1,
@@ -938,7 +940,7 @@ export async function checkEntitlementDetailed(
   // only to capabilities above the fallback.
   if (
     ent.features.tier >= requiredTier &&
-    ent.validUntil >= Date.now()
+    hasCurrentEntitlementCoverage(ent)
   ) {
     return { response: null, entitlements: ent };
   }

@@ -7,6 +7,11 @@ vi.mock('../auth-session', () => ({
 vi.mock('../_shared/pro-entitlement', () => ({
   checkTierProEntitlement: vi.fn(async () => ({ allowed: true })),
 }));
+// Slack start runs a fail-closed per-user limiter before the state write; keep
+// its Upstash traffic out of the single fetch stub these tests assert on.
+vi.mock('../../api/_rate-limit.js', () => ({
+  checkRateLimit: vi.fn(async () => null),
+}));
 
 const ROUTES = [
   {

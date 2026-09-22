@@ -32,8 +32,11 @@ vi.mock('../_shared/api-key-rate-limit', () => ({
 const records = new Map<string, Record<string, unknown>>();
 const getCachedJson = vi.fn(async (key: string) => records.get(key) ?? null);
 const setCachedJson = vi.fn(async (key: string, value: Record<string, unknown>, _ttl: number) => { records.set(key, value); });
+// Verb whose command the fake store rejects (e.g. OOM), or null for none.
+let failVerb: string | null = null;
 function pipelineResult(commands: string[][]) {
   return commands.map(command => {
+    if (command[0] === failVerb) return { error: 'OOM command not allowed when used memory > maxmemory' };
     if (command[0] === 'GET') {
       const value = records.get(command[1]);
       return { result: value == null ? null : typeof value === 'string' ? value : JSON.stringify(value) };
@@ -53,6 +56,12 @@ function pipelineResult(commands: string[][]) {
   });
 }
 const runRedisPipeline = vi.fn(async (commands: string[][]) => pipelineResult(commands));
+// MULTI/EXEC: a command rejected at queue time aborts EXEC, so nothing applies
+// and the REST helper returns [].
+const transactionResult = async (commands: string[][]) => (
+  commands.some(command => command[0] === failVerb) ? [] : pipelineResult(commands)
+);
+const runRedisTransaction = vi.fn(transactionResult);
 const registrationCommands = () => {
   const call = runRedisPipeline.mock.calls.find(([commands]) => (
     commands[0]?.[0] === 'SET' && String(commands[0][1]).startsWith('webhook:sub:')
@@ -63,6 +72,7 @@ const registrationCommands = () => {
 vi.mock('../_shared/redis', async (importOriginal) => ({
   ...await importOriginal<typeof import('../_shared/redis')>(),
   runRedisPipeline: (...args: [string[][]]) => runRedisPipeline(...args),
+  runRedisTransaction: (...args: [string[][]]) => runRedisTransaction(...args),
   getCachedJson: (key: string) => getCachedJson(key),
   setCachedJson: (key: string, value: Record<string, unknown>, ttl: number) => setCachedJson(key, value, ttl),
 }));
@@ -85,6 +95,9 @@ beforeEach(() => {
   apiAccess = true; records.clear(); vi.clearAllMocks();
   runRedisPipeline.mockReset();
   runRedisPipeline.mockImplementation(async (commands: string[][]) => pipelineResult(commands));
+  runRedisTransaction.mockReset();
+  runRedisTransaction.mockImplementation(transactionResult);
+  failVerb = null;
   vi.mocked(checkFailClosedScopedIpRateLimit).mockResolvedValue(null);
   validateUserApiKey.mockReset().mockImplementation(async (key: string) => key === keyA ? { userId: 'owner-a' } : key === keyB ? { userId: 'owner-b' } : null);
   vi.stubEnv('WORLDMONITOR_VALID_KEYS', 'enterprise-test');
@@ -109,7 +122,7 @@ for (const key of [keyA, keyB]) {
 }
 
 test('revoked key cannot register using a forged identity or enterprise cookie', async () => {
-  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: 'wm-pro-key=enterprise-test' }), context);
+  const response = await gateway(request(invalidKey, { 'x-user-id': 'owner-a', Cookie: '__Host-wm-pro-key=enterprise-test' }), context);
   expect(response.status).toBe(401);
   expect(runRedisPipeline).not.toHaveBeenCalled();
 });
@@ -144,7 +157,7 @@ test('validated user key still cannot register a private callback', async () => 
 });
 
 test('enterprise cookie keeps its owner with an anonymous header', async () => {
-  expect((await gateway(request('wms_anonymous', { Cookie: 'wm-pro-key=enterprise-test' }), context)).status).toBe(200);
+  expect((await gateway(request('wms_anonymous', { Cookie: '__Host-wm-pro-key=enterprise-test' }), context)).status).toBe(200);
   const commands = registrationCommands();
   expect(JSON.parse(commands[0][2]).ownerTag).toBe(hash('enterprise-test'));
   expect(commands[1][1]).toBe(`webhook:owner:${hash('enterprise-test')}:v1`);
@@ -182,7 +195,7 @@ test('gateway registrations support owner-only status, rotation and reactivation
     expect((await manage(own.subscriberId, 'reactivate', owner)).status).toBe(200);
     expect(records.get(storageKey)).toMatchObject({ active: true, secret: body.secret, ownerTag: hash(owner) });
     expect(await (await manage(own.subscriberId, '', owner)).json()).not.toHaveProperty('secret');
-    const persist = runRedisPipeline.mock.calls.at(-1)?.[0] as string[][];
+    const persist = runRedisTransaction.mock.calls.at(-1)?.[0] as string[][];
     expect(persist?.[0]?.slice(3)).toEqual(['EX', String(86400 * 30)]);
   }
 });
@@ -204,7 +217,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
       expect(denied.status).toBe(401);
       expect(await denied.text()).not.toContain('gateway validation');
     }
-    expect((await manage('wh_test', action, invalidKey, { Cookie: 'wm-pro-key=enterprise-test' })).status).toBe(401);
+    expect((await manage('wh_test', action, invalidKey, { Cookie: '__Host-wm-pro-key=enterprise-test' })).status).toBe(401);
     apiAccess = false;
     expect((await manage('wh_test', action, keyA)).status).toBe(403);
     expect(getCachedJson).not.toHaveBeenCalled();
@@ -225,7 +238,7 @@ for (const action of ['', 'rotate-secret', 'reactivate']) {
     expect(setCachedJson).not.toHaveBeenCalled();
   });
   test(`management ${action || 'status'} keeps enterprise cookie credential ownership`, async () => {
-    const extra = { Cookie: 'wm-pro-key=enterprise-test' };
+    const extra = { Cookie: '__Host-wm-pro-key=enterprise-test' };
     const own = await (await gateway(request('wms_anonymous', extra), context)).json();
     expect((await manage(own.subscriberId, action, 'wms_anonymous', extra)).status).toBe(200);
     expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.ownerTag).toBe(hash('enterprise-test'));
@@ -243,7 +256,7 @@ test('management preflight allows POST', async () => {
 
 test('rotate-secret does not echo a secret the store did not confirm', async () => {
   const own = await (await gateway(request(keyA), context)).json();
-  runRedisPipeline.mockImplementationOnce(async () => []);
+  runRedisTransaction.mockImplementationOnce(async () => []);
   const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
   expect(rotated.status).toBe(503);
   const text = await rotated.text();
@@ -254,7 +267,7 @@ test('rotate-secret does not echo a secret the store did not confirm', async () 
 test('reactivate does not report active when the store write failed', async () => {
   const own = await (await gateway(request(keyA), context)).json();
   records.set(`webhook:sub:${own.subscriberId}:v1`, { ...records.get(`webhook:sub:${own.subscriberId}:v1`), active: false });
-  runRedisPipeline.mockImplementationOnce(async () => []);
+  runRedisTransaction.mockImplementationOnce(async () => []);
   const revived = await manage(own.subscriberId, 'reactivate', keyA);
   expect(revived.status).toBe(503);
   expect(await revived.json()).not.toMatchObject({ active: true });
@@ -263,10 +276,21 @@ test('reactivate does not report active when the store write failed', async () =
 
 test('rotate-secret refreshes the owner index with the record TTL', async () => {
   const own = await (await gateway(request(keyA), context)).json();
-  runRedisPipeline.mockClear();
+  runRedisTransaction.mockClear();
   const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
   expect(rotated.status).toBe(200);
-  const commands = runRedisPipeline.mock.calls.at(-1)?.[0] as string[][];
+  const commands = runRedisTransaction.mock.calls.at(-1)?.[0] as string[][];
   expect(commands[1]).toEqual(['SADD', `webhook:owner:${hash(keyA)}:v1`, own.subscriberId]);
   expect(commands[2]).toEqual(['EXPIRE', `webhook:owner:${hash(keyA)}:v1`, String(86400 * 30)]);
 });
+
+for (const failing of ['SADD', 'EXPIRE']) {
+  test(`rotate-secret keeps the old secret when ${failing} fails after SET`, async () => {
+    const own = await (await gateway(request(keyA), context)).json();
+    failVerb = failing;
+    const rotated = await manage(own.subscriberId, 'rotate-secret', keyA);
+    expect(rotated.status).toBe(503);
+    // A 503 caller never saw the new secret, so the store must not hold it.
+    expect(records.get(`webhook:sub:${own.subscriberId}:v1`)?.secret).toBe(own.secret);
+  });
+}

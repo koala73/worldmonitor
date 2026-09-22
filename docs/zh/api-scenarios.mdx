@@ -167,6 +167,7 @@ The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之�
 |--------|-----------|-------|
 | 400 | `Validation failed` (包含 `jobId`) | 缺失或格式错误的 `jobId` |
 | 403 | `PRO subscription required` | 非 PRO |
+| 404 | `Scenario job not found` | 作业绑定的调用方与当前轮询的调用方不同 |
 | 405 | — | 非 `GET` 方法（由 sebuf service-config 强制） |
 | 502 | `Failed to fetch job status` | Redis 读取失败 |
 

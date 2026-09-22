@@ -16,6 +16,7 @@ import {
   filterRevokedUrls,
   isAcceptableDigest,
   isEligibleScope,
+  isStaleReason,
   lastGoodKey,
   parseAcceptedMeta,
   shouldReplaceAccepted,
@@ -46,6 +47,14 @@ describe('durable last-good policy (#7084)', () => {
     assert.equal(LASTGOOD_TTL_S, 6 * 60 * 60);
     assert.equal(LASTGOOD_MAX_AGE_MS, 6 * 60 * 60 * 1000);
     assert.ok(ATTEMPT_META_TTL_S > LASTGOOD_TTL_S, 'attempt metadata outlives the snapshot');
+  });
+
+  it('names gate-held as its own stale reason, distinct from a failed rebuild', () => {
+    assert.equal(isStaleReason('empty-rebuild'), true);
+    assert.equal(isStaleReason('build-error'), true);
+    assert.equal(isStaleReason('gate-held'), true);
+    assert.equal(isStaleReason(''), false);
+    assert.equal(isStaleReason('held-incumbent'), false);
   });
 
   it('accepts only structurally valid digests with real content', () => {
@@ -376,7 +385,7 @@ describe('durable last-good wiring (#7084)', () => {
   });
 
   it('rejects malformed language scopes before any cache or feed work', async () => {
-    for (const lang of ['english', 'en-US', 'EN', 'en\n', ' en', 'a', 'a'.repeat(10_000), '../en', 'en:other', 1, null, {}, false]) {
+    for (const lang of ['xx', 'zz', 'english', 'en-US', 'EN', 'en\n', ' en', 'a', 'a'.repeat(10_000), '../en', 'en:other', 1, null, {}, false]) {
       reset();
       stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'cache', leader: false };
       await assert.rejects(mod.listFeedDigest(ctx(), { variant: 'full', lang }), {
@@ -406,7 +415,7 @@ describe('durable last-good wiring (#7084)', () => {
   });
 
   it('preserves default English and two-letter language cache scopes', async () => {
-    for (const lang of [undefined, '', 'en', 'ar', 'fr', 'zh', 'ja', 'sw', 'xx']) {
+    for (const lang of [undefined, '', 'en', 'ar', 'fr', 'zh', 'ja', 'sw']) {
       reset();
       const data = body(['https://a/1'], COVERAGE);
       stub.fetchMeta = { data, source: 'cache', leader: false };
@@ -422,10 +431,10 @@ describe('durable last-good wiring (#7084)', () => {
     const calls = evalCalls();
     assert.equal(calls.length, 1, 'the publish must be a single EVAL, not a read-decide-write pair');
     const cmd = calls[0] as string[];
-    // ['EVAL', script, '2', bodyKey, revocationKey, ...argv] — every policy
+    // ['EVAL', script, '3', bodyKey, revocationKey, attemptKey, ...argv] — every policy
     // input and the write are inside one atomic operation, which is what
     // closes the two-isolate lost-update race.
-    assert.equal(cmd[2], '2');
+    assert.equal(cmd[2], '3');
     assert.equal(cmd[3], lastGoodKey('full', 'en'));
     assert.match(String(cmd[1]), /return 0/, 'the script must be able to refuse a narrower candidate');
     assert.equal(
@@ -439,8 +448,8 @@ describe('durable last-good wiring (#7084)', () => {
     const generatedAt = new Date(NOW - 60 * 60 * 1000).toISOString();
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE, generatedAt));
     const cmd = evalCalls()[0] as string[];
-    // ['EVAL', script, '2', bodyKey, revokedKey, now, maxAge, acceptedAt, ttl, dataJson]
-    assert.equal(Number(cmd[7]), Date.parse(generatedAt), 'acceptedAt rides the content clock');
+    // ['EVAL', script, '3', bodyKey, revokedKey, attemptKey, now, maxAge, acceptedAt, ttl, dataJson]
+    assert.equal(Number(cmd[8]), Date.parse(generatedAt), 'acceptedAt rides the content clock');
   });
 
   it('a lost guarded write (script returns 0) is a kept snapshot, not an error', async () => {
@@ -554,7 +563,16 @@ describe('durable last-good wiring (#7084)', () => {
       stub.writes.length = 0;
 
       await mod.__testing__.publishAcceptedSnapshot('full', 'en', narrow, canonicalKey);
-      assert.equal(stub.writes.length, 0, 'a narrower candidate must not replace either sidecar key');
+      assert.equal(
+        stub.writes.filter((write) => write.key === lastGoodKey('full', 'en') || write.key === canonicalKey).length,
+        0,
+        'a narrower candidate must not replace either sidecar key',
+      );
+      const attemptWrite = stub.writes.find((write) => write.key === attemptMetaKey('full', 'en'));
+      assert.ok(attemptWrite, 'the rejection must record why the incumbent was held');
+      assert.equal((attemptWrite.value as { outcome: string }).outcome, 'gate-held');
+      assert.equal(attemptWrite.ttl, ATTEMPT_META_TTL_S);
+      stub.writes.length = 0;
 
       await mod.__testing__.publishAcceptedSnapshot('full', 'en', valid, canonicalKey);
       assert.deepEqual(stub.writes.map((write) => write.key), [lastGoodKey('full', 'en'), canonicalKey]);
@@ -604,7 +622,18 @@ describe('durable last-good wiring (#7084)', () => {
     });
     try {
       await mod.__testing__.publishAcceptedSnapshot('full', 'en', narrow, canonicalKey);
-      assert.deepEqual(stub.writes, [{ key: canonicalKey, value: '__WM_NEG__', ttl: 120 }]);
+      assert.equal(stub.writes[0]?.key, attemptMetaKey('full', 'en'));
+      assert.equal((stub.writes[0]?.value as { outcome: string }).outcome, 'gate-held');
+      assert.equal(stub.writes[0]?.ttl, ATTEMPT_META_TTL_S);
+      assert.equal(stub.writes[1]?.key, canonicalKey);
+      assert.equal(stub.writes[1]?.value, '__WM_NEG__');
+      assert.equal(stub.writes[1]?.ttl, 120);
+
+      stub.writes.length = 0;
+      stub.writeResult = false;
+      assert.equal(await mod.__testing__.publishAcceptedSnapshot('full', 'en', narrow, canonicalKey), 'unavailable');
+      assert.deepEqual(stub.writes.map((write) => write.key), [attemptMetaKey('full', 'en')],
+        'a failed identity write must not expose a sentinel');
     } finally {
       if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
       else process.env.LOCAL_API_MODE = originalMode;
@@ -773,10 +802,11 @@ describe('durable last-good wiring (#7084)', () => {
     await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
     assert.equal(evalCalls().length, 1, 'a fresh build is exactly when the snapshot should be refreshed');
     const command = evalCalls()[0] as string[];
-    assert.equal(command[2], '3', 'canonical and durable publication must share one atomic script');
+    assert.equal(command[2], '4', 'canonical and durable publication must share one atomic script');
     assert.equal(command[3], lastGoodKey('full', 'en'));
-    assert.equal(command[5], 'news:digest:v1:full:en');
-    assert.equal(Number(command[11]), 900);
+    assert.equal(command[5], attemptMetaKey('full', 'en'));
+    assert.equal(command[6], 'news:digest:v1:full:en');
+    assert.equal(Number(command[12]), 900);
   });
 
   it('a publication outage defers the next build so the isolate fallback can serve', async () => {
@@ -1095,13 +1125,13 @@ describe('durable last-good wiring (#7084)', () => {
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', candidate);
     const cmd = evalCalls()[0] as string[];
     assert.equal(cmd[4], REVOKED_URLS_KEY, 'the authoritative gate must read current revocations');
-    const sent = JSON.parse(String(cmd[9]));
+    const sent = JSON.parse(String(cmd[10]));
     assert.equal(
       sent.categories.politics.items.length, 2,
       'the stored body must keep revoked items so a lifted revocation restores them',
     );
     assert.equal(
-      String(cmd[9]), JSON.stringify(candidate),
+      String(cmd[10]), JSON.stringify(candidate),
       'the body is sent as-is so the script can splice it without re-encoding',
     );
   });
@@ -1173,6 +1203,59 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(out.coverage.state, 'unavailable');
     assert.equal(out.coverage.attemptedAt, new Date(failedAtMs).toISOString());
     assert.equal(out.coverage.staleReason, 'build-error');
+  });
+
+  it('a gate rejection writes a gate-held attempt instead of leaving a leftover failure', async () => {
+    // Production 2026-09-19: the gate wrote only the 120s sentinel. The next
+    // request recovered news:digest:attempt:v1:full:en, a build-error from
+    // 122 minutes earlier, and reported that as why the digest was stale.
+    reset();
+    stub.pipeline = async () => [{ result: 0 }];
+    const before = Date.now();
+    await mod.__testing__.publishAcceptedSnapshot(
+      'full', 'en', body(['https://a/1'], COVERAGE), 'news:digest:v1:full:en',
+    );
+    const after = Date.now();
+    assert.equal(stub.transactionCalls.length, 0, 'no deferred write may race the atomic gate identity');
+    const cmd = evalCalls()[0] as string[];
+    assert.equal(cmd[2], '4');
+    assert.equal(cmd[5], attemptMetaKey('full', 'en'));
+    assert.equal(cmd[6], 'news:digest:v1:full:en');
+    assert.ok(Number(cmd[7]) >= before && Number(cmd[7]) <= after);
+    assert.equal(cmd.at(-1), String(ATTEMPT_META_TTL_S));
+    const recovered = await mod.__testing__.recoverFailedAttempt('full', 'en', { at: '', reason: 'build-error' });
+    assert.equal(recovered.reason, 'gate-held');
+    assert.equal(recovered.at, new Date(Number(cmd[7])).toISOString());
+  });
+
+  it('a fully-revoked candidate does not record a gate-held attempt', async () => {
+    reset();
+    stub.pipeline = async () => [{ result: -1 }];
+    await mod.__testing__.publishAcceptedSnapshot(
+      'full', 'en', body(['https://a/1'], COVERAGE), 'news:digest:v1:full:en',
+    );
+    assert.equal(stub.transactionCalls.length, 0, 'an operator revocation is not a held incumbent');
+  });
+
+  it('a sentinel replay after a gate hold reports gate-held, not a leftover build-error', async () => {
+    reset();
+    const heldAtMs = NOW - 5_000;
+    stub.reads.set(attemptMetaKey('full', 'en'), {
+      status: 'hit',
+      value: { ts: heldAtMs, outcome: 'gate-held' },
+    });
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: {
+        acceptedAt: Date.now() - 60_000, categoryCount: 1, itemCount: 1,
+        data: body(['https://a/1'], COVERAGE),
+      },
+    });
+    stub.fetchMeta = { data: null, source: 'cache', leader: false };
+    const out = await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(out.coverage.state, 'stale');
+    assert.equal(out.coverage.staleReason, 'gate-held', 'the gate hold must not inherit a leftover failure');
+    assert.equal(out.coverage.attemptedAt, new Date(heldAtMs).toISOString());
   });
 
   it('a hanging telemetry write cannot delay the absolute response fallback', async () => {

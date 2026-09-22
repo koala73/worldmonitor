@@ -17,7 +17,7 @@ import { renderBillingVerificationDenial } from '../../../../../server/_shared/e
 import { validateUserApiKey } from '../../../../../server/_shared/user-api-key';
 import { checkFailClosedScopedIpRateLimit } from '../../../../../server/_shared/rate-limit';
 import { resolvePremiumCallerIdentity } from '../../../../../server/_shared/premium-check';
-import { getCachedJson, runRedisPipeline } from '../../../../../server/_shared/redis';
+import { getCachedJson, runRedisTransaction } from '../../../../../server/_shared/redis';
 import {
   WEBHOOK_TTL,
   webhookKey,
@@ -145,8 +145,11 @@ export default async function handler(req: Request): Promise<Response> {
   });
 }
 
+// One MULTI/EXEC, not a pipeline: a pipeline could apply SET and then fail
+// SADD/EXPIRE, answering 503 while Redis already holds a rotated secret the
+// caller never saw. A command rejected at queue time aborts the whole EXEC.
 async function persistWebhook(subscriberId: string, record: WebhookRecord, ownerTag: string): Promise<boolean> {
-  const results = await runRedisPipeline([
+  const results = await runRedisTransaction([
     ['SET', webhookKey(subscriberId), JSON.stringify(record), 'EX', String(WEBHOOK_TTL)],
     ['SADD', ownerIndexKey(ownerTag), subscriberId],
     ['EXPIRE', ownerIndexKey(ownerTag), String(WEBHOOK_TTL)],
