@@ -276,6 +276,7 @@ export default async function handler(
     }));
     void captureSilentError(err, {
       tags: { route: 'api/widget-agent', step: 'proxy' },
+      fingerprint: ['api/widget-agent', 'proxy', err instanceof Error ? err.name : 'Error'],
       extra: { method: req.method },
       ctx,
     });

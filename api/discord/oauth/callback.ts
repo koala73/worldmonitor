@@ -123,7 +123,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     userId = await upstashGetDel(stateKey);
   } catch (error) {
     console.error('[discord-oauth] state store unavailable:', error instanceof Error ? error.message : error);
-    await captureSilentError(error, { tags: { route: 'api/discord/oauth/callback', step: 'state-consume' }, ctx });
+    await captureSilentError(error, { tags: { route: 'api/discord/oauth/callback', step: 'state-consume' }, fingerprint: ['api/discord/oauth/callback', 'state-consume', error instanceof Error ? error.name : 'Error'], ctx });
     return errorAndClose('service_unavailable', 503);
   }
   if (!userId) return errorAndClose('invalid_state');

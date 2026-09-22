@@ -160,6 +160,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
     );
     captureSilentError(err, {
       tags: { route: 'api/user/mcp-quota', step: 'entitlements' },
+      fingerprint: ['api/user/mcp-quota', 'entitlements', err instanceof Error ? err.name : 'Error'],
     });
   }
   // The free ceiling is NOT a plan allowance — it comes from the constant the
@@ -188,6 +189,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
     );
     captureSilentError(err, {
       tags: { route: 'api/user/mcp-quota', step: 'redis-get' },
+      fingerprint: ['api/user/mcp-quota', 'redis-get', err instanceof Error ? err.name : 'Error'],
     });
   }
 

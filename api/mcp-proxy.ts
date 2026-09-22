@@ -1015,6 +1015,7 @@ export default async function handler(req, ctx) {
     // an attacker-controlled tag value would shred Sentry's tag cardinality.
     captureSilentError(new Error(failure.isTimeout ? 'MCP server timed out' : msg), {
       tags: { route: 'api/mcp-proxy', step: 'proxy-dispatch' },
+      fingerprint: ['api/mcp-proxy', 'proxy-dispatch', 'Error'],
       extra: { target_host: meta.targetHost, target_path: meta.targetPath, method: req.method },
       level: failure.level,
       ctx,

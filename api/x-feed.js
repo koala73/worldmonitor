@@ -265,7 +265,7 @@ export default async function handler(req, ctx) {
       });
     } catch (normalizeError) {
       console.warn('[x-feed] normalization failed:', normalizeError?.message || String(normalizeError));
-      void captureSilentError(normalizeError, { tags: { route: 'api/x-feed', step: 'normalize' } });
+      void captureSilentError(normalizeError, { tags: { route: 'api/x-feed', step: 'normalize' }, fingerprint: ['api/x-feed', 'normalize', normalizeError instanceof Error ? normalizeError.name : 'Error'] });
     }
 
     return buildRelayResponse(response, body, {

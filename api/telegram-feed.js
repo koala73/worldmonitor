@@ -460,7 +460,7 @@ export default async function handler(req) {
       });
     } catch (normalizeError) {
       console.warn('[telegram-feed] normalization failed:', normalizeError?.message || String(normalizeError));
-      void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' } });
+      void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' }, fingerprint: ['api/telegram-feed', 'normalize', normalizeError instanceof Error ? normalizeError.name : 'Error'] });
       if (mode === 'resolve') {
         return jsonResponse({ error: 'Invalid Telegram channel response' }, 502, {
           'Cache-Control': 'no-store',
@@ -496,6 +496,7 @@ export default async function handler(req) {
     // the other failures never reached.
     void captureSilentError(error, {
       tags: { route: 'api/telegram-feed', step: 'relay-fetch', mode },
+      fingerprint: ['api/telegram-feed', 'relay-fetch', error instanceof Error ? error.name : 'Error'],
       level: relayFailureLevel(error),
       ...(isTimeout ? { extra: { timeout_ms: TELEGRAM_RELAY_TIMEOUT_MS[mode] } } : {}),
     });
