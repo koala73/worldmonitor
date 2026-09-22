@@ -153,14 +153,25 @@ async function markActivated() {
   }
 }
 
+// Built with a loop because the bundle attestation parser cannot follow flatMap.
+export function interestRateShardKeys() {
+  const keys = [];
+  for (const series of RATE_SERIES) {
+    for (const decade of RATES_DECADES) {
+      keys.push({
+        key: rateSeriesDecadeKey(series.id, decade),
+        transform: (data) => rateDecadeShard(data, series.id, decade),
+        declareRecords: countRatePoints,
+        skipWhenEmpty: true,
+        allowMissingOnSkip: true,
+      });
+    }
+  }
+  return keys;
+}
+
 if (process.argv[1]?.endsWith('seed-us-interest-rates.mjs')) {
-  const extraKeys = RATE_SERIES.flatMap((series) => RATES_DECADES.map((decade) => ({
-    key: rateSeriesDecadeKey(series.id, decade),
-    transform: (data) => rateDecadeShard(data, series.id, decade),
-    declareRecords: countRatePoints,
-    skipWhenEmpty: true,
-    allowMissingOnSkip: true,
-  })));
+  const extraKeys = interestRateShardKeys();
 
   runSeed('economic', 'us-interest-rates', RATES_CANONICAL_KEY, fetchUsInterestRates, {
     publishTransform: rateSnapshot,

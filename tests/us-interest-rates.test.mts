@@ -16,6 +16,7 @@ import {
   RATES_CANONICAL_KEY as SEEDED_KEY,
   RATES_DECADES as SEEDED_DECADES,
   fredRateObservations,
+  interestRateShardKeys,
   rateDecadeShard,
   rateSeriesDecadeKey as seededDecadeKey,
   rateSnapshot,
@@ -142,6 +143,26 @@ describe('US interest rate history', () => {
       seededDecadeKey('sofr', 2020),
     );
     assert.equal(rateSnapshot({ series: { sofr: [{ date: '2026-09-18', value: 3.91 }] } }).sofr.value, 3.91);
+  });
+
+  it('publishes one decade shard for every series', () => {
+    const keys = interestRateShardKeys();
+    assert.equal(keys.length, SEEDED_SERIES.length * SEEDED_DECADES.length);
+    assert.equal(new Set(keys.map((item) => item.key)).size, keys.length);
+    assert.equal(keys.every((item) => item.skipWhenEmpty === true && item.allowMissingOnSkip === true), true);
+    const sofr2020 = keys.find((item) => item.key === seededDecadeKey('sofr', 2020));
+    assert.ok(sofr2020);
+    assert.deepEqual(
+      sofr2020.transform({
+        series: {
+          sofr: [
+            { date: '2019-12-31', value: 1.5 },
+            { date: '2020-04-01', value: 0.01 },
+          ],
+        },
+      }),
+      { points: [{ date: '2020-04-01', value: 0.01 }] },
+    );
   });
 });
 
