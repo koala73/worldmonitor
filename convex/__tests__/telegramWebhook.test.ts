@@ -299,7 +299,10 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
     });
     expect(await owner.query(api.notificationChannels.getChannels, {})).toMatchObject([{ chatId: "12345", verified: true }]);
     expect(await t.query(internal.notificationChannels.getChannelsByUserId, { userId: USER_ID })).toMatchObject([{ chatId: "12345", verified: true }]);
-    await owner.mutation(api.notificationChannels.deactivateChannel, { channelType: "telegram" });
+    await t.mutation(internal.notificationChannels.deactivateChannelForUser, {
+      userId: USER_ID,
+      channelType: "telegram",
+    });
     expect(await t.query(internal.notificationChannels.getChannelsByUserId, { userId: USER_ID })).toMatchObject([{ verified: false }]);
   });
 

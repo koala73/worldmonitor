@@ -56,7 +56,7 @@
       "type": "skill-md",
       "description": "Retrieve the pre-aggregated digest of World Monitor's curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md",
-      "digest": "sha256:fcc131f04ea4ff35c4a80ebefb1a2e76db812c4760e427dbadd003050806365d"
+      "digest": "sha256:4fef85256b45465f53070fd5424a6e5e47a2b9dd5ad53132c1529c495677b57d"
     },
     {
       "name": "fetch-resilience-score",

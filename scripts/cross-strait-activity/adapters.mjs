@@ -2227,6 +2227,29 @@ export function buildCrossStraitActivitySnapshot({
   });
 }
 
+const MND_TRANSPORT_ERROR_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE',
+  'ENETUNREACH', 'EHOSTUNREACH', 'EPROTO',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+  'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID', 'ERR_TLS_CERT_ALTNAME_INVALID',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE',
+  'ERR_SSL_WRONG_VERSION_NUMBER', 'ERR_SSL_UNSUPPORTED_PROTOCOL',
+]);
+
+function mndTransportErrorDiagnostic(error) {
+  try {
+    const code = error?.code;
+    if (MND_TRANSPORT_ERROR_CODES.has(code)) return { transportErrorCode: code };
+    const causeCode = error?.cause?.code;
+    if (MND_TRANSPORT_ERROR_CODES.has(causeCode)) return { transportErrorCode: causeCode };
+  } catch {
+    // Diagnostic access must not replace the original request failure.
+  }
+  return {};
+}
+
 function errorCode(error) {
   const value = String(error?.message ?? error ?? 'UNKNOWN_ERROR');
   if (/timeout/i.test(value)) return 'TIMEOUT';
@@ -2718,7 +2741,7 @@ export async function fetchCrossStraitActivitySnapshot({
           break;
         } catch (error) {
           mndRequestDiagnostics.push({
-            ...diagnostic, errorCode: errorCode(error), elapsedMs: Math.round(monotonicNow() - startedAt),
+            ...diagnostic, ...mndTransportErrorDiagnostic(error), errorCode: errorCode(error), elapsedMs: Math.round(monotonicNow() - startedAt),
           });
           if (!isMndTransportFailure(errorCode(error), diagnostic) || attempt === 1
             || listRequestCount >= MND_MAX_LIST_PAGES_PER_BACKFILL_RUN
@@ -2851,7 +2874,7 @@ export async function fetchCrossStraitActivitySnapshot({
       } catch (error) {
         const code = errorCode(error);
         if (startedAt !== undefined) mndRequestDiagnostics.push({
-          ...diagnostic, errorCode: code, elapsedMs: Math.round(monotonicNow() - startedAt),
+          ...diagnostic, ...mndTransportErrorDiagnostic(error), errorCode: code, elapsedMs: Math.round(monotonicNow() - startedAt),
         });
         if (
           (code === 'MND_PUBLICATION_METADATA_MISSING' || isMndTransportFailure(code, diagnostic))

@@ -5,6 +5,13 @@ import type { CountryBriefSignals, NewsItem } from '@/types';
 
 const coverageMocks = vi.hoisted(() => ({
   fetchCountryCoverage: vi.fn(),
+  createPanel: vi.fn(),
+}));
+
+vi.mock('@/components/CountryDeepDivePanel', () => ({
+  CountryDeepDivePanel: function CountryDeepDivePanel() {
+    return coverageMocks.createPanel();
+  },
 }));
 
 vi.mock('@/services/country-coverage', () => ({
@@ -121,8 +128,10 @@ function newsItem(title: string): NewsItem {
 function createBriefHarness(eagerNews: NewsItem[]) {
   let visible = false;
   let activeCode = '';
+  let close = () => {};
   const newsUpdates: NewsItem[][] = [];
   const page = {
+    onClose: (callback: () => void) => { close = callback; },
     getCode: () => activeCode,
     isVisible: () => visible,
     hide: () => {
@@ -155,12 +164,14 @@ function createBriefHarness(eagerNews: NewsItem[]) {
     latestClusters: [],
     intelligenceCache: {},
     map: {
+      clearCountryHighlight: () => {},
       setRenderPaused: () => {},
       highlightCountry: () => {},
       fitCountry: () => {},
     },
   } as unknown as AppContext;
   const manager = new CountryIntelManager(ctx);
+  coverageMocks.createPanel.mockReturnValue(page);
   Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
   Reflect.set(manager, 'getCountrySignals', async () => EMPTY_SIGNALS);
   Reflect.set(manager, 'buildSignalDetails', async () => ({
@@ -177,6 +188,8 @@ function createBriefHarness(eagerNews: NewsItem[]) {
   Reflect.set(manager, 'mountCountryTimeline', () => {});
   return {
     newsUpdates,
+    bindClose: () => Reflect.get(manager, 'createCountryBriefPage').call(manager),
+    close: () => { page.hide(); close(); },
     open: () => manager.openCountryBriefByCode('US', 'United States', { trackAnalytics: false }),
   };
 }
@@ -185,6 +198,35 @@ describe('CountryIntelManager lazy coverage headlines', () => {
   beforeEach(() => {
     coverageMocks.fetchCountryCoverage.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+
+  it('keeps coverage alive on close but aborts it when another brief opens', async () => {
+    const signals: AbortSignal[] = [];
+    let resolveCoverage!: (value: { headlines: NewsItem[]; timelineEvents: [] }) => void;
+    const pending = new Promise<{ headlines: NewsItem[]; timelineEvents: [] }>(resolve => {
+      resolveCoverage = resolve;
+    });
+    coverageMocks.fetchCountryCoverage.mockImplementation(
+      (_country: string, _terms: string[], options: { signal: AbortSignal }) => {
+        signals.push(options.signal);
+        return signals.length === 1 ? pending : Promise.resolve({ headlines: [], timelineEvents: [] });
+      },
+    );
+    const harness = createBriefHarness([]);
+    await harness.bindClose();
+    await harness.open();
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    harness.close();
+    expect(signals[0]!.aborted).toBe(false);
+    await harness.open();
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    expect(signals[0]!.aborted).toBe(true);
+    expect(signals[1]!.aborted).toBe(false);
+    const staleHeadline = newsItem('US announces stale coverage');
+    resolveCoverage({ headlines: [staleHeadline], timelineEvents: [] });
+    await pending;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(harness.newsUpdates.flat()).not.toContainEqual(staleHeadline);
   });
 
   it('does not replace eager news when the opened country appears second in a lazy headline', async () => {

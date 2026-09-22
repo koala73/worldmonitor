@@ -4,11 +4,11 @@
  * subset for one country. Used by CountryDeepDivePanel Economic
  * Indicators + Country Facts cards (issue #3027).
  *
- * Network policy: single bootstrap GET with comma-separated keys; result
+ * Network policy: four public on-demand bootstrap reads; the validated bundle
  * is memoised for ~10 min since WEO is a monthly release.
  */
 
-import { toApiUrl } from '@/services/runtime';
+import { ensureHydrated } from '@/services/bootstrap';
 
 export interface ImfMacroEntry {
   inflationPct: number | null;
@@ -59,20 +59,24 @@ export interface ImfCountryBundle {
   fetchedAt: number;
 }
 
-interface ImfBootstrapPayload {
-  data?: {
-    imfMacro?: { countries?: Record<string, ImfMacroEntry> };
-    imfGrowth?: { countries?: Record<string, ImfGrowthEntry> };
-    imfLabor?: { countries?: Record<string, ImfLaborEntry> };
-    imfExternal?: { countries?: Record<string, ImfExternalEntry> };
-  };
+interface ImfBootstrapData {
+  imfMacro: { countries: Record<string, ImfMacroEntry> };
+  imfGrowth: { countries: Record<string, ImfGrowthEntry> };
+  imfLabor: { countries: Record<string, ImfLaborEntry> };
+  imfExternal: { countries: Record<string, ImfExternalEntry> };
 }
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
-let cachedBundle: { fetchedAt: number; payload: ImfBootstrapPayload['data'] } | null = null;
-let inFlight: Promise<ImfBootstrapPayload['data']> | null = null;
+let cachedBundle: { fetchedAt: number; payload: ImfBootstrapData } | null = null;
+let inFlight: Promise<Partial<ImfBootstrapData> | undefined> | null = null;
 
-async function fetchBundle(): Promise<ImfBootstrapPayload['data']> {
+function hasCountries(value: unknown): value is { countries: Record<string, never> } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const countries = (value as { countries?: unknown }).countries;
+  return Boolean(countries && typeof countries === 'object' && !Array.isArray(countries));
+}
+
+async function fetchBundle(): Promise<Partial<ImfBootstrapData> | undefined> {
   if (cachedBundle && Date.now() - cachedBundle.fetchedAt < CACHE_TTL_MS) {
     return cachedBundle.payload;
   }
@@ -80,16 +84,25 @@ async function fetchBundle(): Promise<ImfBootstrapPayload['data']> {
 
   inFlight = (async () => {
     try {
-      const resp = await fetch(
-        toApiUrl('/api/bootstrap?keys=imfMacro,imfGrowth,imfLabor,imfExternal'),
-        { signal: AbortSignal.timeout(8_000) },
-      );
-      if (!resp.ok) return undefined;
-      const payload = (await resp.json()) as ImfBootstrapPayload;
-      cachedBundle = { fetchedAt: Date.now(), payload: payload.data };
-      return payload.data;
+      const [imfMacro, imfGrowth, imfLabor, imfExternal] = await Promise.all([
+        ensureHydrated('imfMacro'),
+        ensureHydrated('imfGrowth'),
+        ensureHydrated('imfLabor'),
+        ensureHydrated('imfExternal'),
+      ]);
+      if (![imfMacro, imfGrowth, imfLabor, imfExternal].every(hasCountries)) {
+        return cachedBundle?.payload ?? {
+          ...(hasCountries(imfMacro) ? { imfMacro } : {}),
+          ...(hasCountries(imfGrowth) ? { imfGrowth } : {}),
+          ...(hasCountries(imfLabor) ? { imfLabor } : {}),
+          ...(hasCountries(imfExternal) ? { imfExternal } : {}),
+        };
+      }
+      const payload = { imfMacro, imfGrowth, imfLabor, imfExternal } as ImfBootstrapData;
+      cachedBundle = { fetchedAt: Date.now(), payload };
+      return payload;
     } catch {
-      return undefined;
+      return cachedBundle?.payload;
     } finally {
       inFlight = null;
     }

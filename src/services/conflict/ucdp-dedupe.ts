@@ -31,12 +31,27 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function validCoordinates(latitude: number, longitude: number): boolean {
+  return Number.isFinite(latitude) && Math.abs(latitude) <= 90
+    && Number.isFinite(longitude) && Math.abs(longitude) <= 180;
+}
+
+function numericValue(value: unknown): number {
+  if (typeof value !== 'string' && typeof value !== 'number') return NaN;
+  return typeof value === 'string' && !value.trim() ? NaN : Number(value);
+}
+
 export function isDuplicatedByAcled(ucdp: UcdpDedupCandidate, acledEvents: AcledDedupEvent[]): boolean {
+  if (!validCoordinates(ucdp.latitude, ucdp.longitude) || !Number.isFinite(ucdp.dateMs)
+    || !Number.isFinite(ucdp.deathsBest) || ucdp.deathsBest < 0) return false;
+
   for (const acled of acledEvents) {
-    const aLat = Number(acled.latitude);
-    const aLon = Number(acled.longitude);
+    const aLat = numericValue(acled.latitude);
+    const aLon = numericValue(acled.longitude);
     const aDate = new Date(acled.event_date).getTime();
-    const aDeaths = Number(acled.fatalities) || 0;
+    const aDeaths = numericValue(acled.fatalities);
+    if (!validCoordinates(aLat, aLon) || !Number.isFinite(aDate)
+      || !Number.isFinite(aDeaths) || aDeaths < 0) continue;
 
     const dayDiff = Math.abs(ucdp.dateMs - aDate) / (1000 * 60 * 60 * 24);
     if (dayDiff > 7) continue;
