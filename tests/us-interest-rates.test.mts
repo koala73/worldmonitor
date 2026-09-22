@@ -207,6 +207,20 @@ describe('US interest rate handler', () => {
     assert.equal(effective?.points.at(-1)?.percent, 3.88);
   });
 
+  it('returns unavailable when history is requested but no shard contributed points', async () => {
+    redisEnv();
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.body) {
+        return redisResult({ fedFundsEffective: { date: '2026-09-18', value: 3.88 } });
+      }
+      return new Response('pipeline failed', { status: 500 });
+    }) as typeof fetch;
+
+    const response = await getUsInterestRates({} as never, { history: true });
+    assert.equal(response.unavailable, true);
+    assert.deepEqual(response.series, []);
+  });
+
   it('returns unavailable when nothing has been seeded', async () => {
     redisEnv();
     globalThis.fetch = (async () => redisResult(null)) as typeof fetch;

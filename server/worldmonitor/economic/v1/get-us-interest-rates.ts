@@ -32,6 +32,10 @@ async function readHistories(): Promise<RateHistories> {
   return mergeRateHistories(pairs);
 }
 
+function hasHistoryPoints(histories: RateHistories): boolean {
+  return Object.values(histories).some((points) => points.length > 0);
+}
+
 export async function getUsInterestRates(
   _ctx: ServerContext,
   req: GetUsInterestRatesRequest,
@@ -43,6 +47,10 @@ export async function getUsInterestRates(
       return buildUsInterestRates(snapshot, undefined, false);
     }
     const histories = await readHistories();
+    // Pipeline timeout/HTTP error returns an empty Map without throwing. Merging
+    // the snapshot into that empty history would emit latest-only points with
+    // unavailable=false, which the daily gateway cache can store as "full history".
+    if (!hasHistoryPoints(histories)) return UNAVAILABLE;
     return buildUsInterestRates(snapshot, histories, true);
   } catch {
     return UNAVAILABLE;
