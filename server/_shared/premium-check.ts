@@ -1,3 +1,4 @@
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
@@ -255,7 +256,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     if (diff === 0) {
       const ent = await getEntitlements(trustedUserId);
       if (
-        ent &&
+        hasCurrentEntitlementCoverage(ent) &&
         ent.features.tier >= 1 &&
         // mcpAccess lands in U10. Until then the field is undefined for
         // existing entitlement rows; treat undefined as false (fail-closed)
@@ -298,16 +299,12 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
       const userKey = await validateUserApiKey(wmKey);
       if (userKey) {
         const ent = await getEntitlements(userKey.userId);
-        if (ent && ent.features.apiAccess === true) {
+        if (hasCurrentEntitlementCoverage(ent) && ent.features.apiAccess === true) {
           return {
             isPremium: true,
             userId: userKey.userId,
             kind: 'user-api-key',
             quotaExempt: false,
-            // apiAccess proves the plan sells API access; it does NOT prove the
-            // subscription is still current. resolveActiveDirectLlmLimit
-            // re-checks tier + validUntil so a lapsed row cannot keep spending
-            // its old allowance against the shared daily counter.
             directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
           };
         }
@@ -369,16 +366,12 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     // A Dodo subscriber (tier >= 1) is premium regardless of Clerk role.
     if (session.userId) {
       const ent = await getEntitlements(session.userId);
-      if (ent && ent.features.tier >= 1) {
+      if (hasCurrentEntitlementCoverage(ent) && ent.features.tier >= 1) {
         return {
           isPremium: true,
           userId: session.userId,
           kind: 'bearer',
           quotaExempt: false,
-          // Premium-ness here keys on tier alone (pre-existing contract). The
-          // SPEND limit is stricter on purpose: a lapsed row must not keep its
-          // paid allowance, and an Enterprise row's null must not skip the
-          // meter once it has expired.
           directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
         };
       }

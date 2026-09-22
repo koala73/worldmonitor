@@ -22,6 +22,14 @@ const VALID_CATEGORIES = [
   'crime', 'infrastructure', 'tech', 'general',
 ];
 
+// Same model as the relay's classify seed (scripts/ais-relay.cjs), which writes the
+// same `classify:sebuf:v6` rows. Against 413 blind-judged headlines, this prompt on
+// the shared Flash default raised 93 false critical/high labels for 43 real ones;
+// v4.1 with the "Do not under-rate high" block below raised 20 for 43. Pinned by
+// tests/classify-alert-label-precision.test.mjs.
+const CLASSIFY_OPENROUTER_MODEL = 'deepseek/deepseek-v4.1-flash';
+const CLASSIFY_MODEL_OVERRIDES = { openrouter: CLASSIFY_OPENROUTER_MODEL } as const;
+
 // ========================================================================
 // Helpers
 // ========================================================================
@@ -67,6 +75,15 @@ Key distinction: "critical" requires GEOPOLITICAL scope — events that destabil
 - "Man killed his estranged wife" → domestic crime → info
 - "How to Crack the SAM Database" → tutorial → info
 
+Do not under-rate "high". The EVENT itself is high even when nobody is hurt and even when the headline reports a vote, an approval or an announcement:
+- a sanctions package or sanctions bill passed, signed or imposed
+- a major arms sale or weapons transfer approved between states
+- a military deployment or force movement ahead of an operation
+- an armed attack, raid or clash with deaths, including one that was repelled
+- many deaths in state custody or by state action
+- a natural disaster that floods, destroys or displaces on a regional scale
+Use medium for analysis of or reaction to such an event, not for the event itself.
+
 Focus: geopolitical events, conflicts, disasters, diplomacy.
 Classify by real-world event severity, not headline sentiment.
 
@@ -86,6 +103,7 @@ Return: {"level":"...","category":"..."}`;
             { role: 'user', content: title },
           ],
           temperature: 0,
+          modelOverrides: CLASSIFY_MODEL_OVERRIDES,
           // Sized for the REASONING fallback, not the primary. DeepSeek answers
           // this two-field JSON in ~10 tokens (4,264 successful calls over the
           // 7 days to 2026-08-29: p50=10, p95=11, max=12), so the old ceiling of

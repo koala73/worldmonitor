@@ -32,6 +32,8 @@ declare global {
 }
 
 let debugBearRumStarted = false;
+let removeErrorListeners: (() => void) | undefined;
+const MAX_BUFFERED_ERRORS = 50;
 
 export function shouldEnableDebugBearRum(hostname: string): boolean {
   return DEBUGBEAR_RUM_HOSTS.has(hostname.toLowerCase());
@@ -52,6 +54,16 @@ function loadDebugBearRumScript(): void {
   if ('fetchPriority' in script) {
     script.fetchPriority = 'low';
   }
+  script.onerror = () => {
+    removeErrorListeners?.();
+    const queue = window.dbbRum;
+    if (Array.isArray(queue)) {
+      for (let i = queue.length - 1; i >= 0; i--) {
+        if (queue[i]?.[0] === 'error' || queue[i]?.[0] === 'unhandledrejection') queue.splice(i, 1);
+      }
+    }
+    debugBearRumStarted = false;
+  };
   document.head.appendChild(script);
 }
 
@@ -65,11 +77,21 @@ export function initDebugBearRum(): void {
   window.dbbRum = queue;
   queue.push(['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
 
-  for (const type of ['error', 'unhandledrejection'] as const) {
-    window.addEventListener(type, (event) => {
-      queue.push([type, event]);
-    });
-  }
+  const target = window;
+  const onError = (event: Event) => {
+    const current = target.dbbRum;
+    if (!current) return;
+    if (Array.isArray(current)
+      && current.filter(([type]) => type === 'error' || type === 'unhandledrejection').length >= MAX_BUFFERED_ERRORS) return;
+    current.push([event.type as 'error' | 'unhandledrejection', event]);
+  };
+  target.addEventListener('error', onError);
+  target.addEventListener('unhandledrejection', onError);
+  removeErrorListeners = () => {
+    target.removeEventListener('error', onError);
+    target.removeEventListener('unhandledrejection', onError);
+    removeErrorListeners = undefined;
+  };
 
   loadDebugBearRumScript();
 }
@@ -96,5 +118,6 @@ export function reportBootstrapTransferRum(sample: BootstrapTransferRumSample): 
 }
 
 export function resetDebugBearRumForTesting(): void {
+  removeErrorListeners?.();
   debugBearRumStarted = false;
 }

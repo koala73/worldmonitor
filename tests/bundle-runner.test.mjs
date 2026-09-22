@@ -986,6 +986,23 @@ test('Military-Bases backfill validates every active record', async () => {
   }
 });
 
+test('bundled CA selection applies only to the configured child and preserves NODE_OPTIONS', async () => {
+  const cleanup = writeFixture('_bundle-fixture-ca.mjs', `
+    console.log(JSON.stringify({ args: process.execArgv, options: process.env.NODE_OPTIONS }));
+  `);
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'BUNDLED', script: '_bundle-fixture-ca.mjs', useBundledCa: true, intervalMs: 1, timeoutMs: 5000 },
+      { label: 'DEFAULT', script: '_bundle-fixture-ca.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ], {}, { NODE_OPTIONS: '--dns-result-order=ipv4first' });
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /\[BUNDLED\] \{"args":\["--use-bundled-ca"\],"options":"--dns-result-order=ipv4first"\}/);
+    assert.match(stdout, /\[DEFAULT\] \{"args":\[\],"options":"--dns-result-order=ipv4first"\}/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('streams child stdout live and reports Done on success', async () => {
   const cleanup = writeFixture(
     '_bundle-fixture-fast.mjs',

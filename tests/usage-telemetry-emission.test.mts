@@ -367,13 +367,19 @@ describe('gateway telemetry payload — trusted client attribution (#5228)', () 
       }),
       recorder.ctx,
     );
-    assert.equal(response.status, 200);
+    // IP-scoped endpoint budgets fail closed on unproven cf-connecting-ip
+    // rather than admitting the request into a shared PoP bucket (#8402).
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get('X-RateLimit-Mode'), 'edge-proof');
     await recorder.settled;
     spy.restore();
 
-    assert.equal(spy.events.length, 1);
-    assert.equal(spy.events[0]!.ip, '192.0.2.5');
-    assert.equal(spy.events[0]!.country, 'ZA');
+    // Gateway telemetry may still observe the 403; never credit the forged CF IP.
+    for (const event of spy.events) {
+      assert.notEqual(event.ip, '203.0.113.7');
+      assert.equal(event.ip, '192.0.2.5');
+      assert.equal(event.country, 'ZA');
+    }
   });
 
   it('never falls back to an unproven Cloudflare country header', () => {

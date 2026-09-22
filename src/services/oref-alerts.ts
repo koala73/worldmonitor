@@ -236,6 +236,7 @@ export async function fetchOrefAlerts(options: { signal?: AbortSignal } = {}): P
 
   try {
     const res = await fetch(getOrefApiUrl(), {
+      credentials: 'omit',
       headers: { Accept: 'application/json' },
       signal: options.signal,
     });
@@ -267,6 +268,7 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   await ensureLocationMapLoaded();
   try {
     const res = await fetch(getOrefApiUrl('history'), {
+      credentials: 'omit',
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) {

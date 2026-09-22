@@ -21,7 +21,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
 import { getChokepointRoutes } from '@/config/trade-routes';
 import { STRATEGIC_WATERWAYS } from '@/config/geo';
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { hasPremiumAccess, readClientEntitlementBelief, readPremiumAccessGrant } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onEntitlementChange } from '@/services/entitlements';
 import { trackGateHit } from '@/services/analytics';
@@ -128,6 +128,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private currentBrief: string | null = null;
   private currentBriefGeneratedAt: string | number | null = null;
   private currentBriefCached: boolean | null = null;
+  private currentBriefIsFallback = false;
   private historyRegistered = false;
   private currentHeadlines: NewsItem[] = [];
   private isMaximizedState = false;
@@ -312,6 +313,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = null;
     this.currentBriefGeneratedAt = null;
     this.currentBriefCached = null;
+    this.currentBriefIsFallback = false;
     this.currentHeadlines = [];
     this.currentHeadlineCount = 0;
     this.economicIndicators = [];
@@ -2589,9 +2591,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrapper;
   }
 
+  public isFallbackBrief(): boolean {
+    return this.currentBriefIsFallback;
+  }
+
   public updateScore(score: CountryScore | null, _signals: CountryBriefSignals): void {
     this.currentScore = score;
     this.currentSignals = _signals;
+    if (this.signalsBody) {
+      const chips = this.buildSignalChipsElement(_signals);
+      this.signalsBody.querySelector('.cdp-signal-chips')?.replaceWith(chips);
+      const seeded: CountryDeepDiveSignalDetails = {
+        critical: _signals.criticalNews + Math.max(0, _signals.activeStrikes),
+        high: _signals.militaryFlights + _signals.militaryVessels + _signals.protests,
+        medium: _signals.outages + _signals.cyberThreats + _signals.aisDisruptions + _signals.radiationAnomalies,
+        low: _signals.earthquakes + (_signals.temporalAnomalies ?? 0) + _signals.satelliteFires,
+        recentHigh: [],
+      };
+      this.renderSignalBreakdown(seeded);
+    }
     if (!this.scoreCard) return;
     // Partial DOM update: score number, level color, trend, component bars only
     const top = this.scoreCard.firstElementChild as HTMLElement | null;
@@ -2697,6 +2715,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.currentBrief = null;
       this.currentBriefGeneratedAt = null;
       this.currentBriefCached = null;
+      this.currentBriefIsFallback = false;
       this.briefBody.append(this.makeEmpty(data.error || data.reason || t('countryBrief.assessmentUnavailable')));
       return;
     }
@@ -2704,6 +2723,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.currentBrief = data.brief;
     this.currentBriefGeneratedAt = data.generatedAt ?? null;
     this.currentBriefCached = data.cached === true;
+    this.currentBriefIsFallback = data.fallback === true;
 
     const briefSources = collectBriefSources(data.sources ?? [], 6);
     const summaryHtml = this.formatBrief(summarizeCountryBrief(data.brief), briefSources, 0);
@@ -2809,7 +2829,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', "legacy direct innerHTML migration"));
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
-      const url = `${window.location.origin}/?c=${encodeURIComponent(this.currentCode)}`;
+      const url = `${window.location.origin}/dashboard?c=${encodeURIComponent(this.currentCode)}`;
       navigator.clipboard.writeText(url).then(() => {
         const orig = shareBtn.innerHTML;
         setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
@@ -3243,9 +3263,37 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         message: details.message,
         data: { countryCode },
       });
+      // Callers skip cancellations, so anything reaching here is a real load
+      // failure. The `kind` tag claims it for beforeSend: a scorecard deadline
+      // or a network failure arrives with zero frames (`signal timed out`,
+      // `Failed to fetch`) and would otherwise be dropped as extension noise.
+      //
+      // A 401/403 is the one failure this panel cannot diagnose from the event
+      // alone. Every premium widget here fetches only once `hasPremiumAccess()`
+      // is true, so a denial means the client's premium belief and the
+      // credential the premium injector actually attached disagreed — and the
+      // event said nothing about which of the four arms had granted access
+      // (WORLDMONITOR-147). Record the arm and the client's own entitlement
+      // belief; together they separate "a browser-local key unlocked the panel"
+      // from "the Clerk session lapsed mid-flight".
+      //
+      // Denials ONLY. A deadline or a network failure says nothing about the
+      // account, and widening this to every failure would both attach account
+      // state to unrelated events and break the exact tag-shape assertion in
+      // tests/five-factor-scorecard-ui-registration.test.mjs, which is the
+      // preservation control for the deadline capture.
+      const status = (error as { statusCode?: unknown } | null)?.statusCode;
+      const denial = status === 401 || status === 403;
       Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-        tags: { surface: 'country-deep-dive', widget: details.widget },
-        extra: { countryCode },
+        tags: {
+          kind: 'country_deep_dive_load_failed',
+          surface: 'country-deep-dive',
+          widget: details.widget,
+          ...(denial ? { status: String(status), premium_grant: readPremiumAccessGrant(getAuthState()) } : {}),
+        },
+        extra: denial
+          ? { countryCode, entitlementBelief: readClientEntitlementBelief(getAuthState()) }
+          : { countryCode },
       });
     });
   }
@@ -3400,10 +3448,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.content.replaceChildren();
   }
 
-  private renderInitialSignals(signals: CountryBriefSignals): void {
-    if (!this.signalsBody) return;
-    this.signalsBody.replaceChildren();
-
+  private buildSignalChipsElement(signals: CountryBriefSignals): HTMLElement {
     const chips = this.el('div', 'cdp-signal-chips');
     this.addSignalChip(chips, signals.criticalNews, t('countryBrief.chips.criticalNews'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.protests, t('countryBrief.chips.protests'), '📢', 'protest');
@@ -3413,7 +3458,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
     this.addSignalChip(chips, signals.radiationAnomalies, 'Radiation anomalies', '☢️', 'outage');
-    this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
+    if (signals.temporalAnomalies === null) {
+      chips.append(this.makeSignalChip(`⏱️ ${t('countryBrief.chips.temporalUnavailable')}`, 'outage'));
+    } else {
+      this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
+    }
     this.addSignalChip(chips, signals.cyberThreats, t('countryBrief.chips.cyberThreats'), '🛡️', 'conflict');
     this.addSignalChip(chips, signals.earthquakes, t('countryBrief.chips.earthquakes'), '🌍', 'quake');
     if (signals.displacementOutflow > 0) {
@@ -3435,6 +3484,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.orefHistory24h, t('countryBrief.chips.sirens24h'), '🕓', 'conflict');
     this.addSignalChip(chips, signals.aviationDisruptions, t('countryBrief.chips.aviationDisruptions'), '🚫', 'outage');
     this.addSignalChip(chips, signals.gpsJammingHexes, t('countryBrief.chips.gpsJammingZones'), '📡', 'outage');
+    return chips;
+  }
+
+  private renderInitialSignals(signals: CountryBriefSignals): void {
+    if (!this.signalsBody) return;
+    this.signalsBody.replaceChildren();
+
+    const chips = this.buildSignalChipsElement(signals);
     this.signalsBody.append(chips);
 
     this.signalBreakdownBody = this.el('div', 'cdp-signal-breakdown');
@@ -3445,7 +3502,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       critical: signals.criticalNews + Math.max(0, signals.activeStrikes),
       high: signals.militaryFlights + signals.militaryVessels + signals.protests,
       medium: signals.outages + signals.cyberThreats + signals.aisDisruptions + signals.radiationAnomalies,
-      low: signals.earthquakes + signals.temporalAnomalies + signals.satelliteFires,
+      low: signals.earthquakes + (signals.temporalAnomalies ?? 0) + signals.satelliteFires,
       recentHigh: [],
     };
     this.renderSignalBreakdown(seeded);
@@ -3908,6 +3965,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         satelliteFires: this.currentSignals.satelliteFires,
         radiationAnomalies: this.currentSignals.radiationAnomalies,
         temporalAnomalies: this.currentSignals.temporalAnomalies,
+        globalTemporalAnomalies: this.currentSignals.globalTemporalAnomalies ?? null,
         cyberThreats: this.currentSignals.cyberThreats,
         earthquakes: this.currentSignals.earthquakes,
         displacementOutflow: this.currentSignals.displacementOutflow,

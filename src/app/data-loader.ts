@@ -160,7 +160,6 @@ import type {
   SectorValuation,
 } from '@/components/MarketPanel';
 import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
-import { mountCommunityWidget } from '@/components/CommunityWidget';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
@@ -1249,6 +1248,7 @@ export class DataLoaderManager implements AppModule {
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
       await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
+      this.callbacks.refreshOpenCountryBrief();
     } else {
       this.refreshTemporalBaseline().catch(() => {});
     }
@@ -1257,6 +1257,7 @@ export class DataLoaderManager implements AppModule {
   async refreshTemporalBaseline(): Promise<void> {
     const { anomalies, trackedTypes } = await fetchLiveAnomalies();
     await runSignalAggregator(this.ctx.statusPanel, 'temporal baseline anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies, trackedTypes));
+    this.callbacks.refreshOpenCountryBrief();
   }
 
   async loadDataForLayer(layer: keyof MapLayers): Promise<void> {
@@ -2259,7 +2260,6 @@ export class DataLoaderManager implements AppModule {
     const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
     if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
-    mountCommunityWidget();
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
 
@@ -3500,18 +3500,21 @@ export class DataLoaderManager implements AppModule {
     })();
     tasks.push(protestsTask.then(() => undefined));
 
-    tasks.push((async () => {
+    const conflictsTask = (async () => {
       try {
         const conflictData = await fetchConflictEvents();
         this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCountryData(conflictData.events);
         this.callbacks.refreshOpenCountryTimeline?.();
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
+        return conflictData.events;
       } catch (error) {
         console.error('[Intelligence] Conflict events fetch failed:', error);
         dataFreshness.recordError('acled_conflict', String(error));
+        return [];
       }
-    })());
+    })();
+    tasks.push(conflictsTask.then(() => undefined));
 
     const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
 
@@ -3567,7 +3570,7 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        const protestEvents = await protestsTask;
+        const conflictEvents = await conflictsTask;
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
         // counts from the precomputed aggregates), but the map draws every event.
@@ -3582,7 +3585,7 @@ export class DataLoaderManager implements AppModule {
           this.showColdLoadError('ucdp-events');
           return;
         }
-        const acledEvents = protestEvents.map(e => ({
+        const acledEvents = conflictEvents.map(e => ({
           latitude: e.lat, longitude: e.lon, event_date: e.time.toISOString(), fatalities: e.fatalities ?? 0,
         }));
         const events = deduplicateAgainstAcled(result.data, acledEvents);
@@ -4386,6 +4389,7 @@ export class DataLoaderManager implements AppModule {
     if (!hasPremiumAccess()) return;
     const tradePanel = this.ctx.panels['trade-policy'] as TradePolicyPanel | undefined;
     if (!tradePanel) return;
+    const generation = tradePanel.beginDataLoad();
 
     try {
       const {
@@ -4405,6 +4409,7 @@ export class DataLoaderManager implements AppModule {
         fetchCustomsRevenue(),
         fetchComtradeFlows(),
       ]);
+      if (!tradePanel.acceptsDataLoad(generation)) return;
 
       const r = restrictions.status === 'fulfilled' ? restrictions.value : null;
       const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
@@ -4434,6 +4439,7 @@ export class DataLoaderManager implements AppModule {
         dataFreshness.recordUpdate('treasury_revenue', rev.months.length);
       }
     } catch (e) {
+      if (!tradePanel.acceptsDataLoad(generation)) return;
       console.error('[App] Trade policy failed:', e);
       this.callPanel('trade-policy', 'showError', undefined, () => void this.loadTradePolicy());
       this.ctx.statusPanel?.updateApi('WTO', { status: 'error' });

@@ -14,9 +14,12 @@ This persistent hosted server is distinct from [WorldMonitor WebMCP](https://www
 
 ## Endpoint
 
-- **Server URL:** `https://worldmonitor.app/mcp` — Streamable HTTP transport, JSON-RPC 2.0 (JSON responses by default, SSE when the client advertises `text/event-stream`; `initialize` defaults to protocol `2025-03-26`).
+- **Server URL:** `https://worldmonitor.app/mcp` — Streamable HTTP transport, JSON-RPC 2.0 (JSON responses by default, SSE when the client advertises `text/event-stream`; `initialize` defaults to protocol `2025-03-26`). This is the only advertised product MCP server.
+- **Aliases:** `www`, `api`, `tech`, `finance`, `commodity`, `happy`, and `energy` under `worldmonitor.app` are a client-migration surface, not extra installations. Ordinary GET/HEAD `/mcp` and `/api/mcp` redirect (308) to `https://worldmonitor.app/mcp`; ordinary GET/HEAD `/.well-known/mcp` and `/.well-known/mcp.json` redirect (308) to `https://worldmonitor.app/.well-known/mcp` and `https://worldmonitor.app/.well-known/mcp.json`. Query is not forwarded. Transport POST, SSE, and replay answer HTTP 410 with JSON-RPC `-32000` `Use https://worldmonitor.app/mcp`.
 - **Server card:** https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — a second, public (no-auth) MCP server with search-and-retrieval tools over the documentation. Route "how do I…" questions there; route live-data calls to the product server above.
+
+Use the apex server URL for all product MCP clients. Product-host aliases return a canonical migration response; they do not provide a second MCP transport.
 
 ## Tools
 
@@ -41,7 +44,8 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 
 ## Authentication
 
-- **`tools/list` and other discovery calls:** anonymous, no key.
+- **Connecting an MCP client:** an `initialize` with no credentials gets `401` with a `WWW-Authenticate` challenge, which starts your client's OAuth sign-in. A free account is enough.
+- **`tools/list` and other stateless discovery calls:** anonymous, no key.
 - **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
 - **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.
   - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://www.worldmonitor.app/pro. Per-minute burst is plan-resolved and shared per user across all of an account's keys and OAuth tokens: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1,000 on Enterprise. Legacy operator-issued keys stay at a flat 60/minute/key.
