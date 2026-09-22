@@ -71,7 +71,7 @@ export function normalizeRatePoints(points: RatePoint[] | undefined): RatePoint[
 
 export function latestRatePoint(points: RatePoint[] | undefined): RatePoint | undefined {
   const normalized = normalizeRatePoints(points);
-  return normalized.at(-1);
+  return normalized.length > 0 ? normalized[normalized.length - 1] : undefined;
 }
 
 function wireSeries(id: string, points: UsInterestRateObservation[]): UsInterestRateSeries | undefined {
@@ -86,12 +86,11 @@ export function buildUsInterestRates(
 ): GetUsInterestRatesResponse {
   const series: UsInterestRateSeries[] = [];
   for (const item of RATE_SERIES) {
+    const snapshotPoint = snapshot?.[item.id];
+    const historyPoints = histories?.[item.id] ?? [];
     const source = history
-      ? normalizeRatePoints([
-          ...(histories?.[item.id] ?? []),
-          ...(snapshot?.[item.id] ? [snapshot[item.id]] : []),
-        ])
-      : [snapshot?.[item.id] ?? latestRatePoint(histories?.[item.id])].filter((point): point is RatePoint => point != null);
+      ? normalizeRatePoints(snapshotPoint ? [...historyPoints, snapshotPoint] : historyPoints)
+      : [snapshotPoint ?? latestRatePoint(historyPoints)].filter((point): point is RatePoint => point != null);
     const points = source
       .map((point) => toRateObservation(point))
       .filter((point): point is UsInterestRateObservation => point != null);
