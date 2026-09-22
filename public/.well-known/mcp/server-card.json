@@ -141,7 +141,7 @@
       "name": "get_sanctions_data",
       "description": "OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.",
       "_meta": {
-        "worldmonitor/access": "free-account"
+        "worldmonitor/access": "subscription"
       }
     },
     {

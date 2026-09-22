@@ -39,6 +39,7 @@
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/poll-generation-guard.cjs",
+      "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/saudi-civil-defense-alerts.cjs",
       "scripts/lib/usni-fleet-parser.cjs",
       "scripts/lib/x-news-accounts.cjs",
@@ -63,6 +64,7 @@
       "scripts/shared/market-quote-refresh.cjs",
       "scripts/shared/market-seed-universe.cjs",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/notify-fields.cjs",
       "scripts/shared/other-tokens.json",
       "scripts/shared/product-catalog.generated.json",
       "scripts/shared/rss-allowed-domains.cjs",
@@ -188,6 +190,10 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.digest-notifications",
     "service": "digest-notifications",
+    "requiredEnv": [
+      "USAGE_TELEMETRY",
+      "AXIOM_API_TOKEN"
+    ],
     "watchPatterns": [
       ".dockerignore",
       "Dockerfile.digest-notifications",
@@ -223,6 +229,7 @@
       "scripts/lib/llm-chain.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/lib/publisher-link-relay-gate.cjs",
       "scripts/lib/resend-from.cjs",
       "scripts/lib/story-track-batch-reader.mjs",
       "scripts/lib/user-context.cjs",

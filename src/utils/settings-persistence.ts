@@ -14,6 +14,7 @@ export interface ImportResult {
 import { CLOUD_SYNC_KEYS } from './sync-keys';
 import { invalidatePanelStorageCacheForKeys } from './panel-storage';
 import { safeStorageSnapshot } from './safe-storage';
+import { PINNED_WEBCAMS_KEY, normalizePinnedWebcamsPreference } from '../../shared/pinned-webcams';
 
 const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024;
 
@@ -121,19 +122,23 @@ async function parseImportedEntries(parsed: unknown): Promise<Array<[string, str
   const encoder = new TextEncoder();
   for (const [key, value] of Object.entries(parsed.data)) {
     if (!isSettingsKey(key)) continue;
-    if (typeof value !== 'string') {
+    // Pinned webcams accept any input shape here and are re-serialized through
+    // the shared normalizer, matching the browser-store write path; every
+    // other setting must already be a stored string.
+    const stored = key === PINNED_WEBCAMS_KEY ? normalizePinnedWebcamsPreference(value) : value;
+    if (typeof stored !== 'string') {
       throw new Error(`Invalid setting: ${key} must be a string.`);
     }
-    const size = encoder.encode(value).length;
+    const size = encoder.encode(stored).length;
     decodedBytes += size;
     if (size > 256 * 1024 || decodedBytes > 1024 * 1024) throw new Error('Settings payload is too large.');
-    validateSetting(key, value, policies);
+    validateSetting(key, stored, policies);
     // The monitor reader trusts the stored JSON and immediately uses array
     // and string methods. Reject invalid records before changing any settings.
-    if (key === 'worldmonitor-monitors' && !isMonitorList(JSON.parse(value))) {
+    if (key === 'worldmonitor-monitors' && !isMonitorList(JSON.parse(stored))) {
       throw new Error('Invalid setting: worldmonitor-monitors must contain monitor records.');
     }
-    entries.push([key, value]);
+    entries.push([key, stored]);
   }
   return entries;
 }
@@ -163,7 +168,7 @@ export function exportSettings(): void {
   let variant = 'full';
   for (const [key, value] of snapshot.entries) {
     if (key === 'worldmonitor-variant' && value) variant = value;
-    if (isSettingsKey(key)) data[key] = value;
+    if (isSettingsKey(key)) data[key] = key === PINNED_WEBCAMS_KEY ? normalizePinnedWebcamsPreference(value) : value;
   }
 
   const exportData: ExportedSettings = {

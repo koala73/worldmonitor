@@ -40,7 +40,7 @@ const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pre
 // A real PUBLIC path used to verify the path-gating bypass: hits below
 // fetch the same way but should NOT see Bearer attached.
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
-const PUBLIC_INSIDER_TRANSACTIONS_TARGET =
+const PREMIUM_INSIDER_TRANSACTIONS_TARGET =
   'https://api.worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL';
 const PRO_FRESH_MARKET_TARGET =
   'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL';
@@ -225,18 +225,18 @@ describe('premiumFetch', () => {
     );
   });
 
-  it('Pro-fresh market adapter attaches Clerk JWT only on the shared allowlist', async () => {
+  it('Pro-fresh market adapter leaves public paths on anonymous-session auth', async () => {
     setup({ testerKey: '', clerkToken: 'pro-fresh-clerk-token' });
 
     await proFreshRpcFetch(PRO_FRESH_MARKET_TARGET);
     assert.equal(sentHeaders(0).get('Authorization'), 'Bearer pro-fresh-clerk-token');
 
     fetchMock.mock.resetCalls();
-    await proFreshRpcFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
+    await proFreshRpcFetch(PUBLIC_TARGET);
     assert.equal(
       sentHeaders(0).get('Authorization'),
       null,
-      'other methods on the MarketService client must retain anonymous-session auth',
+      'public methods must retain anonymous-session auth',
     );
   });
 
@@ -254,10 +254,12 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders(0).get('Authorization'), 'Bearer premium-market-token');
   });
 
-  it('public insider transactions path: Clerk JWT NOT attached', async () => {
-    setup({ testerKey: '', clerkToken: 'clerk-token-should-be-skipped' });
-    await premiumFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
-    assert.equal(sentHeaders().get('Authorization'), null);
+  it('premium insider transactions path attaches the Clerk JWT', async () => {
+    setup({ testerKey: '', clerkToken: 'insider-clerk-token' });
+    await premiumFetch(PREMIUM_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer insider-clerk-token');
+    await proFreshRpcFetch(PREMIUM_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(sentHeaders(1).get('Authorization'), 'Bearer insider-clerk-token');
   });
 
   it('non-premium path: tester key still attached (works on any path)', async () => {

@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 447658
+    "raw": 450750
   },
   "chunks": {
     "clerk": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 28600,
+      "raw": 29065,
       "files": 1
     },
     "dom-utils": {
@@ -35,7 +35,7 @@
       "files": 1
     },
     "geo-convergence": {
-      "raw": 10071,
+      "raw": 10205,
       "files": 1
     },
     "geo-distance": {
@@ -47,11 +47,11 @@
       "files": 1
     },
     "i18n": {
-      "raw": 125745,
+      "raw": 125835,
       "files": 2
     },
     "main": {
-      "raw": 126681,
+      "raw": 129008,
       "files": 1
     },
     "panels": {
@@ -67,21 +67,21 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 45580,
+      "raw": 45642,
       "files": 1
     },
     "theme-manager": {
-      "raw": 1874,
+      "raw": 1888,
       "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1384707
+      "raw": 1392690
     },
     "chunks": {
       "App": {
-        "raw": 884997,
+        "raw": 889210,
         "files": 1
       },
       "ai-flow-settings": {
@@ -101,11 +101,11 @@
         "files": 1
       },
       "checkout": {
-        "raw": 13783,
+        "raw": 13752,
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 7188,
+        "raw": 7194,
         "files": 1
       },
       "continuous": {
@@ -121,7 +121,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 118692,
+        "raw": 119684,
         "files": 1
       },
       "index": {
@@ -137,7 +137,7 @@
         "files": 1
       },
       "panel-gating": {
-        "raw": 3654,
+        "raw": 3731,
         "files": 1
       },
       "panel-storage": {
@@ -146,6 +146,10 @@
       },
       "persistent-cache": {
         "raw": 4138,
+        "files": 1
+      },
+      "pinned-webcams": {
+        "raw": 2471,
         "files": 1
       },
       "sanitize": {
@@ -169,7 +173,7 @@
         "files": 1
       },
       "sync-keys": {
-        "raw": 1429,
+        "raw": 1466,
         "files": 1
       },
       "user-location": {
@@ -177,7 +181,7 @@
         "files": 1
       },
       "widget-store": {
-        "raw": 22047,
+        "raw": 22265,
         "files": 1
       }
     }

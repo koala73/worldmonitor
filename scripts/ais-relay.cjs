@@ -13899,8 +13899,18 @@ async function handleWidgetAgentRequest(req, res) {
     }
   }
 
+  // Prefer the edge-validated spend identity. Behind the Vercel proxy every
+  // browser shares this process's peer address, so an IP bucket is one global
+  // cap (or none, when the header is absent) rather than a per-caller cap.
+  const spendHeader = req.headers['x-wm-widget-spend-id'];
+  const spendId = typeof spendHeader === 'string' ? spendHeader.trim() : '';
+  // Widget keys also belong to legacy callers. Only the separate server relay
+  // credential can attest to an identity that passed the edge spend checks.
+  const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId)
+    && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : clientIp;
+
   // Rate limiting (separate buckets)
-  const rateLimited = isPro ? checkProWidgetRateLimit(clientIp) : checkWidgetRateLimit(clientIp);
+  const rateLimited = isPro ? checkProWidgetRateLimit(rateBucket) : checkWidgetRateLimit(rateBucket);
   if (rateLimited) {
     return safeEnd(res, 429, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Rate limit exceeded' }));
   }
@@ -13929,6 +13939,10 @@ async function handleWidgetAgentRequest(req, res) {
     'X-Accel-Buffering': 'no',
     'Connection': 'keep-alive',
   });
+  // Send the headers before the model turn so the edge proxy can bound connect
+  // time. Without flushHeaders, Node holds writeHead until the first body
+  // write, which only happens after client.messages.create returns.
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
   let cancelled = false;
   req.on('close', () => { cancelled = true; });

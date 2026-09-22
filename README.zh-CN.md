@@ -1,6 +1,6 @@
 # World Monitor
 
-[English](README.md) | [日本語](README.ja-JP.md)
+[English](README.md) | [日本語](README.ja-JP.md) | [Русский](README.ru.md)
 
 **实时全球情报仪表盘** — 在统一的态势感知界面中，汇集 AI 驱动的新闻聚合、地缘政治监测和基础设施追踪。
 

@@ -59,6 +59,9 @@ COPY scripts/lib/x-poll-cycle.cjs ./scripts/lib/x-poll-cycle.cjs
 COPY scripts/lib/x-post-budget.cjs ./scripts/lib/x-post-budget.cjs
 # Stale-digest alert gate required by ais-relay.cjs (#7084).
 COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+# Publisher-link relay gate required by digest-stale-gate.cjs (#8398):
+# relay-emitted rss_alert events must not carry off-publisher links.
+COPY scripts/lib/publisher-link-relay-gate.cjs ./scripts/lib/publisher-link-relay-gate.cjs
 # Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
 COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
 COPY scripts/lib/saudi-civil-defense-alerts.cjs ./scripts/lib/saudi-civil-defense-alerts.cjs
@@ -80,6 +83,19 @@ COPY scripts/shared/iso2-to-region.json ./scripts/shared/iso2-to-region.json
 # (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
 # relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.cjs
+# notify-fields.cjs mirrors server/_shared/notify-fields.ts for the relay
+# (no TS loader under scripts/package.json); required by notification-relay.cjs.
+#
+# NOTE on the guard: tests/dockerfile-relay-imports.test.mjs seeds its BFS from
+# COPY'd entrypoints only, and notification-relay.cjs is NOT COPY'd here (it is
+# not this image's CMD), so the BFS can never reach this file — deleting this
+# line left that guard green (review finding). The explicit presence assertion
+# in that test is what pins this line now. notification-relay.cjs also imports
+# five scripts/lib/* modules absent from this image, so it cannot be running
+# from this image; see tests/dockerfile-relay-imports.test.mjs for the check
+# that keeps this COPY list and that claim honest.
+# Guarded by tests/notify-fields-parity.test.mjs (behaviour parity).
+COPY scripts/shared/notify-fields.cjs ./scripts/shared/notify-fields.cjs
 # market-hours.cjs gates the equity portion of the relay market seed loop on
 # the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
 COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs

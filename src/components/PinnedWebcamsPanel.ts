@@ -9,12 +9,6 @@ import {
 } from '../services/webcams/pinned-store';
 
 const MAX_SLOTS = 4;
-const PLAYER_FALLBACK = 'https://webcams.windy.com/webcams/public/embed/player';
-
-function buildPlayerUrl(webcamId: string, playerUrl?: string): string {
-  if (playerUrl) return playerUrl;
-  return `${PLAYER_FALLBACK}/${encodeURIComponent(webcamId)}/day`;
-}
 
 export class PinnedWebcamsPanel extends Panel {
   private unsubscribe: (() => void) | null = null;
@@ -44,7 +38,7 @@ export class PinnedWebcamsPanel extends Panel {
       if (cam) {
         const iframe = document.createElement('iframe');
         iframe.className = 'pinned-webcam-iframe';
-        iframe.src = buildPlayerUrl(cam.webcamId, cam.playerUrl);
+        iframe.src = cam.playerUrl;
         iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
         iframe.setAttribute('frameborder', '0');
         iframe.title = cam.title || cam.webcamId;

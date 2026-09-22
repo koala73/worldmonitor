@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { after, before, beforeEach, describe, it, mock } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -236,5 +236,59 @@ describe('consumer-prices unsupported range fallback', () => {
 
     assert.deepEqual(response, expected);
     assert.deepEqual(requestedKeys, ['consumer-prices:categories:ae:30d']);
+  });
+});
+
+
+describe('consumer price seeded selection boundary', () => {
+  it('accepts the published basket-series request example', async () => {
+    const spec = JSON.parse(readSource('docs/api/ConsumerPricesService.openapi.json'));
+    const parameters = spec.paths['/api/consumer-prices/v1/get-consumer-price-basket-series'].get.parameters;
+    const examples = Object.fromEntries(parameters.map((parameter: { name: string; example: string }) => [parameter.name, parameter.example]));
+    const response = await getConsumerPriceBasketSeries({}, {
+      marketCode: examples.market_code, basketSlug: examples.basket_slug, range: examples.range,
+    });
+    assert.equal(response.marketCode, examples.market_code.toLowerCase());
+    assert.equal(response.basketSlug, examples.basket_slug);
+    assert.deepEqual(requestedKeys, [`consumer-prices:basket-series:${response.marketCode}:${response.basketSlug}:${examples.range}`]);
+  });
+
+  it('accepts every configured basket, normalizes market case and defaults its basket', async () => {
+    for (const file of readdirSync(resolve(root, 'consumer-prices-core/configs/baskets'))) {
+      const config = readSource(`consumer-prices-core/configs/baskets/${file}`);
+      const market = config.match(/marketCode: (\w+)/)![1];
+      const basket = config.match(/slug: ([\w-]+)/)![1];
+      requestedKeys.length = 0;
+      const response = await getConsumerPriceBasketSeries({}, { marketCode: market.toUpperCase(), basketSlug: '', range: '30d' });
+      assert.equal(response.marketCode, market);
+      assert.equal(response.basketSlug, basket);
+      assert.deepEqual(requestedKeys, [`consumer-prices:basket-series:${market}:${basket}:30d`]);
+      requestedKeys.length = 0;
+      await getConsumerPriceBasketSeries({}, { marketCode: market, basketSlug: basket.toUpperCase(), range: '30d' });
+      assert.deepEqual(requestedKeys, [`consumer-prices:basket-series:${market}:${basket}:30d`]);
+    }
+  });
+
+  it('rejects unsupported, oversized and mismatched selections without dataset reads', async () => {
+    for (const [marketCode, basketSlug] of [['zz', ''], ['a'.repeat(100), ''], ['ae', 'x'.repeat(100)], ['ae', 'essentials-us'], ['ae:', ''], ['ae', 'essentials-ae:extra']]) {
+      requestedKeys.length = 0;
+      await assert.rejects(getConsumerPriceBasketSeries({}, { marketCode, basketSlug, range: '30d' }), { name: 'ValidationError' });
+      assert.deepEqual(requestedKeys, []);
+    }
+  });
+
+  it('validates freshness markets before dataset reads and preserves AE default', async () => {
+    const { getConsumerPriceFreshness } = await import('../server/worldmonitor/consumer-prices/v1/get-consumer-price-freshness.ts');
+    for (const marketCode of ['zz', 'a'.repeat(100), 'ae:extra']) {
+      requestedKeys.length = 0;
+      await assert.rejects(getConsumerPriceFreshness({}, { marketCode }), { name: 'ValidationError' });
+      assert.deepEqual(requestedKeys, []);
+    }
+    for (const marketCode of ['', 'AE']) {
+      requestedKeys.length = 0;
+      const response = await getConsumerPriceFreshness({}, { marketCode });
+      assert.equal(response.marketCode, 'ae');
+      assert.deepEqual(requestedKeys, ['consumer-prices:freshness:ae']);
+    }
   });
 });

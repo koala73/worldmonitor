@@ -52,30 +52,43 @@ export default defineConfig({
   testMatch: webMcpProduction ? '**/webmcp.spec.ts' : undefined,
   // CI: the smoke specs are dominated by fixed settle windows (eight 8 s
   // waits in dashboard-news-request-budget alone), so running them serially
-  // just stacks idle sleeps — 4 workers overlap them. Tests already isolate
-  // via per-test contexts and fresh seeded profiles. Locally stay at 1 so a
-  // dev run keeps deterministic ordering and predictable machine load.
+  // just stacks idle sleeps — overlapping workers hide them. Tests already
+  // isolate via per-test contexts and fresh seeded profiles. Locally stay at 1
+  // so a dev run keeps deterministic ordering and predictable machine load.
   // fullyParallel lets tests WITHIN a file spread across workers; with 1
   // worker (local) it changes nothing.
-  workers: process.env.CI ? 4 : 1,
+  //
+  // 4 -> 2 to test the last surviving hypothesis for the #8447 browser
+  // crashes. All four crashes analysed in detail sit in the top 10-20% of
+  // process-churn moments within their own run, and 4 workers on a 2-core
+  // runner is the churn. Measured cost of halving: 45.2 s -> 74.4 s on a
+  // two-spec subset, 1.64x rather than 2x because the settle windows above
+  // are wall-clock, not CPU.
+  //
+  // REVERT THIS if the crash rate does not fall. The annotations from #8449
+  // measure it on every merge; the baseline is 50 crashes across 76
+  // shard-runs, 47% of runs affected.
+  workers: process.env.CI ? 2 : 1,
   fullyParallel: true,
   timeout: 90000,
   expect: {
     timeout: 30000,
   },
-  // One retry in CI, none locally (#5685). Playwright can throw from its own
-  // event dispatch — `Object with guid response@<id> was not bound in the
-  // connection` — when the client receives a `response` event referencing an
-  // object it cannot resolve. That fires BEFORE any listener body runs, so no
-  // defensive code in a spec can prevent it: variant-live-smoke's capture
-  // helper already try/catches every accessor it touches and the throw still
-  // escaped, reddening a required gate 2.3s into a boot test whose own
-  // assertions had not yet run.
+  // One retry in CI, none locally (#5685). The retry was added for `Object
+  // with guid response@<id> was not bound in the connection`, described then as
+  // Playwright throwing from its own event dispatch. That diagnosis was wrong
+  // (#8447). The message is what the client prints when the connection dies
+  // with responses in flight, and the cause is the browser process exiting with
+  // SIGTRAP mid-navigation. Six main runs separate cleanly: 0 crashes green,
+  // 1 crash reported `flaky` because the retry absorbed it, 2 crashes red
+  // because the crash recurred on the retry.
   //
-  // A retry cannot hide a deterministic failure — that fails both attempts.
-  // When the second attempt passes, Playwright reports the test as `flaky`
-  // rather than silently green, so a genuine product race still surfaces.
-  // Local runs stay at 0 so a flake is felt immediately while iterating.
+  // So this retry is load-bearing in the worst way. It converts most browser
+  // crashes into a passing run, which is why the browser-loss diagnostics this
+  // job has collected since #5685 went unread for months. Leave it at 1 while
+  // the crash is being diagnosed and let the SIGTRAP check in test.yml do the
+  // reporting, then revisit. Local runs stay at 0 so a flake is felt
+  // immediately while iterating.
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
   use: {
@@ -89,7 +102,24 @@ export default defineConfig({
     timezoneId: 'UTC',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    // `retain-on-failure` records EVERY test and deletes the video when it
+    // passes, so a green shard pays for video it then throws away: 34 ffmpeg
+    // processes for 28 passing tests on shard 2, 54 for 76 on shard 1
+    // (runs 35579482854 and 35563542710). One ffmpeg per context, spawned and
+    // killed alongside the browser.
+    //
+    // `on-first-retry` records only the retry attempt. CI runs with
+    // retries: 1, so a deterministic failure still gets video, because its
+    // retry fails too and is recorded.
+    //
+    // The real cost is flaky tests. `preserveVideo` in playwright/lib/index.js
+    // keys on the PER-ATTEMPT status (`testInfo.status !== expectedStatus`), so
+    // `retain-on-failure` keeps the failed first attempt even when the retry
+    // passes; `on-first-retry` records the retry regardless of its outcome. So
+    // for a flake we trade a video of the failure for a video of the pass.
+    // Accepted because the browser crashes in #8447 kill the recording anyway
+    // and are diagnosed from the pw:browser log, which this does not touch.
+    video: 'on-first-retry',
   },
   projects: [
     {
@@ -104,6 +134,17 @@ export default defineConfig({
         ...(requireWebMcp && !webMcpChromeExecutablePath ? { channel: webMcpChromeChannel } : {}),
         launchOptions: {
           ...(webMcpChromeExecutablePath ? { executablePath: webMcpChromeExecutablePath } : {}),
+          // Do NOT drop `--disable-breakpad` to chase the SIGTRAP crashes in
+          // #8447. CI runs chromium_headless_shell, and that bundle ships no
+          // `chrome_crashpad_handler` binary, so enabling breakpad aborts the
+          // browser at launch rather than producing a minidump:
+          //   FATAL:third_party/crashpad/.../spawn_subprocess.cc:237
+          //   posix_spawn .../chrome_crashpad_handler
+          // Every test then fails in single-digit milliseconds with
+          // `browserType.launch: Target page, context or browser has been
+          // closed` (run 35570837267). Only the full `chromium-<rev>` build
+          // carries the handler, so minidumps need a different browser, not a
+          // different flag.
           args: [
             '--use-angle=swiftshader',
             '--use-gl=swiftshader',

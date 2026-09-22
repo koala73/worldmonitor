@@ -11,16 +11,20 @@ import {
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import {
   INTEL_HISTORY_EMBED_DIMS,
   INTEL_HISTORY_MAX_APPEND_RECORDS,
   INTEL_HISTORY_MAX_RETRACT_IDENTIFIERS,
 } from "./intelHistory";
 
-const TRUSTED = [
-  "https://worldmonitor.app",
-  "*.worldmonitor.app",
-  "http://localhost:3000",
+// App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
+const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
+const TRUSTED_ORIGINS = [
+  APP_ORIGIN,
+  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
+  /^https?:\/\/(?:[a-z0-9-]+\.)?tauri\.localhost(?::\d+)?$/,
+  /^(?:tauri|asset):\/\/localhost$/,
 ];
 
 const EXPOSED_HEADERS = [
@@ -30,21 +34,30 @@ const EXPOSED_HEADERS = [
   "X-RateLimit-Reset",
 ].join(", ");
 
-function matchOrigin(origin: string, pattern: string): boolean {
-  if (pattern.startsWith("*.")) {
-    return origin.endsWith(pattern.slice(1));
-  }
-  return origin === pattern;
-}
-
-function allowedOrigin(origin: string | null, trusted: string[]): string | null {
+function allowedOrigin(origin: string | null): string | null {
   if (!origin) return null;
-  return trusted.some((p) => matchOrigin(origin, p)) ? origin : null;
+  try {
+    const url = new URL(origin);
+    // An Origin is a scheme/host/port, never a URL with credentials or a path.
+    if (url.username || url.password || `${url.protocol}//${url.host}` !== origin) return null;
+    url.hostname = url.hostname.replace(/\.+$/, "");
+    const candidate = `${url.protocol}//${url.host}`;
+    if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
+    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
+      const encoded = url.hostname.slice(0, -".translate.goog".length);
+      const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");
+      if (!encoded.includes(".") && APP_ORIGIN.test(`https://${decoded}`)) return origin;
+    }
+  } catch {
+    // Malformed origins receive no CORS grant.
+  }
+  return null;
 }
 
 function corsHeaders(origin: string | null): Headers {
-  const headers = new Headers();
-  const allowed = allowedOrigin(origin, TRUSTED);
+  const headers = new Headers({ Vary: "Origin" });
+  const allowed = allowedOrigin(origin);
   if (allowed) {
     headers.set("Access-Control-Allow-Origin", allowed);
     headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -480,6 +493,13 @@ http.route({
       typeof body.expectedSyncVersion !== "number"
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
+        status: 400,
+        headers,
+      });
+    }
+
+    if (!isPreferenceVariant(body.variant)) {
+      return new Response(JSON.stringify({ error: "INVALID_VARIANT" }), {
         status: 400,
         headers,
       });
@@ -1100,8 +1120,14 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    if (!body.userId || !body.variant) {
+    if (!body.userId || typeof body.variant !== "string") {
       return new Response(JSON.stringify({ error: "userId and variant required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (!isPreferenceVariant(body.variant)) {
+      return new Response(JSON.stringify({ error: "INVALID_VARIANT" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });

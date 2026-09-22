@@ -431,7 +431,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 748 named providers across 17 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 749 named providers across 17 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 41 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 21 providers.
@@ -446,7 +446,7 @@ World Monitor publishes 748 named providers across 17 source catalog pages. Each
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 48 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
 - [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 43 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 44 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
 - [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 30 providers.
@@ -728,9 +728,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.114 across 199 scored forecasts, against 0.25 for answering 0.5 to everything.
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.115 across 200 scored forecasts, against 0.25 for answering 0.5 to everything.
 
-Captured 2026-09-19.
+Captured 2026-09-21.
 
 This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
 

@@ -6,6 +6,7 @@ import { generateStoryDeepLink, getShareUrls, shareTexts } from '@/services/stor
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 
 
 let modalEl: HTMLElement | null = null;
@@ -13,6 +14,7 @@ let focusTrap: FocusTrap | null = null;
 let currentDataUrl: string | null = null;
 let currentBlob: Blob | null = null;
 let currentData: StoryData | null = null;
+const storyRenderGuard = new LatestRequestGuard();
 
 function storyEscHandler(e: KeyboardEvent): void {
   if (e.key === 'Escape') closeStoryModal();
@@ -20,6 +22,7 @@ function storyEscHandler(e: KeyboardEvent): void {
 
 export function openStoryModal(data: StoryData): void {
   closeStoryModal();
+  const generation = storyRenderGuard.begin();
   currentData = data;
 
   modalEl = document.createElement('div');
@@ -80,20 +83,23 @@ export function openStoryModal(data: StoryData): void {
   focusTrap.activate();
 
   requestAnimationFrame(async () => {
-    if (!modalEl) return;
+    if (!storyRenderGuard.isCurrent(generation) || !modalEl) return;
     try {
-      await renderAndDisplay(data);
+      await renderAndDisplay(data, generation);
     } catch (err) {
       console.error('[StoryModal] Render error:', err);
+      if (!storyRenderGuard.isCurrent(generation)) return;
       const content = modalEl?.querySelector('.story-modal-content');
       if (content) setTrustedHtml(content, trustedHtml(`<div class="story-error">${t('modals.story.error')}</div>`, "legacy direct innerHTML migration"));
     }
   });
 }
 
-async function renderAndDisplay(data: StoryData): Promise<void> {
+async function renderAndDisplay(data: StoryData, generation: number): Promise<void> {
   const { renderStoryToCanvas } = await import('@/services/story-renderer');
+  if (!storyRenderGuard.isCurrent(generation)) return;
   const canvas = await renderStoryToCanvas(data);
+  if (!storyRenderGuard.isCurrent(generation)) return;
   currentDataUrl = canvas.toDataURL('image/png');
 
   const binStr = atob(currentDataUrl.split(',')[1] ?? '');
@@ -102,20 +108,21 @@ async function renderAndDisplay(data: StoryData): Promise<void> {
   currentBlob = new Blob([bytes], { type: 'image/png' });
 
   const content = modalEl?.querySelector('.story-modal-content');
-  if (content) {
-    setTrustedHtml(content, trustedHtml('', "legacy direct innerHTML migration"));
-    const img = document.createElement('img');
-    img.className = 'story-image';
-    img.src = currentDataUrl;
-    img.alt = `${data.countryName} Intelligence Story`;
-    content.appendChild(img);
-  }
+  if (!storyRenderGuard.isCurrent(generation) || !content) return;
+  setTrustedHtml(content, trustedHtml('', "legacy direct innerHTML migration"));
+  const img = document.createElement('img');
+  img.className = 'story-image';
+  img.src = currentDataUrl;
+  img.alt = `${data.countryName} Intelligence Story`;
+  content.appendChild(img);
 
   const shareBar = modalEl?.querySelector('.story-share-bar') as HTMLElement;
+  if (!storyRenderGuard.isCurrent(generation)) return;
   if (shareBar) shareBar.style.display = 'flex';
 }
 
 export function closeStoryModal(): void {
+  storyRenderGuard.begin();
   if (modalEl) {
     focusTrap?.deactivate();
     focusTrap = null;

@@ -1898,6 +1898,7 @@
       "etfs": "ETFs",
       "netInflow": "淨流入",
       "netOutflow": "淨流出",
+      "netNeutral": "淨中性",
       "table": {
         "ticker": "程式碼",
         "issuer": "發行方",
@@ -2163,7 +2164,7 @@
       "infoTooltip": "<strong>經濟日曆</strong> 預定的宏觀經濟資料釋出：CPI、NFP、GDP、PMI和央行決議。顯示預測值、實際值和前值。高影響事件突出顯示。來源：經濟資料提供商。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融壓力指標</strong> 堪薩斯城聯儲金融壓力指數（KCFSI）：使用11個指標衡量美國金融市場壓力，包括收益率利差、波動率和交叉相關性。正值表示高於平均水平的壓力。來源：堪薩斯城聯邦儲備銀行。",
+      "infoTooltip": "<strong>金融壓力指標</strong> WorldMonitor 對高收益信貸與長期美國國債的比率，並根據股票波動率和高收益利差進行調整：(HYG / TLT) / (VIX × HY spread / 100)。這不是堪薩斯城聯邦儲備銀行金融壓力指數。讀數為 1.5 或更高表示壓力較低；低於 0.3 表示壓力較高。",
       "title": "金融壓力指標",
       "usFsiValue": "美國FSI值",
       "cissTitle": "歐盟CISS（歐元區系統性壓力）",

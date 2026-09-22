@@ -1376,6 +1376,7 @@
       "etfs": "ETF:er",
       "netInflow": "NETTOINFLÖDE",
       "netOutflow": "NETTOUTFLÖDE",
+      "netNeutral": "NETTONEUTRALT",
       "table": {
         "ticker": "Ticker",
         "issuer": "Utgivare",
@@ -1791,7 +1792,7 @@
       "infoTooltip": "<strong>Ekonomisk kalender</strong> Schemalagda makroekonomiska publiceringar: CPI, NFP, GDP, PMI och centralbanksbeslut. Visar prognos vs. faktisk vs. föregående. Händelser med hög påverkan markerade. Källa: ekonomiska dataleverantörer."
     },
     "fsi": {
-      "infoTooltip": "<strong>Finansiell stressindikator</strong> Kansas City Feds Financial Stress Index (KCFSI): mäter stress på amerikanska finansmarknader med 11 indikatorer inklusive avkastningsspreadar, volatilitet och korskorrelationer. Positiva värden indikerar stress över genomsnittet. Källa: Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Finansiell stressindikator</strong> WorldMonitors kvot mellan högavkastande krediter och långfristiga amerikanska statsobligationer, justerad för aktievolatilitet och högavkastningsspreaden: (HYG / TLT) / (VIX × HY spread / 100). Detta är inte Federal Reserve Bank of Kansas Citys Financial Stress Index. Ett värde på 1.5 eller högre betyder låg stress; under 0.3 betyder hög stress.",
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI-VÄRDE",
       "cissTitle": "EU CISS (euroområdets systemriskövervakning)",

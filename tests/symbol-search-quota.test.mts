@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { after, it } from 'node:test';
 import handler from '../api/symbol-search.ts';
 
@@ -31,7 +32,7 @@ it('shares the cold-query budget across unique queries and callers, with cache h
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (new URL(url).origin === 'https://quota-redis.test') {
-      if (!init?.body) return Response.json({ result: url.includes('cached') ? JSON.stringify({ results: [] }) : null });
+      if (!init?.body) return Response.json({ result: url.includes(createHash('sha256').update('cached').digest('hex')) ? JSON.stringify({ results: [] }) : null });
       const commands = JSON.parse(String(init.body));
       return Response.json(commands.map((command: unknown[]) => {
         if (JSON.stringify(command).includes('rl:symbol-search:finnhub')) {

@@ -50,6 +50,7 @@ export function toolWeight(tool: ToolDef): number {
 
 /** Single access classifier used by tools/list, describe_tool, and resources. */
 export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._subscriptionOnly) return 'subscription';
   if (tool._freeTier === true) return 'free';
   // Local metadata escape hatch: authenticated free accounts may call it and
   // dispatch exempts it from both the allowance and Pro daily quota.
