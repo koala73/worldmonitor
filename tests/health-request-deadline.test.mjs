@@ -146,7 +146,7 @@ function degradedRedisFixture() {
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input instanceof Request ? input.url : input);
     await elapse(init.signal);
-    if (url.startsWith(SITE)) {
+    if (new URL(url).origin === SITE) {
       ops.push('RELAY_PROBE');
       return Response.json({ error: 'MISSING_FIELDS' }, { status: 400 });
     }
