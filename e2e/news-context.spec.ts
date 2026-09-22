@@ -12,11 +12,15 @@ for (const consumer of ['deduction', 'tech', 'posture'] as const) {
     // premium access and desktop detection are controlled fixture inputs.
     await page.addInitScript(() => {
       Object.assign(window, { __TAURI__: {} });
-      sessionStorage.setItem('wm-pro-key', 'fixture-only');
     });
     let requestBody: { geoContext: string } | undefined;
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/api/wm-session')) {
+        // setProKey grants Pro only after the HttpOnly key-session mint
+        // returns a usable expiry (#8269).
+        return route.fulfill({ json: { exp: Date.now() + 3_600_000 } });
+      }
       if (path.endsWith('/deduct-situation')) {
         requestBody = route.request().postDataJSON();
         return route.fulfill({ json: { analysis: 'Fixture response: two supplied news records.', model: 'fixture', provider: 'fixture' } });
@@ -44,7 +48,7 @@ for (const consumer of ['deduction', 'tech', 'posture'] as const) {
       const { initI18n } = await load('/src/services/i18n.ts');
       await initI18n();
       const { setProKey } = await load('/src/services/widget-store.ts');
-      setProKey('fixture-only');
+      if (!(await setProKey('fixture-only'))) throw new Error('fixture Pro key session was not established');
       const { DeductionPanel } = await load('/src/components/DeductionPanel.ts');
       const getNews = () => news;
       const app = document.getElementById('runtime-harness')!;
@@ -68,6 +72,12 @@ for (const consumer of ['deduction', 'tech', 'posture'] as const) {
       }
       mount(new DeductionPanel(getNews));
     }, { consumer, news });
+
+    // Pro-only: the deduction framework selector is unlocked only when the
+    // fixture's premium access actually took effect.
+    const frameworkButton = page.locator('.framework-settings-btn');
+    await expect(frameworkButton).toHaveCount(1);
+    await expect(frameworkButton).not.toHaveClass(/framework-settings-btn--locked/);
 
     const context = page.locator('.deduction-geo-input');
     await expect(context).toBeVisible();
