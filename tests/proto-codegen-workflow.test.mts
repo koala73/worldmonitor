@@ -464,6 +464,11 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
   it('defaults to no token permissions and never uses pull_request_target', () => {
     assert.deepEqual(workflow.permissions, {});
     assert.doesNotMatch(workflowSource, /pull_request_target/);
+    assert.equal(
+      workflow.concurrency?.group,
+      'proto-freshness-${{ github.event.pull_request.number || github.sha }}',
+      'proto-check must fall back to github.sha so two mainline pushes do not share one group (#8445)',
+    );
     assert.equal(workflow.concurrency?.['cancel-in-progress'], true);
     assert.ok(
       workflow.on?.pull_request == null || Object.keys(workflow.on.pull_request).length === 0,

@@ -36,13 +36,14 @@
 
 export const config = { runtime: 'edge' };
 
-import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
 } from '../../server/_shared/entitlement-check';
 import {
   checkProMcpAccess,
+  grantSessionVerificationUnavailableResponse,
   proMcpGateDenialResponse,
   type ProMcpEntitlement,
 } from '../../server/_shared/pro-mcp-gate';
@@ -82,7 +83,7 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
 }
 
 export interface ContextDeps {
-  resolveUserId: (req: Request) => Promise<string | null>;
+  resolveUserId: (req: Request) => Promise<string | Response | null>;
   redisGet: (key: string) => Promise<unknown | null>;
   getEntitlements: (userId: string) => Promise<ProMcpEntitlement | null>;
   now: () => number;
@@ -96,6 +97,7 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   }
 
   const userId = await deps.resolveUserId(req);
+  if (userId instanceof Response) return grantSessionVerificationUnavailableResponse();
   if (!userId) {
     return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
   }
@@ -199,7 +201,7 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
 
 export default async function handler(req: Request): Promise<Response> {
   return grantContextHandler(req, {
-    resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
+    resolveUserId: resolveSessionUserId,
     redisGet: rawRedisGet,
     getEntitlements: (userId) => getEntitlements(userId),
     now: () => Date.now(),

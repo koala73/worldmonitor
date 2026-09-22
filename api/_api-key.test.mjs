@@ -76,7 +76,7 @@ test('valid HttpOnly wm-session cookie is accepted without JS-readable auth head
 });
 
 test('HttpOnly wm-pro-key cookie is accepted as enterprise key without a JS-readable header', async () => {
-  const r = await validateApiKey(makeReq({ cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}` }));
+  const r = await validateApiKey(makeReq({ cookie: `__Host-wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}` }));
   assert.equal(r.valid, true);
   assert.equal(r.required, true);
   assert.equal(r.kind, 'enterprise');
@@ -84,16 +84,30 @@ test('HttpOnly wm-pro-key cookie is accepted as enterprise key without a JS-read
 });
 
 test('HttpOnly wm-widget-key cookie is accepted as enterprise key without a JS-readable header', async () => {
-  const r = await validateApiKey(makeReq({ cookie: `wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}` }));
+  const r = await validateApiKey(makeReq({ cookie: `__Host-wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}` }));
   assert.equal(r.valid, true);
   assert.equal(r.required, true);
   assert.equal(r.kind, 'enterprise');
   assert.equal(r.credential, ENTERPRISE_KEY, 'result must expose the credential that actually authenticated');
 });
 
+test('a stale protected cookie does not mask the other valid enterprise cookie', async () => {
+  for (const cookie of [
+    `__Host-wm-pro-key=stale; __Host-wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
+    `__Host-wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}; __Host-wm-widget-key=stale`,
+  ]) {
+    const accepted = await validateApiKey(makeReq({ cookie, key: 'wms_automatic' }), { forceKey: true });
+    assert.equal(accepted.valid, true);
+    assert.equal(accepted.credential, ENTERPRISE_KEY);
+    const rejected = await validateApiKey(makeReq({ cookie, key: 'explicit-invalid' }), { forceKey: true });
+    assert.equal(rejected.valid, false);
+    assert.equal(rejected.error, 'Invalid API key');
+  }
+});
+
 test('dual wm-pro-key cookies use the first value sent by the browser', async () => {
   const r = await validateApiKey(makeReq({
-    cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}; wm-pro-key=old-js-readable-key`,
+    cookie: `__Host-wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}; __Host-wm-pro-key=old-js-readable-key`,
   }));
   assert.equal(r.valid, true);
   assert.equal(r.required, true);
@@ -138,7 +152,7 @@ test('wms_ header + wm-pro-key cookie authenticates as enterprise (header + shad
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({
     key: token,
-    cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
+    cookie: `__Host-wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
   }));
   assert.equal(r.valid, true);
   assert.equal(r.kind, 'enterprise');
@@ -149,7 +163,7 @@ test('wms_ header + wm-pro-key cookie + forceKey still authenticates as enterpri
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({
     key: token,
-    cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
+    cookie: `__Host-wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
   }), { forceKey: true });
   assert.equal(r.valid, true, 'wms_ must not 401 a forceKey request that also carries wm-pro-key');
   assert.equal(r.kind, 'enterprise');
@@ -160,7 +174,7 @@ test('wms_ header + wm-widget-key cookie authenticates as enterprise (header + s
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({
     key: token,
-    cookie: `wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
+    cookie: `__Host-wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
   }));
   assert.equal(r.valid, true);
   assert.equal(r.kind, 'enterprise');
@@ -171,7 +185,7 @@ test('wms_ header + wm-widget-key cookie + forceKey still authenticates as enter
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({
     key: token,
-    cookie: `wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
+    cookie: `__Host-wm-widget-key=${encodeURIComponent(ENTERPRISE_KEY)}`,
   }), { forceKey: true });
   assert.equal(r.valid, true, 'wms_ must not 401 a forceKey request that also carries wm-widget-key');
   assert.equal(r.kind, 'enterprise');
@@ -195,7 +209,7 @@ for (const cookieName of ['wm-pro-key', 'wm-widget-key']) {
 test('stale tester cookie does not shadow a valid HttpOnly wm-session cookie', async () => {
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({
-    cookie: `wm-pro-key=${encodeURIComponent('rotated-old-key')}; wm-session=${encodeURIComponent(token)}`,
+    cookie: `__Host-wm-pro-key=${encodeURIComponent('rotated-old-key')}; wm-session=${encodeURIComponent(token)}`,
   }));
   assert.equal(r.valid, true);
   assert.equal(r.required, false);
@@ -206,7 +220,7 @@ test('stale tester cookie cannot turn anonymous authority into forceKey access',
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({
     key: token,
-    cookie: `wm-pro-key=${encodeURIComponent('rotated-old-key')}`,
+    cookie: `__Host-wm-pro-key=${encodeURIComponent('rotated-old-key')}`,
   }), { forceKey: true });
   assert.equal(r.valid, false);
   assert.equal(r.required, true);

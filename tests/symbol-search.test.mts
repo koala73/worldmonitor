@@ -1,5 +1,7 @@
 import { allowSymbolSearchBudget } from './helpers/symbol-search-budget.mts';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+const searchKey = (q: string) => 'symsearch:v2:' + createHash('sha256').update(q).digest('hex');
 import { afterEach, describe, it } from 'node:test';
 
 import handler, { mapFinnhubResults } from '../api/symbol-search.ts';
@@ -190,7 +192,7 @@ describe('symbol-search handler', () => {
         if (key === 'symsearch-cooldown:v1:finnhub-429') {
           return new Response(JSON.stringify({ result: JSON.stringify(cooldown) }), { status: 200 });
         }
-        if (key === 'symsearch:v1:nvidia') {
+        if (key === searchKey('nvidia')) {
           return new Response(JSON.stringify({ result: null }), { status: 200 });
         }
       }
@@ -287,7 +289,7 @@ describe('symbol-search handler', () => {
       }
       // setCachedData posts a SET-bearing pipeline; identify it by body
       // shape so we don't conflate with rate-limiter pipeline calls.
-      if (url === 'https://upstash.test/pipeline' && typeof init?.body === 'string' && init.body.includes('symsearch:v1:')) {
+      if (url === 'https://upstash.test/pipeline' && typeof init?.body === 'string' && init.body.includes('symsearch:v2:')) {
         setCalls++;
         setBody = init.body;
         return new Response(JSON.stringify([{ result: 'OK' }]), { status: 200 });
@@ -314,9 +316,42 @@ describe('symbol-search handler', () => {
     assert.equal(setCalls, 1, 'successful Finnhub result must be written to Upstash');
     // The cache key is normalized (lowercase, whitespace-folded) so 'GLW',
     // 'glw', and '  GLW ' all share one entry.
-    assert.equal(getKey, 'symsearch:v1:glw');
+    assert.equal(getKey, searchKey('glw'));
     // Sanity-check the SET command shape.
-    assert.match(setBody ?? '', /"SET","symsearch:v1:glw"/);
+    assert.ok((setBody ?? '').includes(JSON.stringify(searchKey('glw'))));
     assert.match(setBody ?? '', /"EX","600"/);
   });
+});
+
+ it('rejects invalid raw queries before authentication or Redis work', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error('unexpected I/O'); };
+  for (const q of ['a'.repeat(65), ' '.repeat(65), 'nv\nda', 'name/other', 'name\u0000']) {
+    const response = await handler(new Request(`https://worldmonitor.app/api/symbol-search?q=${encodeURIComponent(q)}`));
+    assert.equal(response.status, 400);
+  }
+  assert.equal(calls, 0);
+});
+ it('accepts bounded Unicode company names and ticker punctuation', async () => {
+  process.env.FINNHUB_API_KEY = 'test-key';
+  globalThis.fetch = allowSymbolSearchBudget((async () => Response.json({ result: [] })) as typeof fetch);
+  for (const q of ['a'.repeat(64), "L’Oréal & Co.-A", '東京']) assert.equal((await handler(makeReq(q))).status, 200);
+});
+
+it('hashes normalized equivalent queries together and keeps different queries separate', async () => {
+  process.env.FINNHUB_API_KEY = 'test-key';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-tok';
+  const keys: string[] = [];
+  globalThis.fetch = allowSymbolSearchBudget((async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/get/')) {
+      keys.push(decodeURIComponent(url.split('/get/')[1]!));
+      return Response.json({ result: JSON.stringify({ results: [] }) });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  }) as typeof fetch);
+  for (const q of ['  ACME  Corp ', 'acme corp', 'other corp']) assert.equal((await handler(makeReq(q))).status, 200);
+  assert.deepEqual(keys, [searchKey('acme corp'), searchKey('acme corp'), searchKey('other corp')]);
+  assert.ok(keys.every(key => /^symsearch:v2:[0-9a-f]{64}$/.test(key)));
 });

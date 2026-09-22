@@ -8,6 +8,7 @@
  * stops covering.
  */
 
+import { assertAccountWritable } from "../accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalAction,
@@ -119,6 +120,7 @@ export const inviteSeats = mutation({
   args: { emails: v.array(v.string()) },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const identity = await resolveUserIdentity(ctx);
     const ownerEmail = identity?.email?.trim();
     if (!ownerEmail) {
@@ -450,6 +452,7 @@ export const acceptBusinessInvite = mutation({
   args: { grantId: v.id("businessProGrants"), token: v.string() },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    await assertAccountWritable(ctx, userId);
     const identity = await resolveUserIdentity(ctx);
     const inviteeEmail = identity?.email?.trim().toLowerCase();
     if (!inviteeEmail) {
@@ -460,6 +463,7 @@ export const acceptBusinessInvite = mutation({
     if (!grant) {
       throw new ConvexError({ kind: "GRANT_NOT_FOUND" });
     }
+    await assertAccountWritable(ctx, grant.ownerUserId);
     if (grant.status !== "pending") {
       throw new ConvexError({ kind: "INVITE_ALREADY_USED" });
     }

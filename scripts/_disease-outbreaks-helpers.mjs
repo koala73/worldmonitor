@@ -172,6 +172,7 @@ export function rssNormalizeItem({ title, link, desc, pubDate, sourceName }, now
  */
 export function tghNormalizeItem(rec) {
   const publishedMs = new Date(rec.date).getTime();
+  const cases = typeof rec.cases === 'string' ? Number(rec.cases) : rec.cases;
   // place_name from TGH is often "City, District, Country" — take only the first segment for display.
   const cityName = (rec.placeName || '').split(',')[0].trim() || rec.country || '';
   return {
@@ -185,7 +186,7 @@ export function tghNormalizeItem(rec) {
     _location: cityName,
     _lat: Number.isFinite(rec.lat) ? rec.lat : null,
     _lng: Number.isFinite(rec.lng) ? rec.lng : null,
-    _cases: rec.cases ?? 0,
+    _cases: Number.isSafeInteger(cases) && cases >= 0 ? cases : 0,
     _originalPublishedMs: publishedMs,
     _publishedAtIsSynthetic: false,
   };

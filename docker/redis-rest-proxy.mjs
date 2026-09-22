@@ -69,7 +69,7 @@ function checkAuth(req) {
 // Command safety: allowlist of expected Redis commands.
 // Blocks dangerous operations like FLUSHALL, CONFIG SET, EVAL, DEBUG, SLAVEOF.
 const ALLOWED_COMMANDS = new Set([
-  'GET', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
+  'GET', 'GETDEL', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
   'TTL', 'EXPIRE', 'PEXPIRE', 'EXISTS', 'TYPE',
   'HGET', 'HSET', 'HSETNX', 'HINCRBY', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',
   'LPUSH', 'RPUSH', 'LPOP', 'RPOP', 'LRANGE', 'LLEN', 'LTRIM', 'LREM',
@@ -126,13 +126,15 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   'if okCandidate then candidate = countData(candidateData) end',
   'if not candidate or candidate.categories < 1 or candidate.items < 1 then return -1 end',
   'local canonicalRaw = nil',
-  "if KEYS[3] then canonicalRaw = redis.call('GET', KEYS[3]) end",
+  "if KEYS[4] then canonicalRaw = redis.call('GET', KEYS[4]) end",
   'local function rejectNarrower()',
-  "  if KEYS[3] and not canonicalRaw then redis.call('SET', KEYS[3], '\"__WM_NEG__\"', 'EX', ARGV[9]) end",
+  `  local attempt = '{"ts":' .. ARGV[1] .. ',"outcome":"gate-held"}'`,
+  "  redis.call('SET', KEYS[3], attempt, 'EX', ARGV[10])",
+  "  if KEYS[4] and not canonicalRaw then redis.call('SET', KEYS[4], '\"__WM_NEG__\"', 'EX', ARGV[9]) end",
   '  return 0',
   'end',
   'local function isNarrower(nextData, currentData)',
-  '  return nextData.categories < currentData.categories or nextData.items < currentData.items',
+  '  return nextData.categories < currentData.categories or nextData.items * 100 < currentData.items * 80',
   'end',
   'local function isLiveCanonicalClock(value)',
   "  if type(value) ~= 'string' then return false end",
@@ -146,6 +148,7 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '  if day < 1 or day > monthDays[month] then return false end',
   '  return value >= ARGV[7] and value <= ARGV[8]',
   'end',
+  'local carriedPeak, carriedPeakAt = nil, nil',
   "local currentRaw = redis.call('GET', KEYS[1])",
   'if currentRaw then',
   '  local okCurrent, snapshot = pcall(cjson.decode, currentRaw)',
@@ -154,11 +157,21 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '    if current then',
   '      local delta = tonumber(ARGV[1]) - (tonumber(snapshot.acceptedAt) or 0)',
   '      local live = delta >= 0 and delta <= tonumber(ARGV[2])',
-  '      if live and isNarrower(candidate, current) then return rejectNarrower() end',
+  '      if live then',
+  '        local peak, peakAt = current.items, tonumber(snapshot.acceptedAt) or 0',
+  '        local storedPeak, storedPeakAt = tonumber(snapshot.peakItemCount), tonumber(snapshot.peakAt) or 0',
+  '        local peakDelta = tonumber(ARGV[1]) - storedPeakAt',
+  '        local peakLive = storedPeak and peakDelta >= 0 and peakDelta <= tonumber(ARGV[2])',
+  '        if peakLive and tonumber(snapshot.itemCount) == current.items and storedPeak > peak then',
+  '          peak, peakAt = storedPeak, storedPeakAt',
+  '        end',
+  '        if isNarrower(candidate, { categories = current.categories, items = peak }) then return rejectNarrower() end',
+  '        if peak > candidate.items then carriedPeak, carriedPeakAt = peak, peakAt end',
+  '      end',
   '    end',
   '  end',
   'end',
-  'if KEYS[3] then',
+  'if KEYS[4] then',
   '  if canonicalRaw then',
   '    local okCanonical, canonicalData = pcall(cjson.decode, canonicalRaw)',
   "    if okCanonical and type(canonicalData) == 'table' then",
@@ -177,9 +190,11 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "local stored = '{\"acceptedAt\":' .. string.format('%.0f', tonumber(ARGV[3]) or 0)",
   "  .. ',\"categoryCount\":' .. string.format('%.0f', candidate.categories)",
   "  .. ',\"itemCount\":' .. string.format('%.0f', candidate.items)",
+  "  .. ',\"peakItemCount\":' .. string.format('%.0f', carriedPeak or candidate.items)",
+  "  .. ',\"peakAt\":' .. string.format('%.0f', carriedPeakAt or tonumber(ARGV[3]) or 0)",
   '  .. \',"data":\' .. ARGV[5] .. \'}\'',
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
-  "if KEYS[3] then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6]) end",
+  "if KEYS[4] then redis.call('SET', KEYS[4], ARGV[5], 'EX', ARGV[6]) end",
   'return 1',
 ].join('\n');
 
@@ -545,13 +560,88 @@ const CABLE_HEALTH_REPAIR_SCRIPT = [
 const WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT = [
   "if redis.call('EXISTS', KEYS[2]) == 0 then return redis.call('SREM', KEYS[1], ARGV[1]) else return 0 end",
 ].join('\n');
+// PINNED COPY of shared/free-account-allowance-scripts.mjs
+// RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT. Regenerate this block from the source
+// array literal; do not hand-edit it.
+const RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT = [
+  'local function non_negative_integer(raw)',
+  '  if raw == false or raw == nil then return 0 end',
+  '  local value = tonumber(raw)',
+  '  if value == nil or value < 0 or value ~= math.floor(value) then return nil end',
+  '  return value',
+  'end',
+  '',
+  "local calls_raw = redis.call('GET', KEYS[1])",
+  "local requests_raw = redis.call('GET', KEYS[2])",
+  "local last_raw = redis.call('GET', KEYS[3])",
+  'local calls = non_negative_integer(calls_raw)',
+  'local requests = non_negative_integer(requests_raw)',
+  'local last = nil',
+  'if last_raw ~= false and last_raw ~= nil then',
+  '  last = non_negative_integer(last_raw)',
+  'end',
+  'local calls_missing = calls_raw == false or calls_raw == nil',
+  'local requests_missing = requests_raw == false or requests_raw == nil',
+  'local last_present = last_raw ~= false and last_raw ~= nil',
+  'if calls == nil or requests == nil or (last_present and last == nil) then',
+  '  return {-1}',
+  'end',
+  'if calls_missing ~= requests_missing or requests > calls or (last_present and calls == 0) then',
+  '  return {-1}',
+  'end',
+  '',
+  'local now_ms = tonumber(ARGV[1])',
+  'local idle_gap_ms = tonumber(ARGV[2])',
+  'local calls_limit = tonumber(ARGV[3])',
+  'local requests_limit = tonumber(ARGV[4])',
+  'local opens_window = last == nil or now_ms - last >= idle_gap_ms',
+  'local activity_value = ARGV[1]',
+  'if last ~= nil and last > now_ms then activity_value = last_raw end',
+  '',
+  'if calls >= calls_limit then return {0} end',
+  'if opens_window and requests >= requests_limit then return {0} end',
+  '',
+  'calls = calls + 1',
+  'if opens_window then requests = requests + 1 end',
+  "redis.call('SET', KEYS[1], tostring(calls), 'EX', ARGV[5])",
+  'if opens_window then',
+  "  redis.call('SET', KEYS[2], tostring(requests), 'EX', ARGV[5])",
+  'end',
+  "redis.call('SET', KEYS[3], activity_value, 'PX', ARGV[2])",
+  'return {1}',
+].join('\n');
+// PINNED COPY of shared/free-account-allowance-scripts.mjs
+// READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT. Read-only GET/PTTL snapshot; same pin
+// contract as the reserve script above.
+const READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT = [
+  "local calls = redis.call('GET', KEYS[1])",
+  "local requests = redis.call('GET', KEYS[2])",
+  "local activityPttl = redis.call('PTTL', KEYS[3])",
+  'return {calls or false, requests or false, activityPttl}',
+].join('\n');
+// Pinned to shared/compare-and-delete-script.cjs. Kept inline: this file
+// connects to Redis at import time, and the command-gate tests eval the
+// source instead of importing it.
+const COMPARE_AND_DELETE_SCRIPT = [
+  "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+].join('\n');
+// Seed lock release before the shared pin (#8490). Same compare-and-delete,
+// different bytes. Rewrite onto the pin so a proxy-only rollout still
+// releases locks held by the previous seeder text.
+const LEGACY_COMPARE_AND_DELETE_SCRIPT = [
+  'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end',
+].join('\n');
 const ALLOWED_EVAL_SCRIPTS = new Set([
+  COMPARE_AND_DELETE_SCRIPT,
+  LEGACY_COMPARE_AND_DELETE_SCRIPT,
   CABLE_HEALTH_REPAIR_SCRIPT,
   WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT,
   SOURCE_RETRY_CLAIM_SCRIPT,
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
+  RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
+  READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
   X_POST_BUDGET_RESERVE_SCRIPT,
   X_POST_BUDGET_SETTLE_SCRIPT,
   X_POST_BUDGET_ACK_RECEIPTS_SCRIPT,
@@ -563,6 +653,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
+  [LEGACY_COMPARE_AND_DELETE_SCRIPT, COMPARE_AND_DELETE_SCRIPT],
   [LEGACY_X_POST_BUDGET_RESERVE_SCRIPT, X_POST_BUDGET_RESERVE_SCRIPT],
   [LEGACY_X_POST_BUDGET_STATUS_SCRIPT, X_POST_BUDGET_STATUS_SCRIPT],
 ]);

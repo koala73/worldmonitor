@@ -10,6 +10,7 @@ import { setResponseHeader } from '../../../_shared/response-headers';
 import { attachApiErrorHttpResponseMetadata } from '../../../error-mapper';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { sha256Hex } from '../../../_shared/hash';
 import { isOpenSkyProvider, requiresRedistributableProviders } from '../../../_shared/provider-redistribution';
 
 // 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
@@ -60,19 +61,15 @@ function isDegenerateBbox(req: TrackAircraftRequest): boolean {
     return req.swLat === req.neLat && req.swLon === req.neLon;
 }
 
-function assertAdmissibleBbox(req: TrackAircraftRequest): void {
-    if (![req.swLat, req.swLon, req.neLat, req.neLon].every(Number.isFinite)) {
-        throw new ApiError(400, 'Aircraft viewport coordinates must be finite', '');
-    }
-    // Match the Wingbits relay's clamp/sort policy, including MapLibre's
-    // unwrapped longitudes. Admission must precede both provider paths.
-    const clampLat = (value: number) => Math.max(-90, Math.min(90, value));
-    const clampLon = (value: number) => Math.max(-180, Math.min(180, value));
-    const latTiles = Math.max(1, Math.ceil(Math.abs(clampLat(req.neLat) - clampLat(req.swLat)) / 30));
-    const lonTiles = Math.max(1, Math.ceil(Math.abs(clampLon(req.neLon) - clampLon(req.swLon)) / 30));
-    if (latTiles * lonTiles > 36) {
-        throw new ApiError(422, 'Aircraft viewport requires more than 36 areas', '');
-    }
+// The Wingbits relay tiles a viewport into 30-degree areas and rejects more
+// than 36 (scripts/ais-relay.cjs WINGBITS_MAX_VIEWPORT_AREAS). Expects the
+// clamped, sorted viewport trackAircraft builds.
+const RELAY_TILE_DEGREES = 30;
+const RELAY_MAX_VIEWPORT_AREAS = 36;
+function exceedsRelayAreaLimit(req: TrackAircraftRequest): boolean {
+    const latTiles = Math.max(1, Math.ceil((req.neLat - req.swLat) / RELAY_TILE_DEGREES));
+    const lonTiles = Math.max(1, Math.ceil((req.neLon - req.swLon) / RELAY_TILE_DEGREES));
+    return latTiles * lonTiles > RELAY_MAX_VIEWPORT_AREAS;
 }
 
 interface OpenSkyResponse {
@@ -111,12 +108,12 @@ function parseOpenSkyStates(states: unknown[][]): PositionSample[] {
 // request that was already failing over. Removing it also returns that 6s to
 // the response budget below (#6222).
 
-function buildCacheKey(req: TrackAircraftRequest): string {
+async function buildCacheKey(req: TrackAircraftRequest): Promise<string> {
+    if (!isDegenerateBbox(req)) {
+        return `aviation:track:bbox:v2:${await sha256Hex(JSON.stringify([req.swLat, req.swLon, req.neLat, req.neLon, req.icao24, req.callsign]))}`;
+    }
     if (req.icao24) return `aviation:track:icao:${req.icao24}:v2`;
     if (req.callsign) return `aviation:track:callsign:${req.callsign.toUpperCase()}:v2`;
-    if (!isDegenerateBbox(req)) {
-        return `aviation:track:bbox:${Math.floor(req.swLat)}:${Math.floor(req.swLon)}:${Math.ceil(req.neLat)}:${Math.ceil(req.neLon)}:v1`;
-    }
     return 'aviation:track:all:v2';
 }
 
@@ -135,12 +132,22 @@ export async function trackAircraft(
     const callsign = rawCallsign.trim().toUpperCase();
     if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ApiError(400, 'Expected a six-character hexadecimal ICAO address', '');
     if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ApiError(400, 'Expected an alphanumeric callsign of at most eight characters', '');
-    req = { ...req, icao24, callsign };
-    assertAdmissibleBbox(req);
+    if (![req.swLat, req.swLon, req.neLat, req.neLon].every(Number.isFinite)) throw new ApiError(400, 'Expected finite viewport coordinates', '');
+    const lat1 = Math.max(-90, Math.min(90, req.swLat));
+    const lat2 = Math.max(-90, Math.min(90, req.neLat));
+    const lon1 = Math.max(-180, Math.min(180, req.swLon));
+    const lon2 = Math.max(-180, Math.min(180, req.neLon));
+    req = { ...req, icao24, callsign, swLat: Math.min(lat1, lat2), neLat: Math.max(lat1, lat2), swLon: Math.min(lon1, lon2), neLon: Math.max(lon1, lon2) };
+    // An oversized viewport gets an empty answer, not a 4xx: the client's
+    // track breaker opens after two failures and would blank the flights
+    // layer for five minutes after one zoom-out. Identifier lookups keep their
+    // own provider tiers.
+    const oversizedViewport = exceedsRelayAreaLimit(req);
+    if (oversizedViewport && !icao24 && !callsign) return { positions: [], source: 'none', updatedAt: Date.now() };
     if (icao24 || callsign) await admitIdentifierLookup(ctx.request);
 
     const redistributableOnly = requiresRedistributableProviders(ctx.request);
-    const cacheKey = `${buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
+    const cacheKey = `${await buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
 
     let result: { positions: PositionSample[]; source: string } | null = null;
     try {
@@ -181,7 +188,7 @@ export async function trackAircraft(
                 // absent query params to 0 rather than leaving them null, so an icao24-only
                 // request would otherwise issue a real authenticated bbox relay call for
                 // `lamin=0&lomin=0&lamax=0&lomax=0` before reaching its own 8s tier.
-                if (!isCallsignOnly && relayBase && !isDegenerateBbox(req)) {
+                if (!isCallsignOnly && relayBase && !isDegenerateBbox(req) && !oversizedViewport) {
                     const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
                     try {
                         const wbResp = await fetch(wbUrl, {
@@ -249,6 +256,9 @@ export async function trackAircraft(
     if (result) {
         let positions = result.positions;
         let source = result.source;
+        if (!isDegenerateBbox(req)) {
+            positions = positions.filter(p => p.lat >= req.swLat && p.lat <= req.neLat && p.lon >= req.swLon && p.lon <= req.neLon);
+        }
         if (redistributableOnly) {
             positions = positions.filter((position) => position.source !== 'POSITION_SOURCE_OPENSKY');
             if (isOpenSkyProvider(source)) {

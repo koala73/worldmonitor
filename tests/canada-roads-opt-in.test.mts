@@ -92,3 +92,40 @@ test('a false save leaves the marker unset and retries until persistence succeed
   assert.equal(storage.getItem(CANADA_ROADS_OPT_IN_KEY), 'done');
   assert.equal(applyCanadaRoadsOptInMigration(input, storage, () => false), input);
 });
+
+test('marker write failure restores original layers and preserves a later explicit opt-in', () => {
+  const storage = memoryStorage();
+  let fail = true;
+  const setItem = storage.setItem;
+  storage.setItem = (key, value) => {
+    if (fail) throw new Error('quota');
+    setItem(key, value);
+  };
+  const input = { canadaRoads: true, weather: true };
+  const writes: typeof input[] = [];
+  const save = (layers: typeof input) => { writes.push(layers); return true; };
+  assert.equal(applyCanadaRoadsOptInMigration(input, storage, save), input);
+  assert.deepEqual(writes, [{ canadaRoads: false, weather: true }, input]);
+  assert.equal(storage.getItem(CANADA_ROADS_OPT_IN_KEY), null);
+  assert.equal(applyCanadaRoadsOptInMigration(input, storage, save), input);
+  fail = false;
+  assert.equal(applyCanadaRoadsOptInMigration(input, storage, save).canadaRoads, false);
+  assert.equal(storage.getItem(CANADA_ROADS_OPT_IN_KEY), 'done');
+});
+
+for (const rollbackThrows of [false, true]) {
+  test(`marker failure retains original in-memory layers when rollback ${rollbackThrows ? 'throws' : 'returns false'}`, () => {
+    const input = { canadaRoads: true };
+    let calls = 0;
+    const result = applyCanadaRoadsOptInMigration(input, {
+      getItem: () => null,
+      setItem: () => { throw new Error('quota'); },
+    }, () => {
+      if (++calls === 1) return true;
+      if (rollbackThrows) throw new Error('storage unavailable');
+      return false;
+    });
+    assert.equal(result, input);
+    assert.equal(calls, 2);
+  });
+}

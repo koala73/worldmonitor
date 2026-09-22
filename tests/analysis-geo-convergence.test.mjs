@@ -90,6 +90,45 @@ describe('geo convergence cells', () => {
 });
 
 describe('geo convergence detection', () => {
+  it('replaces replayed domain snapshots without clearing other domains', () => {
+    const { engine, clock } = makeEngine();
+    const protests = [{ lat: 32.4, lon: 44.9, time: clock.now }];
+    engine.ingestEvents(protests, 'protest');
+    engine.ingestEvents(protests, 'military_flight');
+    engine.ingestEvents(protests, 'military_vessel');
+    const initial = engine.detect(new Set());
+    for (let i = 0; i < 10; i++) engine.ingestEvents(protests, 'protest');
+    assert.deepEqual(engine.detect(new Set()), initial);
+    const next = [...protests, { lat: 32.6, lon: 44.8, time: clock.now }];
+    engine.ingestEvents(next, 'protest');
+    engine.ingestEvents(next, 'protest');
+    assert.equal(engine.detect(new Set())[0].totalEvents, 4);
+    engine.ingestEvents([], 'protest');
+    assert.deepEqual(engine.alertsNear(32.5, 44.5, 100), { score: 54, types: 2 });
+  });
+
+  it('expires old observations even when their domain has newer activity', () => {
+    const { engine, clock } = makeEngine();
+    engine.ingestEvents([
+      { lat: 32.4, lon: 44.9, time: clock.now - GEO_CONVERGENCE_WINDOW_MS },
+      { lat: 32.4, lon: 44.9, time: clock.now },
+    ], 'protest');
+    engine.ingest(32.4, 44.9, 'military_flight');
+    assert.deepEqual(engine.alertsNear(32.5, 44.5, 100), { score: 56, types: 2 });
+    clock.now++;
+    assert.deepEqual(engine.alertsNear(32.5, 44.5, 100), { score: 54, types: 2 });
+    assert.equal(engine.snapshot()[0].events.find(e => e.type === 'protest').count, 1);
+  });
+
+  it('removes departed cells and does not retain invalid observations', () => {
+    const { engine, clock } = makeEngine();
+    engine.ingestEvents([{ lat: 32, lon: 44, time: clock.now }], 'protest');
+    engine.ingestEvents([{ lat: 10, lon: 10, time: clock.now }], 'protest');
+    assert.deepEqual(engine.snapshot().map(cell => cell.id), ['10,10']);
+    engine.ingestEvents([{ lat: NaN, lon: 44 }, { lat: 32, lon: 44, time: NaN }], 'protest');
+    assert.equal(engine.cellCount(), 0);
+  });
+
   it('stays silent below the 3-domain threshold and fires at it', () => {
     const { engine } = makeEngine();
     engine.ingest(32.4, 44.9, 'protest');

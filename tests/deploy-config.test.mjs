@@ -3503,11 +3503,14 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       /resource_metadata="\$\{[A-Za-z_][A-Za-z0-9_]*\}"|`[^`]*resource_metadata="\$\{[^}]+\}"/,
       'api/mcp.ts must construct resource_metadata from a host-derived variable'
     );
-    // Must actually read the request host header somewhere in the file.
+    // Must derive the origin from the request, through the shared resolver that
+    // validates Host against the allowlist (api/_agent-metadata.ts). Reading the
+    // raw header directly would reflect a spoofed Host into the discovery
+    // pointer, and could name a host whose metadata document we never serve.
     assert.match(
       source,
-      /request\.headers\.get\(['"]host['"]\)|req\.headers\.get\(['"]host['"]\)/i,
-      'api/mcp.ts should read the request host header'
+      /resolveMetadataOrigin\(req(?:uest)?\)/,
+      'api/mcp.ts must derive the resource_metadata origin via resolveMetadataOrigin'
     );
   });
 

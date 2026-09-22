@@ -84,14 +84,14 @@ test('a failing type is reported as partial coverage, not dropped and not fatal'
 
   assert.deepEqual(events.map((e) => e.id), ['gdacs-EQ-1']);
   assert.deepEqual(failedTypes.map((t) => t.eventtype), ['VO']);
-  assert.match(failedTypes[0].message, /GDACS 503 \(VO\)/);
+  assert.match(failedTypes[0].message, /gdacs:VO http HTTP_503 attempt=2/);
 });
 
 test('rejects only when every type list failed — the pre-existing "no GDACS at all" path', async () => {
   const fail = Object.fromEntries(GDACS_TYPES.map((t) => [t, 503]));
   const { fetchFn } = gdacsStub({}, { fail });
 
-  await assert.rejects(fetchGdacs(fetchFn), /GDACS unavailable: .*GDACS 503 \(EQ\)/);
+  await assert.rejects(fetchGdacs(fetchFn), /GDACS unavailable: .*gdacs:EQ http HTTP_503 attempt=2/);
 });
 
 test('the 100-event cap ranks by alert level then recency, so a flood of earthquakes cannot evict a Red cyclone', async () => {

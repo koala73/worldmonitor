@@ -16,7 +16,13 @@ WorldMonitor runs a minimal OAuth 2.1 authorization server whose only client-fac
 | URL | Purpose |
 |-----|---------|
 | `/.well-known/oauth-authorization-server` | AS metadata (endpoints, supported grants, PKCE methods) |
-| `/.well-known/oauth-protected-resource` | Resource metadata (authorization servers, scopes) |
+| `/.well-known/oauth-authorization-server/mcp` | The same AS metadata, for clients that probe the path-scoped location |
+| `/.well-known/oauth-authorization-server/api/mcp` | The same, for clients that probe it under the deployed `/api/mcp` route |
+| `/.well-known/oauth-protected-resource` | Resource metadata for the origin (authorization servers, scopes) |
+| `/.well-known/oauth-protected-resource/mcp` | Resource metadata for the MCP endpoint, naming `https://<host>/mcp` as the `resource` ([RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1)) |
+| `/.well-known/oauth-protected-resource/api/mcp` | The same, for the deployed `/api/mcp` route, naming `https://<host>/api/mcp` |
+
+Each transport path has its own document because a client accepts an advertised `resource` only when the URL it called sits under that path. The `401` challenge names the document for the path the client actually called. Clients that build that URL themselves instead of following the challenge find it there; both documents are served, so a client that discovered the origin-wide one keeps working.
 
 `/.well-known/oauth-protected-resource` currently advertises the public resource scope `mcp`. Pro authorization-code grants return the internal scope value `mcp_pro`; legacy API-key grants and `client_credentials` return `mcp`.
 

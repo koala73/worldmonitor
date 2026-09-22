@@ -431,7 +431,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 748 named providers across 17 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 750 named providers across 17 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 41 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 21 providers.
@@ -443,10 +443,10 @@ World Monitor publishes 748 named providers across 17 source catalog pages. Each
 - [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
 - [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
 - [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 44 providers.
-- [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 48 providers.
+- [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 49 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
 - [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 43 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 44 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
 - [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 30 providers.
@@ -728,9 +728,9 @@ The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the M
 
 The standing forecast-resolution record is published at https://www.worldmonitor.app/accuracy/.
 
-Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.118 across 180 scored forecasts, against 0.25 for answering 0.5 to everything.
+Over the current 180-day window, World Monitor's headline cohort scores a Brier of 0.115 across 200 scored forecasts, against 0.25 for answering 0.5 to everything.
 
-Captured 2026-09-10.
+Captured 2026-09-21.
 
 This page does not publish confidence intervals; each figure is published with the number of forecasts behind it instead. It does not score the 24-hour, 7-day and 30-day projections shown in the product. It publishes aggregates only — no individual forecasts, resolution evidence, judge inputs or archive locations.
 
@@ -1717,7 +1717,7 @@ historical continuity.
 
 For the full construct rationale and the rejected alternatives (program-
 weight categorization, transit-hub exclusion lists), see
-[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions--tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
+[known-limitations.md § tradeSanctions → tradePolicy](./known-limitations.md#tradesanctions-%E2%86%92-tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25).
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -2674,7 +2674,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **Acceptance gates.** Spearman must be at least 0.85, at least 60% of countries must move by less than 3 overall points, and no non-sanctions country may move by more than 12 points. Headline-eligibility changes and finance source-failure rows remain explicit in the artifact.
 - **Issue state.** #6461 is already closed by #6515, which landed the residual absence-as-strength fix. No issue reprioritization mutation is required.
 
-See [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
+See [`financial-system-exposure-flag-flip-runbook.md`](https://github.com/koala73/worldmonitor/blob/main/docs/methodology/financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
 
 <a id="corpus-editorial-notes"></a>
 ### Editorial notes

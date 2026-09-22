@@ -1,7 +1,8 @@
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp } from '../_rate-limit.js';
+import { getClientIp, RATE_LIMIT_DEGRADED_HEADERS, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
+import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 import { Ratelimit } from '@upstash/ratelimit';
@@ -14,6 +15,22 @@ const CLIENT_TTL_SECONDS = 90 * 24 * 3600; // 90 days sliding
 // VS Code registers 4 redirect URIs at once. Every entry must still pass the
 // allowlist, so this only bounds the stored record.
 const MAX_REDIRECT_URIS = 8;
+
+const lastDegradedReport = new Map();
+function reportAdmissionUnavailable(stage, message, ctx) {
+  const now = Date.now();
+  const last = lastDegradedReport.get(stage);
+  if (last !== undefined && now - last < 60_000) return;
+  lastDegradedReport.set(stage, now);
+  // Only fixed messages: SDK errors can include credentials or request data.
+  console.error(`[rate-limit] redis-error stage=${stage} msg=${message}`);
+  captureSilentError(new Error(message), {
+    tags: { surface: 'api', component: 'rate-limit', route: 'api/oauth/register', stage },
+    fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
+    level: rateLimitErrorLevel(stage, message),
+    ctx,
+  });
+}
 
 function jsonResp(body, status = 200) {
   return jsonResponse(body, status, getPublicCorsHeaders('POST, OPTIONS'));
@@ -53,7 +70,7 @@ async function storeClient(clientId, metadata) {
   } catch { return false; }
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   const corsHeaders = getPublicCorsHeaders('POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
@@ -63,14 +80,27 @@ export default async function handler(req) {
     return jsonResp({ error: 'method_not_allowed' }, 405);
   }
 
-  const rl = getRatelimit();
-  if (rl) {
-    try {
-      const { success } = await rl.limit(`ip:${getClientIp(req)}`);
-      if (!success) {
-        return jsonResp({ error: 'rate_limit_exceeded', error_description: 'Too many registration requests.' }, 429);
-      }
-    } catch { /* graceful degradation */ }
+  let admission;
+  let missingConfig = false;
+  try {
+    const rl = getRatelimit();
+    missingConfig = !rl;
+    if (rl) admission = await rl.limit(`ip:${getClientIp(req)}`);
+  } catch { /* Missing admission is unavailable, never permission to persist. */ }
+  // Upstash can resolve a timeout with success:true without an admission decision.
+  if (!admission || admission.reason === 'timeout' || typeof admission.success !== 'boolean') {
+    const stage = missingConfig ? 'oauthRegister:missing-config'
+      : admission?.reason === 'timeout' ? 'oauthRegister:timeout' : 'oauthRegister';
+    const message = missingConfig ? 'Upstash Redis is not configured'
+      : admission?.reason === 'timeout' ? 'Upstash rate-limit decision timed out' : 'Upstash rate-limit decision unavailable';
+    reportAdmissionUnavailable(stage, message, ctx);
+    return jsonResponse({
+      error: 'temporarily_unavailable',
+      error_description: 'Client registration admission is temporarily unavailable.',
+    }, 503, { ...corsHeaders, ...RATE_LIMIT_DEGRADED_HEADERS, 'Cache-Control': 'no-store' });
+  }
+  if (!admission.success) {
+    return jsonResp({ error: 'rate_limit_exceeded', error_description: 'Too many registration requests.' }, 429);
   }
 
   let body;
