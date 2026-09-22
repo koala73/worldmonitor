@@ -18,7 +18,7 @@ beforeAll(async () => {
   await initTestI18n();
 });
 
-const SEEDED_ORDER = ['bloomberg', 'sky', 'cnbc'] as const;
+const SEEDED_ORDER = ['bloomberg', 'sky', 'dw'] as const;
 
 let panel: LiveNewsPanel;
 
@@ -67,6 +67,19 @@ afterEach(() => {
 });
 
 describe('LiveNewsPanel channel keyboard reorder', () => {
+  it('drops a stored channel id that is no longer built in', () => {
+    panel.destroy();
+    document.body.innerHTML = '';
+    localStorage.setItem(
+      STORAGE_KEYS.liveChannels,
+      JSON.stringify({ order: ['bloomberg', 'cnbc', 'sky'], custom: [], displayNameOverrides: {} }),
+    );
+    panel = new LiveNewsPanel();
+    document.body.appendChild(element());
+
+    expect(channelIds()).toEqual(['bloomberg', 'sky']);
+  });
+
   it('moves the focused channel one slot right and persists order', () => {
     const buttons = channelButtons();
     expect(buttons.map((btn) => btn.dataset.channelId)).toEqual([...SEEDED_ORDER]);
@@ -76,9 +89,9 @@ describe('LiveNewsPanel channel keyboard reorder', () => {
 
     dispatchArrow(first as HTMLButtonElement, 'ArrowRight');
 
-    expect(channelIds()).toEqual(['sky', 'bloomberg', 'cnbc']);
+    expect(channelIds()).toEqual(['sky', 'bloomberg', 'dw']);
     expect(document.activeElement).toBe(first);
-    expect(persistedOrder()).toEqual(['sky', 'bloomberg', 'cnbc']);
+    expect(persistedOrder()).toEqual(['sky', 'bloomberg', 'dw']);
   });
 
   it('leaves order unchanged on ArrowRight at the last channel and does not preventDefault', () => {

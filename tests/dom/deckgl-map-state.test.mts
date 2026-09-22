@@ -158,8 +158,7 @@ const { FakeMap, fakeMaps } = vi.hoisted(() => {
 vi.mock('maplibre-gl', () => {
   const namespace = {
     Map: FakeMap,
-    getRTLTextPluginStatus: (): string => 'loaded',
-    setRTLTextPlugin: (): void => {},
+    setWorkerUrl: (): void => {},
     addProtocol: (): void => {},
     removeProtocol: (): void => {},
     NavigationControl: class {},

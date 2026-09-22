@@ -123,6 +123,20 @@ describe('Edge Function no node: built-ins', () => {
   }
 });
 
+// AGENTS.md: legacy JS entries share code only through `_*.js` helpers or
+// packages. Importing another route entry couples two deployables and bundles
+// the whole sibling handler (#8305 briefly had authorize.js import register.js).
+describe('Legacy JS entries import only _-prefixed relative modules', () => {
+  for (const { name, path } of allEdgeFunctions) {
+    it(`${name} imports no sibling route entry`, () => {
+      const src = readFileSync(path, 'utf-8');
+      const specs = [...src.matchAll(/(?:from|import\()\s*['"](\.[^'"]+)['"]/g)].map((m) => m[1]);
+      const routes = specs.filter((spec) => !spec.split('/').pop().startsWith('_'));
+      assert.deepEqual(routes, [], `${name}: move shared code into a _-prefixed helper`);
+    });
+  }
+});
+
 // The legacy api/*.js allowlist that previously lived here was replaced by
 // api/api-route-exceptions.json + scripts/enforce-sebuf-api-contract.mjs (see
 // docs/adding-endpoints.mdx). The new check covers nested paths and .ts files,

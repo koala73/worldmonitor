@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// UsTreasuryParYieldCurve is one business day's Treasury par yield curve.
+// A tenor is absent when Treasury did not publish it that day.
+message UsTreasuryParYieldCurve {
+  // UTC midnight of the business day, as Unix epoch milliseconds.
+  int64 date = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // 1-month par yield, in percent.
+  optional double one_month = 2;
+  // 1.5-month par yield, in percent.
+  optional double one_and_a_half_month = 3;
+  // 2-month par yield, in percent.
+  optional double two_month = 4;
+  // 3-month par yield, in percent.
+  optional double three_month = 5;
+  // 4-month par yield, in percent.
+  optional double four_month = 6;
+  // 6-month par yield, in percent.
+  optional double six_month = 7;
+  // 1-year par yield, in percent.
+  optional double one_year = 8;
+  // 2-year par yield, in percent.
+  optional double two_year = 9;
+  // 3-year par yield, in percent.
+  optional double three_year = 10;
+  // 5-year par yield, in percent.
+  optional double five_year = 11;
+  // 7-year par yield, in percent.
+  optional double seven_year = 12;
+  // 10-year par yield, in percent.
+  optional double ten_year = 13;
+  // 20-year par yield, in percent.
+  optional double twenty_year = 14;
+  // 30-year par yield, in percent.
+  optional double thirty_year = 15;
+}
+
+// GetUsTreasuryParYieldCurveRequest chooses the latest business day or the daily history.
+message GetUsTreasuryParYieldCurveRequest {
+  // When true, return every stored business day since 1990. When false, return the latest day.
+  bool history = 1 [(sebuf.http.query) = {name: "history"}];
+}
+
+// GetUsTreasuryParYieldCurveResponse is the par curve for the requested window.
+message GetUsTreasuryParYieldCurveResponse {
+  // Business days in ascending order. One element when history is false.
+  repeated UsTreasuryParYieldCurve curves = 1;
+  // True when the seeded curve is unavailable. An empty list is not a zero yield.
+  bool unavailable = 2;
+}

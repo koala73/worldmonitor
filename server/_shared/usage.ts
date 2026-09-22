@@ -106,6 +106,7 @@ export type RequestReason =
   | 'internal_mcp_replay'
   | 'unknown_route'
   | 'method_not_allowed'
+  | 'canonical_endpoint_required'
   | 'cors_error'
   // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
   // would-have-rejected but served (shadow mode), threaded onto the single
@@ -137,7 +138,10 @@ export interface RequestEvent {
   status: number;
   duration_ms: number;
   req_bytes: number;
-  res_bytes: number;
+  // null when size is genuinely unknown (e.g. chunked/SSE with no
+  // Content-Length). Never coerce a missing header to 0 — that made empty
+  // and unknown responses indistinguishable (#8403).
+  res_bytes: number | null;
   customer_id: string | null;
   principal_id: string | null;
   auth_kind: AuthKind;
@@ -162,6 +166,11 @@ export interface RequestEvent {
   host: string | null;
   sentry_trace_id: string | null;
   reason: RequestReason;
+  // #8403 — MCP JSON-RPC attribution. HTTP `method` stays the transport verb;
+  // these fields name the JSON-RPC method and (for tools/call) the registered
+  // tool. null on non-MCP routes and on MCP requests that never parsed a body.
+  rpc_method: string | null;
+  tool_name: string | null;
 }
 
 export interface UpstreamEvent {
@@ -249,7 +258,7 @@ export function buildRequestEvent(p: {
   status: number;
   durationMs: number;
   reqBytes: number;
-  resBytes: number;
+  resBytes: number | null;
   customerId: string | null;
   principalId: string | null;
   authKind: AuthKind;
@@ -270,6 +279,10 @@ export function buildRequestEvent(p: {
   host: string | null;
   sentryTraceId: string | null;
   reason: RequestReason;
+  /** JSON-RPC method on MCP surfaces; null elsewhere (#8403). */
+  rpcMethod?: string | null;
+  /** Registry-bounded tools/call name; null when unknown/non-call (#8403). */
+  toolName?: string | null;
 }): RequestEvent {
   return {
     _time: new Date().toISOString(),
@@ -302,6 +315,8 @@ export function buildRequestEvent(p: {
     host: p.host,
     sentry_trace_id: p.sentryTraceId,
     reason: p.reason,
+    rpc_method: p.rpcMethod ?? null,
+    tool_name: p.toolName ?? null,
   };
 }
 

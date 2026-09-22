@@ -1,3 +1,4 @@
+import { normalizeStockSymbol } from '../../shared/stock-symbol';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AnalyzeStockResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -42,7 +43,8 @@ export function mergeStockAnalysisHistory(
 
   for (const snapshot of incoming) {
     if (!snapshot?.symbol || !snapshot.available) continue;
-    const symbol = snapshot.symbol;
+    const symbol = normalizeStockSymbol(snapshot.symbol);
+    if (!symbol) continue;
     const current = next[symbol] ? [...next[symbol]!] : [];
     if (!current.some((item) => isSameSnapshot(item, snapshot))) {
       current.push(snapshot);
@@ -109,7 +111,7 @@ export function hasFreshStockAnalysisHistory(
 ): boolean {
   if (symbols.length === 0) return false;
   const now = Date.now();
-  return symbols.every((symbol) => isFreshSnapshot(history[symbol]?.[0], now, maxAgeMs));
+  return symbols.every((symbol) => isFreshSnapshot(history[normalizeStockSymbol(symbol)]?.[0], now, maxAgeMs));
 }
 
 export function getMissingOrStaleStockAnalysisSymbols(
@@ -118,7 +120,7 @@ export function getMissingOrStaleStockAnalysisSymbols(
   maxAgeMs = STOCK_ANALYSIS_FRESH_MS,
 ): string[] {
   const now = Date.now();
-  return symbols.filter((symbol) => !isFreshSnapshot(history[symbol]?.[0], now, maxAgeMs));
+  return symbols.filter((symbol) => !isFreshSnapshot(history[normalizeStockSymbol(symbol)]?.[0], now, maxAgeMs));
 }
 
 export async function fetchStockAnalysisHistory(
@@ -134,7 +136,9 @@ export async function fetchStockAnalysisHistory(
 
   const history: StockAnalysisHistory = {};
   for (const item of response.items) {
-    history[item.symbol] = [...item.snapshots].sort(compareSnapshots);
+    const symbol = normalizeStockSymbol(item.symbol);
+    if (!symbol) continue;
+    history[symbol] = [...item.snapshots].sort(compareSnapshots);
   }
   return history;
 }

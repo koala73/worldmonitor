@@ -1,3 +1,4 @@
+import { isAccountDeleting } from "./accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -196,6 +197,9 @@ export const recordUsageEvaluation = internalMutation({
     notice: v.optional(noticeInputValidator),
   },
   handler: async (ctx, args) => {
+    if (await isAccountDeleting(ctx, args.rollup.userId)) {
+      return { rollupId: null, noticeId: null };
+    }
     const ratio = usageRatio(args.rollup.usage, args.rollup.limit);
     if (!args.notice) {
       // No threshold notice this scan. Do NOT persist an apiUsageRollups row

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
+import { PREFERENCE_VARIANTS } from '../shared/cloud-preferences-contract.ts';
+import { SITE_VARIANTS } from '../src/config/variant.ts';
 
 import handler, {
   __setUserPrefsDepsForTests,
@@ -457,5 +459,46 @@ describe('user-prefs POST write rate limit', () => {
 
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { error: 'BLOB_TOO_LARGE' });
+  });
+});
+
+describe('user-prefs variant boundary', () => {
+  it('supports exactly the current app variants', () => {
+    assert.deepEqual(PREFERENCE_VARIANTS, SITE_VARIANTS);
+  });
+  const variants = ['full', 'tech', 'finance', 'happy', 'commodity', 'energy'];
+  const invalidVariants = ['', 'FULL', ' full', 'full ', 'unknown', '__proto__', 'x'.repeat(1024)];
+
+  for (const variant of [...variants, ...invalidVariants]) {
+    it(`validates GET and POST variant ${JSON.stringify(variant.slice(0, 20))}`, async () => {
+      process.env.CONVEX_URL = 'https://convex.test';
+      const { calls } = installDeps({ allowed: true, limit: 30, reset: 0, degraded: false });
+      const valid = variants.includes(variant);
+      const get = await handler(new Request(
+        `https://worldmonitor.app/api/user-prefs?variant=${encodeURIComponent(variant)}`,
+        { headers: { Authorization: 'Bearer test-token' } },
+      ));
+      const post = await handler(makePost({ variant, data: { theme: 'dark' }, expectedSyncVersion: 0 }));
+      assert.equal(get.status, valid ? 200 : 400);
+      assert.equal(post.status, valid ? 200 : 400);
+      const operations = calls.filter(c => c.kind === 'query' || c.kind === 'mutation');
+      if (valid) {
+        assert.deepEqual(operations.map(c => c.args.variant), [variant, variant]);
+      } else {
+        assert.deepEqual(await get.json(), { error: 'INVALID_VARIANT' });
+        assert.deepEqual(await post.json(), { error: 'INVALID_VARIANT' });
+        assert.deepEqual(operations, []);
+      }
+    });
+  }
+
+  it('defaults only an absent GET variant to full', async () => {
+    process.env.CONVEX_URL = 'https://convex.test';
+    const { calls } = installDeps({ allowed: true, limit: 30, reset: 0, degraded: false });
+    const response = await handler(new Request('https://worldmonitor.app/api/user-prefs', {
+      headers: { Authorization: 'Bearer test-token' },
+    }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls.find(c => c.kind === 'query')?.args, { variant: 'full' });
   });
 });
