@@ -2045,28 +2045,34 @@ describe('privileged publish and auto-merge conditions', () => {
     }
   });
 
-  it('republishes on a push to main that touches docker-relevant paths, and nothing else', () => {
+  it('republishes on a push to main unless it only touches build-irrelevant paths', () => {
     // `on.push` rather than a job-level `if:` -- docker-publish.yml publishes
     // no gate-required check, so the "never gate on a workflow's paths:"
     // convention (docs/solutions/conventions/…) does not apply here.
-    const push = (dockerPublish as { on: { push?: { branches?: string[]; paths?: string[] } } }).on.push;
+    const push = (dockerPublish as { on: { push?: { branches?: string[]; 'paths-ignore'?: string[] } } }).on.push;
     assert.ok(push, 'docker-publish.yml must trigger on push');
     assert.deepEqual(push.branches, ['main']);
-    // Every entry here is load-bearing: unfiltered, every merge to main would
-    // rebuild and republish `latest`. Deliberately narrower than `unit`'s code
-    // filter -- this asks "does this affect the built image", not "is this a
-    // logic change" -- and kept in step by eye with test.yml's docker-image
-    // job filter (#8503), which answers the same question at PR time.
+    // An ignore-list, not an allow-list (#7808 review, CodeRabbit):
+    // docker/Dockerfile's builder stage runs `COPY . .` then
+    // `npx tsc && npx vite build`, so nearly every path NOT listed here can
+    // reach the built image -- an allow-list of "files the Dockerfile
+    // references directly" previously missed src/, vite.config.ts, and most
+    // of scripts/, silently falling back to the cron's up-to-a-week bound for
+    // ordinary application changes.
     assert.deepEqual(
-      [...(push.paths ?? [])].sort(),
+      [...(push['paths-ignore'] ?? [])].sort(),
       [
-        '.dockerignore',
-        'docker/**',
-        'package-lock.json',
-        'package.json',
-        'pro-test/package-lock.json',
-        'pro-test/package.json',
-        'scripts/generate-inventory-facts.mjs',
+        '**/*.md',
+        '.agents/**',
+        '.claude/**',
+        '.factory/**',
+        '.github/**',
+        '.planning/**',
+        '.windsurf/**',
+        'docs/**',
+        'e2e/**',
+        'src-tauri/**',
+        'tests/**',
       ].sort(),
     );
   });

@@ -37,27 +37,41 @@ on:
     types: [published]
   push:
     branches: [main]
-    # "Does this change affect the built image" -- scoped to what's specific
-    # to the container, not the full app-source surface unit/typecheck already
-    # gate for logic correctness: docker/ itself, the build context
-    # (.dockerignore), the npm install inputs the build stage runs
-    # (package.json, package-lock.json), the pro-test lockfile build:pro
-    # installs on its own, and the one script the Dockerfile names directly
-    # (generate-inventory-facts.mjs). Unfiltered, every merge to main --
-    # several an hour -- would rebuild and republish `latest` for changes that
-    # cannot affect it.
+    # "Does this change affect the built image" -- an ignore-list, not an
+    # allow-list, because docker/Dockerfile's builder stage runs `COPY . .`
+    # then `npx tsc && npx vite build` (#7808 review, CodeRabbit): nearly
+    # everything not excluded by .dockerignore reaches the built image,
+    # including src/, public/, api/, server/, proto/, most of scripts/ (several
+    # of its files run via npm aliases like build:crawlable-corpus and
+    # build:sitemap, not just generate-inventory-facts.mjs), vite.config.ts,
+    # and every tsconfig*.json. An earlier allow-list here named only the files
+    # docker/Dockerfile references directly and missed all of that -- it would
+    # have silently fallen back to the cron's up-to-a-week bound for ordinary
+    # application changes, the opposite of what this trigger exists for.
+    #
+    # The list below excludes only what plainly cannot reach the served
+    # output: tests, e2e, docs, desktop (src-tauri), agent/editor metadata
+    # directories, CI workflow files, and Markdown. A future top-level
+    # directory that is genuinely build-irrelevant needs an entry added here
+    # to stay quiet; one that IS build-relevant needs no entry at all, which
+    # is the safer direction for a filter to fail in.
     #
     # This is what makes the schedule below a backstop rather than the primary
-    # mechanism: a Dependabot base-image or action-digest bump now republishes
-    # `latest` within minutes of merging, not up to six days later.
-    paths:
-      - 'docker/**'
-      - '.dockerignore'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'pro-test/package.json'
-      - 'pro-test/package-lock.json'
-      - 'scripts/generate-inventory-facts.mjs'
+    # mechanism: a Dependabot base-image or action-digest bump, or an ordinary
+    # application change, now republishes `latest` within minutes of merging,
+    # not up to six days later.
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
+      - '.agents/**'
+      - '.claude/**'
+      - '.factory/**'
+      - '.planning/**'
+      - '.windsurf/**'
+      - 'docs/**'
+      - 'e2e/**'
+      - 'src-tauri/**'
+      - 'tests/**'
   schedule:
     # Wednesdays at 02:19 UTC. Off the hour because GitHub runs the scheduled
     # queue late when it is loaded and that load peaks on the hour, and outside
@@ -74,16 +88,22 @@ on:
 # A release, a push-triggered rebuild and a scheduled rebuild can all overlap,
 # and all three push `latest`. Serializing them keeps concurrent pushes from
 # interleaving the multi-platform OCI index. It does NOT give the release
-# precedence: queueing is first-in-first-out, so whichever run finishes last is
-# the one whose `latest` survives, and a rebuild queued behind a release will
-# overwrite the release's `latest` with a main build afterwards. That is
-# consistent with `latest` tracking main by design; it is not a race the group
-# protects against.
+# precedence: GitHub keeps at most one pending run per concurrency group, so
+# whichever of the three is queued *last* while another is in progress is the
+# one that actually runs next -- an earlier-queued trigger in between is
+# evicted before it ever starts (GitHub's own documented concurrency-group
+# behavior, not something this workflow implements). A rebuild queued behind a
+# release therefore still overwrites the release's `latest` with a main build
+# once it runs, consistent with `latest` tracking main by design; it is not a
+# race the group protects against.
 #
-# Several docker-relevant merges landing close together queue that many
-# sequential rebuilds rather than one, since cancel-in-progress stays false --
-# accepted for the same reason: an in-progress build has no way to know it will
-# be superseded before its push, and cancelling it there risks a torn index.
+# Several docker-relevant merges landing close together do not each get their
+# own rebuild: only the run already in progress and the single latest pending
+# trigger survive, so a burst collapses to at most two rebuilds rather than
+# one per merge. cancel-in-progress stays false because an in-progress build
+# has no way to know it will be superseded before its push, and cancelling it
+# there risks a torn index -- eviction only ever reaches a pending run that
+# has not started.
 concurrency:
   group: docker-publish
   cancel-in-progress: false
