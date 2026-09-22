@@ -2322,6 +2322,70 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.match(String(disarm.run), /retry gh pr merge --disable-auto/, 'a transient API failure must not leave a stale arming');
   });
 
+  it('leaves a newer run\'s arming alone when a stale disarm run reaches the API late', () => {
+    // cancel-in-progress removes most of the race, but GitHub does not
+    // guarantee event ordering (CodeRabbit, citing GitHub's own docs): a
+    // disqualified run for an old commit can still execute this step after a
+    // newer, qualifying run has already armed for a different head.
+    // `--match-head-commit` gives the enable call an atomic guard against
+    // exactly this; `--disable-auto` has none, so the script checks by hand.
+    // Executes the real step against a fake `gh` rather than evaluating the
+    // `if:` expression, because the guard this covers is bash logic inside
+    // the step, not a step condition.
+    const disarm = (autoMerge.jobs['auto-merge'].steps as { name?: string; run?: string }[]).find(
+      (step) => step.name === 'Disarm auto-merge when this commit does not qualify',
+    );
+    assert.ok(disarm?.run, 'dependabot-auto-merge.yml must keep the disarm step');
+
+    const workDir = mkdtempSync(resolve(tmpdir(), 'wm-disarm-'));
+    try {
+      const callLog = resolve(workDir, 'calls');
+      const ghPath = resolve(workDir, 'gh');
+      // Answers both `gh pr view` shapes the step queries, and records every
+      // invocation so the test can assert whether --disable-auto ran.
+      writeFileSync(
+        ghPath,
+        `#!/bin/bash
+echo "$*" >> "${callLog}"
+if [[ "$*" == *"--json autoMergeRequest"* ]]; then
+  echo '{"state":"ENABLED"}'
+elif [[ "$*" == *"--json headRefOid"* ]]; then
+  echo "$FAKE_CURRENT_HEAD"
+fi
+`,
+        { mode: 0o755 },
+      );
+
+      const runDisarm = (headSha: string, currentHead: string) => {
+        writeFileSync(callLog, '');
+        execFileSync('bash', ['-c', disarm.run as string], {
+          env: {
+            PATH: `${workDir}:${process.env.PATH}`,
+            PR_URL: 'https://example.invalid/pr/1',
+            HEAD_SHA: headSha,
+            FAKE_CURRENT_HEAD: currentHead,
+            GH_TOKEN: 'x',
+            GITHUB_ACTOR: 'a-maintainer',
+          },
+          stdio: 'pipe',
+        });
+        return readFileSync(callLog, 'utf8');
+      };
+
+      // This run's own head is still the PR's live head: disarm for real.
+      assert.match(runDisarm('abc123', 'abc123'), /--disable-auto/, 'a genuinely stale run must still disarm');
+      // A newer run already moved the head before this stale run reached the
+      // API: it must not disarm what the newer run may have just armed.
+      assert.doesNotMatch(
+        runDisarm('abc123', 'def456'),
+        /--disable-auto/,
+        'a run racing behind a newer head must leave the decision to the run evaluating that head',
+      );
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
   it('classifies bumped actions against the trusted publishers', () => {
     const publisher = (autoMerge.jobs['auto-merge'].steps as { id?: string; run?: string }[]).find(
       (step) => step.id === 'publisher',
