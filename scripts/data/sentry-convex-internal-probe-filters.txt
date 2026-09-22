@@ -7,6 +7,7 @@
 *Could not find public function for 'accountDeletion/batches:advanceEraseSafely'*
 *Could not find public function for 'accountDeletion/batches:getBatchSnapshot'*
 *Could not find public function for 'accountDeletion/batches:markBatchFailed'*
+*Could not find public function for 'accountDeletion/batches:reapStalledDeletions'*
 *Could not find public function for 'accountDeletion/erase:beginConfirmedErase'*
 *Could not find public function for 'accountDeletion/erase:eraseConfirmedUser'*
 *Could not find public function for 'accountDeletion/erase:getExternalEraseSnapshot'*

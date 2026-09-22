@@ -13,6 +13,7 @@ import type { AuthSession } from '@/services/auth-state';
 import type { SubscriptionInfo } from '@/services/billing';
 
 let session: AuthSession = signedIn('user_self');
+const authSubscribers: Array<(state: AuthSession) => void> = [];
 let mockSubscription: SubscriptionInfo | null = subscription();
 let entitled = true;
 let subscriptionLoaded = true;
@@ -41,8 +42,20 @@ vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
 vi.mock('@/services/auth-state', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/auth-state')>()),
   getAuthState: () => session,
-  subscribeAuthState: () => () => {},
+  subscribeAuthState: (cb: (state: AuthSession) => void) => {
+    authSubscribers.push(cb);
+    return () => {
+      const i = authSubscribers.indexOf(cb);
+      if (i >= 0) authSubscribers.splice(i, 1);
+    };
+  },
 }));
+
+/** Drive an account switch the way the real auth store would. */
+function switchAccountTo(next: AuthSession): void {
+  session = next;
+  for (const cb of [...authSubscribers]) cb(next);
+}
 
 vi.mock('@/services/clerk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/clerk')>()),
@@ -203,6 +216,7 @@ beforeAll(async () => {
 beforeEach(() => {
   storageValues.clear();
   vi.stubGlobal('localStorage', storage);
+  authSubscribers.length = 0;
   session = signedIn('user_self');
   mockSubscription = subscription();
   entitled = true;
@@ -380,6 +394,65 @@ describe('UnifiedSettings account deletion', () => {
 
     resolveRequest({ status: 'complete', userIdHash: 'abc' });
     await vi.waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('closes the dialog when the signed-in account changes underneath it', () => {
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    expect(document.querySelector('.account-deletion-dialog-overlay')).not.toBeNull();
+
+    // A deletion confirmed for user A must never be applied to user B, so the
+    // dialog is torn down on any real identity change.
+    switchAccountTo(signedIn('user_other'));
+    expect(document.querySelector('.account-deletion-dialog-overlay')).toBeNull();
+    expect(deletionMocks.request).not.toHaveBeenCalled();
+  });
+
+  it('still reports a failure when the account switched away mid-deletion', async () => {
+    let rejectRequest!: (err: Error) => void;
+    deletionMocks.request.mockReturnValue(new Promise((_resolve, reject) => {
+      rejectRequest = reject;
+    }));
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    typePhrase('DELETE');
+    document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
+    expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+
+    // The dialog is the only surface that renders deletionError, so once an
+    // account switch removes it the failure has nowhere to go but a toast.
+    switchAccountTo(signedIn('user_other'));
+    expect(document.querySelector('.account-deletion-dialog-overlay')).toBeNull();
+
+    rejectRequest(new Error('Convex unavailable'));
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(expect.stringMatching(/Convex unavailable/));
+    });
+    expect(signOutMock).not.toHaveBeenCalled();
+  });
+
+  it('does not leave Confirm one click away when the poll gives up', async () => {
+    deletionMocks.request.mockRejectedValue(
+      new Error('Account deletion is still running. Reload in a moment to check.'),
+    );
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    typePhrase('DELETE');
+    document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-deletion-error]')?.textContent)
+        .toMatch(/still running/i);
+    });
+    // The server is still working, so a reflex re-submit must not be possible
+    // without deliberately re-typing the phrase...
+    const confirm = document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!;
+    expect(confirm.disabled).toBe(true);
+    expect(document.querySelector<HTMLInputElement>('[data-deletion-phrase]')!.value).toBe('');
+    // ...but the dialog must still be dismissable, not latched forever.
+    document.querySelector<HTMLButtonElement>('[data-deletion-cancel]')!.click();
+    expect(document.querySelector('.account-deletion-dialog-overlay')).toBeNull();
+    expect(signOutMock).not.toHaveBeenCalled();
   });
 
   it('shows a retryable error and keeps the session on failure', async () => {

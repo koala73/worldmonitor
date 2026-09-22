@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
@@ -870,11 +873,11 @@ describe("account deletion registry is enforced, not documentation", () => {
   // `delete` targets erased by a dedicated stepper instead of the generic
   // personal-table walk. Adding one here is a deliberate, reviewable act.
   const DEDICATED_DELETE_STEPS = new Set([
-    "followedCountries",        // eraseFollows: also decrements country aggregates
-    "businessProGrants",        // eraseGrants: owner vs invitee, recomputes seats
-    "proActivationPresentations", // eraseGrants
-    "registrations",            // eraseEmailKeyed: verified-email keyed
-    "contactMessages",          // eraseEmailKeyed: verified-email keyed
+    "followedCountries",          // eraseFollows: also decrements country aggregates
+    "businessProGrants",          // eraseGrants: owner vs invitee, recomputes seats
+    "proActivationPresentations", // anonymizeBilling: swept alongside billing rows
+    "registrations",              // eraseEmailKeyed: verified-email keyed
+    "contactMessages",            // eraseEmailKeyed: verified-email keyed
   ]);
 
   const isExternal = (target: string): boolean =>
@@ -928,6 +931,29 @@ describe("account deletion registry is enforced, not documentation", () => {
       mismatched,
       `batches.ts erases these tables but the registry does not mark them delete. `
       + `One of the two is wrong: ${mismatched.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  test("every dedicated-step exemption is backed by real stepper code", () => {
+    // DEDICATED_DELETE_STEPS is the one hand-maintained escape hatch in this
+    // gate: listing a table there exempts it from the PERSONAL_DELETE_TABLES
+    // cross-check. Untested, it would let a table be exempted with nothing
+    // actually erasing it. Read the stepper source and require the table name
+    // to appear in it, so the exemption has to be earned.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(
+      resolve(here, "../accountDeletion/batches.ts"),
+      "utf8",
+    );
+    const unbacked = [...DEDICATED_DELETE_STEPS].filter(
+      (table) => !source.includes(`"${table}"`),
+    );
+    expect(
+      unbacked,
+      `These tables are exempted from the stepper cross-check as "handled by a `
+      + `dedicated step", but convex/accountDeletion/batches.ts never names them. `
+      + `Either the exemption is stale or the erasure was never written: `
+      + `${unbacked.join(", ")}`,
     ).toEqual([]);
   });
 

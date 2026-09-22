@@ -215,6 +215,38 @@ describe("late billing events during account deletion", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // The operator repair command must refuse a deleted account. Without a test,
+  // deleting the guard would not fail anything -- and attributing a payment to
+  // an erased user re-creates the entitlement the cascade just removed.
+  test.each([false, true])(
+    "attributeUnattributedPayment refuses an account being deleted (complete=%s)",
+    async (complete) => {
+      const { t } = await setup(complete);
+      const rowId = await t.run((ctx) => ctx.db.insert("unattributedPaymentEvents", {
+        webhookId: "evt_unattributed_1",
+        eventType: "payment.succeeded",
+        charged: true,
+        dodoCustomerId: "cus_deleted",
+        dodoPaymentId: "pay_1",
+        rawPayload: {},
+        eventTimestamp: NOW,
+        receivedAt: NOW,
+        lastSeenAt: NOW,
+        occurrences: 1,
+        resolved: false,
+      }));
+      await expect(
+        t.mutation(internal.payments.webhookMutations.attributeUnattributedPayment, {
+          rowId, userId: USER,
+        }),
+      ).rejects.toThrow(/being deleted/i);
+      // Still unresolved: the refusal must not half-apply the attribution.
+      const row = await t.run((ctx) => ctx.db.get(rowId));
+      expect(row?.resolved).toBe(false);
+      expect(row?.resolvedUserId).toBeUndefined();
+    },
+  );
+
   test.each([false, true])("late dunning send keeps recipient identity but never re-sends (complete=%s)", async (complete) => {
     const { t } = await setup(complete);
     expect(await t.query(internal.payments.subscriptionEmails.getDunningContext, {

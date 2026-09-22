@@ -1317,7 +1317,10 @@ export class UnifiedSettings {
     try {
       await requestOwnAccountDeletion();
       this.closeDeletionDialog();
-      this.close();
+      // Tear down directly rather than via close(): the account is gone, so an
+      // unsaved draft in another panel has nothing to be saved to, and close()
+      // would stop to ask "discard changes?" for it while signOut() proceeds.
+      this.teardownSettings('control');
       await signOut();
       showToast('Account deleted. Sign out on other devices and clear this device\'s site data.');
     } catch (err) {
@@ -1325,6 +1328,27 @@ export class UnifiedSettings {
       if (message.includes('Account changed')) {
         this.closeDeletionDialog();
         showToast(message);
+        return;
+      }
+      // The dialog is the only place the error text renders, and an account
+      // switch can tear it down mid-await. Without this fallback the failure
+      // is written into a detached overlay and the user is told nothing.
+      if (!this.deletionDialog) {
+        showToast(message);
+        return;
+      }
+      // The server is still working when the poll gives up — its external
+      // retry ladder outlasts the client timeout by design. Clearing the
+      // phrase leaves Confirm disabled so the reflex second submission is not
+      // one click away, while still releasing the busy latch so the dialog can
+      // be dismissed; re-submitting takes a deliberate re-type.
+      if (message.includes('still running')) {
+        this.deletionBusy = false;
+        this.deletionError = message;
+        const phrase = this.deletionDialog
+          ?.querySelector<HTMLInputElement>('[data-deletion-phrase]');
+        if (phrase) phrase.value = '';
+        this.syncDeletionConfirmEnabled();
         return;
       }
       this.deletionBusy = false;

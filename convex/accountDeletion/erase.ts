@@ -14,18 +14,10 @@ import { applyOwnerDeletedFence } from "../companyMonitoring/accounts";
 import { requireUserId, resolveUserId } from "../lib/auth";
 import { runEraseBatch, scheduleEraseContinuation } from "./batches";
 import {
+  PENDING_STALE_AFTER_MS,
   normalizeVerifiedEmail,
   sha256Hex,
 } from "./registry";
-
-/**
- * How stale a `pending` row must be before an entry point re-arms its worker.
- *
- * Must stay above the longest legitimate gap between continuations — the
- * external retry ladder's RETRY_MAX_DELAY_MS (5 min) — so a live backoff is
- * never doubled by a user clicking again.
- */
-const PENDING_STALE_AFTER_MS = 10 * 60_000;
 
 const eraseSourceValidator = v.union(
   v.literal("support"),
@@ -137,6 +129,12 @@ async function beginErase(
       source: existing.source,
       status: "pending",
       externalAttempts: 0,
+      // Clear the batch ladder too. A row that went terminal via
+      // ERASE_BATCH_FAILED carries batchAttempts at its max, and
+      // markBatchFailed counts from whatever is persisted — so without this a
+      // resumed deletion gets one attempt, not the full ladder, and goes
+      // straight back to failed on the first write conflict.
+      batchAttempts: undefined,
       lastError: undefined,
       verifiedEmail,
       dodoSubscriptionIds:

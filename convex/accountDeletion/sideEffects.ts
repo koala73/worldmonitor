@@ -9,8 +9,8 @@
 import { DodoPayments, NotFoundError, APIConnectionTimeoutError, APIConnectionError } from "dodopayments";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import type { Doc, Id } from "../_generated/dataModel";
-import { internalAction, internalMutation } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { internalAction, internalMutation, type ActionCtx } from "../_generated/server";
 import { mergeUniqueStrings } from "./registry";
 
 const REDIS_FETCH_TIMEOUT_MS = 5_000;
@@ -29,23 +29,24 @@ class ProviderError extends Error {
 }
 
 /**
- * Shape of `accountDeletion.erase.getExternalEraseSnapshot`. Declared locally
- * rather than imported so this module keeps no import edge back to erase.ts,
- * which reaches sideEffects through `internal.*`.
+ * Record an external failure without letting the recording itself escape.
+ *
+ * If this mutation throws — an optimistic-concurrency conflict from an
+ * overlapping re-arm, a transient Convex error — the exception would propagate
+ * out of `runExternalErase` and abandon the row at pending/external with its
+ * attempt already consumed and nothing rescheduled. Nothing sweeps that state
+ * quickly, so the deletion stalls with the subscription still live.
  */
-type ExternalEraseSnapshot = {
-  deletionId: Id<"accountDeletions">;
-  userId: string;
-  status: "pending" | "complete" | "failed";
-  step: Doc<"accountDeletions">["step"];
-  dodoSubscriptionIds: string[];
-  cancelledDodoSubscriptionIds: string[];
-  keyHashes: string[];
-  embedKeyHashes: string[];
-  mcpTokenIds: string[];
-  redisClearedAt?: number;
-  clerkDeletedAt?: number;
-};
+async function recordFailureSafely(
+  ctx: ActionCtx,
+  deletionId: Id<"accountDeletions">,
+  lastError: string,
+  retryable: boolean,
+): Promise<"pending" | "failed"> {
+  return ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
+    deletionId, lastError, retryable,
+  }).catch(() => "failed" as const);
+}
 
 function isRetryable(err: unknown): boolean {
   if (isTimeout(err)) return true;
@@ -95,6 +96,19 @@ export const recordExternalFailure = internalMutation({
         internal.accountDeletion.sideEffects.runExternalErase,
         { deletionId: row._id },
       );
+    } else {
+      // sentry-coverage-ok: structured console.error is forwarded by Convex,
+      // and this IS the alert. A terminal external failure — Dodo refusing to
+      // cancel, a Redis outage, a Clerk API error, a missing provider
+      // credential — otherwise only ever wrote a database field, so nobody
+      // learned that a user's deletion had stopped with their subscription
+      // still live. Re-throwing instead would lose the recorded status.
+      console.error(JSON.stringify({
+        breadcrumb: "account_deletion_external_failed",
+        deletionId: args.deletionId,
+        externalAttempts: attempts,
+        lastError: args.lastError,
+      }));
     }
     return status;
   },
@@ -318,7 +332,13 @@ export const runExternalErase = internalAction({
     // reference after a deploy — recorded no failure and scheduled nothing,
     // leaving the row at pending/external, indistinguishable from a healthy
     // in-progress deletion, with the fence on and the Clerk login still live.
-    let snapshot: ExternalEraseSnapshot | null;
+    // Inferred from the query rather than hand-declared: a local mirror of the
+    // validator's shape can drift from it silently, and there is no import
+    // cycle to avoid here (nothing imports this module; it reaches erase.ts
+    // through `internal.*`).
+    let snapshot: Awaited<ReturnType<
+      typeof ctx.runQuery<typeof internal.accountDeletion.erase.getExternalEraseSnapshot>
+    >>;
     let started: boolean;
     try {
       snapshot = await ctx.runQuery(
@@ -349,11 +369,9 @@ export const runExternalErase = internalAction({
         deletionId: args.deletionId,
         error: errorMessage(err),
       }));
-      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
-        deletionId: args.deletionId,
-        lastError: `EXTERNAL_SETUP:${errorMessage(err)}`,
-        retryable: true,
-      }).catch(() => "failed" as const);
+      const status = await recordFailureSafely(
+        ctx, args.deletionId, `EXTERNAL_SETUP:${errorMessage(err)}`, true,
+      );
       return { status };
     }
     if (!started) return { status: "failed" as const };
@@ -396,9 +414,7 @@ export const runExternalErase = internalAction({
         lastError += `;REDIS:${errorMessage(redisErr)}`;
         retryable = retryable && isRetryable(redisErr);
       }
-      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
-        deletionId: args.deletionId, lastError, retryable,
-      });
+      const status = await recordFailureSafely(ctx, args.deletionId, lastError, retryable);
       return { status };
     }
 
@@ -415,11 +431,9 @@ export const runExternalErase = internalAction({
         lastError: null,
       });
     } catch (err) {
-      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
-        deletionId: args.deletionId,
-        lastError: `REDIS:${errorMessage(err)}`,
-        retryable: isRetryable(err),
-      });
+      const status = await recordFailureSafely(
+        ctx, args.deletionId, `REDIS:${errorMessage(err)}`, isRetryable(err),
+      );
       return { status };
     }
 
@@ -431,11 +445,9 @@ export const runExternalErase = internalAction({
         lastError: null,
       });
     } catch (err) {
-      const status = await ctx.runMutation(internal.accountDeletion.sideEffects.recordExternalFailure, {
-        deletionId: args.deletionId,
-        lastError: `CLERK_DELETE:${errorMessage(err)}`,
-        retryable: isRetryable(err),
-      });
+      const status = await recordFailureSafely(
+        ctx, args.deletionId, `CLERK_DELETE:${errorMessage(err)}`, isRetryable(err),
+      );
       return { status };
     }
 

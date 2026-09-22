@@ -10,6 +10,7 @@ import { MutationCtx, type QueryCtx, internalMutation } from "../_generated/serv
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+import { isAccountDeleting } from "../accountDeletion/guard";
 import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import {
@@ -1360,7 +1361,12 @@ export async function handleSubscriptionActive(
         .query("userReferralCodes")
         .withIndex("by_code", (q) => q.eq("code", referralCode))
         .first();
-      if (referrer) {
+      // Fence the REFERRER, not just the event's subscriber. `userReferralCredits`
+      // is keyed on referrerUserId and is swept by the deletion cascade, so a
+      // conversion landing mid-deletion would otherwise re-create a personal row
+      // for an account being erased. `registerInterest.ts` already guards the
+      // identical insert on the waitlist path; this is the same rule.
+      if (referrer && !(await isAccountDeleting(ctx, referrer.userId))) {
         const refereeEmail = (data.customer?.email ?? "").trim().toLowerCase();
         if (refereeEmail) {
           const existingCredit = await ctx.db

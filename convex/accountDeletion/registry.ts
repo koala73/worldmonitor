@@ -261,6 +261,16 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
 
 export const ERASE_WRITE_BUDGET = 64;
 
+/**
+ * How stale a `pending` deletion must be before it is treated as stalled and
+ * its worker re-armed — by an entry point in `erase.ts` or by the sweeper cron
+ * in `batches.ts`.
+ *
+ * Must stay above the longest legitimate gap between continuations (the
+ * external retry ladder's max backoff) so a live retry is never doubled.
+ */
+export const PENDING_STALE_AFTER_MS = 10 * 60_000;
+
 export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",

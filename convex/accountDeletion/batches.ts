@@ -11,6 +11,7 @@ import { userIdToShard } from "../lib/shards";
 import { recomputeEntitlementFromAllSubs } from "../payments/subscriptionHelpers";
 import {
   ERASE_WRITE_BUDGET,
+  PENDING_STALE_AFTER_MS,
   mergeUniqueStrings,
   redactBillingPayload,
   tombstoneUserId,
@@ -744,7 +745,25 @@ export const markBatchFailed = internalMutation({
     // A separate continuation or explicit retry may have advanced since the
     // action read its snapshot. Never overwrite that newer progress.
     if (!row || row.status !== "pending" || row.step !== args.step
-      || row.personalTableIndex !== args.personalTableIndex || row.updatedAt !== args.updatedAt) return "stale";
+      || row.personalTableIndex !== args.personalTableIndex || row.updatedAt !== args.updatedAt) {
+      // `updatedAt` is also bumped by writers outside this pipeline — a late
+      // Dodo event patches it on an already-pending row and schedules nothing.
+      // When that lands between the snapshot and the failure, the batch that
+      // just threw would otherwise be forgotten: no attempt recorded, no
+      // continuation queued, row pending forever. Re-arm instead. Re-running a
+      // step is safe because every stepper re-queries its leftovers.
+      // Delayed, not immediate: this branch records no attempt, so it has no
+      // counter of its own to stop it. A writer bumping `updatedAt` on every
+      // pass would otherwise spin a zero-delay reschedule loop.
+      if (row && row.status === "pending") {
+        await ctx.scheduler.runAfter(
+          BATCH_RETRY_BASE_DELAY_MS,
+          internal.accountDeletion.batches.advanceEraseSafely,
+          { deletionId: row._id },
+        );
+      }
+      return "stale";
+    }
 
     // A batch throw is usually a lost optimistic-concurrency retry on a shared
     // aggregate row, not a broken deletion. Going terminal on the first one
@@ -780,6 +799,57 @@ export const markBatchFailed = internalMutation({
       updatedAt: Date.now(),
     });
     return "failed";
+  },
+});
+
+/** How many stalled deletions one sweeper tick will re-arm. */
+const REAP_STALLED_LIMIT = 20;
+
+/**
+ * Bounded recovery for deletions whose scheduled continuation was dropped.
+ *
+ * Without this, the `by_status_updatedAt` index had no reader and the only way
+ * back from a lost continuation was the deleting user happening to click again,
+ * or support running the runbook — while the account sat write-fenced, already
+ * anonymized, with its subscription still billing. Mirrors the existing
+ * company-monitoring stalled-purge reaper.
+ *
+ * Safe to re-run: `scheduleEraseContinuation` only acts on `pending` rows, and
+ * every stepper re-queries its own leftovers, so a duplicate wake is a no-op
+ * rather than a second erase. The staleness bound is the same one `beginErase`
+ * uses, so a live retry backoff is never doubled.
+ */
+export const reapStalledDeletions = internalMutation({
+  args: {},
+  returns: v.object({ rearmed: v.number() }),
+  handler: async (ctx): Promise<{ rearmed: number }> => {
+    const cutoff = Date.now() - PENDING_STALE_AFTER_MS;
+    const stalled = await ctx.db
+      .query("accountDeletions")
+      .withIndex("by_status_updatedAt", (q) =>
+        q.eq("status", "pending").lt("updatedAt", cutoff),
+      )
+      .take(REAP_STALLED_LIMIT);
+
+    for (const row of stalled) {
+      // Bump first so the next tick does not re-arm the same row while this
+      // continuation is still starting.
+      await ctx.db.patch(row._id, { updatedAt: Date.now() });
+      const rearmed = await ctx.db.get(row._id);
+      if (rearmed) await scheduleEraseContinuation(ctx, rearmed);
+    }
+
+    if (stalled.length > 0) {
+      // sentry-coverage-ok: structured console.error is forwarded by Convex.
+      // Re-arming is the recovery, but a deletion that stalled at all is an
+      // operator signal — silence here is how the original gap stayed invisible.
+      console.error(JSON.stringify({
+        breadcrumb: "account_deletion_stalled_rearmed",
+        count: stalled.length,
+        deletionIds: stalled.map((row) => row._id),
+      }));
+    }
+    return { rearmed: stalled.length };
   },
 });
 
