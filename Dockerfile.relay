@@ -112,6 +112,10 @@ COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+# compare-and-delete-script.cjs is the Redis EVAL body shared by releaseLock()
+# in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
+# any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).
+COPY scripts/shared/compare-and-delete-script.cjs ./scripts/shared/compare-and-delete-script.cjs
 # A missing inventory artifact fails the image build before relay startup.
 COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
