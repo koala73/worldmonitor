@@ -2108,6 +2108,17 @@ describe('privileged publish and auto-merge conditions', () => {
     // is a live route that 404s if the pro build did not survive the copy.
     assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/']);
     assert.match(smoke, /expected 200/, 'a non-200 must fail the job, not just print');
+    // The empty-body guard must be scoped to the loop's `$path`, not hardcoded
+    // to `/` alone (#8503 review, CodeRabbit) -- otherwise a 200-with-empty
+    // response from `/pro/` would pass silently while `/` alone stayed
+    // covered.
+    assert.match(smoke, /returned 200 with an empty body/, 'a 200 with no body must also fail the job');
+    const loopBody = smoke.slice(smoke.indexOf('for path in'));
+    assert.match(
+      loopBody,
+      /elif \[ -z "\$\(curl -fsS "http:\/\/127\.0\.0\.1:8080\$\{path\}"\)" \]/,
+      'the empty-body check must read $path, not a hardcoded route',
+    );
   });
 
   it('alarms when the scheduled rebuild fails, because nothing else watches a weekly cron', () => {
