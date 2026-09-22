@@ -923,9 +923,25 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // a sibling chunk no longer provides after a deploy — a built bundle always links
       // consistently, so at runtime this is version skew, never a code defect, and it
       // throws at link time with zero first-party frames (WORLDMONITOR-TM).
+      //
+      // That module-LINK condition has THREE engine spellings, and coverage used to be
+      // bound to two of them:
+      //   WebKit  `Importing binding name 's' is not found.`                    (here)
+      //   Gecko   `The requested module './x.js' doesn't provide an export named: 's'`
+      //   V8      `The requested module './x.js' does not provide an export named 's'`
+      // Gecko's sits in `ignoreErrors` above, so V8's — the most common engine — was the
+      // one spelling nothing matched, and it reported for months on a one-word
+      // difference (`does not` vs `doesn't`): WORLDMONITOR-149, Chrome 153, zero frames,
+      // 7 min after its own build deployed. Both wordings are matched HERE so the rule is
+      // complete by class rather than by engine, and so removing the frame-blind
+      // `ignoreErrors` entry would leave the class correctly gated rather than uncovered.
+      // Bound to the runtime sentence (`The requested module '<specifier>' …`) so a
+      // first-party error that merely mentions the phrase keeps reporting, and gated on
+      // `!hasFirstParty` like its siblings so a link failure attributable to our own code
+      // still surfaces.
       if (
         !hasFirstParty
-        && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found/i.test(msg)
+        && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found|The requested module '[^']*' does(?: not|n't) provide an export named/i.test(msg)
       ) return null;
       // Safari's URL-less wording gives the owned-URL rule above nothing to
       // match, and WebKit's async stack trace appends the awaiting `import()`

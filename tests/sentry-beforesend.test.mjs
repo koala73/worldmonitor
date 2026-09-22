@@ -450,19 +450,27 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
 
   // No-URL phrasings (Safari `Importing a module script failed.`, bare Firefox
   // `error loading dynamically imported module`, and the module-LINK export
-  // mismatch `Importing binding name '<x>' is not found.` — WORLDMONITOR-TM)
-  // throw at fetch/link time with no first-party call site, so they're gated on
-  // `!hasFirstParty`: suppressed with an empty or third-party stack, preserved
-  // when a genuine first-party frame is present.
+  // mismatch — WebKit's `Importing binding name '<x>' is not found.`
+  // (WORLDMONITOR-TM) and the V8/Gecko `The requested module '<url>' does not
+  // provide an export named '<x>'` (WORLDMONITOR-149)) throw at fetch/link time
+  // with no first-party call site, so they're gated on `!hasFirstParty`:
+  // suppressed with an empty or third-party stack, preserved when a genuine
+  // first-party frame is present.
   const noUrlImportErrors = [
     'Importing a module script failed.',
     'TypeError: Importing a module script failed.',
     'error loading dynamically imported module',
     "Importing binding name 'f' is not found.",
+    // Verbatim WORLDMONITOR-149: Chrome 153 / Windows, zero frames,
+    // onunhandledrejection, 7 min after its own build deployed. Gecko's
+    // spelling of the same failure (`doesn't provide an export named:`) never
+    // reaches beforeSend — it is dropped by the frame-blind `ignoreErrors`
+    // entry, which the engine-parity block below pins instead.
+    "The requested module './feeds-BoXv5LqL.js' does not provide an export named 's'",
   ];
 
   for (const msg of noUrlImportErrors) {
-    const type = msg.startsWith('Importing binding name') ? 'SyntaxError' : 'TypeError';
+    const type = /^(?:Importing binding name|The requested module)/.test(msg) ? 'SyntaxError' : 'TypeError';
     it(`suppresses "${msg.slice(0, 55)}..." with empty stack`, () => {
       const event = makeEvent(msg, type, []);
       assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard / deploy-skew)`);
@@ -478,6 +486,59 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
+
+  // ── Engine parity for the module-LINK failure (WORLDMONITOR-149) ──
+  //
+  // One runtime condition — a chunk imports a named export a sibling chunk no
+  // longer provides after a deploy — that each engine spells differently:
+  //
+  //   V8      The requested module './x.js' does not provide an export named 's'
+  //   Gecko   The requested module './x.js' doesn't provide an export named: 's'
+  //   WebKit  Importing binding name 's' is not found.
+  //
+  // Coverage was bound to two of the three spellings, so Chrome's — the single
+  // most common engine — reported for months while the other two were dropped
+  // (one word: `does not` vs `doesn't`). This block pins the CLASS so the next
+  // engine variant is a deliberate decision, not another silent gap. Bound by
+  // the runtime condition, never by one engine's wording.
+  describe('module-link skew: every engine spelling is covered somewhere', () => {
+    const V8 = "The requested module './feeds-BoXv5LqL.js' does not provide an export named 's'";
+    const GECKO = "The requested module './feeds-BoXv5LqL.js' doesn't provide an export named: 's'";
+    const WEBKIT = "Importing binding name 's' is not found.";
+
+    it('drops the Gecko spelling at the frame-blind ignoreErrors layer', () => {
+      assert.equal(isIgnored(GECKO, 'SyntaxError'), true);
+    });
+
+    it('does NOT drop the V8 or WebKit spellings at ignoreErrors', () => {
+      // Both are stack-gated on purpose: a link failure attributable to a
+      // first-party frame must still surface. Moving either into ignoreErrors
+      // would make it frame-blind and swallow that case.
+      assert.equal(isIgnored(V8, 'SyntaxError'), false);
+      assert.equal(isIgnored(WEBKIT, 'SyntaxError'), false);
+    });
+
+    it('drops the V8 and WebKit spellings in beforeSend when no frame is ours', () => {
+      assert.equal(beforeSend(makeEvent(V8, 'SyntaxError', [])), null);
+      assert.equal(beforeSend(makeEvent(WEBKIT, 'SyntaxError', [])), null);
+    });
+
+    it('preserves the V8 and WebKit spellings when a first-party frame is present', () => {
+      assert.ok(beforeSend(makeEvent(V8, 'SyntaxError', [firstPartyFrame()])) !== null);
+      assert.ok(beforeSend(makeEvent(WEBKIT, 'SyntaxError', [firstPartyFrame()])) !== null);
+    });
+
+    it('does not swallow a first-party error that merely mentions the wording', () => {
+      // The rule must key on the runtime sentence, not on the phrase appearing
+      // anywhere in a message we produced ourselves.
+      const ours = makeEvent(
+        "Feed registry validation failed: source './feeds.ts' does not provide an export named 'FEEDS'",
+        'Error',
+        [firstPartyFrame('/assets/feeds-BoXv5LqL.js', 'validateFeedRegistry')],
+      );
+      assert.ok(beforeSend(ours) !== null, 'a first-party validation error must still surface');
+    });
+  });
 });
 
 // ─── WORLDMONITOR-XT: Vite's CSS preload failure for an owned stylesheet ───
