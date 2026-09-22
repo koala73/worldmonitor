@@ -157,7 +157,11 @@ describe('browser service cache failure contracts (#8348)', () => {
 
   it('advisories and satellites keep last-good data when refresh rejects', async () => {
     let now = 1_000_000; Date.now = () => now;
-    setup({ advisories: [{ advisories: [{ title: 'A', link: 'x', pubDate: '2026-01-01', source: 'gov', sourceCountry: 'AE', level: '', country: 'AE' }] }, new Error('503')], satellites: [{ satellites: [{ id: '1', name: 'S', line1: 'a', line2: 'b', type: 'x', country: 'AE' }] }, new Error('503')] });
+    // Records must pass shared/intelligence-snapshots.js validation: a real TLE
+    // pair and an advisory index at the 100-country coverage floor.
+    const byCountry = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`C${i}`, 'normal']));
+    const tle = { line1: '1 25544U 98067A   19156.50900463  .00003075  00000-0  59442-4 0  9992', line2: '2 25544  51.6433  59.2583 0008217  16.4489 347.6017 15.51174618173442' };
+    setup({ advisories: [{ advisories: [{ title: 'A', link: 'x', pubDate: '2026-01-01', source: 'gov', sourceCountry: 'AE', level: '', country: 'AE' }], byCountry }, new Error('503')], satellites: [{ satellites: [{ id: '25544', name: 'S', ...tle, type: 'x', country: 'AE' }] }, new Error('503')] });
     const h = await loadHarness<{ loadAdvisoriesFromServer(): Promise<{ ok: boolean; advisories: Array<{ title: string }> }>; fetchSatelliteTLEs(): Promise<Array<{ name: string }> | null>; getSatelliteStatus(): string }>(["export { loadAdvisoriesFromServer } from './src/services/security-advisories.ts';", "export { fetchSatelliteTLEs, getSatelliteStatus } from './src/services/satellites.ts';"]);
     assert.equal((await h.loadAdvisoriesFromServer()).advisories[0]?.title, 'A'); assert.equal((await h.fetchSatelliteTLEs())?.[0]?.name, 'S');
     now += 16 * 60 * 1000;
