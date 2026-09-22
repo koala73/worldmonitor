@@ -165,7 +165,7 @@ export default async function handler(
       }
     } catch (err) {
       console.error('[api/brief/share-url] latest pointer read failed:', (err as Error).message);
-      captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'latest-pointer-read' }, ctx });
+      captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'latest-pointer-read' }, fingerprint: ['api/brief/share-url', 'latest-pointer-read', err instanceof Error ? err.name : 'Error'], ctx });
       return jsonResponse({ error: 'service_unavailable' }, 503, cors);
     }
   }
@@ -185,7 +185,7 @@ export default async function handler(
     existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueSlot}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/share-url] Upstash read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'envelope-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'envelope-read' }, fingerprint: ['api/brief/share-url', 'envelope-read', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
   if (existing == null) {

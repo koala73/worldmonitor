@@ -987,6 +987,7 @@ export default async function handler(
           step: 'refresh-restore',
           stage: context.stage,
         },
+        fingerprint: ['api/oauth/token', 'refresh-restore', 'Error'],
         ctx,
       });
     },

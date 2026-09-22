@@ -28,7 +28,8 @@ export type ParsedEntry =
   | { readonly ok: false; readonly entry: string; readonly problem: EntryProblem };
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
-const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
+/** A YouTube channel id, the one shape a channel live embed can be built from without a key. */
+export const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
 const YOUTUBE_PAGE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com']);
 const VIDEO_PATH_PREFIXES = new Set(['live', 'embed', 'shorts', 'v']);
 

@@ -21,6 +21,7 @@ import {
   COMPARISON_PAGES,
   writeComparisonPages,
 } from './build-comparison-pages.mjs';
+import { RELATED_READING_PATH, loadRelatedReading, renderRelatedReading } from './related-reading.mjs';
 import {
   USE_CASE_PAGES,
   USE_CASES_CONTENT_VERSION,
@@ -164,6 +165,7 @@ export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
   'scripts/comparison-page-narratives.mjs',
   SOURCE_ATTRIBUTION_MANIFEST_PATH,
   CHOKEPOINT_REGISTRY_PATH,
+  RELATED_READING_PATH,
 ]);
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
@@ -1858,6 +1860,7 @@ export async function loadCorpusData({
     livePulseMovementClaimLastmod(livePulse.capturedAt, now),
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
+    gitFileLastmod(rootDir, RELATED_READING_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
   );
   const ciiCountriesLastmod = laterDate(
@@ -1892,6 +1895,7 @@ export async function loadCorpusData({
   );
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    gitFileLastmod(rootDir, RELATED_READING_PATH),
     livePulse.capturedAt,
     CRISIS_PAGE_CONTENT_VERSION,
   );
@@ -3686,6 +3690,7 @@ export function snapshotAttemptedCountryIndex(livePulse) {
 export function renderCountryPage({
   country,
   relatedChokepoints = [],
+  relatedReading = [],
   baseUrl,
   capturedAt,
   lastmod,
@@ -3793,6 +3798,7 @@ ${renderCountryDevelopments({ countryCode: country.code, countryName: country.na
       </section>${scoreDisclosure}
 ${analysis.html}
 ${renderRelatedChokepoints(relatedChokepoints)}
+${renderRelatedReading(relatedReading, escapeHtml)}
 ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>${escapeHtml(analysis.readingGuide)} <a href="/docs/methodology/country-resilience-index">Full CRI method</a> · <a href="/docs/corrections">revision log</a> · <a href="/accuracy/">forecast accuracy scorecard</a>.</p>` : `      <h2>How to read this page</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
@@ -4617,6 +4623,7 @@ function renderCrisisPage({
   crisis,
   countrySlugByCode,
   relatedChokepoints = [],
+  relatedReading = [],
   baseUrl,
   lastmod,
   livePulse = null,
@@ -4713,6 +4720,7 @@ ${snapshotSection}
       <h2>Coverage boundary</h2>
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
 ${renderRelatedChokepoints(relatedChokepoints)}
+${renderRelatedReading(relatedReading, escapeHtml)}
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger. World Monitor's forecasts are graded separately, and that record is published on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))}">${CRISIS_DATASET_DOWNLOAD}</a>. Scope source: <a href="${CRISIS_REGISTRY_URL}">${CRISIS_REGISTRY_PATH}</a>. Maintained metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>.</p>`;
@@ -5295,12 +5303,11 @@ export async function buildCorpus({
 } = {}) {
   const data = await loadCorpusData({ rootDir, livePulseSnapshotPath, now });
   const countrySlugByCode = new Map(data.countries.map((country) => [country.code, country.slug]));
-  const chokepointPageLinks = buildChokepointPageLinks({
-    ...data,
-    blogPostPaths: new Set(readdirSync(join(rootDir, 'blog-site/src/content/blog'))
-      .filter((file) => file.endsWith('.md'))
-      .map((file) => `/blog/posts/${file.slice(0, -3)}/`)),
-  });
+  const blogPostPaths = new Set(readdirSync(join(rootDir, 'blog-site/src/content/blog'))
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => `/blog/posts/${file.slice(0, -3)}/`));
+  const chokepointPageLinks = buildChokepointPageLinks({ ...data, blogPostPaths });
+  const relatedReading = loadRelatedReading({ rootDir, blogPostPaths });
   if (clean) {
     for (const dir of GENERATED_DIRS) {
       rmSync(join(outDir, dir), { recursive: true, force: true });
@@ -5414,6 +5421,7 @@ export async function buildCorpus({
       renderCountryPage({
         country,
         relatedChokepoints: chokepointPageLinks.byCountryCode.get(country.code),
+        relatedReading: relatedReading.get(pagePath),
         baseUrl,
         capturedAt: data.resilience.capturedAt,
         lastmod: ciiEntry
@@ -5565,6 +5573,7 @@ export async function buildCorpus({
     baseUrl,
     lastmod: data.lastmod.comparisons,
     snapshotDate: data.livePulse.capturedAt,
+    relatedReading,
     tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
   });
 
@@ -5640,6 +5649,7 @@ export async function buildCorpus({
         crisis,
         countrySlugByCode,
         relatedChokepoints: chokepointPageLinks.byCrisisSlug.get(crisis.slug),
+        relatedReading: relatedReading.get(pagePath),
         baseUrl,
         lastmod: data.lastmod.crises,
         livePulse: data.livePulse,

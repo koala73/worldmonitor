@@ -82,6 +82,7 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     // keeps that chain pending until Sentry delivery completes.
     await captureSilentError(err, {
       tags: { route: 'api/slack/oauth/callback', step: 'publish-welcome' },
+      fingerprint: ['api/slack/oauth/callback', 'publish-welcome', err instanceof Error ? err.name : 'Error'],
     });
   }
 }
@@ -141,7 +142,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     userId = await upstashGetDel(stateKey);
   } catch (error) {
     console.error('[slack-oauth] state store unavailable:', error instanceof Error ? error.message : error);
-    await captureSilentError(error, { tags: { route: 'api/slack/oauth/callback', step: 'state-consume' }, ctx });
+    await captureSilentError(error, { tags: { route: 'api/slack/oauth/callback', step: 'state-consume' }, fingerprint: ['api/slack/oauth/callback', 'state-consume', error instanceof Error ? error.name : 'Error'], ctx });
     return errorAndClose('service_unavailable', 503);
   }
   if (!userId) return errorAndClose('invalid_state');

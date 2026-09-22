@@ -310,7 +310,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
   } catch (err) {
     await rollbackUnservedQuota();
-    captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' } });
+    captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' }, fingerprint: ['api/chat-analyst', 'pre-stream', err instanceof Error ? err.name : 'Error'] });
     return json({ error: 'service_unavailable' }, 503, corsHeaders);
   }
 }

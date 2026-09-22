@@ -149,7 +149,7 @@ export default async function handler(
     pointerRaw = await readRawJsonFromUpstash(pointerKey);
   } catch (err) {
     console.error('[api/brief/public] pointer read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'pointer-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'pointer-read' }, fingerprint: ['api/brief/public', 'pointer-read', err instanceof Error ? err.name : 'Error'], ctx });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   // The pointer is JSON-encoded at write time (both
@@ -185,7 +185,7 @@ export default async function handler(
     envelope = await readRawJsonFromUpstash(`brief:${pointer.userId}:${pointer.issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/public] envelope read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'envelope-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'envelope-read' }, fingerprint: ['api/brief/public', 'envelope-read', err instanceof Error ? err.name : 'Error'], ctx });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {
@@ -203,7 +203,7 @@ export default async function handler(
     );
   } catch (err) {
     console.error('[api/brief/public] malformed envelope:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'render' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'render' }, fingerprint: ['api/brief/public', 'render', err instanceof Error ? err.name : 'Error'], ctx });
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }
 

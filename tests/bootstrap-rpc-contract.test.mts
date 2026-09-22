@@ -96,6 +96,73 @@ test('RPC, public bootstrap and publisher apply the same transforms and cutover 
 });
 
 
+// ── IMF WEO datasets: validated on the RPC path too (#8514 follow-up) ──────
+// api/bootstrap.js validates imfMacro/imfGrowth/imfLabor/imfExternal before
+// serving them; this RPC reads the same seeds and must not hand a malformed
+// snapshot to MCP/session callers. The RPC is gateway no-store, so a
+// malformed dataset is reported `missing`, exactly as bootstrap does.
+const IMF_FIELDS = { imfMacro: 'inflationPct', imfGrowth: 'realGdpGrowthPct', imfLabor: 'unemploymentPct', imfExternal: 'exportsUsd' } as const;
+
+test('RPC sends a structurally malformed IMF dataset to missing', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS)) {
+    for (const value of [
+      {},
+      [],
+      { countries: {} },
+      { countries: [] },
+      { countries: { UA: { [field]: 1 } }, fallback: true },
+      { countries: { UA: { [field]: 1 } }, error: 'offline' },
+      { countries: { UA: { [field]: 1 } }, dataAvailable: false },
+      { countries: { UA: { [field]: 'bad' } } },
+    ]) {
+      values.set(BOOTSTRAP_CACHE_KEYS[key], value);
+      const response = await request('?keys=' + key);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { data: {}, missing: [key] }, `${key} ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test('RPC drops malformed IMF country rows individually and serves the rest unchanged', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS)) {
+    const good = { [field]: 1, year: 2026, extraField: 'kept' };
+    values.set(BOOTSTRAP_CACHE_KEYS[key], {
+      countries: {
+        UA: good,
+        AE: { [field]: 2 },
+        XX: { [field]: 'bad' },
+        YY: null,
+        ZZ: { [field]: '1e999' },
+        QQ: { [field]: 3, year: 1776.5 },
+        WW: { year: 2026 },
+        lower: { [field]: 4 },
+      },
+      seededAt: '2026-09-01T00:00:00Z',
+    });
+    const body = await (await request('?keys=' + key)).json();
+    assert.deepEqual(body.missing, [], key);
+    assert.deepEqual(JSON.parse(body.data[key]), {
+      countries: { UA: good, AE: { [field]: 2 } },
+      seededAt: '2026-09-01T00:00:00Z',
+    }, key);
+  }
+});
+
+test('RPC serves a well-formed IMF dataset exactly as seeded, matching public bootstrap', async t => {
+  const { request, values } = await setup(t);
+  for (const [key, field] of Object.entries(IMF_FIELDS)) {
+    const repaired = { countries: { UA: { [field]: 1, year: 2026 } }, seededAt: '2026-09-01T00:00:00Z' };
+    values.set(BOOTSTRAP_CACHE_KEYS[key], repaired);
+    const body = await (await request('?keys=' + key)).json();
+    assert.deepEqual(JSON.parse(body.data[key]), repaired, key);
+    // IMF keys are on-demand, served per key: RPC and public bootstrap agree.
+    const publicBody = await (await bootstrap(new Request(`https://api.worldmonitor.app/api/bootstrap?keys=${key}&public=1`))).json();
+    assert.deepEqual(JSON.parse(body.data[key]), publicBody.data[key], key);
+  }
+});
+
 test('public payload helpers stay equivalent across Edge and worker packaging', () => {
   const edge = readFileSync(new URL('../api/_bootstrap-public-payload.js', import.meta.url), 'utf8');
   const worker = readFileSync(new URL('../scripts/_bootstrap-public-payload.mjs', import.meta.url), 'utf8');

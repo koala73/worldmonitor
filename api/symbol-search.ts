@@ -281,8 +281,14 @@ export default async function handler(
       const isUpstreamGatewayTransient =
         resp.status === 502 || resp.status === 503 || resp.status === 504;
       if (!isUpstreamGatewayTransient) {
+        // A broken key and an exhausted quota need different fixes, so they
+        // group apart. Bucketed, never the raw status.
+        const finnhubFailure = resp.status === 429
+          ? 'quota'
+          : resp.status === 401 || resp.status === 403 ? 'auth' : 'http-other';
         captureSilentError(new Error(`Finnhub search HTTP ${resp.status}`), {
           tags: { route: 'api/symbol-search', step: 'finnhub_fetch' },
+          fingerprint: ['api/symbol-search', 'finnhub_fetch', finnhubFailure],
           extra: { q, finnhubStatus: resp.status, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) },
           level: 'warning',
           ctx,
@@ -324,6 +330,7 @@ export default async function handler(
     console.error('[symbol-search] error:', err);
     captureSilentError(err, {
       tags: { route: 'api/symbol-search', step: 'handler' },
+      fingerprint: ['api/symbol-search', 'handler', err instanceof Error ? err.name : 'Error'],
       extra: { q },
       ctx,
     });

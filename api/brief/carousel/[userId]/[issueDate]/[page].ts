@@ -134,7 +134,7 @@ export default async function handler(
     envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/carousel] Upstash read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' }, fingerprint: ['api/brief/carousel', 'envelope-read', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
@@ -176,6 +176,7 @@ export default async function handler(
     );
     captureSilentError(err, {
       tags: { route: 'api/brief/carousel', step: 'render', page: String(page) },
+      fingerprint: ['api/brief/carousel', 'render', err instanceof Error ? err.name : 'Error'],
       ctx,
       ...(isTransientTimeout ? { level: 'warning' as const } : {}),
     });

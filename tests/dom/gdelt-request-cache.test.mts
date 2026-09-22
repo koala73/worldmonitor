@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { search } = vi.hoisted(() => ({ search: vi.fn() }));
+const { search, persisted } = vi.hoisted(() => ({ search: vi.fn(), persisted: new Map<string, unknown>() }));
 vi.mock('@/services/generated-rpc-clients', () => ({
   IntelligenceServiceClient: class { searchGdeltDocuments = search; },
 }));
@@ -11,14 +11,17 @@ vi.mock('@/services/rpc-client', () => ({
 vi.mock('@/services/i18n', () => ({ t: (key: string) => key }));
 vi.mock('@/services/bootstrap', () => ({ getHydratedData: () => null }));
 vi.mock('@/services/persistent-cache', () => ({
-  getPersistentCache: async () => null, setPersistentCache: async () => {},
-  deletePersistentCache: async () => {}, deletePersistentCacheByPrefix: async () => {},
+  getPersistentCache: async (key: string) => persisted.get(key) ?? null,
+  setPersistentCache: async (key: string, data: unknown, updatedAt = Date.now()) => { persisted.set(key, { key, data, updatedAt }); },
+  deletePersistentCache: async (key: string) => { persisted.delete(key); },
+  deletePersistentCacheByPrefix: async () => {},
 }));
 vi.mock('@/utils', async () => await import('@/utils/circuit-breaker'));
 
 beforeEach(() => {
   vi.resetModules();
   search.mockReset();
+  persisted.clear();
   search.mockImplementation(async (request) => ({
     articles: [{ title: JSON.stringify(request), url: 'https://example.com', source: 'Example', date: '', image: '', language: '', tone: 0 }],
     query: request.query, error: '',
@@ -85,5 +88,59 @@ describe('GDELT request cache identity through the real breaker', () => {
     expect(await fetchGdeltArticles('military')).toEqual([]);
     expect(await fetchGdeltArticles('military')).toEqual([]);
     expect(search).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GDELT breaker entries honor the one-hour serve limit', () => {
+  const HOUR = 60 * 60 * 1000;
+  const article = { title: 'retained', url: 'https://example.com/a', source: 'Example', date: '', image: '', language: '', tone: 0 };
+  const persistKey = `breaker:GDELT Intelligence:${JSON.stringify(['military', 10, '24h', '', ''])}`;
+
+  it('serves a breaker entry younger than one hour while the upstream fails', async () => {
+    vi.useFakeTimers();
+    const { fetchGdeltArticles } = await import('@/services/gdelt-intel');
+    expect(await fetchGdeltArticles('military')).toHaveLength(1);
+    vi.setSystemTime(Date.now() + 30 * 60 * 1000);
+    search.mockRejectedValue(new Error('offline'));
+    expect(await fetchGdeltArticles('military')).toHaveLength(1);
+  });
+
+  it('does not serve an in-memory breaker entry older than one hour; the unavailable path runs', async () => {
+    vi.useFakeTimers();
+    const { fetchGdeltArticles } = await import('@/services/gdelt-intel');
+    expect(await fetchGdeltArticles('military')).toHaveLength(1);
+    vi.setSystemTime(Date.now() + HOUR + 60 * 1000);
+    search.mockRejectedValue(new Error('offline'));
+    await expect(fetchGdeltArticles('military')).rejects.toThrow(/unavailable/);
+  });
+
+  it('does not serve an in-memory entry older than one hour while the breaker is on cooldown', async () => {
+    vi.useFakeTimers();
+    const { fetchGdeltArticles } = await import('@/services/gdelt-intel');
+    expect(await fetchGdeltArticles('military')).toHaveLength(1);
+    vi.setSystemTime(Date.now() + HOUR + 60 * 1000);
+    search.mockRejectedValue(new Error('offline'));
+    await expect(fetchGdeltArticles('cyber')).rejects.toThrow(/unavailable/);
+    await expect(fetchGdeltArticles('nuclear')).rejects.toThrow(/unavailable/);
+    const callsBefore = search.mock.calls.length;
+    await expect(fetchGdeltArticles('military')).rejects.toThrow(/unavailable/);
+    expect(search).toHaveBeenCalledTimes(callsBefore);
+  });
+
+  it('serves a persisted entry younger than one hour', async () => {
+    persisted.set(persistKey, { key: persistKey, data: { articles: [article], query: 'military', error: '' }, updatedAt: Date.now() - 30 * 60 * 1000 });
+    search.mockRejectedValue(new Error('offline'));
+    const { fetchGdeltArticles } = await import('@/services/gdelt-intel');
+    expect((await fetchGdeltArticles('military'))[0]?.title).toBe('retained');
+  });
+
+  it.each([
+    ['older than one hour', { updatedAt: Date.now() - 2 * HOUR }],
+    ['written without a fetch time', {}],
+  ])('does not serve a persisted entry %s', async (_label, stamp) => {
+    persisted.set(persistKey, { key: persistKey, data: { articles: [article], query: 'military', error: '' }, ...stamp });
+    search.mockRejectedValue(new Error('offline'));
+    const { fetchGdeltArticles } = await import('@/services/gdelt-intel');
+    await expect(fetchGdeltArticles('military')).rejects.toThrow(/unavailable/);
   });
 });

@@ -22,7 +22,7 @@ The disease-outbreak pipeline merges complementary sources rather than betting o
 - **Outbreak News Today** — specialist reporting that often moves days ahead of official confirmation.
 - A dedicated **outbreak tracker dataset** for structured, ongoing events.
 
-Outbreaks appear in the **Disease Outbreaks panel** and as a map layer, so an event sits in geographic context: next to the airports it may close, the displacement it may cause, and the [country risk](/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/) it feeds into.
+Outbreaks appear in the **[Disease Outbreaks](https://www.worldmonitor.app/docs/panels/disease-outbreaks) panel** and as a map layer, so an event sits in geographic context: next to the airports it may close, the displacement it may cause, and the [country risk](/blog/posts/country-risk-monitoring-due-diligence-worldmonitor/) it feeds into.
 
 ## Air quality as ground truth
 

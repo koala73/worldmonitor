@@ -99,6 +99,7 @@
     "build:ai-search": "node --import tsx scripts/build-ai-search.mjs",
     "build:ai-search:check": "node --import tsx scripts/build-ai-search.mjs --check",
     "build:sitemap": "node scripts/build-sitemap.mjs",
+    "seo:internal-links": "node scripts/internal-links.mjs",
     "build:sitemap:check": "npm run build:crawlable-corpus && node scripts/build-sitemap.mjs --check",
     "verify:sitemaps": "node scripts/verify-sitemaps.mjs",
     "build:pro": "cross-env npm_config_allow_scripts= npm --prefix pro-test ci --prefer-offline && npm --prefix pro-test run build",

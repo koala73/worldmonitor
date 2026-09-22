@@ -26,7 +26,7 @@ This is the flagship. World Monitor is built for OSINT analysts, defense researc
 - Country Instability Index (CII) for real-time risk scoring across its published country set
 - Strategic Theater Posture for operational theaters including the Taiwan Strait, Persian Gulf, Baltic, and Korean Peninsula
 - Military bases from reviewed operators mapped globally
-- Live ADS-B aircraft tracking with military enrichment
+- Live ADS-B [aircraft tracking with military enrichment](/blog/posts/military-flight-tracking-osint/)
 - AIS maritime monitoring merged with USNI fleet reports
 - Reviewed Telegram OSINT channels via MTProto
 - OREF rocket alert integration with Hebrew-to-English translation

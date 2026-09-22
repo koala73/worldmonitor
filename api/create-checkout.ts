@@ -277,7 +277,7 @@ export default async function handler(
     return completeStandaloneIdempotency(idempotency, json(data, 200, cors));
   } catch (err) {
     console.error('[create-checkout] Relay failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' }, fingerprint: ['api/create-checkout', 'relay', err instanceof Error ? err.name : 'Error'], ctx });
     return completeStandaloneIdempotency(idempotency, json({ error: 'Checkout service unavailable' }, 502, cors));
   }
 }

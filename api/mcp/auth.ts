@@ -513,6 +513,7 @@ export async function runProPreChecks(
   if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
     captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
       tags: { route: 'api/mcp', step: 'pro-secret-preflight' },
+      fingerprint: ['api/mcp', 'pro-secret-preflight', 'Error'],
       ctx,
     });
     return { ok: false, response: new Response(
@@ -667,7 +668,7 @@ async function checkMcpEntitlementGate(
   try {
     ent = await deps.getEntitlements(userId);
   } catch (err) {
-    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
+    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, fingerprint: ['api/mcp', sentryStep, err instanceof Error ? err.name : 'Error'], ctx });
     // #6716 F21: a THROWN entitlement lookup is the backend being unreachable.
     // Reporting it as 'no-account' told an already-authenticated caller — a
     // paying subscriber, possibly — to "sign in and subscribe", and buried a
@@ -756,6 +757,7 @@ export async function runUserKeyPreChecks(
   if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
     captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
       tags: { route: 'api/mcp', step: 'user-key-secret-preflight' },
+      fingerprint: ['api/mcp', 'user-key-secret-preflight', 'Error'],
       ctx,
     });
     return { ok: false, response: new Response(
