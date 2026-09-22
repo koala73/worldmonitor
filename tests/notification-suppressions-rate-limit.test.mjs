@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertLimiterBudget } from './helpers/upstash-limiter-wire.mjs';
+import { assertLimiterBudget, readLimiterRequest } from './helpers/upstash-limiter-wire.mjs';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -99,6 +99,42 @@ test('under the budget the snapshot is served with the 60s shared cache', async 
   assertLimiterBudget(assert, calls, { limit: 60, windowSeconds: 60, scope: 'notification-suppressions' });
   // A malformed limiter reply also passes (fail-open); prove this one was a real allow.
   assert.deepEqual(errors.filter((line) => line.includes('[rate-limit]')), []);
+});
+
+test('keeps limiter buckets isolated by caller IP', async () => {
+  // assertLimiterBudget only reads the first limiter command and its scope
+  // prefix. A handler that stored every caller under one Redis key would
+  // still pass that check, so this test spends one IP's bucket and requires
+  // a second IP to keep its own.
+  const bucketHits = new Map();
+  const calls = spyFetch((url, init) => {
+    if (isSmembers(url)) return json({ result: ['host:evil.example'] });
+    const keys = readLimiterRequest([{ init }])?.keys;
+    if (!keys?.length) return json([{ result: [59, 60] }]);
+    const bucket = keys.join('\0');
+    const hit = (bucketHits.get(bucket) ?? 0) + 1;
+    bucketHits.set(bucket, hit);
+    const remaining = hit === 1 ? 59 : -1;
+    return json([{ result: [remaining, 60] }]);
+  });
+
+  const first = await handler(makeRequest('198.51.100.10'), makeCtx());
+  const exhausted = await handler(makeRequest('198.51.100.10'), makeCtx());
+  const isolated = await handler(makeRequest('198.51.100.11'), makeCtx());
+
+  assert.equal(first.status, 200);
+  assert.equal(exhausted.status, 429);
+  assert.equal(isolated.status, 200);
+
+  const limiterCalls = calls.filter((call) => readLimiterRequest([call]));
+  const keysFor = (index) => readLimiterRequest(limiterCalls.slice(index))?.keys;
+  const firstKeys = keysFor(0);
+  const secondKeys = keysFor(1);
+  const thirdKeys = keysFor(2);
+  assert.deepEqual(firstKeys, secondKeys);
+  assert.notDeepEqual(secondKeys, thirdKeys);
+  assert.ok(firstKeys?.some((key) => key.includes('198.51.100.10')));
+  assert.ok(thirdKeys?.some((key) => key.includes('198.51.100.11')));
 });
 
 test('a limiter outage fails open: the suppression snapshot is still served', async () => {
