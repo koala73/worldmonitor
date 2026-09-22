@@ -31,6 +31,7 @@ import {
   withContentAttribution,
 } from '../../shared/content-attribution';
 import { MISSION_PRESET_IDS } from '../../shared/mission-domain';
+import { redactSensitiveUrl } from '../../shared/sensitive-url-params';
 import {
   isCheckoutSurface,
   parseCheckoutContext,
@@ -73,6 +74,25 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // tolerate collector failures. tech/commodity stay out until #4183 ships.
 const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
+const UMAMI_BEFORE_SEND_HOOK = '__wmUmamiBeforeSend';
+
+/** Umami `data-before-send` hook: strip the shared sensitive-param list from
+ * the payload's url and referrer. Returns the payload itself when clean. */
+function redactUmamiPayload(_type: string, payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const record = payload as Record<string, unknown>;
+  let next: Record<string, unknown> | null = null;
+  for (const field of ['url', 'referrer'] as const) {
+    const raw = record[field];
+    if (typeof raw !== 'string') continue;
+    const redacted = redactSensitiveUrl(raw, window.location?.origin);
+    if (redacted !== raw) {
+      next ??= { ...record };
+      next[field] = redacted;
+    }
+  }
+  return next ?? payload;
+}
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
 const UMAMI_IDENTIFY_RETRY_LIMIT = 2;
@@ -565,6 +585,12 @@ function loadUmamiScript(): void {
   script.src = UMAMI_SCRIPT_SRC;
   script.dataset.websiteId = UMAMI_WEBSITE_ID;
   script.dataset.domains = UMAMI_DOMAINS;
+  // Deferred consumers keep invite, checkout, referral, and Clerk params in
+  // the live URL until they read them; Umami payloads must not copy those.
+  // Redact per payload rather than data-exclude-search, which would also
+  // drop the utm_* params campaign attribution reads.
+  (window as unknown as Record<string, unknown>)[UMAMI_BEFORE_SEND_HOOK] = redactUmamiPayload;
+  script.dataset.beforeSend = UMAMI_BEFORE_SEND_HOOK;
   script.addEventListener('load', flushPendingUmamiCalls, { once: true });
   script.addEventListener('error', () => {
     umamiLoadStarted = false;
