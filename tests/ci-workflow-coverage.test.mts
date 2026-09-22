@@ -2121,10 +2121,11 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.match(corpusScript, /RESILIENCE_SNAPSHOT_DIR = 'docs\/snapshots'/);
   });
 
-  it('keeps each tag publish out of the pending slot main rebuilds evict', () => {
+  it('keeps everything that is not main out of the pending slot main rebuilds evict', () => {
     // One pending run per group, and a newer run evicts it. Right for main,
-    // where the newest run builds the newest commit; wrong for a release or
-    // tag-repair dispatch, whose version tags no other run would publish.
+    // where the newest run builds the newest commit; wrong for anything else,
+    // whose one shot at publishing (a release's version tags, a feature-branch
+    // dispatch testing a Dockerfile change) no other run would take.
     const concurrency = dockerPublish.concurrency as { group: string; 'cancel-in-progress': boolean };
     assert.equal(concurrency['cancel-in-progress'], false, 'cancelling an in-progress push risks a half-published image');
     const group = (event_name: string, ref: string) =>
@@ -2137,6 +2138,13 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.notEqual(release, main, 'a release must not share main\'s pending slot');
     assert.equal(group('workflow_dispatch', 'refs/tags/v2.10.0'), release, 'a tag repair dispatch serializes with that tag\'s release');
     assert.notEqual(group('release', 'refs/tags/v2.10.1'), release);
+    // Keying on "is this main" rather than "is this a tag" (CodeRabbit,
+    // #7808): an earlier version keyed only on `refs/tags/`, so a dispatch
+    // against a feature branch -- a supported repair/test path per the tags
+    // block above -- still fell into main's group and could evict a pending
+    // main rebuild.
+    const featureBranch = group('workflow_dispatch', 'refs/heads/some-feature');
+    assert.notEqual(featureBranch, main, 'a feature-branch dispatch must not share main\'s pending slot either');
   });
 
   it('leaves `latest` to the explicit raw entry rather than metadata-action\'s latest=auto', () => {
@@ -2184,21 +2192,44 @@ describe('privileged publish and auto-merge conditions', () => {
   });
 
   it('alarms when an unattended rebuild of main fails, because nothing else watches it', () => {
-    const steps = dockerPublish.jobs.docker.steps as { if?: string; run?: string }[];
-    const alarm = steps.find((step) => String(step.if ?? '').includes('failure()'));
-    assert.ok(alarm, 'a failed unattended rebuild must report somewhere durable');
-    const fires = (event_name: string) =>
-      evaluateExpression(String(alarm.if), { failure: () => true, github: { event_name } });
+    // A separate job, not a same-job `if: failure()` step (CodeRabbit,
+    // #7808): the build job's own 45-minute timeout ends it `cancelled`, not
+    // `failed`, so `failure()` stays false and a step gated on it inside that
+    // same job would never run for exactly the failure mode the timeout
+    // exists to guard against. `needs:` plus `always()` observes the result
+    // from outside the job, where a timeout is visible too.
+    const reportJob = dockerPublish.jobs['report-failure'] as {
+      needs?: string;
+      if?: string;
+      permissions?: Record<string, string>;
+      steps: { run?: string }[];
+    };
+    assert.ok(reportJob, 'a failed unattended rebuild must report somewhere durable');
+    assert.equal(reportJob.needs, 'docker');
+    assert.equal(dockerPublish.jobs.docker.permissions.issues, undefined, 'the build job itself no longer needs to open issues');
+    assert.equal(reportJob.permissions?.issues, 'write');
+
+    const fires = (event_name: string, result: string) =>
+      evaluateExpression(String(reportJob.if), {
+        always: () => true,
+        github: { event_name },
+        needs: { docker: { result } },
+      });
     // The push trigger is the primary freshness mechanism; its failures land
     // after the PR merged, where nobody is looking.
-    assert.equal(fires('push'), true);
-    assert.equal(fires('schedule'), true);
+    for (const event_name of ['push', 'schedule']) {
+      assert.equal(fires(event_name, 'failure'), true, `${event_name} + failure must alarm`);
+      assert.equal(fires(event_name, 'cancelled'), true, `${event_name} + a timeout (cancelled) must alarm too`);
+      assert.equal(fires(event_name, 'success'), false);
+    }
     // A release or manual dispatch has a human watching the run.
-    assert.equal(fires('workflow_dispatch'), false);
-    assert.equal(fires('release'), false);
+    assert.equal(fires('workflow_dispatch', 'failure'), false);
+    assert.equal(fires('release', 'failure'), false);
+
+    const alarm = reportJob.steps.find((step) => String(step.run ?? '').includes('gh issue create'));
+    assert.ok(alarm, 'the report job must keep its issue-filing step');
     assert.match(String(alarm.run), /gh issue create/);
     assert.match(String(alarm.run), /gh issue comment/, 'a repeat failure must not open a duplicate issue');
-    assert.equal(dockerPublish.jobs.docker.permissions.issues, 'write');
   });
 
   it('arms Dependabot auto-merge only for a trusted, grouped, minor or patch action bump', () => {
@@ -2228,6 +2259,24 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.equal(evaluate({ group: '' }), false, 'an ungrouped or advisory action PR is out of scope');
     assert.equal(evaluate({ trusted: 'false' }), false, 'an untrusted publisher keeps the human merge click');
     assert.equal(evaluate({ actor: 'a-maintainer' }), false, 'a human push must not ride in on the bot\'s arming');
+  });
+
+  it('cancels a superseded auto-merge run instead of racing its disarm step', () => {
+    // Without this, two `synchronize` runs for the same PR can execute
+    // concurrently. The disarm step only checks whether auto-merge IS armed,
+    // not which commit armed it, so a slow run evaluating a stale commit can
+    // finish after a faster run for the qualifying newer commit and disarm
+    // what that run just correctly armed (CodeRabbit, #7808). Cancelling the
+    // older run outright removes the race: it is grouped per PR, not per
+    // workflow, so it cannot evict a run for a different Dependabot PR.
+    const concurrency = autoMerge.concurrency as { group: string; 'cancel-in-progress': boolean };
+    assert.ok(concurrency, 'concurrent synchronize runs for one PR must not race');
+    assert.equal(concurrency['cancel-in-progress'], true, 'a stale run must not survive to reach its disarm step');
+    const group = (number: number) =>
+      evaluateExpression(concurrency.group.replace(/^\$\{\{(.+)\}\}$/s, '$1'), {
+        github: { event: { pull_request: { number } } },
+      });
+    assert.notEqual(group(101), group(102), 'PRs must not share a slot and evict each other');
   });
 
   it('disarms auto-merge whenever the commit under review does not qualify', () => {

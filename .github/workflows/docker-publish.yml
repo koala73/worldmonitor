@@ -98,17 +98,22 @@ on:
     - cron: '19 2 * * 3'
   workflow_dispatch:
 
-# Main rebuilds (push, schedule, dispatch from a branch) share one group, and
-# each tag ref gets a group of its own. GitHub keeps at most one pending run
-# per concurrency group and evicts an earlier pending run when a newer one
-# queues, which is exactly right for main: several docker-relevant merges
-# landing close together collapse to the run in progress plus the newest
-# pending one, and nothing is lost because that newest run builds the newest
-# main. It would be wrong for a tag: with main advancing several times an hour
-# and a multi-platform build taking ~20 minutes, a release or tag-repair
-# dispatch queued behind a main rebuild would be evicted by the next merge,
-# and its version tags would never be published by any other run. A separate
-# group per tag keeps those runs out of main's single pending slot.
+# Only main's own triggers (push, schedule, a dispatch run against main) share
+# the `docker-publish` group; every other ref gets a group of its own. GitHub
+# keeps at most one pending run per concurrency group and evicts an earlier
+# pending run when a newer one queues, which is exactly right for main:
+# several docker-relevant merges landing close together collapse to the run in
+# progress plus the newest pending one, and nothing is lost because that
+# newest run builds the newest main. It would be wrong for anything else: with
+# main advancing several times an hour and a multi-platform build taking ~20
+# minutes, a release, a tag-repair dispatch, or a dispatch against a feature
+# branch to test a Dockerfile change would be evicted by the next merge if it
+# shared main's slot -- for a tag that means its version tags are never
+# published by any other run (CodeRabbit, #7808: an earlier version of this
+# keyed only on `refs/tags/`, so a feature-branch dispatch still fell into
+# main's group and could evict a pending main rebuild). Keying on `main`
+# itself rather than "is this a tag" covers every ref that isn't main with the
+# same rule, including ones this workflow does not use today.
 #
 # The cost is that a tag run and a main run can overlap. Both may push
 # `latest` (a release's own run publishes it), and whichever finishes last
@@ -121,7 +126,7 @@ on:
 # half-pushed multi-platform image -- eviction only ever reaches a pending run
 # that has not started.
 concurrency:
-  group: ${{ startsWith(github.ref, 'refs/tags/') && format('docker-publish-{0}', github.ref) || 'docker-publish' }}
+  group: ${{ github.ref == 'refs/heads/main' && 'docker-publish' || format('docker-publish-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
@@ -135,8 +140,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      # For the failure issue on a failed rebuild of main.
-      issues: write
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -282,6 +285,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # A separate job, not a same-job `if: failure()` step: the build job's own
+  # 45-minute timeout is a plausible way for it to end (QEMU under a
+  # multi-platform build can hang), and GitHub marks a job that hits its
+  # timeout `cancelled`, not `failed` -- `failure()` stays false, so a step
+  # gated on it inside the same job never runs for exactly the failure mode
+  # the timeout comment anticipates (CodeRabbit, #7808). `needs:` plus
+  # `if: always()` observes the build job's result from outside it, where a
+  # timeout is visible too.
+  report-failure:
+    needs: docker
+    if: >-
+      always() &&
+      (needs.docker.result == 'failure' || needs.docker.result == 'cancelled') &&
+      (github.event_name == 'schedule' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
       # Nobody watches an unattended rebuild. A push-triggered run fails after
       # its PR has already merged, and a scheduled one on a seven-day cadence;
       # either is invisible until someone opens the Actions tab, and the whole
@@ -292,7 +313,6 @@ jobs:
       # re-commented rather than duplicated, in the manner of
       # orphaned-stacked-merge-monitor.yml.
       - name: Report a failed rebuild of main
-        if: failure() && (github.event_name == 'schedule' || github.event_name == 'push')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

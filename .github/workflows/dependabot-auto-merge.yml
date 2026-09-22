@@ -58,6 +58,19 @@ name: Dependabot auto-merge
 
 on: pull_request
 
+# Without this, two `synchronize` runs for the same PR (Dependabot refreshing
+# the group twice in quick succession, or a maintainer pushing right behind
+# it) can execute concurrently. The disarm step only checks whether auto-merge
+# IS armed, not which commit armed it, so a slow run evaluating a stale commit
+# can finish after a faster run for the qualifying newer commit and disarm
+# what that run just correctly armed (CodeRabbit, #7808). Cancelling the
+# older run outright removes the race instead of guarding against it: a
+# cancelled run never reaches its disarm step, so only the run for the
+# current head commit ever completes.
+concurrency:
+  group: ${{ format('dependabot-auto-merge-{0}', github.event.pull_request.number) }}
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
