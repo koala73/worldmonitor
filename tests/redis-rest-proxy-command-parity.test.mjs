@@ -96,6 +96,15 @@ const accepts = (gate, args) => {
 it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
   const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
   assert.match(source, /from '\.\.\/\.\.\/shared\/compare-and-delete-script\.cjs'/);
+  const start = source.indexOf('export async function compareAndDeleteRedisKey');
+  assert.ok(start >= 0, 'compareAndDeleteRedisKey export not found');
+  const nextExport = source.slice(start + 1).search(/\nexport /);
+  assert.ok(nextExport >= 0, 'next export after compareAndDeleteRedisKey not found');
+  const body = source.slice(start, start + 1 + nextExport);
+  assert.match(
+    body,
+    /JSON\.stringify\(\['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', finalKey, expectedValue\]\)/,
+  );
   const gate = buildGate();
   assert.equal(accepts(gate, ['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', 'lock', 'token']), true);
   assert.equal(accepts(gate, ['EVAL', `${COMPARE_AND_DELETE_SCRIPT} `, '1', 'lock', 'token']), false);
@@ -378,24 +387,21 @@ describe('redis-rest-proxy command gate', () => {
     assert.match(logged, /Command not allowed: EVAL \(script not in the pinned allowlist\)/);
   });
 
-  it('admits the AIS relay owner-checked lock release', async () => {
+  it('admits the AIS relay owner-checked lock release', () => {
     const gate = buildGate();
     const relaySrc = readFileSync(resolve(repoRoot, 'scripts/ais-relay.cjs'), 'utf8');
-    const inline = relaySrc.match(
-      /function upstashReleaseLockIfOwner[\s\S]*?const script = '([^']+)';/,
+    const marker = 'function upstashReleaseLockIfOwner';
+    const start = relaySrc.indexOf(marker);
+    assert.ok(start >= 0, 'upstashReleaseLockIfOwner not found');
+    const nextFn = relaySrc.slice(start + marker.length).search(/\n(?:async )?function /);
+    assert.ok(nextFn >= 0, 'next function after upstashReleaseLockIfOwner not found');
+    const body = relaySrc.slice(start, start + marker.length + nextFn);
+    assert.match(
+      body,
+      /JSON\.stringify\(\['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', key, owner\]\)/,
     );
-    const script = inline
-      ? inline[1]
-      : (await import('../scripts/shared/compare-and-delete-script.cjs')).COMPARE_AND_DELETE_SCRIPT;
-    if (!inline) {
-      assert.match(relaySrc, /requireShared\('compare-and-delete-script\.cjs'\)/);
-      assert.match(
-        relaySrc,
-        /function upstashReleaseLockIfOwner[\s\S]*?COMPARE_AND_DELETE_SCRIPT/,
-      );
-    }
-    assert.equal(accepts(gate, ['EVAL', script, '1', 'lock', 'owner']), true);
-    assert.equal(accepts(gate, ['EVAL', `${script} `, '1', 'lock', 'owner']), false);
+    assert.equal(accepts(gate, ['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', 'lock', 'owner']), true);
+    assert.equal(accepts(gate, ['EVAL', `${COMPARE_AND_DELETE_SCRIPT} `, '1', 'lock', 'owner']), false);
   });
 
   it('rewrites the pre-pin seed lock release onto the pinned compare-and-delete', () => {
