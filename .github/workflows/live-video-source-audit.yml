@@ -1,0 +1,69 @@
+name: Live Video Source Audit
+
+# Curated webcam and Live News streams rot (ended, deleted, unembeddable). This keeps one issue
+# listing the slots that need a replacement, outside PR and deployment gates.
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: live-video-source-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # Worst case that still reaches the reporter: about 3 for checkout and npm ci; at most 8 for the Chromium
+    # install (a hung install fails the run instead); about 4 for the batched check (7 pages of up to 8 players at
+    # up to 31 s each, HLS fetches capped at 15 s); at most 8 for alone re-checks (ALONE_RECHECK_BUDGET_MS, about
+    # 10 checks at 45 s each); about 1 for the reporter (GitHub calls capped at 30 s, no browser). Every phase
+    # carries its own timeout-minutes so one slow step fails with its own message instead of eating the job.
+    # tests/report-live-video-audit.test.mjs checks this sum, plus 5 minutes of headroom, against timeout-minutes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      # A stuck apt mirror has hung this install for a whole job budget before (see test.yml).
+      - name: Install Chromium
+        timeout-minutes: 8
+        run: npx playwright install --with-deps chromium
+
+      # Exits 1 whenever a slot needs attention, which is the normal case the reporter handles.
+      # A run that writes no report still fails the job at the reporter.
+      - name: Check every live video slot
+        id: check
+        timeout-minutes: 16
+        continue-on-error: true
+        run: node --import tsx scripts/check-live-video-sources.mjs --all --report "$RUNNER_TEMP/live-video-audit.json"
+
+      # Findings become the issue. A missing or incomplete report, or canaries that fail twice
+      # (broken probing, not rot), fail this monitor visibly and leave the issue alone.
+      - name: Report slots needing a replacement
+        id: report
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIVE_VIDEO_AUDIT_REPORT: ${{ runner.temp }}/live-video-audit.json
+        run: node --import tsx scripts/report-live-video-audit.mjs
+
+      # The issue body renders the report lossily (rows capped, evidence summarized as prose). Whoever triages a
+      # batch of failures reads the JSON itself: per-attempt errorCode, httpStatus, verdictAtMs and aloneChecks.
+      - name: Upload the audit report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: live-video-audit-report
+          path: ${{ runner.temp }}/live-video-audit.json
+          retention-days: 14
