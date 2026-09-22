@@ -19,8 +19,12 @@ name: Dependabot auto-merge
 #   2. Actor is Dependabot. WHO PUSHED the commit under review. A `synchronize`
 #      from a maintainer's fixup commit keeps the author but changes the actor,
 #      and GitHub's auto-merge, once armed, survives new pushes — so without
-#      this the human's own commit would ride in on the bot's arming. The
-#      disarm step below actively revokes it rather than merely not renewing.
+#      this the human's own commit would ride in on the bot's arming.
+#
+# Because an arming survives new pushes, a run that finds the guards failing
+# does not merely skip arming: the disarm step below actively revokes whatever
+# a previous run armed. That covers a human's push and equally Dependabot's own
+# refresh of the group with a major or an untrusted action.
 #   3. Grouped github-actions bump, minor or patch. On a grouped PR
 #      `update-type` is the highest semver change across the whole group, so a
 #      group carrying a major fails this and waits for a human. The
@@ -71,30 +75,6 @@ jobs:
     # the whole job.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
-      # Condition 2. A human pushed to a Dependabot branch: revoke any arming a
-      # previous run left in place. GitHub keeps auto-merge enabled across new
-      # commits, so doing nothing here would let this commit merge on green
-      # without anyone choosing to merge it.
-      - name: Disarm auto-merge when someone other than Dependabot pushed
-        if: github.actor != 'dependabot[bot]'
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "Actor is $GITHUB_ACTOR, not dependabot[bot] — this commit was not written by the bot."
-          # Ask whether auto-merge is armed rather than calling --disable-auto
-          # and reading its error text: `autoMergeRequest` is null when it is
-          # not armed, so the ordinary case is a value to branch on instead of a
-          # failure to pattern-match, and a real API failure still fails here.
-          armed="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest // empty')"
-          if [ -z "$armed" ]; then
-            echo "Auto-merge is not armed; nothing to disable."
-          else
-            gh pr merge --disable-auto "$PR_URL"
-            echo "::warning::Auto-merge was armed on $PR_URL and has been disabled because a commit not written by Dependabot was pushed to the branch. Review that commit and merge deliberately."
-          fi
-
       - name: Fetch Dependabot metadata
         id: metadata
         if: github.actor == 'dependabot[bot]'
@@ -118,7 +98,9 @@ jobs:
           trusted=0
           untrusted=""
           IFS=',' read -ra names <<< "$DEPENDENCY_NAMES"
-          for raw in "${names[@]}"; do
+          # `${names[@]+...}`: an empty list is unbound under `set -u` in the
+          # bash 3.2 that tests/ci-workflow-coverage.test.mts runs this with on macOS.
+          for raw in ${names[@]+"${names[@]}"}; do
             name="$(echo "$raw" | tr -d '[:space:]')"
             if [ -n "$name" ]; then
               case "$name" in
@@ -149,6 +131,11 @@ jobs:
            steps.metadata.outputs.update-type == 'version-update:semver-patch')
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
+          # The commit the guards above just vetted. Arming is bound to it, so a
+          # run that loses a race with a newer push -- or a re-run of an old
+          # run, which keeps github.actor as dependabot[bot] -- cannot arm a
+          # head nobody checked.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -157,7 +144,51 @@ jobs:
           # would merge a Dependabot PR without waiting for the Deploy Gate
           # anywhere branch protection does not already forbid it. Failing costs
           # one red run per PR and names its own fix.
-          if ! gh pr merge --auto --squash "$PR_URL"; then
+          if ! gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_URL"; then
             echo "::error::Could not enable auto-merge on $PR_URL. If the failure above says auto-merge is not allowed, switch on \"Allow auto-merge\" in Settings -> General; the merge then waits for the required checks like any other."
             exit 1
+          fi
+
+      # The exact negation of the Enable condition, so every run ends either
+      # armed for the commit it vetted or disarmed. GitHub keeps auto-merge
+      # enabled across new commits, so doing nothing here would let a later
+      # commit merge on an earlier run's arming -- whether a human pushed it
+      # (condition 2) or Dependabot itself refreshed the group with a major or
+      # an untrusted action (conditions 3 and 4). `!cancelled()` keeps it
+      # running when a guard step above failed rather than decided.
+      - name: Disarm auto-merge when this commit does not qualify
+        if: >-
+          !cancelled() && !(
+          github.actor == 'dependabot[bot]' &&
+          steps.publisher.outputs.trusted == 'true' &&
+          steps.metadata.outputs.package-ecosystem == 'github_actions' &&
+          steps.metadata.outputs.dependency-group == 'github-actions' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-patch'))
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # A transient API failure must not leave a stale arming in place, so
+          # each call gets a few attempts before the step goes red.
+          retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then return 0; fi
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+            return 1
+          }
+          # Ask whether auto-merge is armed rather than calling --disable-auto
+          # and reading its error text: `autoMergeRequest` is null when it is
+          # not armed, so the ordinary case is a value to branch on instead of a
+          # failure to pattern-match, and a real API failure still fails here.
+          armed_state() { gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest // empty'; }
+          armed="$(retry armed_state)"
+          if [ -z "$armed" ]; then
+            echo "Auto-merge is not armed; nothing to disable."
+          else
+            retry gh pr merge --disable-auto "$PR_URL"
+            echo "::warning::Auto-merge was armed on $PR_URL and has been disabled because the commit pushed by $GITHUB_ACTOR does not meet the auto-merge guards. Review it and merge deliberately."
           fi

@@ -1982,13 +1982,44 @@ describe('privileged publish and auto-merge conditions', () => {
   const evaluateExpression = (expression: string, context: Record<string, unknown>) =>
     runInNewContext(
       expression.replace(/\.([A-Za-z_][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+)/g, "['$1']"),
-      { startsWith: (haystack: unknown, needle: unknown) => String(haystack).startsWith(String(needle)), ...context },
+      {
+        startsWith: (haystack: unknown, needle: unknown) => String(haystack).startsWith(String(needle)),
+        format: (template: string, ...args: unknown[]) =>
+          template.replace(/\{(\d+)\}/g, (_, index: string) => String(args[Number(index)])),
+        cancelled: () => false,
+        ...context,
+      },
       { timeout: 1000 },
     );
 
   const dockerPublish = YAML.parse(read(resolve(workflowsDir, 'docker-publish.yml')));
   const autoMerge = YAML.parse(read(resolve(workflowsDir, 'dependabot-auto-merge.yml')));
   const dependabotConfig = YAML.parse(read(resolve(root, '.github/dependabot.yml')));
+
+  // One dependabot-auto-merge.yml run, as its step conditions see it.
+  const autoMergeRunBase = {
+    actor: 'dependabot[bot]',
+    ecosystem: 'github_actions',
+    group: 'github-actions',
+    updateType: 'version-update:semver-patch',
+    trusted: 'true',
+  };
+  const autoMergeRunContext = (overrides: Partial<typeof autoMergeRunBase>) => {
+    const run = { ...autoMergeRunBase, ...overrides };
+    return {
+      github: { actor: run.actor },
+      steps: {
+        publisher: { outputs: { trusted: run.trusted } },
+        metadata: {
+          outputs: {
+            'package-ecosystem': run.ecosystem,
+            'dependency-group': run.group,
+            'update-type': run.updateType,
+          },
+        },
+      },
+    };
+  };
 
   const tagEnableExpressions = () => {
     const metaStep = dockerPublish.jobs.docker.steps.find(
@@ -2049,32 +2080,63 @@ describe('privileged publish and auto-merge conditions', () => {
     // `on.push` rather than a job-level `if:` -- docker-publish.yml publishes
     // no gate-required check, so the "never gate on a workflow's paths:"
     // convention (docs/solutions/conventions/…) does not apply here.
-    const push = (dockerPublish as { on: { push?: { branches?: string[]; 'paths-ignore'?: string[] } } }).on.push;
+    const push = (dockerPublish as { on: { push?: { branches?: string[]; paths?: string[]; 'paths-ignore'?: string[] } } }).on.push;
     assert.ok(push, 'docker-publish.yml must trigger on push');
     assert.deepEqual(push.branches, ['main']);
-    // An ignore-list, not an allow-list (#7808 review, CodeRabbit):
-    // docker/Dockerfile's builder stage runs `COPY . .` then
-    // `npx tsc && npx vite build`, so nearly every path NOT listed here can
+    assert.equal(push['paths-ignore'], undefined, 'paths-ignore cannot re-include a build input; use paths with negations');
+    // Match-everything-then-exclude, not an allow-list (#7808 review,
+    // CodeRabbit): docker/Dockerfile's builder stage runs `COPY . .` then
+    // `npx tsc && npx vite build`, so nearly every path NOT excluded here can
     // reach the built image -- an allow-list of "files the Dockerfile
     // references directly" previously missed src/, vite.config.ts, and most
     // of scripts/, silently falling back to the cron's up-to-a-week bound for
     // ordinary application changes.
+    const paths = push.paths ?? [];
+    assert.equal(paths[0], '**', 'the filter must start from every path');
     assert.deepEqual(
-      [...(push['paths-ignore'] ?? [])].sort(),
+      paths.filter((path) => path.startsWith('!')).sort(),
       [
-        '**/*.md',
-        '.agents/**',
-        '.claude/**',
-        '.factory/**',
-        '.github/**',
-        '.planning/**',
-        '.windsurf/**',
-        'docs/**',
-        'e2e/**',
-        'src-tauri/**',
-        'tests/**',
+        '!**/*.md',
+        '!.agents/**',
+        '!.claude/**',
+        '!.factory/**',
+        '!.github/**',
+        '!.planning/**',
+        '!.windsurf/**',
+        '!docs/**',
+        '!e2e/**',
+        '!src-tauri/**',
+        '!tests/**',
       ].sort(),
     );
+    // build:crawlable-corpus renders CHANGELOG.md and docs/snapshots/ into the
+    // image, inside two excluded globs. In `paths` a later pattern overrides an
+    // earlier one, so each re-inclusion must come after every exclusion.
+    const lastExclusion = paths.map((path) => path.startsWith('!')).lastIndexOf(true);
+    for (const buildInput of ['CHANGELOG.md', 'docs/snapshots/**']) {
+      assert.ok(paths.indexOf(buildInput) > lastExclusion, `${buildInput} must be re-included after the exclusions`);
+    }
+    const corpusScript = read(resolve(root, 'scripts/build-crawlable-corpus.mjs'));
+    assert.match(corpusScript, /CHANGELOG_PATH = 'CHANGELOG\.md'/);
+    assert.match(corpusScript, /RESILIENCE_SNAPSHOT_DIR = 'docs\/snapshots'/);
+  });
+
+  it('keeps each tag publish out of the pending slot main rebuilds evict', () => {
+    // One pending run per group, and a newer run evicts it. Right for main,
+    // where the newest run builds the newest commit; wrong for a release or
+    // tag-repair dispatch, whose version tags no other run would publish.
+    const concurrency = dockerPublish.concurrency as { group: string; 'cancel-in-progress': boolean };
+    assert.equal(concurrency['cancel-in-progress'], false, 'cancelling an in-progress push risks a half-published image');
+    const group = (event_name: string, ref: string) =>
+      evaluateExpression(concurrency.group.replace(/^\$\{\{(.+)\}\}$/s, '$1'), { github: { event_name, ref } });
+
+    const main = group('push', 'refs/heads/main');
+    assert.equal(group('schedule', 'refs/heads/main'), main);
+    assert.equal(group('workflow_dispatch', 'refs/heads/main'), main);
+    const release = group('release', 'refs/tags/v2.10.0');
+    assert.notEqual(release, main, 'a release must not share main\'s pending slot');
+    assert.equal(group('workflow_dispatch', 'refs/tags/v2.10.0'), release, 'a tag repair dispatch serializes with that tag\'s release');
+    assert.notEqual(group('release', 'refs/tags/v2.10.1'), release);
   });
 
   it('leaves `latest` to the explicit raw entry rather than metadata-action\'s latest=auto', () => {
@@ -2121,11 +2183,19 @@ describe('privileged publish and auto-merge conditions', () => {
     );
   });
 
-  it('alarms when the scheduled rebuild fails, because nothing else watches a weekly cron', () => {
+  it('alarms when an unattended rebuild of main fails, because nothing else watches it', () => {
     const steps = dockerPublish.jobs.docker.steps as { if?: string; run?: string }[];
     const alarm = steps.find((step) => String(step.if ?? '').includes('failure()'));
-    assert.ok(alarm, 'a failed scheduled rebuild must report somewhere durable');
-    assert.match(String(alarm.if), /github\.event_name == 'schedule'/);
+    assert.ok(alarm, 'a failed unattended rebuild must report somewhere durable');
+    const fires = (event_name: string) =>
+      evaluateExpression(String(alarm.if), { failure: () => true, github: { event_name } });
+    // The push trigger is the primary freshness mechanism; its failures land
+    // after the PR merged, where nobody is looking.
+    assert.equal(fires('push'), true);
+    assert.equal(fires('schedule'), true);
+    // A release or manual dispatch has a human watching the run.
+    assert.equal(fires('workflow_dispatch'), false);
+    assert.equal(fires('release'), false);
     assert.match(String(alarm.run), /gh issue create/);
     assert.match(String(alarm.run), /gh issue comment/, 'a repeat failure must not open a duplicate issue');
     assert.equal(dockerPublish.jobs.docker.permissions.issues, 'write');
@@ -2138,29 +2208,16 @@ describe('privileged publish and auto-merge conditions', () => {
     );
     assert.ok(enable?.if, 'dependabot-auto-merge.yml must keep a guarded Enable auto-merge step');
 
-    const base = {
-      actor: 'dependabot[bot]',
-      ecosystem: 'github_actions',
-      group: 'github-actions',
-      updateType: 'version-update:semver-patch',
-      trusted: 'true',
-    };
-    const evaluate = (overrides: Partial<typeof base>) => {
-      const merged = { ...base, ...overrides };
-      return evaluateExpression(enable.if as string, {
-        github: { actor: merged.actor },
-        steps: {
-          publisher: { outputs: { trusted: merged.trusted } },
-          metadata: {
-            outputs: {
-              'package-ecosystem': merged.ecosystem,
-              'dependency-group': merged.group,
-              'update-type': merged.updateType,
-            },
-          },
-        },
-      });
-    };
+    const evaluate = (overrides: Partial<typeof autoMergeRunBase>) =>
+      evaluateExpression(enable.if as string, autoMergeRunContext(overrides));
+
+    // Arming is bound to the head the guards vetted, so a run that lost a race
+    // with a newer push -- or a re-run of an old one -- cannot arm a later head.
+    assert.match(String((enable as { run?: string }).run), /gh pr merge --auto --squash --match-head-commit "\$HEAD_SHA"/);
+    assert.equal(
+      (enable as { env?: Record<string, string> }).env?.HEAD_SHA,
+      '${{ github.event.pull_request.head.sha }}',
+    );
 
     assert.equal(evaluate({}), true, 'a trusted grouped patch bump is the whole point');
     assert.equal(evaluate({ updateType: 'version-update:semver-minor' }), true);
@@ -2173,7 +2230,7 @@ describe('privileged publish and auto-merge conditions', () => {
     assert.equal(evaluate({ actor: 'a-maintainer' }), false, 'a human push must not ride in on the bot\'s arming');
   });
 
-  it('disarms auto-merge when someone other than Dependabot pushes to the branch', () => {
+  it('disarms auto-merge whenever the commit under review does not qualify', () => {
     const job = autoMerge.jobs['auto-merge'];
     // The JOB is gated on the author, which stays dependabot[bot] for the life
     // of the PR -- that is what lets a human's push reach the disarm step
@@ -2186,18 +2243,60 @@ describe('privileged publish and auto-merge conditions', () => {
       true,
     );
 
-    const disarm = (job.steps as { if?: string; run?: string }[]).find((step) =>
-      String(step.run ?? '').includes('--disable-auto'),
+    const steps = job.steps as { name?: string; if?: string; run?: string }[];
+    const disarm = steps.find((step) => String(step.run ?? '').includes('--disable-auto'));
+    const enable = steps.find((step) => step.name === 'Enable auto-merge');
+    assert.ok(disarm, 'a disqualified commit must revoke a previous arming, not merely skip renewing it');
+    assert.ok(enable?.if);
+    const disarms = (overrides: Partial<typeof autoMergeRunBase>) =>
+      evaluateExpression(String(disarm.if), autoMergeRunContext(overrides));
+    const arms = (overrides: Partial<typeof autoMergeRunBase>) =>
+      evaluateExpression(String(enable.if), autoMergeRunContext(overrides));
+
+    // A human's push: the metadata steps are skipped, so their outputs are empty.
+    const humanPush = { actor: 'a-maintainer', ecosystem: '', group: '', updateType: '', trusted: '' };
+    // Dependabot refreshing its own group PR keeps the actor, so an actor check
+    // alone would leave the earlier arming on a group that now carries a major
+    // or an untrusted action.
+    for (const [label, overrides] of [
+      ['a human push', humanPush],
+      ['Dependabot adding a major to the group', { updateType: 'version-update:semver-major' }],
+      ['Dependabot adding an untrusted action', { trusted: 'false' }],
+      ['a guard step that failed and wrote nothing', { trusted: '' }],
+    ] as [string, Partial<typeof autoMergeRunBase>][]) {
+      assert.equal(disarms(overrides), true, `${label} must disarm`);
+    }
+    // Every run ends armed or disarmed, never neither and never both.
+    for (const overrides of [{}, { updateType: 'version-update:semver-minor' }, humanPush, { group: '' }, { ecosystem: 'docker' }]) {
+      assert.equal(disarms(overrides), !arms(overrides), JSON.stringify(overrides));
+    }
+    assert.match(String(disarm.run), /retry gh pr merge --disable-auto/, 'a transient API failure must not leave a stale arming');
+  });
+
+  it('classifies bumped actions against the trusted publishers', () => {
+    const publisher = (autoMerge.jobs['auto-merge'].steps as { id?: string; run?: string }[]).find(
+      (step) => step.id === 'publisher',
     );
-    assert.ok(disarm, 'a commit pushed by anyone else must revoke a previous arming, not merely skip renewing it');
-    assert.equal(
-      evaluateExpression(String(disarm.if), { github: { actor: 'a-maintainer' } }),
-      true,
-    );
-    assert.equal(
-      evaluateExpression(String(disarm.if), { github: { actor: 'dependabot[bot]' } }),
-      false,
-    );
+    assert.ok(publisher?.run, 'dependabot-auto-merge.yml must keep the publisher step');
+    // Execute the real script: the Enable test above only feeds it a literal.
+    const outputDir = mkdtempSync(resolve(tmpdir(), 'wm-publisher-'));
+    try {
+      const trustedFor = (dependencyNames: string) => {
+        const outputFile = resolve(outputDir, 'output');
+        writeFileSync(outputFile, '');
+        execFileSync('bash', ['-c', publisher.run as string], {
+          env: { PATH: process.env.PATH, DEPENDENCY_NAMES: dependencyNames, GITHUB_OUTPUT: outputFile },
+          stdio: 'pipe',
+        });
+        return readFileSync(outputFile, 'utf8').trim();
+      };
+      assert.equal(trustedFor('actions/checkout, github/codeql-action,docker/build-push-action'), 'trusted=true');
+      assert.equal(trustedFor('actions/checkout, tauri-apps/tauri-action'), 'trusted=false', 'one untrusted action withholds the group');
+      assert.equal(trustedFor('actions-rs/toolchain'), 'trusted=false', 'a look-alike org is not a trusted org');
+      assert.equal(trustedFor(''), 'trusted=false', 'no names reported must not read as all trusted');
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
   });
 
   it('keeps the auto-merge group predicate in step with the group dependabot.yml defines', () => {
@@ -2232,6 +2331,28 @@ describe('privileged publish and auto-merge conditions', () => {
       undefined,
       'filtering this group on update-types suppresses action majors entirely; gate them in dependabot-auto-merge.yml instead',
     );
+  });
+
+  it('keeps every Dockerfile directory, and the major holds, in the one docker entry', () => {
+    const docker = (dependabotConfig.updates as {
+      'package-ecosystem': string;
+      directories?: string[];
+      ignore?: { 'dependency-name': string; 'update-types'?: string[] }[];
+      groups?: Record<string, Record<string, unknown>>;
+    }[]).filter((entry) => entry['package-ecosystem'] === 'docker');
+    // Three entries were folded into one; a directory dropped in that fold
+    // silently stops getting base bumps.
+    assert.equal(docker.length, 1);
+    assert.deepEqual([...(docker[0].directories ?? [])].sort(), ['/', '/consumer-prices-core', '/docker']);
+    // A Node or Postgres major is a deliberate migration, never a grouped
+    // base-image refresh.
+    for (const name of ['node', 'postgres']) {
+      const rule = docker[0].ignore?.find((entry) => entry['dependency-name'] === name);
+      assert.deepEqual(rule?.['update-types'], ['version-update:semver-major'], `${name} majors must stay ignored`);
+    }
+    // Digest-only bumps (the common case) carry no semver update type, so a
+    // filter would leave them ungrouped.
+    assert.equal(docker[0].groups?.['docker-base-images']?.['update-types'], undefined);
   });
 });
 

@@ -49,29 +49,42 @@ on:
     # have silently fallen back to the cron's up-to-a-week bound for ordinary
     # application changes, the opposite of what this trigger exists for.
     #
-    # The list below excludes only what plainly cannot reach the served
-    # output: tests, e2e, docs, desktop (src-tauri), agent/editor metadata
-    # directories, CI workflow files, and Markdown. A future top-level
-    # directory that is genuinely build-irrelevant needs an entry added here
-    # to stay quiet; one that IS build-relevant needs no entry at all, which
-    # is the safer direction for a filter to fail in.
+    # The list below matches everything, then excludes only what plainly
+    # cannot reach the served output: tests, e2e, docs, desktop (src-tauri),
+    # agent/editor metadata directories, CI workflow files, and Markdown. A
+    # future top-level directory that is genuinely build-irrelevant needs an
+    # exclusion added here to stay quiet; one that IS build-relevant needs no
+    # entry at all, which is the safer direction for a filter to fail in.
+    #
+    # `paths` with negations rather than `paths-ignore`, because two inputs
+    # inside the excluded globs are rendered into the image and must win them
+    # back: build:crawlable-corpus reads CHANGELOG.md for the changelog pages
+    # and docs/snapshots/ for the live-pulse and resilience pages (and throws
+    # once the live-pulse snapshot is 10 days old, so the snapshot refresh is
+    # also what turns a red rebuild green). .dockerignore keeps both in the
+    # build context for the same reason. In `paths`, a later pattern overrides
+    # an earlier one, so the re-inclusions must stay last.
     #
     # This is what makes the schedule below a backstop rather than the primary
-    # mechanism: a Dependabot base-image or action-digest bump, or an ordinary
-    # application change, now republishes `latest` within minutes of merging,
-    # not up to six days later.
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
-      - '.agents/**'
-      - '.claude/**'
-      - '.factory/**'
-      - '.planning/**'
-      - '.windsurf/**'
-      - 'docs/**'
-      - 'e2e/**'
-      - 'src-tauri/**'
-      - 'tests/**'
+    # mechanism: a Dependabot base-image bump or an ordinary application change
+    # now republishes `latest` within minutes of merging, not up to six days
+    # later. Action bumps live under .github/ and do not trigger it; they reach
+    # the image with the next rebuild.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.github/**'
+      - '!.agents/**'
+      - '!.claude/**'
+      - '!.factory/**'
+      - '!.planning/**'
+      - '!.windsurf/**'
+      - '!docs/**'
+      - '!e2e/**'
+      - '!src-tauri/**'
+      - '!tests/**'
+      - 'CHANGELOG.md'
+      - 'docs/snapshots/**'
   schedule:
     # Wednesdays at 02:19 UTC. Off the hour because GitHub runs the scheduled
     # queue late when it is loaded and that load peaks on the hour, and outside
@@ -85,27 +98,30 @@ on:
     - cron: '19 2 * * 3'
   workflow_dispatch:
 
-# A release, a push-triggered rebuild and a scheduled rebuild can all overlap,
-# and all three push `latest`. Serializing them keeps concurrent pushes from
-# interleaving the multi-platform OCI index. It does NOT give the release
-# precedence: GitHub keeps at most one pending run per concurrency group, so
-# whichever of the three is queued *last* while another is in progress is the
-# one that actually runs next -- an earlier-queued trigger in between is
-# evicted before it ever starts (GitHub's own documented concurrency-group
-# behavior, not something this workflow implements). A rebuild queued behind a
-# release therefore still overwrites the release's `latest` with a main build
-# once it runs, consistent with `latest` tracking main by design; it is not a
-# race the group protects against.
+# Main rebuilds (push, schedule, dispatch from a branch) share one group, and
+# each tag ref gets a group of its own. GitHub keeps at most one pending run
+# per concurrency group and evicts an earlier pending run when a newer one
+# queues, which is exactly right for main: several docker-relevant merges
+# landing close together collapse to the run in progress plus the newest
+# pending one, and nothing is lost because that newest run builds the newest
+# main. It would be wrong for a tag: with main advancing several times an hour
+# and a multi-platform build taking ~20 minutes, a release or tag-repair
+# dispatch queued behind a main rebuild would be evicted by the next merge,
+# and its version tags would never be published by any other run. A separate
+# group per tag keeps those runs out of main's single pending slot.
 #
-# Several docker-relevant merges landing close together do not each get their
-# own rebuild: only the run already in progress and the single latest pending
-# trigger survive, so a burst collapses to at most two rebuilds rather than
-# one per merge. cancel-in-progress stays false because an in-progress build
-# has no way to know it will be superseded before its push, and cancelling it
-# there risks a torn index -- eviction only ever reaches a pending run that
-# has not started.
+# The cost is that a tag run and a main run can overlap. Both may push
+# `latest` (a release's own run publishes it), and whichever finishes last
+# wins; the next main rebuild puts `latest` back on main, which is what it
+# tracks by design. Each registry push of a tag is a single manifest write,
+# so overlap reorders `latest`, it does not tear it.
+#
+# cancel-in-progress stays false because an in-progress build has no way to
+# know it will be superseded before its push, and cancelling it there risks a
+# half-pushed multi-platform image -- eviction only ever reaches a pending run
+# that has not started.
 concurrency:
-  group: docker-publish
+  group: ${{ startsWith(github.ref, 'refs/tags/') && format('docker-publish-{0}', github.ref) || 'docker-publish' }}
   cancel-in-progress: false
 
 jobs:
@@ -119,7 +135,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      # For the failure issue on a scheduled run.
+      # For the failure issue on a failed rebuild of main.
       issues: write
 
     steps:
@@ -266,26 +282,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Nobody watches a weekly cron. A red run on a seven-day cadence is
-      # invisible until someone opens the Actions tab, and the whole point of
-      # the schedule is that the published image cannot go stale — so a rebuild
-      # that stopped working has to say so somewhere durable. One open issue,
+      # Nobody watches an unattended rebuild. A push-triggered run fails after
+      # its PR has already merged, and a scheduled one on a seven-day cadence;
+      # either is invisible until someone opens the Actions tab, and the whole
+      # point of both triggers is that the published image cannot go stale --
+      # so a rebuild of main that stopped working has to say so somewhere
+      # durable. The push trigger is the primary freshness mechanism, so its
+      # failures are the ones most worth reporting. One open issue,
       # re-commented rather than duplicated, in the manner of
       # orphaned-stacked-merge-monitor.yml.
-      - name: Report a failed scheduled rebuild
-        if: failure() && github.event_name == 'schedule'
+      - name: Report a failed rebuild of main
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'push')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          TITLE: 'Weekly Docker rebuild failed'
+          TITLE: 'Docker rebuild of main failed'
         run: |
           set -euo pipefail
-          body="The scheduled rebuild of ghcr.io/koala73/worldmonitor failed, so \`latest\` still points at the previous image and its age is no longer bounded.
+          body="The ${GITHUB_EVENT_NAME}-triggered rebuild of ghcr.io/koala73/worldmonitor failed, so \`latest\` still points at the previous image and its age is no longer bounded.
 
           Run: ${RUN_URL}
           Commit: ${GITHUB_SHA}
 
-          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to republish \`latest\` without waiting for the next Wednesday."
+          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to republish \`latest\` without waiting for the next relevant merge or the Wednesday cron."
 
           existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title \
             --jq "[.[] | select(.title == \"${TITLE}\")] | first | .number // empty")"
