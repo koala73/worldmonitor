@@ -53,6 +53,9 @@ function layout() {
   manager.updateTabCapLock = vi.fn();
   manager.shouldCreatePanel = () => true;
   manager.lazyPanelRegistrations = new Map();
+  // Object.create skips field initializers; mirror production defaults used by updatePanelGating.
+  manager.gatingPrincipal = undefined;
+  manager.premiumPanelsUnlocked = new Set();
   return manager;
 }
 describe('Telegram layout gating and lazy mount', () => {
