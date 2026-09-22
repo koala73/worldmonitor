@@ -204,6 +204,41 @@ const HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS = 2_000;
 // verdict (or REFRESH_PENDING without one); only failed Redis operations
 // report REDIS_DOWN.
 const HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS = 100;
+// One deadline per request, measured from handler entry. Vercel's edge runtime
+// must send the first byte within 25 s; with every Redis command running to its
+// own timeout the refresh owner's sequential path (snapshot read, lease, sweep,
+// contracts/humanitarian proofs, grace claim, relay-gate cache/lease/probe/
+// publish, snapshot write) used to take ~55 s. Each of those operations now
+// times out at min(its own timeout, what is left of the work budget), and an
+// owner that runs out serves the last published verdict as a stale 200. The
+// work budget stops early enough for that last-known read to fit, and the whole
+// request stays inside the 30 s refresh lease, so the owner answers before its
+// lease can lapse. 3 s guard band under the edge limit.
+const HEALTH_REQUEST_DEADLINE_MS = 22_000;
+const HEALTH_REQUEST_WORK_BUDGET_MS = HEALTH_REQUEST_DEADLINE_MS - HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS;
+
+class HealthBudgetExhaustedError extends Error {
+  constructor() {
+    super('health request deadline exhausted');
+    this.name = 'HealthBudgetExhaustedError';
+  }
+}
+
+function createHealthRequestBudget(startedAt, workBudgetMs = HEALTH_REQUEST_WORK_BUDGET_MS) {
+  const workDeadline = startedAt + workBudgetMs;
+  const responseDeadline = workDeadline + HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS;
+  const remaining = () => workDeadline - Date.now();
+  return {
+    workDeadline,
+    remaining,
+    // Too little left to start another Redis request that could complete.
+    exhausted: () => remaining() < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS,
+    // The timeout for one operation: its own ceiling or the remaining budget.
+    clamp: (timeoutMs) => Math.max(1, Math.min(timeoutMs, remaining())),
+    // The stale fallback read gets what is left before the response deadline.
+    fallbackTimeout: () => Math.min(HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS, responseDeadline - Date.now()),
+  };
+}
 // #6339 deploy-before-provisioning bridge. A production health sweep claims
 // this versioned deadline with SET NX, so the 24h window starts when the reader
 // actually reaches production rather than when its PR was authored. The key
@@ -4001,13 +4036,23 @@ async function readOrProbeRelayGatewayGate({
   followerWaitMs = RELAY_GATEWAY_GATE_FOLLOWER_WAIT_MS,
   followerPollMs = RELAY_GATEWAY_GATE_FOLLOWER_POLL_MS,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  // The caller's per-request budget (createHealthRequestBudget). Every Redis
+  // call and the probe time out at min(own timeout, remaining budget); when
+  // it runs out this throws HealthBudgetExhaustedError rather than publish an
+  // observation the deadline, not the gate, produced.
+  budget = null,
 } = {}) {
   // A deployment that would not report the gate at all (no gateway env
   // outside a production build) touches neither the cache nor the lease.
   if (!probeRelayGatewayGateApplies()) return null;
+  const timeoutMs = (ms) => (budget ? budget.clamp(ms) : ms);
+  const checkBudget = () => {
+    if (budget?.exhausted()) throw new HealthBudgetExhaustedError();
+  };
   let lastRaw = null;
   const readCached = async () => {
-    const cached = await redisPipeline([['GET', key]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    checkBudget();
+    const cached = await redisPipeline([['GET', key]], timeoutMs(RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS), true).catch(() => null);
     lastRaw = cached?.[0]?.result ?? null;
     return parseCachedRelayGatewayGate(lastRaw, clock());
   };
@@ -4022,9 +4067,10 @@ async function readOrProbeRelayGatewayGate({
   // mid-probe and another sweep takes the lease, an unconditional DEL here
   // would free the successor's lease and let a third sweep overlap it.
   const leaseToken = `${now}:${crypto.randomUUID()}`;
+  checkBudget();
   const lease = await redisPipeline(
     [['SET', leaseKey, leaseToken, 'EX', String(RELAY_GATEWAY_GATE_LEASE_TTL_SECONDS), 'NX']],
-    RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS,
+    timeoutMs(RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS),
     true,
   ).catch(() => null);
   const ownsLease = lease?.[0]?.result === 'OK';
@@ -4037,12 +4083,14 @@ async function readOrProbeRelayGatewayGate({
   // probe, so if no newer verdict appears its own observation stands rather
   // than an unclassified fallback it would have to invent.
   const follow = async (own = null) => {
-    const deadline = Date.now() + followerWaitMs;
+    const deadline = Math.min(Date.now() + followerWaitMs, budget ? budget.workDeadline : Infinity);
     while (Date.now() < deadline) {
       await sleep(followerPollMs);
       const published = await readCached();
       if (published) return published;
     }
+    // A wait the request deadline cut short proves nothing about the owner.
+    checkBudget();
     if (own) return own;
     if (!probeRelayGatewayGateApplies()) return null;
     // Same grace as a directly probed unreachable verdict: one slow or crashed
@@ -4069,7 +4117,7 @@ async function readOrProbeRelayGatewayGate({
       typeof lastRaw === 'string' ? lastRaw : '',
       JSON.stringify({ ...fallback, probed: false }),
       String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
-    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    ]], timeoutMs(RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS), true).catch(() => null);
     // Anything but an explicit 'OK' means a verdict may have landed between
     // this sweep's last poll and the CAS. Returning the fabricated fallback
     // then lets handleHealth write it over the owner's real answer, hiding a
@@ -4084,7 +4132,11 @@ async function readOrProbeRelayGatewayGate({
   if (!ownsLease) return follow();
 
   try {
-    const probed = await probeRelayGatewayGate({ now, fetchImpl });
+    checkBudget();
+    const probed = await probeRelayGatewayGate({ now, fetchImpl, timeoutMs: timeoutMs(RELAY_GATEWAY_GATE_TIMEOUT_MS) });
+    // A probe the deadline cut short is not a verdict on the gate. Nothing is
+    // published; the finally releases the lease for the next sweep.
+    checkBudget();
     if (!probed) return null;
     const fresh = withTransportGrace(probed, previous, now);
     // Publish before releasing so a follower never sees a free lease and an
@@ -4101,7 +4153,7 @@ async function readOrProbeRelayGatewayGate({
       leaseToken,
       JSON.stringify(fresh),
       String(RELAY_GATEWAY_GATE_PROBE_RETENTION_SECONDS),
-    ]], RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS, true).catch(() => null);
+    ]], timeoutMs(RELAY_GATEWAY_GATE_REDIS_TIMEOUT_MS), true).catch(() => null);
     // Only an explicit 'OK' proves this verdict landed while the lease was
     // still ours. A refusal (0) means the lease lapsed mid-probe and a
     // successor owns the gate; an indeterminate result (timeout, error,
@@ -4138,7 +4190,11 @@ function probeRelayGatewayGateApplies() {
 // RELAY_GATE_UNREACHABLE on every sweep. AGENTS.md bans `fetch.bind` for the
 // stale-reference reason; the arrow keeps both the receiver and the current
 // (possibly wrapped) global.
-async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+async function probeRelayGatewayGate({
+  now = Date.now(),
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  timeoutMs = RELAY_GATEWAY_GATE_TIMEOUT_MS,
+} = {}) {
   const missing = relayGatewayGateMissingEnv();
   const base = {
     role: 'gateway',
@@ -4197,7 +4253,7 @@ async function probeRelayGatewayGate({ now = Date.now(), fetchImpl = (...args) =
         'User-Agent': RELAY_GATEWAY_GATE_USER_AGENT,
       },
       body: '{}',
-      signal: AbortSignal.timeout(RELAY_GATEWAY_GATE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     return {
@@ -4459,9 +4515,10 @@ function healthRefreshPendingResponse(headers) {
 // last published verdict as stale; only without one does it answer 503. A
 // last-known verdict past an activation deadline is refused for the same
 // reason a fresh snapshot is (hasExpiredActivationGrace).
-async function lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow) {
+async function lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow, timeoutMs = HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS) {
+  if (timeoutMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) return healthRefreshPendingResponse(headers);
   const key = compact ? HEALTH_VERDICT_COMPACT_LAST_KNOWN_KEY : HEALTH_VERDICT_LAST_KNOWN_KEY;
-  const result = await redisPipeline([['GET', key]], HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS, true).catch(() => null);
+  const result = await redisPipeline([['GET', key]], timeoutMs, true).catch(() => null);
   const snapshot = result?.[0]?.error ? null : parseHealthVerdictSnapshot(result?.[0]?.result, snapshotNow(), {
     requireChecks: !compact,
     maxAgeMs: HEALTH_VERDICT_LAST_KNOWN_TTL_SECONDS * 1_000,
@@ -4471,6 +4528,9 @@ async function lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow) 
 }
 
 export async function handleHealth(req, ctx, options = {}) {
+  // `workBudgetMs` is a test seam, like `now`: lease-fencing suites model an
+  // owner paused past its 30 s lease, which the default budget would cut short.
+  const budget = createHealthRequestBudget(Date.now(), options.workBudgetMs);
   const hasInjectedClock = Object.prototype.hasOwnProperty.call(options, 'now');
   const now = hasInjectedClock ? options.now : Date.now();
   // The explicit clock is a deterministic test seam. Production callers keep
@@ -4497,6 +4557,15 @@ export async function handleHealth(req, ctx, options = {}) {
   const url = new URL(req.url);
   const compact = url.searchParams.get('compact') === '1';
   const wantsHistory = url.searchParams.get('history') === '1';
+  // The owner ran out of request budget: serve the last published verdict as
+  // stale rather than hang past the edge first-byte limit. The refresh lease
+  // is left to lapse on its TTL (every write this owner may still have in
+  // flight is token-fenced), which also keeps a degraded Redis from being hit
+  // by back-to-back full sweeps.
+  const deadlineFallback = () => {
+    console.warn('[health] request deadline exhausted; serving the last-known verdict');
+    return lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow, budget.fallbackTimeout());
+  };
 
   if (!compact || wantsHistory) {
     const keyCheck = await validateApiKey(req, { forceKey: true });
@@ -4578,7 +4647,7 @@ export async function handleHealth(req, ctx, options = {}) {
     const snapshotKey = compact ? HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY : HEALTH_VERDICT_SNAPSHOT_KEY;
     // Snapshot/lock keys are already deployment-prefixed via
     // healthVerdictRedisKey — read and write them verbatim (#7674).
-    const snapshotResult = await redisPipeline([['GET', snapshotKey]], 4_000, true);
+    const snapshotResult = await redisPipeline([['GET', snapshotKey]], budget.clamp(4_000), true);
     if (!snapshotResult) throw new Error('Redis request failed');
     if (snapshotResult[0]?.error) throw new Error('Redis snapshot read failed');
     const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, snapshotNow(), { requireChecks: !compact });
@@ -4592,6 +4661,7 @@ export async function handleHealth(req, ctx, options = {}) {
 
     refreshLockToken = `${now}:${crypto.randomUUID()}`;
     refreshLeaseStartedAt = Date.now();
+    if (budget.exhausted()) throw new HealthBudgetExhaustedError();
     let lockResult = await redisPipeline([[
       'SET',
       HEALTH_VERDICT_REFRESH_LOCK_KEY,
@@ -4599,7 +4669,7 @@ export async function handleHealth(req, ctx, options = {}) {
       'EX',
       String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
       'NX',
-    ]], 4_000, true);
+    ]], budget.clamp(4_000), true);
     if (!lockResult || lockResult.length !== 1 || lockResult[0]?.error
       || !['OK', null].includes(lockResult[0]?.result)) throw new Error('Redis snapshot lock failed');
     ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
@@ -4620,8 +4690,8 @@ export async function handleHealth(req, ctx, options = {}) {
         const sleepMs = Math.min(backoffMs + jitterMs, Math.max(0, waitDeadline - Date.now()));
         await new Promise((resolve) => setTimeout(resolve, sleepMs));
         const remainingMs = waitDeadline - Date.now();
-        if (remainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) break;
-        const redisTimeoutMs = Math.min(4_000, remainingMs);
+        if (remainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS || budget.exhausted()) break;
+        const redisTimeoutMs = budget.clamp(Math.min(4_000, remainingMs));
         const refreshedResult = await redisPipeline([['GET', snapshotKey]], redisTimeoutMs, true);
         if (!refreshedResult || refreshedResult[0]?.error) throw new Error('Redis snapshot wait failed');
         const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, snapshotNow(), { requireChecks: !compact });
@@ -4633,7 +4703,7 @@ export async function handleHealth(req, ctx, options = {}) {
         }
 
         const retryRemainingMs = waitDeadline - Date.now();
-        if (retryRemainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) break;
+        if (retryRemainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS || budget.exhausted()) break;
         refreshLeaseStartedAt = Date.now();
         lockResult = await redisPipeline([[
           'SET',
@@ -4642,15 +4712,19 @@ export async function handleHealth(req, ctx, options = {}) {
           'EX',
           String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
           'NX',
-        ]], Math.min(4_000, retryRemainingMs), true);
+        ]], budget.clamp(Math.min(4_000, retryRemainingMs)), true);
         if (!lockResult || lockResult.length !== 1 || lockResult[0]?.error
           || !['OK', null].includes(lockResult[0]?.result)) throw new Error('Redis snapshot lock retry failed');
         ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
         if (ownsSnapshotRefreshLock) break;
       }
-      if (!ownsSnapshotRefreshLock) return await lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow);
+      if (!ownsSnapshotRefreshLock) {
+        return await lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow, budget.fallbackTimeout());
+      }
     }
   } catch (err) {
+    // A read cut short by the request deadline is not a Redis outage.
+    if (budget.exhausted()) return deadlineFallback();
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
     return jsonResponse({
       status: 'REDIS_DOWN',
@@ -4662,7 +4736,7 @@ export async function handleHealth(req, ctx, options = {}) {
   // Count from before SET, so network delay cannot extend our local lease.
   if (Date.now() - refreshLeaseStartedAt >= HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS * 1_000) {
     await releaseHealthVerdictRefreshLock(refreshLockToken);
-    return lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow);
+    return lastKnownOrRefreshPendingResponse(compact, headers, snapshotNow, budget.fallbackTimeout());
   }
 
   const allDataKeys = [
@@ -4702,9 +4776,11 @@ export async function handleHealth(req, ctx, options = {}) {
       ...fredRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
-    results = await redisPipeline(fenceHealthMutations(commands, refreshLockToken), 8_000, true);
+    if (budget.exhausted()) return deadlineFallback();
+    results = await redisPipeline(fenceHealthMutations(commands, refreshLockToken), budget.clamp(8_000), true);
     if (!results) throw new Error('Redis request failed');
   } catch (err) {
+    if (budget.exhausted()) return deadlineFallback();
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
     // REDIS_DOWN is a failed health read (distinct from REFRESH_PENDING): with Redis
     // unreachable the endpoint can assess nothing, so a plain HTTP-status
@@ -4731,17 +4807,26 @@ export async function handleHealth(req, ctx, options = {}) {
   let contractsFinderSnapshot = contractsFinderHasData ? undefined : null;
   let contractsFinderReadFailed = Boolean(contractsFinderMetaResult?.error || contractsFinderDataResult?.error);
   if (!contractsFinderReadFailed && contractsFinderHasData && contractsFinderMeta?.sourceState !== 'ok') {
-    const payload = await redisPipeline([['GET', CONTRACTS_FINDER_CANONICAL_KEY]], 4_000, true).catch(() => null);
+    if (budget.exhausted()) return deadlineFallback();
+    const payload = await redisPipeline([['GET', CONTRACTS_FINDER_CANONICAL_KEY]], budget.clamp(4_000), true).catch(() => null);
     contractsFinderReadFailed = !payload || Boolean(payload[0]?.error);
+    if (contractsFinderReadFailed && budget.exhausted()) return deadlineFallback();
     contractsFinderSnapshot = unwrapEnvelope(parseRedisValue(payload?.[0]?.result)).data;
   }
   const humanitarianMetaResult = results[allDataKeys.length + allMetaKeys.indexOf(SEED_META.humanitarianSummary.key)];
   const humanitarianMeta = unwrapEnvelope(parseRedisValue(humanitarianMetaResult?.result)).data;
   const humanitarianNeedsProof = humanitarianMeta?.sourceState === 'degraded'
     || (snapshotNow() - humanitarianMeta?.fetchedAt > SEED_META.humanitarianSummary.maxStaleMin * 60_000);
-  const humanitarianRetention = humanitarianMetaResult?.error || !humanitarianNeedsProof ? null : await readHumanitarianRetention(
-    humanitarianMeta, SEED_META.humanitarianSummary.minRecordCount, snapshotNow(), redisPipeline,
-  );
+  let humanitarianRetention = null;
+  if (!humanitarianMetaResult?.error && humanitarianNeedsProof) {
+    if (budget.exhausted()) return deadlineFallback();
+    humanitarianRetention = await readHumanitarianRetention(
+      humanitarianMeta, SEED_META.humanitarianSummary.minRecordCount, snapshotNow(),
+      (commands, timeoutMs, raw) => redisPipeline(commands, budget.clamp(timeoutMs), raw),
+    );
+    // A proof read cut short by the deadline is not evidence either way.
+    if (budget.exhausted()) return deadlineFallback();
+  }
   const evaluationNow = snapshotNow();
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)
@@ -4896,7 +4981,9 @@ export async function handleHealth(req, ctx, options = {}) {
     // warning", which is the fail-closed direction.
     // The grace state hash key is deployment-prefixed via
     // healthVerdictRedisKey — send the plan verbatim (#7674).
-    const graceResults = await redisPipeline(fenceHealthMutations(graceStatePlan.claimCommands, refreshLockToken), 4_000, true).catch(() => null);
+    if (budget.exhausted()) return deadlineFallback();
+    const graceResults = await redisPipeline(fenceHealthMutations(graceStatePlan.claimCommands, refreshLockToken), budget.clamp(4_000), true).catch(() => null);
+    if (!graceResults && budget.exhausted()) return deadlineFallback();
     applyStaleContentGrace(
       checks,
       graceEvidenceByName,
@@ -4924,12 +5011,19 @@ export async function handleHealth(req, ctx, options = {}) {
   // for could otherwise fan out one relay call per caller. The last verdict
   // is kept in Redis for the snapshot TTL and every sweep inside that window
   // reuses it; only a sweep that finds it missing or expired touches Convex.
-  const relayGatewayGate = await readOrProbeRelayGatewayGate({
-    now: evaluationNow,
-    key: RELAY_GATEWAY_GATE_PROBE_KEY,
-    leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
-    ctx,
-  });
+  let relayGatewayGate;
+  try {
+    relayGatewayGate = await readOrProbeRelayGatewayGate({
+      now: evaluationNow,
+      key: RELAY_GATEWAY_GATE_PROBE_KEY,
+      leaseKey: RELAY_GATEWAY_GATE_LEASE_KEY,
+      ctx,
+      budget,
+    });
+  } catch (err) {
+    if (err instanceof HealthBudgetExhaustedError) return deadlineFallback();
+    throw err;
+  }
   if (relayGatewayGate) {
     checks[RELAY_GATEWAY_GATE_CHECK_NAME] = relayGatewayGate;
     totalChecks++;
@@ -5032,7 +5126,9 @@ export async function handleHealth(req, ctx, options = {}) {
   const snapshotTtl = String(snapshotTtlSeconds(verdictSnapshot, snapshotNow()));
   // Both snapshot keys are deployment-prefixed via healthVerdictRedisKey —
   // write them verbatim (#7674).
-  const snapshotWriteResult = await redisPipeline([[
+  // The verdict is complete: serve it even when no budget is left to publish
+  // it (the next request re-sweeps, exactly as after a failed write).
+  const snapshotWriteResult = budget.exhausted() ? null : await redisPipeline([[
     'EVAL',
     HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT,
     '5',
@@ -5046,7 +5142,7 @@ export async function handleHealth(req, ctx, options = {}) {
     JSON.stringify(buildCompactVerdictSnapshot(verdictSnapshot)),
     snapshotTtl,
     String(HEALTH_VERDICT_LAST_KNOWN_TTL_SECONDS),
-  ]], 4_000, true).catch(() => null);
+  ]], budget.clamp(4_000), true).catch(() => null);
   const snapshotWriteFailed = !snapshotWriteResult
     || snapshotWriteResult.length !== 1
     || snapshotWriteResult[0]?.error
@@ -5147,7 +5243,13 @@ export const __testing__ = {
   buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
+  HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
+  HEALTH_VERDICT_LAST_KNOWN_READ_TIMEOUT_MS,
+  HEALTH_REQUEST_DEADLINE_MS,
+  HEALTH_REQUEST_WORK_BUDGET_MS,
+  HealthBudgetExhaustedError,
+  createHealthRequestBudget,
   HEALTH_VERDICT_WRITE_SNAPSHOT_SCRIPT,
   HEALTH_VERDICT_LAST_KNOWN_KEY,
   HEALTH_VERDICT_COMPACT_LAST_KNOWN_KEY,
