@@ -282,9 +282,9 @@ export const INLINE_DESCRIPTION_MAX_BYTES = 300;
  * the two cannot drift apart.
  */
 export const INLINE_SUMMARY_OVERRIDES = Object.freeze({
-  JmespathParam: 'Optional JMESPath query projects the JSON response. '
-    + 'Expressions over 1024 UTF-8 bytes or projections '
-    + 'over the 256 KB output cap return HTTP 400.',
+  // Paid once per otherwise-untyped GET. Keep the phrases the JSON contract
+  // checks and nothing else. The component holds the caveats and the doc link.
+  JmespathParam: 'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
 });
 
 /** UTF-8 bytes, not UTF-16 code units: the budget this serves is a byte cap. */
@@ -399,6 +399,13 @@ export function ensureInlineTypedInput(spec) {
       const copy = structuredClone(target);
       // The component stays whole; only this per-operation copy is shortened.
       if (copy.description != null) copy.description = shortInlineDescription(name, copy.description);
+      // `example` and `required: false` are repeated on every restored jmespath
+      // copy. OpenAPI already treats a non-path parameter as optional, and the
+      // component still carries both fields for the YAML contract.
+      if (name === 'JmespathParam') {
+        delete copy.example;
+        delete copy.required;
+      }
       parameters[pick] = copy;
       stats.inlined += 1;
     }
