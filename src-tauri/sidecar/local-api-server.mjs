@@ -130,7 +130,9 @@ function jsonForScript(value) {
 }
 
 function isYahooFinanceHost(hostname) {
-  return hostname === 'finance.yahoo.com' || hostname.endsWith('.finance.yahoo.com');
+  // URL keeps a DNS-absolute trailing dot, which still names the same host.
+  const host = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
+  return host === 'finance.yahoo.com' || host.endsWith('.finance.yahoo.com');
 }
 
 // Global Yahoo Finance rate gate — shared across ALL handler bundles.

@@ -38,10 +38,11 @@ test('jsonForScript keeps any value inside an inline <script> as data', () => {
 
 test('isYahooFinanceHost matches finance.yahoo.com and its subdomains only', () => {
   const { isYahooFinanceHost } = __testing__;
-  for (const host of ['finance.yahoo.com', 'query1.finance.yahoo.com', 'query2.finance.yahoo.com']) {
+  for (const host of ['finance.yahoo.com', 'query1.finance.yahoo.com', 'query2.finance.yahoo.com',
+    'finance.yahoo.com.', 'query1.finance.yahoo.com.']) {
     assert.equal(isYahooFinanceHost(host), true, host);
   }
-  for (const host of ['evilfinance.yahoo.com', 'finance.yahoo.com.evil.example', 'yahoo.com', 'example.com']) {
+  for (const host of ['evilfinance.yahoo.com', 'finance.yahoo.com.evil.example', 'yahoo.com', 'example.com', 'finance.yahoo.com..']) {
     assert.equal(isYahooFinanceHost(host), false, host);
   }
 });
