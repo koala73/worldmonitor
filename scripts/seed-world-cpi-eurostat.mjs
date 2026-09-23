@@ -2,18 +2,17 @@
 // Eurostat HICP overlay for worldwide CPI — a sibling of
 // seed-eurostat-country-data.mjs rather than an extension of it.
 //
-// The existing country-tile seeder keeps only the latest two prints of
-// prc_hicp_manr (the annual-rate dataset). This seeder carries the long monthly
-// INDEX history (prc_hicp_midx, CP00, I15) that the world CPI read needs, so
-// the two datasets never share one payload.
+// The existing country-tile seeder keeps only the latest two annual-rate
+// prints. This seeder carries the long monthly INDEX history (TOTAL basket,
+// I15) that the world CPI read needs, so the two never share one payload.
+//
+// Eurostat moved HICP to ECOICOP ver. 2 in 2026: prc_hicp_midx is frozen at
+// 1996-01 .. 2025-12 and prc_hicp_minr continues it, with the basket keyed as
+// `coicop18` (TOTAL) instead of `coicop` (CP00).
 //
 // Live measurements (2026-09-23):
-//   all 29 geos in ONE request -> ~153 KB JSON, ~1.3 s
-//   full history 1996-01 .. 2025-12 (360 months), 10,311 observations
-//
-// The Eurostat dissemination API lags the national prints (measured at
-// 2025-12 while the IMF feed already carried 2026-08). That is why the read
-// path treats this as an EU overlay and falls through to IMF when it trails.
+//   all 29 geos in ONE request -> ~161 KB JSON, ~2 s
+//   full history 1996-01 .. 2026-08 (368 months), 10,533 observations
 
 import { CHROME_UA, loadEnvFile, runSeed, withRetry } from './_seed-utils.mjs';
 import { EUROSTAT_BASE, EU_GEOS } from './_eurostat-utils.mjs';
@@ -33,7 +32,7 @@ export const EUROSTAT_HICP_KEY = 'economic:world-cpi:eurostat:v1';
 export const EUROSTAT_HICP_LATEST_KEY = 'economic:world-cpi:eurostat:latest:v1';
 export const EUROSTAT_HICP_ACTIVATION_KEY = 'seed-activated:economic:world-cpi-eurostat';
 
-const DATASET = 'prc_hicp_midx';
+const DATASET = 'prc_hicp_minr';
 const TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_STALE_MIN = 4320;
 const FETCH_TIMEOUT_MS = 90_000;
@@ -108,15 +107,19 @@ export function eurostatGeoMap() {
   return map;
 }
 
-async function fetchEurostatHicp() {
+export function eurostatHicpUrl() {
   const params = new URLSearchParams({
-    coicop: 'CP00',
+    coicop18: 'TOTAL',
     unit: 'I15',
     format: 'JSON',
     lang: 'EN',
   });
   for (const geo of EU_GEOS) params.append('geo', geo);
-  const url = `${EUROSTAT_BASE}/${DATASET}?${params}`;
+  return `${EUROSTAT_BASE}/${DATASET}?${params}`;
+}
+
+async function fetchEurostatHicp() {
+  const url = eurostatHicpUrl();
 
   const payload = await withRetry(async () => {
     const resp = await fetch(url, {
@@ -159,7 +162,7 @@ if (process.argv[1]?.endsWith('seed-world-cpi-eurostat.mjs')) {
     ttlSeconds: TTL_SECONDS,
     lockTtlMs: 180_000,
     fetchPhaseTimeoutMs: 150_000,
-    sourceVersion: 'eurostat-hicp-midx-v1',
+    sourceVersion: 'eurostat-hicp-minr-v1',
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
     recordCount: countCpiPoints,

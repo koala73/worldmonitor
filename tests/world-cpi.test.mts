@@ -24,7 +24,12 @@ import {
   IMF_CPI_KEY,
   IMF_CPI_LATEST_KEY,
 } from '../scripts/seed-world-cpi-imf.mjs';
-import { parseEurostatHicp, eurostatGeoMap, EUROSTAT_HICP_KEY } from '../scripts/seed-world-cpi-eurostat.mjs';
+import {
+  parseEurostatHicp,
+  eurostatGeoMap,
+  eurostatHicpUrl,
+  EUROSTAT_HICP_KEY,
+} from '../scripts/seed-world-cpi-eurostat.mjs';
 import { parseOecdCpiRows, OECD_CPI_KEY } from '../scripts/seed-world-cpi-oecd.mjs';
 import { estatCpiPeriod, parseEstatCpi, ESTAT_CPI_KEY } from '../scripts/seed-world-cpi-estat.mjs';
 import { parseAbsCpiRows, ABS_CPI_KEY, ABS_CPI_ACTIVATION_KEY } from '../scripts/seed-world-cpi-abs.mjs';
@@ -219,6 +224,22 @@ describe('Eurostat source', () => {
   it('returns nothing for a payload without dimensions', () => {
     assert.deepEqual(parseEurostatHicp({}, eurostatGeoMap()), {});
     assert.deepEqual(parseEurostatHicp(null, eurostatGeoMap()), {});
+  });
+
+  // prc_hicp_midx was frozen at 2025-12 when Eurostat moved HICP to ECOICOP
+  // ver. 2; its successor prc_hicp_minr keys the basket as coicop18.
+  it('queries the live ECOICOP ver. 2 index dataset, not the frozen 1996-2025 one', () => {
+    const url = new URL(eurostatHicpUrl());
+    assert.match(url.pathname, /\/prc_hicp_minr$/);
+    assert.equal(url.searchParams.get('coicop18'), 'TOTAL');
+    assert.equal(url.searchParams.get('coicop'), null);
+    assert.equal(url.searchParams.get('unit'), 'I15');
+    assert.equal(url.searchParams.getAll('geo').length, 29);
+  });
+
+  it('decodes the ECOICOP ver. 2 cube, whose basket dimension is coicop18', () => {
+    const parsed = parseEurostatHicp({ ...jsonstat, id: ['freq', 'unit', 'coicop18', 'geo', 'time'] }, eurostatGeoMap());
+    assert.deepEqual(parsed.DE, points([['2025-11', 132.6], ['2025-12', 132.8]]));
   });
 });
 
@@ -542,7 +563,26 @@ describe('latest window and content age', () => {
   });
 
   it('budgets each source for its own structural publication lag', () => {
-    assert.ok(CPI_MAX_CONTENT_AGE_MIN['eurostat-hicp'] > CPI_MAX_CONTENT_AGE_MIN['imf-cpi']);
     assert.ok(CPI_MAX_CONTENT_AGE_MIN['abs-cpi'] > CPI_MAX_CONTENT_AGE_MIN['oecd-cpi']);
+  });
+
+  // Eurostat publishes month M in the middle of M+1, so a monthly series frozen
+  // for most of a year is a dead feed, not publication lag. The 2025-12 freeze
+  // of prc_hicp_midx sat inside the old 365-day budget until December 2026.
+  it('flags a Eurostat HICP series frozen at 2025-12 by late September 2026', () => {
+    const frozen = buildNational({ DE: points([['2025-11', 132.6], ['2025-12', 132.8]]) }, {});
+    const meta = cpiContentMeta(frozen);
+    assert.ok(meta);
+    const ageMin = (Date.UTC(2026, 8, 23) - meta.newestItemAt) / 60_000;
+    assert.ok(ageMin > CPI_MAX_CONTENT_AGE_MIN['eurostat-hicp']);
+  });
+
+  it('keeps a normally lagged Eurostat HICP print inside its budget', () => {
+    const current = buildNational({ DE: points([['2026-07', 136.1], ['2026-08', 136.3]]) }, {});
+    const meta = cpiContentMeta(current);
+    assert.ok(meta);
+    // August's print lands mid-September; one missed month still passes.
+    const ageMin = (Date.UTC(2026, 10, 20) - meta.newestItemAt) / 60_000;
+    assert.ok(ageMin <= CPI_MAX_CONTENT_AGE_MIN['eurostat-hicp']);
   });
 });

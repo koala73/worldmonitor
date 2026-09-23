@@ -1441,7 +1441,7 @@ const SEED_META = {
   },
   // #8538. Worldwide CPI sources. Each is a macro-bundle tail section on a
   // daily interval, so 72h covers one missed tick; content age is the tighter
-  // clock and is declared per seeder (IMF 120d, OECD 180d, Eurostat 365d,
+  // clock and is declared per seeder (IMF 120d, OECD 180d, Eurostat 120d,
   // e-Stat 120d, ABS 400d) because their publication lags differ structurally.
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',

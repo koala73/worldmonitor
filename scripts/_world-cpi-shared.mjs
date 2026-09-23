@@ -45,13 +45,13 @@ export const QUARTERLY_PINNED_COUNTRIES = new Set(['AU']);
 // maximum tolerated age of the NEWEST observation in the source:
 //   IMF   monthly prints land ~1-2 months after the reference month.
 //   OECD  members publish on national schedules; ~2-3 months.
-//   Eurostat HICP is a dissemination feed; measured at 9 months in live probes.
+//   Eurostat HICP for month M lands mid M+1 (flash estimate at the end of M).
 //   ABS   quarterly CPI, published ~4 weeks after quarter end.
 //   e-Stat publishes the month's CPI ~3 weeks after month end.
 export const CPI_MAX_CONTENT_AGE_MIN = {
   'imf-cpi': 120 * DAY_MIN,
   'oecd-cpi': 180 * DAY_MIN,
-  'eurostat-hicp': 365 * DAY_MIN,
+  'eurostat-hicp': 120 * DAY_MIN,
   'estat-cpi': 120 * DAY_MIN,
   'abs-cpi': 400 * DAY_MIN,
 };

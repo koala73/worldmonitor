@@ -13,10 +13,11 @@ const EU_COUNTRIES = ['DE', 'FR', 'IT', 'ES', 'PL', 'NL', 'BE', 'AT', 'SE', 'CZ'
 
 const EUROSTAT_BASE = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data';
 
-const DATASETS = {
+export const DATASETS = {
   cpi: {
-    id: 'prc_hicp_manr',
-    params: { coicop: 'CP00', lastTimePeriod: '2' },
+    // ECOICOP ver. 2 HICP; prc_hicp_manr was frozen at 2025-12.
+    id: 'prc_hicp_minr',
+    params: { coicop18: 'TOTAL', unit: 'RCH_A', lastTimePeriod: '2' },
     unit: '%',
     label: 'HICP annual rate of change',
   },
@@ -39,7 +40,7 @@ const DATASETS = {
  * Eurostat uses a flat value object indexed by integer position.
  * Dimensions define the order of iteration.
  */
-function parseEurostatResponse(data, geoCode) {
+export function parseEurostatResponse(data, geoCode) {
   try {
     const dims = data?.dimension;
     const values = data?.value;
