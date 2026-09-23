@@ -1206,6 +1206,25 @@ describe('audit proxy (LIVE_VIDEO_AUDIT_PROXY_URL)', () => {
       { server: 'https://gate.example.com:10001', username: USER, password: `${PASS}:tail`, host: 'gate.example.com' });
   });
 
+  it('reads a scheme-prefixed host:port:user:pass value, taking TLS from the scheme', () => {
+    // The relay's parseProxyConfig returns null for these; the bare form parses there with TLS on.
+    assert.deepEqual(parseAuditProxy(`https://gate.example.com:10001:${USER}:${PASS}`),
+      { server: 'https://gate.example.com:10001', username: USER, password: PASS, host: 'gate.example.com' });
+    assert.deepEqual(parseAuditProxy(`http://gate.example.com:10001:${USER}:${PASS}`),
+      { server: 'http://gate.example.com:10001', username: USER, password: PASS, host: 'gate.example.com' });
+    assert.deepEqual(parseAuditProxy(`gate.example.com:10001:${USER}:${PASS}`),
+      { server: 'https://gate.example.com:10001', username: USER, password: PASS, host: 'gate.example.com' });
+    // A password with colons survives, and a malformed prefixed value is still rejected without echoing it.
+    assert.equal(parseAuditProxy(`https://gate.example.com:10001:${USER}:${PASS}:tail`).password, `${PASS}:tail`);
+    for (const bad of [`https://gate.example.com:port:${USER}:${PASS}`, `https://gate.example.com:10001:${USER}`, `https://:10001:${USER}:${PASS}`]) {
+      assert.throws(() => parseAuditProxy(bad), (error) => {
+        assert.match(error.message, /LIVE_VIDEO_AUDIT_PROXY_URL/);
+        assert.doesNotMatch(`${error.message}\n${error.stack}`, LEAK);
+        return true;
+      }, bad);
+    }
+  });
+
   it('accepts a proxy without credentials', () => {
     assert.deepEqual(parseAuditProxy('http://proxy.example.net:3128'), { server: 'http://proxy.example.net:3128', host: 'proxy.example.net' });
   });

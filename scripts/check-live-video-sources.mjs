@@ -50,7 +50,7 @@ verdict covers the web dashboard only; the desktop sidecar embed (http://localho
 is not probed here. HLS entries are fetched from this machine; their playback is not checked.
 
 ${PROXY_ENV} routes the YouTube browser through a proxy (http(s)://user:pass@host:port,
-user:pass@host:port or host:port:user:pass, as the relay's PROXY_URL). YouTube refuses embeds
+user:pass@host:port or [http(s)://]host:port:user:pass, as the relay's PROXY_URL). YouTube refuses embeds
 from datacenter IPs, so on a GitHub runner (GITHUB_ACTIONS=true) the check refuses to run without
 it. HLS fetches never use it.
 Exits 1 when any entry is not live or a slot is empty, 2 on bad arguments or proxy settings.`;
@@ -364,11 +364,16 @@ export async function probeYouTubeBatches(candidates, {
  */
 export function parseAuditProxy(raw) {
   const value = String(raw ?? '').trim();
-  const invalid = () => new Error(`${PROXY_ENV} is not a proxy URL: expected http(s)://user:pass@host:port, user:pass@host:port or host:port:user:pass`);
+  const invalid = () => new Error(`${PROXY_ENV} is not a proxy URL: expected http(s)://user:pass@host:port, user:pass@host:port or [http(s)://]host:port:user:pass`);
   // The relay's parser reads any other scheme as the user of a user:pass@host:port value.
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value)?.[1]?.toLowerCase();
   if (scheme && scheme !== 'http' && scheme !== 'https') throw invalid();
-  const config = parseProxyConfig(value);
+  // http(s)://host:port:user:pass is not a URL, and the relay's parser returns null for it. Read the colon form
+  // after the scheme and let the scheme decide TLS.
+  const rest = scheme ? value.slice(scheme.length + 3) : '';
+  const schemedColonForm = scheme && !rest.includes('@') && rest.split(':').length >= 4;
+  const config = schemedColonForm ? parseProxyConfig(rest) : parseProxyConfig(value);
+  if (schemedColonForm && config) config.tls = scheme === 'https';
   if (!config?.host || !Number.isInteger(config.port) || config.port <= 0 || config.port > 65_535) throw invalid();
   const proxy = { server: `${config.tls ? 'https' : 'http'}://${config.host}:${config.port}` };
   if (config.auth) {
