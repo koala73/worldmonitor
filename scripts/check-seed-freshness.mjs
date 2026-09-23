@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
+import { CONTENT_AGE_PREWARNING_RATIO } from '../api/_content-age.js';
+
 const DEFAULT_HEALTH_URL = 'https://api.worldmonitor.app/api/health?compact=1';
 const BASELINE_URL = new URL('./seed-freshness-baseline.json', import.meta.url);
 // api/health.js only serves a cached verdict for 60 seconds. Allow its maximum
@@ -81,7 +83,9 @@ export function contentAgePreWarningDiagnostic(name, problem, observedAtMs) {
   const breachMs = Date.parse(typeof problem.contentAgeBreachAt === 'string' ? problem.contentAgeBreachAt : '');
   if (!Number.isFinite(age) || age < 0) return null;
   if (!Number.isFinite(budget) || budget <= 0) return null;
-  if (warnAt !== Math.ceil(budget * 0.8)) return null;
+  // Read the policy ratio from the shared assessor module so a future
+  // policy change cannot silently desynchronize the monitor's validation.
+  if (warnAt !== Math.ceil(budget * CONTENT_AGE_PREWARNING_RATIO)) return null;
   if (age < warnAt || age > budget) return null;
   if (remaining !== budget - age) return null;
   if (!Number.isFinite(breachMs)) return null;
