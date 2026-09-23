@@ -42,10 +42,16 @@ jobs:
 
       # Exits 1 whenever a slot needs attention, which is the normal case the reporter handles.
       # A run that writes no report still fails the job at the reporter.
+      # YouTube refuses embeds from GitHub's datacenter IPs (player error 150 on every slot, run 35816900289), so
+      # the YouTube browser goes through a residential proxy. Without the secret the checker stops at once with a
+      # message saying so. Only this step sees the secret; the checker never prints more than the proxy host.
+      # Page polls are time-capped, so a slower proxy does not stretch the phase budget below.
       - name: Check every live video slot
         id: check
         timeout-minutes: 16
         continue-on-error: true
+        env:
+          LIVE_VIDEO_AUDIT_PROXY_URL: ${{ secrets.LIVE_VIDEO_AUDIT_PROXY_URL }}
         run: node --import tsx scripts/check-live-video-sources.mjs --all --report "$RUNNER_TEMP/live-video-audit.json"
 
       # Findings become the issue. A missing or incomplete report, or canaries that fail twice

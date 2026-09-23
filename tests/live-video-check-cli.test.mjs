@@ -3,16 +3,21 @@ import { describe, it } from 'node:test';
 
 import {
   ALONE_RECHECK_BUDGET_MS,
+  browserLaunchOptions,
   catalogTargets,
   exitCodeFor,
   formatCheckLine,
   observationFromRecord,
+  parseAuditProxy,
   parseCheckArgs,
   probeHlsCandidate,
   probeHlsCandidates,
   probeYouTubeBatches,
   probeYouTubeCandidates,
+  probeYouTubeWithBrowser,
+  resolveAuditProxy,
   runCheck,
+  runCli,
   slotStatus,
 } from '../scripts/check-live-video-sources.mjs';
 import { extractLiveVideoSurfaces, readLiveVideoSurfaces } from '../scripts/lib/live-video-surfaces.mjs';
@@ -1179,5 +1184,153 @@ describe('live video surfaces', () => {
     assert.throws(() => extractLiveVideoSurfaces({ webcamsPanel: webcamsPanel.replace('MAX_GRID_CELLS = 4', 'MAX_GRID_CELLS = CELLS'), newsPanel }), /MAX_GRID_CELLS/);
     assert.throws(() => extractLiveVideoSurfaces({ webcamsPanel, newsPanel: newsPanel.replace(/export const OPTIONAL[\s\S]*/, '') }), /OPTIONAL_LIVE_CHANNELS/);
     assert.throws(() => extractLiveVideoSurfaces({ webcamsPanel, newsPanel: newsPanel.replace("{ id: 'bloomberg', name: 'Bloomberg' },\n];\nexport", "{ id: ID, name: 'Bloomberg' },\n];\nexport") }), /FULL_LIVE_CHANNELS/);
+  });
+});
+
+describe('audit proxy (LIVE_VIDEO_AUDIT_PROXY_URL)', () => {
+  // Synthetic credentials, distinctive enough that any leak into output is unambiguous.
+  const USER = 'probe-user-7Qx';
+  const PASS = 'S3cret-Pa55-zK9';
+  const LEAK = new RegExp(`${PASS}|${USER}|${encodeURIComponent(PASS)}`);
+
+  it('parses every shape the relay accepted for YOUTUBE_PROXY_URL and PROXY_URL into Playwright proxy settings', () => {
+    assert.deepEqual(parseAuditProxy(`http://${USER}:${PASS}@proxy.example.net:9000`),
+      { server: 'http://proxy.example.net:9000', username: USER, password: PASS, host: 'proxy.example.net' });
+    assert.deepEqual(parseAuditProxy(`https://${USER}:${encodeURIComponent('p@ss:word')}@proxy.example.net:9443`),
+      { server: 'https://proxy.example.net:9443', username: USER, password: 'p@ss:word', host: 'proxy.example.net' });
+    // Froxy/OREF shape: the relay's parser connects to this proxy over TLS.
+    assert.deepEqual(parseAuditProxy(`${USER}:${PASS}@proxy.example.net:9000`),
+      { server: 'https://proxy.example.net:9000', username: USER, password: PASS, host: 'proxy.example.net' });
+    // Decodo shape; a password may itself contain colons.
+    assert.deepEqual(parseAuditProxy(`gate.example.com:10001:${USER}:${PASS}:tail`),
+      { server: 'https://gate.example.com:10001', username: USER, password: `${PASS}:tail`, host: 'gate.example.com' });
+  });
+
+  it('accepts a proxy without credentials', () => {
+    assert.deepEqual(parseAuditProxy('http://proxy.example.net:3128'), { server: 'http://proxy.example.net:3128', host: 'proxy.example.net' });
+  });
+
+  it('rejects a malformed value naming the variable, never echoing the value', () => {
+    const malformed = [
+      `not a proxy ${PASS}`,
+      `socks5://${USER}:${PASS}@proxy.example.net:1080`,
+      `ftp://${USER}:${PASS}@proxy.example.net:21`,
+      `${USER}:${PASS}@proxy.example.net`,
+      `${USER}:${PASS}`,
+    ];
+    for (const bad of malformed) {
+      assert.throws(() => parseAuditProxy(bad), (error) => {
+        assert.match(error.message, /LIVE_VIDEO_AUDIT_PROXY_URL/);
+        assert.doesNotMatch(`${error.message}\n${error.stack}`, LEAK, 'the credential must not leak into the error');
+        return true;
+      }, bad);
+    }
+  });
+
+  it('keeps no proxy the local default, but refuses to run on a GitHub runner without one', () => {
+    assert.equal(resolveAuditProxy({}), null);
+    assert.equal(resolveAuditProxy({ LIVE_VIDEO_AUDIT_PROXY_URL: '  ' }), null);
+    assert.throws(() => resolveAuditProxy({ GITHUB_ACTIONS: 'true' }),
+      /LIVE_VIDEO_AUDIT_PROXY_URL is not set; YouTube blocks embeds from GitHub runners/);
+    assert.throws(() => resolveAuditProxy({ GITHUB_ACTIONS: 'true', LIVE_VIDEO_AUDIT_PROXY_URL: '' }), /is not set/);
+    assert.equal(resolveAuditProxy({ GITHUB_ACTIONS: 'true', LIVE_VIDEO_AUDIT_PROXY_URL: 'http://proxy.example.net:3128' }).host, 'proxy.example.net');
+  });
+
+  it('adds the proxy to the Chromium launch options only when one is set', () => {
+    const proxy = parseAuditProxy(`http://${USER}:${PASS}@proxy.example.net:9000`);
+    assert.equal('proxy' in browserLaunchOptions(null), false);
+    assert.deepEqual(browserLaunchOptions(proxy).proxy, { server: 'http://proxy.example.net:9000', username: USER, password: PASS });
+    assert.equal(browserLaunchOptions(proxy).headless, true);
+    assert.deepEqual(browserLaunchOptions(proxy).args, browserLaunchOptions(null).args);
+  });
+
+  it('launches the YouTube browser through the proxy and redacts the credential from launch and page errors', async () => {
+    const proxy = parseAuditProxy(`http://${USER}:${PASS}@proxy.example.net:9000`);
+    const launches = [];
+    await assert.rejects(
+      probeYouTubeWithBrowser([{ kind: 'video', videoId: 'zp6LNSoq000' }], {
+        proxy,
+        launch: async (options) => {
+          launches.push(options);
+          throw new Error(`proxy auth failed for ${USER}:${PASS} (${encodeURIComponent(PASS)})`);
+        },
+      }),
+      (error) => {
+        assert.doesNotMatch(`${error.message}\n${error.stack}`, LEAK);
+        assert.match(error.message, /proxy auth failed/);
+        return true;
+      },
+    );
+    assert.deepEqual(launches[0].proxy, { server: 'http://proxy.example.net:9000', username: USER, password: PASS });
+
+    const logged = [];
+    let closed = false;
+    const results = await probeYouTubeWithBrowser([{ kind: 'video', videoId: 'zp6LNSoq000' }], {
+      proxy,
+      onError: (message) => logged.push(message),
+      launch: async () => ({
+        newContext: async () => { throw new Error(`net::ERR_TUNNEL_CONNECTION_FAILED ${USER}:${PASS}`); },
+        close: async () => { closed = true; },
+      }),
+    });
+    assert.equal(results.length, 1);
+    assert.equal(closed, true);
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /ERR_TUNNEL_CONNECTION_FAILED/);
+    assert.doesNotMatch(logged[0], LEAK);
+  });
+
+  it('fails fast on a GitHub runner without the proxy instead of reporting every YouTube slot as unembeddable', async () => {
+    const out = [];
+    let ran = false;
+    const code = await runCli(['--all'], { env: { GITHUB_ACTIONS: 'true' }, write: (line) => out.push(line), run: async () => { ran = true; return 0; } });
+    assert.equal(code, 2);
+    assert.equal(ran, false, 'no probe may run');
+    assert.match(out.join('\n'), /LIVE_VIDEO_AUDIT_PROXY_URL is not set; YouTube blocks embeds from GitHub runners/);
+  });
+
+  it('exits 2 on a malformed proxy without printing it', async () => {
+    const out = [];
+    const code = await runCli(['--all'], { env: { LIVE_VIDEO_AUDIT_PROXY_URL: `${USER}:${PASS}` }, write: (line) => out.push(line), run: async () => 0 });
+    assert.equal(code, 2);
+    assert.match(out.join('\n'), /LIVE_VIDEO_AUDIT_PROXY_URL/);
+    assert.doesNotMatch(out.join('\n'), LEAK);
+  });
+
+  it('hands the proxy to every YouTube probe, logs only its host, and leaves HLS direct', async () => {
+    const out = [];
+    const seen = [];
+    const code = await runCli(['--all'], {
+      env: { GITHUB_ACTIONS: 'true', LIVE_VIDEO_AUDIT_PROXY_URL: `${USER}:${PASS}@proxy.example.net:9000` },
+      write: (line) => out.push(line),
+      probeWithBrowser: async (candidates, options) => { seen.push(options); return candidates.map(() => ({})); },
+      run: async (argv, options) => {
+        assert.deepEqual(argv, ['--all']);
+        assert.equal(options.probeHls, undefined, 'HLS fetches stay direct');
+        assert.equal(options.fetchImpl, undefined, 'HLS fetches stay direct');
+        await options.probeYouTube([{ kind: 'video', videoId: 'a' }]);
+        await options.probeYouTube([{ kind: 'video', videoId: 'b' }], { batchSize: 1 });
+        return 1;
+      },
+    });
+    assert.equal(code, 1);
+    assert.equal(seen.length, 2);
+    for (const options of seen) assert.equal(options.proxy.server, 'https://proxy.example.net:9000');
+    assert.equal(seen[1].batchSize, 1, 'alone re-checks keep their batch size');
+    const text = out.join('\n');
+    assert.match(text, /proxy\.example\.net/);
+    assert.doesNotMatch(text, LEAK);
+  });
+
+  it('runs without a proxy locally', async () => {
+    const seen = [];
+    const code = await runCli(['zp6LNSoq000'], {
+      env: {},
+      write: () => {},
+      probeWithBrowser: async (candidates, options) => { seen.push(options); return candidates.map(() => ({})); },
+      run: async (_argv, options) => { await options.probeYouTube([{ kind: 'video', videoId: 'a' }]); return 0; },
+    });
+    assert.equal(code, 0);
+    assert.equal(seen[0].proxy, null);
   });
 });

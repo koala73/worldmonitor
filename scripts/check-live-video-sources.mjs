@@ -4,6 +4,7 @@
 // Run with: npm run live-video:check -- <entry> [name=<entry> ...]
 
 import { writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { readLiveVideoSurfaces } from './lib/live-video-surfaces.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import { AUDIT_CANARIES, LIVE_NEWS_SOURCES, WEBCAM_GRID_PRIORITY, WEBCAM_SOURCES } from '../src/config/live-video-sources.ts';
@@ -23,6 +24,8 @@ const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 const INDENT = ' '.repeat(12);
 const CATALOG_FILE = 'src/config/live-video-sources.ts';
 export const DEFAULT_CATALOG = { webcams: WEBCAM_SOURCES, gridPriority: WEBCAM_GRID_PRIORITY, news: LIVE_NEWS_SOURCES, canaries: AUDIT_CANARIES };
+const PROXY_ENV = 'LIVE_VIDEO_AUDIT_PROXY_URL';
+const { parseProxyConfig } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 const USAGE = `Usage: npm run live-video:check -- <entry> [<entry> ...]
        npm run live-video:check -- --slot webcams/<id>
@@ -45,7 +48,12 @@ Label an entry with name=, e.g. kyiv=https://www.youtube.com/watch?v=e2gC37ILQmk
 YouTube entries play in headless Chromium as if embedded on ${PROBE_ORIGIN}, so a LIVE
 verdict covers the web dashboard only; the desktop sidecar embed (http://localhost:<port>)
 is not probed here. HLS entries are fetched from this machine; their playback is not checked.
-Exits 1 when any entry is not live or a slot is empty.`;
+
+${PROXY_ENV} routes the YouTube browser through a proxy (http(s)://user:pass@host:port,
+user:pass@host:port or host:port:user:pass, as the relay's PROXY_URL). YouTube refuses embeds
+from datacenter IPs, so on a GitHub runner (GITHUB_ACTIONS=true) the check refuses to run without
+it. HLS fetches never use it.
+Exits 1 when any entry is not live or a slot is empty, 2 on bad arguments or proxy settings.`;
 
 const PROBLEM_WHY = {
   'not-https': 'the manifest must be an https URL',
@@ -350,12 +358,82 @@ export async function probeYouTubeBatches(candidates, {
   return results;
 }
 
-/** Plays the candidates in one headless browser, `batchSize` players per page, one page after another. */
-export async function probeYouTubeWithBrowser(candidates, { batchSize = BATCH_SIZE } = {}) {
+/**
+ * Reads a proxy for the YouTube browser in any shape the relay's parser accepts. The returned `host` is the
+ * only part of it that may be printed. Errors name the variable, never the value: it carries the credential.
+ */
+export function parseAuditProxy(raw) {
+  const value = String(raw ?? '').trim();
+  const invalid = () => new Error(`${PROXY_ENV} is not a proxy URL: expected http(s)://user:pass@host:port, user:pass@host:port or host:port:user:pass`);
+  // The relay's parser reads any other scheme as the user of a user:pass@host:port value.
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value)?.[1]?.toLowerCase();
+  if (scheme && scheme !== 'http' && scheme !== 'https') throw invalid();
+  const config = parseProxyConfig(value);
+  if (!config?.host || !Number.isInteger(config.port) || config.port <= 0 || config.port > 65_535) throw invalid();
+  const proxy = { server: `${config.tls ? 'https' : 'http'}://${config.host}:${config.port}` };
+  if (config.auth) {
+    const colon = config.auth.indexOf(':');
+    proxy.username = colon === -1 ? config.auth : config.auth.slice(0, colon);
+    proxy.password = colon === -1 ? '' : config.auth.slice(colon + 1);
+  }
+  proxy.host = config.host;
+  return proxy;
+}
+
+/** The proxy for this run, or null. On a GitHub runner a missing proxy is an error: YouTube refuses embeds there. */
+export function resolveAuditProxy(env) {
+  const raw = String(env[PROXY_ENV] ?? '').trim();
+  if (raw) return parseAuditProxy(raw);
+  if (env.GITHUB_ACTIONS === 'true') {
+    throw new Error(`${PROXY_ENV} is not set; YouTube blocks embeds from GitHub runners (player error 150 on every slot), so the audit would report every YouTube entry as dead.`);
+  }
+  return null;
+}
+
+export function browserLaunchOptions(proxy) {
+  const options = { headless: true, args: ['--autoplay-policy=no-user-gesture-required'] };
+  if (proxy) {
+    options.proxy = { server: proxy.server };
+    if (proxy.username !== undefined) Object.assign(options.proxy, { username: proxy.username, password: proxy.password });
+  }
+  return options;
+}
+
+/** Removes the proxy credential, raw or URL-encoded, from text headed for a log or a thrown error. */
+function redactProxyCredential(text, proxy) {
+  let out = String(text);
+  for (const secret of [proxy?.username, proxy?.password]) {
+    if (!secret) continue;
+    for (const form of new Set([secret, encodeURIComponent(secret)])) out = out.split(form).join('***');
+  }
+  return out;
+}
+
+async function launchChromium(options) {
   const { chromium } = await import('@playwright/test');
-  const browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+  return chromium.launch(options);
+}
+
+/** Plays the candidates in one headless browser, `batchSize` players per page, one page after another. */
+export async function probeYouTubeWithBrowser(candidates, {
+  batchSize = BATCH_SIZE,
+  proxy = null,
+  launch = launchChromium,
+  onError = (message) => console.error(message),
+} = {}) {
+  let browser;
   try {
-    return await probeYouTubeBatches(candidates, { openPage: () => openProbePage(browser), batchSize });
+    browser = await launch(browserLaunchOptions(proxy));
+  } catch (error) {
+    // A new error, not the original: its stack would still carry an unredacted message.
+    throw new Error(redactProxyCredential(`live-video: Chromium did not launch: ${error?.message ?? error}`, proxy));
+  }
+  try {
+    return await probeYouTubeBatches(candidates, {
+      openPage: () => openProbePage(browser),
+      batchSize,
+      onError: (message) => onError(redactProxyCredential(message, proxy)),
+    });
   } finally {
     await browser.close();
   }
@@ -791,9 +869,34 @@ export async function runCheck(argv, options = {}) {
   return targets.empty.length > 0 ? 1 : exitCodeFor(rows);
 }
 
+/**
+ * Resolves the proxy from the environment, then runs the check with every YouTube browser behind it.
+ * HLS fetches stay direct: from a GitHub runner they reached most streams (run 35816900289), and no HLS miss
+ * there looked like an IP block the way every YouTube player did.
+ */
+export async function runCli(argv, {
+  env = process.env,
+  write = console.log,
+  run = runCheck,
+  probeWithBrowser = probeYouTubeWithBrowser,
+} = {}) {
+  let proxy;
+  try {
+    proxy = resolveAuditProxy(env);
+  } catch (error) {
+    write(`live-video: ${error.message}`);
+    return 2;
+  }
+  if (proxy) write(`live-video: YouTube players go through the proxy at ${proxy.host}.`);
+  return run(argv, {
+    write,
+    probeYouTube: (candidates, options = {}) => probeWithBrowser(candidates, { ...options, proxy }),
+  });
+}
+
 if (isMainModule(import.meta.url, process.argv[1])) {
   try {
-    process.exitCode = await runCheck(process.argv.slice(2));
+    process.exitCode = await runCli(process.argv.slice(2));
   } catch (error) {
     console.error(error?.stack ?? error);
     process.exitCode = 1;

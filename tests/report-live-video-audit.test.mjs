@@ -679,12 +679,23 @@ describe('live video source audit workflow', () => {
     const checkStep = job.steps[check];
     assert.equal(checkStep.run, 'node --import tsx scripts/check-live-video-sources.mjs --all --report "$RUNNER_TEMP/live-video-audit.json"');
     assert.equal(checkStep['continue-on-error'], true, 'the checker exits 1 on findings; the reporter must still run');
+    // YouTube refuses embeds from GitHub's IPs (run 35816900289: player error 150 on every slot and both canaries).
+    assert.deepEqual(checkStep.env, { LIVE_VIDEO_AUDIT_PROXY_URL: '${{ secrets.LIVE_VIDEO_AUDIT_PROXY_URL }}' });
 
     const reportStep = job.steps[report];
     assert.equal(reportStep.run, 'node --import tsx scripts/report-live-video-audit.mjs');
     assert.equal(reportStep.env.LIVE_VIDEO_AUDIT_REPORT, '${{ runner.temp }}/live-video-audit.json');
     assert.equal(reportStep.env.GH_TOKEN, '${{ github.token }}');
     assert.equal(reportStep['continue-on-error'], undefined, 'a broken report or failed canaries must turn the run red');
+  });
+
+  it('exposes the proxy secret to the check step only', () => {
+    const [job] = Object.values(workflow.jobs);
+    const mentions = (value) => JSON.stringify(value ?? null).includes('LIVE_VIDEO_AUDIT_PROXY_URL');
+    assert.equal(mentions(workflow.env), false, 'no workflow-level env');
+    assert.equal(mentions(job.env), false, 'no job-level env');
+    const holders = job.steps.filter(mentions).map((step) => step.name);
+    assert.deepEqual(holders, ['Check every live video slot']);
   });
 
   it('uploads the JSON report whatever the run did, pinned to a commit', () => {
