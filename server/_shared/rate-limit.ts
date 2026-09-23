@@ -871,6 +871,13 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/create-checkout': { limit: 5, window: '60 s' },
 };
 
+// Second, per-client-IP checkout budget on top of the per-user one above. Dodo
+// rate-limits our shared API key (#6027), so one client cycling many free
+// accounts could otherwise spend it and block real buyers. Higher than the
+// per-user cap so a single buyer retrying always hits that first; a shared
+// office NAT still gets 10 sessions per 10 minutes.
+export const CHECKOUT_PER_IP_RATE_POLICY = { limit: 10, window: '10 m' } as const;
+
 interface RateLimitPolicyDecision {
   reason: string;
 }

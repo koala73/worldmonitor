@@ -7,6 +7,7 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://checkout-redis.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 
 const { default: handler, __setCreateCheckoutDepsForTests } = await import('../api/create-checkout.ts');
+const { ENDPOINT_RATE_POLICIES } = await import('../server/_shared/rate-limit.ts');
 const originalFetch = globalThis.fetch;
 after(() => {
   globalThis.fetch = originalFetch;
@@ -95,4 +96,56 @@ it('limits checkout sessions per authenticated user before the relay', async () 
   assert.equal(replayDuringOutage.headers.get('Idempotent-Replayed'), 'true');
   assert.equal(relayCalls, 6);
   assert.equal(unavailable.status, 503);
+});
+
+it('limits checkout sessions per client IP across accounts before the relay', async () => {
+  // Dodo rate-limits our shared API key, so one client cycling many free
+  // accounts must not be able to spend it: the per-user budget alone cannot
+  // see that (2026-09-23 recon from a single IP).
+  const buckets = new Map<string, number>();
+  let relayCalls = 0;
+  let userId = '';
+  globalThis.fetch = async (_input, init) => {
+    const commands = JSON.parse(String(init?.body)) as unknown[][];
+    return Response.json(commands.map((command) => {
+      // evalsha <sha> 3 <currentKey> <previousKey> <dynamicLimitKey> <limit> ...
+      const key = String(command[3]).replace(/:\d+$/, '');
+      const limit = Number(command[6]);
+      const count = (buckets.get(key) ?? 0) + 1;
+      buckets.set(key, count);
+      return { result: [limit - count, limit] };
+    }));
+  };
+  __setCreateCheckoutDepsForTests({
+    validateBearerToken: async () => ({ valid: true, userId, email: 'buyer@example.com', name: 'Buyer' }),
+    fetch: async () => {
+      relayCalls += 1;
+      return Response.json({ url: 'https://billing.test/checkout' });
+    },
+  });
+  const requestFrom = (ip: string) => new Request('https://worldmonitor.app/api/create-checkout', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://worldmonitor.app',
+      Authorization: 'Bearer clerk-token',
+      'Content-Type': 'application/json',
+      'x-real-ip': ip,
+    },
+    body: JSON.stringify({ productId: 'pdt_pro_monthly', returnUrl: 'https://worldmonitor.app/?wm_checkout=return' }),
+  });
+
+  const { CHECKOUT_PER_IP_RATE_POLICY } = await import('../server/_shared/rate-limit.ts');
+  const perIp = CHECKOUT_PER_IP_RATE_POLICY.limit;
+  assert.ok(perIp > ENDPOINT_RATE_POLICIES['/api/create-checkout']!.limit, 'one buyer retrying must hit the per-user cap first');
+  for (let i = 0; i <= perIp; i++) {
+    userId = `user_sybil_${i}`;
+    const res = await handler(requestFrom('198.51.100.7'));
+    assert.equal(res.status, i < perIp ? 200 : 429, `account ${i} status`);
+    if (i === perIp) assert.ok(res.headers.get('Retry-After'));
+  }
+  assert.equal(relayCalls, perIp, 'the account past the per-IP budget must not reach Dodo');
+
+  userId = 'user_other_network';
+  const elsewhere = await handler(requestFrom('203.0.113.9'));
+  assert.equal(elsewhere.status, 200, 'another client IP keeps its own budget');
 });

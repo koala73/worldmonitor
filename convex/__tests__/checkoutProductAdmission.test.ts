@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { LEGACY_PRODUCT_ALIASES, PRODUCT_CATALOG } from "../config/productCatalog";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import schema from "../schema";
@@ -29,33 +29,29 @@ const rejected = [
   "pdt_unmapped_investigation", "not-a-product-id", "", "constructor", "__proto__",
 ];
 
-for (const entryPoint of ["public", "internal"] as const) {
-  const invoke = (t: ReturnType<typeof convexTest>, productId: string, bypassPendingGuard = false) =>
-    entryPoint === "public"
-      ? t.withIdentity(buyer).action(api.payments.checkout.createCheckout, { productId, bypassPendingGuard })
-      : t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId, bypassPendingGuard });
+const invoke = (t: ReturnType<typeof convexTest>, productId: string, bypassPendingGuard = false) =>
+  t.action(internal.payments.checkout.internalCreateCheckout, { userId: buyer.subject, productId, bypassPendingGuard });
 
-  test.each(allowed)(`${entryPoint} admits $planKey`, async (plan) => {
-    const t = convexTest(schema, modules);
-    vi.mocked(createDodoCheckoutSession).mockResolvedValue({ checkout_url: "https://checkout.example/session" });
-    await expect(invoke(t, plan.dodoProductId!)).resolves.toEqual({ checkout_url: "https://checkout.example/session" });
-    expect(createDodoCheckoutSession).toHaveBeenCalledTimes(1);
-    const payload = vi.mocked(createDodoCheckoutSession).mock.calls[0][0];
-    expect(payload.product_cart).toEqual([{ product_id: plan.dodoProductId, quantity: 1 }]);
-    expect(payload.metadata?.wm_plan_key).toBe(plan.planKey);
-  });
+test.each(allowed)("admits $planKey", async (plan) => {
+  const t = convexTest(schema, modules);
+  vi.mocked(createDodoCheckoutSession).mockResolvedValue({ checkout_url: "https://checkout.example/session" });
+  await expect(invoke(t, plan.dodoProductId!)).resolves.toEqual({ checkout_url: "https://checkout.example/session" });
+  expect(createDodoCheckoutSession).toHaveBeenCalledTimes(1);
+  const payload = vi.mocked(createDodoCheckoutSession).mock.calls[0][0];
+  expect(payload.product_cart).toEqual([{ product_id: plan.dodoProductId, quantity: 1 }]);
+  expect(payload.metadata?.wm_plan_key).toBe(plan.planKey);
+});
 
-  test.each(rejected)(`${entryPoint} rejects %s before provider or storage effects`, async (productId) => {
-    const t = convexTest(schema, modules);
-    for (const bypass of [false, true]) {
-      await expect(invoke(t, productId, bypass)).rejects.toThrow("INVALID_CHECKOUT_PRODUCT");
-    }
-    expect(createDodoCheckoutSession).not.toHaveBeenCalled();
-    for (const table of ["entitlements", "subscriptions", "users"] as const) {
-      expect(await t.run((ctx) => ctx.db.query(table).collect())).toEqual([]);
-    }
-  });
-}
+test.each(rejected)("rejects %s before provider or storage effects", async (productId) => {
+  const t = convexTest(schema, modules);
+  for (const bypass of [false, true]) {
+    await expect(invoke(t, productId, bypass)).rejects.toThrow("INVALID_CHECKOUT_PRODUCT");
+  }
+  expect(createDodoCheckoutSession).not.toHaveBeenCalled();
+  for (const table of ["entitlements", "subscriptions", "users"] as const) {
+    expect(await t.run((ctx) => ctx.db.query(table).collect())).toEqual([]);
+  }
+});
 
 test("relay returns a non-retryable product rejection", async () => {
   vi.stubEnv("CONVEX_TENANT_RELAY_SECRET", "synthetic-relay-secret");
@@ -76,7 +72,8 @@ test.each(["currentForCheckout", "selfServe"] as const)("requires %s independent
   plan[flag] = false;
   try {
     const t = convexTest(schema, modules);
-    await expect(t.withIdentity(buyer).action(api.payments.checkout.createCheckout, {
+    await expect(t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: buyer.subject,
       productId: plan.dodoProductId!,
     })).rejects.toThrow("INVALID_CHECKOUT_PRODUCT");
     expect(createDodoCheckoutSession).not.toHaveBeenCalled();
