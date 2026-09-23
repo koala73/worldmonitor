@@ -1,33 +1,29 @@
 // Swiss National Bank daily spot rates on Confederation bonds
-// (Nelson–Siegel–Svensson fitted). Cube rendeiduebd, ~14 MB CSV with a
-// two-row metadata preamble. Columns: Date;D0;D1;Value. D0="CHF" selects the
-// CHF Confederation-bond spot curve; every other D0 value (EUR, KTA, KTB,
-// PFI, GBA…) is a different instrument and must be excluded. D1 is the tenor
-// in years with a J suffix (1J … 10J, 20J, 30J).
+// (Nelson–Siegel–Svensson fitted). The supplementary Confederation cube
+// SNB1A.SNB.NSS.KZS.EID publishes daily; rendeiduebd republishes monthly.
+// Keep the same 12 tenors and only daily, unaggregated observations at 11am.
 
 import { normalizeDateLabel, parseYieldNumber, collapseCurves } from './model.mjs';
 
-export const SNB_CONFEDERATION_D0 = 'CHF';
-
 export const SNB_TENORS = {
-  '1J': '1y', '2J': '2y', '3J': '3y', '4J': '4y', '5J': '5y', '6J': '6y',
-  '7J': '7y', '8J': '8y', '9J': '9y', '10J': '10y', '20J': '20y', '30J': '30y',
+  'J01M0': '1y', 'J02M0': '2y', 'J03M0': '3y', 'J04M0': '4y', 'J05M0': '5y', 'J06M0': '6y',
+  'J07M0': '7y', 'J08M0': '8y', 'J09M0': '9y', 'J10M0': '10y', 'J20M0': '20y', 'J30M0': '30y',
 };
 
-export function parseSnbRendeiduebdCsv(csv) {
+export function parseSnbConfederationCsv(csv) {
   const lines = String(csv ?? '').split(/\r?\n/);
-  const headerIndex = lines.findIndex((line) => line.replace(/"/g, '').startsWith('Date;D0;D1;Value'));
+  const headerIndex = lines.findIndex((line) => line.replace(/"/g, '').trim() === 'Date;LAUFZEIT;ZEITPUNKT;frequency;AGGREGATIONSMETHODE;Value');
   if (headerIndex === -1) return [];
   const byDate = new Map();
   for (const line of lines.slice(headerIndex + 1)) {
     if (!line.trim()) continue;
     const cells = line.split(';').map((cell) => cell.replace(/"/g, '').trim());
-    if (cells.length < 4) continue;
-    if (cells[1] !== SNB_CONFEDERATION_D0) continue;
-    const tenor = Object.prototype.hasOwnProperty.call(SNB_TENORS, cells[2]) ? SNB_TENORS[cells[2]] : null;
+    if (cells.length < 6) continue;
+    if (cells[2] !== 'A1100' || cells[3] !== 'P1D_L' || cells[4] !== 'ZZ') continue;
+    const tenor = Object.prototype.hasOwnProperty.call(SNB_TENORS, cells[1]) ? SNB_TENORS[cells[1]] : null;
     if (!tenor) continue;
     const date = normalizeDateLabel(cells[0] ?? '');
-    const value = parseYieldNumber(cells[3]);
+    const value = parseYieldNumber(cells[5]);
     if (!date || value == null) continue;
     const point = byDate.get(date) ?? { date, tenors: {} };
     point.tenors[tenor] = value;

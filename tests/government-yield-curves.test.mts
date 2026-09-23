@@ -27,7 +27,7 @@ import { parseBoeNominalWorkbook } from '../scripts/lib/yield-curves/boe.mjs';
 import { fetchBoeCurve } from '../scripts/seed-yield-curve-gb.mjs';
 import { latestTransform } from '../scripts/seed-oecd-lt-rates.mjs';
 import { parseRbaWorkbook } from '../scripts/lib/yield-curves/rba.mjs';
-import { parseSnbRendeiduebdCsv } from '../scripts/lib/yield-curves/snb.mjs';
+import { parseSnbConfederationCsv } from '../scripts/lib/yield-curves/snb.mjs';
 import { parseNorgesZeroCouponCsv } from '../scripts/lib/yield-curves/norges.mjs';
 import { parseRiksbankObservations } from '../scripts/lib/yield-curves/riksbank.mjs';
 import { parseChinaBondSearch } from '../scripts/lib/yield-curves/chinabond.mjs';
@@ -211,16 +211,18 @@ describe('per-source parsers (captured fixtures)', () => {
     assert.deepEqual(Object.keys(latest.tenors).sort(), ['10y', '2y', '3y', '5y']);
   });
 
-  it('parses the SNB daily cube: only D0=CHF rows, valueless rows dropped', () => {
-    const curves = parseSnbRendeiduebdCsv(fixture('snb-rendeiduebd.csv'));
+  it('parses the SNB daily Confederation cube, dropping valueless rows', () => {
+    const curves = parseSnbConfederationCsv(fixture('snb-confederation.csv'));
     // The 1988-01-01 rows in the fixture carry no published values — the
     // parser must drop that day rather than emit an empty curve.
-    assert.equal(curves.length, 1);
-    assert.equal(curves[0].date, '2026-08-31');
-    assert.equal(curves[0].tenors['30y'], 0.59);
-    assert.equal(curves[0].tenors['10y'], 0.469);
+    assert.equal(curves.length, 3);
+    assert.equal(curves[0].date, '1988-01-04');
+    const latest = curves.at(-1)!;
+    assert.equal(latest.date, '2026-09-22');
+    assert.equal(latest.tenors['30y'], 0.551);
+    assert.equal(latest.tenors['10y'], 0.564);
     assert.deepEqual(
-      Object.keys(curves[0].tenors).sort(),
+      Object.keys(latest.tenors).sort(),
       ['10y', '1y', '20y', '2y', '30y', '3y', '4y', '5y', '6y', '7y', '8y', '9y'],
     );
   });
