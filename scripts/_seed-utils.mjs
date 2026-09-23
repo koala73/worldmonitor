@@ -2074,15 +2074,19 @@ export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {})
  * accumulated state; missing keys still return null, while read failures throw.
  * Pass includeEnvelopeMeta:true when a cross-seed calculation must bind the
  * payload and its fetchedAt clock to the same atomic Redis GET.
+ * timeoutMs bounds the whole read, body included: raise it for multi-MB keys.
  */
-export async function readSeedSnapshot(canonicalKey, { strict = false, includeEnvelopeMeta = false } = {}) {
+export async function readSeedSnapshot(
+  canonicalKey,
+  { strict = false, includeEnvelopeMeta = false, timeoutMs = 5_000 } = {},
+) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   try {
     const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
       headers: { Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) {
       if (strict) throw new Error(`Redis snapshot read failed: HTTP ${resp.status}`);

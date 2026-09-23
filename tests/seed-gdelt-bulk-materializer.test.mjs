@@ -461,6 +461,38 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     assert.equal(RUN_SEED_OPTS.publishTransform(result).countryIndex, undefined, 'the canonical intel key keeps its shape');
   });
 
+  it('reads its multi-MB snapshots with a timeout sized for the body, not the 5s default', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalTimeout = AbortSignal.timeout;
+    const reads = [];
+    globalThis.fetch = async (url, options) => {
+      reads.push({ key: decodeURIComponent(String(url).split('/get/')[1]), timeoutMs: options.signal.timeoutMs });
+      return { ok: true, status: 200, json: async () => ({ result: null }) };
+    };
+    AbortSignal.timeout = (ms) => Object.assign(originalTimeout.call(AbortSignal, ms), { timeoutMs: ms });
+    try {
+      await assert.rejects(
+        fetchMaterializedGdelt({
+          _now: () => Date.parse('2026-07-30T12:05:00Z'),
+          _fetchFiles: async () => { throw new Error('stop after the snapshot reads'); },
+        }),
+        /stop after the snapshot reads/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      AbortSignal.timeout = originalTimeout;
+    }
+    // The state key is ~3.9MB; a 5s ceiling on its body read timed out the
+    // first attempt of every Railway run and crashed 1 in 8 (2026-09-23).
+    assert.deepEqual(
+      reads.map(({ key }) => key).sort(),
+      [GDELT_BULK_COUNTRY_ARTICLES_KEY, GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY].sort(),
+    );
+    for (const { key, timeoutMs } of reads) {
+      assert.ok(timeoutMs >= 30_000, `${key} read with ${timeoutMs}ms`);
+    }
+  });
+
   it('fails closed unless both feeds are current and GKG has usable records', async () => {
     const baseDeps = {
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
