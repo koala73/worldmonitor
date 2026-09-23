@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 // Japan MOF constant-maturity JGB par yields, daily since 1974-09-24.
 // Source: https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/
-// One CSV (jgbcme_all.csv) covers the full history.
+// The historical CSV ends at the previous month; jgbcme.csv supplies current data.
 
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { parseJgbCsv } from './lib/yield-curves/jgb.mjs';
-import { countCurves } from './lib/yield-curves/model.mjs';
+import { collapseCurves, countCurves } from './lib/yield-curves/model.mjs';
 import { YIELD_CURVE_MAX_CONTENT_AGE_MIN, YIELD_CURVE_MAX_STALE_MIN, YIELD_CURVE_TTL_SECONDS, canonicalKey, latestExtraKeyEntry, makeValidate, markYieldCurveActivated, contentMeta, seedResource, yearExtraKeyEntry } from './seed-yield-curves-shared.mjs';
 
 loadEnvFile(import.meta.url);
 
 const JGB_ALL_CSV = 'https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/historical/jgbcme_all.csv';
 
-export async function fetchJgbCurve() {
-  const response = await fetch(JGB_ALL_CSV, {
+const JGB_CURRENT_CSV = 'https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv';
+
+async function fetchJgbCsv(url) {
+  const response = await fetch(url, {
     headers: { Accept: 'text/csv, text/plain, */*', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(30_000),
   });
@@ -21,6 +23,13 @@ export async function fetchJgbCurve() {
   const csv = await response.text();
   const curves = parseJgbCsv(csv);
   if (curves.length === 0) throw new Error('MOF JGB parsed no business days');
+  return curves;
+}
+
+export async function fetchJgbCurve() {
+  const history = await fetchJgbCsv(JGB_ALL_CSV);
+  const current = await fetchJgbCsv(JGB_CURRENT_CSV);
+  const curves = collapseCurves([...history, ...current]);
   console.log(`  JGB: ${curves.length} business days, ${curves[0].date} → ${curves.at(-1).date}`);
   return { curves };
 }
