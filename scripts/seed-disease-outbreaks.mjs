@@ -2,6 +2,7 @@
 
 import { loadEnvFile, CHROME_UA, httpRetryError, runSeed, withRetry } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 // Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
 // The 2026-04 webpack rebuild changed the TGH bundle from the legacy
 // `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
@@ -19,6 +20,8 @@ import {
   rssNormalizeItem,
   tghNormalizeItem,
   mapItem,
+  isRoundupHeadline,
+  isReportableHeadline,
   diseaseContentMeta,
   diseasePublishTransform,
   cleanRssDescription,
@@ -33,8 +36,14 @@ const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold s
 const WHO_DON_API = 'https://www.who.int/api/emergencies/diseaseoutbreaknews?sf_provider=dynamicProvider372&sf_culture=en&$orderby=PublicationDateAndTime%20desc&$select=Title,ItemDefaultUrl,PublicationDateAndTime&$top=30';
 // CDC Health Alert Network RSS (US-centric; supplements WHO for North American events)
 const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
-// Outbreak News Today — aggregates WHO, CDC, and regional health ministry alerts
-const OUTBREAK_NEWS_FEED = 'https://outbreaknewstoday.com/feed/';
+// ECDC epidemiological updates: outbreak-only items (Ebola, MERS, hantavirus,
+// chikungunya, ...), including events outside the EU/EEA.
+const ECDC_EPI_UPDATES_FEED = 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed';
+// CIDRAP publishes per-disease feeds only (a combined `/news/64+49/rss` returns
+// just the first topic), so each outbreak-prone disease is its own request:
+// Ebola, viral hemorrhagic fever, avian influenza, mpox, cholera, measles,
+// dengue, polio, foodborne disease.
+const CIDRAP_TOPIC_IDS = [64, 102, 49, 230556, 58, 78, 61, 90, 66];
 // ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts
 // with lat/lng. Default branch is `master` (NOT `main`) — using `main` returns
 // HTTP 404 and silently zeroes out this source, which is the only one that
@@ -84,9 +93,15 @@ export async function fetchWhoDonApi({
   }
 }
 
-async function fetchRssItems(url, sourceName) {
+export const DISEASE_RSS_FEEDS = [
+  { url: CDC_FEED, sourceName: 'CDC' },
+  { url: ECDC_EPI_UPDATES_FEED, sourceName: 'ECDC' },
+  ...CIDRAP_TOPIC_IDS.map((id) => ({ url: `https://www.cidrap.umn.edu/news/${id}/rss`, sourceName: 'CIDRAP' })),
+];
+
+export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fetch } = {}) {
   try {
-    const resp = await fetch(url, {
+    const resp = await fetchImpl(url, {
       headers: { Accept: 'application/rss+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(15000),
     });
@@ -98,7 +113,7 @@ async function fetchRssItems(url, sourceName) {
     let match;
     while ((match = itemRe.exec(bounded)) !== null) {
       const block = match[1];
-      const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1]?.trim() || '';
+      const title = decodeHtmlEntities((block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1] || '').trim();
       const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
       const rawDesc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1] || '';
       const desc = cleanRssDescription(rawDesc);
@@ -165,14 +180,18 @@ async function fetchThinkGlobalHealth() {
   }
 }
 
-async function fetchDiseaseOutbreaks() {
-  const [whoItems, cdcItems, outbreakNewsItems, tghItems] = await Promise.all([
+export async function fetchDiseaseOutbreaks() {
+  const [whoItems, rssBatches, tghItems] = await Promise.all([
     fetchWhoDonApi(),
-    fetchRssItems(CDC_FEED, 'CDC'),
-    fetchRssItems(OUTBREAK_NEWS_FEED, 'Outbreak News Today'),
+    Promise.all(DISEASE_RSS_FEEDS.map(({ url, sourceName }) => fetchRssItems(url, sourceName))),
     fetchThinkGlobalHealth(),
   ]);
-  console.log(`[Disease] Sources: WHO=${whoItems.length} CDC=${cdcItems.length} ONT=${outbreakNewsItems.length} TGH=${tghItems.length}`);
+  const rssItems = rssBatches.flat();
+  const rssCounts = {};
+  for (const { sourceName } of DISEASE_RSS_FEEDS) rssCounts[sourceName] = 0;
+  for (const item of rssItems) rssCounts[item.sourceName] += 1;
+  const rssSummary = Object.entries(rssCounts).map(([name, count]) => `${name}=${count}`).join(' ');
+  console.log(`[Disease] Sources: WHO=${whoItems.length} ${rssSummary} TGH=${tghItems.length}`);
 
   // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
   // preserve all geo-located alerts, and don't collapse by disease+country.
@@ -184,12 +203,14 @@ async function fetchDiseaseOutbreaks() {
     'diphtheria', 'chikungunya', 'rift valley', 'influenza', 'botulism',
     'salmonella', 'listeria', 'e. coli', 'norovirus', 'legionella', 'campylobacter'];
 
-  const otherOutbreaks = [...whoItems, ...cdcItems, ...outbreakNewsItems]
+  const otherOutbreaks = [...whoItems, ...rssItems]
     .filter(item => {
+      if (isRoundupHeadline(item.title)) return false;
       const text = `${item.title} ${item.desc}`.toLowerCase();
       return diseaseKeywords.some(k => text.includes(k));
     })
-    .map(mapItem);
+    .map(mapItem)
+    .filter((outbreak) => isReportableHeadline(outbreak));
 
   // Sort before dedup so the first occurrence is always the most recent.
   otherOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);

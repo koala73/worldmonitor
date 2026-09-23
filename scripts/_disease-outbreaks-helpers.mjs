@@ -148,7 +148,7 @@ export function cleanRssDescription(rawDesc) {
 }
 
 /**
- * Normalize one RSS item (CDC HAN, Outbreak News Today).
+ * Normalize one RSS item (CDC HAN, ECDC, CIDRAP).
  * @param {object} parsed - { title, link, desc, pubDate, sourceName }
  * @param {number} nowMs - injectable "now"
  */
@@ -198,13 +198,53 @@ export function tghNormalizeItem(rec) {
  * for contentMeta to read at runSeed time. publishTransform strips them
  * before atomicPublish so they never reach the canonical key or clients.
  */
+// CIDRAP "Quick takes" roundups bundle unrelated stories under one headline,
+// so disease and country detection would pair one story's disease with
+// another's country.
+export function isRoundupHeadline(title) {
+  return /^\s*quick takes\b/i.test(title || '');
+}
+
+// News-style sources whose headlines are sentences, not WHO's
+// "Disease - Country" form: the "in <Country>" fallback would capture the rest
+// of the sentence ("DR Congo grows to 7"), so the location is the detected
+// country's English name instead.
+const HEADLINE_SOURCES = new Set(['ECDC', 'CIDRAP']);
+const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
+// Avian flu coverage names turkey farms and flocks constantly; the bird must
+// not geocode to Türkiye.
+const TURKEY_BIRD_RE = /\bturkeys\b|\bturkey(?=\s+(?:farms?|flocks?|poults?|breeders?|growers?|producers?|operations?|barns?)\b)/gi;
+
+function headlineCountryCode(text) {
+  return extractCountryCodeFull(text.replace(TURKEY_BIRD_RE, 'poultry'));
+}
+
+// Headline sources also publish research, policy and opinion pieces; only a
+// story that names a known disease AND a country is treated as an outbreak.
+// WHO/CDC keep their existing path.
+// Every CIDRAP feed returns its last 20 items however old; match the
+// ThinkGlobalHealth window so a quiet topic cannot resurface year-old stories.
+export const HEADLINE_LOOKBACK_DAYS = 90;
+
+export function isReportableHeadline(outbreak, nowMs = Date.now()) {
+  if (!HEADLINE_SOURCES.has(outbreak.sourceName)) return true;
+  if (outbreak.disease === 'Unknown Disease' || !outbreak.countryCode) return false;
+  return outbreak.publishedAt >= nowMs - HEADLINE_LOOKBACK_DAYS * 86_400_000;
+}
+
 export function mapItem(item) {
-  const location = item._location || extractLocationFromTitle(item.title)
-    || (item.sourceName === 'CDC' ? 'United States' : '');
+  const headline = HEADLINE_SOURCES.has(item.sourceName);
+  const headlineCountry = headline ? headlineCountryCode(`${item.title} ${item.desc}`) : '';
+  const location = item._location
+    || (headline
+      ? (headlineCountry ? REGION_NAMES.of(headlineCountry) : '')
+      : extractLocationFromTitle(item.title) || (item.sourceName === 'CDC' ? 'United States' : ''));
   const disease = item._disease || detectDisease(item.title);
-  const countryCode = item._country
-    ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
-    : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
+  const countryCode = headline
+    ? headlineCountry
+    : item._country
+      ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
+      : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
   return {
     id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
     disease,

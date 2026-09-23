@@ -330,7 +330,6 @@ const HOST_ORIGINS = Object.freeze({
   'opensky-network.org': 'CH',
   'ottawacitizen.com': 'CA',
   'otx.alienvault.com': 'US',
-  'outbreaknewstoday.com': 'US',
   'ourworldindata.org': 'GB',
   'owid-public.owid.io': 'GB',
   'patents.google.com': 'US',

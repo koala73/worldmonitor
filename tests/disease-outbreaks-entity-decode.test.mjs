@@ -1,5 +1,5 @@
 // Entity-decoding contract for the RSS description path in
-// scripts/seed-disease-outbreaks.mjs (CDC HAN + Outbreak News Today feeds).
+// scripts/seed-disease-outbreaks.mjs (CDC HAN, ECDC and CIDRAP feeds).
 //
 // The seeder decodes entities, strips tags, trims, and truncates to 300 chars.
 // The decode step MUST be single-pass: `&amp;` must not be decoded before the

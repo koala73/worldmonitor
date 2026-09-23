@@ -7061,15 +7061,10 @@
       "host": "outbreaknewstoday.com",
       "provider": "outbreaknewstoday.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit outbreaknewstoday.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-disease-outbreaks.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "overpass-api.de",
@@ -11142,6 +11137,20 @@
       ]
     },
     {
+      "host": "www.cidrap.umn.edu",
+      "provider": "www.cidrap.umn.edu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.cidrap.umn.edu and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-disease-outbreaks.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.cisa.gov",
       "provider": "www.cisa.gov",
       "kind": "feed+structured",
@@ -11552,6 +11561,9 @@
       "attribution": "Credit www.ecdc.europa.eu and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/seed-disease-outbreaks.mjs"
+        },
         {
           "path": "scripts/seed-security-advisories.mjs"
         }
