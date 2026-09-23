@@ -393,8 +393,8 @@ describe('widget data-tool contracts', () => {
   for (const [request, capability, gapExample] of routingCases) {
     it(`routing contract: ${request}`, () => {
       for (const prompt of prompts) {
-        assert.match(prompt, /fetch_worldmonitor_data — ALWAYS use first/);
-        assert.match(prompt, /Only fall back to search_web if no bootstrap key or RPC matches/);
+        assert.match(prompt, /fetch_worldmonitor_data — use when a bootstrap key or RPC below matches/);
+        assert.match(prompt, /Use search_web for data the catalog does not cover/);
         if (capability) assert.ok(prompt.includes(capability), `catalog must cover ${capability}`);
       }
       assert.match(searchTool.description, /only when no.*bootstrap key or RPC.*supplies/i);
