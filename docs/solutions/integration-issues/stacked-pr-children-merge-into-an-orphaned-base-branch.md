@@ -107,7 +107,9 @@ Retargeting on merge removes the first condition regardless of the other two: a 
 - #8534: auto-retarget of children on parent merge (open as of this writing)
 - #7006: earlier orphaned-stacked-merge incident, the reason the monitor exists
 - **The reverse case, in the same stack.** #8164 (2/5) was auto-closed, not rejected, when #8163's
-  branch was deleted after it squash-merged. A child's base branch disappearing closes the child.
+  branch was deleted after it squash-merged, three days after the merge. Contrast #8518, which GitHub
+  retargeted when #8517's branch was deleted seconds after its merge. An auto-closed child can look
+  abandoned; check the timeline for `base_ref_deleted` before assuming it was rejected.
 - **Reviving an old stack.** Re-landing the stack on fresh branches hit the pre-push base guard: a
   branch more than 20 commits ahead of `main` is refused, and #8163's pre-squash history pushed these
   branches over. Squash each layer onto a fresh branch off `main` (#8517 → #8518 → #8519/#8520) rather
