@@ -3177,6 +3177,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // meta.maxContentAgeMin); legacy seeders without it skip this branch.
   // 2026-05-04 health-readiness plan, Sprint 1.
   else if (contentAge && contentAge.contentStale) status = 'STALE_CONTENT';
+  // Pre-breach lead time (reader policy, see CONTENT_AGE_PREWARNING_RATIO in
+  // api/_content-age.js). Fires only after every hard fault declined and
+  // before COVERAGE_MARGIN_LOW, which is informational: an approaching time
+  // breach outranks a thin-but-passing cohort. Rides the compact pending lane
+  // via the STATUS_COUNTS/healthStatusBucket pattern — visible, non-blocking.
+  else if (contentAge && contentAge.preWarning) status = 'CONTENT_AGE_PREWARNING';
   // Shares STALE_CONTENT with the newestItemAt branch above: both mean "the
   // producer is healthy and correctly sized, but the data itself is older than
   // its content budget". Here the stale unit is a country rather than the
@@ -3303,6 +3309,11 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (contentAge) {
     entry.contentAgeMin = contentAge.contentAgeMin;          // null when contentMeta returned null
     entry.maxContentAgeMin = contentAge.maxContentAgeMin;
+    if (status === 'CONTENT_AGE_PREWARNING' && contentAge.preWarning) {
+      entry.warnAtContentAgeMin = contentAge.preWarning.warnAtContentAgeMin;
+      entry.contentAgeRemainingMin = contentAge.preWarning.remainingContentAgeMin;
+      if (contentAge.preWarning.breachAt) entry.contentAgeBreachAt = contentAge.preWarning.breachAt;
+    }
   }
   // Publish the per-entity block whenever the check requires it — including
   // the unusable case, so "the producer stopped writing this" is diagnosable
@@ -3413,6 +3424,11 @@ const STATUS_COUNTS = {
   // (both bucket to 'warn' — overall status is `degraded`, not `critical`).
   // 2026-05-04 health-readiness plan, Sprint 1.
   STALE_CONTENT: 'warn',
+  // Registered as warn (required: unlisted statuses re-become warn) and
+  // bucketed ok below, so the pre-warning rides the compact pending lane
+  // without flipping fleet health or paging. Same pattern as the bounded
+  // STALE_CONTENT grace and relay transport grace.
+  CONTENT_AGE_PREWARNING: 'warn',
   // Bounded deploy-before-cron window (#6059): the schema is live but its
   // producer has not reached its first scheduled run yet. Warn — NOT ok — so
   // the interim state is visible and flips `overall` to WARNING; and NOT
@@ -3435,6 +3451,11 @@ const STATUS_COUNTS = {
 };
 
 function healthStatusBucket(entry, now) {
+  // Content-age pre-warning is advisory lead time, not a fault: pending and
+  // visible, but the aggregate verdict stays healthy until the content is
+  // actually stale. Must never read or claim stale-content grace state; the
+  // post-breach grace belongs to STALE_CONTENT only.
+  if (entry?.status === 'CONTENT_AGE_PREWARNING') return 'ok';
   if (['COVERAGE_PARTIAL', 'CHINA_DEGRADED'].includes(entry?.status)
     && typeof entry.chinaCoveragePendingUntil === 'string'
     && !isExpiredDeadline(entry.chinaCoveragePendingUntil, now)) return 'ok';
