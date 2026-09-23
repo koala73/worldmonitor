@@ -123,7 +123,7 @@ test('WHO adapter returns no records after both transient attempts fail', async 
 
 test('RSS sources include ECDC and CIDRAP and no longer include Outbreak News Today', () => {
   const hosts = DISEASE_RSS_FEEDS.map(({ url }) => new URL(url).host);
-  assert.ok(!hosts.includes('outbreaknewstoday.com'));
+  assert.deepEqual(hosts.filter((host) => host === 'outbreaknewstoday.com'), []);
   assert.ok(DISEASE_RSS_FEEDS.some(({ url, sourceName }) =>
     sourceName === 'ECDC' && url === 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed'));
   const cidrap = DISEASE_RSS_FEEDS.filter(({ sourceName }) => sourceName === 'CIDRAP');

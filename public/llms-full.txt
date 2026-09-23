@@ -433,7 +433,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 
 World Monitor publishes 761 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
-- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 37 providers.
+- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 36 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 21 providers.
 - [News & OSINT](https://www.worldmonitor.app/sources/news/): 60 providers.
 - [News & OSINT — page 2](https://www.worldmonitor.app/sources/news/page/2/): 60 providers.
@@ -447,7 +447,7 @@ World Monitor publishes 761 named providers across 18 source catalog pages. Each
 - [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 4 providers.
 - [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 23 providers.
 - [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 52 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 44 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 45 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
 - [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 30 providers.
