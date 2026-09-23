@@ -1,5 +1,5 @@
 import { assertAccountWritable, isAccountDeleting } from "./accountDeletion/guard";
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { DatabaseReader, DatabaseWriter } from "./_generated/server";
 
@@ -26,14 +26,6 @@ async function generateUniqueReferralCode(
   }
   // Fallback: timestamp-based code (extremely unlikely path)
   return Date.now().toString(36).slice(-8);
-}
-
-async function getCounter(db: DatabaseReader, name: string): Promise<number> {
-  const counter = await db
-    .query("counters")
-    .withIndex("by_name", (q) => q.eq("name", name))
-    .first();
-  return counter?.value ?? 0;
 }
 
 async function incrementCounter(db: DatabaseWriter, name: string): Promise<number> {
@@ -194,23 +186,5 @@ export const registerUserReferralCode = internalMutation({
       createdAt: Date.now(),
     });
     return { isNew: true };
-  },
-});
-
-export const getPosition = query({
-  args: { referralCode: v.string() },
-  handler: async (ctx, args) => {
-    const reg = await ctx.db
-      .query("registrations")
-      .withIndex("by_referral_code", (q) => q.eq("referralCode", args.referralCode))
-      .first();
-    if (!reg) return null;
-
-    const total = await getCounter(ctx.db, "registrations_total");
-
-    return {
-      referralCount: reg.referralCount ?? 0,
-      total,
-    };
   },
 });
