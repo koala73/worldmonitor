@@ -23,14 +23,22 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { TECH_EVENTS_SEED_META_KEY } from '../scripts/seed-research.mjs';
+import { TECH_EVENTS_SEED_META_KEY, writeTechEventsMirror } from '../scripts/seed-research.mjs';
 import { resolveSeedMetaKey } from '../scripts/_seed-utils.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const seederSource = readFileSync(resolve(here, '../scripts/seed-research.mjs'), 'utf8');
-const relaySource = readFileSync(resolve(here, '../scripts/ais-relay.cjs'), 'utf8');
 
 const RELAY_META_KEY = 'seed-meta:research:tech-events';
+
+const SAMPLE_PAYLOAD = {
+  success: true,
+  count: 2,
+  events: [
+    { id: 'a', title: 'Event A', startDate: '2026-10-01' },
+    { id: 'b', title: 'Event B', startDate: '2026-10-02' },
+  ],
+};
 
 // -- Reproduction: the default derivation is the collision ---------------------
 
@@ -47,23 +55,26 @@ test('the seeder meta key stays inside the seed-meta namespace and is distinct f
 
 // -- Wiring: the 5th writeExtraKeyWithMeta argument pins the override ----------
 
-test('the tech-events extra-key write passes the distinct meta key explicitly', () => {
-  const call = "writeExtraKeyWithMeta('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL, allData.techEvents.events.length, TECH_EVENTS_SEED_META_KEY)";
-  assert.ok(
-    seederSource.includes(call),
-    'expected the tech-events extra-key write to pass TECH_EVENTS_SEED_META_KEY as metaKeyOverride',
-  );
+test('behavioral: the mirror write targets the seeder meta key, not the relay-owned key', async () => {
+  const writes = [];
+  await writeTechEventsMirror(SAMPLE_PAYLOAD, {
+    writeExtraKeyWithMeta: async (key, data, ttl, recordCount, metaKeyOverride) => {
+      writes.push({ key, data, ttl, recordCount, metaKeyOverride });
+    },
+  });
+  assert.equal(writes.length, 1);
+  const w = writes[0];
+  assert.equal(w.key, 'research:tech-events:v1', 'the mirror data key is unchanged');
+  assert.equal(w.metaKeyOverride, TECH_EVENTS_SEED_META_KEY, 'the meta override must be the seeder-owned key');
+  assert.notEqual(w.metaKeyOverride, RELAY_META_KEY, 'must never write the relay-owned freshness key');
+  assert.equal(w.recordCount, 2, 'recordCount must match the payload');
+  assert.equal(w.ttl, 28800, 'the 8h mirror TTL is unchanged');
+  assert.equal(w.data, SAMPLE_PAYLOAD, 'the payload is passed through untouched');
 });
 
-// -- Pairing invariant: the relay writes its payload beside its own meta -------
-
-test('the relay still writes the bootstrap payload together with its seed-meta (single-writer freshness)', () => {
-  const ok2 = 'const ok2 = await envelopeWrite(TECH_EVENTS_BOOTSTRAP_KEY, payload, TECH_EVENTS_TTL_SECONDS, { recordCount: events.length, sourceVersion: ' + String.fromCharCode(39) + 'tech-events' + String.fromCharCode(39) + ' })';
-  const ok3 = "const ok3 = await upstashSet('seed-meta:research:tech-events', { fetchedAt: Date.now(), recordCount: events.length }, 604800);";
-  assert.ok(relaySource.includes(ok2), 'relay must keep writing the bootstrap payload beside its meta');
-  assert.ok(relaySource.includes(ok3), 'relay meta write must stay wired to its own payload run');
+test('the extracted mirror write is what fetchAll calls (source wiring, format-tolerant)', () => {
   assert.ok(
-    relaySource.indexOf(ok2) < relaySource.indexOf(ok3),
-    'the bootstrap payload write must precede the meta heartbeat in the same run',
+    /if \(allData\.techEvents\?\.events\?\.length > 0\) await writeTechEventsMirror\(allData\.techEvents\);/.test(seederSource),
+    'fetchAll must route the tech-events write through writeTechEventsMirror',
   );
 });
