@@ -213,10 +213,11 @@ describe('per-source parsers (captured fixtures)', () => {
 
   it('parses the SNB daily Confederation cube, dropping valueless rows', () => {
     const curves = parseSnbConfederationCsv(fixture('snb-confederation.csv'));
-    // The 1988-01-01 rows in the fixture carry no published values — the
-    // parser must drop that day rather than emit an empty curve.
+    // The first business day has no published 30Y value; do not fill it
+    // from the complete modern curve.
     assert.equal(curves.length, 3);
     assert.equal(curves[0].date, '1988-01-04');
+    assert.equal(curves[0].tenors['30y'], undefined);
     const latest = curves.at(-1)!;
     assert.equal(latest.date, '2026-09-22');
     assert.equal(latest.tenors['30y'], 0.551);
