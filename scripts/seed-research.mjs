@@ -23,6 +23,17 @@ export const RESEARCH_MAX_STALE_MIN = 150;
 export const ARXIV_TTL = 10800;
 const HN_TTL = 600;
 const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buffer
+// Distinct seed-meta key for this seeder's tech-events mirror. MUST NOT share
+// seed-meta:research:tech-events with scripts/ais-relay.cjs: the relay writes
+// research:tech-events-bootstrap:v1 (the payload /api/health counts and
+// bootstrap hydration serves) plus that meta, and defers its boot seed while
+// the meta is younger than its 6h interval. The default meta-key derivation
+// strips ':v1', so this file's extra-key write used to refresh the relay's
+// meta every 4h (seed-health intervalMin 240) while never writing the
+// bootstrap payload — the relay then postponed its first seed on every restart
+// (age always < 6h), the bootstrap key silently expired, and health reported
+// EMPTY records=0 next to a fresh seedAge. See incident 2026-09-23.
+export const TECH_EVENTS_SEED_META_KEY = 'seed-meta:research:tech-events:seeder';
 const TRENDING_TTL = 3600;
 
 // ─── arXiv Papers ───
@@ -363,7 +374,7 @@ async function fetchAll() {
     }
   }
   if (allData.hn) { for (const [key, data] of Object.entries(allData.hn)) await writeExtraKeyWithMeta(key, data, HN_TTL, data.items?.length ?? 0); }
-  if (allData.techEvents?.events?.length > 0) await writeExtraKeyWithMeta('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL, allData.techEvents.events.length);
+  if (allData.techEvents?.events?.length > 0) await writeExtraKeyWithMeta('research:tech-events:v1', allData.techEvents, TECH_EVENTS_TTL, allData.techEvents.events.length, TECH_EVENTS_SEED_META_KEY);
   if (allData.trending) { for (const [key, data] of Object.entries(allData.trending)) await writeExtraKeyWithMeta(key, data, TRENDING_TTL, data.repos?.length ?? 0); }
 
   const primaryKey = allData.arxiv?.['research:arxiv:v1:cs.AI::50'];
