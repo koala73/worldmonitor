@@ -948,6 +948,35 @@ describe('#8518 → #8519 orphaned-base guard', () => {
     assert.equal(result.reason, 'base-is-default');
     assert.deepEqual(calls, ['repos/koala73/worldmonitor/pulls/8519']);
   });
+
+  it('reads the live base on a rerun even when the stale payload names the default branch', () => {
+    const calls = [];
+    const result = checkStackedMerge({
+      mode: 'pre-merge',
+      // The original run saw `main`; the PR has since been moved onto the merged parent's branch.
+      event: pullEvent({ ...CHILD_8519, base: { ...CHILD_8519.base, ref: 'main' } }),
+      runAttempt: 2,
+      gh: (args) => {
+        calls.push(args.at(-1));
+        if (args.at(-1) === 'repos/koala73/worldmonitor/pulls/8519') return JSON.stringify(CHILD_8519);
+        return JSON.stringify([[PARENT_8518]]);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'base-pr-merged');
+    assert.equal(calls[0], 'repos/koala73/worldmonitor/pulls/8519');
+  });
+
+  it('makes no API call on a first run whose payload names the default branch', () => {
+    const result = checkStackedMerge({
+      mode: 'pre-merge',
+      event: pullEvent({ ...CHILD_8519, base: { ...CHILD_8519.base, ref: 'main' } }),
+      runAttempt: 1,
+      gh: () => { throw new Error('gh must not be called'); },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, 'base-is-default');
+  });
 });
 
 describe('stacked child retarget plan', () => {
@@ -1070,11 +1099,22 @@ describe('retargetStackedChildren executor', () => {
     assert.ok(log.some(entry => entry.path.endsWith('/rerun')));
   });
 
-  it('treats a refused guard rerun as a warning, not a failure', () => {
+  it('treats a refused guard rerun as a warning for a retargeted child', () => {
     const { gh } = fakeGh([CHILD_8519], { failRerun: true });
     const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
     assert.equal(result.exitCode, 0);
     assert.equal(result.warnings.length, 1);
+  });
+
+  it('fails when the guard cannot be re-run for a child stranded by an unmerged parent', () => {
+    // The stranded child keeps a guard verdict computed while the parent was open,
+    // so without a fresh run nothing flags it; the monitor must not report success.
+    const { gh } = fakeGh([CHILD_8519], { failRerun: true });
+    const closed = { ...PARENT_8518, merged: false, merged_at: null };
+    const result = retargetStackedChildren({ event: pullEvent(closed, { action: 'closed' }), gh });
+    assert.equal(result.ok, false);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /#8519/);
   });
 
   it('only lists children for a PR with no stacked children', () => {

@@ -350,6 +350,7 @@ export function checkStackedMerge({
   git,
   issues,
   sleep = () => {},
+  runAttempt = 1,
 } = {}) {
   if (mode !== 'pre-merge' && mode !== 'post-merge') {
     throw new Error(`unknown mode ${mode}`);
@@ -373,19 +374,18 @@ export function checkStackedMerge({
 
   if (mode === 'pre-merge') {
     let baseHeadPulls = [];
+    // A rerun replays the original payload, so its base can be stale in either
+    // direction: the retarget job moves a child off a merged parent, and a PR can
+    // be moved from the default branch onto a parent after its first run.
+    const staleBasePossible = runAttempt > 1 || (baseRef && baseRef !== defaultBranch);
+    if (staleBasePossible && typeof gh !== 'function') {
+      throw new Error('gh is required to look up the stacked base PR');
+    }
+    if (staleBasePossible && pull.number != null) {
+      baseRef = JSON.parse(gh(['api', `repos/${repository}/pulls/${pull.number}`])).base?.ref;
+    }
     if (baseRef && baseRef !== defaultBranch) {
-      if (typeof gh !== 'function') {
-        throw new Error('gh is required to look up the stacked base PR');
-      }
-      // A rerun replays the original payload. After the retarget job moves this
-      // PR off a merged parent, the payload still names the old base, so read
-      // the live one.
-      if (pull.number != null) {
-        baseRef = JSON.parse(gh(['api', `repos/${repository}/pulls/${pull.number}`])).base?.ref;
-      }
-      if (baseRef && baseRef !== defaultBranch) {
-        baseHeadPulls = listPullsByHead({ gh, repository, owner, headRef: baseRef });
-      }
+      baseHeadPulls = listPullsByHead({ gh, repository, owner, headRef: baseRef });
     }
     const verdict = evaluatePreMergeGuard({ defaultBranch, baseRef, baseHeadPulls });
     if (verdict.ok) {
@@ -571,7 +571,11 @@ export function retargetStackedChildren({ event, gh } = {}) {
       try {
         rerunLatestGuard({ gh, repository, headSha: item.headSha });
       } catch (error) {
-        warnings.push(`#${item.number}: guard rerun failed: ${error instanceof Error ? error.message : String(error)}`);
+        const message = `#${item.number}: guard rerun failed: ${error instanceof Error ? error.message : String(error)}`;
+        // A retargeted child is already based on the default branch. A stranded
+        // child keeps the green verdict from while its parent was open, so a
+        // missing rerun leaves nothing flagging it.
+        (item.action === 'strand' ? failures : warnings).push(message);
       }
     }
   }
@@ -652,6 +656,7 @@ function main(argv = process.argv, env = process.env) {
     gh: runGh,
     git: runGit,
     sleep: sleepSync,
+    runAttempt: Number(env.GITHUB_RUN_ATTEMPT) || 1,
   });
   for (const warning of result.warnings || []) console.log(`::warning::${warning}`);
   if (argv.includes('--json')) {
