@@ -990,7 +990,11 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
       now,
     });
 
-    assert.equal(classifyAt(Date.parse('2026-07-30T15:00:00Z')).status, 'OK');
+    // 90 min of a 180 min budget: fresh, below the 80% pre-warning threshold.
+    assert.equal(classifyAt(Date.parse('2026-07-30T13:30:00Z')).status, 'OK');
+    // Exactly at the 180 min budget (stale is strict >): the pre-warning owns
+    // the boundary instant, not OK.
+    assert.equal(classifyAt(Date.parse('2026-07-30T15:00:00Z')).status, 'CONTENT_AGE_PREWARNING');
     assert.equal(classifyAt(Date.parse('2026-07-30T15:01:00Z')).status, 'STALE_CONTENT');
   });
 

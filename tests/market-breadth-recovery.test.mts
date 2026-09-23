@@ -70,7 +70,10 @@ test('recovers a missed Friday close on Sunday through the real producer and rea
   assert.equal(second.status, 0, second.output);
   assert.deepEqual(second.redis[KEY].data.history, first.redis[KEY].data.history);
   assert.equal(second.redis[KEY]._seed.newestItemAt, first.redis[KEY]._seed.newestItemAt);
-  assert.equal(health(second.redis, '2026-09-09T02:00:00Z').status, 'OK');
+  // 42.5h of a 120h budget: still below the 80% pre-warning threshold.
+  assert.equal(health(second.redis, '2026-09-06T08:00:00Z').status, 'OK');
+  // 108.5h = 90% of budget: visible pre-warning, not yet stale.
+  assert.equal(health(second.redis, '2026-09-09T02:00:00Z').status, 'CONTENT_AGE_PREWARNING');
   assert.equal(health(second.redis, '2026-09-09T14:00:00Z').status, 'STALE_CONTENT');
   const fetchBefore = globalThis.fetch;
   try {
