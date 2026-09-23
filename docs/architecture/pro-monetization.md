@@ -121,7 +121,7 @@ src/components/
 └── payment-failure-banner.ts # on_hold red banner
 
 convex/payments/
-├── checkout.ts               # createCheckout + internalCreateCheckout
+├── checkout.ts               # internalCreateCheckout (relay-only)
 ├── subscriptionHelpers.ts    # Webhook → subscription lifecycle
 ├── webhookMutations.ts       # Idempotent webhook event processing
 └── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl
