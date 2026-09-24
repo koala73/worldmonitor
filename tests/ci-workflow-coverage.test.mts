@@ -1656,6 +1656,13 @@ describe('CI workflow coverage', () => {
     assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/'], 'must request exactly the routes docker/Dockerfile asserts at build time');
     assert.match(smoke, /expected 200/, 'a non-200 must fail the job, not just print');
     assert.match(smoke, /returned 200 with an empty body/, 'a 200 with no body must also fail the job');
+    // Under set -e, a refused connection (curl exit 7) would end the step
+    // before the ::error line names the route; `|| true` keeps curl's 000.
+    assert.match(
+      smoke,
+      /code="\$\(curl -s -o \/dev\/null -w '%\{http_code\}' "http:\/\/127\.0\.0\.1:8080\$\{path\}" \|\| true\)"/,
+      'the status probe must survive a refused connection so the ::error line reports it',
+    );
     // The empty-body guard must read the loop's $path, not a route hardcoded
     // to `/` alone -- otherwise a 200-with-empty-body response from `/pro/`
     // would pass silently while `/` alone stayed covered.
