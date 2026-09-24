@@ -7,6 +7,7 @@ const {
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
+  isDeepseekV4FlashModel,
 } = require('./llm-model-policy.cjs');
 
 const SERVICE_UA = 'worldmonitor-llm/1.0';
@@ -60,6 +61,14 @@ const LLM_PROVIDERS = [
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'google/gemini-2.5-flash',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
+    // The body depends on the model a caller overrides onto this entry. Routing keeps
+    // every model off China-hosted backends, as server/_shared/llm.ts does. Reasoning
+    // is switched off only for DeepSeek V4 Flash, which reasons by default; Gemini
+    // 3.8 Flash rejects `reasoning.enabled=false`, so it is not sent blanket.
+    extraBody: (model) => ({
+      ...(isDeepseekV4FlashModel(model) ? { reasoning: { enabled: false } } : {}),
+      provider: OPENROUTER_PROVIDER_ROUTING,
+    }),
     timeout: 20_000,
   },
   {
@@ -149,7 +158,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
           ],
           max_tokens: maxTokens,
           temperature,
-          ...provider.extraBody,
+          ...(typeof provider.extraBody === 'function' ? provider.extraBody(model) : provider.extraBody),
         }),
         signal: AbortSignal.timeout(timeout),
       });

@@ -1,6 +1,7 @@
 ---
 title: A recall-only grounding gate cannot see an invented status qualifier
 date: 2026-09-21
+last_updated: 2026-09-23
 category: logic-errors
 module: shared/brief-llm-core.js, scripts/lib/brief-llm.mjs
 problem_type: logic_error
@@ -12,10 +13,11 @@ symptoms:
   - "Repro at the production model/temperature: headline-only prompts produced the qualifier in 6/6 digest and 6/6 description samples, and a real-lede context line only cut it to 3/6 and 5/6"
   - "Both existing gates passed the string, checkLeadGrounding because \"Trump\" is an anchor and recall-only, validateNoHallucinatedProperNouns because TITLE_PREFIX_STOP consumes \"Former\"/\"President\" and it was never wired into the email brief at all"
   - "Prompt-only bans were already proven inert: 24/24 digest samples opened sentence two with a banned stitching phrase variant"
+  - "2026-09-23: after the digest and story-card fix shipped, the brief model eval (PR #8546) caught deepseek-v4-flash writing \"Former President Trump's return to the UN...\" in 2/2 whyMatters samples, and both whyMatters parsers delivered it"
 root_cause: missing_validation
 resolution_type: code_fix
 related_components: [email_processing, background_job, testing_framework]
-tags: [llm-hallucination, output-validation, status-qualifier, brief-digest, grounding-precision, regex-case-folding, prompt-only-fix, cache-revalidation]
+tags: [llm-hallucination, output-validation, status-qualifier, brief-digest, why-matters, grounding-precision, regex-case-folding, prompt-only-fix, cache-revalidation, model-eval]
 ---
 
 # A recall-only grounding gate cannot see an invented status qualifier
@@ -54,7 +56,7 @@ A throwaway session harness, not committed, imported the shipping prompt builder
 
 ## Solution
 
-Opened in #8437, unmerged as of this writing.
+Merged in #8437 (2026-09-21) for the digest and the story card. The third surface, the whyMatters line, followed in PR #8546 (open as of 2026-09-23); see wiring point three.
 
 **The validator.** `validateNoHallucinatedStatusQualifiers(summary, groundText)` is a new export in `shared/brief-llm-core.js:1155`, mirrored byte-identically into `scripts/shared/brief-llm-core.js` and declared in both `.d.ts` files (`shared/brief-llm-core.d.ts:65-68`). It returns `{ ok: true }` or `{ ok: false, hallucinated: string[] }`. It flags a tenure qualifier attached to a titled, named person unless the ground text carries that qualifier's class and that name. Malformed input returns `ok: true`, matching the sibling validators `validateNoHallucinatedProperNouns` and `validateNoHallucinatedFacts` in their default mode.
 
@@ -125,6 +127,21 @@ export function parseStoryDescription(text, headline, groundText) {
 
 `generateStoryDescription` passes `story.description` on the fresh path (`scripts/lib/brief-llm.mjs:417`) and on the cache-hit path (`scripts/lib/brief-llm.mjs:396`).
 
+**Wiring point three, the whyMatters line (PR #8546).** #8437 gated two of the brief's three prose surfaces. The per-story whyMatters line runs through two parsers in two services, and neither called the validator. `parseWhyMatters` checked length, terminal punctuation and the stub echo; `parseWhyMattersV2` added preamble, markdown and private-forecast checks. The endpoint's default path (`runGeminiPath` in `api/internal/brief-why-matters.ts`) sends `buildWhyMattersUserPrompt` at `maxTokens: 120` and temperature 0.4 to `deepseek/deepseek-v4-flash`. The brief model eval (`scripts/eval-brief-model.mjs`) sent that same prompt, at the same settings, through the cron fallback, and deepseek-v4-flash wrote "Former President Trump's return to the UN stage…" in both samples for the Sep 20 story. Both lines were delivered. The finding is from the eval, not from production rows, which were not read.
+
+The fix is a repair, not a rejection. `repairStatusQualifiers(summary, groundText)` in `shared/brief-llm-core.js` drops each qualifier the ground does not carry and keeps the title and name, capitalizing the next word when the qualifier opened a sentence.
+
+```js
+// "Former President Trump's return ..." -> "President Trump's return ..."
+repairStatusQualifiers(line, whyMattersGround(story)); // { text, removed: ['Former'] }
+```
+
+`enforceWhyMattersStatusQualifiers` runs the repair, logs each removal with the original line, and returns `null` when a qualifier survives, for example a dotted acronym between qualifier and title, which the pattern cannot rewrite. `parseWhyMatters(text, groundText)` takes the ground as an optional second argument. `parseWhyMattersV2` grounds against `provenance.publicStory`, which it already received. The ground is `whyMattersGround(story)`, the headline plus the RSS description. On the cron side, `generateWhyMatters` applies the same check to the endpoint's answer, to the endpoint's cache row, and to its own fallback, fresh or cached.
+
+**Why repair here but sentence-drop in the digest.** A whyMatters line is usually one sentence, so dropping the failing sentence drops the line, and the reader gets the sensitivity stub. The eval produced the qualifier on the Trump story every time, so rejection would stub most Trump stories. Removing one word keeps a sentence whose remaining claims are the model's usual analysis, which the other checks already accepted.
+
+**This surface needed a cache bump.** The digest and card paths revalidate on read (below). The endpoint's cache hit returns the envelope without parsing it, so pre-fix rows would have served the qualifier for the 6h TTL. `brief:llm:whymatters:v11` moved to `v12`, and the cron's cross-read moved with it. The cron's own fallback namespace (`v7`) re-parses hits with the ground, so it needed no bump.
+
 **Sentence-drop repair, not whole-digest rejection.** An early draft rejected the entire digest when the lead failed. Reading the fallback ladder changed that. `runSynthesisWithFallback` (`scripts/lib/digest-orchestration-helpers.mjs:194`) retries L2 on the same model with a capped pool, which is likely to fabricate again, and L3 returns a null synthesis that degrades the brief to a headline stub. So the repair drops only the failing sentences. `repairLeadStatusQualifiers` checks the whole lead first, splits on `LEAD_SENTENCE_SPLIT = /(?<=(?<!\b\p{Lu})[.!?])\s+/u` when it fails, keeps the sentences that pass, and returns an empty lead if the joined result still fails (`scripts/lib/brief-llm.mjs:689-702`). An empty or under-40-character lead rejects. When sentences were dropped, the shortened lead is re-grounded with `{ combinedThreshold: 1 }`, mirroring the dashboard brief's repair path (`scripts/_insights-brief.mjs:605`). Requirement 1 of `checkLeadGrounding` still applies unconditionally, so a shortened lead with no corpus anchor at all is still rejected.
 
 **No cache version bump.** Both cache-hit paths already revalidate before returning. The digest hit runs `validateDigestProseShape(hit, stories)` (`scripts/lib/brief-llm.mjs:854`) and the description hit runs `parseStoryDescription(hit, …)` (`scripts/lib/brief-llm.mjs:396`). A poisoned row written before the fix is therefore rejected on read and regenerated, which is what a version bump would have bought at the cost of discarding every clean row. The test `generateStoryDescription revalidates a cached "Former President" row and re-LLMs it` (`tests/brief-llm.test.mjs:2099`) pins that behavior.
@@ -152,11 +169,13 @@ The same class had already appeared on a sibling surface (session history). Roun
 - Treat stopword lists and title-prefix lists as declared blind spots. Every entry in `GROUNDING_ANCHOR_STOPWORDS` and `TITLE_PREFIX_STOP` is a word the surrounding gate has agreed not to see. When a new fabrication class appears, enumerate those lists first and ask whether the fabricated words are on them. Here they were, on both.
 - Check `railway variables` before treating Axiom silence as evidence. A cron whose service lacks `USAGE_TELEMETRY` and `AXIOM_API_TOKEN` produces zero rows whether it runs or not. When telemetry is absent, reproduce through the shipping prompt builders instead of theorizing from a code read.
 - Ask what dimension the gate still does not look at (session history). The country-page root cause logged on 2026-09-08 was a citation index that proved a marker existed, not that the source supported the claim. This gate looked at names, not predicates. The next class will live in whatever the new gate ignores.
+- List every prose surface before calling a fabrication class fixed. #8437 covered the digest lead, teasers and story card, and missed the whyMatters line, which has its own two parsers in a different service. It was found by an eval that runs the production generators for all three surfaces on the incident's own story pool (`scripts/eval-brief-model.mjs`), not by a review of the fix. The same eval gates the brief model on delivered text, so a model swap cannot bring the class back unnoticed.
+- A cache whose hit path skips the parser needs a version bump when the parser gains a gate. Where the hit path re-parses, as in the digest, the card and the cron's whyMatters fallback, revalidating on read is enough.
 - Replay a new prose gate over a recent corpus and measure the drop rate before shipping (session history). The country-page gate, replayed against an earlier snapshot, would have left zero published briefs. Here the replay over 24 real outputs showed repairs and fallbacks, not wholesale loss.
 
 ## Related Issues
 
-- PR #8437 carries the fix (open, unmerged as of this writing). Follow-ups from the same investigation: #8438 (banned stitching phrases are prompt-only), #8439 (greeting emitted outside the JSON loses leads to `JSON.parse`), #8440 (`digest-notifications` emits no `llm_call` telemetry), #8441 (extend this validator to the dashboard, crawlable, and country-brief consumers, and unify the two lead-sentence splitters).
+- PR #8437 carries the digest and story-card fix (merged 2026-09-21). PR #8546 adds the whyMatters repair and the brief model eval that found the gap (open as of 2026-09-23). Follow-ups from the same investigation: #8438 (banned stitching phrases are prompt-only), #8439 (greeting emitted outside the JSON loses leads to `JSON.parse`), #8440 (`digest-notifications` emits no `llm_call` telemetry), #8441 (extend this validator to the dashboard, crawlable, and country-brief consumers, and unify the two lead-sentence splitters).
 - PR #3667 introduced `checkLeadGrounding` and the title stopwords; PR #3836 introduced `validateNoHallucinatedProperNouns` and `TITLE_PREFIX_STOP`. #6109 was the previous false-positive fight on the same proper-noun validator. #6112 was the previous case of a brief surface reaching users without the gates a sibling surface runs. #7865 was the country-page precision failure with the visible abstention fix.
 - [The evidence gate for LLM-extracted values](../design-patterns/evidence-gate-llm-extracted-values-bypass-classes.md) is the prior chapter of the same doctrine on the prices pipeline: prompt-only anti-fabrication does not hold, the deterministic gate's matcher is its own attack surface, and the abstain path must be observable.
 - [A bare ISO alpha-2 token is never a country mention](./iso-country-code-false-positive-poisons-brief-grounding.md) is the brief system's other grounding-precision fix; its one-matcher-for-every-surface discipline is the lesson #8441 applies to this validator.

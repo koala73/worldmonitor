@@ -56,6 +56,7 @@ import {
   hasTerminalPunctuation,
   parseWhyMatters,
   parseWhyMattersV2,
+  whyMattersGround,
 } from '../../shared/brief-llm-core.js';
 
 // ── Env knobs (read at request entry so Railway/Vercel flips take effect
@@ -325,7 +326,9 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
     });
     if (!result) return null;
     if (rejectLengthLimitedCompletion('gemini', result.finishReason)) return null;
-    return parseWhyMatters(result.content);
+    // The ground lets the parser drop a tenure qualifier the story does not
+    // carry ("Former President Trump" for a sitting president, PR #8546).
+    return parseWhyMatters(result.content, whyMattersGround(story));
   } catch (err) {
     console.warn(`[brief-why-matters] gemini path failed: ${err instanceof Error ? err.message : String(err)}`);
     await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'gemini-path', severity: 'warn' }, fingerprint: ['api/internal/brief-why-matters', 'gemini-path', err instanceof Error ? err.name : 'Error'] });
@@ -454,7 +457,13 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
   // v6 history (kept for reference): category-gated context + prompt-level
   // RELEVANCE RULE (2026-04-22) — those changes remain in v8.
   // v11 uses an unambiguous story tuple and the full SHA-256 digest.
-  const cacheKey = `brief:llm:whymatters:v11:${hash}`;
+  //
+  // v12 (2026-09-23): both parsers now drop a tenure qualifier the story does
+  // not carry. deepseek-v4-flash wrote "Former President Trump" for the sitting
+  // president in 2/2 eval samples (PR #8546), and cache hits bypass the
+  // parsers, so v11 rows must not survive the deploy. The cron reads this
+  // namespace too (scripts/lib/brief-llm.mjs generateWhyMatters).
+  const cacheKey = `brief:llm:whymatters:v12:${hash}`;
   // Shadow v6→v7 for the same reason: a pre-policy v6 record would mix
   // retired and current analyst outputs in the seven-day evaluation cohort.
   const shadowKey = `brief:llm:whymatters:shadow:v7:${hash}`;

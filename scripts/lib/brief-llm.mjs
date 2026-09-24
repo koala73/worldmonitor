@@ -46,12 +46,14 @@ import {
   WHY_MATTERS_V2_MIN_CHARS,
   briefDateLine,
   buildWhyMattersUserPrompt,
+  enforceWhyMattersStatusQualifiers,
   hashBriefStory,
   hasTerminalPunctuation,
   parseWhyMatters,
   checkLeadGrounding,
   leadGroundsAgainstStory,
   validateNoHallucinatedStatusQualifiers,
+  whyMattersGround,
 } from '../../shared/brief-llm-core.js';
 
 // #4921: the grounding spine now lives in shared/brief-llm-core.js — re-export
@@ -147,14 +149,17 @@ const BRIEF_LLM_MODEL_OVERRIDES = { openrouter: BRIEF_LLM_OPENROUTER_MODEL };
 // (`api/internal/brief-why-matters.ts`) can import them without pulling in
 // `node:crypto`. See the `shared/` → `scripts/shared/` mirror convention.
 
-function normalizeAnalystWhyMatters(value) {
+// `ground` re-runs the status-qualifier repair the endpoint's parsers now apply, so
+// an answer from an endpoint deploy that predates it cannot ship an invented
+// "former" either.
+function normalizeAnalystWhyMatters(value, ground) {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   const minChars = Math.min(WHY_MATTERS_V1_MIN_CHARS, WHY_MATTERS_V2_MIN_CHARS);
   const maxChars = Math.max(WHY_MATTERS_V1_MAX_CHARS, WHY_MATTERS_V2_MAX_CHARS);
   if (normalized.length < minChars || normalized.length > maxChars) return null;
   if (/^story flagged by your sensitivity/i.test(normalized)) return null;
-  return hasTerminalPunctuation(normalized) ? normalized : null;
+  return hasTerminalPunctuation(normalized) ? enforceWhyMattersStatusQualifiers(normalized, ground) : null;
 }
 
 /**
@@ -162,7 +167,7 @@ function normalizeAnalystWhyMatters(value) {
  *
  * Four-layer graceful degradation:
  *   1. `deps.callAnalystWhyMatters(story)` — the analyst-context edge
- *      endpoint (brief:llm:whymatters:v11 cache lives there). Preferred.
+ *      endpoint (brief:llm:whymatters:v12 cache lives there). Preferred.
  *   2. Direct read of the endpoint's v11 envelope cache (#4914) — the
  *      endpoint CALL can fail while its cached envelope is still valid;
  *      reusing it avoids a paid duplicate generation.
@@ -189,10 +194,11 @@ export async function generateWhyMatters(story, deps) {
   // longer multi-sentence output. Trust the wire shape; only reject an
   // obviously-bad payload (empty, stub
   // echo, incomplete sentence, or length outside either parser's bounds).
+  const ground = whyMattersGround(story);
   if (typeof deps.callAnalystWhyMatters === 'function') {
     try {
       const analystOut = await deps.callAnalystWhyMatters(story);
-      const normalized = normalizeAnalystWhyMatters(analystOut);
+      const normalized = normalizeAnalystWhyMatters(analystOut, ground);
       if (normalized) return normalized;
       if (typeof analystOut === 'string') {
         console.warn(
@@ -213,7 +219,7 @@ export async function generateWhyMatters(story, deps) {
 
   // #4914: before paying a direct-Gemini generation, check the analyst
   // endpoint's OWN cache namespace. api/internal/brief-why-matters.ts
-  // stores its envelope at brief:llm:whymatters:v11:{hash} under the same
+  // stores its envelope at brief:llm:whymatters:v12:{hash} under the same
   // hashBriefStory identity — when the endpoint CALL failed transiently
   // (or no endpoint is configured), the story may already have a paid,
   // validated envelope sitting in Redis. Read-only: this fallback's own
@@ -221,9 +227,9 @@ export async function generateWhyMatters(story, deps) {
   // two prompt contracts never cross-contaminate in the write direction.
   const storyHash = await hashBriefStory(story);
   try {
-    const v11 = await deps.cacheGet(`brief:llm:whymatters:v11:${storyHash}`);
-    if (v11 && typeof v11 === 'object') {
-      const normalized = normalizeAnalystWhyMatters(v11.whyMatters);
+    const endpointRow = await deps.cacheGet(`brief:llm:whymatters:v12:${storyHash}`);
+    if (endpointRow && typeof endpointRow === 'object') {
+      const normalized = normalizeAnalystWhyMatters(endpointRow.whyMatters, ground);
       if (normalized) return normalized;
     }
   } catch { /* treat as miss */ }
@@ -256,7 +262,9 @@ export async function generateWhyMatters(story, deps) {
   const key = `brief:llm:whymatters:v7:${storyHash}`;
   try {
     const hit = await deps.cacheGet(key);
-    const parsedHit = parseWhyMatters(hit);
+    // With the ground, a row cached before the status-qualifier repair is
+    // repaired on read, so this namespace needs no bump for it.
+    const parsedHit = parseWhyMatters(hit, ground);
     if (parsedHit) return parsedHit;
   } catch { /* cache miss is fine */ }
   // Sanitize story fields before interpolating into the prompt. The analyst
@@ -276,7 +284,7 @@ export async function generateWhyMatters(story, deps) {
   } catch {
     return null;
   }
-  const parsed = parseWhyMatters(text);
+  const parsed = parseWhyMatters(text, ground);
   if (!parsed) return null;
   try {
     await deps.cacheSet(key, parsed, WHY_MATTERS_TTL_SEC);
@@ -734,7 +742,7 @@ const LEAD_SENTENCE_SPLIT = /(?<=(?<!\b\p{Lu})[.!?])\s+/u;
 // and "This development occurs as" were the 24/24 Sep 20 near-misses;
 // listing "this comes as" / "this declaration comes as" in the prompt
 // did not catch them. Word-bounded so "becomes as" is not a hit.
-const LEAD_STITCHING_STEM_RE = /\b(?:comes as|occurs as|meanwhile|at the same time|in other news|elsewhere|on another front|in a separate development)\b/i;
+export const LEAD_STITCHING_STEM_RE = /\b(?:comes as|occurs as|meanwhile|at the same time|in other news|elsewhere|on another front|in a separate development)\b/i;
 
 // LEAD_SENTENCE_SPLIT leaves "U.S. Navy" intact by not breaking after a
 // single capital + period. The same lookbehind glues a following stitch

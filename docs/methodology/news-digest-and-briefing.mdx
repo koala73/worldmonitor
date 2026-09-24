@@ -484,7 +484,9 @@ matches stems (`comes as`, `occurs as`, `meanwhile`) rather than the prompt's
 exact variants, drops the offending lead sentence, and rejects the digest
 when the surviving lead falls under 40 characters. Per-story prompts also
 require named actors where possible and can use the RSS description as grounding
-context.
+context. A per-story `whyMatters` line, from the analyst endpoint or the direct
+fallback, has any tenure qualifier the story does not carry (such as "former"
+or "acting" before a titled name) removed, and is rejected if one remains.
 
 ## Bias Posture
 

@@ -242,7 +242,7 @@ describe('cache key identity', () => {
 });
 
 describe('brief-why-matters Edge cache acceptance', () => {
-  it('serves a complete v11 envelope as a cache hit', async () => {
+  it('serves a complete v12 envelope as a cache hit', async () => {
     const whyMatters = 'The ruling keeps the 2027 race open while reshaping coalition strategy.';
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters,
@@ -257,7 +257,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(fetchCalls.length, 1, 'a valid cache hit must not call an LLM provider');
   });
 
-  it('treats a clipped v11 envelope as a miss when regeneration fails', async () => {
+  it('treats a clipped v12 envelope as a miss when regeneration fails', async () => {
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters: ANALYST_MAX_TOKEN_CLIP,
       producedBy: 'analyst',
@@ -1333,5 +1333,42 @@ describe('Gemini path prompt parity', () => {
       ].join('\n'),
     );
     assert.ok(user.endsWith('One editorial sentence on why this matters:'));
+  });
+});
+
+// ── Status-qualifier repair on the endpoint (PR #8546 eval finding) ─────
+//
+// deepseek-v4-flash, which both endpoint paths run, wrote "Former President
+// Trump's return..." for the Sep 20 story in 2/2 eval samples, and the
+// endpoint's parsers passed it to the reader.
+
+describe('endpoint: invented tenure qualifiers are repaired before caching', () => {
+  const trumpStory = {
+    headline: 'Trump Returns to UN as Iran War Spreads Across Shipping Chokepoints',
+    source: 'gCaptain',
+    threatLevel: 'critical',
+    category: 'Geopolitics',
+    country: 'US',
+  };
+  const captured =
+    'Former President Trump’s return to the UN stage amid an escalating Iran-linked conflict disrupting critical maritime chokepoints threatens to unravel global trade stability and trigger a broader regional war.';
+  const completion = {
+    choices: [{ message: { content: captured }, finish_reason: 'stop' }],
+    usage: { total_tokens: 90, completion_tokens: 40 },
+  };
+
+  it('gemini path serves the repaired line under the v12 cache key', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(
+      null,
+      completion,
+      'gemini',
+      null,
+      { body: JSON.stringify({ story: trumpStory }) },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, captured.replace(/^Former /, ''));
+    const redisUrls = fetchCalls.filter(({ url }) => new URL(url).host === 'redis.example.test').map(({ url }) => decodeURIComponent(url));
+    assert.ok(redisUrls.some((u) => u.includes('brief:llm:whymatters:v12:')), `expected a v12 cache touch, got ${redisUrls.join(' | ')}`);
+    assert.ok(!redisUrls.some((u) => u.includes('brief:llm:whymatters:v11:')), 'v11 rows predate the repair and must not be read');
   });
 });

@@ -44,10 +44,22 @@ const OPENROUTER_PROVIDER_ROUTING = {
   sort: 'throughput',
 };
 
+// DeepSeek V4 Flash and its point releases (`deepseek-v4.1-flash`) share a latency
+// profile and a default: through OpenRouter they reason unless told not to.
+// End-anchored so a `-flash-thinking` style variant is not mistaken for one.
+const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
+const DEEPSEEK_V4_FLASH_POINT_RELEASE = /^deepseek\/deepseek-v4\.\d+-flash$/;
+
+function isDeepseekV4FlashModel(model) {
+  return model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX) || DEEPSEEK_V4_FLASH_POINT_RELEASE.test(model);
+}
+
 module.exports = {
+  DEEPSEEK_V4_FLASH_MODEL_PREFIX,
   GROQ_DEFAULT_MODEL,
   GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
+  isDeepseekV4FlashModel,
 };

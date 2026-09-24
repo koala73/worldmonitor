@@ -33,7 +33,7 @@ export function buildWhyMattersUserPrompt(
   user: string;
 };
 
-export function parseWhyMatters(text: unknown): string | null;
+export function parseWhyMatters(text: unknown, groundText?: string): string | null;
 
 export function hasTerminalPunctuation(text: unknown): boolean;
 
@@ -66,6 +66,14 @@ export function validateNoHallucinatedStatusQualifiers(
   summary: unknown,
   groundText: unknown,
 ): { ok: true } | { ok: false; hallucinated: string[] };
+export function repairStatusQualifiers(
+  summary: string,
+  groundText: unknown,
+): { text: string; removed: string[] };
+export function whyMattersGround(
+  story: { headline?: unknown; description?: unknown } | null | undefined,
+): string;
+export function enforceWhyMattersStatusQualifiers(line: string, ground: string): string | null;
 
 // ── Grounding spine (#4921) ────────────────────────────────────────────────
 export function extractAnchorTokens(s: string): string[];

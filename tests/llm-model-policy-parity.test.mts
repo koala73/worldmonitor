@@ -7,6 +7,7 @@ import {
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
+  isDeepseekV4FlashModel,
 } from '../scripts/_llm-model-timeouts.mjs';
 
 const require = createRequire(import.meta.url);
@@ -17,4 +18,6 @@ test('ESM timeout policy re-exports the canonical CJS model policy', () => {
   assert.equal(cjsPolicy.OPENROUTER_FREE_PRIMARY_MODEL, OPENROUTER_FREE_PRIMARY_MODEL);
   assert.equal(cjsPolicy.OPENROUTER_FREE_BACKUP_MODEL, OPENROUTER_FREE_BACKUP_MODEL);
   assert.deepEqual(cjsPolicy.OPENROUTER_PROVIDER_ROUTING, OPENROUTER_PROVIDER_ROUTING);
+  // One predicate picks both the forecast timeout cap and the seeder chain's request body.
+  assert.equal(cjsPolicy.isDeepseekV4FlashModel, isDeepseekV4FlashModel);
 });

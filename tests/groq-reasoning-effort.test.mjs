@@ -56,6 +56,10 @@ const EXTRA_BODY_FORWARDING_PATTERNS = {
     /\.\.\.extraBody/,
   ],
   'server/_shared/llm.ts': [/\.\.\.creds\.extraBody/],
+  // The openrouter entry's body depends on the model, so extraBody may be a function.
+  'scripts/lib/llm-chain.cjs': [
+    /\.\.\.\(typeof provider\.extraBody === 'function' \? provider\.extraBody\(model\) : provider\.extraBody\)/,
+  ],
 };
 
 describe('Groq reasoning control', () => {

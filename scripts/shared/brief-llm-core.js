@@ -105,14 +105,23 @@ export function hasTerminalPunctuation(text) {
  * Returns null when the output is obviously wrong (empty, boilerplate
  * preamble that survived stripReasoningPreamble, too short / too long).
  *
+ * With `groundText` (see whyMattersGround), a tenure qualifier the story
+ * does not carry is dropped, and a line that still carries one is rejected.
+ *
  * @param {unknown} text
+ * @param {string} [groundText]
  * @returns {string | null}
  */
-export function parseWhyMatters(text) {
+export function parseWhyMatters(text, groundText) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   if (!s) return null;
   s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
+  if (typeof groundText === 'string') {
+    const enforced = enforceWhyMattersStatusQualifiers(s, groundText);
+    if (enforced === null) return null;
+    s = enforced;
+  }
   // Dotted abbreviations make sentence splitting intrinsically ambiguous
   // (`U.S. Navy` vs `U.S. Markets rallied`). The prompt owns sentence count;
   // provider finish_reason plus this punctuation gate own completeness.
@@ -248,6 +257,12 @@ export function parseWhyMattersV2(text, provenance) {
   if (!s) return null;
   // Drop surrounding quotes if the model insisted.
   s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
+  const publicGround = whyMattersGround(provenance?.publicStory);
+  if (publicGround) {
+    const enforced = enforceWhyMattersStatusQualifiers(s, publicGround);
+    if (enforced === null) return null;
+    s = enforced;
+  }
   if (s.length < WHY_MATTERS_V2_MIN_CHARS || s.length > WHY_MATTERS_V2_MAX_CHARS) return null;
   if (!hasTerminalPunctuation(s)) return null;
   // Reject the stub echo (same as v1).
@@ -1154,20 +1169,91 @@ function groundHasWord(ground, word) {
  */
 export function validateNoHallucinatedStatusQualifiers(summary, groundText) {
   if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
-  const grounds = (Array.isArray(groundText) ? groundText : [groundText])
-    .filter((g) => typeof g === 'string' && g.trim().length > 0)
-    .map((g) => normalizeDottedAcronyms(g).toLowerCase())
-    .map((text) => ({ text, tokens: new Set(text.split(/[^\p{L}\p{N}]+/u)) }));
+  const grounds = statusQualifierGrounds(groundText);
   if (grounds.length === 0) return { ok: true };
   const hallucinated = [];
   for (const match of normalizeDottedAcronyms(summary).matchAll(STATUS_QUALIFIER_RE)) {
-    const qualifier = match[1].toLowerCase();
-    const name = match[2].replace(/['’]s$/i, '').toLowerCase();
-    const cls = STATUS_QUALIFIER_CLASS_OF.get(qualifier) ?? [qualifier];
-    const grounded = grounds.some((g) => cls.some((q) => groundHasWord(g, q)) && groundHasWord(g, name));
-    if (!grounded) hallucinated.push(match[0].trim());
+    if (!statusQualifierGrounded(match[1], match[2], grounds)) hallucinated.push(match[0].trim());
   }
   return hallucinated.length === 0 ? { ok: true } : { ok: false, hallucinated };
+}
+
+/** @param {unknown} groundText */
+function statusQualifierGrounds(groundText) {
+  return (Array.isArray(groundText) ? groundText : [groundText])
+    .filter((g) => typeof g === 'string' && g.trim().length > 0)
+    .map((g) => normalizeDottedAcronyms(g).toLowerCase())
+    .map((text) => ({ text, tokens: new Set(text.split(/[^\p{L}\p{N}]+/u)) }));
+}
+
+/**
+ * @param {string} qualifier  STATUS_QUALIFIER_RE group 1
+ * @param {string} name       STATUS_QUALIFIER_RE group 2
+ * @param {Array<{ text: string; tokens: Set<string> }>} grounds
+ */
+function statusQualifierGrounded(qualifier, name, grounds) {
+  const q = qualifier.toLowerCase();
+  const n = name.replace(/['’]s$/i, '').toLowerCase();
+  const cls = STATUS_QUALIFIER_CLASS_OF.get(q) ?? [q];
+  return grounds.some((g) => cls.some((c) => groundHasWord(g, c)) && groundHasWord(g, n));
+}
+
+/**
+ * Drop each tenure qualifier the ground text does not carry, keeping the rest
+ * of the sentence: "Former President Trump's return" becomes "President
+ * Trump's return". Only the qualifier word goes; the title and name are the
+ * source's own. A qualifier that opened a sentence hands its capital to the
+ * next word. Callers re-validate: a form this cannot rewrite (a dotted
+ * acronym between qualifier and title, e.g. "former U.S. President") still
+ * fails validateNoHallucinatedStatusQualifiers afterwards.
+ *
+ * @param {string} summary
+ * @param {unknown} groundText  one string, or one string per source story
+ * @returns {{ text: string; removed: string[] }}
+ */
+export function repairStatusQualifiers(summary, groundText) {
+  if (typeof summary !== 'string' || summary.length === 0) return { text: summary, removed: [] };
+  const grounds = statusQualifierGrounds(groundText);
+  if (grounds.length === 0) return { text: summary, removed: [] };
+  /** @type {string[]} */
+  const removed = [];
+  const text = summary.replace(STATUS_QUALIFIER_RE, (whole, qualifier, name, offset, source) => {
+    if (statusQualifierGrounded(qualifier, name, grounds)) return whole;
+    removed.push(qualifier);
+    const rest = whole.slice(qualifier.length).replace(/^[-\s]+/, '');
+    const opensSentence = offset === 0 || /[.!?]\s*$/.test(source.slice(0, offset));
+    return opensSentence ? rest.charAt(0).toUpperCase() + rest.slice(1) : rest;
+  });
+  return { text, removed };
+}
+
+/**
+ * The public text a whyMatters line may ground against: the story's headline
+ * and its RSS description.
+ *
+ * @param {{ headline?: unknown; description?: unknown } | null | undefined} story
+ * @returns {string}
+ */
+export function whyMattersGround(story) {
+  return [story?.headline, story?.description].filter((v) => typeof v === 'string' && v.trim()).join(' ');
+}
+
+/**
+ * Repair invented tenure qualifiers in a whyMatters line, and reject it if one
+ * survives the repair. The line goes to the log: it is model prose about
+ * public news, and a repair firing means the model is writing from memory.
+ *
+ * @param {string} line
+ * @param {string} ground
+ * @returns {string | null}
+ */
+export function enforceWhyMattersStatusQualifiers(line, ground) {
+  if (!ground) return line;
+  const { text, removed } = repairStatusQualifiers(line, ground);
+  if (removed.length > 0) {
+    console.warn(`[brief-llm-core] whyMatters status-qualifier repair: dropped ${removed.map((q) => JSON.stringify(q)).join(', ')} from ${JSON.stringify(line)}`);
+  }
+  return validateNoHallucinatedStatusQualifiers(text, ground).ok ? text : null;
 }
 
 /**

@@ -10,13 +10,14 @@
 // consumer cannot pick up one without the other.
 import modelPolicy from './lib/llm-model-policy.cjs';
 
-export const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
 export const {
+  DEEPSEEK_V4_FLASH_MODEL_PREFIX,
   GROQ_DEFAULT_MODEL,
   GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
+  isDeepseekV4FlashModel,
 } = modelPolicy;
 
 // OpenRouter provider routing. WorldMonitor is a geopolitical product, so inference
@@ -54,13 +55,9 @@ export const DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS = 40_000;
 
 // Point releases of the same Flash line (`deepseek-v4.1-flash`, used by headline
 // classification) share its latency profile and must keep the cap: measured on 413
-// single-title classify calls, v4.1-flash ran p50 1.1s / p95 3.8s. End-anchored: a
-// `-flash-thinking` style variant is a different latency class and must not be capped.
-const DEEPSEEK_V4_FLASH_POINT_RELEASE = /^deepseek\/deepseek-v4\.\d+-flash$/;
-
-export function isDeepseekV4FlashModel(model) {
-  return model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX) || DEEPSEEK_V4_FLASH_POINT_RELEASE.test(model);
-}
+// single-title classify calls, v4.1-flash ran p50 1.1s / p95 3.8s. The predicate,
+// `isDeepseekV4FlashModel`, lives in lib/llm-model-policy.cjs so the CJS seeder chain
+// can pick its OpenRouter request body with the same test.
 
 // Stays a MIN: a caller asking for LESS than the cap must still get less (the shared
 // client passes 8s for some utility calls and must not be silently loosened to 15s).
