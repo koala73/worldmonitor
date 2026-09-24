@@ -2870,10 +2870,9 @@ const {
   capWithAnnualFloor: ucdpCapWithAnnualFloor,
   candidateContentMeta: ucdpCandidateContentMeta,
 } = require('./shared/ucdp-candidate.cjs');
-const UCDP_MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
-// Retained Redis input window. CII v8's classifier accepts a 2-year window, but
-// this Redis writer fetches the newest pages only and keeps at most UCDP_MAX_EVENTS
-// from a 365-day trailing slice until retention is deliberately widened.
+const UCDP_MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
+// CII accepts two years, but these newest annual pages and the candidate release
+// only cover a 365-day trailing slice. Candidate rows can exceed the default cap.
 const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const UCDP_TTL_SECONDS = 86400; // 24h safety net
@@ -3065,10 +3064,7 @@ async function seedUcdpEvents() {
       sourceOriginal: (e.source_original || '').substring(0, 300),
     })).sort((a, b) => b.dateStart - a.dateStart);
 
-    // Cap newest-first, but reserve slots for the annual base. Every candidate
-    // event is newer than every annual one, so a plain slice hands the whole
-    // payload to the candidate as soon as it outgrows the cap — evicting the
-    // history get-risk-scores.ts needs for per-country conflict floors.
+    // Keep monthly candidate aggregates and the annual conflict-floor history.
     const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite

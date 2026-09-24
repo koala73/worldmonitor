@@ -30,16 +30,7 @@ const CANDIDATE_MAX_PAGES = 3;
 // relay-backup bundle SIGKILLs the UCDP section at 300s).
 const CANDIDATE_DISCOVER_TIMEOUT_MS = 15_000;
 
-// Reserve this many slots of the capped payload for the ANNUAL base.
-//
-// Every candidate event is newer than every annual event, so an unreserved
-// sort-newest-first-then-slice hands the candidate the entire payload as soon as
-// the candidate release grows past the cap. That is not hypothetical: the
-// candidate was 1795 of a 2000-event payload when this was written and grows
-// ~100/month, so the annual base would have been fully evicted within months.
-// get-risk-scores.ts derives each Tier-1 country's war/minor floor from this
-// payload over a 2-year window, so a candidate-only payload silently drops that
-// floor for every country the thin candidate does not cover.
+// Keep annual history for conflict floors in countries absent from the candidate.
 const CANDIDATE_ANNUAL_FLOOR = 500;
 
 // Content-age budget published into seed-meta so /api/health can tell "the
@@ -121,10 +112,8 @@ async function fetchCandidatePages(fetchPage, candidate) {
   };
 }
 
-// Cap the payload newest-first while guaranteeing the annual base keeps
-// CANDIDATE_ANNUAL_FLOOR slots — see the constant above for why. When the annual
-// base cannot fill its reservation the unused slots go back to the candidate, so
-// this never publishes a SHORTER payload than the plain slice would have.
+// Preserve candidate releases as a whole because period-start rows can contain
+// monthly death aggregates. The annual floor must not displace those rows.
 function capWithAnnualFloor(sortedNewestFirst, isCandidate, maxEvents, annualFloor = CANDIDATE_ANNUAL_FLOOR) {
   if (sortedNewestFirst.length <= maxEvents) return sortedNewestFirst;
   const candidateEvents = [];
@@ -133,10 +122,10 @@ function capWithAnnualFloor(sortedNewestFirst, isCandidate, maxEvents, annualFlo
     (isCandidate(event) ? candidateEvents : annualEvents).push(event);
   }
   const annualReserved = Math.min(annualEvents.length, annualFloor);
-  const candidateKeep = Math.min(candidateEvents.length, maxEvents - annualReserved);
+  const capacity = Math.max(maxEvents, candidateEvents.length + annualReserved);
   const picked = [
-    ...candidateEvents.slice(0, candidateKeep),
-    ...annualEvents.slice(0, maxEvents - candidateKeep),
+    ...candidateEvents,
+    ...annualEvents.slice(0, capacity - candidateEvents.length),
   ];
   return picked.sort((a, b) => b.dateStart - a.dateStart);
 }
