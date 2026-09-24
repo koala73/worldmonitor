@@ -419,7 +419,8 @@
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN",
       "MANITOBA_511_KEY",
-      "ALBERTA_511_KEY"
+      "ALBERTA_511_KEY",
+      "ONTARIO_511_KEY"
     ],
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
