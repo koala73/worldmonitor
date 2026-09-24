@@ -15,7 +15,8 @@
  * must be listed at zero price, not expire within EXPIRY_WARNING_DAYS, and keep
  * a zero-price endpoint whose provider OPENROUTER_PROVIDER_ROUTING does not
  * ignore. A listed model can still refuse calls (inkling:free answered 403
- * while listed), which only the keyed completion check can see.
+ * while listed) or accept a request and return empty assistant content, which
+ * only the keyed completion check can see.
  */
 
 import assert from 'node:assert/strict';
@@ -76,6 +77,16 @@ function completionRefused(status) {
   return !(status >= 200 && status < 300) && status !== 429 && status < 500;
 }
 
+/**
+ * Production `callLlm` treats empty `choices` / blank message content as a
+ * failed attempt (`reason: 'empty'`). A 200 with no usable assistant text must
+ * fail the probe the same way — listing checks alone cannot see that shape.
+ */
+function completionContentUsable(body) {
+  const content = body?.choices?.[0]?.message?.content;
+  return typeof content === 'string' && content.trim().length > 0;
+}
+
 async function fetchJson(url, init = {}) {
   const response = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
   assert.equal(response.ok, true, `${url} returned HTTP ${response.status}`);
@@ -120,6 +131,17 @@ describe('OpenRouter free chain policy', () => {
   it('fails a completion only when the model is gone or refused', () => {
     for (const status of [200, 429, 500, 503]) assert.equal(completionRefused(status), false, `HTTP ${status}`);
     for (const status of [400, 401, 402, 403, 404]) assert.equal(completionRefused(status), true, `HTTP ${status}`);
+  });
+
+  it('requires non-empty assistant content from a successful completion', () => {
+    assert.equal(completionContentUsable({ choices: [{ message: { content: 'ok' } }] }), true);
+    assert.equal(completionContentUsable({ choices: [{ message: { content: '  ok  ' } }] }), true);
+    assert.equal(completionContentUsable({ choices: [{ message: { content: '   ' } }] }), false);
+    assert.equal(completionContentUsable({ choices: [{ message: { content: '' } }] }), false);
+    assert.equal(completionContentUsable({ choices: [{ message: {} }] }), false);
+    assert.equal(completionContentUsable({ choices: [] }), false);
+    assert.equal(completionContentUsable({}), false);
+    assert.equal(completionContentUsable(null), false);
   });
 });
 
@@ -173,6 +195,13 @@ describe(`OpenRouter free models live completion (${LIVE && API_KEY ? 'ENABLED' 
         // which must not land in public Actions logs.
         const body = await response.json().catch(() => ({}));
         problems.push(`${model} refused a completion with HTTP ${response.status}: ${String(body?.error?.message || '').slice(0, 200)}`);
+        continue;
+      }
+      if (response.status >= 200 && response.status < 300) {
+        const body = await response.json().catch(() => ({}));
+        if (!completionContentUsable(body)) {
+          problems.push(`${model} returned HTTP ${response.status} with empty assistant content`);
+        }
       }
     }
     assert.deepEqual(problems, [], `${problems.join('; ')}. ${REPLACE_HINT}`);
