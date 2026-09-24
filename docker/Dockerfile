@@ -47,6 +47,11 @@ RUN npm run build:pro
 # and the prebuild openapi/agent-skills generators.
 RUN npx tsc && npx vite build
 RUN test -s dist/product-facts.json
+# The SPA entry point. vite.config.ts's dashboardHtmlOutputPlugin renames
+# index.html -> dashboard.html, and docker/nginx.conf.template both indexes it
+# and falls back to it from `location /` — so if the rename ever changes, every
+# route in the image serves a 404 while every other assertion here still passes.
+RUN test -s dist/dashboard.html
 # Assert the /pro pages survived the public/ -> dist/ copy. build:pro succeeding
 # proves public/pro/ exists; it does NOT prove Vite copied it, and nginx routes
 # `location ^~ /pro` regardless (#6898). Without this an outDir/publicDir change

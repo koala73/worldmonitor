@@ -1,13 +1,142 @@
 name: Publish Docker image
 
+# Publishes ghcr.io/koala73/worldmonitor.
+#
+# What puts a ceiling on the age of the published image is the push trigger
+# below, not the schedule: before either existed, the workflow ran on
+# `release: published` and manual dispatch only, so between two releases
+# nothing rebuilt and the image aged without bound.
+#
+# The rebuild follows `main` rather than the last release tag on purpose. Both
+# FROM lines in docker/Dockerfile are pinned to an immutable digest and
+# tests/ci-workflow-coverage.test.mts requires that, so rebuilding a tag
+# verbatim reproduces the same base byte for byte and buys nothing. A base fix
+# reaches the image only once Dependabot has moved the pin on main, which is
+# therefore where the rebuild has to read from. The consequence is that
+# `latest` tracks main, not the newest release — see the tag block below.
+#
+# What gates an unattended publish: the build itself (docker/Dockerfile asserts
+# its own output), then a smoke test that actually runs the image and requests
+# its live routes before anything is pushed. The assertions alone are not
+# enough — they prove files are non-empty, not that the server serves them —
+# and this workflow is the only place docker/Dockerfile is built at all, so
+# before the push trigger below existed a scheduled run was the first
+# execution of any change to it -- up to a week after it merged.
+#
+# /!\ Like every scheduled workflow, this one runs on the default branch only,
+# and GitHub disables scheduled workflows in a public repository after 60 days
+# without repository activity; they then have to be re-enabled by hand from the
+# Actions tab. A run that never happens raises no alarm on its own, which is
+# what the failure issue below is a partial answer to. The push trigger is
+# immune to that 60-day disablement, so it is what actually keeps `latest`
+# fresh in practice; the schedule is the backstop for whatever the push trigger
+# misses — a workflow-dispatch of the wrong ref, a webhook delivery outage.
+
 on:
   release:
     types: [published]
+  push:
+    branches: [main]
+    # "Does this change affect the built image" -- an ignore-list, not an
+    # allow-list, because docker/Dockerfile's builder stage runs `COPY . .`
+    # then `npx tsc && npx vite build` (#7808 review, CodeRabbit): nearly
+    # everything not excluded by .dockerignore reaches the built image,
+    # including src/, public/, api/, server/, proto/, most of scripts/ (several
+    # of its files run via npm aliases like build:crawlable-corpus and
+    # build:sitemap, not just generate-inventory-facts.mjs), vite.config.ts,
+    # and every tsconfig*.json. An earlier allow-list here named only the files
+    # docker/Dockerfile references directly and missed all of that -- it would
+    # have silently fallen back to the cron's up-to-a-week bound for ordinary
+    # application changes, the opposite of what this trigger exists for.
+    #
+    # The list below matches everything, then excludes only what plainly
+    # cannot reach the served output: tests, e2e, docs, desktop (src-tauri),
+    # agent/editor metadata directories, CI workflow files, and Markdown. A
+    # future top-level directory that is genuinely build-irrelevant needs an
+    # exclusion added here to stay quiet; one that IS build-relevant needs no
+    # entry at all, which is the safer direction for a filter to fail in.
+    #
+    # `paths` with negations rather than `paths-ignore`, because two inputs
+    # inside the excluded globs are rendered into the image and must win them
+    # back: build:crawlable-corpus reads CHANGELOG.md for the changelog pages
+    # and docs/snapshots/ for the live-pulse and resilience pages (and throws
+    # once the live-pulse snapshot is 10 days old, so the snapshot refresh is
+    # also what turns a red rebuild green). .dockerignore keeps both in the
+    # build context for the same reason. In `paths`, a later pattern overrides
+    # an earlier one, so the re-inclusions must stay last.
+    #
+    # This is what makes the schedule below a backstop rather than the primary
+    # mechanism: a Dependabot base-image bump or an ordinary application change
+    # now republishes `latest` within minutes of merging, not up to six days
+    # later. Action bumps live under .github/ and do not trigger it; they reach
+    # the image with the next rebuild.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!.github/**'
+      - '!.agents/**'
+      - '!.claude/**'
+      - '!.factory/**'
+      - '!.planning/**'
+      - '!.windsurf/**'
+      - '!docs/**'
+      - '!e2e/**'
+      - '!src-tauri/**'
+      - '!tests/**'
+      - 'CHANGELOG.md'
+      - 'docs/snapshots/**'
+  schedule:
+    # Wednesdays at 02:19 UTC. Off the hour because GitHub runs the scheduled
+    # queue late when it is loaded and that load peaks on the hour, and outside
+    # the 03:00–05:00 UTC band the other crons in this directory already share.
+    # No longer the primary freshness mechanism -- the push trigger above
+    # republishes on every relevant merge -- so this is what still catches a
+    # base image whose digest moved with no corresponding file diff to trigger
+    # on (none exist today; every FROM line here is pinned in-repo), and
+    # whatever a push trigger can silently miss (a delayed or dropped webhook
+    # delivery).
+    - cron: '19 2 * * 3'
   workflow_dispatch:
+
+# Only main's own triggers (push, schedule, a dispatch run against main) share
+# the `docker-publish` group; every other ref gets a group of its own. GitHub
+# keeps at most one pending run per concurrency group and evicts an earlier
+# pending run when a newer one queues, which is exactly right for main:
+# several docker-relevant merges landing close together collapse to the run in
+# progress plus the newest pending one, and nothing is lost because that
+# newest run builds the newest main. It would be wrong for anything else: with
+# main advancing several times an hour and a multi-platform build taking ~20
+# minutes, a release, a tag-repair dispatch, or a dispatch against a feature
+# branch to test a Dockerfile change would be evicted by the next merge if it
+# shared main's slot -- for a tag that means its version tags are never
+# published by any other run (CodeRabbit, #7808: an earlier version of this
+# keyed only on `refs/tags/`, so a feature-branch dispatch still fell into
+# main's group and could evict a pending main rebuild). Keying on `main`
+# itself rather than "is this a tag" covers every ref that isn't main with the
+# same rule, including ones this workflow does not use today.
+#
+# The cost is that a tag run and a main run can overlap. Both may push
+# `latest` (a release's own run publishes it), and whichever finishes last
+# wins; the next main rebuild puts `latest` back on main, which is what it
+# tracks by design. Each registry push of a tag is a single manifest write,
+# so overlap reorders `latest`, it does not tear it.
+#
+# cancel-in-progress stays false because an in-progress build has no way to
+# know it will be superseded before its push, and cancelling it there risks a
+# half-pushed multi-platform image -- eviction only ever reaches a pending run
+# that has not started.
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && 'docker-publish' || format('docker-publish-{0}', github.ref) }}
+  cancel-in-progress: false
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    # A multi-platform build under QEMU is slow enough that a hang is
+    # plausible, and this job holds the `docker-publish` concurrency slot while
+    # it runs — the same slot the manual repair dispatch needs. Without a cap it
+    # would hold it for the six-hour default.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -27,13 +156,112 @@ jobs:
 
       - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         id: meta
+        env:
+          # Annotations default to the per-platform manifests alone. The index
+          # is what `docker pull` and `imagetools inspect` resolve first, so the
+          # created/revision pair has to be readable there too.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/koala73/worldmonitor
+          # `latest=auto` is the default, and it appends `latest` on its own
+          # whenever a semver tag resolves. That would put `latest` on any tag
+          # ref, including a dispatch against an old release tag. Turning it off
+          # makes the `type=raw` line below the single place `latest` is decided.
+          flavor: latest=false
+          # The semver entries are gated on the REF, not the event, because that
+          # is what metadata-action itself keys on: procSemver returns early
+          # unless the ref starts with refs/tags/. Gating them on
+          # `event_name == 'release'` instead would silently drop the version
+          # tags from a manual dispatch against a release tag — the repair path
+          # for a failed release run, and the mirror of the main-dispatch repair
+          # for `latest` below.
+          #
+          # `latest` was gated on the event being a release, which is why it had
+          # never been published. It now follows the default branch too: a
+          # scheduled run always runs there, and a manual dispatch from main can
+          # repair `latest` after a failed weekly run without cutting a release.
+          # A dispatch from any other branch still publishes its `sha-*` tag
+          # alone, so `latest` cannot be moved onto a feature branch by hand.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-
+
+      # Build one platform into the local daemon first so the next step can
+      # actually run it. Attestations are not supported by the docker exporter,
+      # hence provenance/sbom off here; the published build below sets both.
+      - name: Build the amd64 image for the pre-push smoke test
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          provenance: false
+          sbom: false
+          platforms: linux/amd64
+          tags: worldmonitor-smoke:candidate
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The gate that stands between a broken main and the `latest` tag people
+      # pull. docker/Dockerfile's own `test -s` assertions prove files exist and
+      # are non-empty; they cannot catch an nginx config that fails to start or
+      # a route that 404s, and the runtime stage is copy-only with nothing
+      # verifying it at all. Every path checked here is one docker/nginx.conf.
+      # template routes explicitly.
+      - name: Smoke the image before publishing it
+        run: |
+          set -euo pipefail
+          docker run -d --name wm-smoke -p 8080:80 worldmonitor-smoke:candidate
+
+          cleanup() {
+            echo "--- container logs ---"
+            docker logs wm-smoke 2>&1 | tail -50 || true
+            docker rm -f wm-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # nginx is up in well under this budget; the loop is for the runner,
+          # not the server.
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+              break
+            fi
+            sleep 1
+          done
+
+          failed=""
+          # Exactly the two routes docker/Dockerfile asserts the inputs for, so
+          # this gate can only go red on a genuinely broken image: `/` must
+          # serve the SPA entry (Vite renames index.html to dashboard.html and
+          # nginx falls back to it, so a rename that breaks the contract 404s
+          # here rather than in the registry), and `/pro` is a live nginx route
+          # that 404s whenever the pro build did not survive the copy (#6898).
+          # Adding a path whose file nothing asserts would turn a green build
+          # red for the wrong reason.
+          for path in / /pro/; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}")"
+            if [ "$code" != "200" ]; then
+              echo "::error::GET ${path} returned ${code}, expected 200"
+              failed="yes"
+            # A 200 that served an empty body is not a working page either --
+            # checked per path, not just for `/`: `/pro/` 404ing was already
+            # a real regression here (#6898), and a 200-with-empty-body on it
+            # would be the same failure mode with a passing status code.
+            elif [ -z "$(curl -fsS "http://127.0.0.1:8080${path}")" ]; then
+              echo "::error::GET ${path} returned 200 with an empty body"
+              failed="yes"
+            else
+              echo "GET ${path} -> 200"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error::Image smoke test failed; nothing will be published."
+            exit 1
+          fi
 
       - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
@@ -44,5 +272,66 @@ jobs:
           sbom: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
+          # metadata-action already computed these, but they were never handed
+          # to the build: the only label on either published image today is the
+          # `maintainer` one inherited from the nginx base. Without
+          # org.opencontainers.image.created and .revision there is no way to
+          # ask the registry how old an image is or what it was built from,
+          # which is the first question anyone asks of a freshness guarantee.
+          labels: ${{ steps.meta.outputs.labels }}
+          # The same facts on the OCI manifests and index, where a registry UI
+          # and `imagetools inspect` read them from.
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # A separate job, not a same-job `if: failure()` step: the build job's own
+  # 45-minute timeout is a plausible way for it to end (QEMU under a
+  # multi-platform build can hang), and GitHub marks a job that hits its
+  # timeout `cancelled`, not `failed` -- `failure()` stays false, so a step
+  # gated on it inside the same job never runs for exactly the failure mode
+  # the timeout comment anticipates (CodeRabbit, #7808). `needs:` plus
+  # `if: always()` observes the build job's result from outside it, where a
+  # timeout is visible too.
+  report-failure:
+    needs: docker
+    if: >-
+      always() &&
+      (needs.docker.result == 'failure' || needs.docker.result == 'cancelled') &&
+      (github.event_name == 'schedule' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      # Nobody watches an unattended rebuild. A push-triggered run fails after
+      # its PR has already merged, and a scheduled one on a seven-day cadence;
+      # either is invisible until someone opens the Actions tab, and the whole
+      # point of both triggers is that the published image cannot go stale --
+      # so a rebuild of main that stopped working has to say so somewhere
+      # durable. The push trigger is the primary freshness mechanism, so its
+      # failures are the ones most worth reporting. One open issue,
+      # re-commented rather than duplicated, in the manner of
+      # orphaned-stacked-merge-monitor.yml.
+      - name: Report a failed rebuild of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: 'Docker rebuild of main failed'
+        run: |
+          set -euo pipefail
+          body="The ${GITHUB_EVENT_NAME}-triggered rebuild of ghcr.io/koala73/worldmonitor failed, so \`latest\` still points at the previous image and its age is no longer bounded.
+
+          Run: ${RUN_URL}
+          Commit: ${GITHUB_SHA}
+
+          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to republish \`latest\` without waiting for the next relevant merge or the Wednesday cron."
+
+          existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title \
+            --jq "[.[] | select(.title == \"${TITLE}\")] | first | .number // empty")"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "Commented on existing issue #${existing}."
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi
