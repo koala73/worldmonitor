@@ -362,10 +362,8 @@ export function aggregateHapiConflictEvents(
         ),
         eventsTotal: 0,
         eventsPV: 0,
-        eventsCT: 0,
         eventsDem: 0,
         fatalitiesPV: 0,
-        fatalitiesCT: 0,
       };
       aggregates.set(countryCode, aggregate);
     }
@@ -381,9 +379,6 @@ export function aggregateHapiConflictEvents(
     if (eventType === 'political_violence') {
       aggregate.eventsPV += events;
       aggregate.fatalitiesPV += fatalities;
-    } else if (eventType === 'civilian_targeting') {
-      aggregate.eventsCT += events;
-      aggregate.fatalitiesCT += fatalities;
     } else if (eventType === 'demonstration') {
       aggregate.eventsDem += events;
     }
@@ -396,8 +391,8 @@ export function aggregateHapiConflictEvents(
         countryCode,
         countryName: aggregate.countryName,
         conflictEventsTotal: aggregate.eventsTotal,
-        conflictPoliticalViolenceEvents: aggregate.eventsPV + aggregate.eventsCT,
-        conflictFatalities: aggregate.fatalitiesPV + aggregate.fatalitiesCT,
+        conflictPoliticalViolenceEvents: aggregate.eventsPV,
+        conflictFatalities: aggregate.fatalitiesPV,
         referencePeriod: aggregate.referencePeriod,
         conflictDemonstrations: aggregate.eventsDem,
         updatedAt: nowMs,

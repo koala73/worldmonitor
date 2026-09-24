@@ -581,7 +581,8 @@ test('one aggregation pass over both sweeps keeps each country at its own admin 
   assert.equal(combined.AF.summary.conflictEventsTotal, 11);
   assert.equal(combined.AF.summary.conflictFatalities, 3);
   assert.equal(combined.HT.summary.conflictEventsTotal, 4);
-  assert.equal(combined.HT.summary.conflictFatalities, 9);
+  assert.equal(combined.HT.summary.conflictPoliticalViolenceEvents, 0);
+  assert.equal(combined.HT.summary.conflictFatalities, 0);
 
   // Behaviour preservation: every country live today comes from the admin-0
   // sweep, and appending the disjoint subnational rows must not perturb them.

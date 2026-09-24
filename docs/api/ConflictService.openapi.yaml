@@ -1362,11 +1362,11 @@ components:
                 conflictPoliticalViolenceEvents:
                     type: integer
                     format: int32
-                    description: Political violence + civilian targeting event count.
+                    description: Event count from the political-violence category only; overlapping civilian targeting is not added.
                 conflictFatalities:
                     type: integer
                     format: int32
-                    description: Total fatalities from political violence and civilian targeting.
+                    description: Fatalities from the political-violence category only; overlapping civilian targeting is not added.
                 referencePeriod:
                     type: string
                     description: Reference period start date (YYYY-MM-DD).
