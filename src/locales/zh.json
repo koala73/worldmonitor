@@ -2819,6 +2819,12 @@
       "idleKeepPlaying": "空闲时继续播放",
       "idleSettingsHint": "可随时在设置 › 媒体中更改。",
       "idleKeepPlayingToast": "实时视频在空闲时将继续播放。在设置 › 媒体中更改。"
+    },
+    "corroboration": {
+      "singlePublisher": "单一发布者",
+      "singlePublisherHint": "目前仅有一家媒体报道此事。这反映的是覆盖范围，而非准确性。",
+      "tier4Only": "仅低级来源",
+      "tier4OnlyHint": "报道此事的所有媒体都是第4级来源（聚合器和博客）。这反映的是覆盖范围，而非准确性。"
     }
   },
   "popups": {

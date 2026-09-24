@@ -33,6 +33,16 @@ export function getSourceTier(sourceName: string): number {
   return SOURCE_TIERS[sourceName] ?? 4;
 }
 
-export function hasSourceTier(sourceName: string): boolean {
-  return Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName);
+export type DeclaredTier = 1 | 2 | 3 | 4;
+
+/**
+ * The tier a label was explicitly assigned in the RSS, Telegram or X tables,
+ * or null. Unlike getSourceTier it never defaults: an undeclared source has an
+ * unknown tier, and treating it as tier 4 would claim something about the
+ * source that no table says.
+ */
+export function declaredSourceTier(sourceName: string): DeclaredTier | null {
+  if (!Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName)) return null;
+  const tier = SOURCE_TIERS[sourceName];
+  return tier === 1 || tier === 2 || tier === 3 || tier === 4 ? tier : null;
 }

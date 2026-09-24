@@ -2819,6 +2819,12 @@
       "idleKeepPlaying": "유휴 상태일 때 계속 재생",
       "idleSettingsHint": "언제든지 설정 › 미디어에서 변경할 수 있습니다.",
       "idleKeepPlayingToast": "유휴 상태일 때 라이브 영상이 계속 재생됩니다. 설정 › 미디어에서 변경하세요."
+    },
+    "corroboration": {
+      "singlePublisher": "단일 발행자",
+      "singlePublisherHint": "현재 이 사항을 보도하는 발행자는 하나뿐입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다.",
+      "tier4Only": "저등급 출처만",
+      "tier4OnlyHint": "이를 보도하는 모든 매체가 4등급 출처(수집처 및 블로그)입니다. 이는 보도 범위를 나타내며 정확성을 나타내지 않습니다."
     }
   },
   "popups": {

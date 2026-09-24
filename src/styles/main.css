@@ -4797,6 +4797,29 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   border-radius: 8px;
 }
 
+/* Coverage disclosure (#6419), deliberately neutral: it is not a warning. */
+.corroboration-flag {
+  display: inline-block;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 0 5px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.breaking-alert .corroboration-flag {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.cdp-news-meta .corroboration-flag {
+  margin-inline-start: 6px;
+  font-size: 10px;
+}
+
 .cluster-meta {
   display: flex;
   align-items: center;

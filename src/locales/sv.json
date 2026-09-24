@@ -2457,6 +2457,12 @@
       "idleKeepPlaying": "Fortsätt spela när inaktiv",
       "idleSettingsHint": "Ändra detta när som helst i Inställningar › Media.",
       "idleKeepPlayingToast": "Livevideo fortsätter spela när inaktiv. Ändra i Inställningar › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "En enda utgåva",
+      "singlePublisherHint": "Endast en utgåva rapporterar detta hittills. Detta beskriver nyhetsrapportering, inte noggrannhet.",
+      "tier4Only": "Endast låg-nivå-källor",
+      "tier4OnlyHint": "Alla utgåvor som rapporterar detta är tier-4-källor (aggregatorer och bloggar). Detta beskriver nyhetsrapportering, inte noggrannhet."
     }
   },
   "popups": {

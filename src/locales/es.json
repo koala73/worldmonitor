@@ -2857,6 +2857,12 @@
       "idleKeepPlaying": "Seguir reproduciendo cuando está inactivo",
       "idleSettingsHint": "Cambia esto en cualquier momento en Configuración › Multimedia.",
       "idleKeepPlayingToast": "El vídeo en directo seguirá reproduciéndose cuando esté inactivo. Cambia en Configuración › Multimedia."
+    },
+    "corroboration": {
+      "singlePublisher": "Un único medio",
+      "singlePublisherHint": "Solo un medio está reportando esto hasta ahora. Esto describe la cobertura, no la precisión.",
+      "tier4Only": "Solo fuentes de nivel bajo",
+      "tier4OnlyHint": "Todo medio que reporta esto es una fuente de nivel 4 (agregadores y blogs). Esto describe la cobertura, no la precisión."
     }
   },
   "popups": {

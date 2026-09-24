@@ -2907,6 +2907,12 @@
       "idleKeepPlaying": "Élő videó lejátszása üresjárat során",
       "idleSettingsHint": "Ezt bármikor módosíthatja a Beállítások › Média menüben.",
       "idleKeepPlayingToast": "Az élő videó üresjárat során is lejátszódik. Módosítása a Beállítások › Média menüben."
+    },
+    "corroboration": {
+      "singlePublisher": "Egyetlen kiadó",
+      "singlePublisherHint": "Egyelőre csak egy kiadó számol be erről. Ez a sajtóközvetítést jellemzi, nem a pontosságot.",
+      "tier4Only": "Csak alacsony szintű források",
+      "tier4OnlyHint": "Minden erről beszámoló outletet tier-4 forrás (aggregátorok és blogok) jegyzetele. Ez a sajtóközvetítést jellemzi, nem a pontosságot."
     }
   },
   "popups": {

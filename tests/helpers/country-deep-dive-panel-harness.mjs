@@ -123,6 +123,9 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function getSourceTier(sourceName) {
         return sourceProvenance[sourceName]?.tier ?? 4;
       }
+      export function declaredSourceTier(sourceName) {
+        return sourceProvenance[sourceName]?.tier ?? null;
+      }
       export function getSourceType(sourceName) {
         return sourceProvenance[sourceName]?.type ?? 'unknown';
       }

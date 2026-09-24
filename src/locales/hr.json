@@ -2933,6 +2933,12 @@
       "idleKeepPlaying": "Nastavi reproduciranje kada je korisnik neaktivan",
       "idleSettingsHint": "Promijeni ovo bilo kada u Postavkama › Mediji.",
       "idleKeepPlayingToast": "Live video će se nastaviti reproducirati kada je korisnik neaktivan. Promijeni u Postavkama › Mediji."
+    },
+    "corroboration": {
+      "singlePublisher": "Jedan izdavač",
+      "singlePublisherHint": "Za sada samo jedan izdavač izvještava o tome. Ovo opisuje doseg izvještavanja, ne točnost.",
+      "tier4Only": "Samo niskotarifni izvori",
+      "tier4OnlyHint": "Svaki outlet koji izvještava o tome je izvor 4. razreda (agregatori i blogovi). Ovo opisuje doseg izvještavanja, ne točnost."
     }
   },
   "popups": {

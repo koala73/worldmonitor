@@ -2474,6 +2474,12 @@
       "idleKeepPlaying": "Continuar reproduzindo quando inativo",
       "idleSettingsHint": "Altere isso a qualquer momento em Configurações › Mídia.",
       "idleKeepPlayingToast": "O vídeo ao vivo continuará reproduzindo quando inativo. Altere em Configurações › Mídia."
+    },
+    "corroboration": {
+      "singlePublisher": "Um único veículo",
+      "singlePublisherHint": "Apenas um veículo está reportando isso até agora. Isso descreve cobertura, não precisão.",
+      "tier4Only": "Apenas fontes de baixo nível",
+      "tier4OnlyHint": "Todos os veículos reportando isso são fontes de nível 4 (agregadores e blogs). Isso descreve cobertura, não precisão."
     }
   },
   "popups": {

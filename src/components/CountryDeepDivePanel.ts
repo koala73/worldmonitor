@@ -2,6 +2,7 @@ import type { CountryBriefSignals } from '@/types';
 import {
   PERSPECTIVE_LABEL_CAVEAT,
   composeProvenanceSummary,
+  declaredSourceTier,
   describePropagandaBadge,
   getProvenanceFacts,
   getSourcePropagandaRisk,
@@ -61,6 +62,8 @@ import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-sig
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { assessCorroboration } from '../../server/_shared/corroboration';
+import { corroborationFlag } from '@/utils/corroboration-flag';
 import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
@@ -431,7 +434,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
 
     for (let i = 0; i < deduped.length; i++) {
-      const { item, extraSources } = deduped[i]!;
+      const { item, sources } = deduped[i]!;
+      const corroboration = assessCorroboration({
+        kind: 'grouped',
+        labels: sources,
+        reportedPublishers: item.corroborationCount ?? null,
+      });
+      const otherPublishers = corroboration.state === 'unknown' ? 0 : corroboration.publishers - 1;
+      const otherLabels = sources.slice(1);
       const row = this.el('a', 'cdp-news-item');
       row.id = `cdp-news-${i + 1}`;
       const href = sanitizeUrl(item.link);
@@ -444,15 +454,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       const top = this.el('div', 'cdp-news-top');
-      const tier = item.tier ?? getSourceTier(item.source);
+      const tier = declaredSourceTier(item.source);
       const sourceType = getSourceType(item.source);
-      const clampedTier = Math.max(1, Math.min(4, tier));
-      const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
-      tierBadge.setAttribute(
-        'title',
-        `${getSourceTierBadgeTitle(sourceType)}. Source tier ${clampedTier}; independent of article severity.`,
-      );
-      top.append(tierBadge);
+      if (tier !== null) {
+        const tierBadge = this.badge(`T${tier} SRC`, `cdp-tier-badge tier-${tier}`);
+        tierBadge.setAttribute(
+          'title',
+          `${getSourceTierBadgeTitle(sourceType)}. Source tier ${tier}; independent of article severity.`,
+        );
+        top.append(tierBadge);
+      }
 
       const severity = this.toThreatLevel(item.threat?.level);
       const levelKey = severity === 'info' ? 'low' : severity === 'medium' ? 'moderate' : severity;
@@ -479,12 +490,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       const title = this.el('div', 'cdp-news-title', decodeHtmlEntities(item.title));
-      const metaText = extraSources.length > 0
-        ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
+      const metaText = otherPublishers > 0
+        ? `${item.source} +${otherPublishers} ${otherPublishers === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
         : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
       const meta = this.el('div', 'cdp-news-meta', metaText);
-      if (extraSources.length > 0) {
-        meta.setAttribute('title', `Also reported by: ${extraSources.join(', ')}`);
+      if (otherLabels.length > 0) {
+        meta.setAttribute('title', `Also reported by: ${otherLabels.join(', ')}`);
+      }
+      const flag = corroborationFlag(corroboration);
+      if (flag) {
+        const pill = this.el('span', 'corroboration-flag', flag.text);
+        pill.setAttribute('title', flag.hint);
+        meta.append(pill);
       }
       row.append(top, title, meta);
 

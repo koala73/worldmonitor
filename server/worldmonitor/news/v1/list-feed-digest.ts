@@ -92,7 +92,7 @@ import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
-import { getSourceTier, hasSourceTier } from '../../../_shared/source-tiers';
+import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
@@ -586,9 +586,9 @@ function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
   // Prefer one identity reviewed by both registries so tier and risk describe
   // the same publisher; then degrade toward whichever curated signal exists.
   return candidates.find(candidate =>
-    hasReviewedPropagandaRisk(candidate) && hasSourceTier(candidate))
+    hasReviewedPropagandaRisk(candidate) && declaredSourceTier(candidate) !== null)
     ?? candidates.find(hasReviewedPropagandaRisk)
-    ?? candidates.find(hasSourceTier)
+    ?? candidates.find(candidate => declaredSourceTier(candidate) !== null)
     ?? rawName;
 }
 

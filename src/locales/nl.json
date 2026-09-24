@@ -2457,6 +2457,12 @@
       "idleKeepPlaying": "Videostream afspelen bij inactiviteit",
       "idleSettingsHint": "Wijzig dit op elk moment in Instellingen › Media.",
       "idleKeepPlayingToast": "Livevideostream blijft afspelen bij inactiviteit. Wijzigen in Instellingen › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Enkele uitgever",
+      "singlePublisherHint": "Tot nu toe meldt slechts één uitgever dit. Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "tier4Only": "Alleen laag-tier bronnen",
+      "tier4OnlyHint": "Elk persagentschap dat hierover bericht, is een tier-4-bron (aggregators en blogs). Dit beschrijft de verslaggeving, niet de nauwkeurigheid."
     }
   },
   "popups": {

@@ -2838,6 +2838,12 @@
       "idleKeepPlaying": "Hareketsizlik sırasında oynatmaya devam et",
       "idleSettingsHint": "Bunu istediğiniz zaman Ayarlar › Medya bölümünde değiştirebilirsiniz.",
       "idleKeepPlayingToast": "Canlı video hareketsizlik sırasında oynatmaya devam edecektir. Ayarlar › Medya bölümünden değiştirin."
+    },
+    "corroboration": {
+      "singlePublisher": "Tek yayıncı",
+      "singlePublisherHint": "Şu ana kadar bu haberi sadece bir yayıncı bildiriyor. Bu, haber kapsamını gösterir; doğruluk değildir.",
+      "tier4Only": "Yalnızca düşük seviye kaynaklar",
+      "tier4OnlyHint": "Bu haberi bildiren her kuruluş bir seviye-4 kaynaktır (toplayıcılar ve bloglar). Bu, haber kapsamını gösterir; doğruluk değildir."
     }
   },
   "popups": {

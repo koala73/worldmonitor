@@ -50,7 +50,7 @@ describe('normalizeHeadlineKey', () => {
 });
 
 describe('dedupeHeadlines', () => {
-  it('collapses same-story items from different sources and records extras', () => {
+  it('collapses same-story items from different sources and records every label', () => {
     const items = [
       h('Pentagon, FAA sign agreement on anti-drone laser system near Mexico', 'Military Times', '2026-04-12T00:00:00Z', 2),
       h('Pentagon FAA Sign Agreement on Anti-Drone Laser System Near Mexico', 'DefenseOne', '2026-04-12T00:00:00Z', 3),
@@ -60,18 +60,18 @@ describe('dedupeHeadlines', () => {
     assert.equal(out.length, 2);
     const primary = out[0]!;
     assert.equal(primary.item.source, 'Military Times');
-    assert.deepEqual(primary.extraSources, ['DefenseOne']);
-    assert.equal(out[1]!.extraSources.length, 0);
+    assert.deepEqual(primary.sources, ['Military Times', 'DefenseOne']);
+    assert.deepEqual(out[1]!.sources, ['Reuters']);
   });
 
-  it('does not count the same source twice in extras', () => {
+  it('does not count the same source twice', () => {
     const items = [
       h('Shared headline text here', 'SourceA'),
       h('Shared headline text here', 'SourceA'),
       h('Shared headline text here', 'SourceB'),
     ];
     const [only] = dedupeHeadlines(items);
-    assert.deepEqual(only!.extraSources, ['SourceB']);
+    assert.deepEqual(only!.sources, ['SourceA', 'SourceB']);
   });
 
   it('never drops items whose normalized key is empty (two-letter-only titles)', () => {
@@ -92,7 +92,7 @@ describe('dedupeHeadlines', () => {
     ];
     const out = dedupeHeadlines(items);
     assert.equal(out.length, 1);
-    assert.equal(out[0]!.extraSources.length, 1);
+    assert.equal(out[0]!.sources.length, 2);
   });
 
   it('caller re-sort by primary positions the displayed card, not the first-seen duplicate', () => {
@@ -127,7 +127,7 @@ describe('dedupeHeadlines', () => {
     // B (primary chosen for A/B group) is 'low', C is 'medium' — C must come first now.
     assert.equal(deduped[0]!.item.source, 'AP');
     assert.equal(deduped[1]!.item.source, 'Reuters');
-    assert.deepEqual(deduped[1]!.extraSources, ['RandoBlog']);
+    assert.deepEqual(deduped[1]!.sources, ['Reuters', 'RandoBlog']);
   });
 
   it('picks the highest-tier source as primary even when a lower-tier item appears first', () => {
@@ -139,6 +139,25 @@ describe('dedupeHeadlines', () => {
     const out = dedupeHeadlines(items);
     assert.equal(out.length, 1);
     assert.equal(out[0]!.item.source, 'Reuters');
-    assert.deepEqual(out[0]!.extraSources, ['RandoBlog']);
+    assert.deepEqual(out[0]!.sources, ['Reuters', 'RandoBlog']);
+  });
+});
+
+describe('dedupeHeadlines sources feed a publisher-family count (#6428, #6419)', () => {
+  it('lists every distinct label, primary first', () => {
+    const items = [
+      h('Sanctions package advances in Brussels against major bank', 'RandoBlog', '2026-04-12T12:00:00Z', 4),
+      h('Sanctions package advances in Brussels against major bank', 'Reuters US', '2026-04-12T11:00:00Z', 1),
+      h('Sanctions package advances in Brussels against major bank', 'Reuters World', '2026-04-12T09:00:00Z', 1),
+      h('Sanctions package advances in Brussels against major bank', 'RandoBlog', '2026-04-12T08:00:00Z', 4),
+    ];
+    const [only] = dedupeHeadlines(items);
+    assert.equal(only!.item.source, 'Reuters US');
+    assert.deepEqual(only!.sources, ['Reuters US', 'RandoBlog', 'Reuters World']);
+  });
+
+  it('a lone item carries its own label', () => {
+    const [only] = dedupeHeadlines([h('Shipping lanes reopen near Hormuz strait', 'AP News')]);
+    assert.deepEqual(only!.sources, ['AP News']);
   });
 });

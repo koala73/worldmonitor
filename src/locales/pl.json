@@ -2876,6 +2876,12 @@
       "idleKeepPlaying": "Kontynuuj odtwarzanie przy braku aktywności",
       "idleSettingsHint": "Możesz to zmienić w dowolnym momencie w Ustawienia › Media.",
       "idleKeepPlayingToast": "Transmisja live będzie kontynuowana przy braku aktywności. Zmień w Ustawienia › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Jeden wydawca",
+      "singlePublisherHint": "Na razie tylko jeden wydawca o tym donosi. To opisuje zasięg relacji, nie dokładność.",
+      "tier4Only": "Tylko źródła niskiego poziomu",
+      "tier4OnlyHint": "Wszystkie portale relacjonujące to są źródłami poziomu 4 (agregatory i blogi). To opisuje zasięg relacji, nie dokładność."
     }
   },
   "popups": {

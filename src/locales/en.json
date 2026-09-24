@@ -1908,6 +1908,12 @@
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
     },
+    "corroboration": {
+      "singlePublisher": "Single publisher",
+      "singlePublisherHint": "Only one publisher is reporting this so far. This describes coverage, not accuracy.",
+      "tier4Only": "Low-tier sources only",
+      "tier4OnlyHint": "Every outlet reporting this is a tier-4 source (aggregators and blogs). This describes coverage, not accuracy."
+    },
     "mobileNav": {
       "panelCategories": "Panel categories"
     },

@@ -34,6 +34,7 @@ function emitAlert(overrides: Partial<BreakingAlert> = {}): BreakingAlert {
     threatLevel: 'critical',
     timestamp: new Date(),
     origin: 'rss_alert',
+    corroboration: { state: 'corroborated', publishers: 2 },
     ...overrides,
   };
 
@@ -120,6 +121,32 @@ describe('breaking-news banner source provenance (#6598)', () => {
       const risk = document.querySelector('.breaking-alert-meta .propaganda-badge.unknown');
       expect(risk).not.toBeNull();
       expect(risk?.textContent).toMatch(/\? Unreviewed/);
+    });
+
+    it('discloses a single-publisher alert as coverage, beside the provenance badges (#6419)', () => {
+      emitAlert({ source: 'Reuters', corroboration: { state: 'single-publisher', publishers: 1 } });
+
+      const flag = document.querySelector('.breaking-alert-provenance .corroboration-flag');
+      expect(flag?.textContent).toBe('components.corroboration.singlePublisher');
+      expect(flag?.getAttribute('title')).toBe('components.corroboration.singlePublisherHint');
+    });
+
+    it('discloses a tier-4-only alert (#6419)', () => {
+      emitAlert({ source: 'The Verge', corroboration: { state: 'tier4-only', publishers: 2 } });
+
+      const flag = document.querySelector('.breaking-alert-provenance .corroboration-flag');
+      expect(flag?.textContent).toBe('components.corroboration.tier4Only');
+      expect(flag?.getAttribute('title')).toBe('components.corroboration.tier4OnlyHint');
+    });
+
+    it.each([
+      { state: 'corroborated', publishers: 3 },
+      { state: 'unknown' },
+    ] as const)('renders no pill for $state', (corroboration) => {
+      emitAlert({ source: 'Reuters', corroboration });
+
+      expect(document.querySelector('.breaking-alert-meta')).not.toBeNull();
+      expect(document.querySelector('.corroboration-flag')).toBeNull();
     });
   });
 

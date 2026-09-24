@@ -2819,6 +2819,12 @@
       "idleKeepPlaying": "アイドル時にライブ動画を再生し続ける",
       "idleSettingsHint": "この設定はいつでも設定 › メディアで変更できます。",
       "idleKeepPlayingToast": "ライブ動画はアイドル時にも再生され続けます。設定 › メディアで変更してください。"
+    },
+    "corroboration": {
+      "singlePublisher": "単一の報道機関",
+      "singlePublisherHint": "現在のところ、1つの報道機関のみがこれを報じています。これは報道範囲を示すもので、正確性ではありません。",
+      "tier4Only": "低レベルのソースのみ",
+      "tier4OnlyHint": "これを報じているすべてのメディアはTier4ソース（アグリゲーターとブログ）です。これは報道範囲を示すもので、正確性ではありません。"
     }
   },
   "popups": {

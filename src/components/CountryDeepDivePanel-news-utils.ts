@@ -20,7 +20,8 @@ function fallbackHeadlineKey(title: string): string {
 
 export interface DedupedHeadline {
   item: NewsItem;
-  extraSources: string[];
+  /** Every distinct feed label in the group, primary first. Labels, not publishers. */
+  sources: string[];
 }
 
 export type TierLookup = (item: NewsItem) => number;
@@ -57,14 +58,11 @@ export function dedupeHeadlines(
       const db = b.pubDate instanceof Date ? b.pubDate.getTime() : new Date(b.pubDate).getTime();
       return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
     })[0]!;
-    const extraSources: string[] = [];
+    const sources = [primary.source];
     for (const other of group) {
-      if (other === primary) continue;
-      if (other.source && other.source !== primary.source && !extraSources.includes(other.source)) {
-        extraSources.push(other.source);
-      }
+      if (other.source && !sources.includes(other.source)) sources.push(other.source);
     }
-    out.push({ item: primary, extraSources });
+    out.push({ item: primary, sources });
   }
   return out;
 }

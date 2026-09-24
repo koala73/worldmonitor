@@ -2876,6 +2876,12 @@
       "idleKeepPlaying": "Pokračovat v přehrávání při nečinnosti",
       "idleSettingsHint": "Toto můžete kdykoli změnit v Nastavení › Média.",
       "idleKeepPlayingToast": "Živé video se bude přehrávat při nečinnosti. Toto nastavení můžete změnit v Nastavení › Média."
+    },
+    "corroboration": {
+      "singlePublisher": "Jeden vydavatel",
+      "singlePublisherHint": "Zatím o tom podává zprávu pouze jeden vydavatel. Toto popisuje pokrytí, nikoli přesnost.",
+      "tier4Only": "Pouze nízko-hodnotené zdroje",
+      "tier4OnlyHint": "Všechny portály, které o tom podávají zprávu, jsou zdroje tier-4 (agregátory a blogy). Toto popisuje pokrytí, nikoli přesnost."
     }
   },
   "popups": {

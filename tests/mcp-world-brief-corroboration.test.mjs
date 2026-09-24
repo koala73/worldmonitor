@@ -137,7 +137,24 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       entityCorroboration: true,
       sourceTier: 1,
       sources: ['Reuters', 'AP', 'BBC', 'AFP', 'Kyodo', 'DPA'],
+      corroboration: { state: 'corroborated', publishers: 6 },
     }]);
+  });
+
+  it('flags single-publisher and tier-4-only stories from their outlet names (#6419)', async () => {
+    stubInsights([
+      seededStory({ primaryTitle: 'One newsroom, three feeds', sources: ['Reuters World', 'Reuters US', 'Reuters Business'] }),
+      seededStory({ primaryTitle: 'Aggregators only', sources: ['The Verge', 'Hacker News'] }),
+      seededStory({ primaryTitle: 'Aggregator plus a wire', sources: ['The Verge', 'Reuters World'] }),
+    ]);
+
+    const { payload } = await callWorldBrief();
+
+    assert.deepEqual(payload.topStories.map((s) => s.corroboration), [
+      { state: 'single-publisher', publishers: 1 },
+      { state: 'tier4-only', publishers: 2 },
+      { state: 'corroborated', publishers: 2 },
+    ]);
   });
 
   it('keeps topStories index-aligned with headlines', async () => {
@@ -201,6 +218,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     assert.deepEqual(payload.topStories, [{
       title: 'Legacy story with no corroboration fields',
       sources: ['Real Outlet'],
+      corroboration: { state: 'single-publisher', publishers: 1 },
     }]);
   });
 
@@ -223,6 +241,7 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       entityCorroboration: false,
       sourceTier: 1,
       sources: [],
+      corroboration: { state: 'unknown', publishers: null },
     }]);
   });
 
