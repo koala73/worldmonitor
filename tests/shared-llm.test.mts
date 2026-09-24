@@ -448,6 +448,42 @@ describe('callLlm', () => {
     // which runs even if an assertion above throws — no manual cleanup here.
   });
 
+  it('keeps user-typed reasoning prompts off the NVIDIA free backup (#8570)', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.LLM_REASONING_PROVIDER;
+    delete process.env.LLM_REASONING_MODEL;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const attemptedModels: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      attemptedModels.push(String((JSON.parse(String(init?.body || '{}')) as Record<string, unknown>).model || ''));
+      return new Response(JSON.stringify({ error: { message: 'upstream down' } }), { status: 503 });
+    }) as typeof fetch;
+
+    await callLlmReasoning({ messages: [{ role: 'user', content: 'What happens to my portfolio?' }] });
+    await new Response(callLlmReasoningStream({
+      messages: [{ role: 'user', content: 'What happens to my portfolio?' }],
+    })).text();
+
+    assert.ok(attemptedModels.includes('google/gemma-4-26b-a4b-it:free'), 'the gemma free leg still serves reasoning calls');
+    assert.equal(
+      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      false,
+      'NVIDIA logs free-endpoint prompts, so chat and deduction text must never reach it',
+    );
+
+    attemptedModels.length = 0;
+    await callLlm({ messages: [{ role: 'user', content: 'Summarize these headlines.' }] });
+    assert.ok(
+      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      'the default chain keeps the backup for public-data prompts',
+    );
+  });
+
   it('ignores DeepSeek reasoning message fields and serves content untouched', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.GROQ_API_KEY;
@@ -1004,7 +1040,9 @@ describe('callLlm', () => {
       })).text();
     }
 
-    assert.equal(postCount, 9);
+    // Two posts per stream: ghost, then the gemma free leg. The stream skips
+    // the NVIDIA free backup for user-typed text (#8570).
+    assert.equal(postCount, 6);
     assert.equal(ghostAttempts, 3);
     assert.equal(
       isModelUsable('https://openrouter.ai/api/v1/chat/completions', 'ghost/ghost-model-v9'),

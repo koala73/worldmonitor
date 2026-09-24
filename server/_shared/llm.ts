@@ -323,11 +323,22 @@ function resolveProviderChain(opts: {
   return providers.length > 0 ? providers : [...PROVIDER_CHAIN];
 }
 
+// The reasoning profile carries text users type (chat-analyst, deduct-situation).
+// NVIDIA logs prompts sent to the free backup model and its trial terms cover
+// evaluation use (#8570), so these fallbacks skip it: paid OpenRouter -> gemma
+// free -> Groq. An operator who names it in LLM_REASONING_PROVIDER still gets it.
+const USER_TEXT_EXCLUDED_PROVIDERS: readonly LlmProviderName[] = ['openrouter-free-backup'];
+
+function fallbackProviders(provider: LlmProviderName, excluded: readonly LlmProviderName[]): LlmProviderName[] {
+  return PROVIDER_CHAIN.filter((p) => p !== provider && !excluded.includes(p));
+}
+
 function callLlmProfile(
   opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>,
   providerEnv: string,
   modelEnv: string,
   defaultProvider: LlmProviderName,
+  excluded: readonly LlmProviderName[] = [],
 ): Promise<LlmCallResult | null> {
   const envProvider = process.env[providerEnv];
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : (() => {
@@ -335,7 +346,7 @@ function callLlmProfile(
     return defaultProvider;
   })()) as LlmProviderName;
   const model = process.env[modelEnv];
-  const remaining = PROVIDER_CHAIN.filter((p) => p !== provider);
+  const remaining = fallbackProviders(provider, excluded);
   return callLlm({
     ...opts,
     providerOrder: [provider, ...remaining],
@@ -357,7 +368,7 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
  * budget on hidden reasoning tokens and return empty content (#4983).
  */
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
-  callLlmProfile({ enableReasoning: true, ...opts }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
+  callLlmProfile({ enableReasoning: true, ...opts }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter', USER_TEXT_EXCLUDED_PROVIDERS);
 
 // enableReasoning is omitted too: the reasoning stream hardcodes it on —
 // exposing the knob on the stream type would be a silent no-op for callers.
@@ -377,7 +388,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
   const envProvider = process.env.LLM_REASONING_PROVIDER;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
   const model = process.env.LLM_REASONING_MODEL;
-  const remaining = PROVIDER_CHAIN.filter((p) => p !== provider);
+  const remaining = fallbackProviders(provider, USER_TEXT_EXCLUDED_PROVIDERS);
   const providerOrder = [provider, ...remaining];
   const modelOverrides = model ? { [provider]: model } as Partial<Record<LlmProviderName, string>> : undefined;
 
