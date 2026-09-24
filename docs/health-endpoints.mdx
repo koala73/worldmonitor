@@ -73,6 +73,12 @@ Containment checks all required diagnostics independently of the selected status
 
 With `?compact=1`, `problems` contains every actionable failure and on-demand empty entry, including warnings contained from the availability verdict. `pending` contains diagnostics inside an active grace period. Empty maps are omitted. Full `checks` retain the same diagnosis. Cached verdicts still expire at active grace deadlines, and the scheduled monitor rechecks them before suppressing an alert. Strict data-quality monitoring must inspect `summary.warn` and `problems`; it must not use the top-level availability status alone.
 
+### HAPI reference periods
+
+Each `conflict:humanitarian:v1:<COUNTRY>` payload keeps `summary` for the newest available HAPI reference period. Its optional `previousCompleteSummary` holds the previous UTC calendar month from the same fetch. Both summaries include `referencePeriod` and `updatedAt`. When the newest available period is the previous month, both fields contain that summary. If the source has no rows for the previous month, `previousCompleteSummary` is absent, not a zero total or an older substitute.
+
+The seeder writes both summaries in one country payload with the existing TTL and freshness metadata. The single-country RPC passes through this payload, including the extra field. Its declared schema still exposes only `summary`, and the batch RPC returns only the newest summary. Consumers of the retained field must match `referencePeriod` before comparing HAPI with another source. A complete calendar month does not guarantee that upstream reporting is final.
+
 ### Cable cache continuity
 
 The cable-health handler recomputes its response after 30 minutes but retains the last valid payload for at most 90 minutes, matching its existing health budget. A cache hit does not advance `seed-meta:cable-health.fetchedAt`. Slow or failed refreshes leave the prior payload and its original success time intact; repairing an evicted payload does not reset its expiry or overwrite a concurrent fresh publication. A confirmed zero-cable result is valid data. An unavailable source with no usable last-good result is not published as a successful empty observation.

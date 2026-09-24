@@ -346,12 +346,13 @@ export function aggregateHapiConflictEvents(
     const parsedAdminLevel = Number(row?.admin_level ?? 0);
     const adminLevel = Number.isFinite(parsedAdminLevel) ? parsedAdminLevel : 0;
 
-    let aggregate = aggregates.get(countryCode);
-    if (
-      !aggregate
-      || referencePeriod > aggregate.referencePeriod
-      || (referencePeriod === aggregate.referencePeriod && adminLevel > aggregate.adminLevel)
-    ) {
+    let periods = aggregates.get(countryCode);
+    if (!periods) {
+      periods = new Map();
+      aggregates.set(countryCode, periods);
+    }
+    let aggregate = periods.get(referencePeriod);
+    if (!aggregate || adminLevel > aggregate.adminLevel) {
       aggregate = {
         referencePeriod,
         adminLevel,
@@ -367,12 +368,9 @@ export function aggregateHapiConflictEvents(
         fatalitiesPV: 0,
         fatalitiesCT: 0,
       };
-      aggregates.set(countryCode, aggregate);
+      periods.set(referencePeriod, aggregate);
     }
-    if (
-      referencePeriod !== aggregate.referencePeriod
-      || adminLevel !== aggregate.adminLevel
-    ) continue;
+    if (adminLevel !== aggregate.adminLevel) continue;
 
     const eventType = String(row?.event_type || '').toLowerCase();
     const events = finiteCount(row?.events);
@@ -390,9 +388,11 @@ export function aggregateHapiConflictEvents(
   }
 
   const results = {};
-  for (const [countryCode, aggregate] of aggregates) {
-    results[countryCode] = {
-      summary: {
+  const previousCompletePeriod = previousMonthStart(nowMs);
+  for (const [countryCode, periods] of aggregates) {
+    const result = {};
+    for (const aggregate of periods.values()) {
+      const summary = {
         countryCode,
         countryName: aggregate.countryName,
         conflictEventsTotal: aggregate.eventsTotal,
@@ -401,8 +401,15 @@ export function aggregateHapiConflictEvents(
         referencePeriod: aggregate.referencePeriod,
         conflictDemonstrations: aggregate.eventsDem,
         updatedAt: nowMs,
-      },
-    };
+      };
+      if (!result.summary || summary.referencePeriod > result.summary.referencePeriod) {
+        result.summary = summary;
+      }
+      if (summary.referencePeriod.slice(0, 10) === previousCompletePeriod) {
+        result.previousCompleteSummary = summary;
+      }
+    }
+    results[countryCode] = result;
   }
   return results;
 }

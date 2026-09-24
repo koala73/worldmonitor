@@ -452,7 +452,7 @@ test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => 
   assert.equal(rows[0].location_code, 'SDN');
 });
 
-test('HAPI bulk rows are grouped by country and only the latest reference period is published', () => {
+test('HAPI bulk rows retain the previous complete month alongside the latest reference period', () => {
   const rows = [
     {
       location_code: 'SDN',
@@ -515,8 +515,65 @@ test('HAPI bulk rows are grouped by country and only the latest reference period
         conflictDemonstrations: 7,
         updatedAt: NOW,
       },
+      previousCompleteSummary: {
+        countryCode: 'SD',
+        countryName: 'Sudan',
+        conflictEventsTotal: 99,
+        conflictPoliticalViolenceEvents: 99,
+        conflictFatalities: 10,
+        referencePeriod: '2026-06-01',
+        conflictDemonstrations: 0,
+        updatedAt: NOW,
+      },
     },
   });
+  assert.deepEqual(
+    aggregateHapiConflictEvents([...rows].reverse(), { nowMs: NOW, countryCodes: ['SD'] }),
+    result,
+  );
+});
+
+test('HAPI periods select administrative levels independently and roll over the year', () => {
+  const nowMs = Date.parse('2026-01-15T00:00:00Z');
+  const rows = [
+    hapiRow('SDN', { reference_period_start: '2025-12-01', events: 100 }),
+    hapiRow('SDN', { reference_period_start: '2026-01-01', events: 8 }),
+    hapiRow('SDN', { reference_period_start: '2025-12-01', admin_level: 2, events: 3, fatalities: 1 }),
+    hapiRow('SDN', { reference_period_start: '2025-12-01', admin_level: 2, event_type: 'civilian_targeting', events: 4, fatalities: 2 }),
+    hapiRow('SDN', { reference_period_start: '2025-12-01', admin_level: 2, event_type: 'demonstration', events: 5 }),
+    hapiRow('UKR', { reference_period_start: '2025-12-01', events: 0 }),
+  ];
+  for (const records of [rows, [...rows].reverse()]) {
+    const result = aggregateHapiConflictEvents(records, { nowMs, countryCodes: ['SD', 'UA'] });
+    assert.equal(result.SD.summary.referencePeriod, '2026-01-01');
+    assert.equal(result.SD.summary.conflictEventsTotal, 8);
+    assert.deepEqual(result.SD.previousCompleteSummary, {
+      countryCode: 'SD',
+      countryName: 'Sudan',
+      conflictEventsTotal: 12,
+      conflictPoliticalViolenceEvents: 7,
+      conflictFatalities: 3,
+      referencePeriod: '2025-12-01',
+      conflictDemonstrations: 5,
+      updatedAt: nowMs,
+    });
+    assert.equal(result.UA.previousCompleteSummary.conflictEventsTotal, 0);
+    assert.deepEqual(result.UA.summary, result.UA.previousCompleteSummary);
+  }
+});
+
+test('HAPI does not substitute an older period or zero when the previous month is missing', () => {
+  const result = aggregateHapiConflictEvents([
+    hapiRow('SDN', { reference_period_start: '2026-05-01', events: 100 }),
+    hapiRow('SDN', { events: 8 }),
+    hapiRow('UKR', { reference_period_start: '2026-05-01', events: 3 }),
+  ], { nowMs: NOW, countryCodes: ['SD', 'UA', 'AF'] });
+  assert.equal(result.SD.summary.referencePeriod, '2026-07-01');
+  assert.equal(result.SD.summary.conflictEventsTotal, 8);
+  assert.equal(Object.hasOwn(result.SD, 'previousCompleteSummary'), false);
+  assert.equal(Object.hasOwn(result.UA, 'previousCompleteSummary'), false);
+  assert.equal(result.AF, undefined);
+  assert.deepEqual(aggregateHapiConflictEvents([], { nowMs: NOW }), {});
 });
 
 test('HAPI aggregation uses the deepest available administrative level without double counting', () => {
@@ -621,6 +678,7 @@ test('a demoted run makes two global bulk requests and maps all returned target 
       const data = parsed.searchParams.get('admin_level') === '0'
         ? [
             hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 }),
+            hapiRow('SDN', { location_name: 'Sudan', reference_period_start: '2026-06-01', events: 20, fatalities: 4 }),
             hapiRow('UKR', { location_name: 'Ukraine', event_type: 'demonstration', events: 8 }),
           ]
         : [
@@ -639,6 +697,10 @@ test('a demoted run makes two global bulk requests and maps all returned target 
   assert.ok(calls[0].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
   assert.ok(calls[1].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
   assert.deepEqual(Object.keys(result.summaries).sort(), ['AF', 'SD', 'UA']);
+  assert.equal(result.summaries.SD.summary.referencePeriod, '2026-07-01');
+  assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
+  assert.equal(result.summaries.SD.previousCompleteSummary.referencePeriod, '2026-06-01');
+  assert.equal(result.summaries.SD.previousCompleteSummary.conflictEventsTotal, 20);
   assert.equal(
     result.summaries.AF.summary.conflictEventsTotal,
     11,
@@ -747,6 +809,7 @@ test('the HDX snapshot serves both sweeps without ever touching the JSON API', a
   let snapshotCalls = 0;
   const csv = hapiCsv(
     'SDN,,,,,,,,,0,political_violence,12,3,2026-07-01,2026-07-31,dataset,resource,,',
+    'SDN,,,,,,,,,0,political_violence,20,4,2026-06-01,2026-06-30,dataset,resource,,',
     'AFG,,,,,,,,,2,political_violence,5,2,2026-07-01,2026-07-31,dataset,resource,,',
     'AFG,,,,,,,,,2,political_violence,6,1,2026-07-01,2026-07-31,dataset,resource,,',
   );
@@ -771,6 +834,9 @@ test('the HDX snapshot serves both sweeps without ever touching the JSON API', a
   assert.equal(snapshotCalls, 2, 'one metadata plus one CSV download serves both sweeps');
   assert.deepEqual(Object.keys(result.summaries).sort(), ['AF', 'SD']);
   assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
+  assert.equal(result.summaries.SD.summary.referencePeriod, '2026-07-01');
+  assert.equal(result.summaries.SD.previousCompleteSummary.referencePeriod, '2026-06-01');
+  assert.equal(result.summaries.SD.previousCompleteSummary.conflictEventsTotal, 20);
   assert.equal(
     result.summaries.AF.summary.conflictEventsTotal,
     11,
