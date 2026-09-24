@@ -577,12 +577,18 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // #8441: the proper-noun gate reads "Former President" as a title prefix
     // and grounds only "Trump", so the qualifier needs its own check. One
     // ground per cited story: the qualifier and the name must share a story.
-    const qualifierCited = head ? [...new Set([...head.cited, ...cited])] : cited;
-    const qualifierValidation = validateNoHallucinatedStatusQualifiers(
-      head ? `${head.attributed} ${attributed}` : attributed,
-      qualifierCited.map((n) => storyGroundText(topStories[n - 1], groundOpts)),
-    );
-    if (validatorMode === 'enforce' && !qualifierValidation.ok && head) {
+    const qualifierGround = (ns) => ns.map((n) => storyGroundText(topStories[n - 1], groundOpts));
+    const ownQualifier = validateNoHallucinatedStatusQualifiers(attributed, qualifierGround(cited));
+    // Only a match the unit alone does not report crosses into the head;
+    // compare phrases, not counts, since the pair grounds on more stories.
+    const spanOnly = head
+      ? (validateNoHallucinatedStatusQualifiers(
+        `${head.attributed} ${attributed}`,
+        qualifierGround([...new Set([...head.cited, ...cited])]),
+      ).hallucinated ?? []).filter((phrase) => !(ownQualifier.hallucinated ?? []).includes(phrase))
+      : [];
+    const qualifierValidation = spanOnly.length > 0 ? { ok: false, hallucinated: spanOnly } : ownQualifier;
+    if (validatorMode === 'enforce' && spanOnly.length > 0) {
       // The qualifier sits in the head, which already passed on its own.
       survivingSentences.pop();
       if (head.attributions > 0) sourceAttributions--;

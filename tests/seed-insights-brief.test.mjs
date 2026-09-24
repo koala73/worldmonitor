@@ -1406,6 +1406,18 @@ describe('status-qualifier gate on the World Brief (#8441)', () => {
     const grounded = composeWith("Tariffs on China took effect [2] as U.S. President Trump welcomed Xi to Washington [1].");
     assert.equal(grounded.rejection, null, 'the same split without a qualifier still publishes');
     assert.equal(grounded.brief.droppedLeadSentences, 0);
+
+    // PR #8573 review: when the qualifier sits wholly in the unit after the
+    // acronym, the head carries nothing wrong and must survive.
+    const ownFailure = composeWith(
+      "Tariffs on China took effect [2] on the U.S. Former President Trump welcomed Xi to Washington [1]. Trump welcomed China's Xi with a planeside ceremony [1].",
+    );
+    assert.equal(ownFailure.rejection, null);
+    assert.equal(
+      ownFailure.brief.lead,
+      "Tariffs on China took effect [2] on the U.S. Trump welcomed China's Xi with a planeside ceremony [1].",
+    );
+    assert.equal(ownFailure.brief.droppedLeadSentences, 1);
   });
 
   it('tells the resample which qualifier to remove', () => {
