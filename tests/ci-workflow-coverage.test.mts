@@ -169,7 +169,7 @@ const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
 
 // docker-image's change filter: the literal awk patterns it must keep, so a
 // filter refactor cannot silently un-gate a Dockerfile-breaking path class
-// and go back to "the weekly rebuild is the first execution of this change".
+// and go back to "the next release publish is the first execution of this change".
 const REQUIRED_DOCKER_IMAGE_INPUTS = [
   'docker/',
   'package.json',
@@ -1653,7 +1653,7 @@ describe('CI workflow coverage', () => {
     const smoke = String(job).slice(String(job).indexOf('docker run -d --name wm-docker-smoke'));
     const pathLoop = smoke.match(/for path in ([^;]+); do/);
     assert.ok(pathLoop, 'the smoke step must enumerate the paths it requests');
-    assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/'], 'must request the same routes docker-publish.yml checks before it publishes');
+    assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/'], 'must request exactly the routes docker/Dockerfile asserts at build time');
     assert.match(smoke, /expected 200/, 'a non-200 must fail the job, not just print');
     assert.match(smoke, /returned 200 with an empty body/, 'a 200 with no body must also fail the job');
     // The empty-body guard must read the loop's $path, not a route hardcoded

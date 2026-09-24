@@ -1163,7 +1163,9 @@ jobs:
           # path that nothing builds. #7808's publish-time smoke requests the
           # same pair from the same image; keep the two in step.
           for path in / /pro/; do
-            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}")"
+            # `|| true`: a refused connection exits 7 and would trip set -e
+            # before the ::error line; curl still writes 000 for -w.
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}" || true)"
             if [ "$code" != "200" ]; then
               echo "::error::GET ${path} returned ${code}, expected 200"
               failed="yes"
