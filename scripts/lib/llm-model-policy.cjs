@@ -20,11 +20,22 @@ const OPENROUTER_FREE_PRIMARY_MODEL = 'google/gemma-4-26b-a4b-it:free';
 // OPENROUTER_PROVIDER_ROUTING): nemotron-3-super answered 7 of 8 in 0.6-2.4s,
 // clean prose and bare JSON, no reasoning preamble; the eighth was an upstream
 // "Service temporarily overloaded". It is NVIDIA, not Google, so the family
-// split holds. Rejected: qwen3.8-27b, glm-5.2 and gemma-4-31b (429 on 3 of 3),
-// inkling (403, agent harnesses only), nex-n2.5-pro (7-25s, two timeouts).
-// tests/openrouter-free-models-live.test.mjs, run on a schedule by
+// split holds. Rejected: qwen3.8-27b, glm-5.2 and gemma-4-31b (429 on every
+// probe), inkling (403, agent harnesses only), both nex-n2.5 models (expire
+// 2026-09-25), ling (served only by ignored providers).
+//
+// This overrides the 2026-08-15 research decision not to use this model in
+// production (docs/research/openrouter-free-model-fallback-2026-08-15.md):
+// NVIDIA logs free-endpoint prompts and its API Trial Terms cover trial and
+// evaluation use. Accepted for a best-effort outage leg; the addendum in that
+// doc records the decision. Text users type (chat-analyst, deduct-situation)
+// skips this leg: see USER_TEXT_EXCLUDED_PROVIDERS in server/_shared/llm.ts.
+// Keep any new user-text path off it the same way.
+//
+// tests/openrouter-free-models-live.test.mjs, run daily by
 // .github/workflows/openrouter-free-models-live.yml, fails when either free
-// leg drops off the listing.
+// leg leaves the listing, is 14 days from its expiration_date, loses its last
+// usable endpoint, or (with a key) refuses a real completion.
 const OPENROUTER_FREE_BACKUP_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
 const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-20b';
 

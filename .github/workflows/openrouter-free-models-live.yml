@@ -1,7 +1,9 @@
 name: OpenRouter Free Models Live
 
 # Fails when either OpenRouter free-chain model (scripts/lib/llm-model-policy.cjs)
-# drops off the public /models listing.
+# stops being usable for free: delisted from /models, within 14 days of its
+# expiration_date, without a zero-price endpoint production can route to, or
+# (when the key secret is set) refusing a real completion.
 #
 # Why this workflow exists: OpenRouter has twice stopped serving the backup
 # model for free without notice. `openai/gpt-oss-20b:free` was found dead on
@@ -11,8 +13,10 @@ name: OpenRouter Free Models Live
 # regional-snapshot brief and server/_shared/llm.ts. Mock-based tests cannot
 # see a delisting, so nothing noticed for an unknown span.
 #
-# No secrets and no `npm ci`: the /models listing is public and spends no
-# quota, and the suite imports only the policy module plus node builtins.
+# No `npm ci`: the suite imports only the policy module plus node builtins.
+# The listing and endpoint checks are keyless. The completion check runs only
+# when the OPENROUTER_API_KEY repository secret exists; it sends one
+# max_tokens:1 request per model and passes on 429/5xx upstream load.
 #
 # Triggers:
 #   - schedule (daily at :37, offset from the other live probes): OpenRouter
@@ -46,18 +50,30 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - name: Check the free-chain models are still listed as free
+      - name: Check the free-chain models are still usable for free
         env:
           LIVE_OPENROUTER_FREE_MODELS_TESTS: '1'
-        # `node --test` exits 0 when the live describe is skipped, so assert the
-        # suite ran both cases (the policy check and the live listing check).
-        # The TAP reporter is pinned because Node picks the default reporter
-        # from TTY-ness, and the grep below reads the TAP `# pass N` line.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        # `node --test` exits 0 when a describe is skipped, and the suite also
+        # has always-on fixture cases, so a pass count cannot prove the live
+        # cases ran. Require each live case by name as a passing, unskipped TAP
+        # line instead. The TAP reporter is pinned because Node picks the
+        # default reporter from TTY-ness.
         run: |
           set -o pipefail
           node --test --test-reporter=tap tests/openrouter-free-models-live.test.mjs 2>&1 | tee /tmp/openrouter-free-models.log
-          pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/openrouter-free-models.log)
-          if [ "$pass_count" -lt 2 ]; then
-            echo "::error::OpenRouter free-model check completed only $pass_count/2 cases; the live listing check did not execute."
-            exit 1
+          required=(
+            'lists every free-chain model at zero price with no expiry inside 14 days'
+            'keeps a usable free endpoint for every free-chain model'
+          )
+          if [ -n "$OPENROUTER_API_KEY" ]; then
+            required+=('answers a real completion from every free-chain model')
+          else
+            echo "::notice::OPENROUTER_API_KEY secret is not set; the real-completion check was skipped."
           fi
+          for name in "${required[@]}"; do
+            if ! grep -E "^ *ok [0-9]+ - ${name}\$" /tmp/openrouter-free-models.log > /dev/null; then
+              echo "::error::Live case did not pass: ${name}"
+              exit 1
+            fi
+          done
