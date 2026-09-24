@@ -1807,8 +1807,8 @@ describe('crawlable corpus generator', () => {
     const egypt = data.countries.find((country) => country.code === 'EG');
     assert.ok(egypt, 'Egypt must be in the country corpus');
     const readerText = (html) => html
-      .replace(/<script[\s\S]*?<\/script>/g, ' ')
-      .replace(/<style[\s\S]*?<\/style>/g, ' ')
+      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+      .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
       .replace(/&middot;/g, '·')
       .replace(/&#39;|&#x27;/g, "'")
