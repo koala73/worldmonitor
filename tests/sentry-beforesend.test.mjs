@@ -307,6 +307,67 @@ describe('first-party file detection', () => {
     });
   }
 
+  // ── Build-time chunk ownership manifest overrides the name regex ──
+  //
+  // The regex above is a fallback. A chunk NAME cannot answer "is this ours":
+  // Rollup names a chunk after its seed module and hoists shared modules into
+  // it, so `i18n-<hash>.js` measured 12/12 first-party modules on a real build
+  // while a second, genuinely pure chunk shared the name `i18n`. No name rule
+  // can separate those. `wm-first-party-chunk-manifest` stamps each chunk with
+  // its own ownership; these lock in that the stamp wins and that a miss is
+  // never worse than the old behaviour.
+  describe('chunk ownership manifest (vendor-named chunks that hold our code)', () => {
+    const OWNERSHIP = '__WM_CHUNK_OWNERSHIP__';
+    const withOwnership = (map, run) => {
+      const had = Object.prototype.hasOwnProperty.call(globalThis, OWNERSHIP);
+      const prev = globalThis[OWNERSHIP];
+      globalThis[OWNERSHIP] = map;
+      try { return run(); } finally {
+        if (had) globalThis[OWNERSHIP] = prev; else delete globalThis[OWNERSHIP];
+      }
+    };
+    // Ambiguous message: suppressed without a first-party frame, kept with one.
+    const ambiguous = (filename) => makeEvent('Maximum call stack size exceeded', 'RangeError', [
+      { filename, lineno: 10, function: 'doStuff' },
+    ]);
+
+    it('KEEPS a vendor-NAMED chunk the manifest marks first-party (the i18n case)', () => {
+      // Exactly the live bug: this chunk matches the vendor regex, but the build
+      // measured 12/12 of its modules as ours, so its failures must surface.
+      const kept = withOwnership({ 'i18n-0kRCkTIm.js': 1 },
+        () => beforeSend(ambiguous('/assets/i18n-0kRCkTIm.js')));
+      assert.ok(kept !== null, 'a chunk the build says is ours must not be treated as vendor');
+    });
+
+    it('DROPS a chunk the manifest marks vendor even though the name is unknown to the regex', () => {
+      const dropped = withOwnership({ 'somelib-Ab12Cd34.js': 0 },
+        () => beforeSend(ambiguous('/assets/somelib-Ab12Cd34.js')));
+      assert.equal(dropped, null, 'a chunk the build says is pure vendor must be suppressible');
+    });
+
+    it('falls back to the name regex for a chunk the manifest has not registered', () => {
+      // Dev/serve, or a chunk that failed before its registration statement ran.
+      // Legacy behaviour exactly: vendor-named dropped, owned-named kept.
+      const registered = { 'other-Zz99.js': 1 };
+      assert.equal(
+        withOwnership(registered, () => beforeSend(ambiguous('/assets/maplibre-AbC123.js'))),
+        null,
+        'unregistered + vendor-named must still be suppressed',
+      );
+      assert.ok(
+        withOwnership(registered, () => beforeSend(ambiguous('/assets/panels-DzUv7BBV.js'))) !== null,
+        'unregistered + owned-named must still be kept',
+      );
+    });
+
+    it('is inert when the manifest is absent entirely', () => {
+      const had = Object.prototype.hasOwnProperty.call(globalThis, OWNERSHIP);
+      assert.equal(had, false, 'no manifest should be installed by importing the policy');
+      assert.equal(beforeSend(ambiguous('/assets/maplibre-AbC123.js')), null);
+      assert.ok(beforeSend(ambiguous('/assets/panels-DzUv7BBV.js')) !== null);
+    });
+  });
+
   it('filters sentry chunk frames as infrastructure (not even counted as third-party)', () => {
     // Sentry frames are excluded from nonInfraFrames entirely, so a sentry-only stack
     // is treated as empty (no confirming third-party frames, no first-party frames).

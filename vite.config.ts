@@ -8,6 +8,7 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
   WEB_DASHBOARD_VARIANTS,
@@ -104,7 +105,7 @@ const LAZY_HTML_PRELOAD_RE = new RegExp(
 const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   // Markets / equities / crypto positioning
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
-  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets', MaterialEvents: 'panels-markets',
   EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
   Fx: 'panels-markets',
   GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
@@ -318,6 +319,36 @@ function dashboardHtmlOutputPlugin(): Plugin {
         dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
       }
       bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Stamp each emitted chunk with its own ownership so `beforeSend` can stop
+// guessing from the filename. See shared/chunk-ownership.ts for why a name
+// cannot answer the question. Runs at `enforce: 'post'` so the chunk bodies are
+// final, and appends (never prepends) so sourcemap columns stay valid.
+//
+// Web workers (`*.worker-<hash>.js`, `maplibre-gl-worker-<hash>.js`) go through
+// a separate Vite build and never reach this hook. That is correct, not a gap:
+// a worker has its own `globalThis`, so a registration there could never reach
+// the manifest the main thread's `beforeSend` reads. Worker frames stay
+// unregistered and fall back to the legacy name regex.
+function firstPartyChunkManifestPlugin(): Plugin {
+  return {
+    name: 'wm-first-party-chunk-manifest',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const basename = output.fileName.split('/').pop();
+        if (!basename) continue;
+        output.code = appendChunkOwnership(
+          output.code,
+          basename,
+          chunkHasFirstPartyModule(output.moduleIds ?? []),
+        );
+      }
     },
   };
 }
@@ -794,72 +825,6 @@ function rssProxyPlugin(): Plugin {
   };
 }
 
-function youtubeLivePlugin(): Plugin {
-  return {
-    name: 'youtube-live',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/youtube/live')) {
-          return next();
-        }
-
-        const url = new URL(req.url, 'http://localhost');
-        const channel = url.searchParams.get('channel');
-
-        if (!channel) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Missing channel parameter' }));
-          return;
-        }
-
-        try {
-          const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
-          const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
-
-          const ytRes = await fetch(liveUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-            redirect: 'follow',
-          });
-
-          if (!ytRes.ok) {
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Cache-Control', 'public, max-age=300');
-            res.end(JSON.stringify({ videoId: null, channel }));
-            return;
-          }
-
-          const html = await ytRes.text();
-
-          // Scope both fields to the same videoDetails block so we don't
-          // combine a videoId from one object with isLive from another.
-          let videoId: string | null = null;
-          const detailsIdx = html.indexOf('"videoDetails"');
-          if (detailsIdx !== -1) {
-            const block = html.substring(detailsIdx, detailsIdx + 5000);
-            const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-            const liveMatch = block.match(/"isLive"\s*:\s*true/);
-            if (vidMatch && liveMatch) {
-              videoId = vidMatch[1];
-            }
-          }
-
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ videoId, isLive: videoId !== null, channel }));
-        } catch (error) {
-          console.error(`[YouTube Live] Error:`, error);
-          res.statusCode = 500;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Failed to fetch', videoId: null }));
-        }
-      });
-    },
-  };
-}
-
 function gpsjamDevPlugin(): Plugin {
   return {
     name: 'gpsjam-dev',
@@ -996,6 +961,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      firstPartyChunkManifestPlugin(),
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
@@ -1005,7 +971,6 @@ export default defineConfig(({ mode }) => {
       webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
-      youtubeLivePlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),

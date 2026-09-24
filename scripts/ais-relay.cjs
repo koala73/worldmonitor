@@ -3356,7 +3356,7 @@ function fetchYahooChartDirect(symbol, query = '') {
     if (Date.now() < _yahooConnectProxyCooldownUntil) return null;
     const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
-    return ytFetchViaProxy(url, proxy).then((resp) => {
+    return fetchViaProxy(url, proxy).then((resp) => {
       if (!resp?.ok) {
         _yahooConnectProxyFailCount++;
         if (_yahooConnectProxyFailCount >= 5) {
@@ -3843,7 +3843,7 @@ async function _fetchCoinPaprikaTickerById(id) {
 
   if (!PROXY_URL) throw new Error(`CoinPaprika ${id} direct failed and no PROXY_URL configured`);
   const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-  const resp = await ytFetchViaProxy(url, proxy);
+  const resp = await fetchViaProxy(url, proxy);
   if (!resp?.ok) throw new Error(`CoinPaprika ${id} proxy HTTP ${resp?.status || 'unavailable'}`);
   const data = JSON.parse(resp.body);
   if (!data || typeof data !== 'object' || !data.id) throw new Error(`CoinPaprika ${id} proxy returned invalid ticker`);
@@ -7253,7 +7253,7 @@ async function seedUsniFleet() {
     if (!fetched && PROXY_URL) {
       try {
         const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-        const result = await ytFetchViaProxy(USNI_URL, proxy);
+        const result = await fetchViaProxy(USNI_URL, proxy);
         if (result?.ok) {
           wpData = JSON.parse(result.body);
           fetched = true;
@@ -11494,7 +11494,7 @@ function handleYahooChartRequest(req, res) {
     _proxied = true;
     if (!PROXY_URL) return _serveStaleOrError(502, 'Yahoo upstream failed, no proxy');
     const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-    ytFetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
+    fetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
       if (!proxyResp?.ok) return _serveStaleOrError(proxyResp?.status || 502, 'Yahoo proxy failed');
       _serveYahooResult(proxyResp.body, 'relay-proxy');
     }).catch(() => _serveStaleOrError(502, 'Yahoo proxy error'));
@@ -11702,163 +11702,15 @@ function handleAviationStackRequest(req, res) {
   });
 }
 
-// ── YouTube Live Detection (residential proxy bypass) ──────────────
-const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
-
-function ytFetchViaProxy(targetUrl, proxy) {
+// ── Proxy fetch helper ─────────────────────────────────────────────
+// Resolves { ok, status, body } and never rejects. Written for the retired YouTube live
+// detection; the relay's PROXY_URL callers (Yahoo chart, USNI and others) still use it.
+function fetchViaProxy(targetUrl, proxy) {
   const { proxyFetch } = require('./_proxy-utils.cjs');
   return proxyFetch(targetUrl, proxy, { headers: { 'User-Agent': CHROME_UA } })
     .then(r => ({ ok: r.ok, status: r.status, body: r.buffer.toString('utf8') }))
     .catch(() => ({ ok: false, status: 0, body: '' }));
 }
-
-function ytFetchDirect(targetUrl) {
-  return new Promise((resolve, reject) => {
-    const target = new URL(targetUrl);
-    const req = https.request({
-      hostname: target.hostname,
-      path: target.pathname + target.search,
-      method: 'GET',
-      headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return ytFetchDirect(res.headers.location).then(resolve, reject);
-      }
-      let stream = res;
-      const enc = (res.headers['content-encoding'] || '').trim().toLowerCase();
-      if (enc === 'gzip') stream = res.pipe(zlib.createGunzip());
-      else if (enc === 'deflate') stream = res.pipe(zlib.createInflate());
-      const chunks = [];
-      stream.on('data', (c) => chunks.push(c));
-      stream.on('end', () => resolve({
-        ok: res.statusCode >= 200 && res.statusCode < 300,
-        status: res.statusCode,
-        body: Buffer.concat(chunks).toString(),
-      }));
-      stream.on('error', reject);
-    });
-    req.on('error', reject);
-    req.setTimeout(12000, () => { req.destroy(); reject(new Error('YouTube timeout')); });
-    req.end();
-  });
-}
-
-async function ytFetch(url) {
-  const proxy = parseProxyUrl(YOUTUBE_PROXY_URL);
-  if (proxy) {
-    try { return await ytFetchViaProxy(url, proxy); } catch { /* fall through */ }
-  }
-  return ytFetchDirect(url);
-}
-
-const ytLiveCache = new Map();
-const YT_CACHE_TTL = 5 * 60 * 1000;
-const YT_CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
-const YT_HANDLE_RE = /^[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}._·-]{0,28}[\p{L}\p{N}\p{M}])?$/u;
-
-function handleYouTubeLiveRequest(req, res) {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const channel = url.searchParams.get('channel');
-  const videoIdParam = url.searchParams.get('videoId');
-  const handle = channel?.replace(/^@/, '').normalize('NFC') || '';
-  if ((channel && (channel.length > 128 || channel !== channel.trim()
-    || (!YT_CHANNEL_ID_RE.test(channel) && !YT_HANDLE_RE.test(handle))))
-    || (videoIdParam && (videoIdParam.length !== 11 || !/^[A-Za-z0-9_-]{11}$/.test(videoIdParam)))) {
-    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Invalid YouTube handle, channel ID or video ID' }));
-  }
-
-  if (videoIdParam && /^[A-Za-z0-9_-]{11}$/.test(videoIdParam)) {
-    const cacheKey = `vid:${videoIdParam}`;
-    const cached = ytLiveCache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < 3600000) {
-      return sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' }, cached.json);
-    }
-    ytFetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoIdParam}&format=json`)
-      .then(r => {
-        if (r.ok) {
-          try {
-            const data = JSON.parse(r.body);
-            const json = JSON.stringify({ channelName: data.author_name || null, title: data.title || null, videoId: videoIdParam });
-            ytLiveCache.set(cacheKey, { json, ts: Date.now() });
-            return sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' }, json);
-          } catch {}
-        }
-        sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-          JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }));
-      })
-      .catch(() => {
-        sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-          JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }));
-      });
-    return;
-  }
-
-  if (!channel) {
-    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Missing channel parameter' }));
-  }
-
-  const channelHandle = YT_CHANNEL_ID_RE.test(channel) ? channel : `@${handle.toLowerCase()}`;
-  const cacheKey = `ch:${channelHandle}`;
-  const cached = ytLiveCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < YT_CACHE_TTL) {
-    return sendCompressed(req, res, 200, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
-    }, cached.json);
-  }
-
-  const channelPath = YT_CHANNEL_ID_RE.test(channel) ? `channel/${channel}` : `@${encodeURIComponent(handle)}`;
-  const liveUrl = `https://www.youtube.com/${channelPath}/live`;
-  ytFetch(liveUrl)
-    .then(r => {
-      if (!r.ok) {
-        return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-          JSON.stringify({ videoId: null, channelExists: false }));
-      }
-      const html = r.body;
-      const channelExists = html.includes('"channelId"') || html.includes('og:url');
-      let channelName = null;
-      const ownerMatch = html.match(/"ownerChannelName"\s*:\s*"([^"]+)"/);
-      if (ownerMatch) channelName = ownerMatch[1];
-      else { const am = html.match(/"author"\s*:\s*"([^"]+)"/); if (am) channelName = am[1]; }
-
-      let videoId = null;
-      const detailsIdx = html.indexOf('"videoDetails"');
-      if (detailsIdx !== -1) {
-        const block = html.substring(detailsIdx, detailsIdx + 5000);
-        const vidMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-        const liveMatch = block.match(/"isLive"\s*:\s*true/);
-        if (vidMatch && liveMatch) videoId = vidMatch[1];
-      }
-
-      let hlsUrl = null;
-      const hlsMatch = html.match(/"hlsManifestUrl"\s*:\s*"([^"]+)"/);
-      if (hlsMatch && videoId) hlsUrl = hlsMatch[1].replace(/\\u0026/g, '&');
-
-      const json = JSON.stringify({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl });
-      ytLiveCache.set(cacheKey, { json, ts: Date.now() });
-      sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
-      }, json);
-    })
-    .catch(err => {
-      console.error('[Relay] YouTube live check error:', err.message);
-      sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
-        JSON.stringify({ videoId: null, error: err.message }));
-    });
-}
-
-// Periodic cleanup for YouTube cache
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of ytLiveCache) {
-    const ttl = key.startsWith('vid:') ? 3600000 : YT_CACHE_TTL;
-    if (now - val.ts > ttl * 2) ytLiveCache.delete(key);
-  }
-}, 5 * 60 * 1000).unref?.();
 
 // ─────────────────────────────────────────────────────────────
 // NOTAM proxy — ICAO API times out from Vercel edge, relay proxies
@@ -12875,8 +12727,6 @@ const server = http.createServer(async (req, res) => {
     handleWorldBankRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
-  } else if (pathname === '/youtube-live') {
-    handleYouTubeLiveRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
     handleYahooChartRequest(req, res);
   } else if (pathname === '/crypto-quotes') {
@@ -13504,10 +13354,10 @@ When refusing, output ONLY this — no explanation, no apology:
 
 ## Available data tools
 
-### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no bootstrap key or RPC matches.
+### fetch_worldmonitor_data — use when a bootstrap key or RPC below matches the request. Use search_web for data the catalog does not cover.
 
-## Tool budget — CRITICAL
-Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have — even if sparse. NEVER keep probing.
+## Tool budget
+You have 3 tool calls in total; the server rejects any beyond that. If 2 calls have not produced usable data, build the widget from what you have, even if sparse.
 
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
@@ -13586,13 +13436,13 @@ Never use hex colors (#xxx), rgb(), or named colors in inline styles. Use only:
 - Accent: var(--widget-accent, var(--accent)) for highlights
 
 ### Spacing — compact and tight
-Rows: padding 5–8px vertical, 8px horizontal. Section gaps: 8–12px. NEVER use padding > 12px on rows.
+Rows: padding 5–8px vertical, 8px horizontal. Section gaps: 8–12px. Row padding never exceeds 8px.
 
 ### Border radius — flat, not rounded
 Max 4px. NEVER use border-radius > 4px (no 8px, 12px, 16px rounded cards).
 
 ### Titles — NEVER duplicate the panel header
-The outer panel frame already displays the widget title. NEVER add an h1/h2/h3 or any top-level title element to the widget body. Start content immediately (tabs, rows, stats grid, or a section label).
+The outer panel frame already displays the widget title. NEVER add an h1/h2/h3 or any top-level title element to the widget body. Start content immediately (rows, stats grid, table, or a section label).
 
 ### Labels — uppercase monospace
 Section headers and column labels: font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted)
@@ -13656,14 +13506,14 @@ Text: economic-empty, economic-footer, economic-source, economic-warning,
 
 Market items: market-item, market-item-name, market-item-price, market-item-change
 
-Status: status-active, status-notified, status-terminated, panel-tabs, panel-tab
+Status: status-active, status-notified, status-terminated
 
 ## Output format
 1. First line MUST be: <!-- title: Your Widget Title -->
 2. Wrap everything in: <!-- widget-html --> ... <!-- /widget-html -->
 3. Generate ONLY display-only HTML. No <script>, no onclick/oninput/onload, no <iframe>.
-4. No interactive elements (no buttons, no tabs, no inputs).
-5. Tables use class="trade-tariffs-table". Lists use class="trade-restrictions-list".
+4. No interactive elements (no buttons, no tabs, no inputs): the sanitizer strips button, input, form, select and textarea.
+5. Tables go inside a <div class="trade-tariffs-table"> wrapper. Lists use class="trade-restrictions-list".
 6. Always include a source footer: <div class="economic-footer"><span class="economic-source">Source: WorldMonitor</span></div>
 7. If tool returns no data or an error: use <div class="economic-empty">No live data available</div> — NEVER write prose explanations.
 8. If tool response contains "<!DOCTYPE" or "<html": it is an error — treat as no data and use the empty state HTML.
@@ -13991,7 +13841,7 @@ async function handleWidgetAgentRequest(req, res) {
       // Finalization is irreversible, including after an incomplete response.
       finalizing ||= toolCallCount >= WIDGET_MAX_TOOL_CALLS || turn >= maxTurns - 2;
       const turnMessages = finalizing
-        ? [...messages, { role: 'user', content: 'FINAL TURN: You have used all available tool calls. You MUST emit the completed widget HTML now using the data you already have. No more tool calls — output <!-- widget-html --> immediately.' }]
+        ? [...messages, { role: 'user', content: 'Tools are now disabled. Output the complete widget inside <!-- widget-html --> markers, using the data you already have.' }]
         : messages;
 
       const response = await client.messages.create({
@@ -14247,10 +14097,10 @@ When refusing, output ONLY this — no explanation, no apology:
 
 ## Available data tools
 
-### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no bootstrap key or RPC matches.
+### fetch_worldmonitor_data — use when a bootstrap key or RPC below matches the request. Use search_web for data the catalog does not cover.
 
-## Tool budget — CRITICAL
-Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have. NEVER keep probing.
+## Tool budget
+You have 3 tool calls in total; the server rejects any beyond that. If 2 calls have not produced usable data, build the widget from what you have.
 
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
@@ -14335,7 +14185,7 @@ CSS variables are pre-defined in the iframe: --bg, --surface, --text, --text-sec
 - Numbers/prices: font-variant-numeric: tabular-nums
 - Positive values: color: var(--green) | Negative values: color: var(--red)
 - Design for 400px height with overflow-y: auto for larger content
-- NEVER add a <style> block — use the pre-defined classes below and inline styles only
+- Don't add a <style> block: it loads after the host CSS and would override the font and palette guardrails. Use the pre-defined classes below and inline styles.
 - Always include a source footer: <div style="font-size:10px;color:var(--text-muted);padding:6px 8px">Source: WorldMonitor</div>
 
 ## Pre-defined CSS classes — use these, do NOT reinvent them

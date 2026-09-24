@@ -142,6 +142,7 @@ const EVENTS = {
   'map-layer-toggle': true,
   // Panels
   'panel-toggle': true,
+  'layout-customize': true,
   // Settings
   'settings-open': true,
   'variant-switch': true,
@@ -898,6 +899,7 @@ export function resetAnalyticsForTesting(): void {
   umamiLoadAttempts = 0;
   latestIdentityRevision = 0;
   proFunnelReplaysAwaitingDelivery = 0;
+  layoutCustomizationsSent.clear();
 }
 
 export function trackGateHit(feature: string): void {
@@ -1708,8 +1710,16 @@ export function trackPanelToggled(panelId: string, enabled: boolean): void {
   track('panel-toggle', { panelId, enabled });
 }
 
-export function trackPanelResized(_panelId: string, _newSpan: number): void {
-  // No-op: fires on every drag step, too noisy for analytics.
+export type LayoutCustomizationKind = 'panel-resize' | 'panel-reorder' | 'map-divider';
+
+// Once per page load per kind: the metric is the share of sessions that ever
+// customize, and it keeps held arrow keys on a resize handle from spamming.
+const layoutCustomizationsSent = new Set<LayoutCustomizationKind>();
+
+export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
+  if (layoutCustomizationsSent.has(kind)) return;
+  layoutCustomizationsSent.add(kind);
+  track('layout-customize', { kind });
 }
 
 // ---------------------------------------------------------------------------

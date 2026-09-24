@@ -109,9 +109,14 @@ export class DeductionPanel extends Panel {
     }
 
     private deductionGeneration = 0;
+    private deductionAbort: AbortController | null = null;
 
     public override clearSensitiveContent(): void {
         this.deductionGeneration += 1;
+        // The previous account's request must not keep running (and spending
+        // its quota) after the reset; discarding its result is not enough.
+        this.deductionAbort?.abort();
+        this.deductionAbort = null;
         this.inputEl.value = '';
         this.geoInputEl.value = '';
         this.resultContainer.replaceChildren();
@@ -262,6 +267,9 @@ export class DeductionPanel extends Panel {
         const fw = getActiveFrameworkForPanel('deduction');
 
         const generation = ++this.deductionGeneration;
+        this.deductionAbort?.abort();
+        const controller = new AbortController();
+        this.deductionAbort = controller;
         this.isSubmitting = true;
         this.submitBtn.disabled = true;
 
@@ -279,7 +287,7 @@ export class DeductionPanel extends Panel {
                 query,
                 geoContext,
                 framework: fw?.systemPromptAppend ?? '',
-            });
+            }, { signal: controller.signal });
             if (generation !== this.deductionGeneration || !this.element?.isConnected) return;
 
             this.resultContainer.className = 'deduction-result';
@@ -305,6 +313,7 @@ export class DeductionPanel extends Panel {
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
+            if (this.deductionAbort === controller) this.deductionAbort = null;
             if (generation === this.deductionGeneration) {
                 this.isSubmitting = false;
                 if (this.element?.isConnected) {

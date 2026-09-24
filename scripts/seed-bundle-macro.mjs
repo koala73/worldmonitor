@@ -64,6 +64,17 @@ const MACRO_SECTIONS = [
   { label: 'US-Treasury-Par-Yield', script: 'seed-us-treasury-par-yield.mjs', seedMetaKey: 'economic:us-treasury-par-yield', canonicalKey: 'economic:us-treasury-par-yield:v1', completionMetaKey: 'seed-completion:economic:us-treasury-par-yield', intervalMs: DAY, timeoutMs: 180_000 },
   // Twelve full-history FRED series. Kept at the tail for the same reason as US-CPI.
   { label: 'US-Interest-Rates', script: 'seed-us-interest-rates.mjs', seedMetaKey: 'economic:us-interest-rates', canonicalKey: 'economic:us-interest-rates:v1', completionMetaKey: 'seed-completion:economic:us-interest-rates', intervalMs: DAY, timeoutMs: 180_000 },
+  // Worldwide CPI: five sources feeding one country-indexed read
+  // (GetWorldCpiMonthly). Each section is a small, bounded fetch — the IMF
+  // section is the largest at two ~2 MB CSV documents — and they share the
+  // #8481 tail placement so a slow overlay cannot take an established member's
+  // admission slot. Absent sources are tolerated by the read path, which
+  // selects a per-country source with a staleness fall-through.
+  { label: 'World-CPI-IMF', script: 'seed-world-cpi-imf.mjs', seedMetaKey: 'economic:world-cpi-imf', canonicalKey: 'economic:world-cpi:imf:v1', completionMetaKey: 'seed-completion:economic:world-cpi-imf', intervalMs: DAY, timeoutMs: 240_000 },
+  { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
+  { label: 'World-CPI-OECD', script: 'seed-world-cpi-oecd.mjs', seedMetaKey: 'economic:world-cpi-oecd', canonicalKey: 'economic:world-cpi:oecd:v1', completionMetaKey: 'seed-completion:economic:world-cpi-oecd', intervalMs: DAY, timeoutMs: 240_000 },
+  { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
+  { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark

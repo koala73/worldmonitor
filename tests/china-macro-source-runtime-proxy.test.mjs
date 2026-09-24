@@ -283,3 +283,70 @@ describe('china-macro proxy fallback (#6676 NBS egress block)', () => {
     });
   });
 });
+
+describe('China transport failure diagnostics', () => {
+  it('logs nested direct and proxy causes without changing the thrown error or retry budget', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+    const direct = connectionFailure();
+    const proxyError = Object.assign(new Error('secret password http://user:password@proxy.test'), {
+      cause: { code: 'ETIMEDOUT', message: 'Authorization: secret' },
+      proxyFailure: { stage: 'proxy_connect', proxyConnectStatus: 407, httpStatus: null },
+    });
+    let attempts = 0;
+    const budget = requestBudget(8);
+    await assert.rejects(fetchText(async () => { throw direct; }, 'https://example.test/robots.txt?secret=token', {
+      policy: POLICY, budget, proxyUrl: PARSEABLE_PROXY,
+      proxyFetchFn: async () => { attempts++; throw proxyError; },
+    }), (error) => error === direct);
+    assert.equal(attempts, 4);
+    assert.equal(budget.count, 1);
+    assert.equal(logs.length, 5);
+    assert.deepEqual(logs[0], {
+      event: 'china_macro_transport_failure', host: 'example.test', resource: 'robots',
+      transport: 'direct', attempt: 1, code: 'ECONNREFUSED',
+    });
+    assert.deepEqual(logs[4], {
+      event: 'china_macro_transport_failure', host: 'example.test', resource: 'robots',
+      transport: 'proxy', attempt: 4, code: 'ETIMEDOUT',
+      stage: 'proxy_connect', proxyConnectStatus: 407,
+    });
+    assert.doesNotMatch(JSON.stringify(logs), /secret|password|Authorization|proxy\.test|token/);
+  });
+
+  it('rejects unrecognized diagnostic fields and tolerates a failing logger', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => { logs.push(JSON.parse(line)); throw Error('logger'); });
+    const direct = Object.assign(new TypeError('fetch failed'), { code: 'SECRET', cause: null });
+    direct.cause = direct;
+    await assert.rejects(fetchText(async () => { throw direct; }, 'https://example.test/a', {
+      policy: POLICY, budget: requestBudget(8), proxyUrl: PARSEABLE_PROXY,
+      proxyFetchFn: async () => { throw Object.assign(new Error('secret'), {
+        code: 'SECRET', proxyFailure: { stage: 'secret', proxyConnectStatus: 999, httpStatus: 'secret' },
+      }); },
+    }), (error) => error === direct);
+    assert.equal(logs.length, 5);
+    assert.equal(logs.every((entry) => entry.code === 'UNKNOWN'), true);
+    assert.doesNotMatch(JSON.stringify(logs), /SECRET|secret|999/);
+  });
+});
+
+it('identifies a proxy tunnel timeout before a recovered fetch without logging a success as a failure', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+  let attempts = 0;
+  const result = await fetchText(async () => { throw connectionFailure(); }, 'https://example.test/a', {
+    policy: POLICY, budget: requestBudget(8), proxyUrl: PARSEABLE_PROXY,
+    proxyFetchFn: async () => {
+      if (++attempts === 1) throw Object.assign(new Error('CONNECT tunnel timeout'), {
+        proxyFailure: { stage: 'proxy_connection', proxyConnectStatus: null },
+      });
+      return proxyResult('recovered');
+    },
+  });
+  assert.equal(result.text, 'recovered');
+  assert.equal(logs.length, 2);
+  assert.equal(logs[1].code, 'TIMEOUT');
+  assert.equal(logs[1].stage, 'proxy_connection');
+  assert.equal(logs[1].proxyConnectStatus, undefined);
+});

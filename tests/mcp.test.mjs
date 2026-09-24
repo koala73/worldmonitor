@@ -995,7 +995,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       riskReviewed: true,
       typeReviewed: true,
       stateAffiliated: 'China',
+      knownBiases: [],
       note: 'Chinese Ministry of Industry and Information Technology official feed',
+      summary: 'Official government source: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed.',
     });
     assert.deepEqual(unreviewed.sourceProvenance, {
       risk: 'unknown',
@@ -1004,7 +1006,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeDeclared: true,
       riskReviewed: false,
       typeReviewed: false,
+      knownBiases: [],
       note: 'Provenance not yet reviewed — do not treat as independent journalism',
+      summary: 'Provenance not yet reviewed — do not treat as independent journalism. Perspective: none recorded.',
     });
     assert.deepEqual(wire.sourceProvenance, {
       risk: 'low',
@@ -1013,7 +1017,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeDeclared: true,
       riskReviewed: true,
       typeReviewed: true,
+      knownBiases: [],
       note: 'Wire service, strict editorial standards',
+      summary: 'Reviewed. Perspective: none recorded. Wire service, strict editorial standards.',
     });
   });
 

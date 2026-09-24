@@ -5,6 +5,7 @@ import type { ListMilitaryFlightsResponse } from '../../../src/generated/server/
 import type { TrackAircraftResponse } from '../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import { countryMentionTerms, mentionsCountry } from '../../../shared/country-mention.js';
+import { isBriefRelevantTitle } from '../../../shared/brief-relevance.js';
 import { isOpenSkyProvider } from '../../../shared/provider-redistribution';
 import {
   CHINA_DECISION_SIGNAL_GROUP_IDS,
@@ -1490,6 +1491,22 @@ export const RPC_TOOLS: ToolDef[] = [
             },
           },
         },
+        evidence: {
+          type: 'array',
+          description: 'World Monitor data points cited by the brief, keyed by the id an [En] marker names.',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              kind: { type: 'string' },
+              label: { type: 'string' },
+              value: { type: 'string' },
+              factText: { type: 'string' },
+              asOf: { type: 'string' },
+              url: { type: 'string', description: 'Empty when the data point has no public page.' },
+            },
+          },
+        },
         groundingStories: {
           type: 'array',
           description: 'Corroboration signals for the digest articles used to ground this brief, so an agent can weigh how well-reported the underlying claims are. Independent of sources, which may instead carry the server-side grounding set, and empty when the digest read failed. Not a citation list — cite from sources.',
@@ -1547,11 +1564,16 @@ export const RPC_TOOLS: ToolDef[] = [
           // Shared matcher (shared/country-mention.js) — the local term list
           // matched the ISO code case-insensitively, so "rally in Europe"
           // grounded India's brief (#7748).
+          // Sports, entertainment and awards items are dropped too
+          // (shared/brief-relevance.js). With no relevant country item the
+          // brief gets no grounding: the old fallback to top global items
+          // produced briefs about a country no headline covered.
           const terms = countryMentionTerms(countryCode);
           const countryItems = allItems.filter((item) => (
             mentionsCountry(`${item.title ?? ''} ${item.snippet ?? ''}`, terms)
+            && isBriefRelevantTitle(item.title)
           ));
-          const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, 15);
+          const groundingItems = countryItems.slice(0, 15);
           sources = collectMcpBriefSources(groundingItems, 6);
           // Built from groundingItems rather than from `sources`, because the
           // return below prefers the gateway's own source list on the common
@@ -1573,7 +1595,7 @@ export const RPC_TOOLS: ToolDef[] = [
               ]
             : [];
           const contextLines = [...staleLines, ...sourceLines, 'Headlines:', ...headlineLines].join('\n');
-          if (contextLines.trim()) contextSnapshot = contextLines.slice(0, 4000);
+          if (groundingItems.length > 0) contextSnapshot = contextLines.slice(0, 4000);
         }
       } catch { /* proceed without context — better than failing */ }
 

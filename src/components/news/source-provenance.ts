@@ -1,6 +1,9 @@
 import {
+  PERSPECTIVE_LABEL_CAVEAT,
+  composeProvenanceSummary,
   computeCredibilityScore,
   describePropagandaBadge,
+  getProvenanceFacts,
   getSourcePropagandaRisk,
   getSourceTier,
   getSourceTierBadgeTitle,
@@ -15,6 +18,7 @@ export { resolveRegisteredTelegramSourceName, resolveTelegramSourceName };
 export interface PrimarySourceProvenanceHtml {
   riskBadge: string;
   tierBadge: string;
+  facts: string;
 }
 
 export interface SourceProvenanceBadge {
@@ -26,6 +30,7 @@ export interface SourceProvenanceBadge {
 export interface PrimarySourceProvenanceBadges {
   risk: SourceProvenanceBadge | null;
   tier: SourceProvenanceBadge | null;
+  facts: SourceProvenanceBadge[];
 }
 
 /**
@@ -35,7 +40,8 @@ export interface PrimarySourceProvenanceBadges {
  */
 export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySourceProvenanceBadges {
   const sourceType = getSourceType(sourceName);
-  const riskDescription = describePropagandaBadge(getSourcePropagandaRisk(sourceName), sourceType);
+  const profile = getSourcePropagandaRisk(sourceName);
+  const riskDescription = describePropagandaBadge(profile, sourceType);
   const risk = riskDescription
     ? {
       className: `propaganda-badge ${riskDescription.risk}`,
@@ -54,7 +60,14 @@ export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySou
     }
     : null;
 
-  return { risk, tier: tierBadge };
+  const factTitle = `${composeProvenanceSummary(profile, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+  const facts = getProvenanceFacts(profile, sourceType).map((fact) => ({
+    className: `provenance-fact ${fact.kind}`,
+    title: factTitle,
+    label: fact.label,
+  }));
+
+  return { risk, tier: tierBadge, facts };
 }
 
 export function resolveCredibilityScore(
@@ -91,24 +104,31 @@ export function renderCredibilityBadge(
  * constructing the full virtualized NewsPanel component.
  */
 export function renderPrimarySourceProvenance(sourceName: string): PrimarySourceProvenanceHtml {
-  const { risk, tier } = getPrimarySourceProvenanceBadges(sourceName);
+  const { risk, tier, facts } = getPrimarySourceProvenanceBadges(sourceName);
   return {
     riskBadge: risk
-      ? `<span class="${risk.className}" title="${escapeHtml(risk.title)}">${risk.label}</span>`
+      ? `<span class="${risk.className}" title="${escapeHtml(risk.title)}">${escapeHtml(risk.label)}</span>`
       : '',
     tierBadge: tier
       ? `<span class="${tier.className}" title="${escapeHtml(tier.title)}">${tier.label}</span>`
       : '',
+    facts: facts
+      .map((fact) => `<span class="${fact.className}" title="${escapeHtml(fact.title)}">${escapeHtml(fact.label)}</span>`)
+      .join(''),
   };
 }
 
 /** Render the compact risk marker shown for corroborating sources. */
 export function renderCorroboratingSourceRisk(sourceName: string): string {
-  const description = describePropagandaBadge(
-    getSourcePropagandaRisk(sourceName),
-    getSourceType(sourceName),
-  );
-  return description
-    ? `<span class="propaganda-badge ${description.risk}" title="${escapeHtml(description.title)}">${description.shortLabel}</span>`
-    : '';
+  const profile = getSourcePropagandaRisk(sourceName);
+  const sourceType = getSourceType(sourceName);
+  const description = describePropagandaBadge(profile, sourceType);
+  if (description) {
+    return `<span class="propaganda-badge ${description.risk}" title="${escapeHtml(description.title)}">${description.shortLabel}</span>`;
+  }
+  if (getProvenanceFacts(profile, sourceType).length > 0) {
+    const title = `${composeProvenanceSummary(profile, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+    return `<span class="provenance-fact-marker" title="${escapeHtml(title)}">◐</span>`;
+  }
+  return '';
 }

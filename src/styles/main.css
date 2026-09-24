@@ -17229,6 +17229,27 @@ a.prediction-link:hover {
   margin-left: 2px;
 }
 
+/* Perspective and affiliation are disclosure, not caution: neutral styling. */
+.provenance-fact {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  margin-left: 4px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  background: var(--overlay-medium);
+  border: 1px solid var(--border);
+}
+
+.provenance-fact-marker {
+  font-size: calc(7px * var(--wm-panel-effective-scale, 1));
+  margin-left: 2px;
+  color: var(--text-secondary);
+}
+
 /* --- Intelligence Findings Badge --- */
 .intel-findings-badge {
   display: flex;
@@ -21210,7 +21231,8 @@ body:has(.tauri-titlebar) .breaking-news-container {
 }
 
 .breaking-alert .tier-badge,
-.breaking-alert .propaganda-badge {
+.breaking-alert .propaganda-badge,
+.breaking-alert .provenance-fact {
   flex-shrink: 0;
 }
 
@@ -21218,7 +21240,8 @@ body:has(.tauri-titlebar) .breaking-news-container {
   margin-right: 0;
 }
 
-.breaking-alert .propaganda-badge {
+.breaking-alert .propaganda-badge,
+.breaking-alert .provenance-fact {
   margin-left: 0;
 }
 
@@ -23622,6 +23645,7 @@ body.map-width-resizing {
 }
 
 .telegram-intel-channel-wrapper .propaganda-badge,
+.telegram-intel-channel-wrapper .provenance-fact,
 .telegram-intel-channel-wrapper .tier-badge {
   flex-shrink: 0;
   margin-left: 0;

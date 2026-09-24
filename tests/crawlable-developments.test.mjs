@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  briefCitationGroundingGap,
   briefGroundingGap,
   briefGroundingPublisherCount,
   COUNTRY_INDEX_ORIGIN,
@@ -11,6 +12,7 @@ import {
   MIN_BRIEF_GROUNDING_PUBLISHERS,
   normalizeBriefText,
   normalizeFrozenDevelopments,
+  parseBriefSections,
   registrableDomain,
 } from '../scripts/crawlable-developments.mjs';
 import { isVerifiableArticleUrl as freezeIsVerifiableArticleUrl } from '../scripts/freeze-crawlable-live-pulse.mjs';
@@ -390,5 +392,105 @@ describe('brief heading country identity', () => {
       const input = `SITUATION NOW\nA claim [1].\nWHAT THIS MEANS FOR ${heading}`;
       assert.equal(normalizeBriefText(input, country), input);
     }
+  });
+});
+
+describe('evidence-grounded briefs', () => {
+  const sources = [
+    { title: 'Egypt stands firm on Gaza ceasefire', source: 'Reuters', url: 'https://reuters.com/eg' },
+    { title: 'Egypt agrees to South Sudan dam', source: 'BBC', url: 'https://bbc.com/eg' },
+  ];
+  const evidence = [
+    { id: 'E1', kind: 'resilience-dimension', label: 'Fiscal space', value: '28 of 100', asOf: '2026-08-29T00:00:00.000Z',
+      factText: "Egypt's fiscal space scores 28 of 100 in the Country Resilience Index (Aug 29, 2026 snapshot)." },
+    { id: 'E2', kind: 'chokepoint', label: 'Suez Canal', value: 'Suez Canal', asOf: '2026-09-21T00:00:00.000Z',
+      factText: 'Egypt is linked to the Suez Canal chokepoint.', url: 'https://www.worldmonitor.app/chokepoints/suez-canal/' },
+  ];
+  const brief = (text) => ({ text, sources, evidence });
+
+  it('grounds evidence-cited lines in the cited fact texts', () => {
+    assert.equal(briefCitationGroundingGap(brief([
+      'SITUATION NOW', 'Egypt stands firm on Gaza ceasefire [1]',
+      'KEY RISKS', "Egypt's fiscal space scores 28 of 100 in the Country Resilience Index. [E1]",
+      'WHAT THIS MEANS FOR EGYPT', 'Egypt agrees to South Sudan dam while linked to the Suez Canal chokepoint. [2][E2]',
+    ].join('\n'))), null);
+  });
+
+  it('rejects unknown evidence ids, numbers and names the cited evidence does not state', () => {
+    for (const line of [
+      "Egypt's fiscal space scores 28 of 100. [E9]",
+      "Egypt's fiscal space scores 23 of 100 in the Country Resilience Index. [E1]",
+      'Egypt faces a Hormuz closure. [E2]',
+    ]) {
+      assert.ok(briefCitationGroundingGap(brief(`SITUATION NOW\nEgypt stands firm on Gaza ceasefire [1]\nKEY RISKS\n${line}`)), line);
+    }
+  });
+
+  it('parses the server-rendered text back into sections and claims', () => {
+    const text = [
+      'SITUATION NOW', 'Egypt stands firm on Gaza ceasefire [1]', '',
+      'WHAT THIS MEANS FOR EGYPT', 'Egypt agrees to South Sudan dam while linked to the Suez Canal chokepoint. [2][E2]', '',
+      'KEY RISKS', "Egypt's fiscal space scores 28 of 100 in the Country Resilience Index. [E1]", 'An uncited line',
+    ].join('\n');
+    assert.deepEqual(parseBriefSections(text, { countryCode: 'EG', countryName: 'Egypt' }), [
+      { key: 'situation', heading: 'SITUATION NOW', claims: [{ text: 'Egypt stands firm on Gaza ceasefire', sourceIndexes: [1], evidenceIds: [] }] },
+      { key: 'implications', heading: 'WHAT THIS MEANS FOR EGYPT', claims: [{ text: 'Egypt agrees to South Sudan dam while linked to the Suez Canal chokepoint.', sourceIndexes: [2], evidenceIds: ['E2'] }] },
+      { key: 'risks', heading: 'KEY RISKS', claims: [
+        { text: "Egypt's fiscal space scores 28 of 100 in the Country Resilience Index.", sourceIndexes: [], evidenceIds: ['E1'] },
+        { text: 'An uncited line', sourceIndexes: [], evidenceIds: [] },
+      ] },
+    ]);
+  });
+
+  it('applies the server claim rules: joined multi-headline grounding, bound numbers, qualifiers, no evidence-limit sentences', () => {
+    const withTitles = (text) => ({
+      text,
+      sources: [...sources, { title: 'President Sisi meets CIA chief', source: 'Ahram', url: 'https://ahram.org.eg/sisi' }],
+      evidence,
+    });
+    const gap = (line) => briefCitationGroundingGap(withTitles(`SITUATION NOW\nEgypt stands firm on Gaza ceasefire [1]\nWATCH ITEMS\n${line}`));
+    assert.equal(gap('Egypt stands firm on Gaza ceasefire as Egypt agrees to South Sudan dam [1][2]'), null, 'the server accepts this two-headline claim');
+    assert.equal(gap('President Sisi meets CIA chief [3]'), null);
+    assert.ok(gap('Former President Sisi meets CIA chief [3]'), 'a status qualifier the title never made');
+    assert.ok(gap("Egypt's fiscal space scores 29 of 100 in the Country Resilience Index. [E1]"), 'a number taken from the as-of date');
+    assert.ok(gap('The supplied headlines do not establish this. [1]'), 'a sentence about the evidence');
+  });
+
+  it('recognizes the server heading for a country name the resolver cannot map (Côte d’Ivoire)', () => {
+    const ciSources = [
+      { title: 'Côte d’Ivoire signs LNG import deal', source: 'Reuters', url: 'https://reuters.com/ci' },
+      { title: 'Côte d’Ivoire court reduces charges', source: 'BBC', url: 'https://bbc.com/ci' },
+    ];
+    const ciEvidence = [{ id: 'E1', kind: 'advisory', label: 'Travel advisory', value: 'Exercise Increased Caution', asOf: '2026-09-21T00:00:00.000Z',
+      factText: 'The most severe government travel advisory World Monitor tracks for Côte d’Ivoire is Exercise Increased Caution.' }];
+    const text = 'SITUATION NOW\nCôte d’Ivoire signs LNG import deal [1]\n\nWHAT THIS MEANS FOR CÔTE D’IVOIRE\nCôte d’Ivoire signs LNG import deal while its travel advisory is Exercise Increased Caution. [1][E1]';
+    assert.equal(briefCitationGroundingGap({ text, sources: ciSources, evidence: ciEvidence }, { countryCode: 'CI' }), null);
+    assert.deepEqual(parseBriefSections(text, { countryCode: 'CI' }).map((section) => section.key), ['situation', 'implications']);
+    // Prose that merely starts with the phrase is still a claim, not a heading.
+    assert.deepEqual(parseBriefSections('SITUATION NOW\nWhat this means for Côte d’Ivoire is unclear [1]', { countryCode: 'CI' }).map((section) => section.key), ['situation']);
+  });
+
+  it('keeps the per-title rule for pre-migration briefs', () => {
+    const legacy = { text: 'SITUATION NOW\nEgypt stands firm on Gaza ceasefire as Egypt agrees to South Sudan dam [1][2]', sources };
+    assert.ok(briefCitationGroundingGap(legacy));
+  });
+
+  it('still requires at least one headline citation', () => {
+    assert.equal(briefCitationGroundingGap(brief("KEY RISKS\nEgypt's fiscal space scores 28 of 100 in the Country Resilience Index. [E1]")), 'missing citations');
+  });
+
+  it('strips legacy evidence-limit and withheld notices, and headings they leave empty', () => {
+    const legacy = [
+      'SITUATION NOW', 'Egypt stands firm on Gaza ceasefire. [1]', '',
+      'WHAT THIS MEANS FOR EGYPT', 'The supplied headlines do not establish this.', '',
+      'KEY RISKS', 'Egypt agrees to South Sudan dam. [2]', '',
+      'OUTLOOK', 'The supplied headlines do not establish this.', '',
+      'Some generated claims were withheld because they did not match the supplied source titles.',
+    ].join('\n');
+    const row = normalizeFrozenDevelopments({ brief: { text: legacy, sources, model: 'deepseek/deepseek-v4-flash' }, briefSkipped: null }, { countryCode: 'EG', countryName: 'Egypt' });
+    assert.equal(Object.hasOwn(row.brief, 'model'), false, 'the model id never reaches a page or download');
+    const out = normalizeBriefText(legacy, { countryCode: 'EG', countryName: 'Egypt' });
+    assert.equal(out, 'SITUATION NOW\nEgypt stands firm on Gaza ceasefire. [1]\n\nKEY RISKS\nEgypt agrees to South Sudan dam. [2]');
+    assert.equal(normalizeBriefText(out, { countryCode: 'EG', countryName: 'Egypt' }), out);
   });
 });

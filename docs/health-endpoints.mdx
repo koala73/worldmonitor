@@ -32,7 +32,7 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 
 > The overall health verdict lives in the JSON `status` field, not the HTTP code. Evaluated health verdicts return `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure. `REFRESH_PENDING` also returns `503`, but only when no earlier verdict is retained while refresh is pending; it is not a confirmed Redis outage.
 
-On a cache miss, only the Redis lease owner performs the registry sweep. Other requests wait up to 3 seconds for its snapshot. If none lands, they return the last published verdict with HTTP `200`, plus `"stale": true` and `"staleReason": "REFRESH_PENDING"`. Its `status` and `checkedAt` are the ones that verdict was published with. The last verdict is retained for 10 minutes and is never served past a grace deadline. Only when no verdict is retained do they return `503` with `Retry-After: 3` and `{ "status": "REFRESH_PENDING", "error": "Health refresh is pending. Retry shortly.", "retryAfterSeconds": 3 }`. That response has no `checkedAt`, summary, or fabricated checks. Neither response is cached.
+On a cache miss, only the Redis lease owner performs the registry sweep. Other requests wait up to 3 seconds for its snapshot. If none lands, they return the last published verdict with HTTP `200`, plus `"stale": true` and `"staleReason": "REFRESH_PENDING"`. Its `status` and `checkedAt` are the ones that verdict was published with. The last verdict is retained for 10 minutes and is never served past a grace deadline. Only when no verdict is retained do they return `503` with `Retry-After: 3` and `{ "status": "REFRESH_PENDING", "error": "Health refresh is pending. Retry shortly.", "retryAfterSeconds": 3 }`. That response has no `checkedAt`, summary, or fabricated checks. Neither response is cached. The lease owner itself works against a 22-second request deadline: each Redis command and the relay-gate probe time out at the lower of its own timeout and the time left. An owner that runs out answers the same way a waiter does, instead of running past the 25-second edge first-byte limit: the last published verdict as a stale `200` when one is retained, otherwise `503` `REFRESH_PENDING` with `Retry-After: 3`.
 
 Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
 
@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 295,
-    "ok": 295,
+    "total": 309,
+    "ok": 309,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,

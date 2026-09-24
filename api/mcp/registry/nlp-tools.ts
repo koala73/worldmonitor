@@ -92,13 +92,19 @@ const DIGEST_CATEGORY_DESC =
   '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
 
 const SOURCE_PROVENANCE_REQUIRED = [
-  'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed',
+  'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
 ];
 const SOURCE_PROVENANCE_PROPERTIES = {
   risk: { type: 'string' }, type: { type: 'string' },
   riskDeclared: { type: 'boolean' }, typeDeclared: { type: 'boolean' },
   riskReviewed: { type: 'boolean' }, typeReviewed: { type: 'boolean' },
   stateAffiliated: { type: 'string' }, note: { type: 'string' },
+  knownBiases: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Curated perspective labels. Recorded for few sources: empty means not assessed, not neutral.',
+  },
+  summary: { type: 'string', description: 'Every provenance fact as short fixed-order clauses in one string; includes "Perspective: none recorded." when no label exists.' },
 };
 
 function nlpTruncateUtf8(value: string, maxBytes: number): string {

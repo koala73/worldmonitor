@@ -29,7 +29,7 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 | `503` | `REDIS_DOWN` | 所需的 Redis 健康数据读取失败 |
 | `503` | `REFRESH_PENDING` | 刷新尚未完成且没有保留的上一次判定；按 `Retry-After: 3` 等待后重试 |
 
-> 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。已完成评估的健康状态返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。 刷新进行中时，未持有刷新租约的请求返回上一次发布的判定：HTTP `200`，并带有 `"stale": true` 和 `"staleReason": "REFRESH_PENDING"`，其 `status` 与 `checkedAt` 保持该判定发布时的值。上一次判定保留 10 分钟，且超过宽限截止时间后不再提供。只有在没有保留的判定时才返回 `503` 的 `REFRESH_PENDING`，这并不证明 Redis 中断。此响应不包含 `checkedAt`、汇总或虚构的检查结果。两种响应都不会被缓存。定时新鲜度监控器仅对此状态进行有界重试：最多 12 次请求，总窗口为 45 秒；其他错误仍会失败。
+> 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。已完成评估的健康状态返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。 刷新进行中时，未持有刷新租约的请求返回上一次发布的判定：HTTP `200`，并带有 `"stale": true` 和 `"staleReason": "REFRESH_PENDING"`，其 `status` 与 `checkedAt` 保持该判定发布时的值。上一次判定保留 10 分钟，且超过宽限截止时间后不再提供。只有在没有保留的判定时才返回 `503` 的 `REFRESH_PENDING`，这并不证明 Redis 中断。此响应不包含 `checkedAt`、汇总或虚构的检查结果。两种响应都不会被缓存。持有租约的请求本身受 22 秒请求截止时间约束：每个 Redis 命令和中继网关探测的超时取其自身超时与剩余时间中的较小值。截止时间耗尽时，它与等待中的请求相同处理，而不会超过边缘函数 25 秒的首字节限制：有保留的判定时返回该判定（HTTP `200`，标记为 stale），否则返回 `503` 的 `REFRESH_PENDING`，并带有 `Retry-After: 3`。定时新鲜度监控器仅对此状态进行有界重试：最多 12 次请求，总窗口为 45 秒；其他错误仍会失败。
 
 顶层 `status` 表示用户可见平台的可用性，而不是所有数据源都完全正常。因此，当警告由可用的最后一次正常数据控制时，`HEALTHY` 可以与 `summary` 和 `problems` 中的警告同时出现。
 
@@ -39,8 +39,8 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 295,
-    "ok": 295,
+    "total": 309,
+    "ok": 309,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,

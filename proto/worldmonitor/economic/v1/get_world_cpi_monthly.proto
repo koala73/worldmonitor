@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// WorldCpiPercentChange is a simple percent change computed from the index.
+message WorldCpiPercentChange {
+  // Percent change. 2.5 means 2.5 percent, not an annualized rate.
+  double percent = 1;
+}
+
+// WorldCpiReading is one country's index for one period.
+message WorldCpiReading {
+  // Index level in the source's own base. Bases differ per source, so compare changes, not levels.
+  double index = 1;
+  // Change from the previous period in the same series. Absent when that period is missing.
+  WorldCpiPercentChange period_over_period = 2;
+  // Change from the same period a year earlier. Absent until that period exists.
+  WorldCpiPercentChange year_over_year = 3;
+}
+
+// WorldCpiPeriod is one observation of a country's CPI series.
+message WorldCpiPeriod {
+  // UTC midnight on the first day of the observation period, as Unix epoch milliseconds.
+  int64 period = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // The period's index and changes.
+  WorldCpiReading reading = 2;
+}
+
+// WorldCpiCountry is the preferred CPI series for one country.
+message WorldCpiCountry {
+  // ISO 3166-1 alpha-2 country code.
+  string country = 1;
+  // Which source supplied this series. One of: estat-cpi, eurostat-hicp, imf-cpi, imf-hicp, oecd-cpi, abs-cpi.
+  string source = 2;
+  // Series frequency: M for monthly, Q for quarterly. Australia is quarterly.
+  string frequency = 3;
+  // Index base label from the source, e.g. 2020=100 or 2015=100. Never compare levels across bases or sources.
+  string index_base = 4;
+  // Periods in ascending order. One element when history is false.
+  repeated WorldCpiPeriod periods = 5;
+}
+
+// GetWorldCpiMonthlyRequest chooses the latest print or the stored history.
+message GetWorldCpiMonthlyRequest {
+  // When true, return every stored period. When false, return only the latest period per country.
+  bool history = 1 [(sebuf.http.query) = {name: "history"}];
+  // Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned.
+  string country = 2 [(sebuf.http.query) = {name: "country"}];
+}
+
+// GetWorldCpiMonthlyResponse is the worldwide CPI series for the requested window.
+message GetWorldCpiMonthlyResponse {
+  // Countries in ascending ISO code order. Empty when history is false and no print is available.
+  repeated WorldCpiCountry countries = 1;
+  // True when every seeded series is unavailable. An empty country list is not a zero print.
+  bool unavailable = 2;
+}

@@ -46,6 +46,20 @@ describe('Chat analyst principal reset', () => {
     panel.destroy();
   });
 
+  it('drops an unsent draft when the principal changes', () => {
+    const panel = new ChatAnalystPanel();
+    document.body.append(panel.getElement());
+    const draft = panel.getElement().querySelector<HTMLTextAreaElement>('.chat-analyst-input')!;
+    draft.value = 'Account A unsent draft';
+    panel.clearSensitiveContent();
+    panel.unlockPanel();
+    const input = panel.getElement().querySelector<HTMLTextAreaElement>('.chat-analyst-input');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('');
+    expect(draft.value).toBe('');
+    panel.destroy();
+  });
+
   it('ignores queued stream actions and tokens after a principal reset', async () => {
     const panel = new ChatAnalystPanel();
     document.body.append(panel.getElement());

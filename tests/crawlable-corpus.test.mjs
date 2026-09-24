@@ -1800,6 +1800,84 @@ describe('crawlable corpus generator', () => {
     );
   });
 
+  it('publishes CII movement and reference copy in reader terms', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
+    const now = capturedAtMs + 86_400_000;
+    const egypt = data.countries.find((country) => country.code === 'EG');
+    assert.ok(egypt, 'Egypt must be in the country corpus');
+    const readerText = (html) => html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&middot;/g, '·')
+      .replace(/&#39;|&#x27;/g, "'")
+      .replace(/\s+/g, ' ');
+    const metaDescription = (html) => html.match(/<meta name="description" content="([^"]*)">/)?.[1] ?? '';
+    const renderWithTrend = (trend) => {
+      const livePulse = structuredClone(data.livePulse);
+      livePulse.countries.EG.trend = trend;
+      const ranking = buildCiiRankingEntries(data.countries, livePulse, { now });
+      const html = renderCountryPage({
+        country: egypt,
+        baseUrl: 'https://www.worldmonitor.app',
+        capturedAt: data.resilience.capturedAt,
+        lastmod: data.lastmod.countries,
+        methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+        rankedCount: data.countries.filter((country) => country.rank != null).length,
+        snapshotNote: data.resilience.snapshotNote,
+        snapshotPath: data.sources.resilienceSnapshot,
+        bbox: data.countryBboxByCode.get('EG') || null,
+        livePulse,
+        ciiEntry: ranking.byCode.get('EG'),
+        now,
+      });
+      return { html, text: readerText(html), meta: metaDescription(html) };
+    };
+
+    const falling = renderWithTrend('Falling -2');
+    assert.match(falling.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , down 2 points over approximately 24 hours, as of /);
+    assert.match(falling.html, /data-live-trend>Falling -2<\/strong>/);
+
+    // A measured zero reads as a fact, not as "stable or unavailable".
+    const unchanged = renderWithTrend('Unchanged');
+    assert.match(unchanged.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , unchanged over approximately 24 hours, as of /);
+    assert.match(unchanged.html, /data-live-trend>Unchanged<\/strong>/);
+    assert.match(unchanged.meta, /and is unchanged over approximately 24 hours/);
+
+    // No earlier reading: the header drops the movement clause entirely.
+    const noPrior = renderWithTrend('No earlier reading');
+    assert.match(noPrior.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , as of /);
+    assert.match(noPrior.html, /data-live-trend>No earlier reading<\/strong>/);
+    assert.match(noPrior.meta, /with 24-hour movement unchanged or not yet measured/);
+
+    // Legacy snapshots conflated both cases, so they support no movement claim.
+    const legacy = renderWithTrend('Stable or unavailable');
+    assert.match(legacy.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , as of /);
+    assert.match(legacy.html, /data-live-trend>Unavailable<\/strong>/);
+
+    for (const { html, text, meta } of [falling, unchanged, noPrior, legacy]) {
+      assert.doesNotMatch(`${text} ${meta}`, /stable or unavailable/i);
+      assert.doesNotMatch(text, /API result/);
+      assert.doesNotMatch(text, /crawlable crisis|registry boundary/);
+      assert.doesNotMatch(text, /docs\/snapshots\//);
+      assert.doesNotMatch(text, /; method /);
+      assert.ok(
+        !text.includes(data.resilience.methodologyFormula),
+        'the scoring formula id is machine metadata, not reader prose',
+      );
+      assert.match(text, /World Monitor reference pages\. Dated snapshots are published here; live readings are labelled separately\./);
+      assert.match(text, /Enable JavaScript to load the live reading\./);
+      assert.match(text, /Egypt has no dedicated crisis tracker; the \d+ trackers cover selected crises\. That is a coverage limit, not a statement about risk\./);
+      assert.match(text, /Scores come from the \w+ \d{1,2}, \d{4} snapshot\. /);
+      assert.match(text, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
+      // Peers are ordered by rank distance, so each carries its rank.
+      assert.match(text, /Nearest ranked peers: .*?\(#\d+, \d+(?:\.\d+)?\)/);
+      // The machine-readable source path stays on the element for auditors.
+      assert.ok(html.includes(`data-snapshot-source="${data.sources.resilienceSnapshot}"`));
+    }
+  });
+
   it('derives CII movement copy from live-pulse snapshot age', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
@@ -2113,6 +2191,49 @@ describe('crawlable corpus generator', () => {
       }
       // The CII hub is the page the issue named: a published 0-100 score.
       assert.match(read(outDir, 'country-instability-index/index.html'), /<p class="byline">/);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it('names tracker and reference sources in reader terms, keeping repo paths as provenance attributes', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'wm-source-lines-'));
+    try {
+      await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
+      const visibleText = (html) => html
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ');
+      for (const [page, expected] of [
+        ['chokepoints/index.html', /Sources: World Monitor weekly pulse snapshot and World Monitor chokepoint registry/],
+        ['chokepoints/index.html', /Baseline source: U\.S\. EIA World Oil Transit Chokepoints \(2023\)/],
+        ['crises/index.html', /Scope source:\s+World Monitor crisis registry/],
+        ['chokepoints/strait-of-hormuz/index.html', /World Monitor chokepoint registry and trade-route reference/],
+        ['crises/red-sea-security/index.html', /World Monitor weekly pulse snapshot/],
+        ['tools/signal-convergence/index.html', /World Monitor weekly pulse snapshot/],
+      ]) {
+        const html = read(outDir, page);
+        const text = visibleText(html);
+        assert.doesNotMatch(text, /docs\/snapshots\/|src\/config\/|crawlable-live-pulse|shared\/[\w-]+\.json|scripts\/[\w-]+\.mjs/, `${page} shows a repository path to readers`);
+        assert.match(text, expected, `${page} names its source in reader terms`);
+        assert.match(html, /data-snapshot-source="(?:docs\/snapshots\/|src\/config\/|shared\/|scripts\/)[^"]+"/, `${page} keeps the repo path as provenance`);
+      }
+      const repoPath = /docs\/[\w./-]+|CHANGELOG\.md/;
+      for (const [page, expected, provenance] of [
+        ['accuracy/index.html', /Source: World Monitor forecast scorecard snapshot/, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
+        ['research/strait-of-hormuz-transit-report-2026-07/index.html', /Snapshot: World Monitor chokepoint transit snapshot, retrieved \d{4}-\d{2}-\d{2}\./, /data-snapshot-source="docs\/snapshots\/[^"]+"/],
+        ['tools/signal-convergence/index.html', /Cited from the\s+Geographic Convergence Detection methodology/, /data-snapshot-source="docs\/geographic-convergence\.mdx"/],
+        ['reference/changelog/index.html', /Source: World Monitor release notes/, /data-snapshot-source="CHANGELOG\.md"/],
+      ]) {
+        const html = read(outDir, page);
+        // Release notes legitimately name repository files, so judge only the
+        // page's own framing: the lede and every source line.
+        const framing = [...html.matchAll(/<p class="(?:lede|source)"[^>]*>[\s\S]*?<\/p>/g)]
+          .map((match) => visibleText(match[0])).join(' ');
+        assert.doesNotMatch(framing, repoPath, `${page} shows a repository path to readers`);
+        assert.match(framing, expected, `${page} names its source in reader terms`);
+        assert.match(html, provenance, `${page} keeps the repo path as provenance`);
+      }
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
@@ -2615,7 +2736,10 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
       assert.match(norway, new RegExp(`<meta name="lastmod" content="${countriesLastmod}">`));
-      assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
+      // The repo path is machine attribution, kept on the element; readers get
+      // the snapshot's name and date.
+      assert.ok(norway.includes(`data-snapshot-source="${manifest.sources.resilienceSnapshot}"`));
+      assert.match(norway, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
       assert.match(
         norway,
         /<span>Overall score<\/span><strong>75\.4<\/strong>/,
@@ -2711,6 +2835,12 @@ describe('crawlable corpus generator', () => {
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
       assert.match(ciiIndex, new RegExp(`<meta name="lastmod" content="${ciiIndexLastmod}">`));
       assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
+      // Reader copy names the snapshot and the live reading; the repo path and
+      // the conflated "stable or unavailable" cell stay off the page.
+      assert.match(ciiIndex, /Source: World Monitor Country Instability Index snapshot, \w+ \d{1,2}, \d{4}\./);
+      assert.ok(ciiIndex.includes(`data-snapshot-source="${manifest.sources.livePulseSnapshot}"`));
+      assert.match(ciiIndex, /Enable JavaScript to load the live reading\./);
+      assert.doesNotMatch(ciiIndex, /stable or unavailable|API result/i);
       const movementClaim = clock.ciiRanking.movementClaim
         ?? livePulseMovementClaim(livePulseSnapshotAgeDays(clock.livePulse.capturedAt));
       assert.match(
@@ -2795,11 +2925,12 @@ describe('crawlable corpus generator', () => {
         );
         const stableSlug = clock.countries.find((entry) => entry.name === stableName)?.slug;
         const stablePage = read(outDir, `countries/${stableSlug}/index.html`);
-        assert.match(
-          stablePage,
-          new RegExp(`stable or unavailable ${movementClaim.intervalPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
-        );
-        assert.match(stablePage, /data-live-trend>Stable or unavailable<\/strong>/);
+        // No numeric movement means no movement clause: the header goes
+        // straight from the band to the timestamp, and the metric names the
+        // missing reading instead of "stable or unavailable".
+        assert.doesNotMatch(stablePage, /stable or unavailable/i);
+        assert.match(stablePage, /<\/strong>, as of <time datetime=/);
+        assert.match(stablePage, /data-live-trend>(?:No earlier reading|Unavailable)<\/strong>/);
         const stableCiiDataset = jsonLdObjects(stablePage)
           .flatMap((entry) => collectDatasets(entry))
           .find((entry) => entry['@id']?.endsWith('#cii-dataset'));
@@ -2984,10 +3115,11 @@ describe('crawlable corpus generator', () => {
         const route = `/countries/${country.slug}/`;
         const countryHtml = read(outDir, `${route.slice(1)}index.html`);
         const countryDocument = htmlDocument(countryHtml, `https://www.worldmonitor.app${route}`);
-        assert.ok(
-          countryDocument.querySelector('[data-intel-brief], [data-brief-unavailable]'),
-          `${route} must publish a grounded brief or explain its absence`,
-        );
+        // A withheld brief is silent: its skip reason is pipeline
+        // bookkeeping, and no page may print a model id or the retired
+        // evidence-limit notices.
+        assert.equal(countryDocument.querySelector('[data-brief-unavailable]'), null, `${route} prints a brief skip reason`);
+        assert.doesNotMatch(countryHtml, /do not establish this|claims were withheld|deepseek|gpt-oss/i, `${route} leaks a notice or model id`);
         if (country.rank == null) {
           assert.match(countryHtml, /Nearest ranked comparators:/);
           assert.doesNotMatch(
@@ -5830,7 +5962,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-08-08 x3 2026-08-09 x4 2026-08-10 x4 2026-08-11 x3 2026-08-12 x3 2026-08-13 x4 — sourcePageLastmod pure-function fixtures
   // #7533-allowlist: 2026-08-29 x5 — STORY_CAPTURED_AT synthetic story clock and static snapshot-path fixtures
   // #7533-allowlist: 2026-09-01 x4 — CORPUS_GENERATOR_CONTENT_VERSION and synthetic development fixtures
-  // #7533-allowlist: 2026-09-02 x17 — synthetic developments timestamps (incl. the nofollow index-row render fixture, #7748)
+  // #7533-allowlist: 2026-09-02 x21 — synthetic developments timestamps (incl. the nofollow index-row render fixture, #7748, and the evidence-grounded brief fixtures)
   // #7533-allowlist: 2026-09-03 x14. Static DataCatalog and ItemList render fixtures, datasetObservationCoverage fixtures.
   it('rejects undocumented calendar-date literals in this file', () => {
     const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
@@ -5905,6 +6037,96 @@ describe('country recent developments', () => {
     change24h: 12,
   };
 
+  describe('evidence-grounded briefs', () => {
+    const RISK = 'Sudan has a Country Instability Index score of 72.5 of 100, in the High band.';
+    const LINK = 'Sudan aid convoys reach Darfur while Sudan is linked to the Bab el-Mandeb chokepoint.';
+    const EVIDENCE = [
+      { id: 'E1', kind: 'cii', label: 'Country Instability Index', value: '72.5 of 100 (High)', asOf: '2026-09-02T11:00:00.000Z',
+        factText: 'Sudan has a Country Instability Index score of 72.5 of 100, in the High band, as of Sep 2, 2026.' },
+      { id: 'E2', kind: 'chokepoint', label: 'Bab el-Mandeb', value: 'Bab el-Mandeb', asOf: '2026-09-02T11:00:00.000Z',
+        factText: 'Sudan is linked to the Bab el-Mandeb chokepoint.', url: 'https://www.worldmonitor.app/chokepoints/bab-el-mandeb/' },
+      { id: 'E3', kind: 'market', label: 'Polymarket', value: '40%', asOf: '2026-09-02T11:00:00.000Z',
+        factText: "A Polymarket market related to Sudan, 'Sudan ceasefire by December 31?', priced Yes at 40% on Sep 2, 2026.", url: 'https://polymarket.com/event/sudan-ceasefire' },
+    ];
+    const structured = (sections) => ({
+      ...DEVELOPMENTS,
+      brief: {
+        text: ['SITUATION NOW', 'Sudan aid convoy reaches Darfur amid talks [1]',
+          ...sections.flatMap((section) => [section.heading, ...section.claims.map((claim) => `${claim.text} ${[...claim.sourceIndexes.map((i) => `[${i}]`), ...claim.evidenceIds.map((id) => `[${id}]`)].join('')}`)])].join('\n'),
+        generatedAt: BRIEF.generatedAt,
+        sources: BRIEF.sources,
+        evidence: EVIDENCE,
+      },
+    });
+    const RISKS = { key: 'risks', heading: 'KEY RISKS', claims: [{ text: RISK, sourceIndexes: [], evidenceIds: ['E1'] }] };
+    const MEANS = { key: 'implications', heading: 'WHAT THIS MEANS FOR SUDAN', claims: [{ text: LINK, sourceIndexes: [1], evidenceIds: ['E2'] }] };
+
+    it('renders the analytical sections, cited data points and an automated-summary credit', () => {
+      const developments = structured([MEANS, RISKS]);
+      const html = renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments });
+      assert.ok(html.includes('data-intel-brief'));
+      assert.ok(!html.includes('<h3>Situation now</h3>'), 'Recent developments already lists the situation');
+      assert.ok(html.includes('<h3>What this means for Sudan</h3>'));
+      assert.ok(html.includes(`<p>${RISK} [E1]</p>`));
+      assert.ok(html.includes('data-brief-evidence'));
+      assert.ok(html.includes('<a href="https://www.worldmonitor.app/chokepoints/bab-el-mandeb/">E2 · Bab el-Mandeb: Bab el-Mandeb</a>'));
+      assert.ok(html.includes('<time datetime="2026-09-02T11:00:00.000Z">September 2, 2026</time>'));
+      assert.ok(!html.includes('E3 · Polymarket'), 'only cited data points are listed');
+      assert.ok(html.includes('Automated summary of 1 cited report and 2 World Monitor data points'));
+      assert.doesNotMatch(html, /test-model|do not establish|withheld/);
+      assertCountryDevelopmentsRendered({ pagePath: '/countries/sudan/', html, developments, countryCode: 'SD', countryName: 'Sudan' });
+      assertCountryBriefPresentation({ pagePath: '/countries/sudan/', html, sources: developments.brief.sources, evidence: EVIDENCE });
+    });
+
+    it('titles every published section and rejects malformed evidence', () => {
+      const outlook = { key: 'outlook', heading: 'OUTLOOK', claims: [{ text: "A Polymarket market related to Sudan, 'Sudan ceasefire by December 31?', priced Yes at 40% on Sep 2, 2026.", sourceIndexes: [], evidenceIds: ['E3'] }] };
+      const html = renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments: structured([MEANS, RISKS, outlook]) });
+      for (const heading of ['What this means for Sudan', 'Key risks', 'Outlook']) {
+        assert.ok(html.includes(`<h3>${heading}</h3>`), heading);
+      }
+      const developments = structured([RISKS]);
+      assert.throws(() => renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments: {
+        ...developments, brief: { ...developments.brief, evidence: 'E1' },
+      } }), /malformed evidence/);
+      assert.throws(() => renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments: {
+        ...developments, brief: { ...developments.brief, evidence: [{ ...EVIDENCE[0], url: 'http://insecure.test/cii' }, ...EVIDENCE.slice(1)] },
+      } }), /https URL/);
+    });
+
+    it('marks an external data-point link nofollow', () => {
+      const outlook = { key: 'outlook', heading: 'OUTLOOK', claims: [{ text: "A Polymarket market related to Sudan, 'Sudan ceasefire by December 31?', priced Yes at 40% on Sep 2, 2026.", sourceIndexes: [], evidenceIds: ['E3'] }] };
+      const html = renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments: structured([outlook]) });
+      assert.ok(html.includes('<a href="https://polymarket.com/event/sudan-ceasefire" rel="nofollow noopener">'));
+    });
+
+    it('renders no brief block when only the Situation survived', () => {
+      const developments = structured([]);
+      const html = renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments });
+      assert.ok(!html.includes('data-intel-brief'));
+      assert.ok(html.includes(HEADLINE.url), 'the situation is still on the page as a development');
+      assertCountryDevelopmentsRendered({ pagePath: '/countries/sudan/', html, developments, countryCode: 'SD', countryName: 'Sudan' });
+    });
+
+    it('fails the build when a rendered claim is missing or a data point is unsupported', () => {
+      const developments = structured([RISKS]);
+      assert.throws(() => assertCountryDevelopmentsRendered({ pagePath: '/countries/sudan/', html: '<section data-country-developments></section>', developments, countryCode: 'SD', countryName: 'Sudan' }), /dropped/);
+      const tampered = renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments }).replace('72.5 of 100', '95 of 100');
+      assert.throws(() => assertCountryBriefPresentation({ pagePath: '/countries/sudan/', html: tampered, sources: developments.brief.sources, evidence: EVIDENCE }), /unsupported citation/);
+      assert.throws(() => renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments: {
+        ...developments, brief: { ...developments.brief, text: developments.brief.text.replace('[E1]', '[E9]') },
+      } }), /does not carry/);
+    });
+
+    it('drops legacy evidence-limit notices and the model id from pre-migration briefs', () => {
+      const html = renderCountryDevelopments({ countryCode: 'SD', countryName: 'Sudan', developments: {
+        ...DEVELOPMENTS,
+        brief: { ...BRIEF, model: 'deepseek/deepseek-v4-flash', text: `${BRIEF.text}\n\nOUTLOOK\nThe supplied headlines do not establish this.\n\nSome generated claims were withheld because they did not match the supplied source titles.` },
+      } });
+      assert.ok(html.includes('Sudan aid convoys move under escort [1].'));
+      assert.doesNotMatch(html, /deepseek|do not establish|withheld|<h3>Outlook<\/h3>/);
+    });
+  });
+
   it('renders headlines, brief and timeline as dated, sourced items', () => {
     const html = renderCountryDevelopments({
       countryName: 'Sudan',
@@ -5921,12 +6143,12 @@ describe('country recent developments', () => {
     assert.ok(html.includes('Reporting captured in the same window is listed below.'));
     assert.ok(!html.toLowerCase().includes('driven by'));
     // Brief body as structure (section heading + paragraph, never a <br>
-    // blob), generation line and grounding source count.
+    // blob), and an automated-summary credit with the cited report count.
     assert.ok(html.includes('data-intel-brief'));
     assert.ok(html.includes('<h3>Situation now</h3>'));
     assert.ok(html.includes('Sudan aid convoys move under escort [1].'));
     assert.ok(html.includes('<time datetime="2026-09-02T12:00:00.000Z">'));
-    assert.ok(html.includes('from 2 grounding sources'));
+    assert.ok(html.includes('Automated summary of 2 cited reports'));
     // Timeline event with summary, domain and source link.
     assert.ok(html.includes('data-intel-timeline'));
     assert.ok(html.includes('Port call logged in SD'));
@@ -6178,10 +6400,9 @@ describe('country recent developments', () => {
       countryName: 'Palau',
       developments: { headlines: [], brief: null, timeline: [], briefSkipped: 'no-grounding', capturedAt: '2026-09-03T00:00:00.000Z' },
     });
-    assert.match(html, /data-brief-unavailable/);
-    assert.match(html, /No country brief is available for Palau in this snapshot/);
-    assert.match(html, /No country-specific grounding sources were captured/);
-    assert.match(renderCountryDevelopments({ countryName: 'Palau', developments: null }), /No brief was captured/);
+    assert.doesNotMatch(html, /data-brief-unavailable|grounding sources/);
+    assert.match(html, /No recent reporting on Palau was captured in this snapshot\./);
+    assert.match(renderCountryDevelopments({ countryName: 'Palau', developments: null }), /No recent reporting on Palau/);
     assert.equal(developmentsHasDatedItem({ headlines: [], brief: null, timeline: [] }), false);
     for (const signals of [
       { ciiEntry: CII_ENTRY },
@@ -6192,32 +6413,20 @@ describe('country recent developments', () => {
         developments: { headlines: [], brief: null, timeline: [], briefSkipped: 'no-grounding' },
         ...signals,
       });
-      assert.match(emptyHtml, /data-brief-unavailable/);
+      assert.match(emptyHtml, /data-developments-empty/);
       assert.doesNotMatch(emptyHtml, /Reporting captured in the same window/);
     }
   });
 
-  it('explains each withheld state and never exposes internal or unknown reason text', () => {
-    const reasons = {
-      'thin-grounding': /at least two distinct publishers/,
-      'uncurated-grounding': /curated news source/,
-      'unsupported-citation': /citations did not pass/,
-      'no-service-key': /generation was unavailable/,
-      failed: /request failed/,
-      empty: /no usable brief/,
-      '<script>': /No brief was captured/,
-      constructor: /No brief was captured/,
-    };
-    for (const [briefSkipped, expected] of Object.entries(reasons)) {
+  it('renders nothing for a withheld brief and never exposes its reason', () => {
+    for (const briefSkipped of ['thin-grounding', 'uncurated-grounding', 'unsupported-citation', 'no-service-key', 'failed', 'empty', '<script>', 'constructor']) {
       const html = renderCountryDevelopments({
         countryName: 'Sudan', developments: { ...DEVELOPMENTS, brief: null, briefSkipped },
       });
-      assert.match(html, expected);
-      assert.match(html, /data-brief-unavailable/);
+      assert.doesNotMatch(html, /data-brief-unavailable|No country brief|publishers|grounding|withheld|request failed|<script>/i);
       assert.ok(!html.includes('data-intel-brief'));
       assert.ok(html.includes(HEADLINE.url), 'keep the lighter sourced developments');
     }
-    assert.ok(!renderCountryDevelopments({ countryName: 'Sudan', developments: DEVELOPMENTS }).includes('data-brief-unavailable'));
   });
 
   it('throws on unattributable rows instead of publishing them', () => {
@@ -6342,7 +6551,7 @@ describe('country recent developments', () => {
       assert.ok(!html.includes(raw), `unescaped markup reaches the page: ${raw}`);
     }
     assert.ok(html.includes('Sudan&quot;&gt;'), 'the country name is escaped in heading and aria label');
-    assert.ok(html.includes('m&quot;x'), 'the brief model is escaped');
+    assert.ok(!html.includes('m&quot;x') && !html.includes('m"x'), 'the brief model is never rendered');
   });
 
   it('falls back to the frozen pulse for the movement sentence', () => {
@@ -6703,8 +6912,9 @@ describe('country recent developments', () => {
     withoutDevelopments.countries.NO = { ...(withoutDevelopments.countries.NO || {}) };
     delete withoutDevelopments.countries.NO.developments;
     const plain = renderCountryPage({ ...pageArgs, livePulse: withoutDevelopments });
-    assert.ok(plain.includes('data-brief-unavailable'),
-      'a country with no frozen developments explains why no brief is available');
+    assert.ok(plain.includes('data-developments-empty'),
+      'a country with no frozen developments says no reporting was captured');
+    assert.ok(!plain.includes('data-brief-unavailable'));
     const plainWebPage = jsonLdObjects(plain).find((entry) => entry['@type'] === 'WebPage');
     assert.ok(!('dateModified' in plainWebPage), 'no items means no dateModified claim');
   });
@@ -7523,7 +7733,7 @@ it('checks rendered brief claims as visible text after HTML escaping', () => {
 });
 
 it('retains API country-name aliases through the final country page renderer', async () => {
-  const { renderSourceBoundCountryBrief } = await import('../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts');
+  const { renderEvidenceGroundedCountryBrief } = await import('../server/worldmonitor/intelligence/v1/get-country-intel-brief.ts');
   const { displayNameForIso2 } = await import('../server/_shared/country-normalize.ts');
   const data = await loadCorpusData({ rootDir: repoRoot });
   const capturedAt = new Date(data.livePulse.capturedAt).toISOString();
@@ -7533,13 +7743,20 @@ it('retains API country-name aliases through the final country page renderer', a
       { title: `${name} announces new trade rules`, source: 'Reuters', url: 'https://www.reuters.com/world/trade', publishedAt: capturedAt },
       { title: `${name} reviews trade rules`, source: 'BBC News', url: 'https://www.bbc.com/news/trade', publishedAt: capturedAt },
     ];
-    const text = renderSourceBoundCountryBrief(JSON.stringify({
-      situation: [{ text: `${name} announces new trade rules.`, source: 1 }],
-      implications: [], risks: [], outlook: [], watch: [],
-    }), sources, displayNameForIso2(code));
-    assert.ok(text);
+    const evidence = [{
+      id: 'E1', kind: 'advisory', label: 'Travel advisory', value: 'Exercise Increased Caution', asOf: capturedAt,
+      factText: `The most severe government travel advisory World Monitor tracks for ${name} is Exercise Increased Caution.`,
+    }];
+    const rendered = renderEvidenceGroundedCountryBrief(JSON.stringify({
+      situation: [{ text: `${name} announces new trade rules.`, sources: [1] }],
+      implications: [{ text: `${name} announces new trade rules while its travel advisory is Exercise Increased Caution.`, sources: [1], evidence: ['E1'] }],
+      risks: [], outlook: [], watch: [],
+    }), sources, evidence, displayNameForIso2(code));
+    assert.ok(rendered);
+    assert.equal(rendered.sections.length, 2, `${code}: both claims must survive validation`);
+    const { text } = rendered;
     const livePulse = structuredClone(data.livePulse);
-    livePulse.countries[code].developments = { headlines: sources, brief: { text, sources, model: 'fixture', generatedAt: capturedAt }, timeline: [] };
+    livePulse.countries[code].developments = { headlines: sources, brief: { text, sources, evidence: rendered.evidence, generatedAt: capturedAt }, timeline: [] };
     const html = renderCountryPage({
       country, baseUrl: 'https://www.worldmonitor.app', capturedAt: data.resilience.capturedAt,
       lastmod: data.lastmod.countries, methodologyFormula: data.resilience.methodologyFormula,
@@ -7550,6 +7767,7 @@ it('retains API country-name aliases through the final country page renderer', a
     });
     assert.ok(html.includes('data-intel-brief'), `${code} must retain the API brief`);
     assert.ok(html.includes(`<h3>What this means for ${name}</h3>`), `${code} must use the page name`);
-    assert.ok(html.includes(`${name} announces new trade rules. [1]`));
+    assert.ok(html.includes(`${name} announces new trade rules while its travel advisory is Exercise Increased Caution. [1][E1]`));
+    assert.ok(!html.includes('<h3>Situation now</h3>'), 'Recent developments already lists the situation');
   }
 });

@@ -342,13 +342,13 @@ describe('Railway Native Deploy Health workflow', () => {
       assert.match(healthyDrift.stdout, /Every service this repository deploys is running/);
       assert.match(
         healthyDrift.stderr,
-        /Read 83 service histories in 1 fleet page\(s\) \(83 records\), 0 direct fallback\(s\)\./,
+        /Read 84 service histories in 1 fleet page\(s\) \(84 records\), 0 direct fallback\(s\)\./,
       );
       const queries = readFileSync(fixture.queryLog, 'utf8').trim().split('\n');
       assert.equal(
         queries.filter((query) => query === 'ViewerDeploymentConfig').length,
-        83,
-        'the config audit must reuse the deployment projection instead of reading 83 services twice',
+        84,
+        'the config audit must reuse the deployment projection instead of reading 84 services twice',
       );
       assert.equal(queries.filter((query) => query === 'FleetDeployments').length, 1);
       // The refresh is the whole point of the post-observation fetch: without it

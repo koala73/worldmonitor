@@ -1,10 +1,10 @@
 // Rate-limit coverage for api/youtube/live.js (#6234).
 //
-// The route proxies youtube.com from our egress IPs and, before this suite,
-// had no meter at all: `isDisallowedOrigin` is a CORS check and does nothing
-// against a non-browser caller. A single request can fan out to the Railway
-// relay AND a full live-page HTML scrape, so the assertion with teeth here is
-// not the 429 status but that a limited request never reaches youtube.com.
+// The route calls youtube.com's oEmbed from our egress IPs and, before this
+// suite, had no meter at all: `isDisallowedOrigin` is a CORS check and does
+// nothing against a non-browser caller. Channel live detection is retired (410),
+// but it is still metered first, so the assertion with teeth here is not the
+// 429 status but that a limited request never reaches youtube.com.
 
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -106,6 +106,20 @@ test('meters malformed requests too, so a bad parameter is not a free path', asy
   const res = await handler(makeRequest('', uniqueCallerIp()));
 
   assert.equal(res.status, 429, 'missing-parameter request must be metered, not answered with 400');
+  assert.deepEqual(youtubeCalls(calls).map((c) => c.url), []);
+});
+
+test('meters a channel request before answering that channel detection is retired', async () => {
+  const limitedCalls = spyFetch(() => upstashReply(-1, 30));
+  const limited = await handler(makeRequest('channel=%40SkyNews', uniqueCallerIp()));
+  assert.equal(limited.status, 429);
+  assert.deepEqual(youtubeCalls(limitedCalls).map((c) => c.url), []);
+
+  // Positive control: with headroom the same request reaches the retirement answer, still without youtube.com.
+  const calls = spyFetch(() => upstashReply(29, 30));
+  const res = await handler(makeRequest('channel=%40SkyNews', uniqueCallerIp()));
+  assert.equal(res.status, 410);
+  assert.deepEqual(await res.json(), { error: 'channel_live_detection_retired' });
   assert.deepEqual(youtubeCalls(calls).map((c) => c.url), []);
 });
 

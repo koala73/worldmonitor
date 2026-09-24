@@ -963,6 +963,57 @@ export interface UsInterestRateObservation {
   percent: number;
 }
 
+export interface GetWorldCpiMonthlyRequest {
+  history: boolean;
+  country: string;
+}
+
+export interface GetWorldCpiMonthlyResponse {
+  countries: WorldCpiCountry[];
+  unavailable: boolean;
+}
+
+export interface WorldCpiCountry {
+  country: string;
+  source: string;
+  frequency: string;
+  indexBase: string;
+  periods: WorldCpiPeriod[];
+}
+
+export interface WorldCpiPeriod {
+  period: number;
+  reading?: WorldCpiReading;
+}
+
+export interface WorldCpiReading {
+  index: number;
+  periodOverPeriod?: WorldCpiPercentChange;
+  yearOverYear?: WorldCpiPercentChange;
+}
+
+export interface WorldCpiPercentChange {
+  percent: number;
+}
+
+export interface GetGovernmentYieldCurveRequest {
+  country: string;
+  history: boolean;
+}
+
+export interface GetGovernmentYieldCurveResponse {
+  country: string;
+  source: string;
+  measure: string;
+  curves: YieldCurvePoint[];
+  unavailable: boolean;
+}
+
+export interface YieldCurvePoint {
+  date: number;
+  tenors: Record<string, number>;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1041,6 +1092,8 @@ export interface EconomicServiceHandler {
   getUsCpiMonthly(ctx: ServerContext, req: GetUsCpiMonthlyRequest): Promise<GetUsCpiMonthlyResponse>;
   getUsTreasuryParYieldCurve(ctx: ServerContext, req: GetUsTreasuryParYieldCurveRequest): Promise<GetUsTreasuryParYieldCurveResponse>;
   getUsInterestRates(ctx: ServerContext, req: GetUsInterestRatesRequest): Promise<GetUsInterestRatesResponse>;
+  getWorldCpiMonthly(ctx: ServerContext, req: GetWorldCpiMonthlyRequest): Promise<GetWorldCpiMonthlyResponse>;
+  getGovernmentYieldCurve(ctx: ServerContext, req: GetGovernmentYieldCurveRequest): Promise<GetGovernmentYieldCurveResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -2391,6 +2444,102 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getUsInterestRates(ctx, body);
           return new Response(JSON.stringify(result as GetUsInterestRatesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-world-cpi-monthly",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetWorldCpiMonthlyRequest = {
+            history: params.get("history") === "true",
+            country: params.get("country") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getWorldCpiMonthly", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getWorldCpiMonthly(ctx, body);
+          return new Response(JSON.stringify(result as GetWorldCpiMonthlyResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-government-yield-curve",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetGovernmentYieldCurveRequest = {
+            country: params.get("country") ?? "",
+            history: params.get("history") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getGovernmentYieldCurve", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getGovernmentYieldCurve(ctx, body);
+          return new Response(JSON.stringify(result as GetGovernmentYieldCurveResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

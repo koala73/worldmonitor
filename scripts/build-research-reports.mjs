@@ -875,7 +875,7 @@ ${notCovered}
 ${sectionsHtml}
 ${notCoveredSection}
 ${justification}
-      <p class="source">Snapshot: ${escapeHtml(report.snapshotPath)} (retrieved ${escapeHtml(String(snapshot.capturedAt))}). Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>
+      <p class="source" data-snapshot-source="${escapeHtml(report.snapshotPath)}">Snapshot: World Monitor chokepoint transit snapshot, retrieved ${escapeHtml(String(snapshot.capturedAt).slice(0, 10))}. Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>
       ${UMAMI_SCRIPT_TAG}`;
 
   const jsonLd = {

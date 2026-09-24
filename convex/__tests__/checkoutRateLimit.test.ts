@@ -2,7 +2,7 @@ import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import {
@@ -256,7 +256,7 @@ describe("checkout rate-limit classification", () => {
   });
 });
 
-describe("relay and public action contracts", () => {
+describe("relay action contracts", () => {
   test("a transient provider 429 is absorbed by the bounded retry and checkout succeeds (#6027)", async () => {
     process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
     process.env.CONVEX_TENANT_RELAY_SECRET = TEST_RELAY_SECRET;
@@ -396,28 +396,6 @@ describe("relay and public action contracts", () => {
     });
     expect(createDodoCheckoutSession).toHaveBeenCalledTimes(1);
     expect(sleeps).not.toHaveBeenCalled();
-  });
-
-  test("the public action keeps provider rate limits on its error channel", async () => {
-    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    mockSustainedProviderRateLimit();
-    pinRetryClock();
-    const t = convexTest(schema, modules);
-
-    const request = t.withIdentity(TEST_USER).action(
-      api.payments.checkout.createCheckout,
-      {
-        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
-      },
-    );
-    await expect(request).rejects.toBeInstanceOf(Error);
-    await request.catch((error: unknown) => {
-      const data = JSON.parse(String((error as { data?: unknown }).data));
-      expect(data).toMatchObject({
-        code: CHECKOUT_RATE_LIMITED,
-        retryAfterSeconds: CHECKOUT_RETRY_AFTER_SECONDS,
-      });
-    });
   });
 });
 
@@ -742,22 +720,6 @@ describe("terminal rate-limit alarm", () => {
 
     expect(response.status).toBe(200);
     expect(await readAlarmRows(t)).toHaveLength(0);
-  });
-
-  test("the public action path records too, so neither entry point is blind", async () => {
-    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
-    mockSustainedProviderRateLimit();
-    pinRetryClock();
-    const t = convexTest(schema, modules);
-
-    await t
-      .withIdentity(TEST_USER)
-      .action(api.payments.checkout.createCheckout, { productId: ALARM_PRODUCT })
-      .catch(() => undefined);
-
-    const rows = await readAlarmRows(t);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].userId).toBe(TEST_USER.subject);
   });
 
   test("crossing the 24h threshold pages once and stamps the alert", async () => {

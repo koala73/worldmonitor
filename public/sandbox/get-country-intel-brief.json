@@ -22,8 +22,16 @@
       "brief": "example",
       "countryCode": "US",
       "countryName": "US",
-      "generatedAt": 1717200000000,
-      "model": "example"
+      "evidence": [
+        {
+          "asOf": "example",
+          "factText": "example",
+          "id": "example-id",
+          "kind": "example",
+          "label": "example"
+        }
+      ],
+      "generatedAt": 1717200000000
     }
   }
 }

@@ -155,7 +155,7 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
     for (const row of committed.cii) {
       const frozen = snapshot.countries[row.region];
       const label = String(frozen.trend || '');
-      if (!label || label.startsWith('Stable or unavailable')) {
+      if (!label || label === 'No earlier reading' || label.startsWith('Stable')) {
         assert.equal(
           row.trend,
           'TREND_DIRECTION_UNSPECIFIED',
@@ -397,6 +397,17 @@ describe('welcome teaser generator refuses unpublishable input', () => {
     assert.equal(byRegion.get('IL'), 'TREND_DIRECTION_UNSPECIFIED');
     assert.equal(byRegion.get('PK'), 'TREND_DIRECTION_UNSPECIFIED');
     assert.equal(byRegion.get('AD'), undefined, 'a partial capture has no score to publish');
+
+    // "Unchanged" is a measured zero against an earlier reading; "No earlier
+    // reading" is the split-out unknown half of the legacy label.
+    const split = snapshotFixture();
+    split.countries.IR.trend = 'Unchanged';
+    split.countries.IL.trend = 'No earlier reading';
+    const splitByRegion = new Map(
+      buildWelcomeTeasers(split, 'docs/snapshots/x.json').cii.map((row) => [row.region, row.trend]),
+    );
+    assert.equal(splitByRegion.get('IR'), 'TREND_DIRECTION_STABLE');
+    assert.equal(splitByRegion.get('IL'), 'TREND_DIRECTION_UNSPECIFIED');
   });
 
   it('rejects a trend label the canonical parser does not recognise', () => {

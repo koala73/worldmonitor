@@ -23,6 +23,8 @@ import {
   formatOrphanIssue,
   isCommitAncestor,
   listPullsByHead,
+  planStackRetargets,
+  retargetStackedChildren,
 } from '../scripts/check-stacked-merge.mjs';
 
 const PARENT_6996 = Object.freeze({
@@ -410,7 +412,9 @@ describe('checkStackedMerge orchestrator', () => {
         merged: false,
         state: 'open',
       }, { action: 'synchronize' }),
-      gh: () => JSON.stringify([[PARENT_6996]]),
+      gh: (args) => (args.at(-1) === 'repos/koala73/worldmonitor/pulls/6997'
+        ? JSON.stringify(CHILD_6997)
+        : JSON.stringify([[PARENT_6996]])),
     });
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'base-pr-merged');
@@ -682,7 +686,10 @@ describe('CLI replay of the recorded tombstone', () => {
         repository: { default_branch: 'main', full_name: 'koala73/worldmonitor' },
       }));
       writeFileSync(ghPath, `#!/bin/sh
-echo '[[{"number":6996,"merged_at":"2026-08-20T12:53:04Z","title":"parent","html_url":"https://github.com/koala73/worldmonitor/pull/6996","state":"closed"}]]'
+case "$*" in
+  *pulls/6997) echo '{"number":6997,"base":{"ref":"fix/aviation-budget-binds-v2"}}' ;;
+  *) echo '[[{"number":6996,"merged_at":"2026-08-20T12:53:04Z","title":"parent","html_url":"https://github.com/koala73/worldmonitor/pull/6996","state":"closed","base":{"ref":"main"}}]]' ;;
+esac
 `);
       chmodSync(ghPath, 0o755);
       const result = spawnSync(process.execPath, [script, '--mode', 'pre-merge'], {
@@ -696,7 +703,8 @@ echo '[[{"number":6996,"merged_at":"2026-08-20T12:53:04Z","title":"parent","html
       });
       assert.equal(result.status, 1);
       assert.match(result.stderr, /#6996/);
-      assert.match(result.stderr, /tombstone/);
+      assert.match(result.stderr, /orphaned branch/);
+      assert.match(result.stderr, /gh pr edit 6997 --base main/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -821,5 +829,308 @@ console.log(JSON.stringify(answer));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// #8518 → #8519/#8520 (2026-09-22): the parent squash-merged to main, its
+// branch was not deleted, so GitHub never retargeted the children. Both then
+// merged into the orphaned branch on a stacked-merge-guard success recorded
+// 40 minutes before the parent merged. No pull_request event fires on a child
+// when its parent merges, so nothing re-evaluated them.
+const PARENT_8518 = Object.freeze({
+  number: 8518,
+  title: 'fix(live-news): play Live News through the verified live video session (3/5)',
+  html_url: 'https://github.com/koala73/worldmonitor/pull/8518',
+  state: 'closed',
+  merged: true,
+  merged_at: '2026-09-22T20:45:49Z',
+  base: { ref: 'main', repo: { full_name: 'koala73/worldmonitor' } },
+  head: { ref: 'feat/live-news-session-v2', sha: '4e9b2b9edacf0b485cf09824dd003b14f8420610', repo: { full_name: 'koala73/worldmonitor' } },
+});
+
+const CHILD_8519 = Object.freeze({
+  number: 8519,
+  title: 'feat(live-video): file a daily issue listing live video slots that need a replacement (4/5)',
+  state: 'open',
+  merged: false,
+  merged_at: null,
+  base: { ref: 'feat/live-news-session-v2', repo: { full_name: 'koala73/worldmonitor', owner: { login: 'koala73' } } },
+  head: { ref: 'feat/live-video-audit-v2', sha: 'a490f44bb9b2e982f3b7f076ed28df45c499e3d6', repo: { full_name: 'koala73/worldmonitor' } },
+});
+
+const CHILD_8520 = Object.freeze({
+  ...CHILD_8519,
+  number: 8520,
+  title: 'chore(live-video): retire the YouTube live scraper (5/5)',
+  head: { ref: 'chore/retire-youtube-live-scraper-v2', sha: 'd1e4988d6c51ad82ba570e249e739629b738c93d', repo: { full_name: 'koala73/worldmonitor' } },
+});
+
+describe('#8518 → #8519 orphaned-base guard', () => {
+  it('fails #8519 once its base branch is the head of merged #8518', () => {
+    const verdict = evaluatePreMergeGuard({
+      defaultBranch: 'main',
+      baseRef: CHILD_8519.base.ref,
+      baseHeadPulls: [PARENT_8518],
+    });
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.reason, 'base-pr-merged');
+  });
+
+  it('passes #8519 while #8518 is still open, as before the incident', () => {
+    const verdict = evaluatePreMergeGuard({
+      defaultBranch: 'main',
+      baseRef: CHILD_8519.base.ref,
+      baseHeadPulls: [{ ...PARENT_8518, state: 'open', merged: false, merged_at: null }],
+    });
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.reason, 'base-pr-open');
+  });
+
+  it('passes #8519 once it is based on main', () => {
+    const verdict = evaluatePreMergeGuard({ defaultBranch: 'main', baseRef: 'main', baseHeadPulls: [PARENT_8518] });
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.reason, 'base-is-default');
+  });
+
+  it('fails a child whose base PR was closed without merging', () => {
+    const verdict = evaluatePreMergeGuard({
+      defaultBranch: 'main',
+      baseRef: CHILD_8519.base.ref,
+      baseHeadPulls: [{ ...PARENT_8518, merged: false, merged_at: null }],
+    });
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.reason, 'base-pr-closed');
+    assert.deepEqual(verdict.closedPrs.map(pr => pr.number), [8518]);
+  });
+
+  it('prefers a reopened open PR over an older closed one on the same head', () => {
+    const verdict = evaluatePreMergeGuard({
+      defaultBranch: 'main',
+      baseRef: CHILD_8519.base.ref,
+      baseHeadPulls: [
+        { ...PARENT_8518, number: 8166, merged: false, merged_at: null },
+        { ...PARENT_8518, state: 'open', merged: false, merged_at: null },
+      ],
+    });
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.reason, 'base-pr-open');
+  });
+
+  it('tells the author to retarget to the merged parent base', () => {
+    const result = checkStackedMerge({
+      mode: 'pre-merge',
+      event: pullEvent(CHILD_8519),
+      gh: (args) => {
+        if (args.at(-1) === 'repos/koala73/worldmonitor/pulls/8519') return JSON.stringify(CHILD_8519);
+        return JSON.stringify([[PARENT_8518]]);
+      },
+    });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /#8518/);
+    assert.match(result.annotation, /gh pr edit 8519 --base main/);
+  });
+
+  it('re-evaluates the live base, not the stale event payload, on a rerun', () => {
+    const calls = [];
+    const result = checkStackedMerge({
+      mode: 'pre-merge',
+      // A rerun replays the original payload, whose base still names the parent branch.
+      event: pullEvent(CHILD_8519),
+      gh: (args) => {
+        calls.push(args.at(-1));
+        if (args.at(-1) === 'repos/koala73/worldmonitor/pulls/8519') {
+          return JSON.stringify({ ...CHILD_8519, base: { ...CHILD_8519.base, ref: 'main' } });
+        }
+        return JSON.stringify([[PARENT_8518]]);
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, 'base-is-default');
+    assert.deepEqual(calls, ['repos/koala73/worldmonitor/pulls/8519']);
+  });
+
+  it('reads the live base on a rerun even when the stale payload names the default branch', () => {
+    const calls = [];
+    const result = checkStackedMerge({
+      mode: 'pre-merge',
+      // The original run saw `main`; the PR has since been moved onto the merged parent's branch.
+      event: pullEvent({ ...CHILD_8519, base: { ...CHILD_8519.base, ref: 'main' } }),
+      runAttempt: 2,
+      gh: (args) => {
+        calls.push(args.at(-1));
+        if (args.at(-1) === 'repos/koala73/worldmonitor/pulls/8519') return JSON.stringify(CHILD_8519);
+        return JSON.stringify([[PARENT_8518]]);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'base-pr-merged');
+    assert.equal(calls[0], 'repos/koala73/worldmonitor/pulls/8519');
+  });
+
+  it('makes no API call on a first run whose payload names the default branch', () => {
+    const result = checkStackedMerge({
+      mode: 'pre-merge',
+      event: pullEvent({ ...CHILD_8519, base: { ...CHILD_8519.base, ref: 'main' } }),
+      runAttempt: 1,
+      gh: () => { throw new Error('gh must not be called'); },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, 'base-is-default');
+  });
+});
+
+describe('stacked child retarget plan', () => {
+  const repository = 'koala73/worldmonitor';
+
+  it('retargets #8519 and #8520 to main when #8518 merges', () => {
+    const plan = planStackRetargets({
+      closedPull: PARENT_8518,
+      openChildren: [CHILD_8519, CHILD_8520],
+      repository,
+      defaultBranch: 'main',
+    });
+    assert.deepEqual(plan, [
+      { number: 8519, headSha: CHILD_8519.head.sha, action: 'retarget', from: 'feat/live-news-session-v2', to: 'main' },
+      { number: 8520, headSha: CHILD_8520.head.sha, action: 'retarget', from: 'feat/live-news-session-v2', to: 'main' },
+    ]);
+  });
+
+  it('retargets a grandchild to its merged parent base, as GitHub does on branch deletion', () => {
+    const middle = { ...PARENT_8518, base: { ref: 'feat/grandparent', repo: { full_name: repository } } };
+    const plan = planStackRetargets({ closedPull: middle, openChildren: [CHILD_8519], repository, defaultBranch: 'main' });
+    assert.equal(plan[0].action, 'retarget');
+    assert.equal(plan[0].to, 'feat/grandparent');
+  });
+
+  it('flags but does not retarget children of a parent closed without merging', () => {
+    const plan = planStackRetargets({
+      closedPull: { ...PARENT_8518, merged: false, merged_at: null },
+      openChildren: [CHILD_8519],
+      repository,
+      defaultBranch: 'main',
+    });
+    assert.deepEqual(plan.map(item => [item.number, item.action]), [[8519, 'strand']]);
+  });
+
+  it('ignores a fork head, a default-branch head, an unknown head repo, closed children and other bases', () => {
+    const fork = { ...PARENT_8518, head: { ...PARENT_8518.head, repo: { full_name: 'contributor/worldmonitor' } } };
+    assert.deepEqual(planStackRetargets({ closedPull: fork, openChildren: [CHILD_8519], repository, defaultBranch: 'main' }), []);
+    const mainHead = { ...PARENT_8518, head: { ...PARENT_8518.head, ref: 'main' } };
+    assert.deepEqual(planStackRetargets({ closedPull: mainHead, openChildren: [CHILD_8519], repository, defaultBranch: 'main' }), []);
+    const unknownHead = { ...PARENT_8518, head: { ref: 'feat/live-news-session-v2' } };
+    assert.deepEqual(planStackRetargets({ closedPull: unknownHead, openChildren: [CHILD_8519], repository, defaultBranch: 'main' }), []);
+    const others = [
+      { ...CHILD_8519, state: 'closed' },
+      { ...CHILD_8519, base: { ...CHILD_8519.base, ref: 'feat/other' } },
+      { ...CHILD_8519, base: { ...CHILD_8519.base, repo: { full_name: 'contributor/worldmonitor' } } },
+    ];
+    assert.deepEqual(planStackRetargets({ closedPull: PARENT_8518, openChildren: others, repository, defaultBranch: 'main' }), []);
+  });
+});
+
+describe('retargetStackedChildren executor', () => {
+  function fakeGh(children, { failPatch = new Set(), failRerun = false } = {}) {
+    const log = [];
+    const gh = (args, options = {}) => {
+      const path = args.find(arg => arg.startsWith('repos/'));
+      const method = args.includes('--method') ? args[args.indexOf('--method') + 1] : 'GET';
+      log.push({ method, path, input: options.input ? JSON.parse(options.input) : undefined });
+      if (path.includes('/pulls?state=open&base=')) return JSON.stringify([children]);
+      if (method === 'PATCH') {
+        const number = Number(path.split('/').at(-1));
+        if (failPatch.has(number)) throw new Error(`patch ${number} refused`);
+        return '{}';
+      }
+      if (path.includes('/actions/workflows/stacked-merge-guard.yml/runs')) {
+        const sha = new URL(path, 'https://api.github.test').searchParams.get('head_sha');
+        return JSON.stringify({ workflow_runs: [{ id: sha.slice(0, 6), head_sha: sha }] });
+      }
+      if (path.endsWith('/rerun')) {
+        if (failRerun) throw new Error('rerun refused');
+        return '';
+      }
+      if (path.endsWith('/comments')) return '{}';
+      throw new Error(`unexpected gh ${method} ${path}`);
+    };
+    return { gh, log };
+  }
+
+  it('retargets, comments on, and re-runs the guard for each orphaned child', () => {
+    const { gh, log } = fakeGh([CHILD_8519, CHILD_8520]);
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.equal(log[0].path, 'repos/koala73/worldmonitor/pulls?state=open&base=feat%2Flive-news-session-v2&per_page=100');
+    const patches = log.filter(entry => entry.method === 'PATCH');
+    assert.deepEqual(patches.map(entry => [entry.path, entry.input]), [
+      ['repos/koala73/worldmonitor/pulls/8519', { base: 'main' }],
+      ['repos/koala73/worldmonitor/pulls/8520', { base: 'main' }],
+    ]);
+    assert.deepEqual(log.filter(entry => entry.path.endsWith('/rerun')).map(entry => entry.path), [
+      'repos/koala73/worldmonitor/actions/runs/a490f4/rerun',
+      'repos/koala73/worldmonitor/actions/runs/d1e498/rerun',
+    ]);
+    const comments = log.filter(entry => entry.path.endsWith('/comments'));
+    assert.deepEqual(comments.map(entry => entry.path), [
+      'repos/koala73/worldmonitor/issues/8519/comments',
+      'repos/koala73/worldmonitor/issues/8520/comments',
+    ]);
+    assert.match(comments[0].input.body, /#8518/);
+    assert.match(comments[0].input.body, /`main`/);
+  });
+
+  it('keeps going after one retarget fails and reports it as a failure', () => {
+    const { gh, log } = fakeGh([CHILD_8519, CHILD_8520], { failPatch: new Set([8519]) });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /#8519/);
+    assert.ok(log.some(entry => entry.method === 'PATCH' && entry.path.endsWith('/8520')));
+    // The un-retargeted child still gets a fresh guard run, which fails against the merged base.
+    assert.ok(log.some(entry => entry.path.endsWith('a490f4/rerun')));
+  });
+
+  it('comments on and re-runs the guard for a child stranded by a parent closed unmerged', () => {
+    const { gh, log } = fakeGh([CHILD_8519]);
+    const closed = { ...PARENT_8518, merged: false, merged_at: null };
+    const result = retargetStackedChildren({ event: pullEvent(closed, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.equal(log.filter(entry => entry.method === 'PATCH').length, 0);
+    const comment = log.find(entry => entry.path.endsWith('/comments'));
+    assert.match(comment.input.body, /closed without merging/);
+    assert.ok(log.some(entry => entry.path.endsWith('/rerun')));
+  });
+
+  it('treats a refused guard rerun as a warning for a retargeted child', () => {
+    const { gh } = fakeGh([CHILD_8519], { failRerun: true });
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.warnings.length, 1);
+  });
+
+  it('fails when the guard cannot be re-run for a child stranded by an unmerged parent', () => {
+    // The stranded child keeps a guard verdict computed while the parent was open,
+    // so without a fresh run nothing flags it; the monitor must not report success.
+    const { gh } = fakeGh([CHILD_8519], { failRerun: true });
+    const closed = { ...PARENT_8518, merged: false, merged_at: null };
+    const result = retargetStackedChildren({ event: pullEvent(closed, { action: 'closed' }), gh });
+    assert.equal(result.ok, false);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.annotation, /#8519/);
+  });
+
+  it('only lists children for a PR with no stacked children', () => {
+    const { gh, log } = fakeGh([]);
+    const result = retargetStackedChildren({ event: pullEvent(PARENT_8518, { action: 'closed' }), gh });
+    assert.equal(result.exitCode, 0);
+    assert.equal(log.length, 1);
+  });
+
+  it('never queries or writes for a fork head', () => {
+    const fork = { ...PARENT_8518, head: { ...PARENT_8518.head, repo: { full_name: 'contributor/worldmonitor' } } };
+    const result = retargetStackedChildren({
+      event: pullEvent(fork, { action: 'closed' }),
+      gh: () => assert.fail('a fork head cannot be an upstream base'),
+    });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.reason, 'no-stacked-base');
   });
 });

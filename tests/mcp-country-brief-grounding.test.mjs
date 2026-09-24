@@ -69,6 +69,7 @@ function stubDownstream({
   digestOk = true,
   digestCoverage,
   briefSources = UPSTREAM_SOURCES,
+  briefExtras = {},
 }) {
   const calls = [];
   globalThis.fetch = async (input, init = {}) => {
@@ -90,6 +91,7 @@ function stubDownstream({
         provider: 'seeded-provider',
         model: 'seeded-model',
         sources: briefSources,
+        ...briefExtras,
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     throw new Error(`Unexpected downstream URL: ${String(input)}`);
@@ -148,6 +150,23 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     const coverage = tool.outputSchema.properties.digestCoverage.properties;
     for (const field of ['state', 'servedStale', 'staleAgeSeconds', 'staleReason', 'attemptedAt']) {
       assert.ok(coverage[field], `digestCoverage must declare ${field}`);
+    }
+  });
+
+  it('passes cited evidence through, and declares it', async () => {
+    const evidence = [{
+      id: 'E1', kind: 'resilience', label: 'Fiscal space', value: '41 of 100',
+      factText: "France's fiscal space scores 41 of 100.", asOf: '2026-09-21T00:00:00.000Z', url: '',
+    }];
+    stubDownstream({ digestItems: [digestItem()], briefExtras: { evidence } });
+
+    const payload = await callCountryBrief();
+
+    assert.deepEqual(payload.evidence, evidence);
+    const tool = __testing__.TOOL_REGISTRY.find(candidate => candidate.name === 'get_country_brief');
+    assert.equal(tool.outputSchema.properties.evidence?.type, 'array');
+    for (const field of ['id', 'label', 'value', 'asOf', 'url']) {
+      assert.ok(tool.outputSchema.properties.evidence.items.properties[field], `evidence must declare ${field}`);
     }
   });
 
@@ -251,6 +270,42 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     );
   });
 
+  it('grounds on nothing when the country\'s only mentions are sports items', async () => {
+    // The tool used to fall back to the top global items when no item matched
+    // the country, and it never filtered sports: a football score grounded
+    // Burkina Faso's brief. Zero relevant mentions now means zero grounding.
+    const calls = stubDownstream({
+      digestItems: [
+        digestItem({ title: 'France beat Portugal in World Cup qualifier', link: 'https://example.com/fr-football' }),
+        digestItem({ title: 'Markets rally in Europe on rate-cut hopes', link: 'https://example.com/eu' }),
+      ],
+    });
+
+    const payload = await callCountryBrief();
+
+    assert.deepEqual(payload.groundingStories, [], 'no sports item and no global item may ground the brief');
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.equal(
+      JSON.parse(String(briefCall.init.body)).context, undefined,
+      'no grounding context may reach the brief endpoint',
+    );
+  });
+
+  it('keeps relevant country items while dropping the country\'s sports items', async () => {
+    const calls = stubDownstream({
+      digestItems: [
+        digestItem({ title: 'France beat Portugal in World Cup qualifier', link: 'https://example.com/fr-football' }),
+        digestItem(),
+      ],
+    });
+
+    const payload = await callCountryBrief();
+
+    assert.deepEqual(payload.groundingStories.map((story) => story.url), ['https://example.com/fr-energy']);
+    const briefCall = calls.find(call => call.pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.doesNotMatch(JSON.parse(String(briefCall.init.body)).context, /World Cup/);
+  });
+
   it('emits groundingStories even when the upstream supplies its own sources', async () => {
     // The decision this pins: sources keeps the gateway's proto BriefSource
     // list untouched, and corroboration arrives on a sibling field that is
@@ -281,14 +336,14 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     // is a claim we cannot make; omission is the honest answer.
     stubDownstream({
       digestItems: [
-        { title: 'Legacy item, no story tracking', source: 'Old Wire', link: 'https://example.com/legacy' },
-        digestItem({ title: 'Tracked item', corroborationCount: 7 }),
+        { title: 'France legacy item, no story tracking', source: 'Old Wire', link: 'https://example.com/legacy' },
+        digestItem({ title: 'France tracked item', corroborationCount: 7 }),
       ],
     });
 
     const payload = await callCountryBrief();
 
-    assert.deepEqual(payload.groundingStories.map((s) => s.title), ['Tracked item']);
+    assert.deepEqual(payload.groundingStories.map((s) => s.title), ['France tracked item']);
     assert.equal(payload.groundingStories[0].corroborationCount, 7);
   });
 
@@ -306,12 +361,12 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
 
   it('caps groundingStories at six and dedupes repeated titles', async () => {
     const items = Array.from({ length: 9 }, (_, i) => digestItem({
-      title: `Story ${i}`,
+      title: `France story ${i}`,
       link: `https://example.com/s${i}`,
       corroborationCount: i,
     }));
     // A duplicate title is the same story reaching the digest twice.
-    items.push(digestItem({ title: 'Story 0', link: 'https://example.com/dupe' }));
+    items.push(digestItem({ title: 'France story 0', link: 'https://example.com/dupe' }));
     stubDownstream({ digestItems: items });
 
     const payload = await callCountryBrief();
@@ -319,14 +374,14 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     assert.equal(payload.groundingStories.length, 6);
     assert.deepEqual(
       payload.groundingStories.map((s) => s.title),
-      ['Story 0', 'Story 1', 'Story 2', 'Story 3', 'Story 4', 'Story 5'],
+      ['France story 0', 'France story 1', 'France story 2', 'France story 3', 'France story 4', 'France story 5'],
     );
   });
 
   it('omits optional fields rather than emitting undefined placeholders', async () => {
     stubDownstream({
       digestItems: [{
-        title: 'Corroboration count only',
+        title: 'France corroboration count only',
         source: 'Example Wire',
         link: 'https://example.com/count-only',
         corroborationCount: 2,
@@ -336,7 +391,7 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
     const payload = await callCountryBrief();
 
     assert.deepEqual(payload.groundingStories, [{
-      title: 'Corroboration count only',
+      title: 'France corroboration count only',
       source: 'Example Wire',
       url: 'https://example.com/count-only',
       corroborationCount: 2,

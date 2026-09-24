@@ -255,6 +255,9 @@ describe('#5697 NLP MCP tools', () => {
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.source.type, 'string');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.risk.type, 'string');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.stateAffiliated.type, 'string');
+    assert.ok(clusterSchema.properties.sourceProvenance.items.required.includes('knownBiases'));
+    assert.ok(clusterSchema.properties.sourceProvenance.items.required.includes('summary'));
+    assert.deepEqual(clusterSchema.properties.primarySourceProvenance.properties.knownBiases.items, { type: 'string' });
     const digestCoverageFields = [
       'state',
       'servedItems',
@@ -834,6 +837,8 @@ describe('#5697 NLP MCP tools', () => {
         );
         assert.equal(provenanceBySource.get('The Astana Times').stateAffiliated, 'Kazakhstan');
         assert.equal(provenanceBySource.get('The Astana Times').riskReviewed, true);
+        assert.deepEqual(provenanceBySource.get('The Astana Times').knownBiases, []);
+        assert.match(provenanceBySource.get('The Astana Times').summary, /State-affiliated: Kazakhstan\. Perspective: none recorded\./);
         assert.equal(provenanceBySource.get('Unreviewed Local Desk').risk, 'unknown');
         assert.equal(provenanceBySource.get('Unreviewed Local Desk').riskReviewed, false);
         assert.equal(provenanceBySource.get('Unreviewed Local Desk').typeReviewed, false);

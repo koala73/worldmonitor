@@ -30,6 +30,16 @@ message BriefSource {
   string published_at = 4;
 }
 
+message BriefEvidence {
+  string id = 1;
+  string kind = 2;
+  string label = 3;
+  string value = 4;
+  string fact_text = 5;
+  string as_of = 6;
+  string url = 7;
+}
+
 // GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
 message GetCountryIntelBriefResponse {
   // ISO 3166-1 alpha-2 country code.
@@ -44,4 +54,5 @@ message GetCountryIntelBriefResponse {
   int64 generated_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Source articles used to ground the generated brief.
   repeated BriefSource sources = 6;
+  repeated BriefEvidence evidence = 7;
 }

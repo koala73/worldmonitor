@@ -495,8 +495,8 @@
     },
     {
       "path": "api/youtube/live.js",
-      "category": "non-json",
-      "reason": "Streams YouTube live metadata — chunked text response, not a typed JSON payload.",
+      "category": "upstream-proxy",
+      "reason": "Names a YouTube video through YouTube's public oEmbed endpoint for channel management; channel live detection is retired and answers 410.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

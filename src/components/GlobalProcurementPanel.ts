@@ -126,6 +126,7 @@ export class GlobalProcurementPanel extends Panel {
   private data: ListGlobalTendersResponse | null = null;
   private filters: GlobalTenderFilters = { ...DEFAULT_FILTERS };
   private requestHandler: RequestHandler | null = null;
+  private principalResetHandler: (() => void) | null = null;
   private loading = false;
   private pendingAgentInvocation: PendingAgentInvocation | null = null;
   private settlingAgentForm: HTMLFormElement | null = null;
@@ -277,6 +278,14 @@ export class GlobalProcurementPanel extends Panel {
       return;
     }
     this.syncDeclarativeToolState();
+  }
+
+  /**
+   * The owner of the loader-side filter state (DataLoader) registers here so a
+   * principal change resets that state too, not just this panel's copy.
+   */
+  public setPrincipalResetHandler(handler: () => void): void {
+    this.principalResetHandler = handler;
   }
 
   public setLoading(loading: boolean, append = false): void {
@@ -441,17 +450,33 @@ export class GlobalProcurementPanel extends Panel {
     this.loading = false;
     this.setCount(0);
     if (preservesAgentForm) {
+      // The declaring form stays mounted until the browser observes
+      // respondWith(). Write the reset filters into that same node now so the
+      // previous account's query is not still visible during the gap.
+      const retainedForm = this.settlingAgentForm ?? pending?.form;
+      if (retainedForm) this.syncRenderedFilters(retainedForm, false);
       this.deferAfterAgentSettlement(() => {
         if (
           this.settlingAgentForm !== null
           || this.disposed
           || this.data !== null
         ) return;
-        this.clearSensitiveContent();
+        super.clearSensitiveContent();
       });
       return;
     }
-    this.clearSensitiveContent();
+    super.clearSensitiveContent();
+  }
+
+  /**
+   * Panel gating calls this on sign-out, downgrade, and a switch to another
+   * account. Filters and results belong to the previous principal, so reset
+   * them here and in the DataLoader, which replays its own filter copy on the
+   * next unscoped refresh.
+   */
+  public override clearSensitiveContent(): void {
+    this.clear();
+    this.principalResetHandler?.();
   }
 
   public override showGatedCta(reason: PanelGateReason, onAction: () => void): void {

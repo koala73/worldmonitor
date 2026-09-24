@@ -8,7 +8,7 @@
 // what these tests are for.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -133,7 +133,7 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the exact 83-service fleet accepted by the terminal production run', () => {
+  it('ships the 84-service fleet including the provisioned yield-curve bundle', () => {
     // The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
@@ -143,13 +143,21 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 83);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 83);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 83);
+    assert.equal(fleet.length, 84);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 84);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 84);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),
     );
+  });
+
+  it('keeps planned services out of the active fleet', () => {
+    const registry = JSON.parse(readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8'));
+    const fleet = readExpectedRepositoryFleet();
+    for (const entry of registry.filter((entry) => entry.lifecycle === 'planned')) {
+      assert.ok(!fleet.some((service) => service.name === entry.service), `${entry.service} is not provisioned`);
+    }
   });
 
   it('rejects malformed immutable fleet manifests', () => {

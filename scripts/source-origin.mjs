@@ -125,6 +125,10 @@ const HOST_ORIGINS = Object.freeze({
   'montrealgazette.com': 'CA',
   'nti.org': 'US',
   'oecd.org': null,
+  // OECD's SDMX API host. Same publisher as oecd.org — an international
+  // organisation, so it classifies as null ("International") like its parent
+  // domain rather than inferring from the generic .org TLD.
+  'sdmx.oecd.org': null,
   'oko.press': 'PL',
   'oglobo.globo.com': 'BR',
   'pajhwok.com': 'AF',
@@ -205,6 +209,7 @@ const HOST_ORIGINS = Object.freeze({
   'api.search.brave.com': 'US',
   'api.spdrgoldshares.com': 'US',
   'api.stlouisfed.org': 'US',
+  'fred.stlouisfed.org': 'US',
   'api.telegram.org': 'AE',
   'api.travelpayouts.com': 'CY',
   'api.tzevaadom.co.il': 'IL',
@@ -325,7 +330,6 @@ const HOST_ORIGINS = Object.freeze({
   'opensky-network.org': 'CH',
   'ottawacitizen.com': 'CA',
   'otx.alienvault.com': 'US',
-  'outbreaknewstoday.com': 'US',
   'ourworldindata.org': 'GB',
   'owid-public.owid.io': 'GB',
   'patents.google.com': 'US',

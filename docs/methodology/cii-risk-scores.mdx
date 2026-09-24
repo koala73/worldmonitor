@@ -218,8 +218,10 @@ occurred inside internationally recognized Israeli territory.
 
 The `dynamicScore` exposed on the wire is the signed score movement versus a
 valid CII snapshot from approximately 24 hours earlier. Positive values mean
-the country score rose, negative values mean it fell, and `0` means stable or
-that no valid prior snapshot is available.
+the country score rose, negative values mean it fell, and `0` means no change
+or that no valid prior snapshot is available. `trend` tells the two apart:
+`TREND_DIRECTION_STABLE` for a measured comparison inside the deadband,
+`TREND_DIRECTION_UNSPECIFIED` when no valid prior snapshot is available.
 
 `GetRiskScoresResponse.degraded` is `true` when upstream scoring inputs failed
 and the response is served from a stale cache or from the baseline-only cold

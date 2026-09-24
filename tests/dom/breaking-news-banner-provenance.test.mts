@@ -111,7 +111,7 @@ describe('breaking-news banner source provenance (#6598)', () => {
       expect(tier?.textContent).toBe('★');
       expect(tier?.textContent).not.toMatch(/Wire/);
       expect(risk).not.toBeNull();
-      expect(risk?.textContent).toBe('Official Government Source');
+      expect(risk?.textContent).toBe('Official Government Source: China');
     });
 
     it('surfaces unreviewed provenance as the grey unknown badge', () => {

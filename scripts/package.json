@@ -15,6 +15,7 @@
     "convex": "^1",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.8.0",
+    "jszip": "^3.10.1",
     "h3-js": "^4.2.1",
     "papaparse": "^5.5.3",
     "resend": "^4",

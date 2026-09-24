@@ -130,6 +130,25 @@ describe('DeductionPanel principal reset', () => {
     expect(panel.getElement().querySelector<HTMLButtonElement>('.deduction-submit-btn')!.disabled).toBe(false);
     panel.destroy();
   });
+
+  it('aborts the previous account in-flight request instead of only discarding it', async () => {
+    let requestSignal: AbortSignal | undefined;
+    deductSituation.mockImplementationOnce((_req: unknown, options?: { signal?: AbortSignal }) => {
+      requestSignal = options?.signal;
+      return new Promise(() => {});
+    });
+    const panel = new DeductionPanel();
+    document.body.append(panel.getElement());
+    const view = panel as unknown as { handleSubmit: (event: Event) => Promise<void> };
+    panel.getElement().querySelector<HTMLTextAreaElement>('.deduction-input')!.value = 'Private question';
+    void view.handleSubmit(new Event('submit'));
+    await vi.waitFor(() => expect(deductSituation).toHaveBeenCalled());
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
+    expect(requestSignal?.aborted).toBe(false);
+    panel.clearSensitiveContent();
+    expect(requestSignal?.aborted).toBe(true);
+    panel.destroy();
+  });
 });
 
 describe('EnergyCrisisPanel filter binding', () => {

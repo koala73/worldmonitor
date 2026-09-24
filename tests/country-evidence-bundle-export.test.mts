@@ -137,7 +137,15 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function escapeHtml(value) { return String(value ?? ''); }
       export function sanitizeUrl(value) { return value ?? ''; }
     `],
-    ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['intel-brief-stub', `
+      export function formatIntelBrief(value) { return value; }
+      // Echoes its input so a test can see which evidence and class the page passed.
+      export function renderBriefEvidenceFooter(evidence, options) {
+        if (!Array.isArray(evidence) || evidence.length === 0) return '';
+        const rows = evidence.map((item) => item.id + '=' + item.label + ': ' + item.value).join('|');
+        return '<details data-evidence-footer="' + (options?.className ?? '') + '">' + rows + '</details>';
+      }
+    `],
     ['i18n-stub', `
       export function t(key, params) {
         if (params && typeof params.count === 'number') return key + ':' + params.count;
@@ -190,6 +198,12 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
         }
         page.appendChild(trigger);
         page.appendChild(menu);
+        // updateBrief writes into this section, so give it a real node.
+        if (String(html).includes('class="cb-brief-content"')) {
+          const briefContent = document.createElement('div');
+          briefContent.className = 'cb-brief-content';
+          page.appendChild(briefContent);
+        }
         root.appendChild(page);
       }
 
@@ -629,6 +643,34 @@ describe('country evidence bundle export', () => {
       assert.equal(harness.getEvidenceExports().length, 0);
       assert.deepEqual(harness.getGateHits(), ['evidence-export']);
       assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('renders the World Monitor data footer from the brief evidence', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: true });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+      page.updateBrief({
+        code: 'FR',
+        brief: 'SITUATION NOW\nFiscal space scores 28 of 100. [E2]',
+        generatedAt: '2026-06-10T11:55:00.000Z',
+        evidence: [
+          { id: 'E2', kind: 'resilience', label: 'Fiscal space', value: '28/100', asOf: '2026-06-01', url: 'https://www.worldmonitor.app/country/FR' },
+        ],
+      });
+
+      const section = harness.getOverlay()?.querySelector('.cb-brief-content') as HTMLElement | null;
+      assert.ok(section, 'expected brief section');
+      const html = section.innerHTML;
+      assert.match(html, /data-evidence-footer="cb-brief-sources cb-brief-evidence"/);
+      assert.match(html, /E2=Fiscal space: 28\/100/);
+      assert.ok(
+        html.indexOf('data-evidence-footer') > html.indexOf('cb-brief-text'),
+        'evidence footer renders after the brief text',
+      );
     } finally {
       harness.cleanup();
     }

@@ -45,7 +45,46 @@ export function evaluatePreMergeGuard({ defaultBranch, baseRef, baseHeadPulls })
   if (pulls.some((pull) => pull?.state === 'open')) {
     return { ok: true, reason: 'base-pr-open' };
   }
+  // A base whose only PRs were closed without merging leads nowhere either.
+  const closedPrs = pulls.filter((pull) => pull?.state === 'closed');
+  if (closedPrs.length > 0) {
+    return { ok: false, reason: 'base-pr-closed', closedPrs };
+  }
   return { ok: true, reason: 'base-pr-absent' };
+}
+
+// Mirrors what GitHub does when a merged PR's head branch is deleted: open
+// children based on that branch move to the merged PR's own base. Without the
+// deletion (delete_branch_on_merge=false) GitHub never retargets, and the
+// children merge into the orphaned branch (#8518 → #8519/#8520).
+function stackedBaseRef({ closedPull, repository, defaultBranch }) {
+  const headRef = closedPull?.head?.ref;
+  if (!headRef || headRef === defaultBranch) return null;
+  // A fork head can never be an upstream base, and an unknown head repo is not
+  // proof that it is this one.
+  if (closedPull.head.repo?.full_name !== repository) return null;
+  const target = closedPull.base?.ref;
+  if (isMergedPull(closedPull) && (!target || target === headRef)) return null;
+  return headRef;
+}
+
+export function planStackRetargets({ closedPull, openChildren, repository, defaultBranch }) {
+  const headRef = stackedBaseRef({ closedPull, repository, defaultBranch });
+  if (!headRef) return [];
+  const merged = isMergedPull(closedPull);
+  const target = closedPull.base.ref;
+  const children = Array.isArray(openChildren) ? openChildren : [];
+  return children
+    .filter((child) => child?.state === 'open'
+      && child.base?.ref === headRef
+      && (!child.base.repo?.full_name || child.base.repo.full_name === repository))
+    .map((child) => ({
+      number: child.number,
+      headSha: child.head?.sha,
+      action: merged ? 'retarget' : 'strand',
+      from: headRef,
+      ...(merged && { to: target }),
+    }));
 }
 
 export function evaluatePostMergeAncestry({ merged, mergeSha, isAncestor, integratedParent, pendingParent }) {
@@ -148,9 +187,14 @@ export function formatOrphanComment({ pull, mergeSha, defaultBranch, parents = [
   ].join('\n');
 }
 
-function preMergeAnnotation(verdict, baseRef) {
-  const parents = (verdict.mergedPrs || []).map((pull) => `#${pull.number}`).join(', ');
-  return `::error::Stacked PR base \`${baseRef}\` already merged in ${parents}. Merging would land on a tombstone, not the default branch. See #7006.`;
+function preMergeAnnotation(verdict, baseRef, pullNumber, defaultBranch) {
+  const merged = verdict.reason === 'base-pr-merged';
+  const parentPulls = (merged ? verdict.mergedPrs : verdict.closedPrs) || [];
+  const parents = parentPulls.map((pull) => `#${pull.number}`).join(', ');
+  const target = merged ? parentPulls.find((pull) => pull.base?.ref)?.base.ref || defaultBranch : defaultBranch;
+  const state = merged ? 'already merged in' : 'closed without merging in';
+  return `::error::Stacked PR base \`${baseRef}\` ${state} ${parents}. Merging would land on an orphaned branch, not \`${defaultBranch}\`. `
+    + `Retarget this PR: gh pr edit ${pullNumber} --base ${target}, then merge \`${target}\` into it. See #7006.`;
 }
 
 function postMergeAnnotation(verdict, mergeSha, defaultBranch) {
@@ -306,6 +350,7 @@ export function checkStackedMerge({
   git,
   issues,
   sleep = () => {},
+  runAttempt = 1,
 } = {}) {
   if (mode !== 'pre-merge' && mode !== 'post-merge') {
     throw new Error(`unknown mode ${mode}`);
@@ -324,15 +369,22 @@ export function checkStackedMerge({
     throw new Error('a pull_request payload is required unless this is a push to the default branch');
   }
 
-  const baseRef = pull.base?.ref;
+  let baseRef = pull.base?.ref;
   const owner = pull.base?.repo?.owner?.login || repository.split('/')[0];
 
   if (mode === 'pre-merge') {
     let baseHeadPulls = [];
+    // A rerun replays the original payload, so its base can be stale in either
+    // direction: the retarget job moves a child off a merged parent, and a PR can
+    // be moved from the default branch onto a parent after its first run.
+    const staleBasePossible = runAttempt > 1 || (baseRef && baseRef !== defaultBranch);
+    if (staleBasePossible && typeof gh !== 'function') {
+      throw new Error('gh is required to look up the stacked base PR');
+    }
+    if (staleBasePossible && pull.number != null) {
+      baseRef = JSON.parse(gh(['api', `repos/${repository}/pulls/${pull.number}`])).base?.ref;
+    }
     if (baseRef && baseRef !== defaultBranch) {
-      if (typeof gh !== 'function') {
-        throw new Error('gh is required to look up the stacked base PR');
-      }
       baseHeadPulls = listPullsByHead({ gh, repository, owner, headRef: baseRef });
     }
     const verdict = evaluatePreMergeGuard({ defaultBranch, baseRef, baseHeadPulls });
@@ -342,7 +394,7 @@ export function checkStackedMerge({
     return {
       ...verdict,
       exitCode: 1,
-      annotation: preMergeAnnotation(verdict, baseRef),
+      annotation: preMergeAnnotation(verdict, baseRef, pull.number, defaultBranch),
     };
   }
 
@@ -446,6 +498,100 @@ export function checkClosedPull({ event, gh, git, issues, sleep } = {}) {
   };
 }
 
+function retargetComment({ closedPull, item }) {
+  if (item.action === 'retarget') {
+    return [
+      `Parent ${pullLabel(closedPull)} merged into \`${item.to}\`, but its branch \`${item.from}\` was not deleted, so GitHub did not retarget this PR.`,
+      `This PR is now based on \`${item.to}\`, which is what GitHub does when the parent branch is deleted.`,
+      '',
+      `Merge \`${item.to}\` into this branch before merging: the parent's own commits may still show in the diff, and CI last ran against the old base. See #7006.`,
+    ].join('\n');
+  }
+  return [
+    `Parent ${pullLabel(closedPull)} was closed without merging. This PR is still based on its branch \`${item.from}\`, so merging it would not reach the default branch.`,
+    '',
+    `Retarget it (\`gh pr edit ${item.number} --base main\`) or close it. See #7006.`,
+  ].join('\n');
+}
+
+function rerunLatestGuard({ gh, repository, headSha }) {
+  const raw = gh([
+    'api',
+    `repos/${repository}/actions/workflows/stacked-merge-guard.yml/runs?head_sha=${headSha}&event=pull_request&per_page=1`,
+  ]);
+  const run = JSON.parse(raw)?.workflow_runs?.[0];
+  if (!run?.id) throw new Error(`no stacked-merge-guard run found for ${headSha}`);
+  gh(['api', '--method', 'POST', `repos/${repository}/actions/runs/${run.id}/rerun`]);
+  return run.id;
+}
+
+export function retargetStackedChildren({ event, gh } = {}) {
+  const closedPull = event?.pull_request;
+  if (!closedPull) throw new Error('a pull_request payload is required');
+  const repository = repositoryFromEvent(event);
+  const defaultBranch = defaultBranchFromEvent(event);
+  const headRef = stackedBaseRef({ closedPull, repository, defaultBranch });
+  if (!headRef) {
+    return { ok: true, reason: 'no-stacked-base', exitCode: 0, plan: [], failures: [], warnings: [] };
+  }
+  const openChildren = flattenGhPages(gh([
+    'api', '--paginate', '--slurp',
+    `repos/${repository}/pulls?state=open&base=${encodeURIComponent(headRef)}&per_page=100`,
+  ]));
+  const plan = planStackRetargets({ closedPull, openChildren, repository, defaultBranch });
+  const failures = [];
+  const warnings = [];
+  for (const item of plan) {
+    let applied = item.action === 'strand';
+    if (item.action === 'retarget') {
+      try {
+        gh(
+          ['api', '--method', 'PATCH', `repos/${repository}/pulls/${item.number}`, '--input', '-'],
+          { input: JSON.stringify({ base: item.to }) },
+        );
+        applied = true;
+      } catch (error) {
+        failures.push(`#${item.number}: retarget to ${item.to} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (applied) {
+      try {
+        gh(
+          ['api', `repos/${repository}/issues/${item.number}/comments`, '--input', '-'],
+          { input: JSON.stringify({ body: retargetComment({ closedPull, item }) }) },
+        );
+      } catch (error) {
+        warnings.push(`#${item.number}: comment failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    // A retarget by GITHUB_TOKEN fires no workflow, so the child keeps a guard
+    // verdict computed against the old base. Re-run it: the guard reads the
+    // live base, so a retargeted child passes and a stranded one fails.
+    if (item.headSha) {
+      try {
+        rerunLatestGuard({ gh, repository, headSha: item.headSha });
+      } catch (error) {
+        const message = `#${item.number}: guard rerun failed: ${error instanceof Error ? error.message : String(error)}`;
+        // A retargeted child is already based on the default branch. A stranded
+        // child keeps the green verdict from while its parent was open, so a
+        // missing rerun leaves nothing flagging it.
+        (item.action === 'strand' ? failures : warnings).push(message);
+      }
+    }
+  }
+  return {
+    ok: failures.length === 0,
+    reason: 'stacked-children-reconciled',
+    exitCode: failures.length > 0 ? 1 : 0,
+    plan,
+    failures,
+    warnings,
+    ...(failures.length > 0 && {
+      annotation: failures.map((failure) => `::error::${failure}. Retarget it by hand. See #7006.`).join('\n'),
+    }),
+  };
+}
+
 function readArg(argv, name) {
   const index = argv.indexOf(name);
   if (index === -1) return undefined;
@@ -500,14 +646,19 @@ function main(argv = process.argv, env = process.env) {
   const mode = readArg(argv, '--mode');
   const eventPath = readArg(argv, '--event-path');
   const event = loadEvent(env, eventPath);
-  const check = mode === 'post-merge' ? checkClosedPull : checkStackedMerge;
+  const check = {
+    'post-merge': checkClosedPull,
+    retarget: retargetStackedChildren,
+  }[mode] || checkStackedMerge;
   const result = check({
     mode,
     event,
     gh: runGh,
     git: runGit,
     sleep: sleepSync,
+    runAttempt: Number(env.GITHUB_RUN_ATTEMPT) || 1,
   });
+  for (const warning of result.warnings || []) console.log(`::warning::${warning}`);
   if (argv.includes('--json')) {
     console.log(JSON.stringify(result, null, 2));
   } else if (result.ok) {

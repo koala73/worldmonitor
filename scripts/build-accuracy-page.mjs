@@ -558,7 +558,7 @@ function provenanceLine(state, dataset, snapshotPath, escapeHtml) {
   const dated = state.scorecard
     ? ` Numbers generated ${escapeHtml(formatUtcDateTime(state.generatedAt))} and read on ${escapeHtml(state.capturedAt || 'an unrecorded date')}.`
     : '';
-  return `      <p class="source">Download: <a href="${escapeHtml(dataset.href)}">${escapeHtml(dataset.filename)}</a>. Source: ${escapeHtml(snapshotPath)}.${dated} Live results come from the credentialed forecast scorecard endpoint, which this page freezes so it can be read without one.</p>`;
+  return `      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(dataset.href)}">${escapeHtml(dataset.filename)}</a>. Source: World Monitor forecast scorecard snapshot.${dated} Live results come from the credentialed forecast scorecard endpoint, which this page freezes so it can be read without one.</p>`;
 }
 
 function accuracyBody({ state, baseUrl, tpl, dataset, snapshotPath }) {

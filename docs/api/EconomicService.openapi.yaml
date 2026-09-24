@@ -4298,6 +4298,270 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-world-cpi-monthly:
+        get:
+            tags:
+                - EconomicService
+            summary: GetWorldCpiMonthly
+            description: GetWorldCpiMonthly returns one national CPI series per country, worldwide. The per-country source is chosen by precedence (national overlay, then HICP for Europe, then IMF, then OECD) with a staleness fall-through, so each row carries its source, frequency and index base. Month-over-month and year-over-year changes are computed from that index; levels are not comparable across sources. history=false is the latest period per country. history=true is the stored 10-year window.
+            operationId: GetWorldCpiMonthly
+            parameters:
+                - name: history
+                  in: query
+                  description: When true, return every stored period. When false, return only the latest period per country.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: country
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "countries":
+                                    - "country": "US"
+                                      "frequency": "example"
+                                      "indexBase": "example"
+                                      "periods":
+                                          - "period": 1
+                                            "reading":
+                                                "index": 1.5
+                                                "periodOverPeriod":
+                                                    "percent": 42.5
+                                                "yearOverYear":
+                                                    "percent": 42.5
+                                      "source": "example"
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetWorldCpiMonthlyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-government-yield-curve:
+        get:
+            tags:
+                - EconomicService
+            summary: GetGovernmentYieldCurve
+            description: GetGovernmentYieldCurve returns one sovereign market's daily yield curve from its official national publisher, or the OECD monthly 10Y benchmark when no daily curve is covered. Yields keep their publisher's measure and are never converted.
+            operationId: GetGovernmentYieldCurve
+            parameters:
+                - name: country
+                  in: query
+                  description: ISO 3166-1 alpha-2 code of the sovereign, e.g. "JP" or "DE".
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                - name: history
+                  in: query
+                  description: True for every stored business day; false for the latest day.
+                  required: false
+                  example: true
+                  schema:
+                    type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "country": "US"
+                                "curves":
+                                    - "date": 1717200000000
+                                      "tenors":
+                                          "exampleKey": 1.5
+                                "measure": "example"
+                                "source": "example"
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetGovernmentYieldCurveResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -6650,3 +6914,133 @@ components:
                     format: double
                     description: Percent per year. 4.25 means 4.25 percent.
             description: One published US interest rate. Percent per year. Zero is a real print.
+        GetWorldCpiMonthlyRequest:
+            type: object
+            properties:
+                history:
+                    type: boolean
+                    description: When true, return every stored period. When false, return only the latest period per country.
+                country:
+                    type: string
+                    description: Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned.
+            description: GetWorldCpiMonthlyRequest chooses the latest print or the stored history.
+        GetWorldCpiMonthlyResponse:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WorldCpiCountry'
+                unavailable:
+                    type: boolean
+                    description: True when every seeded series is unavailable. An empty country list is not a zero print.
+            description: GetWorldCpiMonthlyResponse is the worldwide CPI series for the requested window.
+        WorldCpiCountry:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                source:
+                    type: string
+                    description: 'Which source supplied this series. One of: estat-cpi, eurostat-hicp, imf-cpi, imf-hicp, oecd-cpi, abs-cpi.'
+                frequency:
+                    type: string
+                    description: 'Series frequency: M for monthly, Q for quarterly. Australia is quarterly.'
+                indexBase:
+                    type: string
+                    description: Index base label from the source, e.g. 2020=100 or 2015=100. Never compare levels across bases or sources.
+                periods:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WorldCpiPeriod'
+            description: WorldCpiCountry is the preferred CPI series for one country.
+        WorldCpiPeriod:
+            type: object
+            properties:
+                period:
+                    type: integer
+                    format: int64
+                    description: 'UTC midnight on the first day of the observation period, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                reading:
+                    $ref: '#/components/schemas/WorldCpiReading'
+            description: WorldCpiPeriod is one observation of a country's CPI series.
+        WorldCpiReading:
+            type: object
+            properties:
+                index:
+                    type: number
+                    format: double
+                    description: Index level in the source's own base. Bases differ per source, so compare changes, not levels.
+                periodOverPeriod:
+                    $ref: '#/components/schemas/WorldCpiPercentChange'
+                yearOverYear:
+                    $ref: '#/components/schemas/WorldCpiPercentChange'
+            description: WorldCpiReading is one country's index for one period.
+        WorldCpiPercentChange:
+            type: object
+            properties:
+                percent:
+                    type: number
+                    format: double
+                    description: Percent change. 2.5 means 2.5 percent, not an annualized rate.
+            description: WorldCpiPercentChange is a simple percent change computed from the index.
+        GetGovernmentYieldCurveRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    minLength: 1
+                    description: ISO 3166-1 alpha-2 code of the sovereign, e.g. "JP" or "DE".
+                history:
+                    type: boolean
+                    description: True for every stored business day; false for the latest day.
+            required:
+                - country
+            description: GetGovernmentYieldCurveRequest selects one sovereign market and window.
+        GetGovernmentYieldCurveResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Echoed uppercase ISO 3166-1 alpha-2 code.
+                source:
+                    type: string
+                    description: Covered-market descriptor, e.g. "jp-mof-cmt" or "uk-boe-spot".
+                measure:
+                    type: string
+                    description: 'Yield measure: "par", "spot", "benchmark", or "monthly-10y".'
+                curves:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/YieldCurvePoint'
+                unavailable:
+                    type: boolean
+                    description: |-
+                        True when the market is uncovered or its seeded curve is unavailable. An
+                         empty curves list is graceful degradation, not a confirmed zero yield.
+            description: GetGovernmentYieldCurveResponse is the curve for the requested market.
+        YieldCurvePoint:
+            type: object
+            properties:
+                date:
+                    type: integer
+                    format: int64
+                    description: 'UTC midnight of the business day, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                tenors:
+                    type: object
+                    additionalProperties:
+                        type: number
+                        format: double
+                    description: Yield per tenor, in percent, as published (never converted between measures).
+            description: |-
+                One business day's curve for one sovereign. Tenor keys are lowercase
+                 maturity labels ("3m"…"40y"); an absent tenor was not published that day.
+        TenorsEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: number
+                    format: double

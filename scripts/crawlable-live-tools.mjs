@@ -5,6 +5,9 @@ export const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
 const MAX_AIRSPACE_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1_000;
 const MAX_RENDERED_ROWS = 5;
 
+// The country intel brief labels CII bands from shared/cii-band.js; this file
+// cannot import it (see the verbatim-copy note below), so
+// tests/country-brief-evidence.test.mts holds the two tables equal.
 const SCORE_BANDS = [
   { min: 81, label: 'Critical' },
   { min: 66, label: 'High' },
@@ -262,17 +265,39 @@ export function formatAdvisory(value) {
   return normalized || 'Not present';
 }
 
+export const CII_MOVEMENT_UNCHANGED = 'Unchanged';
+export const CII_MOVEMENT_NO_EARLIER_READING = 'No earlier reading';
+// Labels frozen before "Unchanged" and "No earlier reading" were split. They
+// covered both a measured zero and a missing prior reading, so a snapshot
+// carrying one supports no movement claim at all.
+const LEGACY_CONFLATED_CII_MOVEMENT_LABELS = new Set([
+  'Stable',
+  'Stable / unavailable',
+  'Stable or unavailable',
+]);
+
+export function isLegacyConflatedCiiMovementLabel(label) {
+  return LEGACY_CONFLATED_CII_MOVEMENT_LABELS.has(String(label || '').trim());
+}
+
+function hasComparedTrend(trend) {
+  const token = String(trend || '').trim().toUpperCase();
+  return token !== '' && token !== 'TREND_DIRECTION_UNSPECIFIED';
+}
+
 export function formatTrend(dynamicScore, trend) {
   const delta = finiteNumber(dynamicScore);
   if (delta !== null) {
     if (delta > 0) return `Rising +${formatNumber(delta)}`;
     if (delta < 0) return `Falling ${formatNumber(delta)}`;
-    return 'Stable or unavailable';
+    // The server sends dynamicScore 0 with UNSPECIFIED when it had no usable
+    // prior reading; only a compared trend makes the zero a real "no change".
+    return hasComparedTrend(trend) ? CII_MOVEMENT_UNCHANGED : CII_MOVEMENT_NO_EARLIER_READING;
   }
 
   const normalized = humanizeToken(trend, ['TREND_DIRECTION_']);
   if (normalized && normalized !== 'Unspecified') return normalized;
-  return 'Stable or unavailable';
+  return CII_MOVEMENT_NO_EARLIER_READING;
 }
 
 export const DEFAULT_CII_MOVEMENT_INTERVAL = 'over approximately 24 hours';
@@ -280,15 +305,15 @@ export const DEFAULT_CII_MOVEMENT_INTERVAL = 'over approximately 24 hours';
 export function parseCiiMovement(trend, { intervalPhrase = DEFAULT_CII_MOVEMENT_INTERVAL } = {}) {
   const interval = String(intervalPhrase || '').trim() || DEFAULT_CII_MOVEMENT_INTERVAL;
   const normalized = String(trend || '').trim();
+  if (normalized === CII_MOVEMENT_UNCHANGED) {
+    return { change24h: 0, movementText: `unchanged ${interval}` };
+  }
+  // movementText null tells callers to drop the movement clause entirely.
   if (
-    normalized === 'Stable'
-    || normalized === 'Stable / unavailable'
-    || normalized === 'Stable or unavailable'
+    normalized === CII_MOVEMENT_NO_EARLIER_READING
+    || LEGACY_CONFLATED_CII_MOVEMENT_LABELS.has(normalized)
   ) {
-    return {
-      change24h: null,
-      movementText: `stable or unavailable ${interval}`,
-    };
+    return { change24h: null, movementText: null };
   }
   const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
   if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
@@ -978,6 +1003,9 @@ function formatDateTime(timestamp) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    // UTC to match the static page's timestamps (formatStaticDateTime in
+    // build-crawlable-corpus.mjs); the reader's zone put "GMT+4" beside "UTC".
+    timeZone: 'UTC',
     timeZoneName: 'short',
   }).format(new Date(timestamp));
 }
@@ -1155,8 +1183,8 @@ function renderCountryRiskViewModel(tool, view) {
     }
   }
   markPublishedLivePulse(tool);
-  if (view.partial) setToolState(tool, 'partial', 'Partial API result');
-  else setToolState(tool, 'ready', 'API result');
+  if (view.partial) setToolState(tool, 'partial', 'Partial live reading');
+  else setToolState(tool, 'ready', 'Live reading');
 }
 
 /** True when the score cell still holds a published numeric value. */
@@ -1259,7 +1287,7 @@ function renderCiiRankingViewModel(tool, view) {
   setTime(tool, '[data-cii-ranking-updated]', view.updatedAt, 'Latest score');
   tool.dataset.ciiHydrated = 'true';
   markPublishedLivePulse(tool);
-  setToolState(tool, 'ready', `API result · ${view.methodologyVersion}`);
+  setToolState(tool, 'ready', `Live reading · ${view.methodologyVersion}`);
 }
 
 function renderCiiRankingError(tool) {
@@ -1343,7 +1371,7 @@ export async function loadChokepoint(tool) {
     }
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
     markPublishedLivePulse(tool);
-    setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
+    setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial live reading' : 'Live reading');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
@@ -1416,7 +1444,7 @@ export async function loadCrisis(tool) {
     }
     setTime(tool, '[data-live-updated]', view.updatedAt, 'Retrieved');
     markPublishedLivePulse(tool);
-    setToolState(tool, view.state, view.state === 'partial' ? 'Partial API result' : 'API result');
+    setToolState(tool, view.state, view.state === 'partial' ? 'Partial live reading' : 'Live reading');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
@@ -1470,7 +1498,7 @@ export async function loadHazards(tool) {
           `${event.title} · ${event.category} · ${event.source} · ${formatDateTime(event.date)}`
         ));
         setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
-        setToolState(tool, 'ready', 'API result');
+        setToolState(tool, 'ready', 'Live reading');
       },
     );
   } catch {
@@ -1572,8 +1600,8 @@ async function loadAirspace(tool) {
       }
 
       updateCountryQuery(select, dashboardLinkFor(tool));
-      if (readySections === 2) setToolState(tool, 'ready', 'API results');
-      else if (readySections === 1) setToolState(tool, 'partial', 'Partial API result');
+      if (readySections === 2) setToolState(tool, 'ready', 'Live readings');
+      else if (readySections === 1) setToolState(tool, 'partial', 'Partial live reading');
       else setToolState(tool, 'error', 'Temporarily unavailable');
     },
   );

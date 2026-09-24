@@ -548,12 +548,15 @@ export class NewsPanel extends Panel {
     this.updateHeadlineSignature();
 
     const html = sorted
-      .map(
-        (item) => `
+      .map((item) => {
+        const provenance = renderPrimarySourceProvenance(item.source);
+        return `
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${renderCredibilityBadge(item.source, item)}
+          ${provenance.riskBadge}
+          ${provenance.facts}
           ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
           ${item.storyMeta?.phase === 'breaking' ? '<span class="phase-badge breaking">BREAKING</span>' : ''}
           ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
@@ -567,8 +570,8 @@ export class NewsPanel extends Panel {
           ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
         </div>
       </div>
-    `
-      )
+    `;
+      })
       .join('');
 
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
@@ -733,6 +736,7 @@ export class NewsPanel extends Panel {
     const {
       riskBadge: primaryPropBadge,
       tierBadge,
+      facts: primaryProvenanceFacts,
     } = renderPrimarySourceProvenance(cluster.primarySource);
 
     // Build "Also reported by" section for multi-source confirmation
@@ -809,6 +813,7 @@ export class NewsPanel extends Panel {
           ${escapeHtml(cluster.primarySource)}
           ${renderCredibilityBadge(cluster.primarySource, cluster.allItems.find(item => item.source === cluster.primarySource) ?? cluster.allItems[0])}
           ${primaryPropBadge}
+          ${primaryProvenanceFacts}
           ${langBadge}
           ${newTag}
           ${sourceBadge}
