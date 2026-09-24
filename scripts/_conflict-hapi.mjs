@@ -361,7 +361,6 @@ export function aggregateHapiConflictEvents(
           || HAPI_COUNTRY_NAMES.of(countryCode)
           || countryCode,
         ),
-        eventsTotal: 0,
         eventsPV: 0,
         eventsDem: 0,
         fatalitiesPV: 0,
@@ -373,7 +372,6 @@ export function aggregateHapiConflictEvents(
     const eventType = String(row?.event_type || '').toLowerCase();
     const events = finiteCount(row?.events);
     const fatalities = finiteCount(row?.fatalities);
-    aggregate.eventsTotal += events;
     if (eventType === 'political_violence') {
       aggregate.eventsPV += events;
       aggregate.fatalitiesPV += fatalities;
@@ -390,7 +388,8 @@ export function aggregateHapiConflictEvents(
       const summary = {
         countryCode,
         countryName: aggregate.countryName,
-        conflictEventsTotal: aggregate.eventsTotal,
+        // Civilian targeting is a subset of political violence, not an extra category.
+        conflictEventsTotal: aggregate.eventsPV + aggregate.eventsDem,
         conflictPoliticalViolenceEvents: aggregate.eventsPV,
         conflictFatalities: aggregate.fatalitiesPV,
         referencePeriod: aggregate.referencePeriod,

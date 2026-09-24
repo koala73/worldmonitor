@@ -508,7 +508,7 @@ test('HAPI bulk rows retain both periods without adding overlapping civilian tar
       summary: {
         countryCode: 'SD',
         countryName: 'Sudan',
-        conflictEventsTotal: 23,
+        conflictEventsTotal: 19,
         conflictPoliticalViolenceEvents: 12,
         conflictFatalities: 3,
         referencePeriod: '2026-07-01',
@@ -550,7 +550,7 @@ test('HAPI periods select administrative levels independently and roll over the 
     assert.deepEqual(result.SD.previousCompleteSummary, {
       countryCode: 'SD',
       countryName: 'Sudan',
-      conflictEventsTotal: 12,
+      conflictEventsTotal: 8,
       conflictPoliticalViolenceEvents: 3,
       conflictFatalities: 1,
       referencePeriod: '2025-12-01',
@@ -637,7 +637,7 @@ test('one aggregation pass over both sweeps keeps each country at its own admin 
   assert.equal(combined.SD.summary.conflictEventsTotal, 19);
   assert.equal(combined.AF.summary.conflictEventsTotal, 11);
   assert.equal(combined.AF.summary.conflictFatalities, 3);
-  assert.equal(combined.HT.summary.conflictEventsTotal, 4);
+  assert.equal(combined.HT.summary.conflictEventsTotal, 0);
   assert.equal(combined.HT.summary.conflictPoliticalViolenceEvents, 0);
   assert.equal(combined.HT.summary.conflictFatalities, 0);
 
