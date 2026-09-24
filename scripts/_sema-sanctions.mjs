@@ -232,13 +232,21 @@ export function recordToCanonical(block) {
   const entityOrShip = xmlText(block, 'EntityOrShip');
   const imo = xmlText(block, 'ShipIMONumber').replace(/\D/g, '');
   const aliases = splitAliases(xmlText(block, 'Aliases'));
-  const item = xmlText(block, 'Item') || '0';
+  const item = xmlText(block, 'Item');
   const listed = xmlText(block, 'DateOfListing');
   const schedule = xmlText(block, 'Schedule');
   const title = xmlText(block, 'TitleOrShip');
 
   const legalName = entityOrShip || [givenName, lastName].filter(Boolean).join(' ').trim();
   if (!legalName) return null;
+
+  // Country and Item are required for source identity (Schedule is absent
+  // in valid JVCFOR records). The September 2026 export
+  // shifted schedule/item/date values into name fields and omitted these
+  // identity fields. Reject the source, not just the row: publishing the
+  // remaining rows could silently remove real designations. Ingestion routes
+  // this failure through the existing last-good/error path.
+  if (!countryRaw || !item) throw new Error('SEMA_INVALID_RECORD');
 
   let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
   if (imo) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';

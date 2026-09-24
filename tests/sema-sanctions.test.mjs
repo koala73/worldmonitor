@@ -138,6 +138,41 @@ describe('SEMA bilingual field tags (Global Affairs Canada 2026-08 rename)', () 
   });
 });
 
+describe('SEMA source identity validation', () => {
+  // First two records from the official XML on 2026-09-24. Column values
+  // shifted under unrelated tags; a nonempty name alone is not a valid row.
+  const malformedXml = readFileSync(new URL('./fixtures/sema-lmes-malformed-slice.xml', import.meta.url), 'utf8');
+  const ingest = (text) => ingestSemaEntries({ fetchFn: async () => new Response(text) });
+
+  it('rejects the malformed live source instead of publishing fabricated identities', async () => {
+    const result = await ingest(malformedXml);
+    assert.equal(result.error, 'SEMA_INVALID_RECORD');
+    assert.deepEqual(result.records, []);
+    assert.equal(result.publishedAtMs, 0);
+    assert.deepEqual(sanctionsSemaHealthMeta(result.error), {
+      sourceState: 'error', errorCode: SEMA_INGEST_ERROR_CODE,
+    });
+  });
+
+  it('rejects the whole source when any row lacks country or item identity', async () => {
+    for (const tag of ['Country-Pays', 'Item-NumeroDarticle']) {
+      const incomplete = SEMA_BILINGUAL_XML.replace(new RegExp(`<${tag}>[^<]*</${tag}>`), `<${tag}> </${tag}>`);
+      const result = await ingest(incomplete);
+      assert.equal(result.error, 'SEMA_INVALID_RECORD', tag);
+      assert.deepEqual(result.records, [], 'valid neighboring rows must not authorize a partial source');
+    }
+  });
+
+  it('keeps identity-valid undated records without inventing a content clock', async () => {
+    const undated = SEMA_BILINGUAL_XML.replace(/<DateOfListing-DateDinscription>[^<]*<\/DateOfListing-DateDinscription>/g, '');
+    const result = await ingest(undated);
+    assert.equal(result.error, null);
+    assert.equal(result.records.length, 3);
+    assert.equal(result.publishedAtMs, 0);
+    assert.equal(sanctionsListContentMeta({ datasetDate: result.publishedAtMs }), null);
+  });
+});
+
 describe('SEMA fixture parse', () => {
   it('maps individuals, entities, ships, aliases, IMO, and publication dates', () => {
     const { records, publishedAtMs } = parseSemaXml(fixtureXml);
