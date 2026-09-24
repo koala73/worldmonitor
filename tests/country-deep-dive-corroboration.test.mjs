@@ -90,7 +90,7 @@ describe('CountryDeepDivePanel corroboration (#6428, #6419)', () => {
     });
     assert.equal(rows.length, 1);
     assert.equal(rows[0].flag, null, 'a sibling seen by three publishers is not single-publisher');
-    assert.match(rows[0].meta, /^Reuters World \+2 sources •/);
+    assert.doesNotMatch(rows[0].meta, /\+\d+ source/, '"+N sources" counts only the publishers the row can list');
   });
 
   it('renders the tier badge only for a declared tier', async () => {

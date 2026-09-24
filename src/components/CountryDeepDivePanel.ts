@@ -63,6 +63,7 @@ import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-c
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
 import { assessCorroboration, evidenceFromCluster } from '@/utils/corroboration-flag';
+import { countPublisherFamilies } from '../../shared/publisher-families.js';
 import { corroborationFlag } from '@/utils/corroboration-flag';
 import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
@@ -436,7 +437,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     for (let i = 0; i < deduped.length; i++) {
       const { item, sources, items } = deduped[i]!;
       const corroboration = assessCorroboration(evidenceFromCluster({ allItems: items }));
-      const otherPublishers = corroboration.state === 'unknown' ? 0 : corroboration.publishers - 1;
+      // Counts only publishers this row can list in its tooltip; the pill carries the digest-wide verdict.
+      const otherPublishers = countPublisherFamilies(sources) - 1;
       const otherLabels = sources.slice(1);
       const row = this.el('a', 'cdp-news-item');
       row.id = `cdp-news-${i + 1}`;
