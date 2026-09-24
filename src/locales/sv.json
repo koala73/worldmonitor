@@ -2459,10 +2459,10 @@
       "idleKeepPlayingToast": "Livevideo fortsätter spela när inaktiv. Ändra i Inställningar › Media."
     },
     "corroboration": {
-      "singlePublisher": "En enda utgåva",
-      "singlePublisherHint": "Endast en utgåva rapporterar detta hittills. Detta beskriver nyhetsrapportering, inte noggrannhet.",
+      "singlePublisher": "En enda utgivare",
+      "singlePublisherHint": "Endast en utgivare rapporterar om detta hittills. Detta beskriver bevakningen, inte korrektheten.",
       "tier4Only": "Endast låg-nivå-källor",
-      "tier4OnlyHint": "Alla utgåvor som rapporterar detta är tier-4-källor (aggregatorer och bloggar). Detta beskriver nyhetsrapportering, inte noggrannhet."
+      "tier4OnlyHint": "Alla medier som rapporterar om detta är tier-4-källor (aggregatorer och bloggar). Detta beskriver bevakningen, inte korrektheten."
     }
   },
   "popups": {

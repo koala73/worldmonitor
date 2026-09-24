@@ -2910,9 +2910,9 @@
     },
     "corroboration": {
       "singlePublisher": "Mchapishaji mmoja",
-      "singlePublisherHint": "Mchapishaji mmoja tu ndiye anayeripoti hii kwa sasa. Hii inaeleza kila mahali pa kufika, si usahihi.",
+      "singlePublisherHint": "Mchapishaji mmoja tu ndiye anayeripoti hili kwa sasa. Hii inaeleza kiwango cha uripoti, si usahihi.",
       "tier4Only": "Vyanzo vya kiwango cha chini tu",
-      "tier4OnlyHint": "Kila kituo kinachopeleka habari hii ni chanzo cha kiwango cha 4 (watoshaji na blogu). Hii inaeleza kila mahali pa kufika, si usahihi."
+      "tier4OnlyHint": "Kila chombo cha habari kinachoripoti hili ni chanzo cha kiwango cha 4 (tovuti za kukusanya habari na blogu). Hii inaeleza kiwango cha uripoti, si usahihi."
     }
   },
   "popups": {

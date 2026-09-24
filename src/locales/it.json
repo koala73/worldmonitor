@@ -2862,7 +2862,7 @@
       "singlePublisher": "Un solo editore",
       "singlePublisherHint": "Solo un editore sta riportando questa notizia finora. Questo descrive la copertura, non l'accuratezza.",
       "tier4Only": "Solo fonti di basso livello",
-      "tier4OnlyHint": "Ogni outlet che riporta questa notizia è una fonte di tier-4 (aggregatori e blog). Questo descrive la copertura, non l'accuratezza."
+      "tier4OnlyHint": "Ogni testata che riporta questa notizia è una fonte di livello 4 (aggregatori e blog). Questo descrive la copertura, non l'accuratezza."
     }
   },
   "popups": {

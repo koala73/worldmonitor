@@ -2862,7 +2862,7 @@
       "singlePublisher": "Un singur editor",
       "singlePublisherHint": "Doar un editor raportează aceasta până acum. Aceasta descrie acoperirea de presă, nu acuratețea.",
       "tier4Only": "Doar surse de nivel scăzut",
-      "tier4OnlyHint": "Fiecare outlet care raportează aceasta este o sursă de nivel 4 (agregate și bloguri). Aceasta descrie acoperirea de presă, nu acuratețea."
+      "tier4OnlyHint": "Fiecare publicație care raportează aceasta este o sursă de nivel 4 (site-uri agregatoare și bloguri). Aceasta descrie acoperirea de presă, nu acuratețea."
     }
   },
   "popups": {

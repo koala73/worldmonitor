@@ -2910,9 +2910,9 @@
     },
     "corroboration": {
       "singlePublisher": "Egyetlen kiadó",
-      "singlePublisherHint": "Egyelőre csak egy kiadó számol be erről. Ez a sajtóközvetítést jellemzi, nem a pontosságot.",
+      "singlePublisherHint": "Egyelőre csak egy kiadó számol be erről. Ez a lefedettséget jellemzi, nem a pontosságot.",
       "tier4Only": "Csak alacsony szintű források",
-      "tier4OnlyHint": "Minden erről beszámoló outletet tier-4 forrás (aggregátorok és blogok) jegyzetele. Ez a sajtóközvetítést jellemzi, nem a pontosságot."
+      "tier4OnlyHint": "Minden erről beszámoló médium 4. szintű forrás (aggregátorok és blogok). Ez a lefedettséget jellemzi, nem a pontosságot."
     }
   },
   "popups": {

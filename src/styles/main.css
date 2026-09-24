@@ -4817,7 +4817,7 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 
 .cdp-news-meta .corroboration-flag {
   margin-inline-start: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .cluster-meta {

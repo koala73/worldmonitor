@@ -2937,8 +2937,8 @@
     "corroboration": {
       "singlePublisher": "Jedan izdavač",
       "singlePublisherHint": "Za sada samo jedan izdavač izvještava o tome. Ovo opisuje doseg izvještavanja, ne točnost.",
-      "tier4Only": "Samo niskotarifni izvori",
-      "tier4OnlyHint": "Svaki outlet koji izvještava o tome je izvor 4. razreda (agregatori i blogovi). Ovo opisuje doseg izvještavanja, ne točnost."
+      "tier4Only": "Samo izvori niske razine",
+      "tier4OnlyHint": "Svaki medij koji izvještava o tome izvor je 4. razine (agregatori i blogovi). Ovo opisuje doseg izvještavanja, ne točnost."
     }
   },
   "popups": {
