@@ -168,6 +168,14 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },
     {
+      "source": "/(product-facts|agent-view).json",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
+      "source": "/sandbox/(.*).json",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
       "source": "/.well-known/(.*).json",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },

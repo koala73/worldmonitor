@@ -231,6 +231,16 @@ const sourceToRegExp = (source) => {
         out += '[^/]+';
         i = j - 1;
       }
+    } else if (ch === '\\' && i + 1 < source.length) {
+      // A backslash already in the source is the author escaping the NEXT
+      // character (`(.*)\.json`). Copy both through verbatim. Without this the
+      // helper escaped the backslash itself, producing `\\.` — a literal
+      // backslash followed by any char — so such a source modelled as matching
+      // nothing and every `assert.equal(effectiveHeader(p, k), null)` against it
+      // passed vacuously. No source in vercel.json needs it today; the branch
+      // exists so the first one that does is not silently green.
+      out += source[i] + source[i + 1];
+      i += 1;
     } else {
       out += /[.*+?^${}|[\]\\]/.test(ch) ? `\\${ch}` : ch;
     }
@@ -767,8 +777,12 @@ describe('crawlable content corpus deployment contracts', () => {
       '/openapi.json',
       '/openapi.yaml',
       '/plugin.json',
-      '/docs/api/forecasts.openapi.yaml',
-      '/docs/snapshots/2026-09-01.json',
+      '/docs/api/ForecastService.openapi.yaml',
+      '/docs/snapshots/github-stars-2026-09-03.json',
+      // Standalone machine JSON outside the corpus families.
+      '/product-facts.json',
+      '/agent-view.json',
+      '/sandbox/index.json',
       // .well-known JSON descriptors.
       '/.well-known/agent-card.json',
       '/.well-known/ai-catalog.json',
@@ -804,6 +818,15 @@ describe('crawlable content corpus deployment contracts', () => {
       '/.well-known/agent-skills/check-country-risk/SKILL.md']) {
       assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
     }
+
+    // The matcher must model a pre-escaped dot the way Vercel does. Before
+    // #8608 the helper escaped the backslash itself, so `(.*)\\.json` compiled
+    // to "backslash then any char" and matched nothing at all - which would
+    // have made every null assertion above pass without proving anything.
+    assert.ok(sourceToRegExp('/countries/(.*)\\.json').test('/countries/iran/resilience.json'));
+    assert.ok(!sourceToRegExp('/countries/(.*)\\.json').test('/countries/iran/resilienceXjson'));
+    assert.ok(sourceToRegExp('/countries/(.*).json').test('/countries/iran/resilience.json'));
+    assert.ok(!sourceToRegExp('/countries/(.*).json').test('/countries/united-states'));
 
     // Sitemaps and robots.txt stay plain - a noindex sitemap is simply dropped,
     // and #8608 does not touch them.
