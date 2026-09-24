@@ -546,7 +546,7 @@ describe('callLlm', () => {
       }
       const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
       bodies.push(body);
-      const content = body.model === 'minimax/minimax-m3:free' ? 'backup answer' : '';
+      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup answer' : '';
       return new Response(JSON.stringify({
         choices: [{ message: { content } }],
         usage: { total_tokens: 5 },
@@ -556,11 +556,11 @@ describe('callLlm', () => {
     const result = await callLlm({ messages: [{ role: 'user', content: 'Answer briefly.' }] });
 
     assert.equal(result?.provider, 'openrouter-free-backup');
-    assert.equal(result?.model, 'minimax/minimax-m3:free');
+    assert.equal(result?.model, 'nvidia/nemotron-3-super-120b-a12b:free');
     assert.deepEqual(bodies.map(body => body.model), [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'minimax/minimax-m3:free',
+      'nvidia/nemotron-3-super-120b-a12b:free',
     ]);
     for (const body of bodies) {
       assert.deepEqual(body.reasoning, { enabled: false });

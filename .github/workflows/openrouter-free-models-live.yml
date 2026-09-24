@@ -1,0 +1,63 @@
+name: OpenRouter Free Models Live
+
+# Fails when either OpenRouter free-chain model (scripts/lib/llm-model-policy.cjs)
+# drops off the public /models listing.
+#
+# Why this workflow exists: OpenRouter has twice stopped serving the backup
+# model for free without notice. `openai/gpt-oss-20b:free` was found dead on
+# 2026-08-28 and `minimax/minimax-m3:free` on 2026-09-24 (#8570). Each time
+# every call returned HTTP 404, so the chain walked primary 429 -> backup 404
+# -> nothing for seed-insights, seed-forecasts, ais-relay, lib/llm-chain, the
+# regional-snapshot brief and server/_shared/llm.ts. Mock-based tests cannot
+# see a delisting, so nothing noticed for an unknown span.
+#
+# No secrets and no `npm ci`: the /models listing is public and spends no
+# quota, and the suite imports only the policy module plus node builtins.
+#
+# Triggers:
+#   - schedule (daily at :37, offset from the other live probes): OpenRouter
+#     changes its catalog independently of our commits.
+#   - push to main touching the policy, the suite, or this workflow, so a
+#     model swap is checked the moment it lands.
+#   - workflow_dispatch: manual re-runs from the Actions UI.
+# NOT pull_request: the target is a live third-party service, so a PR run could
+# fail for reasons the PR did not cause.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/llm-model-policy.cjs'
+      - 'tests/openrouter-free-models-live.test.mjs'
+      - '.github/workflows/openrouter-free-models-live.yml'
+  schedule:
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Check the free-chain models are still listed as free
+        env:
+          LIVE_OPENROUTER_FREE_MODELS_TESTS: '1'
+        # `node --test` exits 0 when the live describe is skipped, so assert the
+        # suite ran both cases (the policy check and the live listing check).
+        # The TAP reporter is pinned because Node picks the default reporter
+        # from TTY-ness, and the grep below reads the TAP `# pass N` line.
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap tests/openrouter-free-models-live.test.mjs 2>&1 | tee /tmp/openrouter-free-models.log
+          pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/openrouter-free-models.log)
+          if [ "$pass_count" -lt 2 ]; then
+            echo "::error::OpenRouter free-model check completed only $pass_count/2 cases; the live listing check did not execute."
+            exit 1
+          fi
