@@ -41,7 +41,14 @@ export const WEBCAM_SOURCES = {
   washington: ['https://www.youtube.com/watch?v=oDCAAfOSqvA'],
   'new-york': ['https://www.youtube.com/watch?v=JQ_jwk_7OVE', 'https://www.youtube.com/watch?v=VGnFLdQW39A'],
   'los-angeles': ['https://www.youtube.com/watch?v=EO_1LWqsCNE'],
-  miami: ['https://www.youtube.com/watch?v=nPGlLfGX6SA'],
+  // No official city or port cam exists, so these are established webcam operators: ZeroEight on South
+  // Beach, World Live Cams on Sunny Isles, Ryan Rea on PortMiami. nPGlLfGX6SA failed with player error 150
+  // (2026-09-23, #8545).
+  miami: [
+    'https://www.youtube.com/watch?v=WT69M210Z18',
+    'https://www.youtube.com/watch?v=bi7B4EmyHHs',
+    'https://www.youtube.com/watch?v=4fzzp0XVPoA',
+  ],
   taipei: ['https://www.youtube.com/watch?v=z_fY1pj1VBw'],
   shanghai: ['https://www.youtube.com/watch?v=Z-g8M1QGKbg'],
   tokyo: ['https://www.youtube.com/watch?v=_k-5U7IeK8g'],
@@ -108,68 +115,118 @@ export const LIVE_NEWS_SOURCES = {
   yahoo: ['https://www.youtube.com/watch?v=KQp-e_XQnDE'],
   nasa: ['https://www.youtube.com/watch?v=fO9e9jnhYK8'],
   'fox-news': ['https://247preview.foxnews.com/hls/live/2020027/fncv3preview/primary.m3u8'],
-  newsmax: [],
+  // The first HLS comes from newsmaxtv.com's player and may be the Newsmax2 feed; the YouTube video is
+  // Newsmax2 on @NewsmaxTV (2026-09-24, #8545).
+  newsmax: [
+    'https://n1ctsota.akamaized.net/hls/live/2113880/Live_1/index.m3u8',
+    'https://nmxlive.akamaized.net/hls/live/529965/Live_1/index.m3u8',
+    'https://www.youtube.com/watch?v=RNNFrG4KbH0',
+  ],
   // abc-news, nbc-news, ctv-news and reuters-tv: their HLS hosts no longer resolve (2026-09-14).
-  'abc-news': [],
+  // ABC News Live and NBC News NOW play through their channel embeds (2026-09-24, #8545).
+  'abc-news': ['https://www.youtube.com/channel/UCBi2mrWuNuyYy4gbM6fU18Q'],
   'cbs-news': ['https://cbsn-us.cbsnstream.cbsnews.com/out/v1/55a8648e8f134e82a470f83d562deeca/master.m3u8'],
-  'nbc-news': [],
-  // cbcnewshd-f.akamaihd.net returned HTTP 404 (2026-09-14).
-  'cbc-news': [],
+  'nbc-news': ['https://www.youtube.com/channel/UCeY0bbntWzzVIaj2z3QigXg'],
+  // cbcnewshd-f.akamaihd.net returned HTTP 404 (2026-09-14). The channel embed fails with player error
+  // 150, so this is the running live video; its id changes when CBC restarts the stream.
+  'cbc-news': ['https://www.youtube.com/watch?v=5vfaDsMhCF4'],
+  // CTV News streams only in authenticated Canadian apps (2026-09-23, #8545).
   'ctv-news': [],
+  // No 24/7 live Reuters publishes itself; the old wurl FAST hosts no longer resolve (2026-09-23, #8545).
   'reuters-tv': [],
   // UK-only: 403 outside the UK.
   'bbc-news': ['https://vs-hls-push-uk.live.fastly.md.bbci.co.uk/x=4/i=urn:bbc:pips:service:bbc_news_channel_hd/iptv_hd_abr_v1.m3u8'],
   'gb-news': ['https://live-gbnews.simplestreamcdn.com/live5/gbnews/bitrate1.isml/manifest.m3u8'],
-  // Its HLS host no longer resolves (2026-09-14).
+  // Its HLS host no longer resolves (2026-09-14), and The Guardian has no 24/7 live channel
+  // (2026-09-23, #8545).
   'the-guardian': [],
   // The same English stream as france24, for people who add it by this name.
   'france24-en': ['https://www.youtube.com/watch?v=HvZt-nh9sGg'],
-  rtve: [],
+  rtve: ['https://rtvelivestream.rtve.es/rtvesec/24h/24h_main_dvr.m3u8'],
   phoenix: ['https://zdf-hls-19.akamaized.net/hls/live/2016502/de/veryhigh/master.m3u8'],
   rtp3: ['https://streaming-live.rtp.pt/livetvhlsDVR/rtpnHDdvr.smil/playlist.m3u8?DVR='],
-  'trt-haber': [],
+  'trt-haber': [
+    'https://tv-trthaber.medya.trt.com.tr/master.m3u8',
+    'https://www.youtube.com/channel/UCBgTP2LOFVPmq15W-RH-WXA',
+  ],
   'ntv-turkey': ['https://www.youtube.com/watch?v=pqq5c6k70kk'],
-  'cnn-turk': [],
+  // The official HLS is referer- or token-gated (403) and the channel embed fails with player error 150,
+  // so this is the running live video; its id changes when CNN TÜRK restarts the stream.
+  'cnn-turk': ['https://www.youtube.com/watch?v=ogMaukPITDE'],
+  // Only scheduled shows, no 24/7 live (2026-09-23, #8545).
   'tv-rain': [],
   rt: ['https://rt-glb.rttv.com/dvr/rtnews/playlist.m3u8'],
   'tvp-info': ['https://www.youtube.com/watch?v=3jKb-uThfrg'],
   'telewizja-republika': ['https://www.youtube.com/watch?v=dzntyCTgJMQ'],
-  'cnn-brasil': [],
+  // Fragile: the channel embed fails with player error 150, and CNN Brasil runs each show as its own dated
+  // live video, so this one ends within hours (2026-09-24, #8545).
+  'cnn-brasil': ['https://www.youtube.com/watch?v=tnVsWgZ7H1U'],
+  // The channel's running live (eTz4XgOQaAE) is a street camera on Avenida Paulista, not the news channel;
+  // its news shows are scheduled dated videos (2026-09-24, #8545).
   'jovem-pan': [],
-  'record-news': ['https://stream.ads.ottera.tv/playlist.m3u8?network_id=2116'],
+  // The ottera.tv entry returned HTTP 400 (2026-09-23, #8545).
+  'record-news': ['https://www.youtube.com/channel/UCuiLR4p6wQ3xLEm15pEn1Xw'],
+  // No reachable live found (2026-09-23, #8545).
   'band-jornalismo': [],
   'tn-argentina': ['https://www.youtube.com/watch?v=cb12KmMMDJA'],
-  c5n: [],
-  milenio: [],
-  'noticias-caracol': [],
-  ntn24: [],
-  t13: [],
+  c5n: ['https://www.youtube.com/channel/UCFgk2Q2mVO1BklRQhSv6p0w'],
+  // milenio, noticias-caracol and t13: the channel embeds fail with player error 150, so these are the
+  // running live videos; their ids change when the broadcaster restarts the stream (2026-09-24, #8545).
+  milenio: ['https://www.youtube.com/watch?v=oPy8a-TCjzA'],
+  'noticias-caracol': ['https://www.youtube.com/watch?v=XE-HAP0KALo'],
+  ntn24: ['https://www.youtube.com/channel/UCEJs1fTF3KszRJGxJY14VrA'],
+  t13: ['https://www.youtube.com/watch?v=oy1dvCRd42s'],
   'dw-espanol': ['https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/stream04/streamPlaylist.m3u8'],
   'rt-espanol': ['https://rt-esp.rttv.com/dvr/rtesp/playlist.m3u8'],
-  'cgtn-espanol': ['https://news.cgtn.com/resource/live/espanol/cgtn-e.m3u8'],
-  'tbs-news': [],
-  'ann-news': [],
-  'ntv-news': [],
-  'cti-news': [],
-  wion: [],
+  // news.cgtn.com no longer resolves (2026-09-23, #8545).
+  'cgtn-espanol': ['https://www.youtube.com/channel/UCd94YCD7yp6d-YZSRYWyeFA'],
+  // tbs-news, ann-news and ntv-news: each broadcaster's 24h live video. ANN's and NTV's channel embeds
+  // resolve to other lives (a press-conference replay, an airport cam) (2026-09-24, #8545).
+  'tbs-news': ['https://www.youtube.com/watch?v=Anr15FA9OCI'],
+  'ann-news': ['https://www.youtube.com/watch?v=coYw-eVU0Ks'],
+  'ntv-news': ['https://www.youtube.com/watch?v=t9kwjZBLI-A'],
+  // Fragile: the channel embed fails with player error 150, and CTi runs each news block as its own dated
+  // live video, so this one ends within hours (2026-09-24, #8545).
+  'cti-news': ['https://www.youtube.com/watch?v=-YExqG4Llcw'],
+  // The channel embed fails with player error 150; its id changes when WION restarts the stream.
+  wion: ['https://www.youtube.com/watch?v=X-7LAkvfA5s'],
   ndtv: ['https://ndtvindiaelemarchana.akamaized.net/hls/live/2003679/ndtvindia/master.m3u8'],
-  cgtn: ['https://news.cgtn.com/resource/live/english/cgtn-news.m3u8'],
+  // news.cgtn.com no longer resolves; the HLS is now on english-livebkali.cgtn.com. The channel embed fails
+  // with player error 150, so the second entry is CGTN's 24/7 video (2026-09-24, #8545).
+  cgtn: [
+    'https://english-livebkali.cgtn.com/live/encgtn.m3u8',
+    'https://www.youtube.com/watch?v=0i7n3r01L2U',
+  ],
   'cna-asia': ['https://www.youtube.com/watch?v=XWq5kBlakcQ'],
-  // nhk-world and abp-news: their HLS hosts no longer resolve (2026-09-14).
-  'nhk-world': [],
+  // nhk-world and abp-news: their HLS hosts no longer resolve (2026-09-14). NHK's HLS is now on
+  // nhkworld.jp (2026-09-24, #8545).
+  'nhk-world': [
+    'https://masterpl.hls.nhkworld.jp/hls/w/live/master.m3u8',
+    'https://www.youtube.com/channel/UCSPEjw8F2nQDtmUKPFNF7_A',
+  ],
   'arirang-news': ['https://amdlive-ch01-ctnd-com.akamaized.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8'],
   'india-today': [
     'https://indiatodaylive.akamaized.net/hls/live/2014320/indiatoday/indiatodaylive/playlist.m3u8',
     'https://www.youtube.com/watch?v=sYZtOFzM78M',
   ],
-  'abp-news': [],
+  // Fragile: the channel embed fails with player error 150, and ABP retitles and restarts its running live,
+  // so this id changes often (2026-09-24, #8545).
+  'abp-news': ['https://www.youtube.com/watch?v=YmpIDN5Bf3M'],
   'al-hadath': ['https://av.alarabiya.net/alarabiapublish/alhadath.smil/playlist.m3u8'],
   'sky-news-arabia': ['https://live-stream.skynewsarabia.com/c-horizontal-channel/horizontal-stream/index.m3u8'],
   'trt-world': ['https://tv-trtworld.medya.trt.com.tr/master.m3u8'],
-  'iran-intl': [],
-  'cgtn-arabic': ['https://news.cgtn.com/resource/live/arabic/cgtn-a.m3u8'],
-  'kan-11': ['https://kan11.media.kan.org.il/hls/live/2024514/2024514/master.m3u8'],
-  'i24-news': ['https://bcovlive-a.akamaihd.net/6e3dd61ac4c34d6f8fb9698b565b9f50/eu-central-1/5377161796001/playlist-all_dvr.m3u8'],
+  // The HLS comes from iranintl.com's player (2026-09-24, #8545).
+  'iran-intl': [
+    'https://live.livetvstream.co.uk/LS-63503-4/index.m3u8',
+    'https://www.youtube.com/watch?v=5JDxjsAVaGk',
+  ],
+  // news.cgtn.com no longer resolves (2026-09-23, #8545).
+  'cgtn-arabic': ['https://www.youtube.com/channel/UCQmJk0ErE_FiorcLBsDKORA'],
+  // Kan's own kancdn space on MedOne, an Israeli CDN; kan11.media.kan.org.il refused connections
+  // (2026-09-23, #8545).
+  'kan-11': ['https://kancdn.medonecdn.net/livehls/oil/kancdn-live/live/kan11/live.livx/playlist.m3u8'],
+  // The Brightcove entry returned 503; i24news.tv's own player uses this immergo host (2026-09-24, #8545).
+  'i24-news': ['https://i24newshebrew-cdn.encoders.immergo.tv/master.m3u8'],
   'asharq-news': ['https://www.youtube.com/watch?v=f6VpkfV7m4Y'],
   'aljazeera-arabic': [
     'https://live-hls-web-aja.getaj.net/AJA/index.m3u8',
@@ -177,32 +234,50 @@ export const LIVE_NEWS_SOURCES = {
   ],
   'aljazeera-mubasher': ['https://live-hls-web-ajm.getaj.net/AJM/index.m3u8'],
   'alarabiya-business': ['https://live.alarabiya.net/alarabiapublish/aswaaq.smil/playlist.m3u8'],
-  'al-qahera-news': ['https://bcovlive-a.akamaihd.net/d30cbb3350af4cb7a6e05b9eb1bfd850/eu-west-1/6057955906001/playlist.m3u8'],
-  'press-tv': ['https://cdnlive.presstv.ir/cdnlive/smil:cdnlive.smil/playlist.m3u8'],
+  // The Brightcove entry returned 503; alqaheranews.net links to and embeds this channel (2026-09-24, #8545).
+  'al-qahera-news': ['https://www.youtube.com/channel/UCktyejXTxWaKfrgp1Oq7CMQ'],
+  // cdnlive.presstv.ir served 502 behind a broken certificate chain; presstv.ir's own player loads this
+  // manifest (2026-09-24, #8545).
+  'press-tv': ['https://live.presstv.co.uk/hls/presstv.m3u8'],
   'dw-arabic': ['https://dwamdstream103.akamaized.net/hls/live/2015526/dwstream103/index.m3u8'],
   'rt-arabic': ['https://rt-arb.rttv.com/dvr/rtarab/playlist.m3u8'],
-  rudaw: ['https://svs.itworkscdn.net/rudawlive/rudawlive.smil/playlist.m3u8'],
-  africanews: [],
-  'channels-tv': [],
-  'ktn-news': [],
+  // The itworkscdn entry stopped serving an HLS playlist; the HLS is now on rudaw.net (2026-09-24, #8545).
+  rudaw: [
+    'https://live.rudaw.net/hls/rudaw-tv/master.m3u8',
+    'https://www.youtube.com/channel/UCAUHoE2Ykw0sguyi5AjhrjQ',
+  ],
+  africanews: ['https://www.youtube.com/channel/UC1_E8NeF5QHY2dtdLRBCCLA'],
+  // The channel embed fails with player error 150; its id changes when Channels restarts the stream.
+  'channels-tv': ['https://www.youtube.com/watch?v=d4zDorDl5UE'],
+  'ktn-news': ['https://www.youtube.com/channel/UCKVsdeoHExltrWMuK0hOWmg'],
+  // No reachable live found (2026-09-23, #8545).
   enca: [],
   'sabc-news': [
     'https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/chunklist_b250000_t64MjQwcA==.m3u8',
     'https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/playlist.m3u8',
   ],
-  'arise-news': ['https://liveedge-arisenews.visioncdn.com/live-hls/arisenews/arisenews/arisenews_web/master.m3u8'],
-  welt: [],
+  // The visioncdn HLS host no longer resolves (2026-09-23, #8545).
+  'arise-news': ['https://www.youtube.com/channel/UCyEJX-kSj0kOOCS7Qlq2G7g'],
+  // The official HLS returns 401; the channel embed plays outside DE/AT/CH (2026-09-24, #8545).
+  welt: ['https://www.youtube.com/channel/UCZMsvbAhhRblVGXmEXW8TSA'],
   tagesschau24: ['https://tagesschau.akamaized.net/hls/live/2020115/tagesschau/tagesschau_1/master.m3u8'],
   'euronews-fr': ['https://www.youtube.com/watch?v=NiRIbKwAejk'],
-  'euronews-gr': [],
-  'skai-tv': [],
-  'ert-news': ['https://ertflix.ascdn.broadpeak.io/ertlive/ertnews/default/index.m3u8'],
+  'euronews-gr': ['https://www.youtube.com/channel/UC8HJZNfDPoySgW9DN3YGNaA'],
+  // Embedded on skai.gr/tv/live (2026-09-24, #8545).
+  'skai-tv': ['https://skai-live.siliconweb.com/media/cambria4/index.m3u8'],
+  // ERT's own space on Broadpeak, the old entry's vendor; the ertflix entry returned HTTP 404 (#8545).
+  'ert-news': ['https://ert-ucdn.broadpeak-aas.com/bpk-tv/ERTNews/default/index.m3u8'],
   'france24-fr': ['https://www.youtube.com/watch?v=a47ckXKZjxI'],
-  'france-info': [],
-  bfmtv: [],
+  // The channel embed fails with player error 150; its id changes when franceinfo restarts the stream.
+  'france-info': ['https://www.youtube.com/watch?v=NG7ZX42nZKc'],
+  // The HLS is embedded on bfmtv.com. The channel embed currently plays BFM2, not the main feed
+  // (2026-09-24, #8545).
+  bfmtv: [
+    'https://live-cdn-stream-euw1.bfmtv.bct.nextradiotv.com/master.m3u8',
+    'https://www.youtube.com/channel/UCXwDLMDV86ldKoFVc_g8P0g',
+  ],
   'tv5monde-info': ['https://ott.tv5monde.com/Content/HLS/Live/channel(info)/index.m3u8'],
   nrk1: ['https://nrk-nrk1.akamaized.net/21/0/hls/nrk_1/playlist.m3u8'],
-  'aljazeera-balkans': ['https://live-hls-web-ajb.getaj.net/AJB/index.m3u8'],
   'abc-news-au': [
     'https://abc-iview-mediapackagestreams-2.akamaized.net/out/v1/6e1cc6d25ec0480ea099a5399d73bc4b/index.m3u8',
     'https://www.youtube.com/watch?v=vOTiJkg1voo',
