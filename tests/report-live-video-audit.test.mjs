@@ -475,6 +475,42 @@ describe('live video audit issue', () => {
     assert.doesNotMatch(body, /### Could not verify from the runner/);
   });
 
+  it('publishes region-locked and unchanged-playlist entries from a real check under "Could not verify from the runner" (#8545)', async () => {
+    const SKY_HLS = 'https://linear.sky.test/live/master.m3u8';
+    const catalog = { ...baseCatalog, news: { bloomberg: [SKY_HLS], 'bbc-news': [watch('bbcNewsLive')], rtve: [watch('KQp-e_XQnDE')] } };
+    const surfaces = {
+      webcamFeeds: Object.keys(catalog.webcams).map((id) => ({ id, region: 'europe' })),
+      gridCells: 4,
+      newsDefaults: { full: ['bloomberg'] },
+      newsOptional: ['bloomberg', 'bbc-news', 'rtve'],
+      newsGeoAvailability: { 'bbc-news': ['GB'] },
+    };
+    const liveVerdict = { verdict: { verdict: 'live', video: { videoId: 'gCNeDWCI0vo', isLive: true, title: 'Live', author: 'Channel' } } };
+    let report;
+    await runCheck(['--all', '--report', 'audit.json'], {
+      write: () => {},
+      catalog,
+      surfaces,
+      writeReport: (_path, json) => { report = JSON.parse(json); },
+      probeYouTube: async (candidates) => candidates.map((candidate) => (candidate.videoId === 'bbcNewsLive'
+        ? { verdict: { verdict: 'failed', outcome: { kind: 'player-error', code: 150 } } }
+        : liveVerdict)),
+      probeHls: async (candidates) => candidates.map(() => ({
+        verdict: { verdict: 'failed', outcome: { kind: 'hls-fatal', detail: 'media playlist did not advance in 12 s' } },
+        playlistUnchanged: true,
+      })),
+    });
+    const { calls, gh } = fakeGh([{ number: 5, title: ISSUE_TITLE }]);
+    assert.deepEqual(await publish(report, { gh, catalog }), { findings: 0, action: 'closed', issue: 5 }, 'neither is a finding');
+    const body = renderAuditBody(report, { canaries: '2 of 2 live' });
+    const section = body.indexOf('### Could not verify from the runner');
+    assert.ok(section > 0, body);
+    assert.match(body.slice(section), /^An HLS 403[^\n]*an HLS playlist that did not advance between reloads[^\n]*a region-locked channel refused outside its regions[^\n]*$/m);
+    assert.match(body.slice(section), /\| live-news\/bbc-news \| Live News optional \| `https:\/\/www\.youtube\.com\/watch\?v=bbcNewsLive` \| region-locked \(GB\): cannot be verified from the runner; YouTube player error 150: [^|]+ \|/);
+    assert.match(body.slice(section), /\| live-news\/bloomberg \| Live News default \(full\) \| `https:\/\/linear\.sky\.test\/live\/master\.m3u8` \| HLS playlist did not advance between reloads; a CDN edge may still be serving a cached copy: `media playlist did not advance in 12 s` \|/);
+    assert.match(calls.at(-2).payload.body, /2 slot\(s\) could not be verified from the runner/);
+  });
+
   it('keeps a dead backup out of "Could not verify from the runner"', () => {
     const stalled = attempt(watch('e2gC37ILQmk'), 'unverifiable', { why: 'the player frame loaded but never became ready', unverifiableFromRunner: true });
     const report = {

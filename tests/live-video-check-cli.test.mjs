@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   ALONE_RECHECK_BUDGET_MS,
   browserLaunchOptions,
+  DEFAULT_BATCH_SIZE,
   catalogTargets,
   exitCodeFor,
   formatCheckLine,
@@ -358,13 +359,15 @@ describe('probeHlsCandidate', () => {
   const segments = (first, count, name = (n) => `seg${n}.ts`) =>
     Array.from({ length: count }, (_, i) => `#EXTINF:6.0,\n${name(first + i)}`).join('\n');
 
-  /** Serves each URL's bodies in order (the last one repeats), records requests and waits, never sleeps. */
+  /** Serves each URL's bodies in order (the last one repeats), records requests and waits, never sleeps: a wait moves its clock. */
   function playlistServer(routes) {
     const requests = [];
     const delays = [];
-    return {
+    const server = {
       requests,
       delays,
+      clock: 0,
+      now: () => server.clock,
       fetch: async (url, init) => {
         requests.push({ url, init });
         const bodies = routes[url] ?? [];
@@ -375,8 +378,10 @@ describe('probeHlsCandidate', () => {
       delay: async (ms, signal) => {
         assert.equal(signal, requests[0].init.signal, 'the wait honours the probe deadline signal');
         delays.push(ms);
+        server.clock += ms;
       },
     };
+    return server;
   }
 
   it('reads a frozen playlist as not live, even with PROGRAM-DATE-TIME, PLAYLIST-TYPE:EVENT, or EXTINF alone', async () => {
@@ -389,21 +394,22 @@ describe('probeHlsCandidate', () => {
     ];
     for (const frozen of frozenBodies) {
       const server = playlistServer({ [MEDIA_URL]: [frozen] });
-      const { verdict } = await probeHlsCandidate(hls(), server);
+      const { verdict, playlistUnchanged } = await probeHlsCandidate(hls(), server);
       assert.equal(verdict.verdict, 'failed');
       assert.equal(verdict.outcome.kind, 'hls-fatal');
-      assert.match(verdict.outcome.detail, /^media playlist did not advance in 9 s$/);
-      assert.deepEqual(server.requests.map((request) => request.url), [MEDIA_URL, MEDIA_URL, MEDIA_URL]);
-      assert.deepEqual(server.delays, [6_000, 3_000]);
+      assert.match(verdict.outcome.detail, /^media playlist did not advance in 12 s$/);
+      assert.equal(playlistUnchanged, true);
+      assert.deepEqual(server.requests.map((request) => request.url), [MEDIA_URL, MEDIA_URL, MEDIA_URL, MEDIA_URL]);
+      assert.deepEqual(server.delays, [6_000, 3_000, 3_000]);
     }
   });
 
   it('reads a frozen playlist as not live when its CDN rotates a segment URL token on every request', async () => {
     const tokened = (token) => playlist('#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:120', segments(120, 3, (n) => `seg${n}.ts?token=${token}`));
-    const server = playlistServer({ [MEDIA_URL]: [tokened('a1'), tokened('b2'), tokened('c3')] });
+    const server = playlistServer({ [MEDIA_URL]: [tokened('a1'), tokened('b2'), tokened('c3'), tokened('d4')] });
     const { verdict } = await probeHlsCandidate(hls(), server);
     assert.equal(verdict.verdict, 'failed');
-    assert.match(verdict.outcome.detail, /^media playlist did not advance in 9 s$/);
+    assert.match(verdict.outcome.detail, /^media playlist did not advance in 12 s$/);
   });
 
   it('reloads once more after an unchanged playlist instead of calling it frozen', async () => {
@@ -415,15 +421,58 @@ describe('probeHlsCandidate', () => {
     assert.deepEqual(server.delays, [6_000, 3_000]);
   });
 
-  it('calls a playlist frozen only after a second unchanged reload', async () => {
-    const media = playlist('#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:10', segments(10, 3));
-    const server = playlistServer({ [MEDIA_URL]: [media, media, media] });
-    const { verdict } = await probeHlsCandidate(hls(), server);
+  it('keeps reloading an unchanged playlist every half target duration, up to three target durations', async () => {
+    // Al Hadath (#8545): a 4 s target duration, unchanged on a runner edge for 6 s, advancing from Dubai.
+    const media = playlist('#EXT-X-TARGETDURATION:4', '#EXT-X-MEDIA-SEQUENCE:144325', segments(144325, 3));
+    const server = playlistServer({ [MEDIA_URL]: [media] });
+    const { verdict, playlistUnchanged } = await probeHlsCandidate(hls(), server);
     assert.equal(verdict.verdict, 'failed');
     assert.equal(verdict.outcome.kind, 'hls-fatal');
-    assert.match(verdict.outcome.detail, /^media playlist did not advance in 9 s$/);
-    assert.equal(server.requests.length, 3);
-    assert.deepEqual(server.delays, [6_000, 3_000]);
+    assert.match(verdict.outcome.detail, /^media playlist did not advance in 12 s$/);
+    assert.equal(playlistUnchanged, true, 'marked so the audit files it as unverifiable, not dead');
+    assert.deepEqual(server.delays, [4_000, 2_000, 2_000, 2_000, 2_000], '4 + 4 x 2 = 12 s, three target durations');
+    assert.equal(server.requests.length, 6);
+  });
+
+  it('reads a playlist as live when only the third reload advances', async () => {
+    const media = (sequence) => playlist('#EXT-X-TARGETDURATION:4', `#EXT-X-MEDIA-SEQUENCE:${sequence}`, segments(sequence, 3));
+    const server = playlistServer({ [MEDIA_URL]: [media(144325), media(144325), media(144325), media(144327)] });
+    const result = await probeHlsCandidate(hls(), server);
+    assert.deepEqual(result, { verdict: { verdict: 'live', video: null } });
+    assert.deepEqual(server.delays, [4_000, 2_000, 2_000]);
+    assert.equal(server.requests.length, 4);
+  });
+
+  it('asks caches for a fresh copy on every reload, never by changing the URL', async () => {
+    const signed = 'https://cdn.example.com/live/index.m3u8?token=abc&expires=1';
+    const media = playlist('#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:10', segments(10, 3));
+    const server = playlistServer({ [signed]: [media] });
+    await probeHlsCandidate(hls(signed), server);
+    const [first, ...reloads] = server.requests;
+    assert.ok(reloads.length >= 2);
+    assert.equal(first.init.headers['cache-control'], undefined, 'the first fetch is an ordinary request');
+    for (const reload of reloads) {
+      assert.equal(reload.url, signed, 'a signed URL keeps its exact query');
+      assert.equal(reload.init.headers['cache-control'], 'no-cache');
+      assert.equal(reload.init.headers.pragma, 'no-cache');
+      assert.match(reload.init.headers['user-agent'], /^Mozilla\//);
+    }
+  });
+
+  it('never starts a reload the probe deadline would cut off', async () => {
+    const media = playlist('#EXT-X-TARGETDURATION:6', '#EXT-X-MEDIA-SEQUENCE:10', segments(10, 3));
+    for (const fetchMs of [0, 700, 2_000, 4_000]) {
+      const server = playlistServer({ [MEDIA_URL]: [media] });
+      const { verdict } = await probeHlsCandidate(hls(), {
+        ...server,
+        fetch: async (url, init) => {
+          server.clock += fetchMs;
+          return server.fetch(url, init);
+        },
+      });
+      assert.ok(server.clock <= LIVE_VIDEO_TIMING.verdictDeadlineMs, `${fetchMs} ms fetches ended at ${server.clock} ms`);
+      assert.equal(verdict.verdict, 'failed', `${fetchMs} ms fetches`);
+    }
   });
 
   it('reads a deadline-clipped lone reload as unverifiable rather than frozen', async () => {
@@ -588,19 +637,18 @@ describe('probeHlsCandidate', () => {
     const frozen = (...tags) => playlist(...tags, '#EXT-X-MEDIA-SEQUENCE:5', segments(5, 2));
     const waitFor = async (body, fetchMs) => {
       const server = playlistServer({ [MEDIA_URL]: [body] });
-      let clock = 0;
       await probeHlsCandidate(hls(), {
         ...server,
-        now: () => clock,
         fetch: async (url, init) => {
-          clock += fetchMs;
+          server.clock += fetchMs;
           return server.fetch(url, init);
         },
       });
       return server.delays;
     };
-    assert.deepEqual(await waitFor(frozen('#EXT-X-TARGETDURATION:30'), 1_000), [10_000, 5_000]);
-    assert.deepEqual(await waitFor(frozen('#EXT-X-TARGETDURATION:0'), 1_000), [1_000, 500]);
+    // A 10 s wait leaves no room for a 5 s one and its fetch before the deadline.
+    assert.deepEqual(await waitFor(frozen('#EXT-X-TARGETDURATION:30'), 1_000), [10_000]);
+    assert.deepEqual(await waitFor(frozen('#EXT-X-TARGETDURATION:0'), 1_000), [1_000, 500, 500, 500, 500]);
     assert.deepEqual(await waitFor(frozen(), 1_000), [6_000, 3_000]);
     // A 12 s first fetch leaves no room for the second look, so the lone wait is all there is.
     assert.deepEqual(await waitFor(frozen('#EXT-X-TARGETDURATION:6'), 12_000), [LIVE_VIDEO_TIMING.verdictDeadlineMs - 12_000]);
@@ -923,6 +971,89 @@ describe('audit report (--all --report)', () => {
     assert.equal(report.slots[0].status, 'ok', 'an origin error on the first entry does not file a degraded default slot');
   });
 
+  it('counts an HLS playlist that never advanced as unverifiable from the runner, not dead (#8545)', async () => {
+    const hlsOnly = { webcams: {}, gridPriority: [], news: { bloomberg: [BLOOMBERG_HLS] }, canaries: [CANARY] };
+    const unchanged = async (candidates) => candidates.map(() => ({
+      verdict: { verdict: 'failed', outcome: { kind: 'hls-fatal', detail: 'media playlist did not advance in 12 s' } },
+      playlistUnchanged: true,
+    }));
+    const { lines, writes: [{ report }] } = await audit(['--all', '--report', 'audit.json'], { catalog: hlsOnly, probeHls: unchanged });
+    const [slot] = report.slots;
+    assert.equal(slot.status, 'unverifiable-from-runner');
+    assert.equal(slot.attempts[0].unverifiableFromRunner, true);
+    assert.equal(slot.attempts[0].why, 'HLS playlist did not advance between reloads; a CDN edge may still be serving a cached copy');
+    assert.equal(slot.attempts[0].evidence.playlistUnchanged, true);
+    assert.equal(slot.attempts[0].evidence.detail, 'media playlist did not advance in 12 s');
+    assert.match(lines.join('\n'), /why: HLS playlist did not advance between reloads; [^\n]*: media playlist did not advance in 12 s/);
+
+    // A dead backup behind it still files the slot: the unchanged entry vouches for nothing.
+    const withDeadBackup = { ...hlsOnly, news: { bloomberg: [BLOOMBERG_HLS, watch('zp6LNSoq000')] } };
+    const backed = await audit(['--all', '--report', 'audit.json'], { catalog: withDeadBackup, probeHls: unchanged });
+    assert.equal(backed.writes[0].report.slots[0].status, 'degraded');
+  });
+
+  describe('region-locked channels (geoAvailability)', () => {
+    const regional = { ...surfaces, newsGeoAvailability: { 'bbc-news': ['GB'] } };
+    const newsOnly = (entries) => ({ webcams: {}, gridPriority: [], news: { 'bbc-news': entries, bloomberg: entries }, canaries: [CANARY] });
+    const failHls = (outcome) => async (candidates) => candidates.map(() => ({ verdict: { verdict: 'failed', outcome } }));
+    const youtubeError = (code) => async (candidates) => candidates.map((candidate) => (candidate.kind === 'channel'
+      ? live('gCNeDWCI0vo')
+      : { verdict: { verdict: 'failed', outcome: { kind: 'player-error', code } }, durationSeconds: null, verdictAtMs: 900 }));
+    const run = async (catalogFor, overrides) => {
+      const { writes: [{ report }] } = await audit(['--all', '--report', 'audit.json'], { catalog: catalogFor, surfaces: regional, ...overrides });
+      return new Map(report.slots.map((slot) => [slot.slot, slot]));
+    };
+
+    it('reads a YouTube "unavailable here" error as unverifiable only on a region-locked slot', async () => {
+      for (const code of [101, 150]) {
+        const bySlot = await run(newsOnly([watch('zp6LNSoq000')]), { probeYouTube: youtubeError(code) });
+        const locked = bySlot.get('live-news/bbc-news');
+        assert.equal(locked.status, 'unverifiable-from-runner', `error ${code}`);
+        assert.equal(locked.attempts[0].unverifiableFromRunner, true);
+        assert.ok(locked.attempts[0].why.startsWith(`region-locked (GB): cannot be verified from the runner; YouTube player error ${code}: `), locked.attempts[0].why);
+        assert.equal(bySlot.get('live-news/bloomberg').status, 'needs-replacement', 'the same error on a slot that plays everywhere is dead');
+      }
+    });
+
+    it('labels an HLS 403 or 451 on a region-locked slot as region-locked', async () => {
+      for (const status of [403, 451]) {
+        const bySlot = await run(newsOnly([BBC_HLS]), { probeHls: failHls({ kind: 'hls-http', status }) });
+        const [attempt] = bySlot.get('live-news/bbc-news').attempts;
+        assert.equal(bySlot.get('live-news/bbc-news').status, 'unverifiable-from-runner');
+        assert.equal(attempt.why, `region-locked (GB): cannot be verified from the runner; manifest returned HTTP ${status}`);
+        assert.equal(bySlot.get('live-news/bloomberg').attempts[0].why, `manifest returned HTTP ${status}`);
+      }
+    });
+
+    it('still counts a missing host, a 404 or a removed video on a region-locked slot as dead: that is not geography', async () => {
+      const cases = [
+        [newsOnly([BBC_HLS]), { probeHls: failHls({ kind: 'hls-fatal', detail: 'ENOTFOUND' }) }],
+        [newsOnly([BBC_HLS]), { probeHls: failHls({ kind: 'hls-http', status: 404 }) }],
+        [newsOnly([watch('zp6LNSoq000')]), { probeYouTube: youtubeError(100) }],
+      ];
+      for (const [catalogFor, overrides] of cases) {
+        const bySlot = await run(catalogFor, overrides);
+        const locked = bySlot.get('live-news/bbc-news');
+        assert.equal(locked.status, 'needs-replacement', locked.attempts[0].why);
+        assert.equal(locked.attempts[0].unverifiableFromRunner, false);
+        assert.doesNotMatch(locked.attempts[0].why, /region-locked/);
+      }
+    });
+
+    it('never files a region-locked slot as degraded for a region block ahead of a live entry, and keeps an empty one empty', async () => {
+      const bySlot = await run(newsOnly([watch('zp6LNSoq000'), watch('QB5BNdBFujE')]), {
+        probeYouTube: async (candidates) => candidates.map((candidate) => (candidate.videoId === 'zp6LNSoq000'
+          ? { verdict: { verdict: 'failed', outcome: { kind: 'player-error', code: 150 } } }
+          : live(candidate.videoId ?? 'gCNeDWCI0vo'))),
+      });
+      assert.equal(bySlot.get('live-news/bbc-news').status, 'ok');
+      assert.equal(bySlot.get('live-news/bloomberg').status, 'degraded');
+
+      const empty = await run(newsOnly([]), {});
+      assert.equal(empty.get('live-news/bbc-news').status, 'empty');
+    });
+  });
+
   it('counts a stream that never started, or a player never ready even alone, as dead; a missing live signal or blocked API stays unverifiable', async () => {
     const videoOnly = { webcams: {}, gridPriority: [], news: { bloomberg: [watch('QB5BNdBFujE')] }, canaries: [CANARY] };
     const cases = [
@@ -1170,6 +1301,29 @@ describe('live video surfaces', () => {
     assert.deepEqual(extractLiveVideoSurfaces({ webcamsPanel, newsPanel }).newsDefaults, { full: ['bloomberg'] });
   });
 
+  it('reads each region-locked channel\'s geoAvailability, and fails loudly when one cannot be read', () => {
+    const webcamsPanel = "const WEBCAM_FEEDS: WebcamFeed[] = [\n  { id: 'kyiv', city: 'Ukraine', country: 'Ukraine', region: 'europe' },\n];\nconst MAX_GRID_CELLS = 4;\n";
+    const newsPanel = [
+      'const FULL_LIVE_CHANNELS: LiveChannel[] = [',
+      "  { id: 'bloomberg', name: 'Bloomberg' },",
+      '];',
+      'export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [',
+      "  { id: 'bloomberg', name: 'Bloomberg' },",
+      "  { id: 'phoenix', name: 'Phoenix', geoAvailability: ['DE', 'AT', 'CH'] },",
+      "  { id: 'nrk1', name: 'NRK1', handle: '@nrk', geoAvailability: ['NO'] },",
+      '];',
+      '',
+    ].join('\n');
+    assert.deepEqual(extractLiveVideoSurfaces({ webcamsPanel, newsPanel }).newsGeoAvailability, { phoenix: ['DE', 'AT', 'CH'], nrk1: ['NO'] });
+    assert.throws(
+      () => extractLiveVideoSurfaces({ webcamsPanel, newsPanel: newsPanel.replace("['NO']", 'NORDIC') }),
+      /cannot read the geoAvailability of nrk1/,
+    );
+    const real = readLiveVideoSurfaces().newsGeoAvailability;
+    for (const id of ['bbc-news', 'phoenix', 'nrk1']) assert.ok(real[id]?.length > 0, `${id} is region-locked in live-channels.ts`);
+    assert.equal(real.bloomberg, undefined);
+  });
+
   it('fails loudly when a panel list can no longer be read', () => {
     const webcamsPanel = "const WEBCAM_FEEDS: WebcamFeed[] = [\n  { id: 'kyiv', city: 'Ukraine', country: 'Ukraine', region: 'europe' },\n];\nconst MAX_GRID_CELLS = 4;\n";
     const newsPanel = "const FULL_LIVE_CHANNELS: LiveChannel[] = [\n  { id: 'bloomberg', name: 'Bloomberg' },\n];\nexport const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [\n  { id: 'bloomberg', name: 'Bloomberg' },\n];\n";
@@ -1178,6 +1332,7 @@ describe('live video surfaces', () => {
       gridCells: 4,
       newsDefaults: { full: ['bloomberg'] },
       newsOptional: ['bloomberg'],
+      newsGeoAvailability: {},
     });
     assert.throws(() => extractLiveVideoSurfaces({ webcamsPanel: '', newsPanel }), /WEBCAM_FEEDS/);
     assert.throws(() => extractLiveVideoSurfaces({ webcamsPanel: webcamsPanel.replace("region: 'europe'", 'region: REGION'), newsPanel }), /WEBCAM_FEEDS/);
@@ -1339,6 +1494,29 @@ describe('audit proxy (LIVE_VIDEO_AUDIT_PROXY_URL)', () => {
     const text = out.join('\n');
     assert.match(text, /proxy\.example\.net/);
     assert.doesNotMatch(text, LEAK);
+  });
+
+  it('sets the players per page from LIVE_VIDEO_BATCH_SIZE, keeps alone re-checks at one, and rejects a bad value', async () => {
+    const seen = [];
+    const run = async (_argv, options) => {
+      await options.probeYouTube([{ kind: 'video', videoId: 'a' }]);
+      await options.probeYouTube([{ kind: 'video', videoId: 'b' }], { batchSize: 1 });
+      return 0;
+    };
+    const probeWithBrowser = async (candidates, options) => { seen.push(options.batchSize); return candidates.map(() => ({})); };
+    assert.equal(await runCli(['--all'], { env: { LIVE_VIDEO_BATCH_SIZE: '2' }, write: () => {}, probeWithBrowser, run }), 0);
+    assert.deepEqual(seen, [2, 1]);
+    seen.length = 0;
+    assert.equal(await runCli(['--all'], { env: {}, write: () => {}, probeWithBrowser, run }), 0);
+    assert.deepEqual(seen, [DEFAULT_BATCH_SIZE, 1], 'the default');
+    for (const bad of ['0', '17', '2.5', 'eight', '-1']) {
+      const out = [];
+      let ran = false;
+      const code = await runCli(['--all'], { env: { LIVE_VIDEO_BATCH_SIZE: bad }, write: (line) => out.push(line), run: async () => { ran = true; return 0; } });
+      assert.equal(code, 2, bad);
+      assert.equal(ran, false, bad);
+      assert.match(out.join('\n'), /LIVE_VIDEO_BATCH_SIZE must be a whole number from 1 to 16/, bad);
+    }
   });
 
   it('runs without a proxy locally', async () => {

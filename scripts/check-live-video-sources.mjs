@@ -12,7 +12,7 @@ import { classifyAttempt, LIVE_VIDEO_TIMING, parseSourceEntry } from '../src/ser
 
 const PROBE_ORIGIN = 'https://www.worldmonitor.app';
 const PROBE_URL = `${PROBE_ORIGIN}/__live_video_probe__`;
-const BATCH_SIZE = 8;
+export const DEFAULT_BATCH_SIZE = 8;
 const MAX_POLLS = Math.ceil((2 * LIVE_VIDEO_TIMING.verdictDeadlineMs) / LIVE_VIDEO_TIMING.pollMs);
 /** A YouTube stall (never ready, no verdict, never started) counts as dead only after this many checks alone stall too. */
 export const ALONE_RECHECKS = 2;
@@ -25,6 +25,9 @@ const INDENT = ' '.repeat(12);
 const CATALOG_FILE = 'src/config/live-video-sources.ts';
 export const DEFAULT_CATALOG = { webcams: WEBCAM_SOURCES, gridPriority: WEBCAM_GRID_PRIORITY, news: LIVE_NEWS_SOURCES, canaries: AUDIT_CANARIES };
 const PROXY_ENV = 'LIVE_VIDEO_AUDIT_PROXY_URL';
+const BATCH_SIZE_ENV = 'LIVE_VIDEO_BATCH_SIZE';
+/** The most players LIVE_VIDEO_BATCH_SIZE may put on one page. */
+const MAX_BATCH_SIZE = 16;
 const { parseProxyConfig } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 const USAGE = `Usage: npm run live-video:check -- <entry> [<entry> ...]
@@ -53,6 +56,8 @@ ${PROXY_ENV} routes the YouTube browser through a proxy (http(s)://user:pass@hos
 user:pass@host:port or [http(s)://]host:port:user:pass, as the relay's PROXY_URL). YouTube refuses embeds
 from datacenter IPs, so on a GitHub runner (GITHUB_ACTIONS=true) the check refuses to run without
 it. HLS fetches never use it.
+
+${BATCH_SIZE_ENV} sets how many YouTube players share one page (1-${MAX_BATCH_SIZE}, default ${DEFAULT_BATCH_SIZE}).
 Exits 1 when any entry is not live or a slot is empty, 2 on bad arguments or proxy settings.`;
 
 const PROBLEM_WHY = {
@@ -144,6 +149,7 @@ function why(result) {
       }
       if (outcome.kind === 'timeout') return `no verdict within ${LIVE_VIDEO_TIMING.verdictDeadlineMs / 1000} s${aloneSuffix(result)}`;
       if (outcome.kind === 'hls-http') return `manifest returned HTTP ${outcome.status}`;
+      if (result.playlistUnchanged) return 'HLS playlist did not advance between reloads; a CDN edge may still be serving a cached copy';
       return 'stream failed';
     }
     case 'unverifiable':
@@ -337,7 +343,7 @@ export async function probeYouTubeBatches(candidates, {
   openPage,
   probeBatch = probeYouTubeCandidates,
   onError = (message) => console.error(message),
-  batchSize = BATCH_SIZE,
+  batchSize = DEFAULT_BATCH_SIZE,
 } = {}) {
   const results = [];
   for (let start = 0; start < candidates.length; start += batchSize) {
@@ -385,6 +391,15 @@ export function parseAuditProxy(raw) {
   return proxy;
 }
 
+/** Players per page from LIVE_VIDEO_BATCH_SIZE, or the default when it is unset. */
+export function resolveBatchSize(env) {
+  const raw = String(env[BATCH_SIZE_ENV] ?? '').trim();
+  if (!raw) return DEFAULT_BATCH_SIZE;
+  const size = Number(raw);
+  if (!/^\d+$/.test(raw) || size < 1 || size > MAX_BATCH_SIZE) throw new Error(`${BATCH_SIZE_ENV} must be a whole number from 1 to ${MAX_BATCH_SIZE}`);
+  return size;
+}
+
 /** The proxy for this run, or null. On a GitHub runner a missing proxy is an error: YouTube refuses embeds there. */
 export function resolveAuditProxy(env) {
   const raw = String(env[PROXY_ENV] ?? '').trim();
@@ -421,7 +436,7 @@ async function launchChromium(options) {
 
 /** Plays the candidates in one headless browser, `batchSize` players per page, one page after another. */
 export async function probeYouTubeWithBrowser(candidates, {
-  batchSize = BATCH_SIZE,
+  batchSize = DEFAULT_BATCH_SIZE,
   proxy = null,
   launch = launchChromium,
   onError = (message) => console.error(message),
@@ -446,6 +461,11 @@ export async function probeYouTubeWithBrowser(candidates, {
 
 const HLS_DEFAULT_TARGET_SECONDS = 6;
 const HLS_MAX_RELOAD_WAIT_SECONDS = 10;
+/** How many target durations of unchanged reloads the probe sits through before it stops looking. */
+const HLS_UNCHANGED_TARGETS = 3;
+/** Time kept free for a reload's own fetch before the probe deadline. */
+const HLS_RELOAD_FETCH_MARGIN_MS = 1_000;
+const HLS_RELOAD_HEADERS = { 'cache-control': 'no-cache', pragma: 'no-cache' };
 
 function playlistLines(text) {
   return text.trimStart().split(/\r?\n/).map((line) => line.trim());
@@ -534,14 +554,15 @@ export async function probeHlsCandidate(candidate, { fetch: fetchPlaylist = defa
   const fatal = (detail) => ({ verdict: observe({ failure: { kind: 'fatal', detail } }) });
   const settle = (playlist) => (playlist.kind === 'ended' ? { verdict: observe({ manifest: 'vod' }) } : fatal(playlist.detail));
   const signal = AbortSignal.timeout(LIVE_VIDEO_TIMING.verdictDeadlineMs);
-  const get = async (url) => {
+  // A reload asks every cache on the way for a fresh copy. Never by query string: signed URLs reject a changed query.
+  const get = async (url, { reload = false } = {}) => {
     let current = url;
     for (let hop = 0; hop < HLS_MAX_REDIRECTS; hop++) {
       const httpsUrl = httpsHref(current);
       if (!httpsUrl) return { error: HLS_NOT_HTTPS };
       const response = await fetchPlaylist(httpsUrl, {
         signal,
-        headers: { 'user-agent': BROWSER_UA },
+        headers: reload ? { 'user-agent': BROWSER_UA, ...HLS_RELOAD_HEADERS } : { 'user-agent': BROWSER_UA },
         redirect: 'manual',
       });
       if (response.status >= 300 && response.status < 400) {
@@ -574,21 +595,22 @@ export async function probeHlsCandidate(candidate, { fetch: fetchPlaylist = defa
       }
       const before = readHlsPlaylist(text);
       if (before.kind !== 'live-candidate') return settle(before);
-      // Reload after one target duration, never past the probe deadline, and require progress.
+      // Reload after one target duration, then every half target duration (RFC 8216 6.3.4) while the playlist is
+      // unchanged, for up to HLS_UNCHANGED_TARGETS target durations and never past the probe deadline. A CDN edge can
+      // keep serving the copy it cached for a while, so one or two unchanged reloads are not proof of a frozen stream.
       const targetMs = Math.min(Math.max(before.targetSeconds, 1), HLS_MAX_RELOAD_WAIT_SECONDS) * 1000;
       const timeLeftMs = () => LIVE_VIDEO_TIMING.verdictDeadlineMs - (now() - startedAt);
       const firstWaitMs = Math.max(0, Math.min(targetMs, timeLeftMs()));
       let waitedMs = 0;
       let reloads = 0;
-      // RFC 8216 6.3.4: one unchanged reload is normal — a CDN edge can still hold the previous
-      // copy — so look again after half a target duration before calling the playlist frozen.
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; waitedMs < HLS_UNCHANGED_TARGETS * targetMs; attempt++) {
         const waitMs = attempt === 0 ? firstWaitMs : targetMs / 2;
-        if (attempt > 0 && timeLeftMs() < waitMs) break;
+        // Leave room for the reload itself, so the deadline never cuts off a look that already waited.
+        if (attempt > 0 && timeLeftMs() < waitMs + HLS_RELOAD_FETCH_MARGIN_MS) break;
         await delay(waitMs, signal);
         waitedMs += waitMs;
         reloads++;
-        const reloadFetched = await get(response.url || url);
+        const reloadFetched = await get(response.url || url, { reload: true });
         if (reloadFetched.error) return fatal(reloadFetched.error);
         const reload = reloadFetched.response;
         if (!reload.ok) return { verdict: observe({ failure: { kind: 'http', status: reload.status } }) };
@@ -598,7 +620,9 @@ export async function probeHlsCandidate(candidate, { fetch: fetchPlaylist = defa
       }
       // The deadline clipped the only wait below one segment, so "frozen" is not a safe read.
       if (reloads < 2 && firstWaitMs < targetMs) return { verdict: observe({ elapsedMs: LIVE_VIDEO_TIMING.verdictDeadlineMs }) };
-      return fatal(`media playlist did not advance in ${formatSeconds(waitedMs / 1000)}`);
+      // Still the same copy: a frozen stream, or an edge that kept serving its cached copy. The audit cannot tell
+      // them apart from one run, so it reads this as unverifiable from the runner (unverifiableFromRunner).
+      return { ...fatal(`media playlist did not advance in ${formatSeconds(waitedMs / 1000)}`), playlistUnchanged: true };
     }
     return fatal('too many nested playlists');
   } catch (error) {
@@ -671,23 +695,43 @@ function unverifiableFromRunner(row) {
   if (stalledLikeThePage(row)) return !(row.aloneChecks >= ALONE_RECHECKS);
   if (verdict.verdict === 'unverifiable') return true;
   if (verdict.verdict !== 'failed' || row.parsed.candidate.kind !== 'hls') return false;
+  // One run cannot tell a frozen stream from an edge cache that kept its copy for the whole probe window (#8545).
+  if (row.playlistUnchanged === true) return true;
   const { outcome } = verdict;
   return outcome.kind === 'timeout'
     || (outcome.kind === 'hls-http' && runnerDependentHlsStatus(outcome.status))
     || (outcome.kind === 'hls-fatal' && RUNNER_DEPENDENT_HLS_ERRORS.has(outcome.detail));
 }
 
-/** One checked entry as the audit report records it: the verdict, why, and the evidence behind it. */
-function attemptRecord(row) {
+/** YouTube player errors that mean "not playable here": what a region block looks like from outside the region. */
+const REGION_BLOCK_PLAYER_ERRORS = new Set([101, 150]);
+
+/**
+ * A failure a region-locked channel shows to anyone outside its regions: an HLS 403 or 451, or a YouTube embed
+ * "unavailable here". A missing host, a 404 or any other error is not geography, so it still counts as dead.
+ */
+function failedByRegion(row) {
+  const outcome = row.parsed.ok && row.verdict?.verdict === 'failed' ? row.verdict.outcome : null;
+  if (!outcome) return false;
+  if (row.parsed.candidate.kind === 'hls') return outcome.kind === 'hls-http' && (outcome.status === 403 || outcome.status === 451);
+  return outcome.kind === 'player-error' && REGION_BLOCK_PLAYER_ERRORS.has(outcome.code);
+}
+
+/**
+ * One checked entry as the audit report records it: the verdict, why, and the evidence behind it. `regions` is the
+ * channel's geoAvailability: the runner is outside them, so a region-block failure there cannot be verified.
+ */
+function attemptRecord(row, regions = null) {
   const verdict = row.parsed.ok ? row.verdict : null;
   const video = verdict?.video ?? null;
   const outcome = verdict?.verdict === 'failed' ? verdict.outcome : null;
+  const regionLocked = Boolean(regions?.length) && failedByRegion(row);
   return {
     entry: row.parsed.entry,
     kind: row.parsed.ok ? row.parsed.candidate.kind : null,
     verdict: verdict ? verdict.verdict : 'invalid',
-    why: why(row),
-    unverifiableFromRunner: unverifiableFromRunner(row),
+    why: regionLocked ? `region-locked (${regions.join(', ')}): cannot be verified from the runner; ${why(row)}` : why(row),
+    unverifiableFromRunner: regionLocked || unverifiableFromRunner(row),
     evidence: {
       videoId: video?.videoId || null,
       title: video?.title || null,
@@ -700,6 +744,7 @@ function attemptRecord(row) {
       verdictAtMs: row.verdictAtMs ?? null,
       aloneChecks: row.aloneChecks ?? 0,
       recheckSkipped: row.recheckSkipped === true,
+      playlistUnchanged: row.playlistUnchanged === true,
     },
   };
 }
@@ -765,12 +810,17 @@ export function placeSlots(catalog, statusBySlot, surfaces) {
   return placements;
 }
 
+/** A Live News slot's geoAvailability from src/services/live-channels.ts, or null when it plays everywhere. */
+function regionsOf(slot, surfaces) {
+  return slot.startsWith('live-news/') ? surfaces?.newsGeoAvailability?.[slot.slice('live-news/'.length)] ?? null : null;
+}
+
 /** The --report file: every slot with where it shows, its status and every attempt, plus the canaries. */
 export function buildAuditReport({ catalog, rows, surfaces, checkedAt }) {
   const byName = new Map(rows.map((row) => [row.name, row]));
   const slots = catalogSlots(catalog).map(([slot, entries]) => ({
     slot,
-    attempts: entries.map((_, index) => attemptRecord(byName.get(entryName(slot, index)))),
+    attempts: entries.map((_, index) => attemptRecord(byName.get(entryName(slot, index)), regionsOf(slot, surfaces))),
   }));
   const statuses = new Map(slots.map(({ slot, attempts }) => [slot, slotStatus(attempts)]));
   const placements = placeSlots(catalog, statuses, surfaces);
@@ -886,8 +936,10 @@ export async function runCli(argv, {
   probeWithBrowser = probeYouTubeWithBrowser,
 } = {}) {
   let proxy;
+  let batchSize;
   try {
     proxy = resolveAuditProxy(env);
+    batchSize = resolveBatchSize(env);
   } catch (error) {
     write(`live-video: ${error.message}`);
     return 2;
@@ -895,7 +947,8 @@ export async function runCli(argv, {
   if (proxy) write(`live-video: YouTube players go through the proxy at ${proxy.host}.`);
   return run(argv, {
     write,
-    probeYouTube: (candidates, options = {}) => probeWithBrowser(candidates, { ...options, proxy }),
+    // An alone re-check passes its own batchSize of 1, which wins over the configured size.
+    probeYouTube: (candidates, options = {}) => probeWithBrowser(candidates, { batchSize, ...options, proxy }),
   });
 }
 

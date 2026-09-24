@@ -178,7 +178,7 @@ export function renderAuditBody(report, { runUrl = '', canaries, gridPriority = 
       .map(({ attempt, index }) => [text(slot.slot), text(slot.surface), entryCell(attempt, index), because(attempt)]));
     lines.push(
       '', '### Could not verify from the runner', '',
-      'An HLS 403, 451, 429 or 5xx, an HLS timeout, connection error or incomplete certificate chain, a YouTube player that never became ready, gave no verdict or never started while no canary played, a player that stopped reporting whether a video is live, or a YouTube player API that did not load can depend on the runner (its network, its region, or YouTube itself). These slots may still play for viewers, so they are not counted above. A YouTube player that stalls while a canary plays is checked alone up to twice within the audit time budget, and is counted above only if both checks stall.',
+      'An HLS 403, 451, 429 or 5xx, an HLS timeout, connection error or incomplete certificate chain, an HLS playlist that did not advance between reloads (a CDN edge can keep serving a cached copy), a region-locked channel refused outside its regions (HLS 403 or 451, YouTube player error 101 or 150), a YouTube player that never became ready, gave no verdict or never started while no canary played, a player that stopped reporting whether a video is live, or a YouTube player API that did not load can depend on the runner (its network, its region, or YouTube itself). These slots may still play for viewers, so they are not counted above. A YouTube player that stalls while a canary plays is checked alone up to twice within the audit time budget, and is counted above only if both checks stall.',
       '', ...table(['Slot', 'Where it shows', 'Entry', 'Why'], rows, maxRows),
     );
   }
