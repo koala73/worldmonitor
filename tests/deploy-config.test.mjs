@@ -531,9 +531,16 @@ describe('crawlable content corpus deployment contracts', () => {
   });
 
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
-    assert.equal(
+    // #8604 prepends the country slug generator. api/story.js canonicalises
+    // every share stub against api/_country-corpus-slugs.generated.js, which is
+    // derived from the same resilience snapshot this builder reads, so the map
+    // has to be regenerated in the same step that republishes the pages -- a
+    // map that lags the corpus emits a canonical to a slug that 404s. The
+    // corpus builder stays the tail of the command, so the ordering assertions
+    // below still describe where the pages are produced.
+    assert.match(
       packageJson.scripts['build:crawlable-corpus'],
-      'node --import tsx scripts/build-crawlable-corpus.mjs'
+      /^npm run corpus:country-slugs && node --import tsx scripts\/build-crawlable-corpus\.mjs$/
     );
     assert.equal(
       packageJson.scripts['build:sitemap'],
