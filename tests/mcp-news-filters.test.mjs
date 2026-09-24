@@ -219,4 +219,14 @@ describe('get_news_intelligence corroboration (#6419)', () => {
       { state: 'unknown', publishers: null },
     ]);
   });
+
+  it('trusts the digest publisher count over the labels that survived the category cap', () => {
+    const data = envelope([
+      story({ primaryTitle: 'capped', sources: ['Reuters World'], corroborationCount: 3 }),
+    ]);
+
+    newsTool._postFilter(data, {});
+
+    assert.deepEqual(data.insights.topStories[0].corroboration, { state: 'corroborated', publishers: 3 });
+  });
 });

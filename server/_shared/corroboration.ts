@@ -6,7 +6,7 @@
  * already holds, and never re-derives the rule. The verdict describes
  * coverage, not accuracy: it never says a claim is true or false.
  */
-import { publisherFamiliesFor, publisherFamilyFor } from '../../shared/publisher-families.js';
+import { countPublisherFamilies, publisherFamilyFor } from '../../shared/publisher-families.js';
 import { declaredSourceTier } from './source-tiers';
 
 /** What a caller holds about one claim. The variant says whether sibling members are visible. */
@@ -42,7 +42,7 @@ function positiveCount(value: number | null | undefined): number | null {
 export function assessCorroboration(evidence: ClaimEvidence): Corroboration {
   const labels = (evidence.kind === 'grouped' ? evidence.labels : [evidence.label])
     .filter((label) => publisherFamilyFor(label) !== '');
-  const seen = publisherFamiliesFor(labels).size;
+  const seen = countPublisherFamilies(labels);
   const reported = positiveCount(evidence.reportedPublishers);
   if (evidence.kind === 'item' && reported === null) return UNKNOWN;
   if (evidence.kind === 'grouped' && seen === 0) return UNKNOWN;
@@ -65,6 +65,22 @@ export function evidenceFromCluster(cluster: {
     if (count !== null && (reported === null || count > reported)) reported = count;
   }
   return { kind: 'grouped', labels: cluster.allItems.map((item) => item.source), reportedPublishers: reported };
+}
+
+/**
+ * A seeded brief story (news:insights:v1). `sources` is only the labels that
+ * survived the digest's per-category cap, so the digest's origin-aware
+ * corroborationCount is the floor on publishers. Non-array or non-string
+ * sources are legacy or malformed and contribute nothing.
+ */
+export function evidenceFromStory(
+  story: { readonly sources?: unknown; readonly corroborationCount?: unknown },
+): Extract<ClaimEvidence, { kind: 'grouped' }> {
+  const labels = Array.isArray(story.sources)
+    ? story.sources.filter((label): label is string => typeof label === 'string' && label.length > 0)
+    : [];
+  const count = typeof story.corroborationCount === 'number' ? story.corroborationCount : null;
+  return { kind: 'grouped', labels, reportedPublishers: positiveCount(count) };
 }
 
 export function evidenceFromItem(item: { readonly source: string; readonly corroborationCount?: number }): ClaimEvidence {

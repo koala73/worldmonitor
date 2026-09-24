@@ -62,7 +62,7 @@ import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-sig
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
-import { assessCorroboration } from '../../server/_shared/corroboration';
+import { assessCorroboration, evidenceFromCluster } from '@/utils/corroboration-flag';
 import { corroborationFlag } from '@/utils/corroboration-flag';
 import { decodeHtmlEntities } from '@/utils/html-entities';
 import { renderFollowButton } from '@/utils/follow-button';
@@ -434,12 +434,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
 
     for (let i = 0; i < deduped.length; i++) {
-      const { item, sources } = deduped[i]!;
-      const corroboration = assessCorroboration({
-        kind: 'grouped',
-        labels: sources,
-        reportedPublishers: item.corroborationCount ?? null,
-      });
+      const { item, sources, items } = deduped[i]!;
+      const corroboration = assessCorroboration(evidenceFromCluster({ allItems: items }));
       const otherPublishers = corroboration.state === 'unknown' ? 0 : corroboration.publishers - 1;
       const otherLabels = sources.slice(1);
       const row = this.el('a', 'cdp-news-item');

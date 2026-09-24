@@ -15,7 +15,7 @@ import {
   assessCorroboration,
   evidenceFromItem,
   type Corroboration,
-} from '../../server/_shared/corroboration';
+} from '@/utils/corroboration-flag';
 
 export interface BreakingAlert {
   id: string;

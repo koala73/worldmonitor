@@ -10,8 +10,7 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { corroborationFlagHtml } from '@/utils/corroboration-flag';
-import { assessCorroboration, evidenceFromCluster } from '../../server/_shared/corroboration';
+import { assessCorroboration, corroborationFlagHtml, evidenceFromCluster, evidenceFromStory } from '@/utils/corroboration-flag';
 import { collectBriefCitationSources, collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
@@ -683,11 +682,7 @@ export class InsightsPanel extends Panel {
       } else if (storyPublishers >= 2) {
         badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: storyPublishers })}</span>`);
       }
-      const storyFlag = corroborationFlagHtml(assessCorroboration({
-        kind: 'grouped',
-        labels: story.sources ?? [],
-        reportedPublishers: null,
-      }));
+      const storyFlag = corroborationFlagHtml(assessCorroboration(evidenceFromStory(story)));
       if (storyFlag) badges.push(storyFlag);
 
       if (story.isAlert) {

@@ -32,6 +32,7 @@ import {
   CORROBORATION_OUTPUT_SCHEMA,
   assessCorroboration,
   evidenceFromItem,
+  evidenceFromStory,
   toCorroborationJson,
   type CorroborationJson,
 } from '../../../server/_shared/corroboration';
@@ -230,12 +231,10 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
   const finite = (value: unknown): number | undefined => (
     typeof value === 'number' && Number.isFinite(value) ? value : undefined
   );
-  const labels = Array.isArray(story.sources)
-    ? story.sources.filter((name): name is string => typeof name === 'string' && name.length > 0)
-    : [];
+  const evidence = evidenceFromStory(story);
   const projected: McpWorldBriefStory = {
     title,
-    corroboration: toCorroborationJson(assessCorroboration({ kind: 'grouped', labels, reportedPublishers: null })),
+    corroboration: toCorroborationJson(assessCorroboration(evidence)),
   };
   const sourceCount = finite(story.sourceCount);
   const uniqueSourceCount = finite(story.uniqueSourceCount);
@@ -246,7 +245,7 @@ function projectStoryCorroboration(title: string, story: Record<string, unknown>
   if (corroborationSourceCount !== undefined) projected.corroborationSourceCount = corroborationSourceCount;
   if (typeof story.entityCorroboration === 'boolean') projected.entityCorroboration = story.entityCorroboration;
   if (sourceTier !== undefined) projected.sourceTier = sourceTier;
-  if (Array.isArray(story.sources)) projected.sources = labels.slice(0, MAX_WORLD_BRIEF_STORY_OUTLETS);
+  if (Array.isArray(story.sources)) projected.sources = evidence.labels.slice(0, MAX_WORLD_BRIEF_STORY_OUTLETS);
   return projected;
 }
 
@@ -1459,7 +1458,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 65536,
-    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
+    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, corroboration, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
     inputSchema: {
       type: 'object',
       properties: {

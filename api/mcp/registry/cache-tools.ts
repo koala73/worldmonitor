@@ -17,6 +17,7 @@ import {
 import {
   CORROBORATION_OUTPUT_SCHEMA,
   assessCorroboration,
+  evidenceFromStory,
   toCorroborationJson,
 } from '../../../server/_shared/corroboration';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
@@ -246,13 +247,10 @@ function addNewsSourceProvenance(value: unknown): unknown {
     const corroboration = Number(
       record.uniqueSourceCount ?? record.corroborationSourceCount ?? 1,
     );
-    const labels = Array.isArray(record.sources)
-      ? record.sources.filter((label): label is string => typeof label === 'string')
-      : [];
     return {
       ...record,
       sourceProvenance: provenance,
-      corroboration: toCorroborationJson(assessCorroboration({ kind: 'grouped', labels, reportedPublishers: null })),
+      corroboration: toCorroborationJson(assessCorroboration(evidenceFromStory(record))),
       credibilityScore: servedScore !== null
         ? servedScore
         : computeCredibilityScore({

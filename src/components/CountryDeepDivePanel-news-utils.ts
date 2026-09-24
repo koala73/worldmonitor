@@ -22,6 +22,8 @@ export interface DedupedHeadline {
   item: NewsItem;
   /** Every distinct feed label in the group, primary first. Labels, not publishers. */
   sources: string[];
+  /** The whole group, so corroboration reads every member's digest count. */
+  items: NewsItem[];
 }
 
 export type TierLookup = (item: NewsItem) => number;
@@ -62,7 +64,7 @@ export function dedupeHeadlines(
     for (const other of group) {
       if (other.source && !sources.includes(other.source)) sources.push(other.source);
     }
-    out.push({ item: primary, sources });
+    out.push({ item: primary, sources, items: group });
   }
   return out;
 }

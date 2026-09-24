@@ -1136,6 +1136,10 @@ async function fetchInsights() {
       // attribution the publisher is owed.
       uniqueSourceCount: story.uniquePublisherCount ?? 0,
       sources: Array.isArray(story.sources) ? story.sources : [],
+      // #6419: `sources` holds only the labels that survived the digest's
+      // per-category cap; the digest's origin-aware publisher count is the
+      // floor a single-publisher verdict has to respect.
+      corroborationCount: story.corroborationCount ?? 0,
       lastUpdated: story.lastUpdated,
       memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
       sourceTier: story.sourceTier,

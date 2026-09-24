@@ -681,7 +681,7 @@ export const NLP_TOOLS: ToolDef[] = [
           type: 'array',
           items: {
             type: 'object',
-            required: ['primarySourceProvenance', 'sourceProvenance', 'credibilityScore'],
+            required: ['primarySourceProvenance', 'sourceProvenance', 'credibilityScore', 'corroboration'],
             properties: {
               id: { type: 'string' },
               title: { type: 'string', description: 'Primary headline: the best-tier member, newest first among equals, as on the dashboard.' },
@@ -692,7 +692,7 @@ export const NLP_TOOLS: ToolDef[] = [
                 properties: SOURCE_PROVENANCE_PROPERTIES,
               },
               memberCount: { type: 'number', description: 'Headlines in this cluster (one outlet can contribute several).' },
-              distinctSourceCount: { type: 'number', description: 'Distinct outlets covering the cluster — the corroboration signal min_sources filters on.' },
+              distinctSourceCount: { type: 'number', description: 'Distinct publisher families among this cluster\'s own member outlets — the corroboration signal min_sources filters on. corroboration.publishers can be higher: it also takes the digest\'s origin-aware count, which sees publishers whose items are not members of this cluster.' },
               sources: { type: 'array', items: { type: 'string' }, description: 'Distinct source names (up to 8).' },
               sourceProvenance: {
                 type: 'array',

@@ -19,6 +19,7 @@ export interface ServerInsightStory {
   uniqueSourceCount?: number;
   /** Feed labels in the cluster, deduped. Absent on a payload cached before the seeder wrote it. */
   sources?: string[];
+  corroborationCount?: number;
   importanceScore: number;
   /** 0-100 source reliability, distinct from importanceScore. Absent on pre-rollout cache. */
   credibilityScore?: number;

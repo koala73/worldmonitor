@@ -157,6 +157,20 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     ]);
   });
 
+  it('trusts the digest publisher count over the labels that survived the category cap (#6419)', async () => {
+    stubInsights([
+      seededStory({ primaryTitle: 'One surviving label, three publishers', sources: ['Reuters World'], corroborationCount: 3 }),
+      seededStory({ primaryTitle: 'One label, one publisher', sources: ['Reuters World'], corroborationCount: 1 }),
+    ]);
+
+    const { payload } = await callWorldBrief();
+
+    assert.deepEqual(payload.topStories.map((s) => s.corroboration), [
+      { state: 'corroborated', publishers: 3 },
+      { state: 'single-publisher', publishers: 1 },
+    ]);
+  });
+
   it('keeps topStories index-aligned with headlines', async () => {
     // The alignment is the contract an agent relies on to attach evidence to a
     // headline, so assert it across a mixed batch that also exercises the

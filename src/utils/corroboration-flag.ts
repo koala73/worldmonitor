@@ -2,6 +2,15 @@ import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import type { Corroboration } from '../../server/_shared/corroboration';
 
+// The browser's one entry point to the rule, so components never reach into server/.
+export {
+  assessCorroboration,
+  evidenceFromCluster,
+  evidenceFromItem,
+  evidenceFromStory,
+  type Corroboration,
+} from '../../server/_shared/corroboration';
+
 export type CorroborationFlag = { readonly text: string; readonly hint: string };
 
 /** null for corroborated and unknown: the existing count badges already speak for those. */

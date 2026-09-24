@@ -1185,9 +1185,10 @@ describe('#5697 NLP MCP tools', () => {
           { state: 'single-publisher', publishers: 1 });
         assert.deepEqual((await corroborationOf([['The Verge'], ['Hacker News']])).corroboration,
           { state: 'tier4-only', publishers: 2 });
-        assert.deepEqual((await corroborationOf([['The Verge', 3], ['Hacker News', 3]])).corroboration,
-          { state: 'corroborated', publishers: 3 },
+        const aboveSeen = await corroborationOf([['The Verge', 3], ['Hacker News', 3]]);
+        assert.deepEqual(aboveSeen.corroboration, { state: 'corroborated', publishers: 3 },
           'a digest count above the seen families means unseen publishers of unknown tier');
+        assert.equal(aboveSeen.distinctSourceCount, 2, 'distinctSourceCount stays the member-family count min_sources filters on');
 
         const mixed = await corroborationOf([['The Verge'], ['Reuters World']]);
         assert.deepEqual(mixed.corroboration, { state: 'corroborated', publishers: 2 });

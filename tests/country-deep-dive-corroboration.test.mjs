@@ -80,6 +80,19 @@ describe('CountryDeepDivePanel corroboration (#6428, #6419)', () => {
     assert.equal(twoPublishers.flag, null);
   });
 
+  it('takes the largest digest publisher count across the group, not only the primary', async () => {
+    const rows = await renderRows([
+      { ...headline('Central bank signals emergency rate cut', 'Reuters World', '2026-09-20T12:00:00.000Z'), corroborationCount: 1 },
+      { ...headline('Central bank signals emergency rate cut', 'Reuters US', '2026-09-20T11:00:00.000Z'), corroborationCount: 3 },
+    ], {
+      'Reuters World': { tier: 1, type: 'wire', riskProfile: { risk: 'low', note: 'Wire' } },
+      'Reuters US': { tier: 1, type: 'wire', riskProfile: { risk: 'low', note: 'Wire' } },
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].flag, null, 'a sibling seen by three publishers is not single-publisher');
+    assert.match(rows[0].meta, /^Reuters World \+2 sources •/);
+  });
+
   it('renders the tier badge only for a declared tier', async () => {
     const rows = await renderRows([
       headline('Port authority confirms tanker seizure near strait', 'Unlisted Outlet', '2026-09-20T12:00:00.000Z'),
