@@ -31,6 +31,7 @@ import { normalizePassengerCount } from '../../../server/_shared/passenger-count
 import {
   CORROBORATION_OUTPUT_SCHEMA,
   assessCorroboration,
+  evidenceFromItem,
   toCorroborationJson,
   type CorroborationJson,
 } from '../../../server/_shared/corroboration';
@@ -92,6 +93,7 @@ type McpBriefGroundingStory = {
   url?: string;
   publishedAt?: string;
   corroborationCount: number;
+  corroboration: CorroborationJson;
   mentionCount?: number;
   storyPhase?: string;
 };
@@ -174,10 +176,12 @@ function collectBriefGroundingStories(
     const url = normalized.url.length <= MAX_COUNTRY_BRIEF_GROUNDING_URL_LENGTH
       ? normalized.url
       : undefined;
+    const corroborationCount = Number.isFinite(item.corroborationCount) ? item.corroborationCount as number : 0;
     const story: McpBriefGroundingStory = {
       title,
       source,
-      corroborationCount: Number.isFinite(item.corroborationCount) ? item.corroborationCount as number : 0,
+      corroborationCount,
+      corroboration: toCorroborationJson(assessCorroboration(evidenceFromItem({ source, corroborationCount }))),
     };
     if (url) story.url = url;
     if (publishedAt) story.publishedAt = publishedAt;
@@ -1528,6 +1532,7 @@ export const RPC_TOOLS: ToolDef[] = [
               url: { type: 'string' },
               publishedAt: { type: 'string' },
               corroborationCount: { type: 'number', description: 'Distinct outlets carrying this story at digest time.' },
+              corroboration: CORROBORATION_OUTPUT_SCHEMA,
               mentionCount: { type: 'number', description: 'Times the story has been seen across digest cycles since firstSeen.' },
               storyPhase: {
                 type: 'string',

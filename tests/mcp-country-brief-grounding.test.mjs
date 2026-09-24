@@ -325,9 +325,18 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
       url: 'https://example.com/fr-energy',
       publishedAt: '2026-08-10T00:00:00.000Z',
       corroborationCount: 4,
+      corroboration: { state: 'corroborated', publishers: 4 },
       mentionCount: 3,
       storyPhase: 'STORY_PHASE_DEVELOPING',
     }]);
+  });
+
+  it('flags a grounding story carried by one publisher (#6419)', async () => {
+    stubDownstream({ digestItems: [digestItem({ title: 'France single outlet item', corroborationCount: 1 })] });
+
+    const payload = await callCountryBrief();
+
+    assert.deepEqual(payload.groundingStories[0].corroboration, { state: 'single-publisher', publishers: 1 });
   });
 
   it('drops digest items that carry no corroboration metadata', async () => {
@@ -395,6 +404,7 @@ describe('get_country_brief grounding corroboration (#4925 item 3)', () => {
       source: 'Example Wire',
       url: 'https://example.com/count-only',
       corroborationCount: 2,
+      corroboration: { state: 'corroborated', publishers: 2 },
     }]);
   });
 
