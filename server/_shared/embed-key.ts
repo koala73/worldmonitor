@@ -11,7 +11,7 @@
  * `wm_…` fails `EMBED_KEY_RE` on the same character.
  */
 
-import { cachedFetchJson, deleteRedisKey } from './redis';
+import { cachedFetchJson } from './redis';
 
 /**
  * Who may mint an embed key. Re-exported so server-side callers reach it from
@@ -173,13 +173,4 @@ async function fetchFromConvex(keyHash: string): Promise<EmbedKeyResult | null> 
     throw new EmbedKeyUnavailableError('Convex embed key validation unavailable: invalid-payload');
   }
   return value;
-}
-
-/**
- * Delete the Redis cache entry for a specific embed key hash.
- * Called after revocation so the key cannot be used during the TTL window.
- * Uses prefixed keys (no raw=true) matching the cache writes above.
- */
-export async function invalidateEmbedKeyCache(keyHash: string): Promise<void> {
-  await deleteRedisKey(`${CACHE_KEY_PREFIX}${keyHash}`);
 }

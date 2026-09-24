@@ -21,8 +21,6 @@ const store = new Map<string, CacheEntry>();
 let totalBytes = 0;
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 
-let hitCount = 0;
-let missCount = 0;
 
 function startSweepIfNeeded(): void {
   if (sweepTimer) return;
@@ -58,19 +56,16 @@ function evictLRU(incomingSize = 0): void {
 export function sidecarCacheGet(key: string): unknown | null {
   const entry = store.get(key);
   if (!entry) {
-    missCount++;
     return null;
   }
   if (entry.expiresAt <= Date.now()) {
     totalBytes -= entry.size;
     store.delete(key);
-    missCount++;
     return null;
   }
   // Move to end for LRU (re-insert)
   store.delete(key);
   store.set(key, entry);
-  hitCount++;
   return JSON.parse(entry.value);
 }
 
@@ -113,8 +108,4 @@ export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number)
 
   startSweepIfNeeded();
   return true;
-}
-
-export function sidecarCacheStats(): { entries: number; bytes: number; hits: number; misses: number } {
-  return { entries: store.size, bytes: totalBytes, hits: hitCount, misses: missCount };
 }

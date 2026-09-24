@@ -260,17 +260,6 @@ export function getLlmHealthStatus(): Record<string, { available: boolean; check
   return status;
 }
 
-/**
- * Force a re-probe of all cached providers.
- * Called on startup or when a provider comes back online.
- */
-export async function reprobeAll(): Promise<void> {
-  const origins = [...cache.keys()];
-  await Promise.all(origins.map(async (origin) => {
-    const available = await probe(origin);
-    cache.set(origin, { available, checkedAt: Date.now() });
-  }));
-}
 
 /**
  * Warm the health cache on startup by probing configured providers.
