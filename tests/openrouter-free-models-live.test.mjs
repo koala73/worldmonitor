@@ -38,7 +38,7 @@ const OPENROUTER_API = 'https://openrouter.ai/api/v1';
 const HEADERS = { Accept: 'application/json', 'User-Agent': 'worldmonitor-free-model-probe' };
 
 /** Problems with one /models listing entry, or [] when it is usable. */
-export function listingProblems(model, entry, now) {
+function listingProblems(model, entry, now) {
   if (!entry) {
     return [`${model} is delisted from OpenRouter, so every call returns HTTP 404`];
   }
@@ -57,7 +57,7 @@ export function listingProblems(model, entry, now) {
 }
 
 /** Endpoints production can reach: zero price, not down, provider not ignored. */
-export function usableEndpoints(endpoints, ignoredProviders) {
+function usableEndpoints(endpoints, ignoredProviders) {
   return (endpoints || []).filter((endpoint) => {
     const providerSlug = String(endpoint.tag || '').split('/')[0];
     return Number(endpoint.pricing?.prompt) === 0
@@ -72,7 +72,7 @@ export function usableEndpoints(endpoints, ignoredProviders) {
  * fails. 429 and 5xx are transient upstream load, which the chain already
  * walks past, so they pass.
  */
-export function completionRefused(status) {
+function completionRefused(status) {
   return !(status >= 200 && status < 300) && status !== 429 && status < 500;
 }
 
