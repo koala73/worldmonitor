@@ -176,10 +176,6 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },
     {
-      "source": "/.well-known/(.*).json",
-      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
-    },
-    {
       "source": "/docs/api/(.*).openapi.yaml",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },

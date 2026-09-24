@@ -783,12 +783,6 @@ describe('crawlable content corpus deployment contracts', () => {
       '/product-facts.json',
       '/agent-view.json',
       '/sandbox/index.json',
-      // .well-known JSON descriptors.
-      '/.well-known/agent-card.json',
-      '/.well-known/ai-catalog.json',
-      '/.well-known/webhook-sample.json',
-      '/.well-known/mcp/server-card.json',
-      '/.well-known/agent-skills/index.json',
     ];
     for (const path of dataFiles) {
       assert.equal(effectiveHeader(path, 'X-Robots-Tag'), 'noindex, follow', path);
@@ -813,9 +807,16 @@ describe('crawlable content corpus deployment contracts', () => {
     // Claude-SearchBot read `X-Robots-Tag: noindex` as "do not index" rather
     // than "do not cite", so noindex here would risk trading a Search Console
     // count for citability. That stays an owner decision, not a drive-by.
+    // `.well-known` is entirely agent-discovery surface, including the JSON.
+    // agent-skills/index.json is 17 kB whose `instructions` field is prose
+    // written to persuade an agent to call us -- the same citation risk as the
+    // SKILL.md files it lists, not inert data. Sorting this surface by file
+    // extension would have noindexed the pitch and spared the chapters.
     for (const path of ['/llms.txt', '/llms-full.txt', '/api/llms.txt', '/agents.md', '/developers.md',
       '/pricing.md', '/openapi.md', '/world-monitor.md', '/.well-known/security.txt',
-      '/.well-known/agent-skills/check-country-risk/SKILL.md']) {
+      '/.well-known/agent-skills/check-country-risk/SKILL.md',
+      '/.well-known/agent-skills/index.json', '/.well-known/agent-card.json',
+      '/.well-known/ai-catalog.json', '/.well-known/mcp/server-card.json']) {
       assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
     }
 
