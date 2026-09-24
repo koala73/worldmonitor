@@ -34,6 +34,45 @@ const PROXY_RETRYABLE_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
+const DIAGNOSTIC_CODES = new Set([
+  ...PROXY_RETRYABLE_CODES,
+  'SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
+const PROXY_STAGES = new Set([
+  'proxy_connection', 'proxy_connect', 'target_tls', 'response_headers', 'response_body',
+]);
+
+// Log only fixed labels and validated status numbers. Error messages, stacks,
+// proxy configuration and response bodies can contain credentials.
+function logTransportFailure(error, target, transport, attempt) {
+  try {
+    let code = 'UNKNOWN';
+    let cause = error;
+    for (let depth = 0; cause && depth < 4; depth++, cause = cause.cause) {
+      if (DIAGNOSTIC_CODES.has(cause.code)) { code = cause.code; break; }
+      if (cause.name === 'TimeoutError'
+        || cause.message === 'CONNECT tunnel timeout'
+        || cause.message === 'proxy fetch timeout') { code = 'TIMEOUT'; break; }
+    }
+    const details = error?.proxyFailure;
+    const stage = transport === 'proxy' && PROXY_STAGES.has(details?.stage)
+      ? details.stage : null;
+    const status = details?.proxyConnectStatus;
+    console.warn(JSON.stringify({
+      event: 'china_macro_transport_failure',
+      host: target.hostname,
+      resource: target.pathname === '/robots.txt' ? 'robots' : 'source',
+      transport, attempt, code,
+      ...(stage ? { stage } : {}),
+      ...(['proxy_connect', 'target_tls'].includes(stage)
+        && Number.isInteger(status) && status >= 100 && status <= 599
+        ? { proxyConnectStatus: status } : {}),
+    }));
+  } catch { /* Diagnostics must not alter the fetch result or retry budget. */ }
+}
+
 function sourceContractError(message) {
   return Object.assign(new Error(`SOURCE_CONTRACT_VIOLATION:${message}`), {
     code: 'SOURCE_CONTRACT_VIOLATION',
@@ -158,6 +197,7 @@ async function fetchThroughProxy(target, init, proxyUrl, {
         signal,
       });
     } catch (error) {
+      logTransportFailure(error, target, 'proxy', attempt + 1);
       lastError = error;
       continue;
     }
@@ -244,6 +284,7 @@ export async function fetchText(fetchFn, value, {
     try {
       response = await fetchFn(target.toString(), requestInit);
     } catch (error) {
+      logTransportFailure(error, target, 'direct', transientRetries + 1);
       const permanentTls = error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || /self signed certificate|certificate chain/i.test(
