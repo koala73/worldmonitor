@@ -1041,7 +1041,9 @@ const EXCLUDED_HOSTS = new Set([
   // upstream datasets; keep them out of the provider count like native HLS.
   // The channel /live page reader (scripts/lib/live-video-channel-live.mjs)
   // stays in this class: it keeps only an 11-character embed id of a channel
-  // the catalog already plays, never page content.
+  // the catalog already plays, never page content. So does its 6-hourly
+  // publisher (scripts/seed-live-video-resolved.mjs): the public payload is
+  // channel id to video id and timestamps, with titles kept to the seed log.
   'www.youtube.com',
   // Release links, documentation links, and repository links are control/UI
   // surfaces; GitHub API and raw-content hosts remain tracked separately.

@@ -980,6 +980,11 @@ describe('planned Railway service lifecycle', () => {
       // leaving it planned would exempt three low-cadence members behind a
       // single daily cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
+      // seed-live-video-resolved (#8545) is registered before its Railway
+      // service exists: an active entry would make the post-merge registry
+      // sync --apply fail on the absent service. Drop `lifecycle` once the
+      // service is provisioned and has run once.
+      'seed-live-video-resolved',
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',

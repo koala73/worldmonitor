@@ -156,6 +156,13 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=1800',
     cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=1800',
   },
+  // seed-live-video-resolved publishes every 6h against an 18h health budget
+  // (#8545). A 30-minute shield keeps a fresh video id reaching players within
+  // the hour after a refresh; the default 2h shield would hold a rotated id.
+  liveVideoResolved: {
+    browser: 'max-age=300, stale-while-revalidate=300, stale-if-error=1800',
+    cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
+  },
 };
 
 // The legacy unmarked weather URL: `?keys=weatherAlerts` with no credentials.

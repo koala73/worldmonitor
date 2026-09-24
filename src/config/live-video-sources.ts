@@ -30,6 +30,9 @@
 // it ships, the dashboard plays the channel embed. For a broadcaster that restarts its stream under
 // a new id, list only the channel, with no pinned id. Do not list a channel whose featured live is another
 // stream (a side camera, a press conference, a replay): the resolved video would be that stream.
+// The seed-live-video-resolved cron reads its channel list from
+// scripts/shared/live-video-refresh-channels.generated.json: after adding, moving or removing a channel entry,
+// run `npm run sync:live-video-channels` (CI fails until the generated list matches this file).
 
 export const WEBCAM_SOURCES = {
   jerusalem: ['https://www.youtube.com/watch?v=zp6LNSoq000'],

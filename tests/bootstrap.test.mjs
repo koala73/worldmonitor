@@ -46,6 +46,10 @@ const PENDING_CONSUMERS = new Set([ 'chokepointBaselines',
       // listEnergyDisruptions() on drawer open — no getHydratedData()
       // call site. Classifier extends this post-launch.
       'energyDisruptions',
+      // liveVideoResolved (#8545) ships its publisher, health entry and
+      // on-demand URL first; the live video players start consuming it through
+      // ensureHydrated in the follow-up player PR, which removes it from here.
+      'liveVideoResolved',
 ]);
 
 describe('Bootstrap cache key registry', () => {

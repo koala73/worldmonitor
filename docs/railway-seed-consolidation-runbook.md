@@ -1500,9 +1500,11 @@ entries.
 > marked **planned** are registry/documentation entries for services that are
 > not provisioned in production; they remain excluded from the live audit and
 > `--apply` until an explicit lifecycle activation. The four planned rows below
-> are repository-root `nixpacks-root-repo` cron candidates (root directory
-> `.`, start command `node scripts/<file>`), so their eventual packaging can
-> include valid imports outside `scripts/`. Active rows must instead follow the
+> that read **planned — not provisioned** are repository-root
+> `nixpacks-root-repo` cron candidates (root directory `.`, start command
+> `node scripts/<file>`), so their eventual packaging can include valid imports
+> outside `scripts/`. `seed-live-video-resolved` is planned too, but packaged
+> from `scripts/` (see its row). Active rows must instead follow the
 > deploy mode and exact `watchPatterns` recorded in `scripts/railway-services.json`.
 > These rows are intentionally **not** part of the 100-service inventory count
 > above. The planned rows are registered with deploy mode
@@ -1540,6 +1542,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — only scheduled consumer of the keyed 500/mo Comtrade quota |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
+| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **planned — `0 */6 * * *` once provisioned** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root Nixpacks, reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 
 Configure the IMD account credentials and the IP-bound production key before

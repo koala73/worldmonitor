@@ -55,6 +55,8 @@
     "locales:zh-tw:check": "python3 scripts/convert-zh-tw.py --check",
     "sync:bootstrap-tier-keys": "node scripts/sync-bootstrap-tier-keys.mjs",
     "sync:bootstrap-tier-keys:check": "node scripts/sync-bootstrap-tier-keys.mjs --check",
+    "sync:live-video-channels": "node --import tsx scripts/sync-live-video-refresh-channels.mjs",
+    "sync:live-video-channels:check": "node --import tsx scripts/sync-live-video-refresh-channels.mjs --check",
     "bundle:budgets": "node scripts/bundle-budgets.mjs",
     "bundle:check": "node scripts/bundle-budgets.mjs --check",
     "bundle:budgets:pro": "node scripts/bundle-budgets.mjs --surface pro",
