@@ -36,7 +36,8 @@
  * NIXPACKS builder, startCommand `node scripts/seed-fx-yoy.mjs`.
  */
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
@@ -70,17 +71,16 @@ const CURRENCY_COUNTRY = {
 };
 
 const FETCH_TIMEOUT_MS = 10_000;
-const PER_CURRENCY_DELAY_MS = 120;
+// AGENTS.md: stagger Yahoo Finance requests by 150 ms. This ran at 120 ms with
+// a bare fetch and no retry, so one 429 in the 60-currency sweep dropped that
+// currency for the run. fetchYahooJson adds the retry/backoff and the curl
+// proxy fallback every other Yahoo seeder already uses.
+export const PER_CURRENCY_DELAY_MS = 150;
 
 async function fetchYahooHistory(currency) {
   const symbol = `${currency}USD=X`;
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1mo`;
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`Yahoo HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = await fetchYahooJson(url, { label: `${symbol} fx-yoy`, timeoutMs: FETCH_TIMEOUT_MS });
   const result = data?.chart?.result?.[0];
   const timestamps = result?.timestamp;
   const closes = result?.indicators?.quote?.[0]?.close;
