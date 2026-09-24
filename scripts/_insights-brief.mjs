@@ -6,6 +6,7 @@ import { countPublisherFamilies } from './shared/publisher-families.js';
 import {
   validateNoHallucinatedProperNouns,
   validateNoHallucinatedFacts,
+  validateNoHallucinatedStatusQualifiers,
   checkLeadGrounding,
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
@@ -53,6 +54,7 @@ export const BRIEF_REJECTIONS = Object.freeze({
   LEAD_UNCITED: 'lead-uncited',
   LEAD_PROPER_NOUN: 'lead-proper-noun',
   LEAD_NUMERIC_FACT: 'lead-numeric-fact',
+  LEAD_STATUS_QUALIFIER: 'lead-status-qualifier',
   LEAD_GROUNDING: 'lead-grounding',
 });
 
@@ -102,6 +104,11 @@ export function synthesisRejectionFeedback(rejection) {
         return `Correction: your previous draft was rejected because "${detail}" does not appear in any story its sentence cited. Remove it, or move that claim into a sentence that cites the story stating it.`;
       }
       return 'Correction: your previous draft was rejected because a lead claim was not supported by the stories its sentence cited. Every name, place and number must appear in a cited story.';
+    case BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER:
+      if (detail) {
+        return `Correction: your previous draft was rejected because "${detail}" calls a person former, acting, interim or late, and no story its sentence cited says so. Use the person's title exactly as the cited story gives it.`;
+      }
+      return 'Correction: your previous draft was rejected because it called a person former, acting, interim or late without a cited story saying so. Use titles exactly as the cited story gives them.';
     case BRIEF_REJECTIONS.LEAD_UNCITED:
       return 'Correction: your previous draft was rejected because a lead sentence carried no citation. End every lead sentence with the bracket number(s) of the stories it draws from.';
     case BRIEF_REJECTIONS.PARSE:
@@ -559,6 +566,13 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // observes exactly what it observed before the reasons were split out.
     const sentenceValidation = validateNoHallucinatedProperNouns(attributed, scopedGround);
     const factValidation = validateNoHallucinatedFacts(attributed, scopedGround);
+    // #8441: the proper-noun gate reads "Former President" as a title prefix
+    // and grounds only "Trump", so the qualifier needs its own check. One
+    // ground per cited story: the qualifier and the name must share a story.
+    const qualifierValidation = validateNoHallucinatedStatusQualifiers(
+      attributed,
+      cited.map((n) => storyGroundText(topStories[n - 1], groundOpts)),
+    );
     if (validatorMode === 'enforce') {
       if (!sentenceValidation.ok) {
         dropSentence(BRIEF_REJECTIONS.LEAD_PROPER_NOUN, sentenceValidation.hallucinated);
@@ -566,6 +580,10 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
       }
       if (!factValidation.ok) {
         dropSentence(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT, factValidation.hallucinated);
+        continue;
+      }
+      if (!qualifierValidation.ok) {
+        dropSentence(BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER, qualifierValidation.hallucinated);
         continue;
       }
     }
@@ -625,11 +643,10 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // Same attribution rule as the lead, scoped to THIS story's outlet: the line
     // may name it, and naming it grounds nothing else. The published text stays
     // `bare` — only the gate's view is masked.
-    const validation = validateNoHallucinatedProperNouns(
-      maskAttributedSources(bare, [story.primarySource]),
-      storyGroundText(story, groundOpts),
-    );
-    if (!validation.ok) {
+    const gateView = maskAttributedSources(bare, [story.primarySource]);
+    const ground = storyGroundText(story, groundOpts);
+    const validation = validateNoHallucinatedProperNouns(gateView, ground);
+    if (!validation.ok || !validateNoHallucinatedStatusQualifiers(gateView, ground).ok) {
       hallucinatedLines++;
       if (validatorMode === 'enforce') return { n, text: `${headline} [${n}]` };
     }

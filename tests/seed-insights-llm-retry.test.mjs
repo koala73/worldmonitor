@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { callLLM, createSynthesisAcceptor, __setInsightsLlmTransportForTests } from '../scripts/seed-insights.mjs';
+import { callLLM, createSynthesisAcceptor, generateLegacySingleHeadlineBrief, __setInsightsLlmTransportForTests } from '../scripts/seed-insights.mjs';
 
 const LONG_BRIEF = 'Insights brief succeeded with more than enough narrative content to pass.';
 
@@ -664,5 +664,43 @@ describe('createSynthesisAcceptor (composer-fault contract, #7248 review)', () =
     assert.ok(brief);
     assert.match(brief.lead, /Chile/);
     assert.equal(lastRejection(), null);
+  });
+});
+
+// #8441: the single-headline fallback ran only the proper-noun gate, which
+// grounds "Former President Trump" on "Trump" alone.
+describe('legacy single-headline brief status-qualifier gate (#8441)', () => {
+  const trumpStory = {
+    primaryTitle: "Trump welcomes China's Xi to Washington with planeside ceremony",
+    primarySource: 'AP News',
+    primaryLink: 'https://apnews.com/xi',
+    sources: ['AP News', 'Reuters'],
+  };
+  const legacyWith = async (story, text) => {
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    __setInsightsLlmTransportForTests({ fetch: async () => okResponse(text) });
+    return generateLegacySingleHeadlineBrief([story]);
+  };
+
+  it('falls back to the headline when the summary adds a qualifier the headline lacks', async () => {
+    const result = await legacyWith(
+      trumpStory,
+      "Former President Trump welcomed China's Xi to Washington with a planeside ceremony.",
+    );
+    assert.equal(result.worldBrief, trumpStory.primaryTitle);
+    assert.equal(result.briefProvider, 'openrouter+headline-fallback');
+  });
+
+  it('publishes a summary whose qualifier the headline carries', async () => {
+    const story = {
+      ...trumpStory,
+      primaryTitle: 'Former Brazilian president Bolsonaro begins prison sentence',
+    };
+    const text = 'Former president Bolsonaro began serving his prison sentence in Brazil.';
+    const result = await legacyWith(story, text);
+    assert.equal(result.worldBrief, text);
+    assert.equal(result.briefProvider, 'openrouter');
   });
 });

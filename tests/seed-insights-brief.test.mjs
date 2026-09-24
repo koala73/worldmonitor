@@ -1287,3 +1287,102 @@ describe('synthesisRejectionFeedback', () => {
     assert.equal(synthesisRejectionFeedback({}), null);
   });
 });
+
+// #8441: the World Brief ran only the proper-noun and number gates, and the
+// proper-noun gate consumes "Former President" as a title prefix, so a lead
+// calling the sitting president "former President Trump" grounded on "Trump".
+describe('status-qualifier gate on the World Brief (#8441)', () => {
+  const topStories = [
+    {
+      primaryTitle: "Trump welcomes China's Xi to Washington with planeside ceremony",
+      primarySource: 'AP News',
+      primaryLink: 'http://xi',
+      sources: ['AP News', 'Reuters'],
+    },
+    {
+      primaryTitle: 'Former Brazilian president Bolsonaro begins prison sentence',
+      primarySource: 'Reuters',
+      primaryLink: 'http://bolsonaro',
+      sources: ['Reuters', 'BBC World'],
+    },
+  ];
+  const groundedLines = [
+    { n: 1, text: "Trump welcomed China's Xi to Washington [1]" },
+    { n: 2, text: 'Former president Bolsonaro began his prison sentence [2]' },
+  ];
+  const compose = (lead, { lines = groundedLines, validatorMode = 'enforce' } = {}) =>
+    composeSynthesizedBriefResult(JSON.stringify({ lead, lines }), topStories, { validatorMode });
+
+  it('drops a lead sentence whose qualifier no cited story carries, and keeps the rest', () => {
+    const out = compose(
+      "Former President Trump welcomed China's Xi to Washington [1]. Bolsonaro began a prison sentence [2].",
+    );
+    assert.equal(out.rejection, null);
+    assert.ok(!/Former President Trump/i.test(out.brief.lead), 'the fabricated qualifier must not publish');
+    assert.match(out.brief.lead, /Bolsonaro/);
+    assert.equal(out.brief.droppedLeadSentences, 1);
+    assert.equal(out.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+    assert.match(out.brief.droppedLeadDetail, /Former President Trump/);
+  });
+
+  it('rejects the lead when its only sentence carries the qualifier', () => {
+    const out = compose("Former President Trump welcomed China's Xi to Washington [1].");
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+    assert.equal(out.rejectionDetail, 'Former President Trump');
+  });
+
+  it("does not let one cited story's qualifier license another story's name", () => {
+    // Story 2 says "Former"; story 1 names Trump. Both are cited, but the
+    // qualifier and the name must sit in the SAME story.
+    const out = compose('Former President Trump welcomed Xi to Washington as Bolsonaro began a sentence [1][2].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+  });
+
+  it('keeps a qualifier its cited story carries', () => {
+    const out = compose("Former president Bolsonaro began a prison sentence [2]. Trump welcomed China's Xi to Washington [1].");
+    assert.equal(out.rejection, null);
+    assert.match(out.brief.lead, /Former president Bolsonaro/);
+    assert.equal(out.brief.droppedLeadSentences, 0);
+  });
+
+  it('observes but publishes in shadow mode', () => {
+    const lead = "Former President Trump welcomed China's Xi to Washington [1].";
+    const out = compose(lead, { validatorMode: 'shadow' });
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.lead, lead);
+  });
+
+  it('substitutes the headline for a story line with an ungrounded qualifier', () => {
+    const out = compose("Bolsonaro began a prison sentence [2]. Trump welcomed China's Xi to Washington [1].", {
+      lines: [
+        { n: 1, text: "Former President Trump welcomed China's Xi to Washington [1]" },
+        groundedLines[1],
+      ],
+    });
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.hallucinatedLines, 1);
+    assert.equal(out.brief.lines[0].text, `${topStories[0].primaryTitle} [1]`);
+    assert.equal(out.brief.lines[1].text, 'Former president Bolsonaro began his prison sentence [2]');
+  });
+
+  it('counts but publishes an ungrounded line in shadow mode', () => {
+    const line = "Former President Trump welcomed China's Xi to Washington";
+    const out = compose("Bolsonaro began a prison sentence [2]. Trump welcomed China's Xi to Washington [1].", {
+      lines: [{ n: 1, text: `${line} [1]` }, groundedLines[1]],
+      validatorMode: 'shadow',
+    });
+    assert.equal(out.brief.hallucinatedLines, 1);
+    assert.equal(out.brief.lines[0].text, `${line} [1]`);
+  });
+
+  it('tells the resample which qualifier to remove', () => {
+    const note = synthesisRejectionFeedback({
+      code: BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER,
+      detail: 'Former President Trump',
+    });
+    assert.match(note, /"Former President Trump"/);
+    assert.match(note, /former|acting|interim/i);
+  });
+});

@@ -258,6 +258,13 @@ export function briefCitationGroundingGap(brief, country = {}, { requireHeadline
         return `${source} does not ground ${JSON.stringify(result.hallucinated || [])}`;
       }
     }
+    // The name check reads "former president" as a title prefix and grounds
+    // only "Gbagbo" (#8441). The qualifier and the name must share one title.
+    const qualifierGrounds = indexes.length ? indexes.map((index) => titles[index - 1]) : titles;
+    if (!validateNoHallucinatedStatusQualifiers(claim, qualifierGrounds).ok) {
+      const source = indexes.length ? `source ${indexes.map((index) => `[${index}]`).join('')}` : 'source set';
+      return `${source} does not ground its status qualifier`;
+    }
   }
   return citationCount > 0 ? null : 'missing citations';
 }

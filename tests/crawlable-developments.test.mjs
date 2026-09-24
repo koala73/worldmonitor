@@ -475,6 +475,31 @@ describe('evidence-grounded briefs', () => {
     assert.ok(briefCitationGroundingGap(legacy));
   });
 
+  it('withholds a pre-migration brief whose status qualifier its cited title never made (#8441)', () => {
+    // Captured from docs/snapshots/crawlable-live-pulse-2026-09-19.json (CI):
+    // source [2] says only "proche de Laurent Gbagbo".
+    const ciSources = [
+      { title: 'Déguerpissements en Côte d’Ivoire : le gouverneur d’Abidjan, Ibrahim Cissé Bacongo, fragilisé', source: 'Jeune Afrique', url: 'https://jeuneafrique.com/1' },
+      { title: 'Côte d’Ivoire : la justice allège les charges contre Blaise Lasm, proche de Laurent Gbagbo', source: 'Jeune Afrique', url: 'https://jeuneafrique.com/2' },
+    ];
+    const captured = {
+      text: 'SITUATION NOW\nThe judiciary in Côte d’Ivoire has reduced the charges against Blaise Lasm, a close associate of Laurent Gbagbo. [2]\n\n'
+        + 'WHAT THIS MEANS FOR CÔTE D’IVOIRE\nThe legal easing for Blaise Lasm may affect political dynamics involving former president Laurent Gbagbo\'s circle. [2]',
+      sources: ciSources,
+    };
+    assert.equal(briefCitationGroundingGap(captured, { countryCode: 'CI' }), 'source [2] does not ground its status qualifier');
+    // Without the qualifier the same brief publishes.
+    const repaired = { ...captured, text: captured.text.replace('former president ', '') };
+    assert.equal(briefCitationGroundingGap(repaired, { countryCode: 'CI' }), null);
+    // A qualifier the cited title carries still publishes, and one title's
+    // qualifier cannot license another title's name.
+    const titled = [{ ...ciSources[0], title: 'Former president Laurent Gbagbo returns to Abidjan' }, ciSources[1]];
+    assert.equal(briefCitationGroundingGap({ text: 'SITUATION NOW\nFormer president Laurent Gbagbo returns to Abidjan [1]', sources: titled }), null);
+    assert.ok(briefCitationGroundingGap({ text: 'SITUATION NOW\nFormer president Laurent Gbagbo returns as charges ease for Blaise Lasm [2]', sources: titled }));
+    // An uncited line grounds against the whole source set, title by title.
+    assert.ok(briefCitationGroundingGap({ text: 'SITUATION NOW\nReturns to Abidjan [1]\nFormer president Blaise Lasm faces reduced charges', sources: titled }));
+  });
+
   it('still requires at least one headline citation', () => {
     assert.equal(briefCitationGroundingGap(brief("KEY RISKS\nEgypt's fiscal space scores 28 of 100 in the Country Resilience Index. [E1]")), 'missing citations');
   });
