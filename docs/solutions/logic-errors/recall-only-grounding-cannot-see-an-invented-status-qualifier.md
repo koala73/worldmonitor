@@ -1,6 +1,7 @@
 ---
 title: A recall-only grounding gate cannot see an invented status qualifier
 date: 2026-09-21
+last_updated: 2026-09-24
 category: logic-errors
 module: shared/brief-llm-core.js, scripts/lib/brief-llm.mjs
 problem_type: logic_error
@@ -129,6 +130,24 @@ export function parseStoryDescription(text, headline, groundText) {
 
 **No cache version bump.** Both cache-hit paths already revalidate before returning. The digest hit runs `validateDigestProseShape(hit, stories)` (`scripts/lib/brief-llm.mjs:854`) and the description hit runs `parseStoryDescription(hit, …)` (`scripts/lib/brief-llm.mjs:396`). A poisoned row written before the fix is therefore rejected on read and regenerated, which is what a version bump would have bought at the cost of discarding every clean row. The test `generateStoryDescription revalidates a cached "Former President" row and re-LLMs it` (`tests/brief-llm.test.mjs:2099`) pins that behavior.
 
+### Widening to more consumers (#8441, 2026-09-24)
+
+PR #8573 runs the validator at three more publish gates, each with the semantics that gate already had. A World Brief lead sentence is dropped, and the brief is rejected as `lead-status-qualifier` when nothing survives. A World Brief story line falls back to its headline. The single-headline fallback publishes the headline. The pre-migration branch of `briefCitationGroundingGap` withholds the whole country brief. #8548 had already covered the evidence-format country brief and its crawlable branch.
+
+The reproduction split by surface. The dashboard synthesis and single-headline prompts produced 0 ungrounded qualifiers across 42 synthesis drafts and 42 single-headline drafts. The models were deepseek-v4-flash, gemini-2.5-flash, llama-3.1-8b and gpt-oss-20b, on the live 2026-09-24 pool and the Sep 20 headlines. That prompt forbids adding context outright, which the email prompt does not. A committed snapshot did reproduce it: 1 of 120 frozen briefs in `docs/snapshots/crawlable-live-pulse-2026-09-19.json` says "former president Laurent Gbagbo" against a source that says only "proche de Laurent Gbagbo".
+
+Widening the validator's reach exposed 2 defects that the single email consumer never hit. Review caught both.
+
+**The bridge accepted any words.** Between the qualifier and the title, the pattern allowed up to 3 arbitrary words, so ordinary phrasing read as a qualified title: "Former officials said President Trump", "Late on Tuesday President Trump", "In a late-night ceremony President Trump", "Interim results show President Trump". On the email brief that cost an occasional sentence. At the new gates it would drop lead sentences, substitute story lines, and withhold country briefs over correct text. A bridge word must now be one of:
+
+- a capitalized word that is not a weekday or month ("US", "Brazilian", "White House")
+- an office modifier ("deputy", "national security")
+- a title word ("official adviser")
+
+Any other word ends the match (`BRIDGE_WORD_RE_SOURCE` in `shared/brief-llm-core.js`).
+
+**The unit splitter hid the span.** The World Brief lead is validated per sentence, and its split fails closed at a dotted acronym before a capital (#5947). "…as former U.S. President Trump welcomed Xi [1]." therefore became "…as former U.S." and "President Trump welcomed…". No unit held qualifier, title and name together, and the fabricated qualifier published verbatim. The fix: when a unit ends at a dotted acronym, the next unit's qualifier check reads both units together against both units' cited stories, and a failure drops both halves (`scripts/_insights-brief.mjs`, `acronymHead`). A validator that matches a span is only as good as the units it is handed.
+
 ## Why This Works
 
 Both existing gates were blind here by design, not by accident.
@@ -137,7 +156,7 @@ Both existing gates were blind here by design, not by accident.
 
 `validateNoHallucinatedProperNouns` (`shared/brief-llm-core.js:847`) never saw the qualifier either. Its extractor `extractProperNounSequencesWithMeta` (`shared/brief-llm-core.js:574`) has a title-prefix consume branch (`shared/brief-llm-core.js:612` and `shared/brief-llm-core.js:628-631`) that swallows any token in `TITLE_PREFIX_STOP` without registering it, and that list holds `President`, `Former`, `Ex`, `Acting`, and `Interim` (`shared/brief-llm-core.js:328-337`). "former President Trump" therefore extracts as `['trump']`, which the headline grounds. PR #3836's own test plan states the outcome as a pass. The validator is also not wired into the email brief at all. Its callers are `scripts/_insights-brief.mjs`, `scripts/seed-insights.mjs`, `scripts/crawlable-developments.mjs`, and `server/worldmonitor/intelligence/v1/get-country-intel-brief.ts`. Extending it to those consumers is filed as #8441. `briefDateLine` (`shared/brief-llm-core.js:52`) only forbids contradictory years and dates, and `buildStoryDescriptionPrompt` does not append it at all.
 
-A claim-level precision check is the right shape because the fabrication was not a new entity. Every proper noun in the shipped lead was real and grounded. What the model invented was a predicate attached to a real name, and a name-level recall check can never see a predicate. The qualifier plus title plus name pattern is narrow enough to have near-zero false-positive surface and broad enough to cover the whole class, since "acting Prime Minister Vance" and "the late President Carter" fail the same way and are equally wrong.
+A claim-level precision check is the right shape because the fabrication was not a new entity. Every proper noun in the shipped lead was real and grounded. What the model invented was a predicate attached to a real name, and a name-level recall check can never see a predicate. The qualifier plus title plus name pattern is narrow enough to keep false positives rare, once the words between qualifier and title are restricted to office words (see the #8441 section above; the first version was not), and broad enough to cover the whole class, since "acting Prime Minister Vance" and "the late President Carter" fail the same way and are equally wrong.
 
 The classes exist so that grounding is not a bag of words. "ex-President Trump" in the source licenses "former President Trump" in the summary, because both words sit in the same class. "former" in the source never licenses "acting" in the summary, because a source saying a person used to hold an office says nothing about that person holding it provisionally now. Matching per class keeps synonym paraphrase legal and keeps substitution illegal.
 
@@ -153,10 +172,14 @@ The same class had already appeared on a sibling surface (session history). Roun
 - Check `railway variables` before treating Axiom silence as evidence. A cron whose service lacks `USAGE_TELEMETRY` and `AXIOM_API_TOKEN` produces zero rows whether it runs or not. When telemetry is absent, reproduce through the shipping prompt builders instead of theorizing from a code read.
 - Ask what dimension the gate still does not look at (session history). The country-page root cause logged on 2026-09-08 was a citation index that proved a marker existed, not that the source supported the claim. This gate looked at names, not predicates. The next class will live in whatever the new gate ignores.
 - Replay a new prose gate over a recent corpus and measure the drop rate before shipping (session history). The country-page gate, replayed against an earlier snapshot, would have left zero published briefs. Here the replay over 24 real outputs showed repairs and fallbacks, not wholesale loss.
+- Before widening a shared validator to new publish gates, run it against ordinary sentences it must accept. A validator's false positives stay cheap only while its consumers are few. The bridge flaw in the #8441 section shipped in #8437 and cost almost nothing on the email brief. At a gate that withholds a whole country brief, the same flaw is expensive. The must-accept fixtures now live in `tests/brief-llm-core.test.mjs`.
+- When a gate validates a span, test it on text that crosses the boundary of each unit the caller splits into. The World Brief splitter and the email splitter cut at different places, so each caller needs its own boundary fixture.
+- Reproduce on each surface separately. The same model and failure class gave 6 of 6 on the email prompt and 0 of 84 on the dashboard prompt. The frozen crawlable snapshot was the only place the failure appeared outside email.
 
 ## Related Issues
 
-- PR #8437 carries the fix (open, unmerged as of this writing). Follow-ups from the same investigation: #8438 (banned stitching phrases are prompt-only), #8439 (greeting emitted outside the JSON loses leads to `JSON.parse`), #8440 (`digest-notifications` emits no `llm_call` telemetry), #8441 (extend this validator to the dashboard, crawlable, and country-brief consumers, and unify the two lead-sentence splitters).
+- PR #8573 carries the #8441 widening and both validator fixes (open, unmerged as of this writing). #8571 records why the 2 lead splitters cannot be unified, and a related lead-repair defect. #8570 is the dead free OpenRouter backup model found during that reproduction.
+- PR #8437 carries the original fix. Follow-ups from the same investigation: #8438 (banned stitching phrases are prompt-only), #8439 (greeting emitted outside the JSON loses leads to `JSON.parse`), #8440 (`digest-notifications` emits no `llm_call` telemetry), #8441 (extend this validator to the dashboard, crawlable, and country-brief consumers, and unify the two lead-sentence splitters).
 - PR #3667 introduced `checkLeadGrounding` and the title stopwords; PR #3836 introduced `validateNoHallucinatedProperNouns` and `TITLE_PREFIX_STOP`. #6109 was the previous false-positive fight on the same proper-noun validator. #6112 was the previous case of a brief surface reaching users without the gates a sibling surface runs. #7865 was the country-page precision failure with the visible abstention fix.
 - [The evidence gate for LLM-extracted values](../design-patterns/evidence-gate-llm-extracted-values-bypass-classes.md) is the prior chapter of the same doctrine on the prices pipeline: prompt-only anti-fabrication does not hold, the deterministic gate's matcher is its own attack surface, and the abstain path must be observable.
 - [A bare ISO alpha-2 token is never a country mention](./iso-country-code-false-positive-poisons-brief-grounding.md) is the brief system's other grounding-precision fix; its one-matcher-for-every-surface discipline is the lesson #8441 applies to this validator.
