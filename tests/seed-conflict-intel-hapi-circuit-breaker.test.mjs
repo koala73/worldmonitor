@@ -452,7 +452,7 @@ test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => 
   assert.equal(rows[0].location_code, 'SDN');
 });
 
-test('HAPI bulk rows are grouped by country and only the latest reference period is published', () => {
+test('HAPI bulk rows publish the latest period without adding overlapping civilian targeting to political violence', () => {
   const rows = [
     {
       location_code: 'SDN',
@@ -509,8 +509,8 @@ test('HAPI bulk rows are grouped by country and only the latest reference period
         countryCode: 'SD',
         countryName: 'Sudan',
         conflictEventsTotal: 23,
-        conflictPoliticalViolenceEvents: 16,
-        conflictFatalities: 5,
+        conflictPoliticalViolenceEvents: 12,
+        conflictFatalities: 3,
         referencePeriod: '2026-07-01',
         conflictDemonstrations: 7,
         updatedAt: NOW,
