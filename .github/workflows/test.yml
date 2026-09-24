@@ -194,8 +194,13 @@ jobs:
           # the container: the Dockerfile and its sibling nginx/entrypoint
           # configs (docker/), the npm install inputs the build stage actually
           # runs (package.json, package-lock.json), the pro-test lockfile
-          # build:pro installs on its own, and the one script the Dockerfile
-          # names directly (generate-inventory-facts.mjs). Before this, none of
+          # build:pro installs on its own, and the scripts the Dockerfile RUN
+          # steps execute: generate-inventory-facts.mjs, plus the
+          # build:crawlable-corpus / build:sitemap scripts and the
+          # source-attribution.mjs scanner the corpus build imports (#7439
+          # broke every image build through that scanner while unit stayed
+          # green). The attribution manifest is left out: docs-stats checks it
+          # on every PR. Before this, none of
           # these had a PR-time build at all -- docker-publish.yml runs only on
           # a published release or a manual dispatch, so its build was the
           # first execution of any change to the Dockerfile.
@@ -207,6 +212,9 @@ jobs:
             /^pro-test\/package\.json$/ { count++; next }
             /^pro-test\/package-lock\.json$/ { count++; next }
             /^scripts\/generate-inventory-facts\.mjs$/ { count++; next }
+            /^scripts\/build-crawlable-corpus\.mjs$/ { count++; next }
+            /^scripts\/build-sitemap\.mjs$/ { count++; next }
+            /^scripts\/source-attribution\.mjs$/ { count++; next }
             END { print count + 0 }
           ')
           echo "docker=$( [ "$DOCKER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"

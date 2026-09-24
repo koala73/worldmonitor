@@ -177,6 +177,9 @@ const REQUIRED_DOCKER_IMAGE_INPUTS = [
   'pro-test/package.json',
   'pro-test/package-lock.json',
   'scripts/generate-inventory-facts.mjs',
+  'scripts/build-crawlable-corpus.mjs',
+  'scripts/build-sitemap.mjs',
+  'scripts/source-attribution.mjs',
 ] as const;
 
 // Desktop drift gates (#5902): the literal awk patterns each change filter
@@ -1624,7 +1627,11 @@ describe('CI workflow coverage', () => {
       [['package-lock.json'], 1, 'the npm ci input the build stage actually runs'],
       [['pro-test/package.json'], 1, 'build:pro installs pro-test from this manifest'],
       [['pro-test/package-lock.json'], 1, 'build:pro installs this lockfile on its own'],
-      [['scripts/generate-inventory-facts.mjs'], 1, 'the one script the Dockerfile names directly'],
+      [['scripts/generate-inventory-facts.mjs'], 1, 'the Dockerfile runs this script directly'],
+      [['scripts/build-crawlable-corpus.mjs'], 1, 'build:crawlable-corpus runs inside the image build'],
+      [['scripts/build-sitemap.mjs'], 1, 'build:sitemap runs inside the image build'],
+      [['scripts/source-attribution.mjs'], 1, 'the corpus build imports this scanner; #7439 broke the image through it'],
+      [['shared/source-attribution-manifest.json'], 0, 'docs-stats checks the manifest on every PR'],
       [['src/components/GlobeMap.ts'], 0, 'app logic is unit/typecheck\'s job, not a docker-specific one'],
       [['docs/DOCUMENTATION.md'], 0, 'docs never reach the image'],
     ] as [string[], number, string][]) {
