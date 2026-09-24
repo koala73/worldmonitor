@@ -741,6 +741,77 @@ describe('crawlable content corpus deployment contracts', () => {
     }
   });
 
+  // #8608: the corpus dataset downloads, the OpenAPI/plugin descriptors and the
+  // .well-known JSON descriptors are machine-readable files, not pages. They
+  // answered 200 with no robots directive, which made them the largest
+  // actionable slice of the 2026-09-24 "Crawled - currently not indexed" export
+  // (178 of 1,000 sampled rows, 103 of them /countries/<slug>/resilience.json).
+  // `noindex, follow` keeps them fetchable, which a robots.txt Disallow would
+  // not: every corpus page carries a schema.org DataDownload `contentUrl`
+  // pointing at these files, and a disallowed URL is a claim Google is
+  // forbidden to verify (#7660).
+  it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
+    const dataFiles = [
+      // Corpus dataset downloads - scripts/build-crawlable-corpus.mjs.
+      '/country-instability-index/cii-ranking.json',
+      '/countries/resilience-ranking.json',
+      '/countries/iran/resilience.json',
+      '/countries/iran/cii.json',
+      '/chokepoints/status.json',
+      '/chokepoints/strait-of-hormuz/reference.json',
+      '/crises/sudan/tracker.json',
+      '/accuracy/scorecard.json',
+      '/sources/search-index.json',
+      '/research/grain-corridor/grain-corridor.json',
+      // Service descriptions.
+      '/openapi.json',
+      '/openapi.yaml',
+      '/plugin.json',
+      '/docs/api/forecasts.openapi.yaml',
+      '/docs/snapshots/2026-09-01.json',
+      // .well-known JSON descriptors.
+      '/.well-known/agent-card.json',
+      '/.well-known/ai-catalog.json',
+      '/.well-known/webhook-sample.json',
+      '/.well-known/mcp/server-card.json',
+      '/.well-known/agent-skills/index.json',
+    ];
+    for (const path of dataFiles) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), 'noindex, follow', path);
+    }
+
+    for (const prefix of CONTENT_CORPUS_PREFIXES) {
+      // Every corpus family, not only the ones shipping a dataset today.
+      for (const file of [`/${prefix}/example.json`, `/${prefix}/example/nested.json`]) {
+        assert.equal(effectiveHeader(file, 'X-Robots-Tag'), 'noindex, follow', file);
+      }
+      // The HTML these files hang off must stay indexable. A rule anchored on
+      // the prefix rather than the extension would de-index the whole corpus.
+      for (const route of [`/${prefix}`, `/${prefix}/`, `/${prefix}/example`, `/${prefix}/example/`]) {
+        assert.equal(effectiveHeader(route, 'X-Robots-Tag'), null, route);
+      }
+    }
+    assert.equal(effectiveHeader('/countries/united-states', 'X-Robots-Tag'), null);
+    assert.equal(effectiveHeader('/countries/united-states/', 'X-Robots-Tag'), null);
+
+    // Scope item 2 of #8608 deliberately leaves the AI-citation surface alone:
+    // it is not established that OAI-SearchBot, PerplexityBot or
+    // Claude-SearchBot read `X-Robots-Tag: noindex` as "do not index" rather
+    // than "do not cite", so noindex here would risk trading a Search Console
+    // count for citability. That stays an owner decision, not a drive-by.
+    for (const path of ['/llms.txt', '/llms-full.txt', '/api/llms.txt', '/agents.md', '/developers.md',
+      '/pricing.md', '/openapi.md', '/world-monitor.md', '/.well-known/security.txt',
+      '/.well-known/agent-skills/check-country-risk/SKILL.md']) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
+    }
+
+    // Sitemaps and robots.txt stay plain - a noindex sitemap is simply dropped,
+    // and #8608 does not touch them.
+    for (const path of ['/robots.txt', '/robots.www.txt', '/sitemap.xml', '/sitemap-main.xml', '/schemamap.xml']) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
+    }
+  });
+
   it('serves no SPA fallback for generated corpus paths while keeping real client deep links', () => {
     // #6575: unknown paths must fall through to the filesystem (404), so the
     // only dashboard-serving rewrites left are the explicit client History
