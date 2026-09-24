@@ -15,6 +15,8 @@
 //   - unreadable page -> the previous id is kept while it is at most LAST_GOOD_MAX_AGE_MS old
 //   - channel no longer in the generated list -> dropped
 // A run where every page was unreadable publishes nothing: runSeed keeps last-good and exits 75.
+// The first successful publish also SETs seed-activated:live-video:resolved, which ends /api/health's
+// pre-provisioning softening for liveVideoResolved; from then on an absent or stale key alarms.
 //
 // The payload is public (?keys=liveVideoResolved&public=1 and the get-bootstrap-data RPC), so it never carries titles
 // or slot names; those go to this log only.
@@ -33,8 +35,14 @@ import { readFileSync } from 'node:fs';
 import { fetchChannelLivePage, proxyForAttempt, resolveChannelsLive } from './lib/live-video-channel-live.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import { loadEnvFile, readCanonicalValue, runSeed } from './_seed-utils.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
 export const CANONICAL_KEY = 'live-video:resolved:v1';
+/**
+ * Durable marker /api/health reads (ACTIVATION_MARKERS.liveVideoResolved): until it exists the probe softens to
+ * EMPTY_ON_DEMAND, so registering the probe before the Railway service is provisioned does not page anyone.
+ */
+export const LIVE_VIDEO_ACTIVATION_KEY = 'seed-activated:live-video:resolved';
 /** An unreadable channel keeps its previous id this long. The player ignores entries older than the same limit. */
 export const LAST_GOOD_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 /** Same cap as MAX_REFRESH_CHANNELS in scripts/lib/live-video-refresh.mjs (TypeScript-importing, so not imported here). */
@@ -177,6 +185,20 @@ export function makeFetchAll({
   };
 }
 
+/**
+ * runSeed's afterPublish hook: runs only after a validated map was published. Best-effort, like the other
+ * activation markers (seed-cbr-rates): a failed write costs one more run of health softening, never the run.
+ */
+export async function markLiveVideoActivated() {
+  try {
+    const creds = getOptionalUpstashCreds();
+    if (!creds) return;
+    await upstashCommand(creds, ['SET', LIVE_VIDEO_ACTIVATION_KEY, '1']);
+  } catch (error) {
+    console.warn(`  WARN: activation marker write failed: ${error?.message || error}`);
+  }
+}
+
 /** Refuses any Upstash request that is not a GET of a key, so --dry-run provably writes nothing. */
 export function guardRedisReadOnly(redisUrl, counts) {
   const realFetch = globalThis.fetch;
@@ -235,6 +257,7 @@ async function main() {
 
   await runSeed('live-video', 'resolved', CANONICAL_KEY, makeFetchAll({ channels, fetchPage, session }), {
     validateFn: validateResolvedPayload,
+    afterPublish: markLiveVideoActivated,
     ttlSeconds: TTL_SECONDS,
     declareRecords,
     schemaVersion: 1,

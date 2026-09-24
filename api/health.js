@@ -424,7 +424,7 @@ const STANDALONE_KEYS = {
   hkoWarnings:        'weather:hko-warnings:v1',
   imdCycloneMarine:   'weather:imd-cyclone-marine:v1',
   // Seeded by seed-live-video-resolved (#8545); read by the live video players
-  // through the on-demand bootstrap URL. Strict: absent or stale must alarm.
+  // through the on-demand bootstrap URL. Strict once activated (SEED_META).
   liveVideoResolved: BOOTSTRAP_CACHE_KEYS.liveVideoResolved,
   canadaAlertsAbSource: 'alerts:canada:alberta-aea:v1',
   canadaAlertsBcSource: 'alerts:canada:bc-evacuation:v1',
@@ -741,7 +741,22 @@ const SEED_META = {
   }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
-  liveVideoResolved: { key: 'seed-meta:live-video:resolved', maxStaleMin: 1080 }, // seed-live-video-resolved cron `0 */6 * * *`; 1080 = 3× cadence per project convention. Deliberately not in ON_DEMAND_KEYS or EMPTY_DATA_OK_KEYS: a dead cron must go STALE_SEED, and the players fall back to the catalog.
+  // seed-live-video-resolved cron `0 */6 * * *` (#8545); 1080 = 3× cadence per
+  // project convention. The PR registers the probe before the Railway service
+  // exists, so it softens to EMPTY_ON_DEMAND only until the seeder's first
+  // publish writes the activation marker; from then on it is strict forever
+  // (EMPTY / STALE_SEED). Not in EMPTY_DATA_OK_KEYS: a dead cron must alarm.
+  liveVideoResolved: {
+    key: 'seed-meta:live-video:resolved',
+    maxStaleMin: 1080,
+    activationKey: 'seed-activated:live-video:resolved',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8545,
+      activationKey: 'seed-activated:live-video:resolved',
+    },
+  },
   climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 540 }, // bundled into seed-bundle-climate (cron `0 */3 * * *`, every 3h); 540 = 3× cron cadence per project convention. Prior 240 (1.33× cron) flipped to silent-EMPTY between minute 180 (TTL_DATA expiry) and 240 (alarm trigger) on every routine cron-jitter cycle — see scripts/seed-climate-anomalies.mjs CACHE_TTL comment.
   climateDisasters: { key: 'seed-meta:climate:disasters',       maxStaleMin: 720 }, // runs every 6h; 720min = 2x interval
   climateAirQuality:{ key: 'seed-meta:health:air-quality',      maxStaleMin: 180 }, // hourly cron; 180 = 3x interval — shares meta key with healthAirQuality (same seeder run)
@@ -1905,6 +1920,10 @@ const ON_DEMAND_KEYS = new Set([
   // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
+  // Deployment-order bridge (#8545): this reader ships before the
+  // seed-live-video-resolved Railway service is provisioned. The seeder SETs the
+  // durable marker after its first successful publish; strict from then on.
+  'liveVideoResolved',
   // #8480. The macro bundle can ship the reader before the tail sections
   // publish. Each marker is written after the first successful publish.
   'usCpiMonthly',
@@ -2022,6 +2041,8 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
+  // Written by scripts/seed-live-video-resolved.mjs in runSeed's afterPublish hook.
+  liveVideoResolved: SEED_META.liveVideoResolved.activationKey,
   usCpiMonthly: SEED_META.usCpiMonthly.activationKey,
   usTreasuryParYield: SEED_META.usTreasuryParYield.activationKey,
   usInterestRates: SEED_META.usInterestRates.activationKey,

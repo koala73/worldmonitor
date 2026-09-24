@@ -10,11 +10,13 @@ import { withRetry } from '../scripts/_seed-utils.mjs';
 import {
   CANONICAL_KEY,
   LAST_GOOD_MAX_AGE_MS,
+  LIVE_VIDEO_ACTIVATION_KEY,
   MAX_CHANNELS,
   declareRecords,
   guardRedisReadOnly,
   loadRefreshChannels,
   makeFetchAll,
+  markLiveVideoActivated,
   mergeResolved,
   resolveRunProxy,
   validateResolvedPayload,
@@ -296,5 +298,43 @@ describe('loadRefreshChannels', () => {
     const many = Array.from({ length: MAX_CHANNELS + 1 }, (_, n) => ({ channelId: ID(n), slots: [] }));
     assert.throws(() => loadRefreshChannels(JSON.stringify({ channels: many })), /more than 60/);
     assert.throws(() => loadRefreshChannels(JSON.stringify({ channels: [{ channelId: '@handle' }] })), /not a channel id/);
+  });
+});
+
+describe('activation marker (health deployment-order bridge)', () => {
+  let realFetch;
+  const env = {};
+  beforeEach(() => {
+    realFetch = globalThis.fetch;
+    for (const name of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) env[name] = process.env[name];
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    for (const [name, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  it('SETs the durable marker health reads, with no TTL', async () => {
+    const bodies = [];
+    globalThis.fetch = async (url, init) => {
+      bodies.push({ url: String(url), body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    };
+    await markLiveVideoActivated();
+    assert.equal(LIVE_VIDEO_ACTIVATION_KEY, 'seed-activated:live-video:resolved');
+    assert.deepEqual(bodies, [{ url: 'https://fake-upstash.test', body: ['SET', LIVE_VIDEO_ACTIVATION_KEY, '1'] }]);
+  });
+
+  it('never fails a run that already published when the marker write fails', async () => {
+    globalThis.fetch = async () => new Response('down', { status: 500 });
+    await markLiveVideoActivated();
+  });
+
+  it('is wired as the runSeed afterPublish hook', () => {
+    assert.match(readFileSync(SEEDER, 'utf8'), /afterPublish: markLiveVideoActivated,/);
   });
 });
