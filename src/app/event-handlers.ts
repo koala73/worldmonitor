@@ -2733,6 +2733,7 @@ export class EventHandlerManager implements AppModule {
     // Set only by applyDrag: a zero-movement press/tap must not persist the
     // container-clamped application back over the raw stored preference.
     let dragMoved = false;
+    let dragStartPct = '';
 
     this.boundMapWidthEndResizeHandler = () => {
       activeTouchId = null;
@@ -2746,7 +2747,7 @@ export class EventHandlerManager implements AppModule {
       const current = mainContent.style.getPropertyValue('--map-col-width');
       if (current && dragMoved) {
         writeStorageValue('map-col-width', current);
-        trackLayoutCustomized('map-divider');
+        if (Number.parseFloat(current).toFixed(1) !== dragStartPct) trackLayoutCustomized('map-divider');
       }
       dragMoved = false;
       syncMapColNarrowState();
@@ -2760,7 +2761,8 @@ export class EventHandlerManager implements AppModule {
       activeDragSource = source;
       startX = clientX;
       startTotalWidth = mainContent.offsetWidth;
-      startColPx = startTotalWidth * (getCurrentWidthPercent() / 100);
+      dragStartPct = getCurrentWidthPercent().toFixed(1);
+      startColPx = startTotalWidth * (Number(dragStartPct) / 100);
       dragSign = isMapVisuallyRight() ? -1 : 1;
       this.ctx.map?.setIsResizing(true);
       document.body.classList.add('map-width-resizing');
@@ -2796,12 +2798,13 @@ export class EventHandlerManager implements AppModule {
       if (arrow === 0) return;
       e.preventDefault();
       const step = isMapVisuallyRight() ? -arrow : arrow;
-      const newPct = clampMapColWidthPercent(getCurrentWidthPercent() + step, mainContent.offsetWidth);
+      const currentPct = getCurrentWidthPercent();
+      const newPct = clampMapColWidthPercent(currentPct + step, mainContent.offsetWidth);
       const value = `${newPct.toFixed(1)}%`;
       mainContent.style.setProperty('--map-col-width', value);
       this.ctx.map?.resize();
       writeStorageValue('map-col-width', value);
-      trackLayoutCustomized('map-divider');
+      if (newPct.toFixed(1) !== currentPct.toFixed(1)) trackLayoutCustomized('map-divider');
       syncMapColNarrowState();
       syncWidthSeparatorAria();
     });
