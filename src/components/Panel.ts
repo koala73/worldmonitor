@@ -3,7 +3,7 @@ import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
 import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
-import { trackPanelResized } from '@/services/analytics';
+import { trackLayoutCustomized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
@@ -445,7 +445,7 @@ export class Panel {
       if (next === current) return;
       setSpanClass(this.element, next);
       savePanelSpan(this.panelId, next);
-      trackPanelResized(this.panelId, next);
+      trackLayoutCustomized('panel-resize');
       this.syncKeyboardRowResizeAria();
     });
   }
@@ -472,6 +472,7 @@ export class Panel {
       if (next === current) return;
       setColSpanClass(this.element, next);
       persistPanelColSpan(this.panelId, this.element);
+      trackLayoutCustomized('panel-resize');
       this.syncKeyboardColResizeAria();
     });
   }
@@ -518,7 +519,7 @@ export class Panel {
 
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
-      trackPanelResized(this.panelId, currentSpan);
+      if (currentSpan !== this.startRowSpan) trackLayoutCustomized('panel-resize');
       this.syncKeyboardRowResizeAria();
     };
 
@@ -591,7 +592,7 @@ export class Panel {
       this.removeRowTouchDocumentListeners();
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
-      trackPanelResized(this.panelId, currentSpan);
+      if (currentSpan !== this.startRowSpan) trackLayoutCustomized('panel-resize');
       this.syncKeyboardRowResizeAria();
     };
     this.onTouchCancel = this.onTouchEnd;
@@ -661,6 +662,7 @@ export class Panel {
       const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
+        trackLayoutCustomized('panel-resize');
       }
       this.syncKeyboardColResizeAria();
     };
@@ -733,6 +735,7 @@ export class Panel {
       const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
+        trackLayoutCustomized('panel-resize');
       }
       this.syncKeyboardColResizeAria();
     };

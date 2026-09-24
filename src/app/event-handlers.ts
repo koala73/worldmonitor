@@ -91,6 +91,7 @@ import {
   trackPanelToggled,
   trackDownloadClicked,
   trackGateHit,
+  trackLayoutCustomized,
 } from '@/services/analytics';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
@@ -2743,7 +2744,10 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.remove('map-width-resizing');
       widthHandle.classList.remove('resizing');
       const current = mainContent.style.getPropertyValue('--map-col-width');
-      if (current && dragMoved) writeStorageValue('map-col-width', current);
+      if (current && dragMoved) {
+        writeStorageValue('map-col-width', current);
+        trackLayoutCustomized('map-divider');
+      }
       dragMoved = false;
       syncMapColNarrowState();
       syncWidthSeparatorAria();
@@ -2797,6 +2801,7 @@ export class EventHandlerManager implements AppModule {
       mainContent.style.setProperty('--map-col-width', value);
       this.ctx.map?.resize();
       writeStorageValue('map-col-width', value);
+      trackLayoutCustomized('map-divider');
       syncMapColNarrowState();
       syncWidthSeparatorAria();
     });

@@ -532,6 +532,29 @@ Panels can be reorganized by dragging:
 
 This enables personalized layouts: put your most-watched panels at the top.
 
+Keyboard users reorder with the **⇅** move button at the start of each panel header. The button stays visually hidden until it receives focus. Arrow keys move the panel one slot at a time. When the viewport is at least 900px wide and the map is shown, Page Up moves the panel to the sidebar grid and Page Down moves it to the grid below the map.
+
+### Panel Resizing
+
+Each panel has a resize handle on its bottom edge (height) and its right edge (width):
+
+- **Height**: drag the bottom handle to span 1 to 4 grid rows
+- **Width**: drag the right handle to span up to 3 grid columns, limited by how many columns the grid currently has
+- **Keyboard**: focus a handle and use the arrow keys, or Home and End for the minimum and maximum
+- **Reset**: double-click a handle to restore that panel's default height or width
+
+### Map Width Divider
+
+When the viewport is at least 900px wide, the map and the panel grid sit side by side with a vertical divider between them. Drag the divider to change the map's share of the width, or focus it and press the Left and Right arrow keys to move it in 5% steps. The map keeps a minimum width, and so does the panel column.
+
+### Panel Text Size
+
+The **Panel text size** option on the Settings tab sets text size for every panel. On the Panels tab, the **Text size** selector next to a panel overrides it for that panel after you click Save. **Use global** returns the panel to the global size.
+
+### Reset Layout
+
+**Reset Layout** on the Panels tab of Settings clears panel order, row and column spans, per-panel text sizes, map height, map width, and map side, then reloads the page.
+
 ### Panel Visibility
 
 Toggle panels on/off via the Settings menu:
@@ -557,9 +580,9 @@ Panels are organized by intelligence priority:
 
 Panel state survives browser restarts:
 
-- **LocalStorage**: Panel order, visibility, collapsed state
-- **Automatic save**: Changes persist immediately
-- **Per-device**: Settings are browser-specific (not synced)
+- **LocalStorage**: Panel order, visibility, collapsed state, row and column spans, per-panel text size, map width, map height, and map side
+- **Automatic save**: Drag, keyboard, and resize changes persist immediately; Panels tab changes persist when you click Save
+- **Per-device by default**: Web builds with `VITE_CLOUD_PREFS_ENABLED=true` sync panel order, visibility, and spans for signed-in users. Map width, height, and side always stay on the device.
 
 ---
 
