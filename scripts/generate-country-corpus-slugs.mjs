@@ -2,10 +2,15 @@
 /**
  * Generate the ISO2 → crawlable-corpus country page map for legacy `api/*.js`.
  *
- * Source chain:
- *   data/resilience/resilience-ranking-*.json (the corpus country universe)
- *   shared/country-names.json                 (display-name fallbacks)
- *   scripts/build-crawlable-corpus.mjs        (slugify/uniqueSlug, shared)
+ * Source chain (the newest snapshot wins, same as the corpus build):
+ *   docs/snapshots/resilience-ranking-*.json (the corpus country universe)
+ *   shared/country-names.json                (display-name fallbacks)
+ *   scripts/build-crawlable-corpus.mjs       (slugify/uniqueSlug, shared)
+ *
+ * The snapshot is refreshed monthly by
+ * .github/workflows/resilience-snapshot-refresh.yml, which stages this script's
+ * output alongside it. A rename there moves the published page, so an unstaged
+ * map would leave api/story.js canonicalising at a slug that 404s.
  *
  * `api/*.js` entries are self-contained JavaScript and may import only
  * same-directory `_*.js` helpers, never `scripts/` or `src/` (AGENTS.md
@@ -48,13 +53,19 @@ export function renderCountryCorpusModule(countries) {
 /**
  * ISO 3166-1 alpha-2 → the country's crawlable corpus page slug. Every entry
  * has a published page at https://www.worldmonitor.app/countries/<slug>/.
+ *
+ * Null-prototype: the lookup key is caller-supplied (\`?c=\` on a public share
+ * URL), so an inherited \`constructor\`/\`toString\` hit would build a canonical
+ * out of a function body. Object.freeze alone does not sever the prototype.
  */
 export const COUNTRY_CORPUS_SLUGS = Object.freeze({
+  __proto__: null,
 ${entries(({ slug }) => slug)}
 });
 
 /** ISO 3166-1 alpha-2 → the display name that corpus page is titled with. */
 export const COUNTRY_CORPUS_NAMES = Object.freeze({
+  __proto__: null,
 ${entries(({ name }) => name)}
 });
 `;
@@ -76,10 +87,18 @@ function emit(path, content) {
   return true;
 }
 
+// The corpus publishes 196 country pages. A floor far below that would let a
+// truncated snapshot regenerate clean and silently revert the missing countries'
+// canonicals to /dashboard, which is the exact regression #8604 fixes.
+export const MIN_CORPUS_COUNTRIES = 190;
+
 export function generateCountryCorpusSlugs() {
   const countries = loadCountryCorpusIdentities(ROOT);
-  if (countries.length < 150) {
-    throw new Error(`Corpus country universe collapsed to ${countries.length} entries; refusing to publish the map`);
+  if (countries.length < MIN_CORPUS_COUNTRIES) {
+    throw new Error(
+      `Corpus country universe collapsed to ${countries.length} entries `
+      + `(floor ${MIN_CORPUS_COUNTRIES}); refusing to publish the map`,
+    );
   }
   return emit(OUTPUT_PATH, renderCountryCorpusModule(countries));
 }

@@ -5,8 +5,13 @@
 /**
  * ISO 3166-1 alpha-2 → the country's crawlable corpus page slug. Every entry
  * has a published page at https://www.worldmonitor.app/countries/<slug>/.
+ *
+ * Null-prototype: the lookup key is caller-supplied (`?c=` on a public share
+ * URL), so an inherited `constructor`/`toString` hit would build a canonical
+ * out of a function body. Object.freeze alone does not sever the prototype.
  */
 export const COUNTRY_CORPUS_SLUGS = Object.freeze({
+  __proto__: null,
   AD: "andorra",
   AE: "united-arab-emirates",
   AF: "afghanistan",
@@ -207,6 +212,7 @@ export const COUNTRY_CORPUS_SLUGS = Object.freeze({
 
 /** ISO 3166-1 alpha-2 → the display name that corpus page is titled with. */
 export const COUNTRY_CORPUS_NAMES = Object.freeze({
+  __proto__: null,
   AD: "Andorra",
   AE: "United Arab Emirates",
   AF: "Afghanistan",
