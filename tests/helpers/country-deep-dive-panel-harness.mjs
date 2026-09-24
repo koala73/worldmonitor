@@ -132,28 +132,10 @@ async function loadCountryDeepDivePanel(options = {}) {
         if (sourceType === 'unknown') return 'Source type not yet reviewed';
         return 'News source';
       }
-      export function describePropagandaBadge(profile, sourceType = 'unknown') {
-        if (profile.risk === 'unknown') {
-          return {
-            risk: 'unknown',
-            label: '? Unreviewed',
-            shortLabel: '?',
-            title: profile.note || 'Provenance not yet reviewed',
-          };
-        }
-        const title = profile.note
-          || (profile.stateAffiliated ? 'State-affiliated: ' + profile.stateAffiliated : 'Provenance not yet reviewed');
-        if (sourceType === 'gov') {
-          return { risk: profile.risk, label: 'Official Government Source', shortLabel: 'Gov', title };
-        }
-        if (profile.risk === 'low') return null;
-        if (profile.risk === 'high') {
-          return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
-        }
-        if (profile.risk === 'medium') {
-          return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
-        }
-        return { risk: 'unknown', label: '? Unreviewed', shortLabel: '?', title };
+      export { PERSPECTIVE_LABEL_CAVEAT, describePropagandaBadge } from ${JSON.stringify(resolve(root, 'shared/source-provenance.ts'))};
+      export function getSourceProvenanceState(sourceName) {
+        const profile = getSourcePropagandaRisk(sourceName);
+        return { knownBiases: profile.knownBiases ?? [], summary: 'Summary for ' + sourceName + '.' };
       }
     `],
     ['country-geometry-stub', `
@@ -403,6 +385,7 @@ async function loadCountryDeepDivePanel(options = {}) {
       buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
         contents: stubModules.get(args.path),
         loader: 'js',
+        resolveDir: root,
       }));
     },
   };

@@ -733,6 +733,7 @@ export class NewsPanel extends Panel {
     const {
       riskBadge: primaryPropBadge,
       tierBadge,
+      facts: primaryProvenanceFacts,
     } = renderPrimarySourceProvenance(cluster.primarySource);
 
     // Build "Also reported by" section for multi-source confirmation
@@ -809,6 +810,7 @@ export class NewsPanel extends Panel {
           ${escapeHtml(cluster.primarySource)}
           ${renderCredibilityBadge(cluster.primarySource, cluster.allItems.find(item => item.source === cluster.primarySource) ?? cluster.allItems[0])}
           ${primaryPropBadge}
+          ${primaryProvenanceFacts}
           ${langBadge}
           ${newTag}
           ${sourceBadge}

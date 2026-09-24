@@ -14,10 +14,12 @@ const railwayRss = rssProxyUrl;
 // so server-side code can import it without pulling in client-only modules.
 export { SOURCE_TIERS, getSourceTier } from '../../server/_shared/source-tiers';
 export {
+  PERSPECTIVE_LABEL_CAVEAT,
   SOURCE_PROPAGANDA_RISK,
   SOURCE_TYPES,
   UNREVIEWED_SOURCE_RISK,
   describePropagandaBadge,
+  getProvenanceFacts,
   getSourcePropagandaRisk,
   getSourceProvenanceState,
   getSourceTierBadgeTitle,
@@ -35,6 +37,7 @@ export {
 export { computeCredibilityScore } from '../../shared/news-credibility.js';
 export type {
   PropagandaRisk,
+  ProvenanceFact,
   SourceProvenanceState,
   SourceRiskProfile,
   SourceType,

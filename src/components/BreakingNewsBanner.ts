@@ -271,13 +271,14 @@ export class BreakingNewsBanner {
 
     const provenance = document.createElement('span');
     provenance.className = 'breaking-alert-provenance';
-    const { riskBadge, tierBadge } = renderPrimarySourceProvenance(alert.source);
+    const { riskBadge, tierBadge, facts } = renderPrimarySourceProvenance(alert.source);
     this.appendProvenanceBadge(provenance, tierBadge, 'breaking-news banner source tier badge');
     const sourceName = document.createElement('span');
     sourceName.className = 'breaking-alert-source';
     sourceName.textContent = alert.source;
     provenance.appendChild(sourceName);
     this.appendProvenanceBadge(provenance, riskBadge, 'breaking-news banner source propaganda badge');
+    this.appendProvenanceBadge(provenance, facts, 'breaking-news banner source provenance facts');
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'breaking-alert-time';

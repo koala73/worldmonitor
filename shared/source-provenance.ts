@@ -225,6 +225,12 @@ export interface SourceRiskProfile {
   note?: string;
 }
 
+/**
+ * A domestic left/right lean is a per-outlet political rating, which #6419
+ * rules out of scope. Alignment relative to a conflict actor is allowed.
+ */
+export const LEAN_AXIS_LABEL = /\b(centre|center|far)[- ]?(left|right)\b|\bleft[- ]?(wing|liberal)\b|\bright[- ]?wing\b/i;
+
 /** Fail-closed default: missing provenance is not independent journalism. */
 export const UNREVIEWED_SOURCE_RISK: Readonly<SourceRiskProfile> = Object.freeze({
   risk: 'unknown' as const,
@@ -398,7 +404,7 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Radio Ndeke Luka': { risk: 'low', note: 'CAR-focused newsroom; Journalism Trust Initiative certified' },
 
   // Low risk - Independent with editorial standards (explicit)
-  'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },
+  'Jerusalem Post': { risk: 'low', note: 'English-language Israeli daily of record' },
   'Ynetnews': { risk: 'low', knownBiases: ['Israeli mainstream'], note: 'Yedioth Ahronoth English edition' },
   'Digi24': { risk: 'low', note: 'Romanian independent news channel, member of ERNO' },
   'HotNews': { risk: 'low', note: 'Romanian independent online news portal' },
@@ -443,10 +449,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'AFP': { risk: 'low', note: 'Wire service, editorially independent' },
   'BBC World': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
   'BBC Middle East': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
-  'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
-  'Guardian Africa': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
-  'Guardian Caribbean': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
-  'Guardian Pacific': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
+  'Guardian World': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
+  'Guardian Africa': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
+  'Guardian Caribbean': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
+  'Guardian Pacific': { risk: 'low', note: 'Scott Trust ownership, no shareholders' },
   'Mexico News Daily': { risk: 'low', note: 'English-language Mexican news publication' },
   'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
   'Times of India': { risk: 'low', note: 'Major Indian national newspaper with an established editorial newsroom' },
@@ -533,12 +539,15 @@ export function describePropagandaBadge(profile: SourceRiskProfile, sourceType: 
       title: profile.note || UNREVIEWED_SOURCE_RISK.note || 'Provenance not yet reviewed',
     };
   }
-  const title = profile.note
+  const baseTitle = profile.note
     || (sourceType === 'gov'
       ? `Official government source${profile.stateAffiliated ? `: ${profile.stateAffiliated}` : ''}`
       : profile.stateAffiliated
         ? `State-affiliated: ${profile.stateAffiliated}`
         : 'Provenance not yet reviewed');
+  const title = profile.note && profile.stateAffiliated
+    ? `State-affiliated: ${profile.stateAffiliated}. ${profile.note}`
+    : baseTitle;
   if (sourceType === 'gov') {
     return {
       risk: profile.risk,
@@ -562,20 +571,103 @@ export interface SourceProvenanceState {
   riskReviewed: boolean;
   typeReviewed: boolean;
   stateAffiliated?: string;
+  /** Always present. Empty means no perspective label recorded, never "neutral". */
+  knownBiases: readonly string[];
   note?: string;
+  /** Every curated fact in fixed clause order; the one tooltip and agent text. */
+  summary: string;
+}
+
+export interface ProvenanceFact {
+  kind: 'state' | 'perspective';
+  label: string;
+}
+
+export const PERSPECTIVE_LABEL_CAVEAT = 'Perspective labels are recorded for few sources; a source without one has not been assessed, not judged neutral.';
+
+/** State affiliation first, then every perspective label. Never filtered by risk, type, or tier. */
+export function getProvenanceFacts(profile: SourceRiskProfile): ProvenanceFact[] {
+  return [
+    ...(profile.stateAffiliated ? [{ kind: 'state' as const, label: `State-affiliated: ${profile.stateAffiliated}` }] : []),
+    ...(profile.knownBiases ?? []).map((label) => ({ kind: 'perspective' as const, label })),
+  ];
+}
+
+function describeRiskClause(risk: PropagandaRisk, type: SourceType): string {
+  if (risk === 'unknown') return `${UNREVIEWED_SOURCE_RISK.note}.`;
+  if (type === 'gov') return 'Official government source.';
+  if (risk === 'high') return 'State media.';
+  if (risk === 'medium') return 'Caution.';
+  return 'Reviewed: independent.';
+}
+
+function composeProvenanceSummary(
+  risk: PropagandaRisk,
+  type: SourceType,
+  profile: SourceRiskProfile,
+): string {
+  const knownBiases = profile.knownBiases ?? [];
+  const note = profile.note === UNREVIEWED_SOURCE_RISK.note ? undefined : profile.note;
+  return [
+    describeRiskClause(risk, type),
+    ...(profile.stateAffiliated ? [`State-affiliated: ${profile.stateAffiliated}.`] : []),
+    knownBiases.length > 0 ? `Perspective: ${knownBiases.join(', ')}.` : 'Perspective: none recorded.',
+    ...(note ? [/[.!?]$/.test(note) ? note : `${note}.`] : []),
+  ].join(' ');
 }
 
 /** Complete, fail-closed provenance state for UI and agent consumers. */
 export function getSourceProvenanceState(sourceName: string): SourceProvenanceState {
   const profile = getSourcePropagandaRisk(sourceName);
+  const type = getSourceType(sourceName);
   return {
     risk: profile.risk,
-    type: getSourceType(sourceName),
+    type,
     riskDeclared: hasDeclaredPropagandaRisk(sourceName),
     typeDeclared: hasDeclaredSourceType(sourceName),
     riskReviewed: hasReviewedPropagandaRisk(sourceName),
     typeReviewed: hasReviewedSourceType(sourceName),
     ...(profile.stateAffiliated ? { stateAffiliated: profile.stateAffiliated } : {}),
+    knownBiases: profile.knownBiases ?? [],
     ...(profile.note ? { note: profile.note } : {}),
+    summary: composeProvenanceSummary(profile.risk, type, profile),
   };
+}
+
+export interface ProvenanceCoverage {
+  sources: number;
+  riskReviewed: number;
+  stateAffiliated: number;
+  perspectiveLabelled: number;
+  caveat: string;
+}
+
+let provenanceCoverage: ProvenanceCoverage | null = null;
+
+/** Registry-wide counts, so agents can tell an unlabelled source from an unassessed one. */
+export function getProvenanceCoverage(): ProvenanceCoverage {
+  if (provenanceCoverage) return provenanceCoverage;
+  const names = new Set([
+    ...Object.keys(SOURCE_PROPAGANDA_RISK),
+    ...Object.keys(SOURCE_TYPES),
+    ...Object.keys(CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS),
+  ]);
+  let riskReviewed = 0;
+  let stateAffiliated = 0;
+  let perspectiveLabelled = 0;
+  for (const name of names) {
+    if (!hasReviewedPropagandaRisk(name)) continue;
+    riskReviewed += 1;
+    const profile = SOURCE_PROPAGANDA_RISK[name]!;
+    if (profile.stateAffiliated) stateAffiliated += 1;
+    if (profile.knownBiases?.length) perspectiveLabelled += 1;
+  }
+  provenanceCoverage = {
+    sources: names.size,
+    riskReviewed,
+    stateAffiliated,
+    perspectiveLabelled,
+    caveat: `Perspective labels are recorded for ${perspectiveLabelled} of ${names.size} sources; a source without one has not been assessed, not judged neutral.`,
+  };
+  return provenanceCoverage;
 }

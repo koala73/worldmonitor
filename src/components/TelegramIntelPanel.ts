@@ -500,6 +500,7 @@ export class TelegramIntelPanel extends Panel {
           label: '? Unreviewed',
         },
         tier: null,
+        facts: [],
       };
     const riskBadge = provenance.risk
       ? h('span', { className: provenance.risk.className, title: provenance.risk.title }, provenance.risk.label)
@@ -513,6 +514,7 @@ export class TelegramIntelPanel extends Panel {
         h('div', { className: 'telegram-intel-channel-wrapper' },
           h('span', { className: 'telegram-intel-channel' }, item.channelTitle || item.channel),
           riskBadge,
+          ...provenance.facts.map((fact) => h('span', { className: fact.className, title: fact.title }, fact.label)),
           tierBadge,
           item.watchlist
             ? h('span', { className: 'telegram-intel-custom-tag' }, t('components.telegramIntel.custom'))

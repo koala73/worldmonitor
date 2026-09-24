@@ -31,6 +31,15 @@ describe('CountryDeepDivePanel source provenance', () => {
             note: 'Wire service, strict editorial standards',
           },
         },
+        Meduza: {
+          tier: 2,
+          type: 'mainstream',
+          riskProfile: {
+            risk: 'low',
+            knownBiases: ['Anti-Kremlin'],
+            note: 'Independent Russian exile outlet',
+          },
+        },
       },
     });
 
@@ -78,6 +87,12 @@ describe('CountryDeepDivePanel source provenance', () => {
           link: 'https://example.com/reuters',
           pubDate: '2026-07-24T10:00:00.000Z',
         },
+        {
+          title: 'Reviewed exile outlet report',
+          source: 'Meduza',
+          link: 'https://example.com/meduza',
+          pubDate: '2026-07-24T09:00:00.000Z',
+        },
       ]);
       for (let attempt = 0; attempt < 25 && harness.getWidgets().length === 0; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -85,7 +100,7 @@ describe('CountryDeepDivePanel source provenance', () => {
       assert.equal(harness.getWidgets().length, 1, 'expected the lazy widget load to settle before cleanup');
 
       const rows = [...harness.getPanelRoot().querySelectorAll('.cdp-news-item')];
-      assert.equal(rows.length, 3);
+      assert.equal(rows.length, 4);
       const rowBySource = (source) => rows.find((row) =>
         row.querySelector('.cdp-news-meta')?.textContent?.includes(source));
 
@@ -93,8 +108,10 @@ describe('CountryDeepDivePanel source provenance', () => {
       assert.ok(governmentRow);
       assert.match(governmentRow.querySelector('.cdp-state-badge')?.textContent ?? '', /Official Government Source/);
       assert.doesNotMatch(governmentRow.querySelector('.cdp-state-badge')?.textContent ?? '', /State Media/);
-      assert.match(governmentRow.querySelector('.cdp-state-badge')?.getAttribute('title') ?? '', /Official government source: China/);
-      assert.doesNotMatch(governmentRow.querySelector('.cdp-state-badge')?.getAttribute('title') ?? '', /State-affiliated/);
+      assert.equal(
+        governmentRow.querySelector('.cdp-state-badge')?.getAttribute('title'),
+        'State-affiliated: China. Chinese Ministry of Industry and Information Technology official feed',
+      );
       assert.match(governmentRow.querySelector('.cdp-tier-badge')?.getAttribute('title') ?? '', /Official Government Source/);
       assert.doesNotMatch(governmentRow.querySelector('.cdp-tier-badge')?.getAttribute('title') ?? '', /top wire/i);
 
@@ -108,6 +125,14 @@ describe('CountryDeepDivePanel source provenance', () => {
       assert.ok(wireRow);
       assert.equal(wireRow.querySelector('.cdp-state-badge'), null);
       assert.match(wireRow.querySelector('.cdp-tier-badge')?.getAttribute('title') ?? '', /Wire Service/);
+
+      const labelledLowRow = rowBySource('Meduza');
+      assert.ok(labelledLowRow);
+      assert.equal(labelledLowRow.querySelector('.propaganda-badge'), null, 'reviewed low keeps no risk badge');
+      const perspective = labelledLowRow.querySelector('.provenance-fact.perspective');
+      assert.equal(perspective?.textContent, 'Anti-Kremlin');
+      assert.match(perspective?.getAttribute('title') ?? '', /Summary for Meduza\./);
+      assert.match(perspective?.getAttribute('title') ?? '', /not judged neutral/);
     } finally {
       harness.cleanup();
     }

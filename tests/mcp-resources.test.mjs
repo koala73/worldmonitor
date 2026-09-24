@@ -647,7 +647,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
           sourceProvenance: {
             risk: 'high', type: 'gov', riskDeclared: true, typeDeclared: true,
             riskReviewed: true, typeReviewed: true,
-            stateAffiliated: 'China',
+            stateAffiliated: 'China', knownBiases: [],
+            summary: 'Official government source. State-affiliated: China. Perspective: none recorded.',
           },
           category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
         }] } } },
@@ -655,12 +656,13 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
           primaryTitle: 'Summary news headline', primarySource: 'Unreviewed Source',
           sourceProvenance: {
             risk: 'unknown', type: 'unknown', riskDeclared: false, typeDeclared: false,
-            riskReviewed: false, typeReviewed: false,
+            riskReviewed: false, typeReviewed: false, knownBiases: [],
+            summary: 'Provenance not yet reviewed. Perspective: none recorded.',
           },
           category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source: China/, /Alert/, /Germany/],
-        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /\? Unreviewed/],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source\. State-affiliated: China\. Perspective: none recorded\./, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /Provenance not yet reviewed\. Perspective: none recorded\./],
       },
       {
         uri: 'ui://worldmonitor/conflict-events.html',
