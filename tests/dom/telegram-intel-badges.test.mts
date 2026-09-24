@@ -78,6 +78,29 @@ describe('TelegramIntelPanel trust badges (#6600)', () => {
     expect(clash?.querySelector('.tier-badge')).toBeNull();
   });
 
+  it('renders perspective and badge-less state chips beside the channel title (#6419)', () => {
+    const panel = new TelegramIntelPanel();
+    document.body.appendChild(panel.getElement());
+    panel.setData({
+      source: 'telegram',
+      earlySignal: true,
+      enabled: true,
+      count: 2,
+      updatedAt: new Date().toISOString(),
+      items: [
+        telegramItem({ id: 'DeepStateUA:1', channel: 'DeepStateUA', channelTitle: 'DeepState' }),
+        telegramItem({ id: 'cnalatest:2', channel: 'cnalatest', channelTitle: 'CNA' }),
+      ],
+    });
+
+    const items = panel.getElement().querySelectorAll('.telegram-intel-item');
+    expect(items[0]?.querySelector('.provenance-fact.perspective')?.textContent).toBe('Pro-Ukraine');
+    expect(items[0]?.querySelector('.provenance-fact.perspective')?.getAttribute('title')).toContain('not judged neutral');
+
+    expect(items[1]?.querySelector('.propaganda-badge')).toBeNull();
+    expect(items[1]?.querySelector('.provenance-fact.state')?.textContent).toBe('State-affiliated: Singapore');
+  });
+
   it('resolves stable handles before mutable channel titles', () => {
     const panel = new TelegramIntelPanel();
     document.body.appendChild(panel.getElement());

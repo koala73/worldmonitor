@@ -76,7 +76,8 @@ describe('provenance facts reach every surface for every source (#6419)', () => 
       if (facts.length === 0) continue;
       const state = getSourceProvenanceState(name) as unknown as { knownBiases?: string[]; summary?: string; risk: string; type: string };
       const rendered = renderer.renderPrimarySourceProvenance(name);
-      const html = `${rendered.riskBadge}${rendered.facts ?? ''}`;
+      // Visible text only: a fact that survives only in a tooltip is not surfaced.
+      const html = `${rendered.riskBadge}${rendered.facts ?? ''}`.replace(/\s+title="[^"]*"/g, '');
       const where = `${name} (tier ${getSourceTier(name)}, type ${state.type}, risk ${state.risk})`;
       if (profile?.knownBiases?.length) {
         labelled += 1;
@@ -121,6 +122,44 @@ describe('knownBiases registry lint (#6419)', () => {
       }
     }
     assert.deepEqual(offenders, [], offenders.join('\n'));
+  });
+});
+
+describe('LEAN_AXIS_LABEL (#6419)', () => {
+  it('rejects domestic left/right lean labels and their common rewordings', () => {
+    for (const label of [
+      'Center-left', 'Centre-right', 'Israeli centre-right', 'Israeli left-liberal', 'Far-right',
+      'Left-wing', 'Right leaning', 'Left of centre', 'Conservative', 'Liberal', 'Progressive', 'Centrist',
+    ]) {
+      assert.ok(api.LEAN_AXIS_LABEL.test(label), `must reject "${label}"`);
+    }
+  });
+
+  it('accepts conflict-alignment labels', () => {
+    for (const label of [
+      'Pro-Ukraine', 'Anti-Kremlin', 'Pro-EU', 'Israeli mainstream', 'Iranian opposition',
+      'Opposition-leaning Venezuela analysis', 'Israeli-Palestinian human-rights perspective',
+    ]) {
+      assert.ok(!api.LEAN_AXIS_LABEL.test(label), `must accept "${label}"`);
+    }
+  });
+});
+
+describe('summary never contradicts a curated fact (#6419)', () => {
+  it('a state-affiliated source is never summarised as independent', () => {
+    const offenders = registryNames().filter((name) => {
+      const state = getSourceProvenanceState(name);
+      return state.stateAffiliated && /independent/i.test(state.summary.replace(state.note ?? '', ''));
+    });
+    assert.deepEqual(offenders, []);
+  });
+
+  it('official government sources are never called state-affiliated', () => {
+    const offenders = registryNames().filter((name) => {
+      const state = getSourceProvenanceState(name);
+      return state.type === 'gov' && /State-affiliated/.test(state.summary);
+    });
+    assert.deepEqual(offenders, []);
   });
 });
 

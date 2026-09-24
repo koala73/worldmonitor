@@ -1,9 +1,10 @@
 import type { CountryBriefSignals } from '@/types';
 import {
   PERSPECTIVE_LABEL_CAVEAT,
+  composeProvenanceSummary,
   describePropagandaBadge,
+  getProvenanceFacts,
   getSourcePropagandaRisk,
-  getSourceProvenanceState,
   getSourceTier,
   getSourceTierBadgeTitle,
   getSourceType,
@@ -463,20 +464,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const risk = getSourcePropagandaRisk(item.source);
       const riskDescription = describePropagandaBadge(risk, sourceType);
       if (riskDescription) {
-        const riskLabel = risk.stateAffiliated
-          ? `${riskDescription.label}: ${risk.stateAffiliated}`
-          : riskDescription.label;
         const riskBadge = this.badge(
-          riskLabel,
+          riskDescription.label,
           `cdp-state-badge propaganda-badge ${riskDescription.risk}`,
         );
         riskBadge.setAttribute('title', riskDescription.title);
         top.append(riskBadge);
       }
-      const provenance = getSourceProvenanceState(item.source);
-      for (const label of provenance.knownBiases) {
-        const factBadge = this.badge(label, 'cdp-state-badge provenance-fact perspective');
-        factBadge.setAttribute('title', `${provenance.summary} ${PERSPECTIVE_LABEL_CAVEAT}`);
+      const factTitle = `${composeProvenanceSummary(risk, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+      for (const fact of getProvenanceFacts(risk, sourceType)) {
+        const factBadge = this.badge(fact.label, `cdp-state-badge provenance-fact ${fact.kind}`);
+        factBadge.setAttribute('title', factTitle);
         top.append(factBadge);
       }
 

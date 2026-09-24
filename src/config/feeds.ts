@@ -18,6 +18,7 @@ export {
   SOURCE_PROPAGANDA_RISK,
   SOURCE_TYPES,
   UNREVIEWED_SOURCE_RISK,
+  composeProvenanceSummary,
   describePropagandaBadge,
   getProvenanceFacts,
   getSourcePropagandaRisk,

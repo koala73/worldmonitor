@@ -229,7 +229,7 @@ export interface SourceRiskProfile {
  * A domestic left/right lean is a per-outlet political rating, which #6419
  * rules out of scope. Alignment relative to a conflict actor is allowed.
  */
-export const LEAN_AXIS_LABEL = /\b(centre|center|far)[- ]?(left|right)\b|\bleft[- ]?(wing|liberal)\b|\bright[- ]?wing\b/i;
+export const LEAN_AXIS_LABEL = /\b(centre|center|far)[- ]?(left|right)\b|\b(left|right)[- ]?(wing|leaning|liberal|of[- ]cent(re|er))\b|\b(liberal|conservative|progressive|centrist|leftist|rightist)\b/i;
 
 /** Fail-closed default: missing provenance is not independent journalism. */
 export const UNREVIEWED_SOURCE_RISK: Readonly<SourceRiskProfile> = Object.freeze({
@@ -539,28 +539,21 @@ export function describePropagandaBadge(profile: SourceRiskProfile, sourceType: 
       title: profile.note || UNREVIEWED_SOURCE_RISK.note || 'Provenance not yet reviewed',
     };
   }
-  const baseTitle = profile.note
-    || (sourceType === 'gov'
-      ? `Official government source${profile.stateAffiliated ? `: ${profile.stateAffiliated}` : ''}`
-      : profile.stateAffiliated
-        ? `State-affiliated: ${profile.stateAffiliated}`
-        : 'Provenance not yet reviewed');
-  const title = profile.note && profile.stateAffiliated
-    ? `State-affiliated: ${profile.stateAffiliated}. ${profile.note}`
-    : baseTitle;
+  const title = composeProvenanceSummary(profile, sourceType);
+  const withState = (label: string) => (profile.stateAffiliated ? `${label}: ${profile.stateAffiliated}` : label);
   if (sourceType === 'gov') {
     return {
       risk: profile.risk,
-      label: 'Official Government Source',
+      label: withState('Official Government Source'),
       shortLabel: 'Gov',
       title,
     };
   }
   if (profile.risk === 'low') return null;
   if (profile.risk === 'high') {
-    return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
+    return { risk: 'high', label: withState('⚠ State Media'), shortLabel: '⚠', title };
   }
-  return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
+  return { risk: 'medium', label: withState('! Caution'), shortLabel: '!', title };
 }
 
 export interface SourceProvenanceState {
@@ -585,32 +578,38 @@ export interface ProvenanceFact {
 
 export const PERSPECTIVE_LABEL_CAVEAT = 'Perspective labels are recorded for few sources; a source without one has not been assessed, not judged neutral.';
 
-/** State affiliation first, then every perspective label. Never filtered by risk, type, or tier. */
-export function getProvenanceFacts(profile: SourceRiskProfile): ProvenanceFact[] {
+/**
+ * Chips shown beside the risk badge: every perspective label, plus the state
+ * affiliation when no risk badge carries it (a state-affiliated source rated low).
+ * Never filtered by tier.
+ */
+export function getProvenanceFacts(profile: SourceRiskProfile, sourceType: SourceType): ProvenanceFact[] {
+  const stateOnBadge = describePropagandaBadge(profile, sourceType) !== null;
   return [
-    ...(profile.stateAffiliated ? [{ kind: 'state' as const, label: `State-affiliated: ${profile.stateAffiliated}` }] : []),
+    ...(profile.stateAffiliated && !stateOnBadge
+      ? [{ kind: 'state' as const, label: `State-affiliated: ${profile.stateAffiliated}` }]
+      : []),
     ...(profile.knownBiases ?? []).map((label) => ({ kind: 'perspective' as const, label })),
   ];
 }
 
-function describeRiskClause(risk: PropagandaRisk, type: SourceType): string {
-  if (risk === 'unknown') return `${UNREVIEWED_SOURCE_RISK.note}.`;
-  if (type === 'gov') return 'Official government source.';
-  if (risk === 'high') return 'State media.';
-  if (risk === 'medium') return 'Caution.';
-  return 'Reviewed: independent.';
+function describeRiskClause(profile: SourceRiskProfile, type: SourceType): string {
+  if (profile.risk === 'unknown') return `${UNREVIEWED_SOURCE_RISK.note}.`;
+  if (type === 'gov') {
+    return profile.stateAffiliated ? `Official government source: ${profile.stateAffiliated}.` : 'Official government source.';
+  }
+  const state = profile.stateAffiliated ? ` State-affiliated: ${profile.stateAffiliated}.` : '';
+  if (profile.risk === 'high') return `State media.${state}`;
+  if (profile.risk === 'medium') return `Caution.${state}`;
+  return `Reviewed.${state}`;
 }
 
-function composeProvenanceSummary(
-  risk: PropagandaRisk,
-  type: SourceType,
-  profile: SourceRiskProfile,
-): string {
+/** One composition for every tooltip and agent summary, so no surface can drop a fact. */
+export function composeProvenanceSummary(profile: SourceRiskProfile, type: SourceType): string {
   const knownBiases = profile.knownBiases ?? [];
   const note = profile.note === UNREVIEWED_SOURCE_RISK.note ? undefined : profile.note;
   return [
-    describeRiskClause(risk, type),
-    ...(profile.stateAffiliated ? [`State-affiliated: ${profile.stateAffiliated}.`] : []),
+    describeRiskClause(profile, type),
     knownBiases.length > 0 ? `Perspective: ${knownBiases.join(', ')}.` : 'Perspective: none recorded.',
     ...(note ? [/[.!?]$/.test(note) ? note : `${note}.`] : []),
   ].join(' ');
@@ -630,7 +629,7 @@ export function getSourceProvenanceState(sourceName: string): SourceProvenanceSt
     ...(profile.stateAffiliated ? { stateAffiliated: profile.stateAffiliated } : {}),
     knownBiases: profile.knownBiases ?? [],
     ...(profile.note ? { note: profile.note } : {}),
-    summary: composeProvenanceSummary(profile.risk, type, profile),
+    summary: composeProvenanceSummary(profile, type),
   };
 }
 

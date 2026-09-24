@@ -1,10 +1,10 @@
 import {
   PERSPECTIVE_LABEL_CAVEAT,
+  composeProvenanceSummary,
   computeCredibilityScore,
   describePropagandaBadge,
   getProvenanceFacts,
   getSourcePropagandaRisk,
-  getSourceProvenanceState,
   getSourceTier,
   getSourceTierBadgeTitle,
   getSourceType,
@@ -46,9 +46,7 @@ export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySou
     ? {
       className: `propaganda-badge ${riskDescription.risk}`,
       title: riskDescription.title,
-      label: profile.stateAffiliated
-        ? `${riskDescription.label}: ${profile.stateAffiliated}`
-        : riskDescription.label,
+      label: riskDescription.label,
     }
     : null;
 
@@ -62,10 +60,8 @@ export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySou
     }
     : null;
 
-  const factTitle = `${getSourceProvenanceState(sourceName).summary} ${PERSPECTIVE_LABEL_CAVEAT}`;
-  // A risk badge already names the state, so the state chip only renders for
-  // an affiliated source rated low (no badge), e.g. CNA.
-  const facts = getProvenanceFacts(profile).filter((fact) => !(risk && fact.kind === 'state')).map((fact) => ({
+  const factTitle = `${composeProvenanceSummary(profile, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+  const facts = getProvenanceFacts(profile, sourceType).map((fact) => ({
     className: `provenance-fact ${fact.kind}`,
     title: factTitle,
     label: fact.label,
@@ -125,13 +121,14 @@ export function renderPrimarySourceProvenance(sourceName: string): PrimarySource
 /** Render the compact risk marker shown for corroborating sources. */
 export function renderCorroboratingSourceRisk(sourceName: string): string {
   const profile = getSourcePropagandaRisk(sourceName);
-  const description = describePropagandaBadge(profile, getSourceType(sourceName));
-  const { summary } = getSourceProvenanceState(sourceName);
+  const sourceType = getSourceType(sourceName);
+  const description = describePropagandaBadge(profile, sourceType);
   if (description) {
-    return `<span class="propaganda-badge ${description.risk}" title="${escapeHtml(summary)}">${description.shortLabel}</span>`;
+    return `<span class="propaganda-badge ${description.risk}" title="${escapeHtml(description.title)}">${description.shortLabel}</span>`;
   }
-  if (getProvenanceFacts(profile).length > 0) {
-    return `<span class="provenance-fact-marker" title="${escapeHtml(`${summary} ${PERSPECTIVE_LABEL_CAVEAT}`)}">◐</span>`;
+  if (getProvenanceFacts(profile, sourceType).length > 0) {
+    const title = `${composeProvenanceSummary(profile, sourceType)} ${PERSPECTIVE_LABEL_CAVEAT}`;
+    return `<span class="provenance-fact-marker" title="${escapeHtml(title)}">◐</span>`;
   }
   return '';
 }

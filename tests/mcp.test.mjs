@@ -997,7 +997,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       stateAffiliated: 'China',
       knownBiases: [],
       note: 'Chinese Ministry of Industry and Information Technology official feed',
-      summary: 'Official government source. State-affiliated: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed.',
+      summary: 'Official government source: China. Perspective: none recorded. Chinese Ministry of Industry and Information Technology official feed.',
     });
     assert.deepEqual(unreviewed.sourceProvenance, {
       risk: 'unknown',
@@ -1019,7 +1019,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       typeReviewed: true,
       knownBiases: [],
       note: 'Wire service, strict editorial standards',
-      summary: 'Reviewed: independent. Perspective: none recorded. Wire service, strict editorial standards.',
+      summary: 'Reviewed. Perspective: none recorded. Wire service, strict editorial standards.',
     });
   });
 

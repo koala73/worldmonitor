@@ -132,11 +132,12 @@ async function loadCountryDeepDivePanel(options = {}) {
         if (sourceType === 'unknown') return 'Source type not yet reviewed';
         return 'News source';
       }
-      export { PERSPECTIVE_LABEL_CAVEAT, describePropagandaBadge } from ${JSON.stringify(resolve(root, 'shared/source-provenance.ts'))};
-      export function getSourceProvenanceState(sourceName) {
-        const profile = getSourcePropagandaRisk(sourceName);
-        return { knownBiases: profile.knownBiases ?? [], summary: 'Summary for ' + sourceName + '.' };
-      }
+      export {
+        PERSPECTIVE_LABEL_CAVEAT,
+        composeProvenanceSummary,
+        describePropagandaBadge,
+        getProvenanceFacts,
+      } from ${JSON.stringify(resolve(root, 'shared/source-provenance.ts'))};
     `],
     ['country-geometry-stub', `
       export function getCountryCentroid() {

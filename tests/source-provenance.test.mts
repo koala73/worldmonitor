@@ -130,7 +130,8 @@ describe('source provenance defaults (#5390)', () => {
       const badge = feeds.describePropagandaBadge(risk, feeds.getSourceType(name));
       assert.ok(badge);
       assert.equal(badge!.risk, 'high');
-      assert.equal(badge!.label, 'Official Government Source');
+      assert.equal(badge!.label, 'Official Government Source: China');
+      assert.doesNotMatch(badge!.title, /State-affiliated/);
       assert.doesNotMatch(badge!.label, /State Media/);
       assert.equal(feeds.getSourceTierBadgeTitle(feeds.getSourceType(name)), 'Official Government Source');
       assert.notEqual(feeds.getSourceType(name), 'wire');
@@ -264,7 +265,7 @@ describe('provenance facts beside the risk badge (#6419)', () => {
   it('names the state on the risk badge even when a note fills the badge title', () => {
     const voa = renderer.renderPrimarySourceProvenance('Voice of America');
     assert.match(voa.riskBadge, />! Caution: USA</);
-    assert.match(voa.riskBadge, /State-affiliated: USA\. US government-funded/);
+    assert.match(voa.riskBadge, /title="Caution\. State-affiliated: USA\. Perspective: none recorded\. US government-funded\."/);
     assert.equal(voa.facts, '', 'the badge carries the state, so no duplicate chip');
     assert.match(renderer.renderCorroboratingSourceRisk('Voice of America'), /title="Caution\. State-affiliated: USA\. Perspective: none recorded\. US government-funded\."/);
   });

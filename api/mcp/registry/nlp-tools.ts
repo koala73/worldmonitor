@@ -104,7 +104,7 @@ const SOURCE_PROVENANCE_PROPERTIES = {
     items: { type: 'string' },
     description: 'Curated perspective labels. Recorded for few sources: empty means not assessed, not neutral.',
   },
-  summary: { type: 'string', description: 'Every provenance fact in one sentence; includes "Perspective: none recorded." when no label exists.' },
+  summary: { type: 'string', description: 'Every provenance fact as short fixed-order clauses in one string; includes "Perspective: none recorded." when no label exists.' },
 };
 
 function nlpTruncateUtf8(value: string, maxBytes: number): string {
