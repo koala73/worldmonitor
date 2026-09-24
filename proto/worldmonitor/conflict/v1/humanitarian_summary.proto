@@ -12,9 +12,9 @@ message HumanitarianCountrySummary {
   string country_name = 2;
   // Total conflict events in the reference period.
   int32 conflict_events_total = 3;
-  // Event count from the political-violence category only; overlapping civilian targeting is not added.
+  // Political-violence category events only.
   int32 conflict_political_violence_events = 4;
-  // Fatalities from the political-violence category only; overlapping civilian targeting is not added.
+  // Political-violence category fatalities only.
   int32 conflict_fatalities = 5;
   // Reference period start date (YYYY-MM-DD).
   string reference_period = 6;
