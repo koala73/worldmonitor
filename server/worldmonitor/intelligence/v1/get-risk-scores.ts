@@ -404,7 +404,10 @@ export function deriveCiiTrendDelta(
     priorAgeMs < CII_TREND_PRIOR_MIN_AGE_MS ||
     priorAgeMs > CII_TREND_PRIOR_MAX_AGE_MS
   ) {
-    return { dynamicScore: 0, trend: 'TREND_DIRECTION_STABLE' as TrendDirection };
+    // No usable prior reading means the movement is unknown, not zero. STABLE
+    // is reserved for a real comparison inside the deadband; readers render
+    // UNSPECIFIED as "no earlier reading" instead of "unchanged".
+    return { dynamicScore: 0, trend: 'TREND_DIRECTION_UNSPECIFIED' as TrendDirection };
   }
 
   const dynamicScore = roundCiiDelta(combinedScore - previous);
@@ -1250,7 +1253,9 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
           : 'SEVERITY_LEVEL_LOW') as SeverityLevel,
       score: overallScore,
       factors: topN.map((s) => s.region),
-      trend: 'TREND_DIRECTION_STABLE' as TrendDirection,
+      // The global roll-up is never compared with a prior roll-up, so there is
+      // no measured direction to report.
+      trend: 'TREND_DIRECTION_UNSPECIFIED' as TrendDirection,
     },
   ];
 }

@@ -149,7 +149,7 @@ composite = baseline * 0.4
 进行 CII 评分。这是 31 国 Tier-1 CII 面的运营限制：CII 当前不发布单独的加沙/巴勒斯坦领土国家评分，读者应将这些以色列归属的文本回退
 信号视为以色列/加沙战区压力，而非声称事件发生在国际承认的以色列领土内。
 
-线上暴露的 `dynamicScore` 是与约 24 小时前的有效 CII 快照相比的带符号评分移动。正值表示国家评分上升，负值表示下降，`0` 表示稳定或无有效先前快照。
+线上暴露的 `dynamicScore` 是与约 24 小时前的有效 CII 快照相比的带符号评分移动。正值表示国家评分上升，负值表示下降，`0` 表示无变动或无有效先前快照。`trend` 区分两者：比较结果落在死区内时为 `TREND_DIRECTION_STABLE`，无有效先前快照时为 `TREND_DIRECTION_UNSPECIFIED`。
 
 当上游评分输入失败且响应从过时缓存或仅基线冷回退提供时，`GetRiskScoresResponse.degraded` 为 `true`。`GetRiskScoresResponse.stale` 仅对过时缓存分支为 `true`；仅基线冷回退返回 `degraded=true` 和 `stale=false`。这些标志是运行时质量标记，不改变 `methodology_version`。
 

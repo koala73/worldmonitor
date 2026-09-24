@@ -59,6 +59,7 @@ import {
   chokepointCoverageMetrics,
   chokepointEvidenceNarrative,
   instabilityBand,
+  isLegacyConflatedCiiMovementLabel,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
   parseCiiMovement,
@@ -123,7 +124,7 @@ const CII_MOVEMENT_RECENCY_CLAIMS = Object.freeze([
   'over approximately 24 hours',
   'Approx. 24-hour movement',
   'Approximate 24-hour movement',
-  'with 24-hour movement stable or unavailable',
+  'with 24-hour movement unchanged or not yet measured',
   'reports approximate 24-hour movement',
   'available approximate 24-hour movement',
   'available 24-hour movement',
@@ -418,7 +419,7 @@ export function livePulseMovementClaim(ageDays) {
       metricLabel: 'Approx. 24-hour movement',
       propertyName: 'Approximate 24-hour movement',
       rankingReports: 'reports approximate 24-hour movement when available',
-      metaStable: 'with 24-hour movement stable or unavailable',
+      metaStable: 'with 24-hour movement unchanged or not yet measured',
       availableMovement: 'available 24-hour movement',
       availableApproximateMovement: 'available approximate 24-hour movement',
     };
@@ -429,7 +430,7 @@ export function livePulseMovementClaim(ageDays) {
     metricLabel: '24-hour comparison-window movement',
     propertyName: '24-hour comparison-window movement',
     rankingReports: 'reports 24-hour comparison-window movement when available',
-    metaStable: 'with 24-hour comparison-window movement stable or unavailable',
+    metaStable: 'with 24-hour comparison-window movement unchanged or not yet measured',
     availableMovement: 'available 24-hour comparison-window movement',
     availableApproximateMovement: 'available 24-hour comparison-window movement',
   };
@@ -501,6 +502,21 @@ function formatStaticDateTime(iso) {
     timeZone: 'UTC',
     timeZoneName: 'short',
   }).format(new Date(timestamp));
+}
+
+// parseCiiMovement returns movementText null when the pulse supports no
+// movement claim (no earlier reading, or a legacy label that conflated "no
+// change" with "no data"). Sentences then drop the clause instead of printing
+// a placeholder.
+function ciiMovementClause(ciiEntry) {
+  return ciiEntry?.movementText ? `, ${ciiEntry.movementText}` : '';
+}
+
+// Reader-facing movement cell. Legacy labels cannot say which of their two
+// meanings applied, so they render as unavailable rather than as either one.
+function ciiMovementDisplayLabel(trend) {
+  const label = String(trend || '').trim();
+  return !label || isLegacyConflatedCiiMovementLabel(label) ? 'Unavailable' : label;
 }
 
 function isCanonicalIsoInstant(value) {
@@ -1219,6 +1235,9 @@ export function countryMetaDescription({
       'with World Monitor risk, resilience and sanctions context.',
       'with World Monitor risk and resilience context.',
       'with World Monitor risk context.',
+      // Shortest tail for the "unchanged or not yet measured" clause, which
+      // pushed United Arab Emirates to 161+ on every other candidate.
+      'with World Monitor context.',
     ];
     const candidates = subjects.flatMap((subject) => facts.flatMap(
       (fact) => contexts.map((context) => `${subject} ${fact}, ${context}`),
@@ -2164,7 +2183,7 @@ function pageDocument({
         <a href="/use-cases/">Use cases</a>
         <a href="/reference/changelog/">Changelog</a>
         <a href="/blog/glossary/">Glossary</a>`;
-  const renderedFooter = footerBody || 'World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.';
+  const renderedFooter = footerBody || 'World Monitor reference pages. Dated snapshots are published here; live readings are labelled separately.';
   // The rendered half of #7980. `author` in JSON-LD is what a machine reads;
   // a quality rater and a human reader want a name on the page that publishes
   // the score. Rendered here rather than inside each body so no page family
@@ -2356,21 +2375,21 @@ function renderCountryInstabilityIndexPage({
           <caption>Published ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))} from the committed crawlable pulse. The table refreshes from the current API after load.</caption>
           <thead><tr><th scope="col">Country</th><th scope="col">CII</th><th scope="col">24h</th><th scope="col">Level</th><th scope="col">Updated</th></tr></thead>
           <tbody data-cii-ranking-body>
-${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(formatScore(entry.score, OBSERVED_EVIDENCE))}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
+${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(formatScore(entry.score, OBSERVED_EVIDENCE))}</data></td><td data-cii-trend>${escapeHtml(ciiMovementDisplayLabel(entry.trend))}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
           </tbody>
         </table></div>
         <div class="tool-meta">
           <time data-cii-ranking-updated datetime="${escapeHtml(ciiRanking.updatedAt)}">Latest published score ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))}</time>
           <button class="refresh" type="button" data-live-refresh disabled>Refresh live scores</button>
         </div>
-        <noscript><p>The published rankings remain available without JavaScript. Enable JavaScript to request the current API result.</p></noscript>
+        <noscript><p>The published rankings remain available without JavaScript. Enable JavaScript to load the live reading.</p></noscript>
       </section>
       <h2>What the CII measures</h2>
       <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
       <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
       <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the graded record is published on the <a href="/accuracy/">forecast accuracy scorecard</a> with its Brier scores, calibration and sample sizes.</p>
       <a class="cta" href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/dashboard'), 'seo-cii'))}">Open the live CII panel in World Monitor →</a>
-      <p class="source">Source: ${escapeHtml(snapshotPath)}. Published ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Source: World Monitor Country Instability Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
   const html = pageDocument({
     baseUrl,
     path,
@@ -2505,7 +2524,7 @@ ${countries.map((country) => {
   }).join('\n')}
         </tbody>
       </table></div>
-      <p class="source">Source: ${escapeHtml(snapshotPath)} (${escapeHtml(prettyDate(capturedAt))}). Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -2965,7 +2984,7 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
   const ciiFaq = ciiEntry
     ? [{
       question: `What is ${country.name}'s Country Instability Index?`,
-      answer: `${country.name}'s Country Instability Index is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
+      answer: `${country.name}'s Country Instability Index is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band})${ciiMovementClause(ciiEntry)}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
     }]
     : [];
   const scorePublished = country.headlineEligible !== false;
@@ -3037,7 +3056,7 @@ function formatCrisisContext(country, { links = false, noMembershipText = null }
     return `The crisis registry links ${countryName} to ${memberships}. Tracker scopes are fixed and do not cover every crisis.`;
   }
   if (noMembershipText != null) return links ? escapeHtml(noMembershipText) : noMembershipText;
-  return `${countryName} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
+  return `${countryName} has no dedicated crisis tracker; the ${country.crisisRegistrySize} trackers cover selected crises. That is a coverage limit, not a statement about risk.`;
 }
 
 export function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
@@ -3051,7 +3070,10 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
     const score = scorePublished
       ? formatScore(peer.overallScore, { coverage: peer.headlineEligible !== false })
       : '—';
-    const suffix = score === '—' ? '' : ` (${escapeHtml(score)})`;
+    // Peers are ordered by rank distance, not score, so the rank is shown
+    // with the score; scores alone read as an unsorted list.
+    const rankLabel = peer.rank == null ? '' : `#${peer.rank}, `;
+    const suffix = score === '—' ? '' : ` (${escapeHtml(rankLabel)}${escapeHtml(score)})`;
     return `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${suffix}</a>`;
   };
   const peerLinks = country.peers.map(peerLink).join(', ');
@@ -3144,7 +3166,7 @@ ${inventoryItems}
         <h3>Tracked crisis context</h3>
         <p>${crisisText}</p>
         <h3>Reading limits</h3>
-        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(country.name)} coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))} with imputation share ${escapeHtml(formatPercent(country.imputationShare))}. No score is published.</p>
+        <p>Evidence comes from the ${escapeHtml(prettyDate(capturedAt))} snapshot. ${escapeHtml(country.name)} coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))} with imputation share ${escapeHtml(formatPercent(country.imputationShare))}. No score is published.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
@@ -3229,7 +3251,7 @@ ${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_L
         <h3>Tracked crisis context</h3>
         <p>${crisisText}</p>
         <h3>Reading limits</h3>
-        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(topDomainSentence)} Weak pillars reduce the result; compare with coverage and imputation visible.</p>
+        <p>Scores come from the ${escapeHtml(prettyDate(capturedAt))} snapshot. ${escapeHtml(topDomainSentence)} Weak pillars pull the overall score down; read each score alongside its coverage and imputation.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
@@ -3515,11 +3537,11 @@ function describeDevelopmentsMovement({ countryName, ciiEntry, pulse }) {
   const name = escapeHtml(countryName);
   if (ciiEntry && hasObservedValue(ciiEntry.score, OBSERVED_EVIDENCE)
     && typeof ciiEntry.asOf === 'string' && isCanonicalIsoInstant(ciiEntry.asOf)) {
-    return `${name}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 · ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>. Reporting captured in the same window is listed below.`;
+    return `${name}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 · ${escapeHtml(ciiEntry.band)}</strong>${escapeHtml(ciiMovementClause(ciiEntry))}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>. Reporting captured in the same window is listed below.`;
   }
   if (pulse && pulse.partial !== true && hasObservedValue(pulse.score, { coverage: true })) {
     const asOf = typeof pulse.asOf === 'string' && isCanonicalIsoInstant(pulse.asOf) ? pulse.asOf : null;
-    return `${name}'s frozen instability pulse records ${escapeHtml(formatScore(pulse.score, { coverage: true }))} (${escapeHtml(pulse.band || 'unbanded')}), trend ${escapeHtml(pulse.trend || 'unavailable')}${asOf ? `, as of <time datetime="${escapeHtml(asOf)}">${escapeHtml(formatStaticDateTime(asOf))}</time>` : ''}. Reporting captured in the same window is listed below.`;
+    return `${name}'s frozen instability pulse records ${escapeHtml(formatScore(pulse.score, { coverage: true }))} (${escapeHtml(pulse.band || 'unbanded')}), trend ${escapeHtml(isLegacyConflatedCiiMovementLabel(pulse.trend) ? 'unavailable' : pulse.trend || 'unavailable')}${asOf ? `, as of <time datetime="${escapeHtml(asOf)}">${escapeHtml(formatStaticDateTime(asOf))}</time>` : ''}. Reporting captured in the same window is listed below.`;
   }
   return '';
 }
@@ -3826,7 +3848,7 @@ export function renderCountryPage({
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="false">
           <div class="metric"><span>Instability score</span><strong><span data-live-score>${escapeHtml(formatScore(pulse.score, { coverage: pulse.partial !== true }))}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
-          <div class="metric"><span>${escapeHtml(movementClaim.metricLabel)}</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : ciiEntry?.change24h === null ? 'Stable or unavailable' : pulse.trend)}</strong></div>
+          <div class="metric"><span>${escapeHtml(movementClaim.metricLabel)}</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : ciiMovementDisplayLabel(pulse.trend))}</strong></div>
           <div class="metric"><span>Travel advisory input</span><strong data-live-advisory>${escapeHtml(pulse.advisory)}</strong></div>
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions>${escapeHtml(pulse.sanctions)}</strong></div>
         </div>`
@@ -3838,7 +3860,7 @@ export function renderCountryPage({
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions></strong></div>
         </div>`;
   const ciiAnswer = ciiEntry
-    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
+    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>${escapeHtml(ciiMovementClause(ciiEntry))}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
     : null;
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} ${ciiEntry ? 'Country Instability Index' : 'country risk and resilience'}</h1>
@@ -3864,7 +3886,7 @@ ${liveGrid}
           })}
           <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
         </div>
-        <noscript><p>Enable JavaScript to refresh the current API result. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The structural resilience snapshot remains available below.'}</p></noscript>
+        <noscript><p>Enable JavaScript to load the live reading. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The structural resilience snapshot remains available below.'}</p></noscript>
       </section>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(country.name)} on the live map →</a>
 ${renderCountryDevelopments({ countryCode: country.code, countryName: country.name, developments, ciiEntry, pulse })}
@@ -3880,10 +3902,10 @@ ${renderRelatedChokepoints(relatedChokepoints)}
 ${renderRelatedReading(relatedReading, escapeHtml)}
 ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>${escapeHtml(analysis.readingGuide)} <a href="/docs/methodology/country-resilience-index">Full CRI method</a> · <a href="/docs/corrections">revision log</a> · <a href="/accuracy/">forecast accuracy scorecard</a>.</p>` : `      <h2>How to read this page</h2>
-      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
+      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals. Neither score on this page is a forecast; where World Monitor does forecast, the graded record is on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>`}
-      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`
     : `${country.name} Country Risk and Resilience`;
@@ -4512,7 +4534,7 @@ ${liveGrid}
           })}
           <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
         </div>
-        <noscript><p>Enable JavaScript to refresh the current API result. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The static waterway and route context remains available below.'}</p></noscript>
+        <noscript><p>Enable JavaScript to load the live reading. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The static waterway and route context remains available below.'}</p></noscript>
       </section>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(chokepoint.displayName)} on the live map →</a>
       <section class="grid" aria-label="Chokepoint overview">

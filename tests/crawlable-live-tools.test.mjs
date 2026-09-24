@@ -1389,6 +1389,66 @@ describe('crawlable live intelligence view models', () => {
     }
   });
 
+  it('labels a loaded country reading in plain words and stamps it in UTC', async () => {
+    // The static page prints UTC. Formatting the live stamp in the reader's
+    // zone put "GMT+4" next to a "UTC" header on the same page.
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'Asia/Dubai';
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/egypt/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="EG" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>27</span><small data-live-band>Low</small></strong></div>
+          <div class="metric"><strong data-live-trend>Falling -2</strong></div>
+          <div class="metric"><strong data-live-advisory>Level 2</strong></div>
+          <div class="metric"><strong data-live-sanctions>None in feed</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const computedAt = Date.now() - 60_000;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-country-risk')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            advisoryLevel: 'caution',
+            sanctionsActive: false,
+            sanctionsCount: 0,
+            fetchedAt: computedAt,
+            cii: {
+              combinedScore: 24,
+              dynamicScore: 0,
+              trend: 'TREND_DIRECTION_UNSPECIFIED',
+              computedAt,
+              methodologyVersion: 'v8',
+            },
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadCountryRisk(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
+
+    assert.equal(tool.dataset.state, 'ready');
+    assert.equal(tool.querySelector('[data-live-status]').textContent, 'Live reading');
+    assert.equal(tool.querySelector('[data-live-trend]').textContent, 'No earlier reading');
+    const stamp = tool.querySelector('[data-live-updated]').textContent;
+    assert.match(stamp, /^Computed .+ UTC · methodology v8$/);
+    assert.doesNotMatch(stamp, /GMT/);
+  });
+
   it('preserves SSR country and chokepoint pulse values when live refresh fails', async () => {
     const window = new Window({ url: 'https://www.worldmonitor.app/countries/ukraine/' });
     const { document } = window;
@@ -1564,6 +1624,7 @@ describe('crawlable live intelligence view models', () => {
       assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '61');
       assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').getAttribute('value'), '61');
       assert.equal(tool.dataset.ciiHydrated, 'true');
+      assert.equal(tool.querySelector('[data-live-status]').textContent, 'Live reading · v8');
 
       phase = 'fail';
       await loadCiiRanking(tool);

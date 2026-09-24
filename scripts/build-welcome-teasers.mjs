@@ -71,14 +71,15 @@ const DISPLAY_NAME_BY_SLUG = new Map(
 //
 // parseCiiMovement is the canonical parser for this exact string shape and
 // throws on anything it does not recognise, so an unexpected label reds the
-// generator instead of being published as a confident direction. The one thing
-// it treats as a value rather than an error is "Stable or unavailable" -- the
-// upstream saying it does not know -- which must NOT become a published
-// "stable" claim, so it maps to UNSPECIFIED. LiveStrip's trendGlyph already
-// renders the neutral glyph for any unrecognised suffix.
+// generator instead of being published as a confident direction. It returns a
+// null change for "No earlier reading" and for the legacy conflated
+// "Stable or unavailable" labels -- the upstream saying it does not know --
+// which must NOT become a published "stable" claim, so they map to
+// UNSPECIFIED. "Unchanged" is a measured zero and maps to STABLE. LiveStrip's
+// trendGlyph already renders the neutral glyph for any unrecognised suffix.
 function trendDirection(trend) {
   const raw = String(trend || '').trim();
-  if (!raw || raw.startsWith('Stable or unavailable')) return 'TREND_DIRECTION_UNSPECIFIED';
+  if (!raw) return 'TREND_DIRECTION_UNSPECIFIED';
   const { change24h } = parseCiiMovement(raw);
   if (change24h === null) return 'TREND_DIRECTION_UNSPECIFIED';
   if (change24h > 0) return 'TREND_DIRECTION_RISING';

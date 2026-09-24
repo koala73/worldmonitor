@@ -1800,6 +1800,84 @@ describe('crawlable corpus generator', () => {
     );
   });
 
+  it('publishes CII movement and reference copy in reader terms', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
+    const now = capturedAtMs + 86_400_000;
+    const egypt = data.countries.find((country) => country.code === 'EG');
+    assert.ok(egypt, 'Egypt must be in the country corpus');
+    const readerText = (html) => html
+      .replace(/<script[\s\S]*?<\/script>/g, ' ')
+      .replace(/<style[\s\S]*?<\/style>/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&middot;/g, '·')
+      .replace(/&#39;|&#x27;/g, "'")
+      .replace(/\s+/g, ' ');
+    const metaDescription = (html) => html.match(/<meta name="description" content="([^"]*)">/)?.[1] ?? '';
+    const renderWithTrend = (trend) => {
+      const livePulse = structuredClone(data.livePulse);
+      livePulse.countries.EG.trend = trend;
+      const ranking = buildCiiRankingEntries(data.countries, livePulse, { now });
+      const html = renderCountryPage({
+        country: egypt,
+        baseUrl: 'https://www.worldmonitor.app',
+        capturedAt: data.resilience.capturedAt,
+        lastmod: data.lastmod.countries,
+        methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+        rankedCount: data.countries.filter((country) => country.rank != null).length,
+        snapshotNote: data.resilience.snapshotNote,
+        snapshotPath: data.sources.resilienceSnapshot,
+        bbox: data.countryBboxByCode.get('EG') || null,
+        livePulse,
+        ciiEntry: ranking.byCode.get('EG'),
+        now,
+      });
+      return { html, text: readerText(html), meta: metaDescription(html) };
+    };
+
+    const falling = renderWithTrend('Falling -2');
+    assert.match(falling.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , down 2 points over approximately 24 hours, as of /);
+    assert.match(falling.html, /data-live-trend>Falling -2<\/strong>/);
+
+    // A measured zero reads as a fact, not as "stable or unavailable".
+    const unchanged = renderWithTrend('Unchanged');
+    assert.match(unchanged.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , unchanged over approximately 24 hours, as of /);
+    assert.match(unchanged.html, /data-live-trend>Unchanged<\/strong>/);
+    assert.match(unchanged.meta, /and is unchanged over approximately 24 hours/);
+
+    // No earlier reading: the header drops the movement clause entirely.
+    const noPrior = renderWithTrend('No earlier reading');
+    assert.match(noPrior.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , as of /);
+    assert.match(noPrior.html, /data-live-trend>No earlier reading<\/strong>/);
+    assert.match(noPrior.meta, /with 24-hour movement unchanged or not yet measured/);
+
+    // Legacy snapshots conflated both cases, so they support no movement claim.
+    const legacy = renderWithTrend('Stable or unavailable');
+    assert.match(legacy.text, /Egypt's Country Instability Index is \d+\/100 · \w+ , as of /);
+    assert.match(legacy.html, /data-live-trend>Unavailable<\/strong>/);
+
+    for (const { html, text, meta } of [falling, unchanged, noPrior, legacy]) {
+      assert.doesNotMatch(`${text} ${meta}`, /stable or unavailable/i);
+      assert.doesNotMatch(text, /API result/);
+      assert.doesNotMatch(text, /crawlable crisis|registry boundary/);
+      assert.doesNotMatch(text, /docs\/snapshots\//);
+      assert.doesNotMatch(text, /; method /);
+      assert.ok(
+        !text.includes(data.resilience.methodologyFormula),
+        'the scoring formula id is machine metadata, not reader prose',
+      );
+      assert.match(text, /World Monitor reference pages\. Dated snapshots are published here; live readings are labelled separately\./);
+      assert.match(text, /Enable JavaScript to load the live reading\./);
+      assert.match(text, /Egypt has no dedicated crisis tracker; the \d+ trackers cover selected crises\. That is a coverage limit, not a statement about risk\./);
+      assert.match(text, /Scores come from the \w+ \d{1,2}, \d{4} snapshot\. /);
+      assert.match(text, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
+      // Peers are ordered by rank distance, so each carries its rank.
+      assert.match(text, /Nearest ranked peers: .*?\(#\d+, \d+(?:\.\d+)?\)/);
+      // The machine-readable source path stays on the element for auditors.
+      assert.ok(html.includes(`data-snapshot-source="${data.sources.resilienceSnapshot}"`));
+    }
+  });
+
   it('derives CII movement copy from live-pulse snapshot age', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     const capturedAtMs = Date.parse(`${data.livePulse.capturedAt}T00:00:00Z`);
@@ -2615,7 +2693,10 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
       assert.match(norway, new RegExp(`<meta name="lastmod" content="${countriesLastmod}">`));
-      assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
+      // The repo path is machine attribution, kept on the element; readers get
+      // the snapshot's name and date.
+      assert.ok(norway.includes(`data-snapshot-source="${manifest.sources.resilienceSnapshot}"`));
+      assert.match(norway, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
       assert.match(
         norway,
         /<span>Overall score<\/span><strong>75\.4<\/strong>/,
@@ -2711,6 +2792,12 @@ describe('crawlable corpus generator', () => {
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
       assert.match(ciiIndex, new RegExp(`<meta name="lastmod" content="${ciiIndexLastmod}">`));
       assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
+      // Reader copy names the snapshot and the live reading; the repo path and
+      // the conflated "stable or unavailable" cell stay off the page.
+      assert.match(ciiIndex, /Source: World Monitor Country Instability Index snapshot, \w+ \d{1,2}, \d{4}\./);
+      assert.ok(ciiIndex.includes(`data-snapshot-source="${manifest.sources.livePulseSnapshot}"`));
+      assert.match(ciiIndex, /Enable JavaScript to load the live reading\./);
+      assert.doesNotMatch(ciiIndex, /stable or unavailable|API result/i);
       const movementClaim = clock.ciiRanking.movementClaim
         ?? livePulseMovementClaim(livePulseSnapshotAgeDays(clock.livePulse.capturedAt));
       assert.match(
@@ -2795,11 +2882,12 @@ describe('crawlable corpus generator', () => {
         );
         const stableSlug = clock.countries.find((entry) => entry.name === stableName)?.slug;
         const stablePage = read(outDir, `countries/${stableSlug}/index.html`);
-        assert.match(
-          stablePage,
-          new RegExp(`stable or unavailable ${movementClaim.intervalPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
-        );
-        assert.match(stablePage, /data-live-trend>Stable or unavailable<\/strong>/);
+        // No numeric movement means no movement clause: the header goes
+        // straight from the band to the timestamp, and the metric names the
+        // missing reading instead of "stable or unavailable".
+        assert.doesNotMatch(stablePage, /stable or unavailable/i);
+        assert.match(stablePage, /<\/strong>, as of <time datetime=/);
+        assert.match(stablePage, /data-live-trend>(?:No earlier reading|Unavailable)<\/strong>/);
         const stableCiiDataset = jsonLdObjects(stablePage)
           .flatMap((entry) => collectDatasets(entry))
           .find((entry) => entry['@id']?.endsWith('#cii-dataset'));
