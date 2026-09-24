@@ -31,6 +31,8 @@ import {
 // Requiring the run to close the sentence keeps the merge citation-neutral: the
 // fragment can only ever join the citation it already owned.
 const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+(?:\p{Ll}|(?:\[\d{1,3}\])+(?:[.!?]|$)))/gu;
+// A lead unit the split ended at a dotted acronym it could not prove mid-clause.
+const ENDS_WITH_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.)+\s*$/u;
 
 /**
  * #5947: why a synthesized brief was rejected, as a bounded closed vocabulary.
@@ -542,7 +544,13 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     droppedLeadSentences += 1;
     if (!firstDrop) firstDrop = { rejection, detail };
   };
+  // The unit before this one, when the split ended it at a dotted acronym:
+  // "…as former U.S." | "President Trump welcomed…" carries one qualifier
+  // across the boundary, so the qualifier check reads the pair.
+  let acronymHead = null;
   for (const sentence of leadSentences) {
+    const head = acronymHead;
+    acronymHead = null;
     const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
       .map((match) => Number.parseInt(match[1], 10))
       .filter((n) => n >= 1 && n <= topStories.length);
@@ -569,10 +577,17 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // #8441: the proper-noun gate reads "Former President" as a title prefix
     // and grounds only "Trump", so the qualifier needs its own check. One
     // ground per cited story: the qualifier and the name must share a story.
+    const qualifierCited = head ? [...new Set([...head.cited, ...cited])] : cited;
     const qualifierValidation = validateNoHallucinatedStatusQualifiers(
-      attributed,
-      cited.map((n) => storyGroundText(topStories[n - 1], groundOpts)),
+      head ? `${head.attributed} ${attributed}` : attributed,
+      qualifierCited.map((n) => storyGroundText(topStories[n - 1], groundOpts)),
     );
+    if (validatorMode === 'enforce' && !qualifierValidation.ok && head) {
+      // The qualifier sits in the head, which already passed on its own.
+      survivingSentences.pop();
+      if (head.attributions > 0) sourceAttributions--;
+      dropSentence(BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER, qualifierValidation.hallucinated);
+    }
     if (validatorMode === 'enforce') {
       if (!sentenceValidation.ok) {
         dropSentence(BRIEF_REJECTIONS.LEAD_PROPER_NOUN, sentenceValidation.hallucinated);
@@ -591,6 +606,9 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // never reached a reader, so only survivors count.
     if (attribution.matches > 0) sourceAttributions++;
     survivingSentences.push(sentence);
+    if (ENDS_WITH_DOTTED_ACRONYM.test(sentence)) {
+      acronymHead = { attributed, cited, attributions: attribution.matches };
+    }
   }
   if (survivingSentences.length === 0) {
     // Total failure classifies exactly as before: the first failing sentence's

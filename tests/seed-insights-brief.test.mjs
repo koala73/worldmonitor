@@ -1377,6 +1377,37 @@ describe('status-qualifier gate on the World Brief (#8441)', () => {
     assert.equal(out.brief.lines[0].text, `${line} [1]`);
   });
 
+  it('sees a qualifier the sentence split separated from its title at a dotted acronym', () => {
+    // "former U.S. President Trump": the split fails closed at "U.S." before a
+    // capital, so "…as former U.S." and "President Trump welcomed…" are two
+    // units and neither holds qualifier, title and name together.
+    const stories = [
+      topStories[0],
+      {
+        primaryTitle: 'U.S. tariffs on China take effect as talks stall',
+        primarySource: 'Reuters',
+        primaryLink: 'http://tariffs',
+        sources: ['Reuters', 'CNBC'],
+      },
+    ];
+    const composeWith = (lead) => composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: [groundedLines[0], { n: 2, text: 'US tariffs on China took effect [2]' }] }),
+      stories,
+      { validatorMode: 'enforce' },
+    );
+    const split = composeWith(
+      "Tariffs on China took effect [2] as former U.S. President Trump welcomed Xi to Washington [1]. Trump welcomed China's Xi with a planeside ceremony [1].",
+    );
+    assert.equal(split.rejection, null);
+    assert.ok(!/former/i.test(split.brief.lead), 'neither half of the split sentence publishes');
+    assert.equal(split.brief.lead, "Trump welcomed China's Xi with a planeside ceremony [1].");
+    assert.equal(split.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER);
+
+    const grounded = composeWith("Tariffs on China took effect [2] as U.S. President Trump welcomed Xi to Washington [1].");
+    assert.equal(grounded.rejection, null, 'the same split without a qualifier still publishes');
+    assert.equal(grounded.brief.droppedLeadSentences, 0);
+  });
+
   it('tells the resample which qualifier to remove', () => {
     const note = synthesisRejectionFeedback({
       code: BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER,
