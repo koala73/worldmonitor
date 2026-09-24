@@ -8,6 +8,7 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
   WEB_DASHBOARD_VARIANTS,
@@ -318,6 +319,36 @@ function dashboardHtmlOutputPlugin(): Plugin {
         dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
       }
       bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Stamp each emitted chunk with its own ownership so `beforeSend` can stop
+// guessing from the filename. See shared/chunk-ownership.ts for why a name
+// cannot answer the question. Runs at `enforce: 'post'` so the chunk bodies are
+// final, and appends (never prepends) so sourcemap columns stay valid.
+//
+// Web workers (`*.worker-<hash>.js`, `maplibre-gl-worker-<hash>.js`) go through
+// a separate Vite build and never reach this hook. That is correct, not a gap:
+// a worker has its own `globalThis`, so a registration there could never reach
+// the manifest the main thread's `beforeSend` reads. Worker frames stay
+// unregistered and fall back to the legacy name regex.
+function firstPartyChunkManifestPlugin(): Plugin {
+  return {
+    name: 'wm-first-party-chunk-manifest',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        const basename = output.fileName.split('/').pop();
+        if (!basename) continue;
+        output.code = appendChunkOwnership(
+          output.code,
+          basename,
+          chunkHasFirstPartyModule(output.moduleIds ?? []),
+        );
+      }
     },
   };
 }
@@ -930,6 +961,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      firstPartyChunkManifestPlugin(),
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,

@@ -11,6 +11,19 @@ import { isIosLikeUserAgent } from './platform-ua';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 
+declare global {
+  /**
+   * Per-chunk ownership stamped at build time by `wm-first-party-chunk-manifest`
+   * (vite.config.ts). Maps a chunk basename to 1 (contains first-party code) or
+   * 0 (entirely node_modules). Absent in dev/serve and for any chunk that has
+   * not evaluated yet, which is why `firstPartyFile` treats a miss as "unknown"
+   * and falls back to the legacy name regex. Name pinned to
+   * `CHUNK_OWNERSHIP_GLOBAL` in shared/chunk-ownership.ts by a source test.
+   */
+  // eslint-disable-next-line no-var
+  var __WM_CHUNK_OWNERSHIP__: Record<string, number> | undefined;
+}
+
 type SentryNs = typeof import('@sentry/browser');
 
 // Known third-party hosts fetched by MapLibre (tiles, styles, glyphs, sprites).
@@ -475,22 +488,38 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // (2026-09-22) by dumping each chunk's `moduleIds` in `generateBundle`:
       // protomaps 0/3 and h3-js 0/1 modules outside node_modules.
       //
-      // KNOWN UNSOUND, do not extend without measuring. A chunk NAME does not
-      // tell you whose code is inside it — Rollup names a chunk after its seed
-      // module and then hoists shared modules into it. The same build showed
-      // three names already on this list matching chunks that DO hold our code:
-      // `i18n` (12/12 modules ours, incl. safe-storage/billing-retry/
-      // premium-paths — a second, genuinely pure `i18n` chunk shares the name),
-      // `deck-stack` (src/components/DeckGLMap.ts), and `sentry` (which also
-      // matches `sentry-init-<hash>.js`, 5/5 ours). Those are suppressed today.
-      // Removing the names cannot fix it, because two chunks named `i18n` have
-      // OPPOSITE ownership; only a build-time per-chunk manifest can. Adding a
-      // name here is safe ONLY after confirming that chunk has no first-party
-      // module.
+      // FALLBACK ONLY — the build now answers this question authoritatively.
+      // A chunk NAME does not tell you whose code is inside it: Rollup names a
+      // chunk after its seed module and then hoists shared modules into it. On a
+      // real build three names on this very list matched chunks holding our
+      // code — `i18n` (12/12 modules ours: safe-storage, billing-retry,
+      // premium-paths, runtime …, while a SECOND genuinely pure chunk shares the
+      // name `i18n`), `deck-stack` (src/components/DeckGLMap.ts), and `sentry`
+      // (the pattern also matches `sentry-init-<hash>.js`, 5/5 ours) — so every
+      // gate below was eligible to drop real first-party failures from them. No
+      // name-based rule can fix that, because two chunks named `i18n` have
+      // OPPOSITE ownership. `wm-first-party-chunk-manifest` (vite.config.ts) now
+      // stamps each chunk with its own ownership from its `moduleIds`, and this
+      // regex is consulted only for a chunk the manifest has not registered —
+      // dev/serve, or a chunk that failed before its registration ran.
       const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime|protomaps|h3-js)-[A-Za-z0-9_-]+\.js/;
+      // Keep this lookup INLINE. `tests/sentry-beforesend.test.mjs` evaluates
+      // this function body with a fixed `new Function` parameter list, so an
+      // imported helper would be an unbound free identifier there. The global's
+      // name is pinned against shared/chunk-ownership.ts by a source test.
+      const chunkOwnership = globalThis.__WM_CHUNK_OWNERSHIP__;
       const firstPartyFile = (filename: string) => {
         if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
-        if (/\/assets\/[A-Za-z0-9_-]+\.js/.test(filename)) return !vendorChunk.test(filename);
+        const assetMatch = filename.match(/\/assets\/([A-Za-z0-9_-]+\.js)/);
+        const basename = assetMatch?.[1];
+        if (basename) {
+          const owner = chunkOwnership?.[basename];
+          // Only an explicit registration decides; an unregistered chunk falls
+          // through to the legacy regex so this is never worse than before.
+          if (owner === 1) return true;
+          if (owner === 0) return false;
+          return !vendorChunk.test(filename);
+        }
         return false;
       };
       const nonInfraFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
