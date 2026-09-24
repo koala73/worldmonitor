@@ -121,7 +121,7 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
@@ -3577,7 +3577,6 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        const conflictEvents = await conflictsTask;
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
         // counts from the precomputed aggregates), but the map draws every event.
@@ -3592,13 +3591,9 @@ export class DataLoaderManager implements AppModule {
           this.showColdLoadError('ucdp-events');
           return;
         }
-        const acledEvents = conflictEvents.map(e => ({
-          latitude: e.lat, longitude: e.lon, event_date: e.time.toISOString(), fatalities: e.fatalities ?? 0,
-        }));
-        const events = deduplicateAgainstAcled(result.data, acledEvents);
-        const aggregates = !wantsFullUcdpSet && hydratedUcdp?.aggregates && hydratedUcdp.dedupeIndex
-          ? deduplicateUcdpProjectionAggregates(hydratedUcdp.aggregates, hydratedUcdp.dedupeIndex, acledEvents)
-          : undefined;
+        // Keep each source's claims intact, even when ACLED reports an overlapping event.
+        const events = result.data;
+        const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
           aggregates,
