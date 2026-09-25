@@ -329,7 +329,19 @@ export async function saveAlertRules(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-alert-rules', ...rules }),
   }, undefined, signal);
-  if (!res.ok) throw new Error(`save alert rules: ${res.status}`);
+  if (res.ok) return;
+  // Mirror setNotificationConfig: the relay may return structured 400
+  // INCOMPATIBLE_DELIVERY when legacy set-alert-rules hits the
+  // (realtime, high|all) gate. Route that to IncompatibleDeliveryError so the
+  // settings UI can show the helper text instead of a generic save failure.
+  let body: { error?: string; message?: string } = {};
+  try { body = await res.json(); } catch { /* keep default */ }
+  if (res.status === 400 && body.error === 'INCOMPATIBLE_DELIVERY') {
+    throw new IncompatibleDeliveryError(
+      body.message ?? 'Real-time delivery requires Critical sensitivity.',
+    );
+  }
+  throw new Error(`save alert rules: ${res.status}`);
 }
 
 export async function setQuietHours(settings: {

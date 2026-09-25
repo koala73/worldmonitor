@@ -937,13 +937,23 @@ http.route({
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
           // structured code (TICKERS_LIMIT_EXCEEDED / COUNTRIES_LIMIT_EXCEEDED)
-          // when a caller exceeds the 50-entry cap. Surface those as a 400 with
+          // when a caller exceeds the 50-entry cap. assertCompatibleDeliveryMode
+          // throws INCOMPATIBLE_DELIVERY when the legacy set-alert-rules path
+          // tries to keep (realtime, high|all). Surface those as a 400 with
           // the machine-readable code — matching the set-notification-config
           // path below — instead of letting them fall to the outer catch as a
           // generic 500, which the client can't route on.
+          // See Sentry WORLDMONITOR-143 (prod setAlertRulesForUser via this action).
           const code = extractConvexErrorCode(err);
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          if (code === "INCOMPATIBLE_DELIVERY") {
+            const parsed = parseConvexErrorData(err);
+            const message = (parsed && typeof parsed === "object")
+              ? (parsed as { message?: string }).message ?? ""
+              : "";
+            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
           throw err;
         }

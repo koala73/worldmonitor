@@ -156,6 +156,13 @@ describe('notifications-settings.ts — mode-change behavior', () => {
       /err\s+instanceof\s+IncompatibleDeliveryError/,
       'mode-change save must catch IncompatibleDeliveryError specifically',
     );
+    // WORLDMONITOR-143: legacy saveAlertRules can also return this code once
+    // the relay passes it through; fireForgetSave must surface the hint too.
+    assert.match(
+      src,
+      /function\s+fireForgetSave[\s\S]*?instanceof\s+IncompatibleDeliveryError[\s\S]*?#usSensitivityHint/,
+      'fireForgetSave must surface IncompatibleDeliveryError on the sensitivity hint',
+    );
   });
 });
 
