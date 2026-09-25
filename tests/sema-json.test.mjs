@@ -68,6 +68,20 @@ describe('official SEMA table JSON', () => {
     }
   });
 
+  it('rejects malformed string identifiers without dropping the affected rows', async () => {
+    for (const [key, value] of [
+      ['Item Number', '-1'], ['Item Number', 'N/A'], ['Item Number', '1e2'],
+      ['Ship IMO number', 'N/A'], ['Ship IMO number', '123'],
+      ['Ship IMO number', 'اسکندر مهمی'],
+    ]) {
+      const data = structuredClone(fixture);
+      data.data[0][key] = value;
+      const result = await ingest(data);
+      assert.equal(result.error, 'SEMA_INVALID_RECORD', `${key}: ${value}`);
+      assert.deepEqual(result.records, []);
+    }
+  });
+
   it('rejects duplicate normalized canonical identities', async () => {
     const duplicate = { ...fixture.data[0], Regulation: ' Belarus ', Schedule: '1,  Part 1', 'Last Name': 'Different' };
     const result = await ingest({ data: [...fixture.data, duplicate] });

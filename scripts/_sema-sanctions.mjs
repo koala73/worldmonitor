@@ -339,7 +339,8 @@ export function parseSemaJson(text) {
       if (typeof value !== 'string' && !numericIdentifier) throw new Error('SEMA_INVALID_RECORD');
       fields[field] = String(value).replace(/\s+/g, ' ').trim();
     }
-    if (!fields.Country || !fields.Item || fields.Item === '0'
+    if (!fields.Country || !/^[1-9]\d*$/.test(fields.Item)
+      || (fields.ShipIMONumber && !/^\d{7}$/.test(fields.ShipIMONumber))
       || !(fields.EntityOrShip || fields.LastName || fields.GivenName)) {
       throw new Error('SEMA_INVALID_RECORD');
     }
