@@ -82,6 +82,12 @@ export class CountryBriefPage implements CountryBriefPanel {
   constructor() {
     this.overlay = document.createElement('div');
     this.overlay.className = 'country-brief-overlay';
+    // Deliberately carries no `role="dialog"` / `aria-modal`. Adding either
+    // would make the reload guard see it (`src/utils/open-modal.ts`), and this
+    // element is appended once and hides via `opacity: 0` rather than leaving
+    // layout, so `checkVisibility()` would report it visible for the whole
+    // session and stop every automatic reload. Give it a dialog role only
+    // together with a `display`-based hidden state and a `declareOverlay` call.
     document.body.appendChild(this.overlay);
 
     // Single delegated click handler for all interactive elements.

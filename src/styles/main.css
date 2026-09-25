@@ -22770,6 +22770,10 @@ body.has-breaking-alert .panels-grid {
 
 /* ============================================
    Country Brief Page (full-page overlay)
+
+   Hides via `opacity` while staying mounted, which is safe ONLY because the
+   element carries no dialog role. See the note in CountryBriefPage's
+   constructor before adding one.
    ============================================ */
 
 .country-brief-overlay {
