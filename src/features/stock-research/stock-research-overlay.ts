@@ -27,6 +27,7 @@ import {
   normalizeStockResearchSymbol,
   stockResearchUrl,
 } from './stock-research-route';
+import { declareOverlay } from '@/utils/open-modal';
 
 /** '/' is rewritten to the marketing page in production; the app lives here. */
 const DASHBOARD_PATH = '/dashboard';
@@ -139,6 +140,8 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
   overlayEl.className = 'stock-research-overlay';
   overlayEl.setAttribute('role', 'dialog');
   overlayEl.setAttribute('aria-modal', 'true');
+  // A reload aborts an in-flight premium RPC the user would have to re-spend.
+  declareOverlay(overlayEl, { reload: 'blocking' });
   overlayEl.setAttribute('aria-label', `${symbol} research`);
 
   const entitled = hasPremiumAccess();

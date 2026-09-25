@@ -40,6 +40,7 @@ export type {
   SearchResult,
   SearchResultType,
 } from '@/components/search-types';
+import { declareOverlay } from '@/utils/open-modal';
 
 const CATEGORY_KEYS: Record<string, string> = {
   navigate: 'commands.categories.navigate',
@@ -481,6 +482,7 @@ export class SearchModal {
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(this.overlay, { reload: 'blocking' });
     this.overlay.setAttribute('aria-label', 'World Monitor intelligence command deck');
     this.overlay.dataset.searchScope = this.activeScope;
     // Claim human authority in capture phase, before a click can close the

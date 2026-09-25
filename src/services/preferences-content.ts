@@ -27,6 +27,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
+import { declareOverlay } from '@/utils/open-modal';
 
 const SYNC_STATE_LABELS: Record<string, string> = {
   synced: 'Synced', pending: 'Pending', syncing: 'Syncing\u2026',
@@ -540,6 +541,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   return {
     html,
     attach(container: HTMLElement): () => void {
+      // The import modal is authored in the template above, so it declares
+      // after mount. Pasted JSON and a URL input make it blocking.
+      const importModal = container.querySelector<HTMLElement>('.fw-import-modal');
+      if (importModal) declareOverlay(importModal, { reload: 'blocking' });
+
       const ac = new AbortController();
       const { signal } = ac;
 

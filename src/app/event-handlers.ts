@@ -1568,6 +1568,10 @@ export class EventHandlerManager implements AppModule {
     dialog.className = 'embed-modal';
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
+    // Generated snippets only; nothing is typed here, so a reload loses nothing.
+    // The outer overlay is role="presentation"; this inner element is the one
+    // the reload guard sees.
+    declareOverlay(dialog, { reload: 'safe' });
     dialog.setAttribute('aria-labelledby', 'embedModalTitle');
 
     const header = document.createElement('div');
