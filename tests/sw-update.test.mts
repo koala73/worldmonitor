@@ -1,6 +1,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { installSwUpdateHandler, RELOAD_BLOCKING_MODAL_SELECTOR, readServiceWorkerContainer } from '../src/bootstrap/sw-update.ts';
+import { RELOAD_POLICY_ATTR } from '../src/utils/open-modal.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -19,6 +20,7 @@ interface FakeElement {
   closest(sel: string): { dataset: Record<string, string> } | null;
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
+  getAttribute?: (name: string) => string | null;
 }
 
 interface FakeEnv {
@@ -42,8 +44,12 @@ interface FakeEnv {
      */
     modalMounted: boolean;
     modalVisible: boolean;
-    /** Models an overlay carrying RELOAD_SAFE_ATTR (the onboarding popover). */
-    modalReloadSafe: boolean;
+    /**
+     * The overlay's declared reload contract. null models silence (the Clerk
+     * backdrop); 'safe' models the onboarding popover or the SignalModal, which
+     * the real DOM drops from the `:not(...)` result set entirely.
+     */
+    modalReloadPolicy: 'safe' | 'blocking' | null;
     supportsCheckVisibility: boolean;
     _removedListeners: Array<() => void>;
     querySelector(sel: string): FakeElement | null;
@@ -81,7 +87,7 @@ function makeEnv(): FakeEnv {
     setVisibilityState(v: string) { _visibilityState = v; },
     modalMounted: false,
     modalVisible: false,
-    modalReloadSafe: false,
+    modalReloadPolicy: null,
     supportsCheckVisibility: true,
     _removedListeners: [],
 
@@ -92,14 +98,15 @@ function makeEnv(): FakeEnv {
 
     querySelectorAll(sel: string): Iterable<FakeElement> {
       if (sel !== RELOAD_BLOCKING_MODAL_SELECTOR) return [];
-      // The real DOM applies `:not([data-reload-safe])` for this selector,
-      // so an opted-out overlay is simply absent from the result set.
-      if (this.modalReloadSafe) return [];
+      // The real DOM applies `:not([data-reload-policy="safe"])` for this
+      // selector, so a declared-safe overlay is simply absent from the result set.
+      if (this.modalReloadPolicy === 'safe') return [];
       if (!this.modalMounted && !this.modalVisible) return [];
       const isVisible = this.modalVisible;
+      const policy = this.modalReloadPolicy;
       const el: FakeElement = {
         tagName: 'DIV',
-        className: '',
+        className: policy === 'blocking' ? 'modal-overlay' : 'cl-modalBackdrop',
         innerHTML: '',
         dataset: {},
         _listeners: {},
@@ -111,6 +118,7 @@ function makeEnv(): FakeEnv {
         remove() {},
         addEventListener() {},
         closest() { return null; },
+        getAttribute: (name: string) => (name === RELOAD_POLICY_ATTR ? policy : null),
         // getClientRects is always available in real DOM; mirrors `display: none`
         // semantics (empty list when hidden, non-empty when rendered — including
         // `position: fixed` elements, unlike offsetParent).
@@ -186,8 +194,9 @@ function makeEnv(): FakeEnv {
   return { doc, swContainer, reload, reloadCalls, appendedToasts, visibilityListeners, pendingTimers };
 }
 
-function install(env: FakeEnv) {
+function install(env: FakeEnv, options: { debug?: boolean } = {}) {
   installSwUpdateHandler({
+    ...(options.debug ? { debug: true } : {}),
     swContainer: env.swContainer,
     document: env.doc,
     reload: env.reload,
@@ -219,6 +228,25 @@ function fireDwellTimer(env: FakeEnv) {
   const cb = env.pendingTimers.shift();
   assert.ok(cb !== undefined, 'No pending dwell timer to fire');
   cb();
+}
+
+/**
+ * Collect the `[SWDEBUG]` entries `logSw` prints while `run` executes. The
+ * debug log is the only place the suppression branch says who blocked it, so
+ * it is the observable for the reload-policy field.
+ */
+function captureSwLog(run: () => void): Array<Record<string, unknown>> {
+  const entries: Array<Record<string, unknown>> = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    if (args[0] === '[SWDEBUG]') entries.push(args[1] as Record<string, unknown>);
+  };
+  try {
+    run();
+  } finally {
+    console.log = original;
+  }
+  return entries;
 }
 
 /** Simulate a button click inside the latest toast. */
@@ -545,10 +573,11 @@ describe('installSwUpdateHandler', () => {
     assert.equal(env.reloadCalls.length, 0, 'reload suppressed while modal is visibly open');
   });
 
-  it('DOES auto-reload when the open overlay opted out of blocking reloads', () => {
-    // WORLDMONITOR-15X: the onboarding popover auto-opens for every preset-less
-    // user and carries role="dialog". Both automatic reload paths must ignore it
-    // — it holds nothing a reload would lose and re-appears on the next load.
+  it('DOES auto-reload over an overlay that declared itself safe', () => {
+    // WORLDMONITOR-15X / 15Z: the onboarding popover auto-opens for every
+    // preset-less user and the SignalModal auto-opens from background analysis;
+    // both carry role="dialog". Both automatic reload paths must ignore them —
+    // they hold nothing a reload would lose.
     env.swContainer._controller = {};
     install(env);
     env.swContainer.fireControllerChange();
@@ -556,11 +585,47 @@ describe('installSwUpdateHandler', () => {
 
     env.doc.modalMounted = true;
     env.doc.modalVisible = true;
-    env.doc.modalReloadSafe = true;
+    env.doc.modalReloadPolicy = 'safe';
 
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
     assert.equal(env.reloadCalls.length, 1, 'a reload-safe overlay must not suppress the update reload');
+  });
+
+  it('logs the blocker label and undeclared policy when a silent overlay suppresses the reload', () => {
+    env.swContainer._controller = {};
+    install(env, { debug: true });
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
+    env.doc.setVisibilityState('hidden');
+    const entries = captureSwLog(() => fireVisibility(env));
+
+    assert.equal(env.reloadCalls.length, 0);
+    const suppressed = entries.filter((e) => e.event === 'auto-reload-suppressed-modal-open');
+    assert.equal(suppressed.length, 1, 'exactly one suppression entry');
+    assert.equal(suppressed[0]?.blockedBy, 'cl-modalBackdrop');
+    assert.equal(suppressed[0]?.reloadPolicy, 'undeclared');
+  });
+
+  it('suppresses over an overlay that declared itself blocking, with policy blocking in the log', () => {
+    env.swContainer._controller = {};
+    install(env, { debug: true });
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
+    env.doc.modalReloadPolicy = 'blocking';
+    env.doc.setVisibilityState('hidden');
+    const entries = captureSwLog(() => fireVisibility(env));
+
+    assert.equal(env.reloadCalls.length, 0, 'a declared-blocking overlay holds the reload off');
+    const suppressed = entries.filter((e) => e.event === 'auto-reload-suppressed-modal-open');
+    assert.equal(suppressed[0]?.blockedBy, 'modal-overlay');
+    assert.equal(suppressed[0]?.reloadPolicy, 'blocking');
   });
 
   it('DOES auto-reload when a modal is mounted-but-hidden (persistent dialog case)', () => {

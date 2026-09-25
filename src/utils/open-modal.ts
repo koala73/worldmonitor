@@ -14,16 +14,28 @@
  *      check ask this. An onboarding prompt that re-appears on the next load
  *      answers no; a half-filled sign-up form answers yes.
  *
- * The second is a subset of the first, expressed by an opt-out attribute a
- * surface sets on itself (see `RELOAD_SAFE_ATTR`). Opting out is the surface's
- * own claim about its own state, which is the only place that knowledge lives.
+ * The second is a subset of the first, expressed by a contract every
+ * first-party overlay DECLARES on itself (`declareOverlay`). Declaring is not
+ * optional: `scripts/enforce-overlay-reload-policy.mjs` fails the push when a
+ * creation site has no declaration. Silence is reserved for DOM we do not own
+ * (Clerk), and silence blocks. Twice now a surface shipped silent and wedged
+ * both reload consumers for a whole session (#8593 fixed the mission-preset
+ * popover; the SignalModal took over within an hour, WORLDMONITOR-15X/15Z).
+ *
+ * The contract is a property of what the surface can HOLD, not of who opened
+ * it. A read-only display is safe on every path; a form is blocking on every
+ * path. The Pro activation interstitial opens with no gesture and is a
+ * multi-step flow, so unsolicited does not imply safe; a clicked SignalModal is
+ * read-only, so solicited does not imply blocking. A surface whose contract
+ * genuinely differs by open path re-declares in each path, because the
+ * declaration is idempotent and the last call wins.
  *
  * Extracted rather than copied. A second copy of the selector drifts the moment
  * someone adds a modal, and the two failure modes are both silent: a stale copy
  * either blocks forever or misses an overlay entirely.
  */
 
-/** Element surface this module needs. Structural so tests need no real DOM. */
+/** Element surface the probes need. Structural so tests need no real DOM. */
 export interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -32,23 +44,52 @@ export interface VisibleElementLike {
   getAttribute?: (name: string) => string | null;
 }
 
-/** Document surface this module needs. */
+/** Document surface the probes need. */
 export interface ModalDocumentLike {
   querySelectorAll: (sel: string) => Iterable<Element & VisibleElementLike>;
 }
 
+/** Element surface `declareOverlay` needs. Structural for the same reason. */
+export interface DeclarableElementLike {
+  setAttribute: (name: string, value: string) => void;
+}
+
 /**
- * Marks an overlay as holding nothing an automatic reload would destroy.
+ * The one judgment only a surface can make about itself.
  *
- * Set it on surfaces that appear without the user asking and carry no entered
- * state — an onboarding prompt that re-opens on the next load is the case this
- * exists for. Do NOT set it on anything holding typed input, a multi-step flow,
- * or a confirmation the user is mid-way through: reloading those loses work.
- *
- * It narrows the reload guard only. `isModalOpen` still reports the surface,
- * because a reload-safe overlay is still an overlay for accessibility purposes.
+ *   'blocking'  it can hold typed input, or a flow the user is mid-way through.
+ *   'safe'      it holds nothing a reload would lose: a read-only display, a
+ *               prompt that re-appears on the next load.
  */
-export const RELOAD_SAFE_ATTR = 'data-reload-safe';
+export type ReloadPolicy = 'safe' | 'blocking';
+
+/**
+ * What a first-party overlay declares about itself. `reload` is required so the
+ * compiler refuses a declaration that has not chosen.
+ */
+export interface OverlayContract {
+  readonly reload: ReloadPolicy;
+}
+
+/**
+ * Carries the contract into the DOM. The value is the `ReloadPolicy` literal.
+ * Absent on anything undeclared, which the reload selector treats as blocking.
+ * The DOM is the single source of truth: no registry, no second store, and
+ * third-party DOM has no attribute and therefore blocks with no special case.
+ */
+export const RELOAD_POLICY_ATTR = 'data-reload-policy';
+
+/**
+ * Declare an overlay's reload contract on the element the reload guard will
+ * see (the one carrying `role="dialog"` / `aria-modal` / `.modal-overlay`).
+ *
+ * Idempotent; the last call wins. Call once at creation when the contract is
+ * constant, or in each open path when it depends on how the surface opened.
+ * Sets nothing else: `role` and `aria-modal` remain the surface's own claims.
+ */
+export function declareOverlay(el: DeclarableElementLike, contract: OverlayContract): void {
+  el.setAttribute(RELOAD_POLICY_ATTR, contract.reload);
+}
 
 /**
  * Selectors that identify a modal/dialog candidate.
@@ -59,8 +100,13 @@ export const RELOAD_SAFE_ATTR = 'data-reload-safe';
  * close. A raw selector match would therefore be permanently true once Settings
  * has been instantiated. Visibility is what makes the predicate real; see
  * `isModalOpen` below.
+ *
+ * Exported for one reader only: the self-test of
+ * `scripts/enforce-overlay-reload-policy.mjs` pins its creation-idiom table to
+ * this list, so a clause added here without a matching idiom fails a test.
+ * Consumers use the derived selector strings below, never this tuple.
  */
-const MODAL_SELECTORS = [
+export const MODAL_SELECTORS = [
   '[aria-modal="true"]',
   '[role="dialog"]',
   '.cl-modalBackdrop',
@@ -71,13 +117,29 @@ const MODAL_SELECTORS = [
 export const OPEN_MODAL_SELECTOR = MODAL_SELECTORS.join(', ');
 
 /**
- * The same candidates minus anything that opted out of blocking a reload.
+ * The same candidates minus anything that declared itself reload-safe.
  * Derived rather than written out, so a new modal selector cannot be added to
- * one list and forgotten in the other.
+ * one list and forgotten in the other. Only the literal 'safe' opts out;
+ * 'blocking' and absence both block.
  */
 export const RELOAD_BLOCKING_MODAL_SELECTOR = MODAL_SELECTORS
-  .map((sel) => `${sel}:not([${RELOAD_SAFE_ATTR}])`)
+  .map((sel) => `${sel}:not([${RELOAD_POLICY_ATTR}="safe"])`)
   .join(', ');
+
+/**
+ * Who held the reload off, and whether they said they would.
+ *
+ *   'blocking'    a first-party surface declared it. A wedge here is a declared
+ *                 judgment to revisit.
+ *   'undeclared'  no contract on the element. Every first-party overlay is
+ *                 declared, so this means third-party DOM (Clerk) or an idiom
+ *                 the lint gate does not know. A non-`cl-` label with this
+ *                 value is a gate escape.
+ */
+export interface ReloadBlocker {
+  readonly label: string;
+  readonly policy: 'blocking' | 'undeclared';
+}
 
 /**
  * Is this candidate actually rendered?
@@ -113,6 +175,11 @@ function isRendered(el: VisibleElementLike): boolean {
  * spread of the affected users. Sanitised and truncated: it is published as a
  * Sentry tag, so it must stay a stable low-cardinality token rather than
  * arbitrary DOM text.
+ *
+ * Known limit: six surfaces put `modal-overlay` first in their class list, so
+ * that label cannot tell Settings from the watchlist editor. The label is a
+ * Sentry tag with alert rules on it, so changing what it emits is its own
+ * change, not a side effect of this module.
  */
 function describe(el: VisibleElementLike): string {
   const role = el.getAttribute?.('role') ?? '';
@@ -123,11 +190,19 @@ function describe(el: VisibleElementLike): string {
 }
 
 /**
+ * 'safe' never reaches here: the selector excluded it. Anything but the literal
+ * 'blocking' is therefore undeclared, including a garbage value.
+ */
+function policyOf(el: VisibleElementLike): ReloadBlocker['policy'] {
+  return el.getAttribute?.(RELOAD_POLICY_ATTR) === 'blocking' ? 'blocking' : 'undeclared';
+}
+
+/**
  * Any candidate that is actually rendered → a real open modal.
  *
  * Reload consumers want `findReloadBlockingModal` instead; this one answers the
  * broader "is an overlay on screen" question and deliberately ignores the
- * reload opt-out.
+ * reload contract.
  */
 export function isModalOpen(doc: ModalDocumentLike): boolean {
   for (const el of doc.querySelectorAll(OPEN_MODAL_SELECTOR)) {
@@ -137,15 +212,15 @@ export function isModalOpen(doc: ModalDocumentLike): boolean {
 }
 
 /**
- * The first rendered overlay that has NOT opted out of blocking a reload,
+ * The first rendered overlay that did NOT declare itself reload-safe,
  * described for telemetry — or null when an automatic reload is safe.
  *
- * Returns a label rather than a boolean so the caller can report what it saw;
- * `null` is the "go ahead and reload" answer.
+ * Returns the label and whether the block was declared, so the caller can
+ * report both; `null` is the "go ahead and reload" answer.
  */
-export function findReloadBlockingModal(doc: ModalDocumentLike): string | null {
+export function findReloadBlockingModal(doc: ModalDocumentLike): ReloadBlocker | null {
   for (const el of doc.querySelectorAll(RELOAD_BLOCKING_MODAL_SELECTOR)) {
-    if (isRendered(el)) return describe(el);
+    if (isRendered(el)) return { label: describe(el), policy: policyOf(el) };
   }
   return null;
 }
