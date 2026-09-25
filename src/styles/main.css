@@ -3223,7 +3223,10 @@ body.panel-resize-active iframe {
   margin-top: 20px;
 }
 
-/* Channel management modal overlay */
+/* Channel management modal overlay. Hides only by unmounting: the base rule
+   is display:flex with opacity:0 and .active raises the opacity, while the
+   reload guard's checkVisibility() probe ignores opacity, so a leaked overlay
+   reads as open for the rest of the session. LiveNewsPanel.destroy() removes it. */
 .live-channels-modal-overlay {
   position: fixed;
   inset: 0;
