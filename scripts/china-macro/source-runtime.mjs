@@ -165,11 +165,15 @@ export function hasUsableProxy(proxyUrl) {
  * left less than the floor), or throws the last exit's error. A caller with its
  * own wall budget passes `deadlineAt` so the ladder ends inside it; the
  * calendar's 75s NBS budget relies on that to keep its pinned ceiling.
+ * `stopRotationOn(error)` ends the ladder with that exit's error when another
+ * exit would only launder its verdict (a certificate or size rejection, or the
+ * publisher already having answered).
  */
 export async function fetchThroughProxy(target, init, proxyUrl, {
   proxyFetchFn = proxyFetch,
   now = Date.now,
   deadlineAt: callerDeadlineAt = Infinity,
+  stopRotationOn = () => false,
 } = {}) {
   let lastError = null;
   // Rotate exits. parseProxyConfigForAttempt maps the attempt index onto a
@@ -208,6 +212,7 @@ export async function fetchThroughProxy(target, init, proxyUrl, {
       });
     } catch (error) {
       logTransportFailure(error, target, 'proxy', attempt + 1);
+      if (stopRotationOn(error)) throw error;
       lastError = error;
       continue;
     }

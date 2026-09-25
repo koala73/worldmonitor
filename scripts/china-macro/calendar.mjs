@@ -393,6 +393,16 @@ function logNbsTransportFailure(error, url, detail) {
  * budget the calendar page shares; a ladder that never ran (deadline floor)
  * rethrows it untagged so the retry loop keeps its say.
  */
+// An exit that rejected the peer's certificate or an oversized body, or that
+// reached NBS and got a non-2xx answer before its body failed, carries a
+// verdict another exit would only launder (and a publisher refusal must not be
+// re-asked from a fresh egress point).
+function isFinalProxyFailure(error) {
+  if (error?.code === 'RESPONSE_TOO_LARGE' || isCertificateValidationFailure(error)) return true;
+  const { stage, httpStatus } = error?.proxyFailure || {};
+  return stage === 'response_body' && Number.isInteger(httpStatus) && (httpStatus < 200 || httpStatus > 299);
+}
+
 function withNbsProxyFallback(fetchFn, { proxyUrl, proxyFetchFn, deadlineAt, onRecovered }) {
   if (!hasUsableProxy(proxyUrl)) return fetchFn;
   return async (url, init) => {
@@ -402,9 +412,15 @@ function withNbsProxyFallback(fetchFn, { proxyUrl, proxyFetchFn, deadlineAt, onR
       if (isCertificateValidationFailure(directError) || !shouldRetryViaProxy(directError)) throw directError;
       let proxied;
       try {
-        proxied = await fetchThroughProxy(new URL(url), init, proxyUrl, { proxyFetchFn, deadlineAt });
+        proxied = await fetchThroughProxy(new URL(url), init, proxyUrl, {
+          proxyFetchFn,
+          deadlineAt,
+          stopRotationOn: isFinalProxyFailure,
+        });
       } catch (proxyError) {
         if (proxyError?.code === 'SOURCE_CONTRACT_VIOLATION') throw nbsTransportError(proxyError.publicReason);
+        if (proxyError?.code === 'RESPONSE_TOO_LARGE') throw nbsTransportError('RESPONSE_TOO_LARGE');
+        if (isCertificateValidationFailure(proxyError)) throw proxyError;
         try {
           directError.nonRetryable = true;
         } catch {

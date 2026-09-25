@@ -1319,6 +1319,29 @@ describe('NBS proxy fallback', () => {
     assert.doesNotMatch(JSON.stringify([decisions, logs]), CREDENTIAL_PATTERN);
   });
 
+  it('counts only the hop the proxy recovered when the other page loads directly', async (t) => {
+    t.mock.method(console, 'warn', () => {});
+    const proxied = [];
+    const decisions = [];
+    const calendar = await fetchChinaReleaseCalendar({
+      now: TEST_NOW,
+      fetchFn: async (url, init) => (String(url) === CALENDAR_PAGE_URL
+        ? nbsRefusedDirect(url, init)
+        : String(url) === NBS_CALENDAR_INDEX_URL ? new Response(INDEX_ANCHOR) : chinaMoneyResponse()),
+      proxyUrl: PARSEABLE_PROXY,
+      proxyFetchFn: async (url) => {
+        proxied.push(String(url));
+        return proxyResult(nbsPage(url));
+      },
+      sleepFn: async () => {},
+      onDecision: (entry) => decisions.push(entry),
+    });
+    assert.ok(calendar.events.some((event) => event.kind === 'nbs'));
+    assert.deepEqual(proxied, [CALENDAR_PAGE_URL]);
+    assert.equal(decisions[0].requestCount, 2);
+    assert.equal(decisions[0].proxyFallbacks, 1);
+  });
+
   it('surfaces the direct failure and stops retrying that URL once every exit fails', async (t) => {
     const logs = [];
     t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
@@ -1465,6 +1488,38 @@ describe('NBS proxy fallback', () => {
     assert.equal(proxyCalls, 1);
     assert.equal(decisions[0].requestCount, 1);
   });
+
+  // The real proxyFetch rejects these mid-stream (_proxy-utils.cjs) rather than
+  // returning a buffer, so each shape must stop the exit rotation itself: a
+  // later exit's success must not launder the first exit's verdict.
+  const proxyRejection = (code, proxyFailure) => Object.assign(new Error('secret'), {
+    code, ...(proxyFailure ? { proxyFailure } : {}),
+  });
+  for (const [label, rejection, expected] of [
+    ['a streamed oversize rejection', proxyRejection('RESPONSE_TOO_LARGE', { stage: 'response_body', httpStatus: 200 }), /RESPONSE_TOO_LARGE/],
+    ['a target certificate failure', Object.assign(proxyRejection(undefined, { stage: 'target_tls' }), { cause: { code: 'CERT_HAS_EXPIRED' } }), new RegExp(TLS_CERT_UNTRUSTED_REASON)],
+    ['a publisher refusal whose body failed', proxyRejection('ECONNRESET', { stage: 'response_body', httpStatus: 429 }), /FETCH_FAILED/],
+  ]) {
+    it(`stops rotating exits on ${label}`, async (t) => {
+      t.mock.method(console, 'warn', () => {});
+      const decisions = [];
+      let proxyCalls = 0;
+      await assert.rejects(fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: nbsRefusedDirect,
+        proxyUrl: PARSEABLE_PROXY,
+        proxyFetchFn: async () => {
+          proxyCalls += 1;
+          if (proxyCalls === 1) throw rejection;
+          return proxyResult(proxyCalls === 2 ? INDEX_ANCHOR : fixture('nbs-calendar.html'));
+        },
+        sleepFn: async () => {},
+        onDecision: (entry) => decisions.push(entry),
+      }), (error) => expected.test(error.message));
+      assert.equal(proxyCalls, 1);
+      assert.equal(decisions[0].requestCount, 1);
+    });
+  }
 
   it('caps the proxy ladder at the shared NBS deadline', async (t) => {
     t.mock.method(console, 'warn', () => {});
