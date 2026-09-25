@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { __testing__ as health } from '../api/health.js';
 
 const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+const envelopeWriter = relay.slice(relay.indexOf('function buildEnvelope('), relay.indexOf('// Envelope-aware read.'));
 const producer = relay.slice(relay.indexOf('const PIZZINT_SEED_INTERVAL_MS'), relay.indexOf('function startPizzintSeedLoop()'));
 const emptyResponse = {
   success: true, data: [], events: [], overall_index: 0, defcon_level: 5,
@@ -21,19 +23,14 @@ function harness() {
   const context = vm.createContext({
     Date: Clock, AbortSignal, CHROME_UA: 'test', console: { log() {}, warn() {} },
     fetch: async (url) => ({ ok: true, json: async () => url.includes('dashboard-data') ? state.source : {} }),
-    envelopeWrite: async (key, data, ttl, meta) => {
-      if (state.failPayload) return false;
-      state.writes.push(key);
-      state.cache.set(key, { data: structuredClone(data), meta: structuredClone(meta), expiresAt: state.now + ttl * 1000 });
-      return true;
-    },
     upstashSet: async (key, data, ttl) => {
+      if (key === payloadKey && state.failPayload) return false;
       state.writes.push(key);
       state.cache.set(key, { data: structuredClone(data), expiresAt: state.now + ttl * 1000 });
       return true;
     },
   });
-  vm.runInContext(producer, context);
+  vm.runInContext(envelopeWriter + producer, context);
   return { state, seed: () => vm.runInContext('seedPizzint()', context) };
 }
 
@@ -43,7 +40,7 @@ const metaKey = 'seed-meta:intelligence:pizzint';
 test('empty upstream response preserves the last observation and its original expiry', async () => {
   const { state, seed } = harness();
   await seed();
-  assert.equal(state.cache.get(payloadKey).data.pizzint.defconLevel, 2);
+  assert.equal(state.cache.get(payloadKey).data.data.pizzint.defconLevel, 2);
   const previous = structuredClone(state.cache);
   state.now += 600_000;
   state.source = emptyResponse;
@@ -59,7 +56,7 @@ test('first-run emptiness publishes no normal activity and a later valid respons
   assert.equal(state.cache.size, 0);
   state.source = validResponse;
   await seed();
-  assert.equal(state.cache.get(payloadKey).data.pizzint.locationsMonitored, 1);
+  assert.equal(state.cache.get(payloadKey).data.data.pizzint.locationsMonitored, 1);
   assert.equal(state.cache.get(metaKey).data.recordCount, 1);
 });
 
@@ -72,4 +69,23 @@ test('failed payload publication does not advance success metadata', async () =>
   await seed();
   assert.deepEqual(state.cache, previous);
   assert.equal(state.writes.length, 2);
+});
+
+test('a sustained empty source still expires the payload and fails the real health classifier', async () => {
+  const { state, seed } = harness();
+  await seed();
+  const classify = () => health.classifyKey('pizzint', payloadKey, { allowOnDemand: false }, {
+    keyStrens: new Map([[payloadKey, state.now < state.cache.get(payloadKey).expiresAt ? 100 : 0]]),
+    keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify(state.cache.get(metaKey).data)]]),
+    now: state.now,
+  });
+  assert.equal(classify().status, 'OK');
+  state.source = emptyResponse;
+  state.now += 31 * 60_000;
+  await seed();
+  const expired = classify();
+  assert.notEqual(expired.status, 'OK');
+  assert.equal(expired.seedAgeMin, 31);
+  assert.ok(['warn', 'crit'].includes(health.STATUS_COUNTS[expired.status]));
 });

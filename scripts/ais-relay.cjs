@@ -8088,8 +8088,8 @@ async function seedPizzint() {
       return;
     }
     const raw = await resp.json();
-    if (!raw.success || !Array.isArray(raw.data)) {
-      console.warn('[PizzINT] No data in API response');
+    if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
+      console.warn('[PizzINT] No data in API response; preserving last good observation');
       return;
     }
 
@@ -8170,7 +8170,7 @@ async function seedPizzint() {
 
     const payload = { pizzint, tensionPairs };
     const ok1 = await envelopeWrite(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL, { recordCount: locations.length, sourceVersion: 'pizzint' });
-    const ok2 = await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
+    const ok2 = ok1 && await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} gdelt:${tensionPairs.length} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PizzINT] Seed error:', e?.message || e);
