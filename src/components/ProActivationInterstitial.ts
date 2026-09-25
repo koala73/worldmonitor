@@ -52,7 +52,9 @@ import {
 } from '@/services/push-notifications';
 import { getServerInsights, fetchServerInsights } from '@/services/insights-loader';
 import { loadWidgets, loadWidgetsStrict } from '@/services/widget-store';
+import { listMcpClients } from '@/services/mcp-clients';
 import {
+  resolveHasUsedPowerFeature,
   ACTIVATION_EVENTS,
   buildActivationSteps,
   hasAnyActivatedProFunctionality,
@@ -977,6 +979,27 @@ function hasUsedPowerFeatureStrict(): boolean {
   return loadWidgetsStrict().length > 0;
 }
 
+// Bounded, best-effort read of connected MCP clients for the power-step signal
+// (#5612). The strict context read already awaits a network round trip, so one
+// more bounded query is acceptable there; the synchronous reader keeps the
+// widget-only fallback. A failure or timeout must never block activation, and
+// must never be read as "has clients": it degrades to the widget signal.
+const MCP_CLIENTS_SIGNAL_TIMEOUT_MS = 3_000;
+
+async function readConnectedMcpClientsSignal(signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
+  try {
+    const clients = await withTimeout(
+      listMcpClients(),
+      MCP_CLIENTS_SIGNAL_TIMEOUT_MS,
+      'activation-mcp-clients-read',
+    );
+    return resolveHasUsedPowerFeature(0, clients);
+  } catch {
+    return false;
+  }
+}
+
 /** Platform capabilities from the live push runtime (drives the alerts-step gate). */
 function readActivationCapabilities(): ActivationPlatformCapabilities {
   const webPushSupported = isWebPushSupported();
@@ -1042,7 +1065,10 @@ async function readActivationContextStrict(
       () => controller.abort(),
     );
     const context = activationContextFromChannelsData(data, readActivationCapabilities());
-    context.config.hasUsedPowerFeature = hasUsedPowerFeatureStrict();
+    // Widgets first: a local hit needs no network. Only an empty widget store
+    // pays for the MCP-clients round trip.
+    context.config.hasUsedPowerFeature = hasUsedPowerFeatureStrict()
+      || await readConnectedMcpClientsSignal(controller.signal);
     return context;
   } finally {
     signal?.removeEventListener('abort', abortFromParent);
