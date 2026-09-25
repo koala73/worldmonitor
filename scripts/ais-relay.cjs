@@ -8088,7 +8088,7 @@ async function seedPizzint() {
       return;
     }
     const raw = await resp.json();
-    if (!raw.success || !Array.isArray(raw.data)) {
+    if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
       console.warn('[PizzINT] No data in API response');
       return;
     }
