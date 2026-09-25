@@ -551,6 +551,7 @@ import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chun
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
@@ -734,6 +735,15 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContaine
     } catch {}
   };
 
+  // Registration used to run here, at module evaluation. Workbox starts its
+  // precache wave the moment the SW installs, and on a slow mobile profile that
+  // wave (74 requests / 882 KB, all High priority) landed inside the paint
+  // window, taking ~4 s of bandwidth from the critical path (#5372). Defer the
+  // register() call to after load + idle so the same manifest is precached
+  // once the page has painted. Only WHEN changes: installSwUpdateHandler stays
+  // above so it still observes the early lifecycle, and the update-check chain
+  // below is unchanged.
+  const registerServiceWorker = (): void => {
   navigator.serviceWorker.register('/sw.js', { scope: '/' })
     .then((registration) => {
       console.log('[PWA] Service worker registered');
@@ -786,6 +796,9 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContaine
     .catch((err) => {
       console.warn('[PWA] Service worker registration failed:', err);
     });
+  };
+
+  scheduleAfterFirstPaint(registerServiceWorker);
 }
 
 // --- SW/Cache Nuke Template ---
