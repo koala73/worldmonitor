@@ -307,6 +307,12 @@
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
+  "trustedDependencies": [
+    "browser-tabs-lock",
+    "core-js",
+    "es5-ext",
+    "protobufjs"
+  ],
   "overrides": {
     "convex": {
       "esbuild": "0.28.1"
