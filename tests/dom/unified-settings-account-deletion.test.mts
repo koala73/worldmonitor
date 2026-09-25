@@ -20,6 +20,7 @@ let subscriptionLoaded = true;
 
 const deletionMocks = vi.hoisted(() => ({
   request: vi.fn(),
+  status: vi.fn(),
 }));
 const signOutMock = vi.hoisted(() => vi.fn(async () => {}));
 const toastMock = vi.hoisted(() => vi.fn());
@@ -65,6 +66,7 @@ vi.mock('@/services/clerk', async (importOriginal) => ({
 
 vi.mock('@/services/account-deletion', () => ({
   requestOwnAccountDeletion: (...args: unknown[]) => deletionMocks.request(...args),
+  getOwnAccountDeletionStatus: (...args: unknown[]) => deletionMocks.status(...args),
 }));
 
 vi.mock('@/utils/toast', () => ({
@@ -223,6 +225,8 @@ beforeEach(() => {
   subscriptionLoaded = true;
   deletionMocks.request.mockReset();
   deletionMocks.request.mockResolvedValue({ status: 'complete', userIdHash: 'abc' });
+  deletionMocks.status.mockReset();
+  deletionMocks.status.mockResolvedValue(null);
   signOutMock.mockReset();
   toastMock.mockReset();
   settings = new UnifiedSettings(config());
@@ -493,5 +497,90 @@ describe('UnifiedSettings account deletion', () => {
     expect(signOutMock).not.toHaveBeenCalled();
     expect(document.getElementById('unifiedSettingsModal')?.classList.contains('active')).toBe(true);
     expect(document.querySelector('[data-deletion-confirm]')).not.toBeNull();
+  });
+
+  it('surfaces a failed deletion with a Retry deletion action', async () => {
+    // A failed erase keeps the write fence on (convex/accountDeletion/guard.ts),
+    // so every personal write throws. Without this notice the user saw a
+    // half-working account and a "Delete account" button that did not say it
+    // was also the way out (#8495).
+    deletionMocks.status.mockResolvedValue({ status: 'failed', lastError: 'ERASE_BATCH_FAILED' });
+    settings.open('billing');
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-deletion-failed]')?.textContent)
+        .toMatch(/did not finish[\s\S]*ERASE_BATCH_FAILED/);
+    });
+    const button = document.querySelector<HTMLButtonElement>('[data-delete-account]')!;
+    expect(button.textContent).toBe('Retry deletion');
+
+    button.click();
+    typePhrase('DELETE');
+    document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
+    await vi.waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
+    expect(deletionMocks.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the plain Delete account control when no deletion failed', async () => {
+    deletionMocks.status.mockResolvedValue({ status: 'pending', step: 'personal' });
+    settings.open('billing');
+    await vi.waitFor(() => expect(deletionMocks.status).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector('[data-deletion-failed]')).toBeNull();
+    expect(document.querySelector('[data-delete-account]')?.textContent).toBe('Delete account');
+  });
+
+  it('checks deletion status when switching to the billing tab', async () => {
+    deletionMocks.status.mockResolvedValue({ status: 'failed' });
+    settings.open('settings');
+    expect(deletionMocks.status).not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>('#us-tab-billing')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-deletion-failed]')?.textContent).toMatch(/did not finish/);
+    });
+  });
+
+  it("does not apply one account's failed deletion to the next account", async () => {
+    let resolveStatus!: (value: unknown) => void;
+    deletionMocks.status.mockReturnValueOnce(new Promise((resolve) => { resolveStatus = resolve; }));
+    settings.open('billing');
+    expect(deletionMocks.status).toHaveBeenCalledTimes(1);
+
+    switchAccountTo(signedIn('user_other'));
+    resolveStatus({ status: 'failed', lastError: 'ERASE_BATCH_FAILED' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector('[data-deletion-failed]')).toBeNull();
+  });
+
+  it('ignores an older status reply that settles after a newer one', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    deletionMocks.status
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce(null);
+    settings.open('billing');
+    document.querySelector<HTMLButtonElement>('#us-tab-settings')!.click();
+    document.querySelector<HTMLButtonElement>('#us-tab-billing')!.click();
+    expect(deletionMocks.status).toHaveBeenCalledTimes(2);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    resolveFirst({ status: 'failed', lastError: 'ERASE_BATCH_FAILED' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector('[data-deletion-failed]')).toBeNull();
+  });
+
+  it('re-checks status after a failed attempt so the section reflects it', async () => {
+    deletionMocks.request.mockRejectedValue(
+      new Error('Account deletion failed (ERASE_BATCH_FAILED). Try again, or contact support with that code.'),
+    );
+    settings.open('billing');
+    await vi.waitFor(() => expect(deletionMocks.status).toHaveBeenCalledTimes(1));
+    deletionMocks.status.mockResolvedValue({ status: 'failed', lastError: 'ERASE_BATCH_FAILED' });
+    document.querySelector<HTMLButtonElement>('[data-delete-account]')!.click();
+    typePhrase('DELETE');
+    document.querySelector<HTMLButtonElement>('[data-deletion-confirm]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-deletion-failed]')?.textContent).toMatch(/ERASE_BATCH_FAILED/);
+    });
+    expect(document.querySelector('[data-delete-account]')?.textContent).toBe('Retry deletion');
+    expect(signOutMock).not.toHaveBeenCalled();
   });
 });

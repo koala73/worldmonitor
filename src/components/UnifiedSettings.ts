@@ -34,7 +34,7 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { signOut } from '@/services/clerk';
-import { requestOwnAccountDeletion } from '@/services/account-deletion';
+import { getOwnAccountDeletionStatus, requestOwnAccountDeletion } from '@/services/account-deletion';
 import { track, trackApiAction } from '@/services/analytics';
 import {
   getEntitlementState,
@@ -189,6 +189,10 @@ export class UnifiedSettings {
   private deletionBusy = false;
   private deletionError = '';
   private deletionPhraseHandler: (() => void) | null = null;
+  // Set when the server reports this account's deletion as failed: the write
+  // fence stays on, and requesting deletion again resumes it (#8495).
+  private deletionFailure: { code: string | undefined } | null = null;
+  private deletionStatusSeq = 0;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -540,6 +544,7 @@ export class UnifiedSettings {
     if (nextUserId === this.accountUserId) return;
 
     this.closeDeletionDialog();
+    this.deletionFailure = null;
     this.accountUserId = nextUserId;
     this.accountDataGeneration += 1;
     this.accountEntitlementRefreshPending = true;
@@ -998,6 +1003,9 @@ export class UnifiedSettings {
     this.attachApiKeysHandlers();
     this.attachEmbedKeysHandlers();
     if (loadAccountData) {
+      if (this.activeTab === 'billing' && getAuthState().user) {
+        void this.loadDeletionStatus();
+      }
       if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
         void this.loadPlanLimitNotices();
       }
@@ -1044,6 +1052,10 @@ export class UnifiedSettings {
       this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab-panel'),
       tab,
     );
+
+    if (tab === 'billing' && getAuthState().user) {
+      void this.loadDeletionStatus();
+    }
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();
@@ -1221,7 +1233,8 @@ export class UnifiedSettings {
       <section class="account-deletion-zone" data-account-deletion>
         <h3 class="account-deletion-title">Delete account</h3>
         <p class="account-deletion-desc">Permanently delete this World Monitor account. Subscriptions cancel immediately with no refund of remaining prepaid time. API keys, embed keys, and MCP tokens stop working. Billing records needed for accounting, disputes, and lawful requests are kept with the customer contact details they carry; they stop naming your login account, though payment-provider webhook logs written before deletion keep the identifiers they were delivered with. Dashboard preferences and desktop keychain secrets on this device are not wiped remotely.</p>
-        <button type="button" class="delete-account-btn" data-delete-account>Delete account</button>
+        <div data-deletion-failure-slot>${this.renderDeletionFailureNotice()}</div>
+        <button type="button" class="delete-account-btn" data-delete-account>${this.deletionButtonLabel()}</button>
       </section>
     `;
   }
@@ -1359,7 +1372,56 @@ export class UnifiedSettings {
       this.deletionBusy = false;
       this.deletionError = message;
       this.syncDeletionConfirmEnabled();
+      // A server-side failure leaves the account fenced; re-read the row so
+      // the section says so once the dialog is dismissed.
+      void this.loadDeletionStatus();
     }
+  }
+
+  private async loadDeletionStatus(): Promise<void> {
+    const request = this.captureAccountRequest();
+    if (!request) return;
+    // Open, tab switches, entitlement re-renders and a failed attempt can each
+    // start a read; only the newest may write, or an older `failed` reply
+    // could land after a newer one and re-show a stale notice.
+    const seq = ++this.deletionStatusSeq;
+    try {
+      const status = await getOwnAccountDeletionStatus();
+      if (!this.isAccountRequestCurrent(request) || seq !== this.deletionStatusSeq) return;
+      this.deletionFailure = status?.status === 'failed' ? { code: status.lastError } : null;
+    } catch (err) {
+      if (!this.isAccountRequestCurrent(request)) return;
+      // Advisory only: the Delete control works without it, so a failed read
+      // keeps whatever the section already shows.
+      console.warn('[settings] Failed to load account deletion status:', err);
+      return;
+    }
+    this.renderDeletionFailure();
+  }
+
+  /** Update in place so the dialog's focus trap can still return to the button. */
+  private renderDeletionFailure(): void {
+    const section = this.overlay.querySelector<HTMLElement>('[data-account-deletion]');
+    if (!section) return;
+    const slot = section.querySelector<HTMLElement>('[data-deletion-failure-slot]');
+    if (slot) setTrustedHtml(slot, trustedHtml(
+      this.renderDeletionFailureNotice(),
+      'static copy; the only dynamic value (error code) is escapeHtml-escaped',
+    ));
+    const button = section.querySelector<HTMLButtonElement>('[data-delete-account]');
+    if (button) button.textContent = this.deletionButtonLabel();
+  }
+
+  private deletionButtonLabel(): string {
+    return this.deletionFailure ? 'Retry deletion' : 'Delete account';
+  }
+
+  private renderDeletionFailureNotice(): string {
+    const failure = this.deletionFailure;
+    if (!failure) return '';
+    const code = failure.code ? ` (${escapeHtml(failure.code)})` : '';
+    const support = failure.code ? 'contact support with that code' : 'contact support';
+    return `<p class="account-deletion-failed" data-deletion-failed role="status">Your account deletion did not finish${code}. Some data is already erased, and the account stays locked against changes until deletion completes. Retry to finish it, or ${support}.</p>`;
   }
 
   // Business Pro seats (#4634/#4635) state/render/handlers live in

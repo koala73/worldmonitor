@@ -26513,6 +26513,17 @@ body.map-width-resizing {
   line-height: 1.45;
 }
 
+.account-deletion-failed {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  line-height: 1.45;
+  border-left: 3px solid var(--danger, #d64545);
+  background: color-mix(in srgb, var(--danger, #d64545) 10%, transparent);
+  border-radius: 4px;
+}
+
 .delete-account-btn {
   padding: 8px 14px;
   border-radius: 4px;

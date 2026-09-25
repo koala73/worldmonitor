@@ -74,6 +74,21 @@ retry ladders start fresh — the previous error is written to the logs as
 will no longer show it. Provider calls use at most five attempts with exponential
 backoff; permanent failures stop immediately.
 
+The user can take the same resume path without support. A `failed` row keeps the
+write fence on while the Clerk login still works, so **Plan & billing** shows
+"Your account deletion did not finish (`<code>`)" with a **Retry deletion** button.
+Retrying runs the same resume as `eraseConfirmedUser`. There is deliberately no
+"cancel and restore": personal rows are already hard-deleted and billing rows
+already point at the tombstone, so lifting the fence would leave an empty,
+unentitled account.
+
+A `pending` row whose continuation was lost is re-armed by the
+`account-deletion-stalled-reaper` cron every 5 minutes once it is older than
+`PENDING_STALE_AFTER_MS` (10 minutes), so a stalled deletion recovers within
+~15 minutes. Each tick re-arms at most 20 rows (`REAP_STALLED_LIMIT`); a larger
+backlog drains over later ticks, 20 rows per 5 minutes.
+Look for `account_deletion_stalled_rearmed` in the logs.
+
 Do **not** pass an email argument. Extra fields are rejected.
 
 ## What the engine does
