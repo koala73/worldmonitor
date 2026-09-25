@@ -8089,7 +8089,9 @@ async function seedPizzint() {
     }
     const raw = await resp.json();
     if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
-      console.warn('[PizzINT] No data in API response; preserving last good observation');
+      const reason = !raw.success ? 'unsuccessful_response'
+        : !Array.isArray(raw.data) ? 'non_array_data' : 'empty_array';
+      console.warn(`[PizzINT] No data in API response (${reason}); preserving last good observation`);
       return;
     }
 

@@ -18,10 +18,10 @@ const validResponse = { success: true, data: [{
 }] };
 
 function harness() {
-  const state = { source: validResponse, writes: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false };
+  const state = { source: validResponse, writes: [], warnings: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false };
   class Clock extends Date { static now() { return state.now; } }
   const context = vm.createContext({
-    Date: Clock, AbortSignal, CHROME_UA: 'test', console: { log() {}, warn() {} },
+    Date: Clock, AbortSignal, CHROME_UA: 'test', console: { log() {}, warn: (...args) => state.warnings.push(args) },
     fetch: async (url) => ({ ok: true, json: async () => url.includes('dashboard-data') ? state.source : {} }),
     upstashSet: async (key, data, ttl) => {
       if (key === payloadKey && state.failPayload) return false;
@@ -36,6 +36,31 @@ function harness() {
 
 const payloadKey = 'intelligence:pizzint:seed:v1';
 const metaKey = 'seed-meta:intelligence:pizzint';
+
+for (const [reason, response] of [
+  ['unsuccessful_response', { success: false, data: [] }],
+  ['non_array_data', { success: true, data: { token: 'synthetic-secret' } }],
+  ['empty_array', { success: true, data: [] }],
+]) {
+  test(`classifies ${reason} without logging response content or changing publication`, async () => {
+    const { state, seed } = harness();
+    await seed();
+    const previous = structuredClone(state.cache);
+    state.now += 600_000;
+    state.source = {
+      ...response,
+      message: 'https://example.invalid/?token=synthetic-secret',
+      token: 'synthetic-secret',
+      reason: 'synthetic-secret\nforged log entry',
+    };
+    await seed();
+    assert.deepEqual(state.warnings, [[
+      `[PizzINT] No data in API response (${reason}); preserving last good observation`,
+    ]], 'only the fixed category is logged; no payload fields or extra arguments');
+    assert.deepEqual(state.cache, previous);
+    assert.equal(state.writes.length, 2);
+  });
+}
 
 test('empty upstream response preserves the last observation and its original expiry', async () => {
   const { state, seed } = harness();
