@@ -229,6 +229,11 @@ export function classifyHost(hostname) {
   if (host === PROPERTY_APEX) return { host, hostClass: 'apex' };
   const variant = VARIANT_HOSTS.find((name) => host === `${name}.${PROPERTY_APEX}`);
   if (variant) return { host, hostClass: 'variant' };
+  // Every subdomain is inside the Domain property, so an unlisted one such as
+  // status. is a surface with no family, not a foreign host.
+  if (host.endsWith(`.${PROPERTY_APEX}`)) {
+    return fail(`host ${host} has no page family in the ${PROPERTY_APEX} property`);
+  }
   return fail(`host is outside the ${PROPERTY_APEX} property: ${host || '(empty)'}`);
 }
 

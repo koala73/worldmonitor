@@ -485,6 +485,15 @@ describe('Search Console collector on live data', () => {
     assert.match(renderGscMarkdown(snapshot), /## URLs outside every family \(28d\)[\s\S]*\/download/);
   });
 
+  it('lists every unmapped URL by name, not only the top few', async () => {
+    const legacy = Array.from({ length: 25 }, (_, index) => pageRow(`https://www.worldmonitor.app/legacy-${index}`, index + 1));
+    const snapshot = await collectFrom(memoryTransport({ pageRows: legacy }));
+    const [window] = snapshot.performance.windows;
+    assert.equal(window.unmapped.urls, 25);
+    assert.equal(window.unmapped.topUrls.length, 25);
+    assert.match(renderGscMarkdown(snapshot), /legacy-0 \| 1 \|/);
+  });
+
   it('queries Search Analytics before spending any inspection quota', async () => {
     let inspections = 0;
     await assert.rejects(

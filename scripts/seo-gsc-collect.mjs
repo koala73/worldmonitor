@@ -90,7 +90,6 @@ const DEFAULT_CONCURRENCY = 5;
 const REQUEST_TIMEOUT_MS = Object.freeze({ api: 60_000, sitemap: 30_000, probe: 20_000 });
 /** Delays between attempts; four attempts in total. */
 const RETRY_DELAYS_MS = Object.freeze([2_000, 8_000, 30_000]);
-const MAX_UNMAPPED_URLS = 20;
 const MAX_PAGES_PER_WINDOW = 40;
 const MAX_URLS_PER_LIST = 5;
 const MAX_FLAGGED_URLS = 50;
@@ -883,7 +882,6 @@ function buildPerformance(performance, inventory, indexedByFamily) {
         topUrls: unmappedRows
           .sort((left, right) => right.impressions - left.impressions
             || left.key.localeCompare(right.key))
-          .slice(0, MAX_UNMAPPED_URLS)
           .map((row) => ({ ...pageRowSummary(row), reason: row.reason })),
       },
       topQueries: queryRows,

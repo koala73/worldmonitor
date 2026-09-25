@@ -161,6 +161,16 @@ describe('URL taxonomy for rows Search Console reports', () => {
     assert.equal(classifyUrl('https://www.worldmonitor.app/favicon.ico').family, 'site_infrastructure');
   });
 
+  it('says a first-party subdomain has no family, not that it is outside the property', () => {
+    assert.throws(
+      () => classifyUrl('https://status.worldmonitor.app/'),
+      (error) => /status\.worldmonitor\.app/.test(error.message)
+        && /no page family/.test(error.message)
+        && !/outside/.test(error.message),
+    );
+    assert.throws(() => classifyUrl('https://example.com/'), /outside the worldmonitor\.app property/);
+  });
+
   it('reads an SVG content type as a subresource, not a feed', () => {
     assert.equal(kindForContentType('image/svg+xml'), 'subresource');
     assert.equal(kindForContentType('application/rss+xml'), 'feed');
