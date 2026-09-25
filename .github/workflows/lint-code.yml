@@ -104,6 +104,7 @@ jobs:
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
       - run: npm run lint:safe-local-storage
+      - run: npm run lint:overlay-reload-policy
       - run: npm run security:vite-env-secrets
       - name: Version sync check
         run: npm run version:check
