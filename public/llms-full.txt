@@ -136,11 +136,11 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure — RSS categories, panels, military bases, nuclear facilities, hotspots
 - [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
-- [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity — RSS categories, panels, tech HQs, cloud regions, startup hubs
-- [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI — RSS categories, panels, stock exchanges, central banks, Gulf investments
-- [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, shipping, chokepoints, supply chains, commodity markets
-- [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
-- [Energy Monitor](https://energy.worldmonitor.app): Energy security, oil and gas, chokepoints, disruption timelines
+- [Tech Monitor](https://tech.worldmonitor.app/dashboard): Startups, AI/ML, cloud, cybersecurity — RSS categories, panels, tech HQs, cloud regions, startup hubs
+- [Finance Monitor](https://finance.worldmonitor.app/dashboard): Global markets, trading, central banks, Gulf FDI — RSS categories, panels, stock exchanges, central banks, Gulf investments
+- [Commodity Monitor](https://commodity.worldmonitor.app/dashboard): Mining, metals, energy, shipping, chokepoints, supply chains, commodity markets
+- [Happy Monitor](https://happy.worldmonitor.app/dashboard): Positive news, breakthroughs, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app/dashboard): Energy security, oil and gas, chokepoints, disruption timelines
 
 <a id="corpus-documentation"></a>
 ## Documentation
@@ -738,7 +738,7 @@ This page does not publish confidence intervals; each figure is published with t
 <a id="corpus-chokepoint-methodology"></a>
 ## Chokepoint methodology
 
-_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/docs/corrections)._
 
 <a id="corpus-start-here"></a>
 ## Start here
@@ -1009,7 +1009,7 @@ Refresh cadence:
 <a id="corpus-corrections"></a>
 ## Corrections
 
-See [`/corrections`](/corrections) for the planned revision-log shape. If you
+See [`/corrections`](/docs/corrections) for the planned revision-log shape. If you
 spot a wrong number today, open a GitHub issue at the
 [public repository](https://github.com/koala73/worldmonitor/issues).
 
@@ -1494,7 +1494,7 @@ No. Price moves are confirmation, not diagnosis. Pair them with route, supply, p
 <a id="corpus-country-resilience-index-methodology"></a>
 ## Country Resilience Index methodology
 
-_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/docs/corrections)._
 
 <a id="corpus-start-here-country-resilience-index-methodology"></a>
 ## Start here (Country Resilience Index methodology)
@@ -1537,7 +1537,7 @@ public ranking, rather than quietly ranked on guesswork.
 - **Not a wealth ranking**, and [deliberately so](#corpus-construct-contract). An
   indicator whose only story is "this country is rich" is excluded by design.
   Wealth buys resilience, but the two are not the same thing.
-- **Not the [Composite Instability Index](/methodology/cii-risk-scores).** CII
+- **Not the [Composite Instability Index](/docs/methodology/cii-risk-scores).** CII
   asks *how much stress is on this country right now?* CRI asks *how well could
   it take a hit?* A country can be calm and fragile, or under pressure and
   tough. The dashboard shows them side by side for exactly that reason.
@@ -1569,7 +1569,7 @@ Each stage is documented below: [normalization](#corpus-normalization),
 <a id="corpus-how-often-it-updates"></a>
 ### How often it updates
 
-Live API scores refresh every 6 hours. The crawlable country snapshot is published monthly from a credentialed full-universe capture. Each country page identifies its snapshot file, capture date, temporal coverage, and publication note. The [revision and corrections log](/corrections) records material methodology changes that affect published snapshots.
+Live API scores refresh every 6 hours. The crawlable country snapshot is published monthly from a credentialed full-universe capture. Each country page identifies its snapshot file, capture date, temporal coverage, and publication note. The [revision and corrections log](/docs/corrections) records material methodology changes that affect published snapshots.
 
 Upstream feeds can include more territories than the published ranking covers. The public ranking is filtered to the rankable universe before publication.
 
@@ -2713,7 +2713,7 @@ The crawlable CRI snapshot workflow is scheduled for the first day of each month
 ## Energy Atlas automated revision log (planned)
 
 WorldMonitor's Energy Atlas publishes evidence bundles — not opinions —
-for pipelines, storage facilities, [fuel shortages](/api-reference/supplychainservice/listfuelshortages), and disruption
+for pipelines, storage facilities, [fuel shortages](/docs/api-reference/supplychainservice/listfuelshortages), and disruption
 events. A deterministic, versioned classifier turns those bundles into
 public badges (`flowing` / `reduced` / `offline` / `disputed` for
 assets; `confirmed` / `watch` for shortages).
@@ -2775,7 +2775,7 @@ rather than pretending the surface is live.
 - **Published methodology revisions.** The table on this page records
   changes that affect public datasets and their interpretation.
 - **Evidence bundles on every asset.** Click any pipeline, storage
-  facility, or shortage pin on the [Energy Atlas](https://energy.worldmonitor.app)
+  facility, or shortage pin on the [Energy Atlas](https://energy.worldmonitor.app/dashboard)
   and you see its full evidence bundle: physical state, commercial
   state, operator statements (with URL and date), sanction references
   (with authority + list ID + URL), classifier version and confidence,
@@ -2783,11 +2783,11 @@ rather than pretending the surface is live.
   primary audit surface today.
 - **Public methodology pages.** The derivation rules, staleness
   windows, and evidence-threshold specs are all publicly documented:
-  - [Pipeline Registry](/methodology/pipelines)
-  - [Storage Facilities](/methodology/storage)
-  - [Fuel Shortages](/methodology/shortages)
-  - [Disruption Event Log](/methodology/disruptions)
-  - [Chokepoints](/methodology/chokepoints)
+  - [Pipeline Registry](/docs/methodology/pipelines)
+  - [Storage Facilities](/docs/methodology/storage)
+  - [Fuel Shortages](/docs/methodology/shortages)
+  - [Disruption Event Log](/docs/methodology/disruptions)
+  - [Chokepoints](/docs/methodology/chokepoints)
 - **Versioned classifier output.** Every RPC response carries a
   `classifier_version` field. A reader can pin expectations to a
   version today even though the revision-log history-of-versions

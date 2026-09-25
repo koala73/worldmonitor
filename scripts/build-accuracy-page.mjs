@@ -542,8 +542,8 @@ function limitsSection(omittedBuckets, escapeHtml) {
 }
 
 function relatedSection(baseUrl, tpl) {
-  const { escapeHtml, absoluteUrl, withUtmSource } = tpl;
-  return `      <a class="cta" href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/dashboard'), 'seo-accuracy'))}">Open the live forecast panel in World Monitor →</a>
+  const { escapeHtml, absoluteUrl } = tpl;
+  return `      <a class="cta" href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard'))}">Open the live forecast panel in World Monitor →</a>
       <h2>Related reference</h2>
       <ul class="related">
         <li><a href="/blog/posts/ai-forecast-accuracy-brier-scorecard-worldmonitor/">Why we publish the ledger</a></li>

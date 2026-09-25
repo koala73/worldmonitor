@@ -804,15 +804,13 @@ export function buildSourcePages(sourceCatalog) {
 }
 
 export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
-  const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument, withUtmSource } = helpers;
+  const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument } = helpers;
   const path = sourcePage?.path || '/sources/';
   const pageUrl = absoluteUrl(baseUrl, path);
   const description = sourcePage
     ? `Browse ${sourceCatalog.length} providers in ${sourcePage.name}, with source hosts, origins and coverage. Part of World Monitor's complete source catalog.`
     : `Explore ${sourceStats.providerCount} active providers and ${sourceStats.activeHosts} source hosts across World Monitor's global intelligence, markets, energy, cyber, aviation, climate and news coverage.`;
-  // Query precedes the fragment — withUtmSource() would append after the
-  // anchor and push the query into the fragment, so build these by hand.
-  const docsHref = (anchor) => `/docs/data-sources?utm_source=seo-sources${anchor ? `#${anchor}` : ''}`;
+  const docsHref = (anchor) => `/docs/data-sources${anchor ? `#${anchor}` : ''}`;
   const domainCounts = new Map(SOURCE_DOMAINS.map((domain) => [domain.id, 0]));
   for (const provider of sourceCatalog) {
     domainCounts.set(provider.domainId, (domainCounts.get(provider.domainId) || 0) + 1);
@@ -867,13 +865,13 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
         <span class="source-nav-links">
           <a href="/sources/" aria-current="page">Sources</a>
           <a href="/blog/">Blog</a>
-          <a href="/docs">Docs</a>
+          <a href="/docs/documentation">Docs</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer">GitHub</a>
         </span>
-        <a class="source-nav-cta" href="${withUtmSource('/dashboard', 'sources-nav')}">Launch dashboard <span aria-hidden="true">→</span></a>`;
+        <a class="source-nav-cta" href="/dashboard">Launch dashboard <span aria-hidden="true">→</span></a>`;
   const sourceFooter = `<div class="source-footer-inner">
       <span><strong>WORLD MONITOR</strong><small>Open-source global intelligence</small></span>
-      <span class="source-footer-links"><a href="/sources/">Sources</a><a href="${docsHref('')}">Data docs</a><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Attribution ledger</a><a href="/docs/terms">Terms</a></span>
+      <span class="source-footer-links"><a href="/sources/">Sources</a><a href="${docsHref('')}">Data docs</a><a href="/docs/source-attribution">Attribution ledger</a><a href="/docs/terms">Terms</a></span>
     </div>`;
   const catalogNavigation = directoryPages
     ? `<ul class="source-pages source-directory">${directoryPages.map((page) => `<li><a href="${page.path}">${escapeHtml(page.name)}</a> (${page.providers.length} providers)</li>`).join('')}</ul>`
@@ -885,7 +883,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
           <p class="lede">The map is only as useful as the signals behind it. World Monitor combines ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} observed source hosts spanning news, conflict, markets, military, climate, aviation, infrastructure and technology. ${sourcePage ? 'This page lists ' + sourceCatalog.length + ' providers. <a href="/sources/#catalog">Search all providers</a> or browse the pages below.' : 'Browse providers by domain, or search the full inventory below.'}</p>
           <div class="hero-actions">
             <a class="cta" href="#catalog">${sourcePage ? 'Browse this page' : 'Find a provider'} <span aria-hidden="true">↓</span></a>
-            <a class="secondary-cta" href="${withUtmSource('/dashboard', 'sources-hero')}">Open the live dashboard <span aria-hidden="true">→</span></a>
+            <a class="secondary-cta" href="/dashboard">Open the live dashboard <span aria-hidden="true">→</span></a>
           </div>
           <p class="trust-line"><span>Manifest-derived</span><span>Build-checked</span><span>Source-attributed</span></p>
           <p class="catalog-updated">Catalog last updated ${escapeHtml(lastmod)} · ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} source hosts</p>
@@ -921,7 +919,7 @@ ${domainCards}
         <div><p class="eyebrow">Trust through traceability</p><h2 id="trust-heading">The count follows the code.</h2></div>
         <div>
           <p>This inventory is generated from the source-attribution manifest and checked against the external URLs that World Monitor uses. Adding or removing a source changes this page at build time.</p>
-          <p>An active listing confirms use and attribution tracking. It does not claim that a provider's redistribution terms have completed review. The <a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">attribution ledger</a> records that posture, and the <a href="${docsHref('source-credibility-%26-feed-tiering')}">credibility methodology</a> explains feed tiers and bias metadata.</p>
+          <p>An active listing confirms use and attribution tracking. It does not claim that a provider's redistribution terms have completed review. The <a href="/docs/source-attribution">attribution ledger</a> records that posture, and the <a href="${docsHref('source-credibility-%26-feed-tiering')}">credibility methodology</a> explains feed tiers and bias metadata.</p>
         </div>
       </section>
       <section class="provenance-section" aria-labelledby="provenance-heading">
@@ -946,7 +944,7 @@ ${domainCards}
           <label for="source-coverage"><span>Country covered</span><select id="source-coverage"><option value="all">All coverage</option>${coverageOptions.map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`).join('')}</select></label>
           <button type="button" class="reset-filter" data-source-filter="all">Reset</button>
         </div>
-        <div class="catalog-meta"><p id="source-results" aria-live="polite">${directoryPages ? 'Choose a filter or enter a provider name.' : `${sourceCatalog.length} providers shown`}</p><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
+        <div class="catalog-meta"><p id="source-results" aria-live="polite">${directoryPages ? 'Choose a filter or enter a provider name.' : `${sourceCatalog.length} providers shown`}</p><a href="/docs/source-attribution">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
         <p class="catalog-country-note" id="source-country-note" aria-live="polite" hidden></p>
         <div class="provider-grid" id="source-catalog" data-source-catalog>
 ${providerCards}
@@ -960,7 +958,7 @@ ${providerCards}
         <p class="eyebrow">From source to signal</p>
         <h2>Now watch the signals converge.</h2>
         <p>Open the live map to follow the providers above as one real-time global operating picture.</p>
-        <a class="cta" href="${withUtmSource('/dashboard', 'sources-footer')}">Launch World Monitor <span aria-hidden="true">→</span></a>
+        <a class="cta" href="/dashboard">Launch World Monitor <span aria-hidden="true">→</span></a>
       </section>`;
   const extraStyles = `      .sources-page { --bg: #030504; --panel: #090d0b; --panel-2: #0d1410; --text: #f1f7f2; --muted: #8e9b92; --line: #1d2921; --accent: #4ade80; background: radial-gradient(circle at 50% 0, rgba(74,222,128,.09), transparent 27rem), var(--bg); }
       .sources-page header, .sources-page main, .sources-page footer { max-width: none; padding-left: 0; padding-right: 0; }

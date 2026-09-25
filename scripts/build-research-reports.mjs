@@ -704,7 +704,7 @@ export function renderResearchReportPage({
   dataCatalog,
   includedInDataCatalog,
 }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
   if (!SLUG_PATTERN.test(report.slug) || !SLUG_PATTERN.test(report.id)) {
     throw new Error(`Report slug/id must match ${SLUG_PATTERN}: ${report.slug} / ${report.id}`);
@@ -840,9 +840,9 @@ ${provenanceRows}
         <p>The canonical URL is stable, editions are append-only, and corrections bump the version and modified date rather than silently rewriting figures.</p>`);
         break;
       case 'live-handoff': {
-        const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, `/dashboard?chokepoint=${report.focusChokepointId}`), 'research-report');
+        const dashboardUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${report.focusChokepointId}`);
         parts.push(`        <p>This report is a dated snapshot. For the current picture: the ${trackedLink(`/chokepoints/${chokepointSlug}/`, 'live Strait of Hormuz status page', 'chokepoint-page', escapeHtml)} shows today's disruption pulse, and the ${trackedLink(dashboardUrl, 'World Monitor dashboard', 'dashboard', escapeHtml)} adds map layers, alerts, and vessel context around it.</p>
-        <p>Programmatic access: the same chokepoint status and transit history are available through the ${trackedLink('/docs/api-reference', 'World Monitor REST API', 'developer', escapeHtml)} and the ${trackedLink('/docs/mcp-overview', 'MCP server', 'developer', escapeHtml)} for AI agents. Higher request limits and research briefings come with ${trackedLink(withUtmSource(absoluteUrl(baseUrl, '/pro'), 'research-report'), 'World Monitor Pro', 'pricing', escapeHtml)}. The research itself stays free and ungated.</p>`);
+        <p>Programmatic access: the same chokepoint status and transit history are available through the ${trackedLink('/docs/api-reference', 'World Monitor REST API', 'developer', escapeHtml)} and the ${trackedLink('/docs/mcp-overview', 'MCP server', 'developer', escapeHtml)} for AI agents. Higher request limits and research briefings come with ${trackedLink(absoluteUrl(baseUrl, '/pro'), 'World Monitor Pro', 'pricing', escapeHtml)}. The research itself stays free and ungated.</p>`);
         break;
       }
       default:

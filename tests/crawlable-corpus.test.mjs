@@ -2184,6 +2184,10 @@ describe('crawlable corpus generator', () => {
         assert.match(html, /<p class="byline">/, `${page} must render a byline`);
         assert.match(html, /World Monitor research team/, `${page} must name who maintains it`);
         assert.match(html, /href="\/docs\/corrections"/, `${page} byline must link the corrections log`);
+        // #8603: /docs is a 307 to /docs/documentation, so the byline must name
+        // a 200 methodology page instead of the docs root.
+        assert.match(html, /href="\/docs\/algorithms"/, `${page} byline must link a 200 methodology page`);
+        assert.doesNotMatch(html, /href="\/docs"/, `${page} must not link the /docs redirect`);
       }
       // The families that pass their own footerBody still carry it.
       for (const page of ['use-cases/index.html', 'compare/index.html', 'sources/index.html']) {
@@ -2966,9 +2970,11 @@ describe('crawlable corpus generator', () => {
       assert.ok(ukraineResilienceDataset, 'CII country pages must retain the CRI Dataset');
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
-      // Carries utm_source (NOT ref= — that would be captured as an affiliate referral code).
-      assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?country=NO&amp;expanded=1&amp;utm_source=seo-country">Open Norway on the live map/);
+      // Untagged: `ref=` would be captured as an affiliate referral code, and a
+      // utm_* tag is a 308 hop through the middleware index-noise strip (#8603).
+      assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?country=NO&amp;expanded=1">Open Norway on the live map/);
       assert.doesNotMatch(norway, /[?&]ref=/, 'corpus CTAs must never use the affiliate ref= param');
+      assert.doesNotMatch(norway, /utm_source=/, 'corpus CTAs must not carry utm_source; middleware 308s it away');
       // Social preview + trust-link contracts.
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
       assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
@@ -4421,8 +4427,9 @@ describe('crawlable corpus generator', () => {
       assert.equal(raceWindow.document.querySelectorAll('.source-result').length, 0, 'a late search response must not undo reset');
       raceWindow.close();
       assert.doesNotMatch(sourcesPage, /[?&]ref=/);
-      assert.match(sourcesPage, /href="\/docs\/data-sources\?utm_source=seo-sources#finance-%26-economics"/);
-      assert.match(sourcesPage, /href="\/docs\/source-attribution\?utm_source=seo-sources"/);
+      assert.match(sourcesPage, /href="\/docs\/data-sources#finance-%26-economics"/);
+      assert.match(sourcesPage, /href="\/docs\/source-attribution"/);
+      assert.doesNotMatch(sourcesPage, /utm_source=/, 'source-catalog links must not carry utm_source; middleware 308s it away');
 
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
       assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
@@ -4430,7 +4437,7 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
       assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
       // Deep-link CTA into the live map (pans to + opens the waterway popup).
-      assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?chokepoint=hormuz_strait&amp;utm_source=seo-chokepoint">Open Strait of Hormuz on the live map/);
+      assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/dashboard\?chokepoint=hormuz_strait">Open Strait of Hormuz on the live map/);
       assert.match(hormuz, /href="\/docs\/methodology\/chokepoints"/);
       // Human trade-route names replace the old raw route-id dump.
       assert.match(hormuz, /Persian Gulf → Europe \(Oil\)/);
@@ -6994,7 +7001,6 @@ describe('GEO residue #7616 (U5 sources DataCatalog)', () => {
       dataCatalogLd,
       escapeHtml,
       pageDocument: ({ jsonLd, body }) => JSON.stringify({ jsonLd, body }),
-      withUtmSource: (url, source) => `${url}?utm_source=${source}`,
     };
     return renderSourcesIndex({
       sourceStats: { providerCount: 747, activeHosts: 760, structuredHosts: 331, feedHosts: 461 },
@@ -7089,7 +7095,6 @@ describe('GEO residue #7869 (sources ItemList)', () => {
         dataCatalogLd,
         escapeHtml,
         pageDocument: ({ jsonLd, body, extraStyles }) => JSON.stringify({ jsonLd, body, extraStyles }),
-        withUtmSource: (url, source) => `${url}?utm_source=${source}`,
       },
     }));
   };

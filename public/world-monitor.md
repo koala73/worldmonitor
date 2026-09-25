@@ -39,11 +39,11 @@ World Monitor is a free, open-source (AGPL-3.0) real-time global intelligence da
 Product family (same codebase, distinct variants):
 
 - [World Monitor](https://www.worldmonitor.app/) — geopolitics, military, conflicts, infrastructure
-- [Tech Monitor](https://tech.worldmonitor.app) — startups, AI/ML, cloud, cybersecurity
-- [Finance Monitor](https://finance.worldmonitor.app) — global markets, trading, central banks
-- [Commodity Monitor](https://commodity.worldmonitor.app) — mining, metals, energy, supply chains
-- [Happy Monitor](https://happy.worldmonitor.app) — positive news, conservation, renewable energy
-- [Energy Monitor](https://energy.worldmonitor.app) — energy security, oil and gas, chokepoints
+- [Tech Monitor](https://tech.worldmonitor.app/dashboard) — startups, AI/ML, cloud, cybersecurity
+- [Finance Monitor](https://finance.worldmonitor.app/dashboard) — global markets, trading, central banks
+- [Commodity Monitor](https://commodity.worldmonitor.app/dashboard) — mining, metals, energy, supply chains
+- [Happy Monitor](https://happy.worldmonitor.app/dashboard) — positive news, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app/dashboard) — energy security, oil and gas, chokepoints
 
 Founder: [Elie Habib](https://x.com/eliehabib) ([Wikidata Q121365724](https://www.wikidata.org/wiki/Q121365724)).
 

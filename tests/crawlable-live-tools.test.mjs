@@ -1377,10 +1377,10 @@ describe('crawlable live intelligence view models', () => {
     try {
       await loadHazards(tool);
       assert.deepEqual(replacedUrls, ['/tools/natural-hazard-pulse/?country=JP']);
-      assert.equal(dashboardLink.href, '/dashboard?country=JP&expanded=1&utm_source=seo-tool');
+      assert.equal(dashboardLink.href, '/dashboard?country=JP&expanded=1');
       select.value = '';
       await loadHazards(tool);
-      assert.equal(dashboardLink.href, '/dashboard?utm_source=seo-tool');
+      assert.equal(dashboardLink.href, '/dashboard');
       assert.equal(replacedUrls.at(-1), '/tools/natural-hazard-pulse/');
     } finally {
       globalThis.fetch = originalFetch;

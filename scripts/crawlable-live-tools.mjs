@@ -1132,10 +1132,12 @@ function updateCountryQuery(select, dashboardLink) {
   else url.searchParams.delete('country');
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   if (dashboardLink) {
-    // Keep conversion attribution on dynamically-rewritten dashboard links.
+    // No utm tag: middleware 308s index-noise query keys away, so a tagged
+    // link is a redirect hop for anything that follows it (#8603). Umami
+    // records the referrer path for same-site navigation.
     dashboardLink.href = code
-      ? `/dashboard?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
-      : '/dashboard?utm_source=seo-tool';
+      ? `/dashboard?country=${encodeURIComponent(code)}&expanded=1`
+      : '/dashboard';
   }
 }
 

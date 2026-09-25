@@ -85,7 +85,7 @@ That last habit may be the deepest difference. In a private deployment, source h
 The claim "you can build on it" is cheap, so here is the afternoon, itemized:
 
 1. **Minute 1:** `curl "https://www.worldmonitor.app/api/health?compact=1"` — you did this already.
-2. **Minute 5:** Open the [Energy dashboard](https://energy.worldmonitor.app) and inspect Hormuz alongside maritime, conflict, energy, and market signals — no account required.
+2. **Minute 5:** Open the [Energy dashboard](https://energy.worldmonitor.app/dashboard) and inspect Hormuz alongside maritime, conflict, energy, and market signals — no account required.
 3. **Minute 15:** Run `npx worldmonitor tools` to inspect the MCP catalog anonymously. Pro and API users can then connect an MCP client through OAuth or an API key and ask *"what's the chokepoint status in Hormuz right now?"*
 4. **The rest of the afternoon:** wire a [supply-chain early-warning pipeline](/blog/posts/build-supply-chain-early-warning-system-api/), pipe [risk alerts into Slack](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/), or [give your agent live world context](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/) — or fork the repo and change what you don't like.
 

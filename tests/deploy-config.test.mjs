@@ -1317,9 +1317,15 @@ const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 // src/services/referral-capture.ts — a CTA spelled with either one is captured
 // as an affiliate code and forwarded to Dodo.
 const AFFILIATE_PARAM_IN_URL = /[?&](?:ref|wm_referral)=/;
-// Dashboard-bound CTA queries, in the two shapes the welcome sections use: the
-// DASHBOARD_PATH template literal and an absolute variant-host URL.
-const DASHBOARD_CTA_QUERY = /(?:\$\{DASHBOARD_PATH\}|worldmonitor\.app\/dashboard)\?([^`'"\s]*)/g;
+// Dashboard-bound CTAs, in the shapes the welcome sections use: the
+// DASHBOARD_PATH constant (bare or interpolated) and an absolute variant-host
+// URL. The capture is the tail AFTER the path, so an untagged CTA matches with
+// an empty capture and a tagged one exposes its query — matching only on `?`
+// would make the scan silently skip every CTA the moment tagging stops.
+// The tail includes a quoted concatenation (`DASHBOARD_PATH + '?utm_source=…'`).
+// Stopping at the space left that tail empty, so the CTA still counted as clean.
+const DASHBOARD_CTA = /href[=:]\s*[{`'"]*(?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z]+\.worldmonitor\.app\/dashboard)((?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
+const INDEX_NOISE_IN_HREF = /href\s*[:=]\s*["'`][^"'`]*[?&](?:utm_[a-z0-9_]+|ref|wm_referral)=/i;
 
 function readWelcomeSources() {
   const welcomeDir = resolve(__dirname, '../pro-test/src/welcome');
@@ -1714,36 +1720,41 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('tags welcome dashboard CTAs with utm params, never an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
+  it('leaves welcome dashboard CTAs untagged, and never uses an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
     // `ref=` and `wm_referral=` on a dashboard URL are read by
     // src/services/referral-capture.ts as an AFFILIATE code: persisted for 7
     // days and forwarded to Dodo as `affonso_referral`. Internal welcome CTAs
-    // tagged that way credit "welcome-nav" for organic purchases (#6493), so
-    // the source tag must be a utm_* param — which Umami reports natively and
-    // referral-capture ignores. Both param names are banned: wm_referral is
-    // read FIRST, so a CTA spelled that way is the identical bug.
+    // tagged that way credit "welcome-nav" for organic purchases (#6493).
+    // Both param names are banned: wm_referral is read FIRST, so a CTA spelled
+    // that way is the identical bug.
+    //
+    // The utm_* replacement these CTAs used to carry is banned too (#8603):
+    // middleware strips every INDEX_NOISE_QUERY_KEY with a 308, so a tagged
+    // internal link sent Googlebot through a redirect on every welcome CTA.
+    // Attribution rides data-umami-event-target, which Umami reports natively
+    // and which costs no redirect hop.
     const welcomeSources = readWelcomeSources();
 
-    let taggedCtas = 0;
+    let scannedCtas = 0;
     for (const [file, source] of welcomeSources) {
       assert.doesNotMatch(
         source,
         AFFILIATE_PARAM_IN_URL,
         `${file}: welcome CTAs must never use an affiliate referral param (see REFERRAL_PARAM_NAMES in referral-capture.ts)`
       );
-      for (const [, query] of source.matchAll(DASHBOARD_CTA_QUERY)) {
-        assert.match(
-          query,
-          /(?:^|&)utm_source=welcome(?:&|$)/,
-          `${file}: dashboard CTA "?${query}" must carry utm_source=welcome`
+      for (const [, tail] of source.matchAll(DASHBOARD_CTA)) {
+        assert.equal(
+          tail,
+          '',
+          `${file}: dashboard CTA carries "${tail}" — middleware 308s index-noise query keys away`
         );
-        taggedCtas += 1;
+        scannedCtas += 1;
       }
     }
     // Exact, not a floor: a floor with slack lets a CTA drop out of the scan
     // (moved behind a helper, or re-pointed off /dashboard) while still
     // reading as covered. Bump this deliberately when a CTA is added.
-    assert.equal(taggedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${taggedCtas}`);
+    assert.equal(scannedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${scannedCtas}`);
 
     const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
     assert.doesNotMatch(
@@ -1759,6 +1770,31 @@ describe('welcome landing page routing', () => {
       AFFILIATE_PARAM_IN_URL,
       'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test (npm run build:pro)'
     );
+    const generatedWelcomeJs = readGeneratedWelcomeAsset(generatedWelcomeHtml);
+    assert.doesNotMatch(
+      generatedWelcomeJs,
+      INDEX_NOISE_IN_HREF,
+      'generated welcome JS still ships an index-noise query on an href — middleware 308s utm_*, ref, and wm_referral'
+    );
+    assert.doesNotMatch(
+      generatedWelcomeHtml.replace(/&amp;/g, '&'),
+      INDEX_NOISE_IN_HREF,
+      'prerendered welcome HTML still ships an index-noise query on an href'
+    );
+  });
+
+  it('treats a concatenated dashboard query as part of the CTA', () => {
+    const tagged = [..."href={DASHBOARD_PATH + '?utm_source=welcome'}".matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+    assert.deepEqual(tagged, [" + '?utm_source=welcome'"]);
+    assert.notEqual(tagged[0], '');
+    for (const clean of [
+      'href={DASHBOARD_PATH}',
+      'href={`${DASHBOARD_PATH}`}',
+      'href="https://tech.worldmonitor.app/dashboard"',
+    ]) {
+      const tails = [...clean.matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+      assert.deepEqual(tails, [''], clean);
+    }
   });
 
   it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', { skip: shouldSkipProBuiltOutput() }, () => {
@@ -4546,10 +4582,11 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     // the worst of both, and it moves the volume into "Blocked by robots.txt"
     // rather than removing it.
     //
-    // Shapes are the ones the corpus builders actually emit
-    // (scripts/build-crawlable-corpus.mjs withUtmSource, scripts/build-use-cases.mjs
-    // content attribution, scripts/crawlable-sources-page.mjs,
-    // scripts/build-research-reports.mjs).
+    // Shapes are the ones the corpus builders actually emit: the parameterised
+    // dashboard deep links in scripts/build-crawlable-corpus.mjs and
+    // scripts/build-research-reports.mjs, plus the wm_content_* attribution in
+    // scripts/build-use-cases.mjs. The utm_source wrapper that used to sit on
+    // top of those was deleted in #8603.
     // `/*?*lat=` is a substring match over the whole query, not a parameter-NAME
     // match: it also catches any param ending in the token (`?colon=` matches
     // `/*?*lon=`) and value-side text (`?q=flat=earth` matches `/*?*lat=`).
@@ -4670,15 +4707,20 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
         });
       }
 
+      // Six: the parameterised dashboard deep links, including both `layers=`
+      // use-case CTAs this test was written to catch. It was eight until #8603
+      // deleted the two `?utm_source=` literals, which were redirect hops.
       assert.ok(
-        emitted.size >= 8,
+        emitted.size >= 6,
         `expected to read the corpus builders' query-bearing hrefs, found ${emitted.size} — ` +
           'the extraction regex probably stopped matching, which would make this test vacuous'
       );
 
-      // The attribution wrappers every builder applies on top of those literals.
+      // The attribution wrapper build-use-cases.mjs applies on top of those
+      // literals. wm_content_* only: utm_* keys were removed in #8603 because
+      // middleware 308s them away.
       const TAGGED = (href) =>
-        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case`;
+        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases`;
 
       const blocked = [];
       for (const [href, where] of emitted) {

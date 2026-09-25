@@ -92,11 +92,11 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 
 - [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure
 - [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
-- [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity
-- [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
-- [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, supply chains, commodity markets
-- [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
-- [Energy Monitor](https://energy.worldmonitor.app): Energy security, oil and gas, chokepoints, disruption timelines
+- [Tech Monitor](https://tech.worldmonitor.app/dashboard): Startups, AI/ML, cloud, cybersecurity
+- [Finance Monitor](https://finance.worldmonitor.app/dashboard): Global markets, trading, central banks, Gulf FDI
+- [Commodity Monitor](https://commodity.worldmonitor.app/dashboard): Mining, metals, energy, supply chains, commodity markets
+- [Happy Monitor](https://happy.worldmonitor.app/dashboard): Positive news, breakthroughs, conservation, renewable energy
+- [Energy Monitor](https://energy.worldmonitor.app/dashboard): Energy security, oil and gas, chokepoints, disruption timelines
 - [World Monitor Pro](https://www.worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
 - [Blog](https://www.worldmonitor.app/blog/): Analysis, OSINT guides, geopolitics, and market intelligence articles
 - [Pricing Markdown](https://www.worldmonitor.app/pricing.md): Machine-readable pricing and plan limits for AI agents

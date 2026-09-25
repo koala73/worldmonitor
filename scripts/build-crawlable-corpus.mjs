@@ -678,15 +678,6 @@ function absoluteUrl(baseUrl, pathname) {
   return `${normalizeBaseUrl(baseUrl)}${pathname}`;
 }
 
-// Tag dashboard-bound CTAs so page→dashboard conversion is measurable in the
-// analytics UTM report. Deliberately NOT `ref=`: the dashboard captures
-// `?ref=` as an affiliate referral code (src/services/referral-capture.ts)
-// and forwards it to checkout attribution, so a static-page source tag there
-// would pollute purchase attribution.
-function withUtmSource(url, utmSource) {
-  return `${url}${url.includes('?') ? '&' : '?'}utm_source=${utmSource}`;
-}
-
 function dataCatalogId(baseUrl) {
   return `${normalizeBaseUrl(baseUrl)}/${DATA_CATALOG_FRAGMENT}`;
 }
@@ -2202,7 +2193,13 @@ function pageDocument({
   // a quality rater and a human reader want a name on the page that publishes
   // the score. Rendered here rather than inside each body so no page family
   // and no `footerBody` override can ship without it.
-  const renderedByline = '<p class="byline">Compiled and maintained by the <a href="/docs/about">World Monitor research team</a>. Scoring rules and coverage limits are published in the <a href="/docs">methodology documentation</a>; published revisions are recorded in the <a href="/docs/corrections">corrections log</a>.</p>';
+  // The methodology link targets /docs/algorithms, not /docs: the docs root is
+  // a 307 to /docs/documentation (vercel.json), so every one of these pages
+  // published a temporary redirect as an internal crawl signal (#8603).
+  // /docs/methodology is a 307 too, to a single nowcast page, so it is not a
+  // replacement. /docs/algorithms is the scoring-rules page the text names and
+  // answers 200. /docs/about and /docs/corrections were probed at 200.
+  const renderedByline = '<p class="byline">Compiled and maintained by the <a href="/docs/about">World Monitor research team</a>. Scoring rules and coverage limits are published in the <a href="/docs/algorithms">methodology documentation</a>; published revisions are recorded in the <a href="/docs/corrections">corrections log</a>.</p>';
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -2403,7 +2400,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
       <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
       <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
       <p>CII is a current-conditions score, not a forecast. Where World Monitor does forecast, the graded record is published on the <a href="/accuracy/">forecast accuracy scorecard</a> with its Brier scores, calibration and sample sizes.</p>
-      <a class="cta" href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/dashboard'), 'seo-cii'))}">Open the live CII panel in World Monitor →</a>
+      <a class="cta" href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard'))}">Open the live CII panel in World Monitor →</a>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Source: World Monitor Country Instability Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
   const html = pageDocument({
     baseUrl,
@@ -3829,10 +3826,7 @@ export function renderCountryPage({
     lowConfidence: country.lowConfidence === true,
     ciiEntry,
   });
-  const mapUrl = withUtmSource(
-    absoluteUrl(baseUrl, `/dashboard?country=${encodeURIComponent(country.code)}&expanded=1`),
-    'seo-country',
-  );
+  const mapUrl = absoluteUrl(baseUrl, `/dashboard?country=${encodeURIComponent(country.code)}&expanded=1`);
   const analysis = renderCountryAnalysis({
     country,
     capturedAt,
@@ -4418,10 +4412,7 @@ function renderChokepointPage({
   const blurb = content.blurb
     || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
   const description = chokepointMetaDescription(chokepoint.displayName);
-  const mapUrl = withUtmSource(
-    absoluteUrl(baseUrl, `/dashboard?chokepoint=${encodeURIComponent(chokepoint.id)}`),
-    'seo-chokepoint',
-  );
+  const mapUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${encodeURIComponent(chokepoint.id)}`);
 
   const routes = chokepoint.routeIds
     .map((id) => tradeRoutesById.get(id))
@@ -4688,7 +4679,7 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
       <h2>How these trackers are scoped</h2>
       <p>Every tracker names its covered countries up front and never silently widens. Metrics are monthly country-level conflict summaries — recorded events, political-violence events, fatalities, and demonstrations — from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API (HDX HAPI)</a>. A combined total is shown only when every covered country reports the same reference month; otherwise per-country figures stand alone.</p>
       <h2>What they are not</h2>
-      <p>These are bounded pulses, not battlefield maps, casualty ledgers, or forecasts. Missing countries are reported as unavailable rather than zero, and event-level context lives in the <a href="/?utm_source=seo-crisis">live dashboard</a> with its map layers and independent signals.</p>
+      <p>These are bounded pulses, not battlefield maps, casualty ledgers, or forecasts. Missing countries are reported as unavailable rather than zero, and event-level context lives in the <a href="/dashboard">live dashboard</a> with its map layers and independent signals.</p>
       <p class="source">Scope source: <a href="${CRISIS_REGISTRY_URL}" data-snapshot-source="${CRISIS_REGISTRY_PATH}">World Monitor crisis registry</a>. Live metrics: HAPI/HDX humanitarian conflict summaries through the World Monitor API.</p>`;
   return pageDocument({
     baseUrl,
@@ -4747,7 +4738,7 @@ function renderCrisisPage({
   publishedTotals,
 }) {
   const path = `/crises/${crisis.slug}/`;
-  const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, crisis.dashboardPath), 'seo-crisis');
+  const dashboardUrl = absoluteUrl(baseUrl, crisis.dashboardPath);
   const pulse = livePulse?.crises?.[crisis.slug] || null;
   // Require a real observation window. crisisTrackerViewModel substitutes the
   // sentinel 'Mixed reference periods' when covered countries report different
@@ -4947,7 +4938,7 @@ function renderToolsIndex({ baseUrl, lastmod, crisisCount, chokepointCount }) {
       <h2>How these tools work</h2>
       <p>Each tool asks one narrow operational question — what natural hazards are open right now, is a country's monitored airspace disrupted, where independent streams converge — and answers it from a maintained World Monitor contract. Results are labelled with their source and retrieval time, unavailable data is reported as unavailable rather than zero, and independent signals are never combined into a single opaque threat score unless the tool names that combination explicitly.</p>
       <h2>When to use them</h2>
-      <p>Use these pages for a fast, shareable check before a trip, a shipment, or a market open; use the <a href="/?utm_source=seo-tool">live dashboard</a> when you need the full picture — map layers, alerts, news, and country briefs side by side. Hazard coverage is documented in <a href="/docs/natural-disasters">natural disaster tracking</a>; chokepoint scoring in the <a href="/docs/methodology/chokepoints">chokepoint methodology</a>; convergence scoring in <a href="/docs/geographic-convergence">geographic convergence</a>.</p>
+      <p>Use these pages for a fast, shareable check before a trip, a shipment, or a market open; use the <a href="/dashboard">live dashboard</a> when you need the full picture — map layers, alerts, news, and country briefs side by side. Hazard coverage is documented in <a href="/docs/natural-disasters">natural disaster tracking</a>; chokepoint scoring in the <a href="/docs/methodology/chokepoints">chokepoint methodology</a>; convergence scoring in <a href="/docs/geographic-convergence">geographic convergence</a>.</p>
       <p class="source">Live results load from maintained World Monitor API contracts. Static route descriptions remain available if a current source cannot be reached.</p>`;
   return pageDocument({
     baseUrl,
@@ -5033,7 +5024,7 @@ ${thresholds}
 ${examples}
       </div>
       <h2>Where to go next</h2>
-      <p>Open the <a href="/?utm_source=seo-tool">live dashboard</a> for map layers, or read the full methodology in <a href="/docs/geographic-convergence">geographic convergence</a>. Country pages expose related instability scores; this page is the citable correlation definition.</p>
+      <p>Open the <a href="/dashboard">live dashboard</a> for map layers, or read the full methodology in <a href="/docs/geographic-convergence">geographic convergence</a>. Country pages expose related instability scores; this page is the citable correlation definition.</p>
       <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(lastmod))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
   return pageDocument({
     baseUrl,
@@ -5131,7 +5122,7 @@ ${countrySelectOptions(countryBounds, { includeWorldwide: true })}
         <div class="tool-meta"><time data-live-updated>Requesting the latest available snapshot…</time></div>
         <noscript><p>Enable JavaScript to load and filter the current event snapshot. This page still documents the tool’s coverage and sources.</p></noscript>
       </section>
-      <a class="cta" data-dashboard-link href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/'), 'seo-tool'))}">Open the selected area in World Monitor →</a>
+      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard'))}">Open the selected area in World Monitor →</a>
       <h2>Sources and limits</h2>
       <p>World Monitor reads its seeded natural-event snapshot from maintained <a href="https://eonet.gsfc.nasa.gov/">NASA EONET</a>, <a href="https://www.gdacs.org/">GDACS</a>, <a href="https://www.nhc.noaa.gov/">NHC</a>, and <a href="https://www.hko.gov.hk/">HKO</a> ingestion paths. Source names are retained on individual events. A zero is shown only when a source snapshot is explicitly available; unavailable snapshots fail closed. Coverage and update cadence are documented in <a href="/docs/natural-disasters">natural disaster tracking</a>.</p>
       <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/natural/v1/list-natural-events</code>.</p>`;
@@ -5212,7 +5203,7 @@ ${countrySelectOptions(countryBounds, { defaultCode: 'JP' })}
         <p class="tool-note">Military results are capped at 100 returned observations for the selected box. Countries with oversized or discontinuous envelopes are omitted so the tool never issues a continent-scale observation query. An empty or failed military response is unavailable, not confirmed zero activity.</p>
         <noscript><p>Enable JavaScript to check the selected country. The independent-source methodology and limitations remain available on this page.</p></noscript>
       </section>
-      <a class="cta" data-dashboard-link href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/dashboard?country=JP&expanded=1'), 'seo-tool'))}">Investigate the selected country in World Monitor →</a>
+      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/dashboard?country=JP&expanded=1'))}">Investigate the selected country in World Monitor →</a>
       <h2>How to read the result</h2>
       <p>“Normal” applies only to monitored airports with current source coverage. “Unknown” means telemetry was not available and is not counted as normal. Military-flight results are bounded observations from OpenSky/Wingbits-compatible ingestion and are not exhaustive.</p>
       <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/aviation/v1/list-airport-delays</code> and <code>/api/military/v1/list-military-flights</code>.</p>`;
@@ -5439,7 +5430,7 @@ export async function buildCorpus({
 
   const sourcePages = buildSourcePages(data.sourceCatalog);
   const catalogAnchors = sourceCardAnchors(data.sourceCatalog);
-  const sourceHelpers = { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument, withUtmSource };
+  const sourceHelpers = { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument };
   writeGeneratedFile(
     outDir,
     'sources/index.html',
@@ -5653,7 +5644,7 @@ export async function buildCorpus({
     data,
     outDir,
     baseUrl,
-    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
     dataCatalog: dataCatalogLd(baseUrl),
     includedInDataCatalog: includedInDataCatalog(baseUrl),
   });
@@ -5662,14 +5653,14 @@ export async function buildCorpus({
     outDir,
     baseUrl,
     lastmod: data.lastmod.useCases,
-    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
   });
 
   writeAccuracySection({
     outDir,
     baseUrl,
     lastmod: data.lastmod.accuracy,
-    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
     section: data.livePulse.forecastScorecard ?? null,
     snapshotPath: data.sources.livePulseSnapshot,
     dataCatalog: dataCatalogLd(baseUrl),
@@ -5690,7 +5681,7 @@ export async function buildCorpus({
     lastmod: data.lastmod.comparisons,
     snapshotDate: data.livePulse.capturedAt,
     relatedReading,
-    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument },
   });
 
   writeGeneratedFile(

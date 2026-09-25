@@ -71,7 +71,7 @@ Public discovery endpoints do not make every data operation anonymous. An MCP or
 Start with the short [llms.txt briefing](https://www.worldmonitor.app/llms.txt), then use this Markdown page or the [extended LLM reference](https://www.worldmonitor.app/llms-full.txt) when you need more context.
 
 - [MCP server](https://worldmonitor.app/mcp): Streamable HTTP for structured tool calls. Run `tools/list` to get the current tool inventory instead of relying on a copied count.
-- [REST API](https://api.worldmonitor.app): structured endpoints described by the [OpenAPI contract](https://www.worldmonitor.app/openapi.yaml).
+- [REST API](https://www.worldmonitor.app/docs/api-reference): structured endpoints described by the [OpenAPI contract](https://www.worldmonitor.app/openapi.yaml).
 - [Agent-mode homepage](https://www.worldmonitor.app/?mode=agent): a compact JSON summary of endpoints, authentication, capabilities, and discovery files.
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): task-focused instructions for common country, resilience, and intelligence workflows.
 - [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files).
