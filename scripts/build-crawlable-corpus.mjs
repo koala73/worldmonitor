@@ -20,6 +20,7 @@ import {
   COMPARISONS_CONTENT_VERSION,
   COMPARISON_PAGES,
   writeComparisonPages,
+  renderContextualComparisons,
 } from './build-comparison-pages.mjs';
 import { RELATED_READING_PATH, loadRelatedReading, renderRelatedReading } from './related-reading.mjs';
 import {
@@ -2316,6 +2317,7 @@ ${renderedNav}
     </header>
     <main>
 ${body}
+${renderContextualComparisons(path, escapeHtml)}
     </main>
     <footer>${renderedByline}${renderedFooter}</footer>
     ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}

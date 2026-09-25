@@ -7,6 +7,8 @@ World Monitor fuses attributed structured APIs, news and OSINT feeds, and operat
 
 Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
 
+Compare the dashboard with its underlying event-data services: [World Monitor vs ACLED](https://www.worldmonitor.app/compare/worldmonitor-vs-acled/) and [World Monitor vs GDELT](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/).
+
 ## Coverage at a Glance
 
 | Domain | What you get | Representative providers |

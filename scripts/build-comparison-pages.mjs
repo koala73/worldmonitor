@@ -25,6 +25,55 @@ import { renderRelatedReading } from './related-reading.mjs';
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
 export const COMPARISONS_CONTENT_VERSION = '2026-09-10';
 
+// Editorial route choices: compare event datasets on conflict-country pages,
+// mapping tools on crisis pages, and delivery options on operational workflows.
+const CONTEXTUAL_COMPARISONS = {
+  '/countries/ukraine/': ['worldmonitor-vs-liveuamap', 'worldmonitor-vs-deepstatemap'],
+  ...Object.fromEntries(['sudan', 'syria', 'myanmar'].map((slug) => [
+    `/countries/${slug}/`, ['worldmonitor-vs-acled', 'worldmonitor-vs-gdelt'],
+  ])),
+  ...Object.fromEntries(['iran', 'israel', 'lebanon'].map((slug) => [
+    `/countries/${slug}/`, ['liveuamap-alternatives', 'worldmonitor-vs-liveuamap'],
+  ])),
+  '/tools/': ['mcp-servers-for-geopolitical-data', 'worldmonitor-vs-dataminr'],
+  '/tools/signal-convergence/': ['worldmonitor-vs-dataminr', 'worldmonitor-vs-recorded-future'],
+  '/tools/natural-hazard-pulse/': ['travel-risk-intelligence-vs-assistance', 'mcp-servers-for-geopolitical-data'],
+  '/tools/airspace-disruption-checker/': ['travel-risk-intelligence-vs-assistance', 'mcp-servers-for-geopolitical-data'],
+  '/use-cases/monitor-country-risk/': ['travel-risk-intelligence-vs-assistance', 'best-geopolitical-risk-dashboards'],
+  '/use-cases/verify-breaking-news/': ['worldmonitor-vs-dataminr', 'worldmonitor-vs-recorded-future'],
+  '/use-cases/monitor-supply-chain-disruptions/': ['chokepoint-monitoring-tools', 'worldmonitor-vs-recorded-future'],
+};
+
+const COMPARISON_GROUPS = [
+  ['liveuamap-alternatives', 'worldmonitor-vs-liveuamap', 'worldmonitor-vs-deepstatemap', 'worldmonitor-vs-acled', 'worldmonitor-vs-gdelt'],
+  ['best-geopolitical-risk-dashboards', 'free-geopolitical-risk-dashboards', 'worldmonitor-vs-dataminr', 'worldmonitor-vs-recorded-future'],
+  ['mcp-servers-for-geopolitical-data', 'worldmonitor-vs-gdelt', 'worldmonitor-vs-acled', 'free-geopolitical-risk-dashboards'],
+  ['chokepoint-monitoring-tools', 'travel-risk-intelligence-vs-assistance', 'best-geopolitical-risk-dashboards', 'worldmonitor-vs-dataminr'],
+];
+
+function comparisonAnchor(slug, escapeHtml) {
+  const page = COMPARISON_PAGES.find((entry) => entry.slug === slug);
+  if (!page) throw new Error(`Unknown comparison link: ${slug}`);
+  let label = page.h1;
+  if (slug === 'best-geopolitical-risk-dashboards') label = 'Geopolitical risk dashboard comparison';
+  else if (slug.startsWith('worldmonitor-vs-')) label = `World Monitor vs ${page.competitors[0]}`;
+  return `<a href="${page.path}">${escapeHtml(label)}</a>`;
+}
+
+export function renderContextualComparisons(path, escapeHtml) {
+  let slugs = CONTEXTUAL_COMPARISONS[path];
+  if (!slugs && /^\/countries\/[^/]+\/$/.test(path)) slugs = ['best-geopolitical-risk-dashboards', 'free-geopolitical-risk-dashboards'];
+  if (!slugs && /^\/chokepoints\/[^/]+\/$/.test(path)) slugs = ['chokepoint-monitoring-tools'];
+  if (!slugs && /^\/crises\/[^/]+\/$/.test(path)) slugs = ['worldmonitor-vs-liveuamap', 'worldmonitor-vs-deepstatemap'];
+  if (!slugs?.length) return '';
+  return `<p data-contextual-comparisons>How World Monitor compares: ${slugs.map((slug) => comparisonAnchor(slug, escapeHtml)).join(' · ')}.</p>`;
+}
+
+function renderSiblingComparisons(slug, escapeHtml) {
+  const siblings = COMPARISON_GROUPS.find((group) => group.includes(slug)).filter((item) => item !== slug).slice(0, 4);
+  return `<h2>Related comparisons</h2>\n<p>Compare related tools by coverage, access requirements and workflow before choosing a monitoring setup.</p>\n<ul class="related">\n${siblings.map((item) => `<li>${comparisonAnchor(item, escapeHtml)}</li>`).join('\n')}\n</ul>`;
+}
+
 /**
  * Universal comparison-matrix columns. Engines lift these cells verbatim, so
  * every page renders the same header set (#7610).
@@ -683,6 +732,7 @@ function renderComparePage(page, { tpl, baseUrl, lastmod, snapshotDate, relatedR
     ),
     '',
     renderRelatedReading(relatedReading, escapeHtml),
+    renderSiblingComparisons(page.slug, escapeHtml),
     '      <h2>Frequently asked questions</h2>',
     ...page.faqs.flatMap(([question, answer]) => [
       '      <h3>' + escapeHtml(question) + '</h3>',

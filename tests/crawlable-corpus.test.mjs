@@ -4983,6 +4983,25 @@ describe('crawlable corpus generator', () => {
         'HowTo-shaped use-case pages must emit HowTo JSON-LD (#7462)',
       );
       const compareHub = read(outDir, 'compare/index.html');
+      // Count distinct referring HTML pages, not repeated anchors or source strings.
+      const comparisonReferrers = new Map(COMPARISON_PAGES.map(({ path }) => [path, new Set()]));
+      for (const file of readdirSync(outDir, { recursive: true }).filter((file) => file.endsWith('.html') && !file.startsWith('compare/'))) {
+        const html = read(outDir, file);
+        for (const [, href] of html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)) {
+          if (comparisonReferrers.has(href)) comparisonReferrers.get(href).add(file);
+        }
+      }
+      for (const [path, referrers] of comparisonReferrers) {
+        assert.ok(referrers.size >= 3, `${path}: expected at least 3 distinct inbound pages outside /compare/, got ${referrers.size}`);
+        const html = read(outDir, `compare/${path.split('/')[2]}/index.html`);
+        const section = html.match(/<h2>Related comparisons<\/h2>([\s\S]*?)<\/ul>/)?.[1] || '';
+        const siblings = [...section.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
+        assert.ok(siblings.length >= 3 && siblings.length <= 4, `${path}: expected 3–4 related comparisons`);
+        assert.equal(new Set(siblings).size, siblings.length);
+        for (const sibling of siblings) {
+          assert.ok(sibling !== path && comparisonReferrers.has(sibling), `${path}: invalid sibling ${sibling}`);
+        }
+      }
       const compareHubLd = jsonLdObjects(compareHub);
       assertDefaultSpeakable(
         compareHubLd.find((entry) => entry['@type'] === 'CollectionPage'),
