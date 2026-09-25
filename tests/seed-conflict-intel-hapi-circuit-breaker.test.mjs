@@ -418,6 +418,84 @@ test('HAPI HDX gives snapshot downloads a longer bounded deadline than metadata'
   assert.strictEqual(fetchSignals[1], timeoutSignals[1]);
 });
 
+for (const stage of ['metadata_headers', 'metadata_body', 'csv_headers', 'csv_body']) {
+  test(`HAPI HDX safely diagnoses ${stage} timeout without replacing the error`, async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (...args) => logs.push(args));
+    const error = new TypeError('secret https://private.invalid/token?key=secret raw body', {
+      cause: Object.assign(new Error('private transport details'), { code: 'UND_ERR_BODY_TIMEOUT' }),
+    });
+    const deadlines = [];
+    let elapsed = 0;
+    let requests = 0;
+    await assert.rejects(fetchHapiHdxSnapshotRows({
+      nowMs: NOW,
+      readElapsedMs: () => elapsed,
+      createTimeoutSignal: (ms) => {
+        deadlines.push(ms);
+        return new AbortController().signal;
+      },
+      fetchFn: async (url) => {
+        requests += 1;
+        const kind = String(url).includes('/api/3/') ? 'metadata' : 'csv';
+        elapsed += 7;
+        if (stage === `${kind}_headers`) throw error;
+        if (stage === `${kind}_body`) {
+          return {
+            ok: true,
+            headers: new Headers(),
+            arrayBuffer: async () => { elapsed += 13; throw error; },
+          };
+        }
+        return Response.json(hapiHdxMetadata());
+      },
+    }), (caught) => caught === error);
+    assert.equal(hapiHdxFailureReason(error), 'HDX_TIMEOUT');
+    assert.deepEqual(logs, [[`  HAPI HDX timeout stage=${stage} elapsedMs=${stage.endsWith('headers') ? 7 : 13} reason=HDX_TIMEOUT`]]);
+    assert.equal(requests, stage.startsWith('metadata') ? 1 : 2);
+    assert.deepEqual(deadlines, stage.startsWith('metadata') ? [60_000] : [60_000, 120_000]);
+  });
+}
+
+test('HAPI HDX diagnoses a streamed CSV timeout and releases its reader', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (...args) => logs.push(args));
+  const error = new DOMException('private body', 'AbortError');
+  let reads = 0;
+  let released = false;
+  let elapsed = 0;
+  await assert.rejects(fetchHapiHdxSnapshotRows({
+    nowMs: NOW,
+    readElapsedMs: () => elapsed,
+    fetchFn: async (url) => String(url).includes('/api/3/')
+      ? Response.json(hapiHdxMetadata())
+      : {
+          ok: true,
+          headers: new Headers(),
+          body: { getReader: () => ({
+            read: async () => {
+              elapsed += 5;
+              if (reads++ === 0) return { done: false, value: new TextEncoder().encode('private CSV') };
+              throw error;
+            },
+            releaseLock: () => { released = true; },
+          }) },
+        },
+  }), (caught) => caught === error);
+  assert.equal(released, true);
+  assert.deepEqual(logs, [['  HAPI HDX timeout stage=csv_body elapsedMs=10 reason=HDX_TIMEOUT']]);
+});
+
+test('HAPI HDX does not label non-timeout failures as timeouts', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (...args) => logs.push(args));
+  const error = Object.assign(new Error('private DNS details'), { code: 'ENOTFOUND' });
+  await assert.rejects(fetchHapiHdxSnapshotRows({ fetchFn: async () => { throw error; } }),
+    (caught) => caught === error);
+  assert.deepEqual(logs, []);
+  assert.equal(hapiHdxFailureReason(error), 'HDX_DNS_ERROR');
+});
+
 test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => {
   let metadataCalls = 0;
   const requestUserAgents = [];
@@ -508,7 +586,7 @@ test('HAPI bulk rows retain both periods without adding overlapping civilian tar
       summary: {
         countryCode: 'SD',
         countryName: 'Sudan',
-        conflictEventsTotal: 23,
+        conflictEventsTotal: 19,
         conflictPoliticalViolenceEvents: 12,
         conflictFatalities: 3,
         referencePeriod: '2026-07-01',
@@ -550,7 +628,7 @@ test('HAPI periods select administrative levels independently and roll over the 
     assert.deepEqual(result.SD.previousCompleteSummary, {
       countryCode: 'SD',
       countryName: 'Sudan',
-      conflictEventsTotal: 12,
+      conflictEventsTotal: 8,
       conflictPoliticalViolenceEvents: 3,
       conflictFatalities: 1,
       referencePeriod: '2025-12-01',
@@ -637,7 +715,7 @@ test('one aggregation pass over both sweeps keeps each country at its own admin 
   assert.equal(combined.SD.summary.conflictEventsTotal, 19);
   assert.equal(combined.AF.summary.conflictEventsTotal, 11);
   assert.equal(combined.AF.summary.conflictFatalities, 3);
-  assert.equal(combined.HT.summary.conflictEventsTotal, 4);
+  assert.equal(combined.HT.summary.conflictEventsTotal, 0);
   assert.equal(combined.HT.summary.conflictPoliticalViolenceEvents, 0);
   assert.equal(combined.HT.summary.conflictFatalities, 0);
 

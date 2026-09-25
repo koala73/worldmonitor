@@ -157,6 +157,7 @@ const EVENTS = {
   'live-media-idle-notice-action': true,
   'live-video-attempt-failed': true,
   'live-video-signal-missing': true,
+  'live-video-resolved-applied': true,
   // Webcams
   'webcam-selected': true,
   'webcam-region-filter': true,

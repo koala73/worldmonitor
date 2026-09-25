@@ -25,9 +25,9 @@
 // A channel entry also opts the slot into live video refresh. The audit reads the channel's /live page and
 // checks the video the channel has live right now instead of the channel embed; when that video is missing
 // from the slot and a pinned video sits ahead of the channel, the issue shows it under "Live now", ready to
-// paste over the dead pinned entry. The dashboard refresh (#8545, in progress) tries a resolved video
-// immediately before the channel entry that produced it, so entries ahead of the channel keep priority; until
-// it ships, the dashboard plays the channel embed. For a broadcaster that restarts its stream under
+// paste over the dead pinned entry. The dashboard (#8545) tries the video the seed-live-video-resolved cron last
+// found live on the channel immediately before that channel entry, so entries ahead of the channel keep priority;
+// when that video is missing, older than 36 hours or slow to arrive, it plays this list unchanged. For a broadcaster that restarts its stream under
 // a new id, list only the channel, with no pinned id. Do not list a channel whose featured live is another
 // stream (a side camera, a press conference, a replay): the resolved video would be that stream.
 // The seed-live-video-resolved cron reads its channel list from

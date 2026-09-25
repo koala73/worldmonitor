@@ -1503,8 +1503,7 @@ entries.
 > that read **planned — not provisioned** are repository-root
 > `nixpacks-root-repo` cron candidates (root directory `.`, start command
 > `node scripts/<file>`), so their eventual packaging can include valid imports
-> outside `scripts/`. `seed-live-video-resolved` is planned too, but packaged
-> from `scripts/` (see its row). Active rows must instead follow the
+> outside `scripts/`. Active rows must instead follow the
 > deploy mode and exact `watchPatterns` recorded in `scripts/railway-services.json`.
 > These rows are intentionally **not** part of the 100-service inventory count
 > above. The planned rows are registered with deploy mode
@@ -1542,11 +1541,23 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-comtrade-bilateral-hs4 | `node scripts/seed-comtrade-bilateral-hs4.mjs` | **`0 6 1 * *` (monthly, verified 2026-07-27)** | UN Comtrade bilateral HS4 trade flows — only scheduled consumer of the keyed 500/mo Comtrade quota |
 | seed-hs2-chokepoint-exposure | `node scripts/seed-hs2-chokepoint-exposure.mjs` | periodic (TTL-extended) | HS2 chokepoint trade-exposure (derived) |
 | seed-service-statuses | `node scripts/seed-service-statuses.mjs` | **planned — not provisioned** | Service-status warm-ping; primary seeder is the AIS relay loop |
-| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **planned — `0 */6 * * *` once provisioned** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root Nixpacks, reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
+| seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD cyclone, port, coastal, and marine products; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
 
 Configure the IMD account credentials and the IP-bound production key before
 you activate this service. See [Configure the IMD Railway seeder](natural-disasters.mdx#configure-the-imd-railway-seeder).
+
+`seed-live-video-resolved` was provisioned on 2026-09-24 after #8596 merged.
+Its first deployment (`46c6d048-300c-4d7b-aa6c-6c04488d6cd2`, commit
+`952db28`) succeeded at 08:40 UTC. The first publish came from a manual
+`railway run --service seed-live-video-resolved` at 08:43:21 UTC, not from a
+cron tick: every catalog channel resolved, and the publish set the
+durable activation marker that lifts the `liveVideoResolved` health softening.
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` and `PROXY_URL` are
+Railway reference variables to `seed-fred-rates`; `LIVE_VIDEO_PROXY_URL` is
+unset, so the seeder uses `PROXY_URL`. The service is enrolled in
+`scripts/railway-native-autodeploy-fleet.json` with `source.checkSuites`
+`false`, like the rest of the fleet.
 
 The bilateral HS4 cron uses `COMTRADE_API_KEYS` and a 480-request hard budget
 under the provider's 500-call monthly quota. The authenticated route requests

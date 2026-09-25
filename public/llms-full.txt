@@ -431,7 +431,7 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 761 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 757 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
 - [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 36 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 21 providers.
@@ -450,7 +450,7 @@ World Monitor publishes 761 named providers across 18 source catalog pages. Each
 - [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 45 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 14 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 12 providers.
-- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 30 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 26 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons

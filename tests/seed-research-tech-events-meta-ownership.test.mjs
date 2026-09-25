@@ -22,6 +22,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { runInNewContext } from 'node:vm';
 
 import { TECH_EVENTS_SEED_META_KEY, writeTechEventsMirror } from '../scripts/seed-research.mjs';
 import { resolveSeedMetaKey } from '../scripts/_seed-utils.mjs';
@@ -35,8 +36,8 @@ const SAMPLE_PAYLOAD = {
   success: true,
   count: 2,
   events: [
-    { id: 'a', title: 'Event A', startDate: '2026-10-01' },
-    { id: 'b', title: 'Event B', startDate: '2026-10-02' },
+    { id: 'a', title: 'Event A', startDate: '2026-10-01', source: 'techmeme' },
+    { id: 'b', title: 'Event B', startDate: '2026-10-02', source: 'curated' },
   ],
 };
 
@@ -77,4 +78,49 @@ test('the extracted mirror write is what fetchAll calls (source wiring, format-t
     /if \(allData\.techEvents\?\.events\?\.length > 0\) await writeTechEventsMirror\(allData\.techEvents\);/.test(seederSource),
     'fetchAll must route the tech-events write through writeTechEventsMirror',
   );
+});
+
+test('curated-only and empty payloads preserve the previous mirror and heartbeat', async () => {
+  for (const events of [[{ ...SAMPLE_PAYLOAD.events[0], source: 'curated' }], []]) {
+    const writes = [];
+    await writeTechEventsMirror({ ...SAMPLE_PAYLOAD, events }, {
+      writeExtraKeyWithMeta: async (...args) => writes.push(args),
+    });
+    assert.equal(writes.length, 0);
+  }
+});
+
+test('the relay preserves data during an outage and publishes after recovery', async () => {
+  const source = readFileSync(resolve(here, '../scripts/ais-relay.cjs'), 'utf8');
+  const start = source.indexOf('const TECH_EVENTS_SEED_INTERVAL_MS');
+  const end = source.indexOf('async function startTechEventsSeedLoop()', start);
+  assert.ok(start >= 0 && end > start);
+  const writes = [];
+  let feed = null;
+  const warnings = [];
+  const seed = runInNewContext(`${source.slice(start, end)}
+    techEventsFetchUrl = fetchFeed;
+    seedTechEvents;
+  `, {
+    Date: class extends Date {
+      constructor(...args) { super(...(args.length ? args : ['2026-10-01T00:00:00Z'])); }
+      static now() { return Date.parse('2026-10-01T00:00:00Z'); }
+    },
+    fetchFeed: async (url) => url.includes('techmeme') ? feed : null,
+    console: { log() {}, warn: (...args) => warnings.push(args.join(' ')) },
+    envelopeWrite: async (...args) => writes.push(args),
+    upstashSet: async (...args) => writes.push(args),
+  });
+  await seed();
+  assert.equal(writes.length, 0);
+  assert.ok(warnings.some(message => message.includes('preserving last good data')));
+  feed = 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:recovery\nSUMMARY:Recovery conference\nDTSTART;VALUE=DATE:20261002\nEND:VEVENT\nEND:VCALENDAR';
+  await seed();
+  assert.deepEqual(writes.map(([key]) => key), [
+    'research:tech-events:v1',
+    'research:tech-events-bootstrap:v1',
+    RELAY_META_KEY,
+  ]);
+  assert.equal(writes[0][1].events.length, 1);
+  assert.equal(writes[0][1].events[0].source, 'techmeme');
 });

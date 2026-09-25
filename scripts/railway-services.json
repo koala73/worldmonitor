@@ -474,6 +474,7 @@
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_climate-zones.mjs",
+      "scripts/_natural-events-dashboard.mjs",
       "scripts/_content-age-helpers.mjs",
       "scripts/_open-meteo-archive.mjs",
       "scripts/_proxy-utils.cjs",
@@ -1597,7 +1598,6 @@
   {
     "entry": "scripts/seed-live-video-resolved.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-live-video-resolved",
     "startCommand": "node seed-live-video-resolved.mjs",
     "requiredEnv": [

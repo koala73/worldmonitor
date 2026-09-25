@@ -4,6 +4,7 @@ import { LiveNewsPanel } from '@/components/LiveNewsPanel';
 import { STORAGE_KEYS } from '@/config';
 import { getActiveLiveMedia } from '@/services/live-media-controller';
 import { LIVE_VIDEO_TIMING } from '@/services/live-video/model';
+import { __resetResolvedLiveVideosForTests } from '@/services/live-video/resolved';
 
 import { createFakeYouTubeIframeApi, type FakeYouTubeIframeApi } from './helpers/fake-youtube-iframe-api.mts';
 import { initTestI18n } from './helpers/i18n.mts';
@@ -19,6 +20,19 @@ const hlsState = vi.hoisted(() => ({ instances: [] as FakeHlsInstance[] }));
 const catalog = vi.hoisted(() => ({
   news: {} as Record<string, readonly string[]>,
   original: {} as Record<string, readonly string[]>,
+}));
+
+const resolvedFeed = vi.hoisted(() => ({ ensureHydrated: vi.fn<(key: string) => Promise<unknown>>() }));
+const analytics = vi.hoisted(() => ({ track: vi.fn() }));
+
+vi.mock('@/services/bootstrap', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/bootstrap')>()),
+  ensureHydrated: resolvedFeed.ensureHydrated,
+}));
+
+vi.mock('@/services/analytics', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/analytics')>()),
+  track: analytics.track,
 }));
 
 vi.mock('@/services/live-video/youtube-iframe-api', () => ({
@@ -230,6 +244,10 @@ beforeEach(() => {
   loader.api = createFakeYouTubeIframeApi();
   loader.blocked = false;
   hlsState.instances.length = 0;
+  __resetResolvedLiveVideosForTests();
+  resolvedFeed.ensureHydrated.mockReset();
+  resolvedFeed.ensureHydrated.mockResolvedValue(undefined);
+  analytics.track.mockClear();
   catalog.news.bloomberg = [BLOOMBERG_HLS, 'https://www.youtube.com/watch?v=QB5BNdBFujE'];
   catalog.news.cnn = ['https://www.youtube.com/watch?v=GotlA1KKWoo'];
 });
@@ -813,5 +831,170 @@ describe('Live News live verification', () => {
     await flush();
     expect(stream.destroyed).toBe(true);
     expect(content().querySelectorAll('iframe, video.live-news-media')).toHaveLength(0);
+  });
+});
+
+describe('Live News resolved channel live videos (#8545)', () => {
+  const X = 'UCvdwhh_fDyWccR42-rReZLw';
+  const A = 'GotlA1KKWoo';
+  const B = 'NEW1234567x';
+  const channelUrl = `https://www.youtube.com/channel/${X}`;
+  const watchUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
+
+  function resolvedMap(channels: Record<string, string>): unknown {
+    const resolvedAt = new Date(Date.now() - HOUR).toISOString();
+    return {
+      resolvedAt,
+      channels: Object.fromEntries(Object.entries(channels).map(([id, videoId]) => [id, { videoId, resolvedAt }])),
+      stats: { attempted: 1, live: 1 },
+    };
+  }
+
+  function cnnPlayers(): string[] {
+    return api().players.filter((player) => player.iframe.title === 'CNN live feed').map((player) => player.embeddedVideoId);
+  }
+
+  function resolvedEvents(): unknown[][] {
+    return analytics.track.mock.calls.filter(([event]) => event === 'live-video-resolved-applied');
+  }
+
+  it('plays the resolved video ahead of a channel-only slot, then the channel embed', async () => {
+    catalog.news.cnn = [channelUrl];
+    resolvedFeed.ensureHydrated.mockResolvedValue(resolvedMap({ [X]: B }));
+    mount(['cnn']);
+    await playFromPlaceholder();
+
+    expect(resolvedFeed.ensureHydrated).toHaveBeenCalledWith('liveVideoResolved');
+    expect(cnnPlayers()).toEqual([B]);
+    expect(resolvedEvents()).toEqual([['live-video-resolved-applied', { slot: 'live-news/cnn', count: 1 }]]);
+
+    api().playerFor('CNN live feed').error(100);
+    await flush(POLL);
+    expect(cnnPlayers()).toEqual([B, 'live_stream']);
+  });
+
+  it('reports live on the resolved video', async () => {
+    catalog.news.cnn = [channelUrl];
+    resolvedFeed.ensureHydrated.mockResolvedValue(resolvedMap({ [X]: B }));
+    mount(['cnn']);
+    await playFromPlaceholder();
+    expect(cnnPlayers()).toEqual([B]);
+
+    api().playerFor('CNN live feed').goLive({ title: 'CNN Brasil ao vivo' });
+    await flush(POLL);
+    expect(status()).toBeNull();
+    expect(channelButton('cnn').classList.contains('offline')).toBe(false);
+  });
+
+  it('keeps a pinned id ahead of the resolved one, which plays before the channel embed', async () => {
+    catalog.news.cnn = [watchUrl(A), channelUrl];
+    resolvedFeed.ensureHydrated.mockResolvedValue(resolvedMap({ [X]: B }));
+    mount(['cnn']);
+    await playFromPlaceholder();
+    expect(cnnPlayers()).toEqual([A]);
+
+    api().playerFor('CNN live feed').error(100);
+    await flush(POLL);
+    expect(cnnPlayers()).toEqual([A, B]);
+    api().playerFor('CNN live feed').error(100);
+    await flush(POLL);
+    expect(cnnPlayers()).toEqual([A, B, 'live_stream']);
+  });
+
+  it('shows its player at once, plays the catalog after 1.5 s, and uses the late map on the next play (AE6)', async () => {
+    catalog.news.cnn = [channelUrl];
+    let settle: (value: unknown) => void = () => {};
+    resolvedFeed.ensureHydrated.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    mount(['cnn']);
+
+    contentButton('Play live feed').click();
+    expect(content().querySelector('.live-news-player')).not.toBeNull();
+    expect(status()?.textContent).toBe('Connecting to CNN…');
+    await flush(1_499);
+    expect(cnnPlayers()).toEqual([]);
+    await flush(1);
+    expect(cnnPlayers()).toEqual(['live_stream']);
+
+    settle(resolvedMap({ [X]: B }));
+    await flush();
+    headerButton('Toggle playback').click();
+    await flush();
+    headerButton('Toggle playback').click();
+    await flush();
+    expect(cnnPlayers()).toEqual(['live_stream', B]);
+    expect(resolvedFeed.ensureHydrated).toHaveBeenCalledTimes(1);
+  });
+
+  it('never fetches the map for a slot without a channel entry, and mounts at once', () => {
+    mount(['bloomberg']);
+    contentButton('Play live feed').click();
+
+    expect(content().querySelector('video.live-news-media')).not.toBeNull();
+    expect(resolvedFeed.ensureHydrated).not.toHaveBeenCalled();
+  });
+
+  it('plays the catalog when the map is missing or unreadable', async () => {
+    catalog.news.cnn = [watchUrl(A), channelUrl];
+    resolvedFeed.ensureHydrated.mockRejectedValue(new Error('offline'));
+    mount(['cnn']);
+    await playFromPlaceholder();
+    api().playerFor('CNN live feed').error(100);
+    await flush(POLL);
+
+    expect(cnnPlayers()).toEqual([A, 'live_stream']);
+    expect(resolvedEvents()).toEqual([]);
+  });
+
+  it('does not add a resolved id the slot already lists', async () => {
+    catalog.news.cnn = [watchUrl(A), channelUrl];
+    resolvedFeed.ensureHydrated.mockResolvedValue(resolvedMap({ [X]: A }));
+    mount(['cnn']);
+    await playFromPlaceholder();
+    api().playerFor('CNN live feed').error(100);
+    await flush(POLL);
+
+    expect(cnnPlayers()).toEqual([A, 'live_stream']);
+    expect(resolvedEvents()).toEqual([]);
+  });
+
+  it('opens no player for a channel the viewer left while the map was loading', async () => {
+    catalog.news.cnn = [channelUrl];
+    let settle: (value: unknown) => void = () => {};
+    resolvedFeed.ensureHydrated.mockReturnValue(new Promise((resolve) => { settle = resolve; }));
+    mount(['cnn', 'bloomberg'], { active: 'cnn' });
+    await playFromPlaceholder();
+
+    channelButton('bloomberg').click();
+    await flush();
+    settle(resolvedMap({ [X]: B }));
+    await flush(2_000);
+
+    expect(cnnPlayers()).toEqual([]);
+    expect(latestHls().url).toBe(BLOOMBERG_HLS);
+    expect(content().querySelectorAll('iframe, video.live-news-media')).toHaveLength(1);
+  });
+
+  it('opens no player when playback stops while the map is loading', async () => {
+    catalog.news.cnn = [channelUrl];
+    resolvedFeed.ensureHydrated.mockReturnValue(new Promise(() => {}));
+    mount(['cnn']);
+    await playFromPlaceholder();
+
+    headerButton('Toggle playback').click();
+    await flush(2_000);
+
+    expect(cnnPlayers()).toEqual([]);
+    expect(showsPlayIcon()).toBe(true);
+  });
+
+  it('leaves a user-added channel alone', async () => {
+    resolvedFeed.ensureHydrated.mockResolvedValue(resolvedMap({ UCknLrEdhRCp1aegoMqRaCZg: B }));
+    mount(['custom-ucknlredhrcp1aegomqraczg'], {
+      custom: [{ id: 'custom-ucknlredhrcp1aegomqraczg', name: 'DW', handle: '@UCknLrEdhRCp1aegoMqRaCZg' }],
+    });
+    await playFromPlaceholder();
+
+    expect(api().playerFor('DW live feed').embeddedVideoId).toBe('live_stream');
+    expect(resolvedFeed.ensureHydrated).not.toHaveBeenCalled();
   });
 });

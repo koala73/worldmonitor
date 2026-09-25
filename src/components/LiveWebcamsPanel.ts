@@ -10,6 +10,8 @@ import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
 import { playAllLiveMedia, registerLiveMediaStarter, unregisterLiveMediaStarter } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
+import { sourceListsChannel, type LiveVideoSource } from '@/services/live-video/model';
+import { withResolvedLiveVideos } from '@/services/live-video/resolved';
 import { createFailureMemory, openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -110,6 +112,9 @@ export class LiveWebcamsPanel extends Panel {
   private toolbar: HTMLElement | null = null;
   // One verified live session per playing tile, keyed by feed id.
   private tileSessions = new Map<string, LiveVideoSession>();
+  // Bumped whenever every tile is torn down (render, idle stop, close); a tile still waiting for the resolved
+  // channel map from an older generation never opens its session.
+  private mountGeneration = 0;
   // When each feed was last found offline. A recently offline feed is not picked to replace another.
   private readonly failureMemory = createFailureMemory();
   // Grid slots whose feed went offline, each mapped to the feed playing in its place. Held until the user
@@ -345,8 +350,25 @@ export class LiveWebcamsPanel extends Panel {
     const label = document.createElement('div');
     label.className = 'webcam-cell-label';
     container.appendChild(label);
+    const source: LiveVideoSource = { slot: `webcams/${feed.id}`, entries: WEBCAM_SOURCES[feed.id], origin: 'builtin' };
+    if (!sourceListsChannel(source)) {
+      this.openTile(container, feed, label, source);
+      return;
+    }
+    // A tile that lists a channel first asks for that channel's resolved live video (at most 1.5 s).
+    label.replaceChildren(span('webcam-city', feed.city.toUpperCase()), span('webcam-tile-status', t('components.webcams.connecting')));
+    const generation = this.mountGeneration;
+    void withResolvedLiveVideos(source).then((resolved) => {
+      // render(), an idle stop or destroy() since then rebuilt or cleared the tiles. render() builds new cells with
+      // the same feedId, so only the generation and isConnected tell this detached cell from the live one.
+      if (generation !== this.mountGeneration || !container.isConnected || container.dataset.feedId !== feed.id) return;
+      this.openTile(container, feed, label, resolved);
+    });
+  }
+
+  private openTile(container: HTMLElement, feed: WebcamFeed, label: HTMLElement, source: LiveVideoSource): void {
     const session = openLiveVideo(container, {
-      source: { slot: `webcams/${feed.id}`, entries: WEBCAM_SOURCES[feed.id], origin: 'builtin' },
+      source,
       autoplay: true,
       muted: true,
       presentation: { title: `${feed.city} live webcam`, className: 'webcam-iframe', controls: false },
@@ -723,6 +745,7 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   private destroySessions(): void {
+    this.mountGeneration += 1;
     for (const session of this.tileSessions.values()) session.destroy();
     this.tileSessions.clear();
   }

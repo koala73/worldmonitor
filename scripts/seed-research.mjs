@@ -240,25 +240,6 @@ async function fetchTechEvents() {
     }
   } catch (e) { console.warn(`  dev.events RSS: ${e.message}`); }
 
-  // Curated major conferences (must match list-tech-events.ts CURATED_EVENTS)
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const CURATED = [
-    { id: 'gitex-global-2026', title: 'GITEX Global 2026', type: 'conference', location: 'Dubai World Trade Centre, Dubai',
-      coords: { lat: 25.2285, lng: 55.2867, country: 'UAE', original: 'Dubai World Trade Centre, Dubai', virtual: false },
-      startDate: '2026-12-07', endDate: '2026-12-11', url: 'https://www.gitex.com', source: 'curated', description: "World's largest tech & startup show" },
-    { id: 'token2049-dubai-2026', title: 'TOKEN2049 Dubai 2026', type: 'conference', location: 'Dubai, UAE',
-      coords: { lat: 25.2048, lng: 55.2708, country: 'UAE', original: 'Dubai, UAE', virtual: false },
-      startDate: '2026-04-29', endDate: '2026-04-30', url: 'https://www.token2049.com', source: 'curated', description: 'Premier crypto event in Dubai' },
-    { id: 'collision-2026', title: 'Collision 2026', type: 'conference', location: 'Toronto, Canada',
-      coords: { lat: 43.6532, lng: -79.3832, country: 'Canada', original: 'Toronto, Canada', virtual: false },
-      startDate: '2026-06-22', endDate: '2026-06-25', url: 'https://collisionconf.com', source: 'curated', description: "North America's fastest growing tech conference" },
-    { id: 'web-summit-2026', title: 'Web Summit 2026', type: 'conference', location: 'Lisbon, Portugal',
-      coords: { lat: 38.7223, lng: -9.1393, country: 'Portugal', original: 'Lisbon, Portugal', virtual: false },
-      startDate: '2026-11-02', endDate: '2026-11-05', url: 'https://websummit.com', source: 'curated', description: "The world's premier tech conference" },
-  ];
-  for (const c of CURATED) { if (new Date(c.startDate) >= now) events.push(c); }
-
   // Deduplicate
   const seen = new Set();
   const deduped = events.filter(e => {
@@ -390,6 +371,7 @@ async function fetchAll() {
 // override is load-bearing — the default derivation would collide with the
 // relay-owned seed-meta:research:tech-events and starve the bootstrap payload.
 export async function writeTechEventsMirror(techEvents, deps = {}) {
+  if (!techEvents.events.some(event => event.source !== 'curated')) return;
   const write = deps.writeExtraKeyWithMeta ?? writeExtraKeyWithMeta;
   await write('research:tech-events:v1', techEvents, TECH_EVENTS_TTL, techEvents.events.length, TECH_EVENTS_SEED_META_KEY);
 }

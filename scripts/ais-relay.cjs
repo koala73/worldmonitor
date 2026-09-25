@@ -6660,13 +6660,6 @@ const TECH_EVENTS_BOOTSTRAP_KEY = 'research:tech-events-bootstrap:v1';
 const TECH_EVENTS_ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
 const TECH_EVENTS_RSS_URL = 'https://dev.events/rss.xml';
 
-const TECH_EVENTS_CURATED = [
-  { id: 'gitex-global-2026', title: 'GITEX Global 2026', type: 'conference', location: 'Dubai World Trade Centre, Dubai', startDate: '2026-12-07', endDate: '2026-12-11', url: 'https://www.gitex.com', source: 'curated', description: "World's largest tech & startup show" },
-  { id: 'token2049-dubai-2026', title: 'TOKEN2049 Dubai 2026', type: 'conference', location: 'Dubai, UAE', startDate: '2026-04-29', endDate: '2026-04-30', url: 'https://www.token2049.com', source: 'curated', description: 'Premier crypto event in Dubai' },
-  { id: 'collision-2026', title: 'Collision 2026', type: 'conference', location: 'Toronto, Canada', startDate: '2026-06-22', endDate: '2026-06-25', url: 'https://collisionconf.com', source: 'curated', description: "North America's fastest growing tech conference" },
-  { id: 'web-summit-2026', title: 'Web Summit 2026', type: 'conference', location: 'Lisbon, Portugal', startDate: '2026-11-02', endDate: '2026-11-05', url: 'https://websummit.com', source: 'curated', description: "The world's premier tech conference" },
-];
-
 function techEventsParseICS(icsText) {
   const events = [];
   const blocks = icsText.split('BEGIN:VEVENT').slice(1);
@@ -6796,12 +6789,6 @@ async function seedTechEvents() {
       console.log(`[TechEvents] dev.events RSS: ${parsed.length} events`);
     } else {
       console.warn('[TechEvents] dev.events RSS fetch failed');
-    }
-
-    // Add curated events that are still in the future
-    const today = new Date().toISOString().split('T')[0];
-    for (const curated of TECH_EVENTS_CURATED) {
-      if (curated.startDate >= today) events.push(curated);
     }
 
     // Deduplicate by normalized title + year

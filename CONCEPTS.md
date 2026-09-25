@@ -637,7 +637,9 @@ Left running, it is pure loss. It holds runner capacity against the very commit 
 
 A scheduled or post-deploy run whose only purpose is to notice breakage no change-triggered run would surface, whether by probing a live production surface or by sweeping the whole repository. Its value is entirely in running to completion, because a result it never produces is indistinguishable from a passing one.
 
-This makes it the opposite of a Superseded Run under contention: a net must never be evicted, since an evicted probe reads as neither pass nor fail and the coverage is lost silently. Where a workflow mixes a net with ordinary change-proposal jobs, the eviction rule is therefore attached to the individual job rather than the workflow, because a workflow-wide rule is evaluated before the conditions that decide which jobs were going to run at all. See also: Superseded Run, Deploy Gate.
+This makes it the opposite of a Superseded Run under contention: a net must never be evicted, since an evicted probe reads as neither pass nor fail and the coverage is lost silently. Where a workflow mixes a net with ordinary change-proposal jobs, the eviction rule is therefore attached to the individual job rather than the workflow, because a workflow-wide rule is evaluated before the conditions that decide which jobs were going to run at all.
+
+A net's verdict is worth no more than the upstream read it rests on, and the dangerous reads are the ones that succeed. An external listing that can answer, successfully and with nothing in the response to mark it, with a view of history older than the truth will make a net contradict reality in both directions: it cries wolf when the stale view falls outside the net's age window, and — the direction nobody notices — reports healthy when the stale view falls inside it and the net grades an old, passing result. Retry logic cannot separate the two, because it classifies by whether the system answered and this is an answer. The remedy is to sample the read and reduce across samples rather than trust one: a stale view is an older view of the same history, so it can omit what is recent but cannot invent what never happened, and the most recent thing seen across several reads is therefore always real. Any verdict a net can reach from a single successful-but-uncorroborated read is a verdict it should require corroboration for. See also: Superseded Run, Deploy Gate, Third-Party Rot.
 
 ## Localization & First Paint
 
@@ -1052,7 +1054,7 @@ Its failure mode applies to any live check. An empty detection answer could not 
 
 ### Fallback Stream
 
-A specific broadcast identifier pinned to a Live News channel or webcam slot. Before Live Detection was retired, it played only when detection yielded nothing. Each slot is now an ordered list of sources in `src/config/live-video-sources.ts` (a stream address, a pinned broadcast, or a channel's live embed), tried in order until one is verified live; dead, ended, and unembeddable sources are skipped and never shown as live.
+A specific broadcast identifier pinned to a Live News channel or webcam slot. Before Live Detection was retired, it played only when detection yielded nothing. Each slot is now an ordered list of sources in `src/config/live-video-sources.ts` (a stream address, a pinned broadcast, or a channel's live embed), tried in order until one is verified live; dead, ended, and unembeddable sources are skipped and never shown as live. A slot that lists a channel also tries the video that channel had live when the `seed-live-video-resolved` cron last read its `/live` page, immediately before the channel entry, so a broadcaster that restarts its stream under a new identifier needs no catalog edit.
 
 A Fallback Stream decays with no code change. The provider ends the broadcast, restarts it under a new identifier, deletes it, or reassigns it, and the pinned identifier then points at an error, an ended recording, or another channel's content. Verification keeps an ended or deleted source from playing under a live label, but a dead source is skipped in favour of the next one, so the dashboard shows a problem only once no source in the slot is left. Keeping sources honest takes a recurring liveness check against the provider (`npm run live-video:check -- --all` reports entries that are not live and slots with no entries), not code review. See also: Live Detection.
 
@@ -1066,6 +1068,46 @@ The pause keys on input, not on whether anyone is watching, so input inside an e
 
 A viewer preference that starts live news and webcams as soon as their panels are visible instead of waiting for Play. It governs autoplay only; how long video keeps playing without input is the Idle Pause preference, and once an Idle Pause has happened it does not restart video on tab return or scroll-back either. A viewer who saved it before the Idle Pause preference existed is treated as never pausing until they choose a duration, which preserves what the preference used to imply. See also: Idle Pause.
 
+## Conflict Data Sources
+
+### Candidate Release
+
+UCDP's monthly preliminary conflict-event release, published ahead of its annual dataset and merged with a slice of that annual base into one event payload.
+
+A candidate release is not a list of interchangeable events. Besides dated incidents, it carries aggregate rows that cover a whole period and are dated to the period's first day, so any transform that trims rows by recency removes the heaviest rows first. The payload's per-month death totals must equal the release's own; a cap or window that cannot keep the whole candidate release is a data loss, not a size optimization. See also: Reference Period, Seed-Owned Key.
+
+### Reference Period
+
+The calendar month a humanitarian conflict summary describes, as distinct from when the summary was fetched or written.
+
+Two sources can be compared only on a shared reference period, so a seeder that keeps just the newest period makes cross-source comparison impossible whenever the sources publish on different schedules. The newest period can also move backwards: when the preferred bulk source is unavailable and a fallback channel lacks the latest month, the newest period on record falls back a month while the run itself looks fresh. The event categories reported for a period can overlap (one category can be a subset of another), so a per-period total is never the plain sum of its categories unless the source says they are mutually exclusive. See also: Candidate Release, Content-Age Contract, Source Tag.
+
+## Naval Vessel Classification
+
+### AIS-Only Contact
+
+A tracked vessel whose sole evidence of military character is its own broadcast activity code — no match against the named-vessel roster and no military signal in its identity.
+
+Such a contact is tracked because the activity code alone qualifies it, which makes that code load-bearing in two directions at once: it decides whether the vessel is followed at all, and it is the only thing the display can honestly say about it. A classifier that stops returning a value for the code silently stops tracking these contacts entirely, trading a wrong answer for no answer. Their confidence is the lowest tier, and their class is by definition unestablished. See also: Declared Military Activity, Known-Vessel Override.
+
+### Declared Military Activity
+
+A ship's own broadcast statement that it is engaged in military operations. It establishes what the vessel is doing, never what class of ship it is.
+
+The distinction is the whole point: activity is self-declared and generic, while class is a claim about the hull that only a roster record or a fleet report can support. Presenting declared activity as a class invents a fact no source supports, and it propagates — the invented class flows into order-of-battle counts, threat severity, cluster character, and every export a user keeps. The honest rendering shows the declared activity itself wherever a class would otherwise appear. See also: AIS-Only Contact, Stale Class Claim.
+
+### Known-Vessel Override
+
+A match against the named-vessel roster or a published fleet report, which outranks any classification derived from a ship's own broadcast.
+
+Precedence runs one way only — a roster match always wins, and broadcast-derived classification fills in only where no match exists. Broadcast-derived classification never carries a hull identifier, and a roster or fleet-report record for a combatant class always does. That asymmetry is what makes a supported combatant-class claim distinguishable from an unsupported one after the fact; it is not a property of every roster entry, because some non-combatant records omit the identifier too. See also: Declared Military Activity, Stale Class Claim.
+
+### Stale Class Claim
+
+A vessel classification replayed out of a persisted snapshot that the current classifier would no longer produce.
+
+Vessel snapshots outlive a deploy, so correcting a classifier reaches new readers immediately and returning readers only once their own snapshot ages out — from their seat the fix simply did not happen. Correcting the classifier is therefore only half the work: the rehydration path has to normalize the old claim too, and it can only do so safely against a signature no legitimate record can satisfy. The hull-identifier asymmetry under Known-Vessel Override is what supplies that signature here, which is why such a signature can only target the combatant classes that asymmetry actually covers. See also: Known-Vessel Override, Dark Ship.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
@@ -1076,3 +1118,4 @@ A viewer preference that starts live news and webcams as soon as their panels ar
 - *"Gate"* had been used for both the local pre-push Tiered Gate and the CI Deploy Gate — these are distinct. The Tiered Gate is a cacheable pre-flight that can be scoped or escalated on one machine; only the Deploy Gate decides mergeability, and only names on its required list count toward it.
 - *"Superseded"* qualifies two unrelated things. A Superseded Run is a change-proposal CI run replaced by a later push, and it is discarded on purpose. A Superseded Failure is a scheduled run's failure that a newer capture, by hand or by a later run, has since made moot, and it is an alarm that resolves itself. The first is about wasted capacity, the second about alert noise; never reason about one from the other.
 - *"Capability"* names two things. A Capability-Gated Deep Link is gated on an entitlement predicate the destination also renders on; a Brief URL is a bearer link where the token itself is the capability. Say "entitlement" for the first sense in prose and "Brief URL" for the second; avoid "capability URL".
+- *"Unknown"* as a vessel class names two different states — a contact that declared military activity but no hull class, and a contact with no class evidence at all. They are currently indistinguishable downstream and fold into the same non-combatant bucket. When it matters which one you mean, say "declared activity, class unestablished" for the first; never read the shared bucket as evidence of either.

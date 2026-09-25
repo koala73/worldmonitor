@@ -133,8 +133,9 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the 84-service fleet including the provisioned yield-curve bundle', () => {
-    // The roster is not a baseline to be
+  it('ships the 85-service fleet including the provisioned live-video resolver', () => {
+    // 84 -> 85: seed-live-video-resolved (service 11581ac4, cron 0 */6 * * *)
+    // was provisioned after #8596 merged. The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
     // repository filtering and both read-only monitors report healthy. An
@@ -143,9 +144,9 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 84);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 84);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 84);
+    assert.equal(fleet.length, 85);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 85);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 85);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

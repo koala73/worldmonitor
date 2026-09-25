@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 310,
-    "ok": 310,
+    "total": 311,
+    "ok": 311,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -165,6 +165,12 @@ IMD is optional when `IMD_API_KEY` is absent, including after intentional remova
 The v2 activation marker requires a successful documented-product response. Valid quiet responses qualify. Total failures and carried-only snapshots do not. The older marker is ignored because failed product batches could write it.
 
 ### Producers That Serve Last-Known-Good
+
+NHC current-point identity rejections log a bounded `[NHC identity]` diagnostic with the layer, failed field predicates, source attempt time and seed run start time. The seed run start and surrounding Run ID log correlate the diagnostic with its execution. Field summaries include types and lengths; only allowlisted short public identity/date representations are included. Nested values and unsafe or oversized strings are omitted. These diagnostics do not enter Redis payloads and do not change validation, retries, failure counts or retention. A logged identity rejection still needs its field evidence before a parser defect can be established.
+
+New successful EONET observations can remain available for 18 hours. This is an availability policy, not an extension of the 540-minute health limit. Failed attempts retain the original success time and absolute expiry; older nine-hour snapshots keep their existing deadlines. RPC, bootstrap Redis reads, MCP, and the climate-disaster seeder remove expired EONET records before filtering, while preserving healthy companion records. Legacy payloads without expiry metadata remain readable. Data already delivered to a browser follows its existing cache behavior; this policy does not schedule client-side removal.
+
+EONET acquisition keeps a 15-second header deadline and the shared 30.5-second request budget, including retry delay. A progressing body can use the remaining budget, but five seconds without a decoded body chunk aborts the attempt. Decoded responses are limited to 2 MiB. These limits address local acquisition behavior; they do not establish the cause of upstream delays. GDACS and NHC retention and transport limits are unchanged.
 
 Taiwan MND records failed source attempts in its source metadata. One failed attempt is pending only while positive last-good records remain fresh. The same error on the next distinct attempt warns. The pending deadline is 210 minutes after the first failure, or the last-good freshness deadline if earlier. A different error does not extend that deadline. Health reads do not advance the failure count.
 

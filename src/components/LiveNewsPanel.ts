@@ -8,7 +8,8 @@ import { STORAGE_KEYS } from '@/config';
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
-import type { OfflineReason } from '@/services/live-video/model';
+import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
+import { withResolvedLiveVideos } from '@/services/live-video/resolved';
 import { createFailureMemory, openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 import { track } from '@/services/analytics';
 import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
@@ -78,6 +79,8 @@ export class LiveNewsPanel extends Panel {
 
   // One verified live session for the active channel. Callbacks from a replaced session carry a stale generation.
   private videoSession: LiveVideoSession | null = null;
+  // A player waiting for the resolved channel map before its session opens (renderPlayer).
+  private pendingMount = false;
   private videoPhase: LiveVideoState['phase'] | null = null;
   private playerContainer: HTMLDivElement | null = null;
   private playerGeneration = 0;
@@ -292,6 +295,7 @@ export class LiveNewsPanel extends Panel {
     return this.deferredInit ||
       this.isPlaying ||
       this.videoSession !== null ||
+      this.pendingMount ||
       this.ownsLiveNewsMedia() ||
       (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.isPanelVisible());
   }
@@ -346,6 +350,7 @@ export class LiveNewsPanel extends Panel {
 
   private destroyPlayer(): void {
     this.playerGeneration += 1;
+    this.pendingMount = false;
     this.videoSession?.destroy();
     this.videoSession = null;
     this.videoPhase = null;
@@ -371,7 +376,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private togglePlayback(): void {
-    if (this.isPlaying || this.videoSession) {
+    if (this.isPlaying || this.videoSession || this.pendingMount) {
       stopLiveMediaPlayback('live-news', 'user-paused');
       return;
     }
@@ -742,8 +747,25 @@ export class LiveNewsPanel extends Panel {
     const isCurrent = () => generation === this.playerGeneration;
     const channel = this.activeChannel;
     const container = this.ensurePlayerContainer();
+    const source = liveVideoSourceFor(channel);
+    if (!sourceListsChannel(source)) {
+      this.openPlayer(container, channel, source, isCurrent);
+      return;
+    }
+    // A slot that lists a channel first asks for that channel's resolved live video (at most 1.5 s), showing the
+    // connecting cover meanwhile. A stop, a channel switch or a new render bumps the generation and drops the mount.
+    this.pendingMount = true;
+    this.showPlayerStatus('cover', t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) }));
+    void withResolvedLiveVideos(source).then((resolved) => {
+      if (!isCurrent()) return;
+      this.pendingMount = false;
+      this.openPlayer(container, channel, resolved, isCurrent);
+    });
+  }
+
+  private openPlayer(container: HTMLDivElement, channel: LiveChannel, source: LiveVideoSource, isCurrent: () => boolean): void {
     const session = openLiveVideo(container, {
-      source: liveVideoSourceFor(channel),
+      source,
       autoplay: true,
       muted: this.isMuted,
       presentation: { title: `${this.getChannelDisplayName(channel)} live feed`, className: 'live-news-media', controls: true },
@@ -889,7 +911,7 @@ export class LiveNewsPanel extends Panel {
     const sourceChanged = liveVideoSourceFor(current).entries.join('\n') !== liveVideoSourceFor(this.activeChannel).entries.join('\n');
     this.activeChannel = current;
     if (!sourceChanged) return;
-    if (this.videoSession) this.renderPlayer();
+    if (this.videoSession || this.pendingMount) this.renderPlayer();
     else if (this.ownsActiveLiveMedia()) this.beginPlayback('explicit');
   }
 
@@ -897,7 +919,7 @@ export class LiveNewsPanel extends Panel {
     const wasIdleStopped = this.idleStoppedAfterMs !== null;
     this.idleStoppedAfterMs = null;
     stopLiveMediaPlayback('live-news', 'destroyed');
-    if (wasIdleStopped || this.videoSession) {
+    if (wasIdleStopped || this.videoSession || this.pendingMount) {
       this.isPlaying = false;
       this.updateLiveIndicator();
       this.destroyPlayer();

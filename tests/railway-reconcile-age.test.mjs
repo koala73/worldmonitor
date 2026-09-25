@@ -166,6 +166,22 @@ describe('the I/O path that builds the window', () => {
 
   const listing = (...runs) => [{ workflow_runs: runs }];
 
+  for (const pages of [[], [{ total_count: 2, workflow_runs: [{ id: 1, updated_at: '2026-08-05T11:00:00Z' }] }]]) {
+    it('rejects an incomplete paginated window instead of claiming STALE', () => {
+      assert.throws(() => readRunsSince({ gh: () => JSON.stringify(pages), repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR }), /incomplete/);
+    });
+  }
+
+  it('does not declare an empty window from a stale listing', () => {
+    const replies = [
+      [{ total_count: 0, workflow_runs: [] }],
+      [{ total_count: 1, workflow_runs: [{ id: 222, updated_at: '2026-08-05T11:00:00Z' }] }],
+      [{ total_count: 1, workflow_runs: [{ id: 222, updated_at: '2026-08-05T11:00:00Z' }] }],
+    ];
+    const runs = readRunsSince({ gh: () => JSON.stringify(replies.shift()), repository: 'o/r', workflowFile: 'w.yml', sinceMs: NOW - 3 * HOUR });
+    assert.deepEqual(runs.map(run => run.id), [222]);
+  });
+
   it('asks for completed runs created inside the window only', () => {
     const { gh, calls } = fakeGh({ pages: listing(), jobsByRunId: {} });
     readRunsSince({

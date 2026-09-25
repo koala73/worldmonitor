@@ -164,6 +164,26 @@
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
     },
     {
+      "source": "/(country-instability-index|countries|sources|chokepoints|research|crises|use-cases|accuracy|compare|tools|reference|changelog)/(.*).json",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
+      "source": "/(product-facts|agent-view).json",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
+      "source": "/sandbox/(.*).json",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
+      "source": "/docs/api/(.*).openapi.yaml",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
+      "source": "/docs/snapshots/(.*).json",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, follow" }]
+    },
+    {
       "source": "/mcp",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
@@ -224,7 +244,8 @@
         { "key": "Content-Type", "value": "application/yaml; charset=utf-8" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=3600" },
-        { "key": "Link", "value": "<https://www.worldmonitor.app/openapi.yaml>; rel=\"canonical\"" }
+        { "key": "Link", "value": "<https://www.worldmonitor.app/openapi.yaml>; rel=\"canonical\"" },
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
       ]
     },
     {
@@ -233,7 +254,8 @@
         { "key": "Content-Type", "value": "application/json; charset=utf-8" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=3600" },
-        { "key": "Link", "value": "<https://www.worldmonitor.app/openapi.json>; rel=\"canonical\"" }
+        { "key": "Link", "value": "<https://www.worldmonitor.app/openapi.json>; rel=\"canonical\"" },
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
       ]
     },
     {
@@ -242,7 +264,8 @@
         { "key": "Content-Type", "value": "application/json; charset=utf-8" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=3600" },
-        { "key": "Link", "value": "<https://www.worldmonitor.app/plugin.json>; rel=\"canonical\"" }
+        { "key": "Link", "value": "<https://www.worldmonitor.app/plugin.json>; rel=\"canonical\"" },
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
       ]
     },
     {

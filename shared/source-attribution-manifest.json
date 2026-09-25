@@ -2542,21 +2542,10 @@
       "host": "collisionconf.com",
       "provider": "collisionconf.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit collisionconf.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "scripts/seed-research.mjs"
-        },
-        {
-          "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "commodity.worldmonitor.app",
@@ -4675,6 +4664,9 @@
       "references": [
         {
           "path": "api/download.js"
+        },
+        {
+          "path": "api/health.js"
         },
         {
           "path": "scripts/build-accuracy-page.mjs"
@@ -10283,21 +10275,10 @@
       "host": "websummit.com",
       "provider": "websummit.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit websummit.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "scripts/seed-research.mjs"
-        },
-        {
-          "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "whitehouse.gov",
@@ -12072,21 +12053,10 @@
       "host": "www.gitex.com",
       "provider": "www.gitex.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.gitex.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "scripts/seed-research.mjs"
-        },
-        {
-          "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.githubstatus.com",
@@ -14226,21 +14196,10 @@
       "host": "www.token2049.com",
       "provider": "www.token2049.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.token2049.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "scripts/seed-research.mjs"
-        },
-        {
-          "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.tomshardware.com",

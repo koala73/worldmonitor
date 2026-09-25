@@ -1029,6 +1029,39 @@ describe('stacked child retarget plan', () => {
 });
 
 describe('retargetStackedChildren executor', () => {
+  it('stops after three invisible-run reads and never posts a rerun', () => {
+    const { gh, log } = fakeGh([CHILD_8519]);
+    let reads = 0;
+    const result = retargetStackedChildren({
+      event: pullEvent(PARENT_8518, { action: 'closed' }),
+      gh: (args, options) => {
+        if (args.some(arg => arg.includes('/workflows/stacked-merge-guard.yml/runs'))) {
+          reads += 1;
+          return JSON.stringify({ workflow_runs: [] });
+        }
+        return gh(args, options);
+      },
+    });
+    assert.equal(result.warnings.length, 1);
+    assert.equal(reads, 3);
+    assert.equal(log.filter(entry => entry.path.endsWith('/rerun')).length, 0);
+  });
+  it('retries a run that is not visible yet without repeating the rerun POST', () => {
+    const { gh, log } = fakeGh([CHILD_8519]);
+    let reads = 0;
+    const result = retargetStackedChildren({
+      event: pullEvent(PARENT_8518, { action: 'closed' }),
+      gh: (args, options) => {
+        if (args.some(arg => arg.includes('/workflows/stacked-merge-guard.yml/runs')) && ++reads === 1) {
+          return JSON.stringify({ workflow_runs: [] });
+        }
+        return gh(args, options);
+      },
+    });
+    assert.equal(result.warnings.length, 0);
+    assert.equal(reads, 2);
+    assert.equal(log.filter(entry => entry.path.endsWith('/rerun')).length, 1);
+  });
   function fakeGh(children, { failPatch = new Set(), failRerun = false } = {}) {
     const log = [];
     const gh = (args, options = {}) => {

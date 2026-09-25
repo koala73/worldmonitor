@@ -83,7 +83,8 @@ jobs:
             tests/resilience-ranking-snapshot.test.mts \
             tests/sitemap-generation.test.mjs \
             tests/seo-geo-residue.test.mjs \
-            tests/ai-search-product-facts.test.mjs
+            tests/ai-search-product-facts.test.mjs \
+            tests/country-corpus-slugs-freshness.test.mjs
       - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
@@ -95,7 +96,12 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md public/llms.txt
+          # api/_country-corpus-slugs.generated.js is derived from "$snapshot_path"
+          # and rewritten by build:crawlable-corpus above. Leaving it unstaged
+          # would ship a renamed country's page while api/story.js kept
+          # canonicalising every share of it at the old slug — a hard 404, with
+          # no legacy-slug redirect behind it (#8604).
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md public/llms.txt api/_country-corpus-slugs.generated.js
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
       - name: Open the monthly snapshot PR

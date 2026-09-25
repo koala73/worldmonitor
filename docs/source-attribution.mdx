@@ -2,7 +2,7 @@
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **775 active source hosts** representing **761 active providers** (**346 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **771 active source hosts** representing **757 active providers** (**342 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -156,7 +156,7 @@ This generated inventory covers **775 active source hosts** representing **761 a
 | Coinbase (coinbase.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | CoinPaprika (api.coinpaprika.com) | structured — scripts/_seed-utils.mjs, scripts/ais-relay.cjs, server/worldmonitor/market/v1/_shared.ts |
 | cointelegraph.com (cointelegraph.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts |
-| collisionconf.com (collisionconf.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| collisionconf.com (collisionconf.com) | Excluded / candidate — No current fetch observed |
 | commodity.worldmonitor.app (commodity.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
 | comtradeapi.un.org (comtradeapi.un.org) | structured — scripts/seed-comtrade-bilateral-hs4.mjs, scripts/seed-recovery-import-hhi.mjs, scripts/seed-recovery-reexport-share.mjs, scripts/seed-supply-vulnerability.mjs, +2 more |
 | confluence.status.atlassian.com (confluence.status.atlassian.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
@@ -291,7 +291,7 @@ This generated inventory covers **775 active source hosts** representing **761 a
 | geospatial-usace.opendata.arcgis.com (geospatial-usace.opendata.arcgis.com) | structured — scripts/fetch-mirta-bases.mjs |
 | ghoapi.azureedge.net (ghoapi.azureedge.net) | structured — scripts/seed-resilience-static.mjs |
 | github.blog (github.blog) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| github.com (github.com) | structured — api/download.js, scripts/build-accuracy-page.mjs, scripts/build-crawlable-corpus.mjs, scripts/generate-airline-codes.mjs, +4 more |
+| github.com (github.com) | structured — api/download.js, api/health.js, scripts/build-accuracy-page.mjs, scripts/build-crawlable-corpus.mjs, +5 more |
 | Global Affairs Canada (SEMA consolidated sanctions) (www.international.gc.ca) | structured — scripts/_sema-sanctions.mjs |
 | Global Energy Monitor (globalenergymonitor.org) | structured — scripts/import-gem-pipelines.mjs, src/components/PipelineStatusPanel.ts, src/components/StorageFacilityMapPanel.ts |
 | globalinitiative.net (globalinitiative.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -680,7 +680,7 @@ This generated inventory covers **775 active source hosts** representing **761 a
 | web.archive.org (web.archive.org) | structured — scripts/seed-fatf-listing.mjs |
 | web.cbr.ru (web.cbr.ru) | structured — scripts/seed-cbr-rates.mjs |
 | webcams.windy.com (webcams.windy.com) | structured — shared/pinned-webcams.ts |
-| websummit.com (websummit.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| websummit.com (websummit.com) | Excluded / candidate — No current fetch observed |
 | Welt (www.welt.de) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | whitehouse.gov (whitehouse.gov) | Excluded / candidate — No current fetch observed |
 | Wikidata (query.wikidata.org) | structured — scripts/freeze-resilience-ranking.mjs, server/worldmonitor/intelligence/v1/get-country-facts.ts |
@@ -778,7 +778,7 @@ This generated inventory covers **775 active source hosts** representing **761 a
 | www.g4media.ro (www.g4media.ro) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.gdacs.org (www.gdacs.org) | structured — scripts/seed-natural-events.mjs |
 | www.gets.govt.nz (www.gets.govt.nz) | structured — scripts/seed-global-tenders.mjs |
-| www.gitex.com (www.gitex.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| www.gitex.com (www.gitex.com) | Excluded / candidate — No current fetch observed |
 | www.githubstatus.com (www.githubstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | www.goldseek.com (www.goldseek.com) | feed — src/config/feeds.ts |
 | www.good.is (www.good.is) | feed — src/config/feeds.ts |
@@ -896,7 +896,7 @@ This generated inventory covers **775 active source hosts** representing **761 a
 | www.thestar.com (www.thestar.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.theverge.com (www.theverge.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | www.thisdaylive.com (www.thisdaylive.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| www.token2049.com (www.token2049.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| www.token2049.com (www.token2049.com) | Excluded / candidate — No current fetch observed |
 | www.tomshardware.com (www.tomshardware.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | www.tvanouvelles.ca (www.tvanouvelles.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.twz.com (www.twz.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |

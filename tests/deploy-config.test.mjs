@@ -231,6 +231,16 @@ const sourceToRegExp = (source) => {
         out += '[^/]+';
         i = j - 1;
       }
+    } else if (ch === '\\' && i + 1 < source.length) {
+      // A backslash already in the source is the author escaping the NEXT
+      // character (`(.*)\.json`). Copy both through verbatim. Without this the
+      // helper escaped the backslash itself, producing `\\.` — a literal
+      // backslash followed by any char — so such a source modelled as matching
+      // nothing and every `assert.equal(effectiveHeader(p, k), null)` against it
+      // passed vacuously. No source in vercel.json needs it today; the branch
+      // exists so the first one that does is not silently green.
+      out += source[i] + source[i + 1];
+      i += 1;
     } else {
       out += /[.*+?^${}|[\]\\]/.test(ch) ? `\\${ch}` : ch;
     }
@@ -531,9 +541,16 @@ describe('crawlable content corpus deployment contracts', () => {
   });
 
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
-    assert.equal(
+    // #8604 prepends the country slug generator. api/story.js canonicalises
+    // every share stub against api/_country-corpus-slugs.generated.js, which is
+    // derived from the same resilience snapshot this builder reads, so the map
+    // has to be regenerated in the same step that republishes the pages -- a
+    // map that lags the corpus emits a canonical to a slug that 404s. The
+    // corpus builder stays the tail of the command, so the ordering assertions
+    // below still describe where the pages are produced.
+    assert.match(
       packageJson.scripts['build:crawlable-corpus'],
-      'node --import tsx scripts/build-crawlable-corpus.mjs'
+      /^npm run corpus:country-slugs && node --import tsx scripts\/build-crawlable-corpus\.mjs$/
     );
     assert.equal(
       packageJson.scripts['build:sitemap'],
@@ -738,6 +755,91 @@ describe('crawlable content corpus deployment contracts', () => {
     }
     for (const symbol of ['AAPL', 'ZZZZFAKE', 'BRK.B', '7203.T']) {
       assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: `/stocks/${symbol}` })?.destination, DASHBOARD_HTML_DESTINATION);
+    }
+  });
+
+  // #8608: the corpus dataset downloads, the OpenAPI/plugin descriptors and the
+  // .well-known JSON descriptors are machine-readable files, not pages. They
+  // answered 200 with no robots directive, which made them the largest
+  // actionable slice of the 2026-09-24 "Crawled - currently not indexed" export
+  // (178 of 1,000 sampled rows, 103 of them /countries/<slug>/resilience.json).
+  // `noindex, follow` keeps them fetchable, which a robots.txt Disallow would
+  // not: every corpus page carries a schema.org DataDownload `contentUrl`
+  // pointing at these files, and a disallowed URL is a claim Google is
+  // forbidden to verify (#7660).
+  it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
+    const dataFiles = [
+      // Corpus dataset downloads - scripts/build-crawlable-corpus.mjs.
+      '/country-instability-index/cii-ranking.json',
+      '/countries/resilience-ranking.json',
+      '/countries/iran/resilience.json',
+      '/countries/iran/cii.json',
+      '/chokepoints/status.json',
+      '/chokepoints/strait-of-hormuz/reference.json',
+      '/crises/sudan/tracker.json',
+      '/accuracy/scorecard.json',
+      '/sources/search-index.json',
+      '/research/grain-corridor/grain-corridor.json',
+      // Service descriptions.
+      '/openapi.json',
+      '/openapi.yaml',
+      '/plugin.json',
+      '/docs/api/ForecastService.openapi.yaml',
+      '/docs/snapshots/github-stars-2026-09-03.json',
+      // Standalone machine JSON outside the corpus families.
+      '/product-facts.json',
+      '/agent-view.json',
+      '/sandbox/index.json',
+    ];
+    for (const path of dataFiles) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), 'noindex, follow', path);
+    }
+
+    for (const prefix of CONTENT_CORPUS_PREFIXES) {
+      // Every corpus family, not only the ones shipping a dataset today.
+      for (const file of [`/${prefix}/example.json`, `/${prefix}/example/nested.json`]) {
+        assert.equal(effectiveHeader(file, 'X-Robots-Tag'), 'noindex, follow', file);
+      }
+      // The HTML these files hang off must stay indexable. A rule anchored on
+      // the prefix rather than the extension would de-index the whole corpus.
+      for (const route of [`/${prefix}`, `/${prefix}/`, `/${prefix}/example`, `/${prefix}/example/`]) {
+        assert.equal(effectiveHeader(route, 'X-Robots-Tag'), null, route);
+      }
+    }
+    assert.equal(effectiveHeader('/countries/united-states', 'X-Robots-Tag'), null);
+    assert.equal(effectiveHeader('/countries/united-states/', 'X-Robots-Tag'), null);
+
+    // Scope item 2 of #8608 deliberately leaves the AI-citation surface alone:
+    // it is not established that OAI-SearchBot, PerplexityBot or
+    // Claude-SearchBot read `X-Robots-Tag: noindex` as "do not index" rather
+    // than "do not cite", so noindex here would risk trading a Search Console
+    // count for citability. That stays an owner decision, not a drive-by.
+    // `.well-known` is entirely agent-discovery surface, including the JSON.
+    // agent-skills/index.json is 17 kB whose `instructions` field is prose
+    // written to persuade an agent to call us -- the same citation risk as the
+    // SKILL.md files it lists, not inert data. Sorting this surface by file
+    // extension would have noindexed the pitch and spared the chapters.
+    for (const path of ['/llms.txt', '/llms-full.txt', '/api/llms.txt', '/agents.md', '/developers.md',
+      '/pricing.md', '/openapi.md', '/world-monitor.md', '/.well-known/security.txt',
+      '/.well-known/agent-skills/check-country-risk/SKILL.md',
+      '/.well-known/agent-skills/index.json', '/.well-known/agent-card.json',
+      '/.well-known/ai-catalog.json', '/.well-known/mcp/server-card.json']) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
+    }
+
+    // The matcher must model a pre-escaped dot the way Vercel does. Before
+    // #8608 the helper escaped the backslash itself, so `(.*)\\.json` compiled
+    // to "backslash then any char" and matched nothing at all - which would
+    // have made every null assertion above pass without proving anything.
+    assert.ok(sourceToRegExp('/countries/(.*)\\.json').test('/countries/iran/resilience.json'));
+    assert.ok(!sourceToRegExp('/countries/(.*)\\.json').test('/countries/iran/resilienceXjson'));
+    assert.ok(sourceToRegExp('/countries/(.*).json').test('/countries/iran/resilience.json'));
+    assert.ok(!sourceToRegExp('/countries/(.*).json').test('/countries/united-states'));
+
+    // Sitemaps and robots.txt stay plain - a noindex sitemap is simply dropped,
+    // and #8608 does not touch them.
+    for (const path of ['/robots.txt', '/robots.www.txt', '/sitemap.xml', '/sitemap-main.xml', '/schemamap.xml']) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
     }
   });
 
