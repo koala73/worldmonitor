@@ -1,4 +1,5 @@
 import { decodeHtmlEntities } from '../_html-entities.mjs';
+import { fetchThroughProxy, hasUsableProxy, shouldRetryViaProxy } from './source-runtime.mjs';
 
 export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/';
 // NBS is a REQUIRED source: any failure aborts the whole run, so a single
@@ -356,7 +357,10 @@ const NBS_DIAGNOSTIC_CODES = new Set([
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
 ]);
 
-function logNbsTransportFailure(error, url, attempt) {
+// `detail` is `{ attempt }` for a failed direct attempt or `{ recovered: 'proxy' }`
+// for a direct failure the proxy ladder recovered; the latter is the only place
+// the direct cause code survives a proxied success.
+function logNbsTransportFailure(error, url, detail) {
   try {
     let code = 'UNKNOWN';
     let cause = error;
@@ -369,10 +373,50 @@ function logNbsTransportFailure(error, url, attempt) {
     console.warn(JSON.stringify({
       event: 'china_calendar_transport_failure', host: 'www.stats.gov.cn',
       resource: url === NBS_CALENDAR_INDEX_URL ? 'index' : 'calendar',
-      transport: 'direct', attempt, code,
+      transport: 'direct', ...detail, code,
       ...(Number.isInteger(status) && status >= 100 && status <= 599 ? { httpStatus: status } : {}),
     }));
   } catch { /* Diagnostics must not change the fetch result or retry policy. */ }
+}
+
+/**
+ * Fetch-compatible decorator: the same declared NBS request from a different
+ * egress point when the direct route cannot connect. Railway's egress cannot
+ * open www.stats.gov.cn while the same client succeeds from a laptop; China-
+ * Macro on the same host already recovers through PROXY_URL (adapters.mjs).
+ *
+ * Returns fetchFn itself when no usable proxy is configured, so an unset
+ * PROXY_URL is structurally byte-for-byte the direct path. Responses are never
+ * inspected here: a proxied status or redirect flows into fetchText's own
+ * policy. A ladder that ran and failed rethrows the ORIGINAL direct error
+ * marked nonRetryable, because a second ladder would spend up to 16s of the
+ * budget the calendar page shares; a ladder that never ran (deadline floor)
+ * rethrows it untagged so the retry loop keeps its say.
+ */
+function withNbsProxyFallback(fetchFn, { proxyUrl, proxyFetchFn, deadlineAt, onRecovered }) {
+  if (!hasUsableProxy(proxyUrl)) return fetchFn;
+  return async (url, init) => {
+    try {
+      return await fetchFn(url, init);
+    } catch (directError) {
+      if (isCertificateValidationFailure(directError) || !shouldRetryViaProxy(directError)) throw directError;
+      let proxied;
+      try {
+        proxied = await fetchThroughProxy(new URL(url), init, proxyUrl, { proxyFetchFn, deadlineAt });
+      } catch (proxyError) {
+        if (proxyError?.code === 'SOURCE_CONTRACT_VIOLATION') throw nbsTransportError(proxyError.publicReason);
+        try {
+          directError.nonRetryable = true;
+        } catch {
+          // A frozen error falls back to the retry loop's own attempt gate.
+        }
+        throw directError;
+      }
+      if (!proxied) throw directError;
+      onRecovered(directError, url);
+      return proxied;
+    }
+  };
 }
 
 async function fetchTextWithTransientRetry(fetchFn, url, { onRequest, deadlineAt, sleepFn }) {
@@ -380,7 +424,7 @@ async function fetchTextWithTransientRetry(fetchFn, url, { onRequest, deadlineAt
     try {
       return await fetchText(fetchFn, url, { onRequest, deadlineAt });
     } catch (error) {
-      logNbsTransportFailure(error, url, attempt);
+      logNbsTransportFailure(error, url, { attempt });
       if (isCertificateValidationFailure(error)) throw tagReason(error, TLS_CERT_UNTRUSTED_REASON);
       if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
       // Grows with the attempt, but never undercuts an explicit Retry-After
@@ -438,6 +482,11 @@ export function currentCalendarLink(indexHtml, year) {
 export async function fetchChinaReleaseCalendar({
   now = Date.now(),
   fetchFn = globalThis.fetch,
+  // NBS only, and only after a connection-level failure; ChinaMoney stays on
+  // the direct route. Same variable China-Macro uses (adapters.mjs), so the
+  // Railway service needs nothing new.
+  proxyUrl = process.env.PROXY_URL || null,
+  proxyFetchFn,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   onDecision = (entry) => console.log(JSON.stringify({ event: 'china_calendar_source_preflight', ...entry })),
 } = {}) {
@@ -448,13 +497,28 @@ export async function fetchChinaReleaseCalendar({
 
   let nbsEvents = [];
   let nbsRequestCount = 0;
+  let nbsProxyFallbacks = 0;
   // Counted per HTTP HOP, not per logical attempt or URL: redirects and retries
   // are all real requests against the official host and belong in the audit.
+  // A proxied hop is the same logical request finally arriving, not a second one.
   const nbsDeadlineAt = Date.now() + NBS_TOTAL_FETCH_BUDGET_MS;
-  const fetchNbsText = (url) => fetchTextWithTransientRetry(fetchFn, url, {
+  const nbsFetch = withNbsProxyFallback(fetchFn, {
+    proxyUrl,
+    proxyFetchFn,
+    deadlineAt: nbsDeadlineAt,
+    onRecovered: (directError, url) => {
+      nbsProxyFallbacks += 1;
+      logNbsTransportFailure(directError, url, { recovered: 'proxy' });
+    },
+  });
+  const fetchNbsText = (url) => fetchTextWithTransientRetry(nbsFetch, url, {
     onRequest: () => { nbsRequestCount += 1; },
     deadlineAt: nbsDeadlineAt,
     sleepFn,
+  });
+  const nbsDecision = (status, reason) => ({
+    ...sourceDecision('NBS release calendar', 'www.stats.gov.cn', status, reason, checkedAt, nbsRequestCount),
+    ...(nbsProxyFallbacks > 0 ? { proxyFallbacks: nbsProxyFallbacks } : {}),
   });
   try {
     const indexHtml = await fetchNbsText(NBS_CALENDAR_INDEX_URL);
@@ -464,10 +528,10 @@ export async function fetchChinaReleaseCalendar({
     if (nbsEvents.length === 0) {
       throw Object.assign(new Error('NO_NBS_EVENTS'), { reason: 'NO_NBS_EVENTS' });
     }
-    record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'accepted', 'OK', checkedAt, nbsRequestCount));
+    record(nbsDecision('accepted', 'OK'));
   } catch (error) {
     const reason = reasonFor(error);
-    record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'blocked', reason, checkedAt, nbsRequestCount));
+    record(nbsDecision('blocked', reason));
     throw requiredSourceError('NBS_REQUIRED_SOURCE_UNAVAILABLE', reason);
   }
 

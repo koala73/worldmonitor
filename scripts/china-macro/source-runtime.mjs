@@ -140,6 +140,10 @@ export function shouldRetryViaProxy(error) {
   return false;
 }
 
+export function hasUsableProxy(proxyUrl) {
+  return Boolean(proxyUrl && parseProxyConfigForAttempt(proxyUrl, 0));
+}
+
 /**
  * The same declared request, from a different egress point.
  *
@@ -156,10 +160,16 @@ export function shouldRetryViaProxy(error) {
  * Accept-Language reaching the publisher over a different route, not a
  * different client. `location` is carried across because fetchText does its own
  * `redirect: 'manual'` handling and would otherwise lose the hop.
+ *
+ * Returns a Response, null when no exit ran (unusable config, or `deadlineAt`
+ * left less than the floor), or throws the last exit's error. A caller with its
+ * own wall budget passes `deadlineAt` so the ladder ends inside it; the
+ * calendar's 75s NBS budget relies on that to keep its pinned ceiling.
  */
-async function fetchThroughProxy(target, init, proxyUrl, {
+export async function fetchThroughProxy(target, init, proxyUrl, {
   proxyFetchFn = proxyFetch,
   now = Date.now,
+  deadlineAt: callerDeadlineAt = Infinity,
 } = {}) {
   let lastError = null;
   // Rotate exits. parseProxyConfigForAttempt maps the attempt index onto a
@@ -176,7 +186,7 @@ async function fetchThroughProxy(target, init, proxyUrl, {
   // never contacted and no load was placed on it. The budget bounds load on the
   // source, not attempts made on our side. Wall-clock is a separate cap
   // (PROXY_FALLBACK_BUDGET_MS) so four live 12s exits cannot blow the seeder.
-  const deadlineAt = now() + PROXY_FALLBACK_BUDGET_MS;
+  const deadlineAt = Math.min(now() + PROXY_FALLBACK_BUDGET_MS, callerDeadlineAt);
   for (let attempt = 0; attempt < PROXY_EXIT_ATTEMPTS; attempt += 1) {
     const remainingMs = deadlineAt - now();
     if (remainingMs < PROXY_BUDGET_FLOOR_MS) break;
@@ -265,7 +275,7 @@ export async function fetchText(fetchFn, value, {
   let redirected = false;
   let redirects = 0;
   let transientRetries = 0;
-  const usableProxy = Boolean(proxyUrl && parseProxyConfigForAttempt(proxyUrl, 0));
+  const usableProxy = hasUsableProxy(proxyUrl);
   for (;;) {
     budget.consume();
     let response;
