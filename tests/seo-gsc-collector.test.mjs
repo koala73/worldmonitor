@@ -560,6 +560,28 @@ describe('Search Console collector on live data', () => {
     assert.equal(exported.pageFamilyRows.find((row) => row.pageFamily === 'crises').indexedPages, null);
   });
 
+  it('keeps crawled-and-declined apart from discovered-but-not-crawled', async () => {
+    const withState = (coverageState) => ({
+      inspectionResult: { indexStatusResult: { verdict: 'NEUTRAL', coverageState } },
+    });
+    const states = {
+      'https://www.worldmonitor.app/countries/chad/': withState('Crawled - currently not indexed'),
+      'https://www.worldmonitor.app/crises/sudan-conflict/': withState('Discovered - currently not indexed'),
+    };
+    const snapshot = await collectFrom(memoryTransport({
+      inspect: async (url) => states[url] ?? indexedResponse,
+    }));
+    const { htmlPages, byFamily } = snapshot.indexation;
+    assert.equal(htmlPages.crawledNotIndexed, 1, 'only the crawled URL was declined');
+    assert.equal(htmlPages.discoveredNotCrawled, 1);
+    assert.equal(htmlPages.actionable, 1, 'a URL Google never crawled is not a declined page');
+    assert.equal(byFamily.crises.crawledNotIndexed, 0);
+    assert.equal(byFamily.crises.discoveredNotCrawled, 1);
+    const markdown = renderGscMarkdown(snapshot);
+    assert.match(markdown, /HTML pages crawled and declined, serving no `noindex`: 1\n/);
+    assert.match(markdown, /HTML pages discovered but not yet crawled: 1\n/);
+  });
+
   it('records a probe that fails instead of aborting the run', async () => {
     const { indexation } = await collectFrom(memoryTransport({
       probe: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); },

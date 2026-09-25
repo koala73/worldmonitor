@@ -102,13 +102,18 @@ const PAGE_FAMILY_SCHEMA_VERSION = 2;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
 
 /**
- * Coverage states Google reports for a URL it crawled and chose not to index.
+ * Coverage states Google reports for a URL it crawled and chose not to index,
+ * and for one it knows about but has not crawled yet. They are kept apart: the
+ * first is a verdict on the page, the second only a queue position, and
+ * counting them together overstated declined pages by 5x on 2026-09-25.
  * Matched case-insensitively on a normalized string because the API returns
  * display text rather than an enum.
  */
 const CRAWLED_NOT_INDEXED_STATES = Object.freeze([
   'crawled - currently not indexed',
   'crawled currently not indexed',
+]);
+const DISCOVERED_NOT_CRAWLED_STATES = Object.freeze([
   'discovered - currently not indexed',
   'discovered currently not indexed',
 ]);
@@ -146,6 +151,9 @@ const normalizeState = (value) => String(value ?? '')
 
 const isCrawledNotIndexed = (coverageState) => (
   CRAWLED_NOT_INDEXED_STATES.includes(normalizeState(coverageState))
+);
+const isDiscoveredNotCrawled = (coverageState) => (
+  DISCOVERED_NOT_CRAWLED_STATES.includes(normalizeState(coverageState))
 );
 
 const finite = (value) => (Number.isFinite(value) ? value : null);
@@ -773,6 +781,9 @@ function groupIndexation(records, declaredCounts, selector, groupIds) {
       crawledNotIndexed: withStatus.filter(
         (record) => isCrawledNotIndexed(record.indexStatus.coverageState),
       ).length,
+      discoveredNotCrawled: withStatus.filter(
+        (record) => isDiscoveredNotCrawled(record.indexStatus.coverageState),
+      ).length,
       servingNoindex: inGroup.filter((record) => record.noindex).length,
       coverageStates,
     };
@@ -1077,6 +1088,9 @@ export async function collectGscSnapshot({
         crawledNotIndexed: htmlWithStatus.filter(
           (record) => isCrawledNotIndexed(record.indexStatus.coverageState),
         ).length,
+        discoveredNotCrawled: htmlWithStatus.filter(
+          (record) => isDiscoveredNotCrawled(record.indexStatus.coverageState),
+        ).length,
         actionable: actionable.length,
         actionableUrls: actionable.slice(0, MAX_FLAGGED_URLS).map((record) => ({
           url: record.url,
@@ -1195,6 +1209,9 @@ export function renderGscMarkdown(snapshot) {
     `- HTML pages crawled and declined, serving no \`noindex\`: ${snapshot.indexation.htmlPages.actionable}`,
   );
   lines.push(
+    `- HTML pages discovered but not yet crawled: ${snapshot.indexation.htmlPages.discoveredNotCrawled}`,
+  );
+  lines.push(
     `- Live-state disagreements flagged: ${snapshot.indexation.liveStateDisagreements.length}`,
   );
   lines.push('');
@@ -1246,12 +1263,12 @@ export function renderGscMarkdown(snapshot) {
 
   lines.push('## By response kind');
   lines.push('');
-  lines.push('| Kind | Declared | Inspected | Indexed | Crawled and declined | Serving noindex |');
-  lines.push('|---|---:|---:|---:|---:|---:|');
+  lines.push('| Kind | Declared | Inspected | Indexed | Crawled and declined | Discovered, not crawled | Serving noindex |');
+  lines.push('|---|---:|---:|---:|---:|---:|---:|');
   for (const kind of URL_KINDS) {
     const index = snapshot.indexation.byKind[kind];
     if (!index) continue;
-    lines.push(`| ${kind} | ${index.declared} | ${index.inspected} | ${number(index.indexed)} | ${index.crawledNotIndexed} | ${index.servingNoindex} |`);
+    lines.push(`| ${kind} | ${index.declared} | ${index.inspected} | ${number(index.indexed)} | ${index.crawledNotIndexed} | ${index.discoveredNotCrawled} | ${index.servingNoindex} |`);
   }
   lines.push('');
 
