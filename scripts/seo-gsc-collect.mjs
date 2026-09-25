@@ -47,6 +47,7 @@
  *   --search-export <p>   also write the scorecard search-export for
  *                         scripts/seo-ai-visibility-collector.mjs
  *   --sample-cap <n>      urlInspection calls per run (default 2000, the quota)
+ *   --concurrency <n>     inspections in flight at once (default 5, max 10)
  *   --stdout              print the snapshot instead of writing files
  */
 
@@ -79,6 +80,17 @@ const URL_INSPECTION_ENDPOINT = 'https://searchconsole.googleapis.com/v1/urlInsp
 const SEARCH_ANALYTICS_ROW_LIMIT = 25_000;
 /** urlInspection.index.inspect is quota-limited to 2,000 calls a day. */
 const DEFAULT_SAMPLE_CAP = 2_000;
+/**
+ * An inspection takes about 6.6 s (measured 2026-09-25), so 888 sequential
+ * calls run past the workflow's 60-minute limit. Five in flight stays far
+ * under the 600-per-minute quota and keeps the probes gentle on Mintlify,
+ * which answered 502 to 24 concurrent requests.
+ */
+const DEFAULT_CONCURRENCY = 5;
+const REQUEST_TIMEOUT_MS = Object.freeze({ api: 60_000, sitemap: 30_000, probe: 20_000 });
+/** Delays between attempts; four attempts in total. */
+const RETRY_DELAYS_MS = Object.freeze([2_000, 8_000, 30_000]);
+const MAX_UNMAPPED_URLS = 20;
 const MAX_PAGES_PER_WINDOW = 40;
 const MAX_URLS_PER_LIST = 5;
 const MAX_FLAGGED_URLS = 50;
@@ -343,26 +355,60 @@ export function createFixtureTransport(directory) {
   };
 }
 
-export function createLiveTransport({ accessToken, property, fetchImpl = fetch }) {
+const defaultSleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/** True when a 429 body names the daily quota, which no backoff can recover. */
+async function isDailyQuota(response) {
+  try {
+    const payload = await response.json();
+    return /per day|daily/i.test(String(payload?.error?.message ?? ''));
+  } catch {
+    return false;
+  }
+}
+
+export function createLiveTransport({ accessToken, property, fetchImpl = fetch, sleep = defaultSleep }) {
   const authorized = (extra = {}) => ({
     'content-type': 'application/json',
     authorization: `Bearer ${accessToken}`,
     ...extra,
   });
+  const attempts = RETRY_DELAYS_MS.length + 1;
 
+  // The endpoint path carries the property identifier, so neither the URL nor
+  // the response body ever reaches an error message.
   const post = async (endpoint, body) => {
-    const response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: authorized(),
-      body: JSON.stringify(body),
-    });
-    if (response.status === 429) {
-      throw new QuotaExhaustedError('Search Console returned HTTP 429');
+    let failure = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      if (attempt > 1) await sleep(RETRY_DELAYS_MS[attempt - 2]);
+      let response;
+      try {
+        response = await fetchImpl(endpoint, {
+          method: 'POST',
+          headers: authorized(),
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS.api),
+        });
+      } catch (error) {
+        failure = error?.name ?? 'network error';
+        continue;
+      }
+      if (response.ok) return response.json();
+      if (response.status === 429) {
+        if (await isDailyQuota(response)) {
+          throw new QuotaExhaustedError('Search Console daily quota is exhausted (HTTP 429)');
+        }
+        failure = 'HTTP 429';
+        continue;
+      }
+      await response.body?.cancel().catch(() => {});
+      invariant(response.status >= 500, `Search Console request failed with HTTP ${response.status}`);
+      failure = `HTTP ${response.status}`;
     }
-    // The endpoint path carries the property identifier, so the URL never
-    // reaches the message.
-    invariant(response.ok, `Search Console request failed with HTTP ${response.status}`);
-    return response.json();
+    if (failure === 'HTTP 429') {
+      throw new QuotaExhaustedError(`Search Console returned HTTP 429 after ${attempts} attempts`);
+    }
+    throw new Error(`[seo-gsc] Search Console request failed with ${failure} after ${attempts} attempts`);
   };
 
   return {
@@ -379,7 +425,10 @@ export function createLiveTransport({ accessToken, property, fetchImpl = fetch }
         const url = queue.shift();
         if (seen.has(url)) continue;
         seen.add(url);
-        const response = await fetchImpl(url, { headers: { accept: 'application/xml' } });
+        const response = await fetchImpl(url, {
+          headers: { accept: 'application/xml' },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS.sitemap),
+        });
         invariant(response.ok, `sitemap fetch failed with HTTP ${response.status}`);
         const xml = await response.text();
         documents.push({ url, xml });
@@ -415,7 +464,14 @@ export function createLiveTransport({ accessToken, property, fetchImpl = fetch }
       // GET rather than HEAD: some origins answer HEAD from a different path
       // and would report a content-type the crawler never sees. `manual`
       // keeps the first hop, which is the hop Google recorded.
-      const response = await fetchImpl(url, { method: 'GET', redirect: 'manual' });
+      const response = await fetchImpl(url, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS.probe),
+      });
+      // Only the headers are needed. Cancelling the body releases the socket
+      // instead of holding it until garbage collection.
+      await response.body?.cancel().catch(() => {});
       return {
         status: response.status,
         contentType: response.headers.get('content-type'),
@@ -560,39 +616,72 @@ export function describeDisagreement(indexStatus, probe) {
   return null;
 }
 
-async function collectIndexation(transport, inventory, { sampleCap }) {
-  const sample = stratifiedSample(inventory.urls, sampleCap);
-  const records = [];
-  let quotaReason = null;
-  for (const entry of sample) {
-    if (quotaReason) break;
-    let response;
-    try {
-      response = await transport.inspect(entry.url);
-    } catch (error) {
-      if (error instanceof QuotaExhaustedError) {
-        quotaReason = `urlInspection quota was exhausted after ${records.length} of ${sample.length} URLs: ${error.message}`;
-        break;
-      }
-      throw error;
-    }
-    const indexStatus = pickIndexStatus(response);
-    const probe = normalizeProbe(await transport.probe(entry.url));
-    const observedKind = kindForContentType(probe.contentType);
-    records.push({
-      url: entry.url,
-      family: entry.family,
-      kind: entry.kind,
-      host: entry.host,
-      hostClass: entry.hostClass,
-      indexStatus,
-      indexStatusReason: indexStatus ? null : 'urlInspection returned no index status for this URL',
-      probe,
-      observedKind,
-      noindex: robotsTagBlocksIndexing(probe.xRobotsTag),
-      disagreement: describeDisagreement(indexStatus, probe),
-    });
+async function probeOrReason(transport, url) {
+  try {
+    return normalizeProbe(await transport.probe(url));
+  } catch (error) {
+    return { ...normalizeProbe(null), reason: `the live probe failed: ${error?.name ?? 'error'}` };
   }
+}
+
+async function inspectOne(transport, entry) {
+  let response = null;
+  let inspectionError = null;
+  try {
+    response = await transport.inspect(entry.url);
+  } catch (error) {
+    if (error instanceof QuotaExhaustedError) throw error;
+    inspectionError = error?.message ?? String(error);
+  }
+  const indexStatus = pickIndexStatus(response);
+  const probe = await probeOrReason(transport, entry.url);
+  return {
+    url: entry.url,
+    family: entry.family,
+    kind: entry.kind,
+    host: entry.host,
+    hostClass: entry.hostClass,
+    indexStatus,
+    indexStatusReason: indexStatus
+      ? null
+      : (inspectionError
+        ? `urlInspection failed: ${inspectionError}`
+        : 'urlInspection returned no index status for this URL'),
+    inspectionError,
+    probe,
+    observedKind: kindForContentType(probe.contentType),
+    noindex: robotsTagBlocksIndexing(probe.xRobotsTag),
+    disagreement: describeDisagreement(indexStatus, probe),
+  };
+}
+
+/**
+ * Inspect the sample with a bounded pool. Records keep sample order, so the
+ * snapshot stays deterministic whatever order the calls finish in. One URL's
+ * failure is recorded against that URL; only the daily quota stops the pool.
+ */
+async function collectIndexation(transport, inventory, { sampleCap, concurrency }) {
+  const sample = stratifiedSample(inventory.urls, sampleCap);
+  const slots = new Array(sample.length);
+  let next = 0;
+  let quotaError = null;
+  const worker = async () => {
+    while (quotaError === null && next < sample.length) {
+      const index = next;
+      next += 1;
+      try {
+        slots[index] = await inspectOne(transport, sample[index]);
+      } catch (error) {
+        if (!(error instanceof QuotaExhaustedError)) throw error;
+        quotaError ??= error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, sample.length) }, worker));
+  const records = slots.filter(Boolean);
+  const quotaReason = quotaError
+    ? `urlInspection quota was exhausted after ${records.length} of ${sample.length} URLs: ${quotaError.message}`
+    : null;
   return { sample, records, quotaReason };
 }
 
@@ -701,26 +790,28 @@ function buildPerformance(performance, inventory, indexedByFamily) {
   const windows = performance.map(({ window, dimensions }) => {
     const totals = newAccumulator();
     const families = new Map(PAGE_FAMILIES.map((family) => [family, newAccumulator()]));
-    const unmapped = [];
+    // Google reports URLs we never declared: legacy paths, other hosts in the
+    // Domain property. They stay in the totals and are listed by name, so the
+    // report shows exactly what needs a family instead of hiding it in "other"
+    // or failing the run over data we do not control.
+    const unmapped = newAccumulator();
+    const unmappedRows = [];
     const pageRows = [];
     for (const row of dimensions.page.rows) {
+      addRow(totals, row);
       let classified = routeFamily.get(row.key);
       if (!classified) {
         try {
           classified = classifyUrl(row.key);
         } catch (error) {
-          unmapped.push({ url: row.key, reason: error.message });
+          addRow(unmapped, row);
+          unmappedRows.push({ ...row, reason: error.message.replace(/^\[seo-url-taxonomy\] /, '') });
           continue;
         }
       }
-      addRow(totals, row);
       addRow(families.get(classified.family), row);
       pageRows.push({ ...row, family: classified.family });
     }
-    invariant(
-      unmapped.length === 0,
-      `searchanalytics returned ${unmapped.length} page rows that map to no family, first: ${unmapped[0]?.url}`,
-    );
     const byFamily = {};
     for (const [family, accumulator] of families) {
       if (accumulator.urls === 0 && (indexedByFamily[family]?.declared ?? 0) === 0) continue;
@@ -767,6 +858,16 @@ function buildPerformance(performance, inventory, indexedByFamily) {
         query: dimensions.query.rows.length,
       },
       byFamily,
+      unmapped: {
+        urls: unmapped.urls,
+        clicks: unmapped.clicks,
+        impressions: unmapped.impressions,
+        topUrls: unmappedRows
+          .sort((left, right) => right.impressions - left.impressions
+            || left.key.localeCompare(right.key))
+          .slice(0, MAX_UNMAPPED_URLS)
+          .map((row) => ({ ...pageRowSummary(row), reason: row.reason })),
+      },
       topQueries: queryRows,
     };
   });
@@ -818,6 +919,7 @@ export async function collectGscSnapshot({
   observedAt,
   windows,
   sampleCap = DEFAULT_SAMPLE_CAP,
+  concurrency = DEFAULT_CONCURRENCY,
   propertyKind = null,
   reportedTotals = {},
   revision = repositoryRevision(),
@@ -825,12 +927,14 @@ export async function collectGscSnapshot({
   const inventory = buildInventory(documents);
   invariant(inventory.urls.length > 0, 'the sitemap inventory is empty');
 
+  // Search Analytics first: it is cheap, and an auth or permission failure
+  // there must stop the run before any of the daily inspection quota is spent.
+  const performanceRaw = await collectPerformance(transport, windows);
   const { sample, records, quotaReason } = await collectIndexation(
     transport,
     inventory,
-    { sampleCap },
+    { sampleCap, concurrency },
   );
-  const performanceRaw = await collectPerformance(transport, windows);
 
   const declaredByFamily = countBy(inventory.urls, (entry) => entry.family);
   const declaredByKind = countBy(inventory.urls, (entry) => entry.kind);
@@ -882,6 +986,22 @@ export async function collectGscSnapshot({
   const performance = buildPerformance(performanceRaw, inventory, byFamily);
   for (const window of performance.windows) {
     if (window.status !== 'available') samplingNotes.push(`${window.label}: ${window.reason}`);
+    if (window.unmapped.urls > 0) {
+      samplingNotes.push(
+        `${window.label}: ${window.unmapped.urls} page rows map to no family (${window.unmapped.impressions} impressions). They count in the totals and are listed under unmapped.`,
+      );
+    }
+  }
+  const inspectionErrors = records.filter((record) => record.inspectionError !== null);
+  if (inspectionErrors.length > 0) {
+    samplingNotes.push(
+      `${inspectionErrors.length} inspections failed after retries and have no index status.`,
+    );
+  }
+  const htmlIndexedByFamily = {};
+  for (const record of htmlWithStatus) {
+    htmlIndexedByFamily[record.family] = (htmlIndexedByFamily[record.family] ?? 0)
+      + (record.indexStatus.verdict === INDEXED_VERDICT ? 1 : 0);
   }
 
   const flagged = (predicate, mapper) => records
@@ -934,6 +1054,7 @@ export async function collectGscSnapshot({
           ? null
           : 'no HTML page in the sample returned an index status',
         indexedShare: share(htmlIndexed.length, htmlWithStatus.length, 'inspected-html'),
+        indexedByFamily: htmlIndexedByFamily,
         crawledNotIndexed: htmlWithStatus.filter(
           (record) => isCrawledNotIndexed(record.indexStatus.coverageState),
         ).length,
@@ -948,6 +1069,11 @@ export async function collectGscSnapshot({
         })),
       },
       topNotIndexedReasons: topCoverageReasons(records),
+      inspectionErrors: inspectionErrors.slice(0, MAX_FLAGGED_URLS).map((record) => ({
+        url: record.url,
+        family: record.family,
+        reason: record.inspectionError,
+      })),
       canonicalMismatches: flagged(
         (record) => record.indexStatus?.googleCanonical
           && record.indexStatus.userCanonical
@@ -1012,7 +1138,9 @@ export function assertNoSecrets(serialized, { property = null } = {}) {
       `refusing to write output containing ${marker}`,
     );
   }
-  if (typeof property === 'string' && property !== '') {
+  // A URL-prefix property is the site's own public origin, which every URL in
+  // the snapshot starts with. Only an opaque identifier can leak.
+  if (typeof property === 'string' && property !== '' && !/^https?:\/\//i.test(property)) {
     invariant(
       !serialized.includes(property),
       'refusing to write output containing the property identifier',
@@ -1130,6 +1258,30 @@ export function renderGscMarkdown(snapshot) {
     lines.push('');
   }
 
+  if (primary && primary.unmapped.urls > 0) {
+    lines.push(`## URLs outside every family (${primary.label})`);
+    lines.push('');
+    lines.push(`${primary.unmapped.urls} page rows, ${primary.unmapped.impressions} impressions, ${primary.unmapped.clicks} clicks. They count in the totals above. Give each recurring one a family.`);
+    lines.push('');
+    lines.push('| URL | Impressions | Clicks | Reason |');
+    lines.push('|---|---:|---:|---|');
+    for (const row of primary.unmapped.topUrls) {
+      lines.push(`| ${row.url} | ${row.impressions} | ${row.clicks} | ${row.reason} |`);
+    }
+    lines.push('');
+  }
+
+  if (snapshot.indexation.inspectionErrors.length > 0) {
+    lines.push('## Failed inspections');
+    lines.push('');
+    lines.push('| URL | Family | Reason |');
+    lines.push('|---|---|---|');
+    for (const row of snapshot.indexation.inspectionErrors) {
+      lines.push(`| ${row.url} | ${row.family} | ${row.reason} |`);
+    }
+    lines.push('');
+  }
+
   if (snapshot.indexation.liveStateDisagreements.length > 0) {
     lines.push('## Google state versus live response');
     lines.push('');
@@ -1176,6 +1328,11 @@ export function renderGscMarkdown(snapshot) {
  * parallel one.
  */
 export function toScorecardSearchExport(snapshot) {
+  // The scorecard's indexedPages means HTML pages in the declared inventory.
+  // A sampled count is only that number when every declared URL was
+  // inspected; otherwise it is an absence of a measurement, so null.
+  const { htmlPages, sample } = snapshot.indexation;
+  const complete = sample.complete === true;
   return {
     status: snapshot.performance.status === 'available' ? 'available' : 'partial',
     reason: snapshot.performance.status === 'available'
@@ -1189,14 +1346,14 @@ export function toScorecardSearchExport(snapshot) {
       impressions: window.totals.impressions,
       ctr: window.totals.ctr,
       position: window.totals.averagePosition,
-      indexedPages: snapshot.indexation.htmlPages.indexed,
+      indexedPages: complete ? htmlPages.indexed : null,
       pageFamilyRows: Object.entries(window.byFamily).map(([pageFamily, metrics]) => ({
         pageFamily,
         clicks: metrics.clicks,
         impressions: metrics.impressions,
         ctr: metrics.ctr,
         position: metrics.averagePosition,
-        indexedPages: snapshot.indexation.byFamily[pageFamily]?.indexed ?? null,
+        indexedPages: complete ? (htmlPages.indexedByFamily[pageFamily] ?? null) : null,
       })),
       queryRows: [],
     })),
@@ -1215,6 +1372,7 @@ export function parseArgs(argv) {
     date: null,
     searchExport: null,
     sampleCap: DEFAULT_SAMPLE_CAP,
+    concurrency: DEFAULT_CONCURRENCY,
     stdout: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -1232,6 +1390,7 @@ export function parseArgs(argv) {
       case '--date': options.date = next(); break;
       case '--search-export': options.searchExport = next(); break;
       case '--sample-cap': options.sampleCap = Number.parseInt(next(), 10); break;
+      case '--concurrency': options.concurrency = Number.parseInt(next(), 10); break;
       case '--stdout': options.stdout = true; break;
       default: throw new Error(`[seo-gsc] unknown argument ${flag}`);
     }
@@ -1247,6 +1406,10 @@ export function parseArgs(argv) {
   invariant(
     Number.isInteger(options.sampleCap) && options.sampleCap > 0,
     '--sample-cap must be a positive integer',
+  );
+  invariant(
+    Number.isInteger(options.concurrency) && options.concurrency > 0 && options.concurrency <= 10,
+    '--concurrency must be an integer from 1 to 10',
   );
   return options;
 }
@@ -1307,6 +1470,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     observedAt,
     windows,
     sampleCap: options.sampleCap,
+    concurrency: options.concurrency,
     propertyKind,
     reportedTotals,
   });

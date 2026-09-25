@@ -168,6 +168,7 @@ const SEGMENT_FAMILIES = Object.freeze({
   robots: 'site_infrastructure',
   assets: 'site_infrastructure',
   favico: 'site_infrastructure',
+  favicon: 'site_infrastructure',
   _next: 'site_infrastructure',
 });
 
@@ -304,10 +305,11 @@ export function kindForContentType(contentType) {
   if (mime === 'text/markdown' || mime === 'text/plain') return 'markdown-twin';
   if (mime.endsWith('+json') || mime === 'application/json' || mime === 'text/csv'
     || mime === 'application/yaml' || mime === 'text/yaml') return 'data';
-  if (mime.endsWith('+xml') || mime === 'application/xml' || mime === 'text/xml') return 'feed';
+  // Before the +xml rule: an SVG is image/svg+xml and is a render asset.
   if (mime.startsWith('image/') || mime.startsWith('font/')
     || mime === 'text/css' || mime === 'text/javascript'
     || mime === 'application/javascript') return 'subresource';
+  if (mime.endsWith('+xml') || mime === 'application/xml' || mime === 'text/xml') return 'feed';
   return null;
 }
 

@@ -73,7 +73,10 @@ jobs:
           period=$(date -u +%G-W%V)
           branch="automation/seo-gsc-${period}"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          # Only an open or merged PR means this week is done. A closed one was
+          # rejected, so the week is collected again.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,state \
+            --jq '[.[] | select(.state != "CLOSED")][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
@@ -122,7 +125,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore(seo): Search Console snapshot ${snapshot_date} (#8606)"
-          git push --set-upstream origin "$BRANCH_NAME"
+          # The branch belongs to this workflow and is rebuilt from main on every
+          # run. A branch left behind by a run whose PR step failed, or by a
+          # closed PR, is replaced rather than rejected as non-fast-forward.
+          git push --force --set-upstream origin "$BRANCH_NAME"
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \

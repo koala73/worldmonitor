@@ -11,9 +11,9 @@ impressions per indexed page.
   flagged disagreements; sampling notes.
 - `<date>.md` — the deterministic human summary generated from that snapshot.
 
-No snapshot is committed yet. The owner prerequisites in issue #8606 are open:
-there is no service account, so a committed file here would be fabricated rather
-than observed.
+No snapshot is committed yet. The owner prerequisites in issue #8606 were
+completed and verified against the live API on 2026-09-25, so the first file
+arrives through the weekly workflow's review PR.
 
 ## Running it
 
@@ -69,6 +69,25 @@ being silently resolved in either direction.
 **Every URL carries its host.** The apex and the variant dashboards share the
 Domain property with `www`, so a per-family denominator that ignores the host is
 wrong rather than merely coarse.
+
+**Search Analytics URLs outside every family are listed, not dropped.** A
+sitemap URL with no family stops the run, because the sitemaps are ours to fix.
+Search Analytics also reports URLs we never declared: legacy paths such as
+`/zh/…` and `/download`, and other hosts in the Domain property such as
+`status.`. On 2026-09-25 that was 30 of 1,056 page rows in the 28-day window.
+They stay in the window totals and appear by name under `unmapped`, so each
+recurring one can be given a family.
+
+## Run time and failures
+
+An inspection call took about 6.6 s on 2026-09-25, so the collector keeps five
+in flight (`--concurrency`, at most 10). That stays far under the 600-per-minute
+quota and keeps the live probes gentle on the docs host. Search Analytics runs
+first, so a permission failure stops the run before any inspection quota is
+spent. Every request has a deadline. A 5xx, a timeout or a per-minute 429 is
+retried up to four times. A daily-quota 429 stops inspecting and marks the
+snapshot partial, and an inspection that still fails is recorded under
+`inspectionErrors` rather than ending the run.
 
 ## Sampling
 

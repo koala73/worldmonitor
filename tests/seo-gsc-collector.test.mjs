@@ -282,7 +282,7 @@ describe('Search Console collector secrecy', () => {
       );
     }
     assert.throws(
-      () => assertNoSecrets('{"note":"https://example.test/prefix"}', { property: 'https://example.test/prefix' }),
+      () => assertNoSecrets('{"note":"opaque-property-42"}', { property: 'opaque-property-42' }),
       /property identifier/,
     );
     assert.equal(assertNoSecrets('{"ok":true}', { property: 'sc-domain:example.test' }), '{"ok":true}');
@@ -414,6 +414,222 @@ describe('Search Console collector units', () => {
         windows: [],
       }),
       /sitemap inventory is empty/,
+    );
+  });
+});
+
+const LIVE_RUN_DOCUMENTS = [{
+  url: 'https://www.worldmonitor.app/sitemap-main.xml',
+  xml: [
+    '<urlset>',
+    '<url><loc>https://www.worldmonitor.app/countries/iran/</loc></url>',
+    '<url><loc>https://www.worldmonitor.app/countries/chad/</loc></url>',
+    '<url><loc>https://www.worldmonitor.app/crises/sudan-conflict/</loc></url>',
+    '<url><loc>https://www.worldmonitor.app/chokepoints/suez-canal/</loc></url>',
+    '</urlset>',
+  ].join(''),
+}];
+const LIVE_RUN_WINDOWS = [{ label: '28d', startDate: '2026-08-27', endDate: '2026-09-23' }];
+const indexedResponse = { inspectionResult: { indexStatusResult: { verdict: 'PASS', coverageState: 'Submitted and indexed' } } };
+
+const memoryTransport = ({
+  pageRows = [],
+  searchAnalytics,
+  inspect = async () => indexedResponse,
+  probe = async () => ({ status: 200, contentType: 'text/html; charset=utf-8' }),
+} = {}) => ({
+  kind: 'test',
+  rowLimit: 1000,
+  searchAnalytics: searchAnalytics ?? (async ({ dimension, page }) => ({
+    rows: dimension === 'page' && page === 0 ? pageRows : [],
+  })),
+  inspect,
+  probe,
+});
+
+const collectFrom = (transport, extra = {}) => collectGscSnapshot({
+  transport,
+  documents: LIVE_RUN_DOCUMENTS,
+  observedAt: '2026-09-24T00:00:00Z',
+  windows: LIVE_RUN_WINDOWS,
+  revision: 'test',
+  ...extra,
+});
+
+const pageRow = (url, impressions) => ({ keys: [url], clicks: 1, impressions, position: 3 });
+
+const jsonResponse = (status, body) => new Response(JSON.stringify(body), {
+  status,
+  headers: { 'content-type': 'application/json' },
+});
+
+describe('Search Console collector on live data', () => {
+  it('reports Search Analytics rows outside every family instead of failing the run', async () => {
+    const snapshot = await collectFrom(memoryTransport({
+      pageRows: [
+        pageRow('https://www.worldmonitor.app/countries/iran/', 10),
+        pageRow('https://status.worldmonitor.app/', 5),
+        pageRow('https://www.worldmonitor.app/download', 7),
+      ],
+    }));
+    const [window] = snapshot.performance.windows;
+    assert.equal(window.totals.impressions, 22, 'totals keep every row Google reported');
+    assert.equal(window.byFamily.country_pages.impressions, 10);
+    assert.equal(window.unmapped.urls, 2);
+    assert.equal(window.unmapped.impressions, 12);
+    assert.deepEqual(
+      window.unmapped.topUrls.map((row) => row.url),
+      ['https://www.worldmonitor.app/download', 'https://status.worldmonitor.app/'],
+    );
+    assert.ok(snapshot.samplingNotes.some((note) => /2 page rows map to no family/.test(note)));
+    assert.match(renderGscMarkdown(snapshot), /## URLs outside every family \(28d\)[\s\S]*\/download/);
+  });
+
+  it('queries Search Analytics before spending any inspection quota', async () => {
+    let inspections = 0;
+    await assert.rejects(
+      () => collectFrom(memoryTransport({
+        searchAnalytics: async () => { throw new Error('Search Console request failed with HTTP 403'); },
+        inspect: async () => { inspections += 1; return indexedResponse; },
+      })),
+      /HTTP 403/,
+    );
+    assert.equal(inspections, 0);
+  });
+
+  it('inspects URLs concurrently and keeps records in sample order', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const delays = { 'https://www.worldmonitor.app/countries/chad/': 30 };
+    const { indexation } = await collectFrom(memoryTransport({
+      inspect: async (url) => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((done) => setTimeout(done, delays[url] ?? 5));
+        inFlight -= 1;
+        return indexedResponse;
+      },
+    }), { concurrency: 3 });
+    assert.equal(peak, 3);
+    assert.equal(indexation.sample.inspected, 4);
+    assert.equal(indexation.byFamily.country_pages.inspected, 2);
+  });
+
+  it('records one failed inspection and keeps inspecting the rest', async () => {
+    const failing = 'https://www.worldmonitor.app/countries/chad/';
+    const { indexation } = await collectFrom(memoryTransport({
+      inspect: async (url) => {
+        if (url === failing) throw new Error('Search Console request failed with HTTP 503 after 4 attempts');
+        return indexedResponse;
+      },
+    }));
+    assert.equal(indexation.sample.inspected, 4);
+    assert.equal(indexation.byFamily.country_pages.indexed, 1);
+    assert.equal(indexation.inspectionErrors.length, 1);
+    assert.equal(indexation.inspectionErrors[0].url, failing);
+    assert.match(indexation.inspectionErrors[0].reason, /HTTP 503/);
+  });
+
+  it('records a probe that fails instead of aborting the run', async () => {
+    const { indexation } = await collectFrom(memoryTransport({
+      probe: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); },
+    }));
+    assert.equal(indexation.sample.inspected, 4);
+    assert.equal(indexation.byFamily.crises.indexed, 1);
+  });
+
+  it('exports sampled index counts to the scorecard only when the sample is complete', async () => {
+    const capped = await collectFrom(memoryTransport(), { sampleCap: 2 });
+    assert.equal(toScorecardSearchExport(capped).windows[0].indexedPages, null);
+
+    const complete = await collectFrom(memoryTransport({
+      pageRows: [pageRow('https://www.worldmonitor.app/countries/iran/', 10)],
+    }));
+    const [window] = toScorecardSearchExport(complete).windows;
+    assert.equal(window.indexedPages, 4);
+    const countries = window.pageFamilyRows.find((row) => row.pageFamily === 'country_pages');
+    assert.equal(countries.indexedPages, 2);
+  });
+});
+
+describe('Search Console live transport resilience', () => {
+  const noSleep = async () => {};
+  const liveTransport = (fetchImpl) => createLiveTransport({
+    accessToken: 't',
+    property: 'sc-domain:example.com',
+    fetchImpl,
+    sleep: noSleep,
+  });
+
+  it('retries a transient 503 and then succeeds', async () => {
+    let calls = 0;
+    const transport = liveTransport(async () => {
+      calls += 1;
+      return calls < 3 ? jsonResponse(503, { error: { code: 503 } }) : jsonResponse(200, indexedResponse);
+    });
+    assert.deepEqual(await transport.inspect('https://www.worldmonitor.app/'), indexedResponse);
+    assert.equal(calls, 3);
+  });
+
+  it('gives up on a persistent 5xx with the status in the error', async () => {
+    let calls = 0;
+    const transport = liveTransport(async () => { calls += 1; return jsonResponse(500, {}); });
+    await assert.rejects(() => transport.inspect('https://www.worldmonitor.app/'), /HTTP 500 after 4 attempts/);
+    assert.equal(calls, 4);
+  });
+
+  it('backs off on a per-minute 429 but stops at once on the daily quota', async () => {
+    let calls = 0;
+    const perMinute = liveTransport(async () => {
+      calls += 1;
+      return calls === 1
+        ? jsonResponse(429, { error: { status: 'RESOURCE_EXHAUSTED', message: "Quota exceeded for quota metric 'Queries' and limit 'Queries per minute'" } })
+        : jsonResponse(200, indexedResponse);
+    });
+    assert.deepEqual(await perMinute.inspect('https://www.worldmonitor.app/'), indexedResponse);
+    assert.equal(calls, 2);
+
+    let dailyCalls = 0;
+    const daily = liveTransport(async () => {
+      dailyCalls += 1;
+      return jsonResponse(429, { error: { status: 'RESOURCE_EXHAUSTED', message: "Quota exceeded for quota metric 'Queries' and limit 'Queries per day'" } });
+    });
+    await assert.rejects(
+      () => daily.inspect('https://www.worldmonitor.app/'),
+      (error) => error.name === 'QuotaExhaustedError',
+    );
+    assert.equal(dailyCalls, 1);
+  });
+
+  it('bounds every request with a deadline and cancels the probe body', async () => {
+    const signals = [];
+    let bodyCancelled = false;
+    const transport = liveTransport(async (url, init = {}) => {
+      signals.push(init.signal);
+      if (url.endsWith('.xml')) return new Response('<urlset></urlset>', { status: 200 });
+      if (init.method === 'GET') {
+        return new Response(new ReadableStream({ cancel() { bodyCancelled = true; } }), {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      return jsonResponse(200, indexedResponse);
+    });
+    await transport.sitemaps(['https://www.worldmonitor.app/sitemap-main.xml']);
+    await transport.inspect('https://www.worldmonitor.app/');
+    const probed = await transport.probe('https://www.worldmonitor.app/');
+    assert.equal(probed.status, 200);
+    assert.equal(signals.length, 3);
+    for (const signal of signals) assert.ok(signal instanceof AbortSignal, 'every fetch carries a deadline');
+    assert.equal(bodyCancelled, true);
+  });
+
+  it('keeps a URL-prefix property out of the output without rejecting its own URLs', () => {
+    const serialized = JSON.stringify({ url: 'https://www.worldmonitor.app/countries/iran/' });
+    assert.equal(assertNoSecrets(serialized, { property: 'https://www.worldmonitor.app/' }), serialized);
+    assert.throws(
+      () => assertNoSecrets(JSON.stringify({ property: 'sc-domain:worldmonitor.app' }), { property: 'sc-domain:worldmonitor.app' }),
+      /refusing to write/,
     );
   });
 });

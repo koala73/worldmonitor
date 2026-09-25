@@ -6,6 +6,7 @@ import {
   HOST_CLASSES,
   URL_KINDS,
   classifyUrl,
+  kindForContentType,
   sitemapUrls,
 } from '../scripts/lib/seo-url-taxonomy.mjs';
 import { PAGE_FAMILIES } from '../scripts/seo-ai-visibility-scorecard.mjs';
@@ -152,5 +153,16 @@ describe('seo url taxonomy', () => {
       () => classifyUrl('https://example.com/countries/france/'),
       /host/,
     );
+  });
+});
+
+describe('URL taxonomy for rows Search Console reports', () => {
+  it('files /favicon.ico with the site infrastructure', () => {
+    assert.equal(classifyUrl('https://www.worldmonitor.app/favicon.ico').family, 'site_infrastructure');
+  });
+
+  it('reads an SVG content type as a subresource, not a feed', () => {
+    assert.equal(kindForContentType('image/svg+xml'), 'subresource');
+    assert.equal(kindForContentType('application/rss+xml'), 'feed');
   });
 });
