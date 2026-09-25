@@ -114,6 +114,9 @@ export function suggestNotFoundSection(path: string): NotFoundSection | null {
   let best: { section: NotFoundSection; distance: number } | null = null;
   for (const section of HUMAN_NOT_FOUND_SECTIONS) {
     for (const alias of section.aliases) {
+      // Lengths further apart than the budget can never match, and skipping
+      // them keeps an arbitrarily long unknown path from costing CPU.
+      if (Math.abs(segment.length - alias.length) > MAX_FUZZY_DISTANCE) continue;
       const distance = editDistance(segment, alias);
       if (distance <= MAX_FUZZY_DISTANCE && (!best || distance < best.distance)) {
         best = { section, distance };

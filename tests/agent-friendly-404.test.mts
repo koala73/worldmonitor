@@ -211,6 +211,7 @@ describe('human 404 guides a lost reader to a real page', () => {
       ['/blogs/some-post', '/blog/'],
       ["/'to", null],
       ['/zzzzzz', null],
+      [`/${'countries'.repeat(900)}`, null],
       ['/', null],
     ];
     for (const [path, expected] of cases) {
