@@ -547,7 +547,7 @@ async function fetchSanctionsPressure() {
   const ofacResults = [];
   for (const source of OFAC_SOURCES) {
     try {
-      ofacResults.push(await fetchSource(source));
+      ofacResults.push({ ...await fetchSource(source), label: source.label });
     } catch (err) {
       console.warn(`  OFAC ${source.label} fetch failed: ${err?.message || err}`);
     }
@@ -579,7 +579,9 @@ async function fetchSanctionsPressure() {
       const previous = await verifySeedKey(CANONICAL_KEY);
       const previousEntries = Array.isArray(previous?.entries) ? previous.entries : [];
       const carried = previousEntries.filter(
-        (entry) => Array.isArray(entry?.sourceLists) && entry.sourceLists.includes(SEMA_SOURCE),
+        // Older parsers encoded a missing Item as :0. Those rows are not last-good.
+        (entry) => Array.isArray(entry?.sourceLists) && entry.sourceLists.includes(SEMA_SOURCE)
+          && !/^sema-ca:[^:]+:[^:]+:0$/.test(entry.id),
       );
       if (carried.length) {
         semaEntries = carried;
@@ -619,7 +621,9 @@ async function fetchSanctionsPressure() {
   const vesselCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
   const semaCount = semaEntries.length;
-  console.log(`  Merged: ${totalCount} total (${ofacResults[0]?.entries.length ?? 0} SDN + ${ofacResults[1]?.entries.length ?? 0} consolidated + ${semaCount} SEMA), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
+  const sdnCount = ofacResults.find((result) => result.label === 'SDN')?.entries.length ?? 0;
+  const consolidatedCount = ofacResults.find((result) => result.label === 'CONSOLIDATED')?.entries.length ?? 0;
+  console.log(`  Merged: ${totalCount} total (${sdnCount} SDN + ${consolidatedCount} consolidated + ${semaCount} SEMA), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
 
   // Build compact entity index for name-based lookup (Phase 1 — issue #2042).
   // Each record: { id, name, et (compact type), cc (country codes), pr (programs) }
@@ -637,8 +641,8 @@ async function fetchSanctionsPressure() {
     fetchedAt: String(Date.now()),
     datasetDate: String(datasetDate),
     totalCount,
-    sdnCount: ofacResults[0]?.entries.length ?? 0,
-    consolidatedCount: ofacResults[1]?.entries.length ?? 0,
+    sdnCount,
+    consolidatedCount,
     semaCount,
     ...(semaError ? { semaError } : {}),
     newEntryCount,

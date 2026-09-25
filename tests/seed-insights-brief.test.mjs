@@ -320,6 +320,67 @@ describe('composeSynthesizedBrief lead sentence boundaries (#5947)', () => {
   });
 });
 
+describe('lead repair preserves acronym context (#8571)', () => {
+  const stories = [
+    { primaryTitle: 'US Navy moved a carrier into the Gulf as Iran tensions rose', primarySource: 'Reuters', sources: ['Reuters', 'AP News'] },
+    { primaryTitle: 'Oil rose on Iran tensions', primarySource: 'BBC', sources: ['BBC', 'Reuters'] },
+  ];
+  const compose = (lead, validatorMode = 'enforce') => composeSynthesizedBriefResult(
+    JSON.stringify({ lead, lines: stories.map((story, i) => ({ n: i + 1, text: `${story.primaryTitle} [${i + 1}]` })) }),
+    stories,
+    { validatorMode },
+  );
+
+  for (const mode of ['enforce', 'shadow']) {
+    it(`does not publish a subject-cut continuation in ${mode}`, () => {
+      const result = compose('The U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1]. Oil rose on Iran tensions [2].', mode);
+      assert.equal(result.brief.lead, 'Oil rose on Iran tensions [2].');
+      assert.equal(result.brief.droppedLeadSentences, 2);
+      assert.equal(result.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    });
+  }
+
+  it('propagates removal through consecutive ambiguous boundaries', () => {
+    const result = compose('The U.S. Navy moved into the Gulf [1] with the U.S. Navy moved a carrier as Iran tensions rose [1]. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.lead, 'Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.droppedLeadSentences, 3);
+  });
+
+  it('keeps an accepted head when a middle unit fails and removes its continuation', () => {
+    const result = compose('The Navy moved into the Gulf [1] with the U.S. Navy moved 42 carriers [1] with the U.S. Navy moved a carrier as Iran tensions rose [1]. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.lead, 'The Navy moved into the Gulf [1] with the U.S. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.droppedLeadSentences, 2);
+    assert.equal(result.brief.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+    assert.equal(result.brief.droppedLeadDetail, 'number:42');
+  });
+
+  it('rejects when no independent sentence survives', () => {
+    const result = compose('The U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1].');
+    assert.equal(result.brief, null);
+    assert.equal(result.rejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+  });
+
+  it('keeps bare-acronym prose byte-identical', () => {
+    const lead = 'The US Navy moved a carrier into the Gulf as Iran tensions rose [1].  Oil rose on Iran tensions [2].';
+    const result = compose(lead);
+    assert.equal(result.brief.lead, lead);
+    assert.equal(result.brief.droppedLeadSentences, 0);
+  });
+
+  it('excludes attribution in a removed continuation', () => {
+    const result = compose('The U.S. Reuters reported that Navy moved a carrier into the Gulf as Iran tensions rose [1]. Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.lead, 'Oil rose on Iran tensions [2].');
+    assert.equal(result.brief.sourceAttributions, 0);
+  });
+
+  it('preserves shadow acceptance of semantic failures', () => {
+    const lead = 'Venezuela warned [1] the U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1]. Oil rose on Iran tensions [2].';
+    const result = compose(lead, 'shadow');
+    assert.equal(result.brief.lead, lead);
+    assert.equal(result.brief.droppedLeadSentences, 0);
+  });
+});
+
 // #5947 review (adversarial + correctness, independently): collapsing EVERY
 // dotted acronym before splitting removed real sentence boundaries too, merging
 // two sentences into one validation unit whose citation set is the UNION of
@@ -358,11 +419,7 @@ describe('composeSynthesizedBrief acronym boundaries fail closed (#5947 review)'
       lines,
     });
     const composed = composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null, 'the grounded sentence still publishes');
-    assert.ok(!composed.lead.includes('U.S.'), 'the misattributed claim never publishes');
-    assert.ok(!composed.lead.includes('warnings were issued'));
-    assert.match(composed.lead, /Embassies urged citizens/);
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(composed, null, 'neither the misattributed head nor its ambiguous continuation publishes');
   });
 
   it('drops an uncited sentence that follows an acronym-terminated sentence', () => {
@@ -505,12 +562,7 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     const composed = composeSynthesizedBrief(unioned, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null);
-    assert.ok(
-      !composed.lead.includes('U.S.'),
-      'a bare marker mid-lead must stay a boundary — merging would union {1,2} and publish the US claim',
-    );
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(composed, null, 'the unclosed citation run cannot license either fragment');
   });
 
   it('does not merge on an adjacent citation run that does not close the sentence', () => {
@@ -519,9 +571,7 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     const composed = composeSynthesizedBrief(adjacentUnioned, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null);
-    assert.ok(!composed.lead.includes('U.S.'), 'the unclosed run must not license the US claim');
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(composed, null, 'adjacent citations cannot license the ambiguous continuation');
   });
 
   it('accepts an adjacent citation run that does close the sentence', () => {
@@ -617,9 +667,7 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     const composed = composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' });
-    assert.notEqual(composed, null);
-    assert.ok(!composed.lead.includes('U.S.'), 'the stripped bare marker must not collapse — the US claim stays uncited and unpublished');
-    assert.equal(composed.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+    assert.equal(composed, null, 'stripping an invalid citation cannot make the continuation independent');
   });
 });
 

@@ -79,6 +79,7 @@ import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { showToast as showGlobalToast } from '@/utils/toast';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
 // country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
@@ -1460,7 +1461,7 @@ export class CountryIntelManager implements AppModule {
           structuredEvents.push({
             timestamp: new Date(v.lastAisUpdate).getTime(),
             lane: 'military',
-            label: `${v.name} (${v.vesselType})`,
+            label: `${v.name} (${vesselTypeLabel(v)})`,
             severity: v.isDark ? 'high' : 'low',
           });
         }

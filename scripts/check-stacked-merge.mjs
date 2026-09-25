@@ -515,11 +515,17 @@ function retargetComment({ closedPull, item }) {
 }
 
 function rerunLatestGuard({ gh, repository, headSha }) {
-  const raw = gh([
-    'api',
-    `repos/${repository}/actions/workflows/stacked-merge-guard.yml/runs?head_sha=${headSha}&event=pull_request&per_page=1`,
-  ]);
-  const run = JSON.parse(raw)?.workflow_runs?.[0];
+  let run;
+  // A newly created run can be absent from a stale index. Retry only the
+  // visibility lookup; a failed POST must never cause a second rerun request.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const raw = gh([
+      'api',
+      `repos/${repository}/actions/workflows/stacked-merge-guard.yml/runs?head_sha=${headSha}&event=pull_request&per_page=1`,
+    ]);
+    run = JSON.parse(raw)?.workflow_runs?.[0];
+    if (run?.id) break;
+  }
   if (!run?.id) throw new Error(`no stacked-merge-guard run found for ${headSha}`);
   gh(['api', '--method', 'POST', `repos/${repository}/actions/runs/${run.id}/rerun`]);
   return run.id;

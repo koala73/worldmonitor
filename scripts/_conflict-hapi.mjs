@@ -232,7 +232,22 @@ export async function fetchHapiHdxSnapshotRows({
   nowMs = Date.now(),
   countryCodes = Object.keys(ISO2_TO_ISO3),
   createTimeoutSignal = (timeoutMs) => AbortSignal.timeout(timeoutMs),
+  readElapsedMs = () => performance.now(),
 } = {}) {
+  // Fixed stage names and reason only: transport errors can contain URLs or bodies.
+  // Rethrow the original error so classification, fallback and pacing stay unchanged.
+  const atStage = async (stage, operation) => {
+    const startedAt = readElapsedMs();
+    try {
+      return await operation();
+    } catch (error) {
+      if (hapiHdxFailureReason(error) === 'HDX_TIMEOUT') {
+        const elapsedMs = Math.max(0, Math.round(readElapsedMs() - startedAt));
+        console.warn(`  HAPI HDX timeout stage=${stage} elapsedMs=${elapsedMs} reason=HDX_TIMEOUT`);
+      }
+      throw error;
+    }
+  };
   const requestOptions = (accept, timeoutMs) => ({
     headers: {
       Accept: accept,
@@ -240,10 +255,10 @@ export async function fetchHapiHdxSnapshotRows({
     },
     signal: createTimeoutSignal(timeoutMs),
   });
-  const metadataResponse = await fetchFn(
+  const metadataResponse = await atStage('metadata_headers', () => fetchFn(
     HAPI_HDX_PACKAGE_URL,
     requestOptions('application/json', HAPI_HDX_METADATA_TIMEOUT_MS),
-  );
+  ));
   if (!metadataResponse.ok) {
     throw hapiHdxError(`HAPI HDX metadata request failed: HTTP ${metadataResponse.status}`, {
       status: metadataResponse.status,
@@ -251,10 +266,10 @@ export async function fetchHapiHdxSnapshotRows({
     });
   }
 
-  const metadataText = await readBoundedHapiHdxText(
+  const metadataText = await atStage('metadata_body', () => readBoundedHapiHdxText(
     metadataResponse,
     HAPI_HDX_METADATA_MAX_RESPONSE_BYTES,
-  );
+  ));
   let metadata;
   try {
     metadata = JSON.parse(metadataText);
@@ -272,10 +287,10 @@ export async function fetchHapiHdxSnapshotRows({
   const resources = selectHapiHdxCsvResources(metadata.result.resources, { nowMs });
   const rows = [];
   for (const resource of resources) {
-    const response = await fetchFn(
+    const response = await atStage('csv_headers', () => fetchFn(
       resource.url,
       requestOptions('text/csv', HAPI_HDX_SNAPSHOT_TIMEOUT_MS),
-    );
+    ));
     if (!response.ok) {
       throw hapiHdxError(
         `HAPI HDX ${resource.year} snapshot request failed: HTTP ${response.status}`,
@@ -292,7 +307,9 @@ export async function fetchHapiHdxSnapshotRows({
         reasonCode: 'HDX_CSV_INVALID',
       });
     }
-    const csvText = await readBoundedHapiHdxText(response, HAPI_HDX_MAX_RESPONSE_BYTES);
+    const csvText = await atStage('csv_body', () => readBoundedHapiHdxText(
+      response, HAPI_HDX_MAX_RESPONSE_BYTES,
+    ));
     rows.push(...parseHapiHdxConflictCsv(csvText, { nowMs, countryCodes }));
   }
   return rows;
@@ -361,7 +378,6 @@ export function aggregateHapiConflictEvents(
           || HAPI_COUNTRY_NAMES.of(countryCode)
           || countryCode,
         ),
-        eventsTotal: 0,
         eventsPV: 0,
         eventsDem: 0,
         fatalitiesPV: 0,
@@ -373,7 +389,6 @@ export function aggregateHapiConflictEvents(
     const eventType = String(row?.event_type || '').toLowerCase();
     const events = finiteCount(row?.events);
     const fatalities = finiteCount(row?.fatalities);
-    aggregate.eventsTotal += events;
     if (eventType === 'political_violence') {
       aggregate.eventsPV += events;
       aggregate.fatalitiesPV += fatalities;
@@ -390,7 +405,8 @@ export function aggregateHapiConflictEvents(
       const summary = {
         countryCode,
         countryName: aggregate.countryName,
-        conflictEventsTotal: aggregate.eventsTotal,
+        // Civilian targeting is a subset of political violence, not an extra category.
+        conflictEventsTotal: aggregate.eventsPV + aggregate.eventsDem,
         conflictPoliticalViolenceEvents: aggregate.eventsPV,
         conflictFatalities: aggregate.fatalitiesPV,
         referencePeriod: aggregate.referencePeriod,

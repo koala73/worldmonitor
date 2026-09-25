@@ -488,12 +488,6 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   // memberTitles is the mirror case and stays: it is in the ground text but NOT
   // in the prompt, which only makes the gate more permissive and cannot cause a
   // false rejection.
-  //
-  // How often a lead actually names its outlet, so the accept side is legible.
-  // The reject side already reports a reason; without this, the alarm going
-  // quiet cannot distinguish "stopped over-rejecting" from "started
-  // under-rejecting".
-  let sourceAttributions = 0;
 
   // Lead gates (#4928 external review — citation-SCOPED, not corpus-wide):
   // every lead sentence must carry at least one citation, and its proper
@@ -537,7 +531,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   // The rejection code and detail of the FIRST drop are preserved for the
   // no-survivors rejection and surfaced alongside the repaired brief, so the
   // resample-feedback path upstream can still tell the model what to fix.
-  const survivingSentences = [];
+  const leadDecisions = [];
   let droppedLeadSentences = 0;
   let firstDrop = null;
   const dropSentence = (rejection, detail = null) => {
@@ -549,6 +543,8 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   // across the boundary, so the qualifier check reads the pair.
   let acronymHead = null;
   for (const sentence of leadSentences) {
+    const decision = { text: sentence, accepted: false, attributionMatches: 0 };
+    leadDecisions.push(decision);
     const head = acronymHead;
     acronymHead = null;
     const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
@@ -590,8 +586,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     const qualifierValidation = spanOnly.length > 0 ? { ok: false, hallucinated: spanOnly } : ownQualifier;
     if (validatorMode === 'enforce' && spanOnly.length > 0) {
       // The qualifier sits in the head, which already passed on its own.
-      survivingSentences.pop();
-      if (head.attributions > 0) sourceAttributions--;
+      head.decision.accepted = false;
       dropSentence(BRIEF_REJECTIONS.LEAD_STATUS_QUALIFIER, qualifierValidation.hallucinated);
     }
     if (validatorMode === 'enforce') {
@@ -608,14 +603,24 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
         continue;
       }
     }
-    // Attribution is an accept-side counter; a dropped sentence's outlet naming
-    // never reached a reader, so only survivors count.
-    if (attribution.matches > 0) sourceAttributions++;
-    survivingSentences.push(sentence);
+    decision.accepted = true;
+    decision.attributionMatches = attribution.matches;
     if (ENDS_WITH_DOTTED_ACRONYM.test(sentence)) {
-      acronymHead = { attributed, cited, attributions: attribution.matches };
+      acronymHead = { attributed, cited, decision };
     }
   }
+  for (let i = 1; i < leadDecisions.length; i++) {
+    const previous = leadDecisions[i - 1];
+    const current = leadDecisions[i];
+    const lostAcronymContext = !previous.accepted && ENDS_WITH_DOTTED_ACRONYM.test(previous.text);
+    if (current.accepted && lostAcronymContext) {
+      current.accepted = false;
+      droppedLeadSentences++;
+    }
+  }
+  const survivors = leadDecisions.filter((decision) => decision.accepted);
+  const survivingSentences = survivors.map((decision) => decision.text);
+  const sourceAttributions = survivors.filter((decision) => decision.attributionMatches > 0).length;
   if (survivingSentences.length === 0) {
     // Total failure classifies exactly as before: the first failing sentence's
     // code and detail.

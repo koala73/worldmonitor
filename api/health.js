@@ -674,6 +674,7 @@ const STANDALONE_KEYS = {
   forecastBets:                  'forecast:bets:history:v1',
   forecastFunnel:                'forecast:funnel:health:v1',
   researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
+  techEventsSeeder:              'research:tech-events:v1',
   // #5736 — historical-intelligence ingest health, one record per collector.
   // These are NOT the collectors' canonical keys: scripts/_seed-history.mjs
   // appends to the Convex intel-history store fail-open, so a permanently
@@ -1159,6 +1160,23 @@ const SEED_META = {
   globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
   globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
+  techEventsSeeder: {
+    key: 'seed-meta:research:tech-events:seeder',
+    maxStaleMin: 180,
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 8572,
+      verifiedAt: '2026-09-24T08:57:09.430Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-research',
+        probeKey: 'seed-meta:research:tech-events:seeder',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/blob/codex/8572-tech-events-feed-health/docs/snapshots/tech-events-seeder-preseed-2026-09-24.json',
+      },
+    },
+  },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
   // Same materializer tick as gdeltIntel; the 2-day data TTL outlives this

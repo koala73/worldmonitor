@@ -114,6 +114,7 @@ function verdict(data, now = NOW) {
 
 async function runNhc({
   now = NOW,
+  runStartedAtMs = null,
   previous = previousNhcSnapshot,
   eonet = eonetEvents(),
   gdacs = { features: [] },
@@ -123,6 +124,7 @@ async function runNhc({
 } = {}) {
   return fetchNaturalEvents({
     now,
+    runStartedAtMs,
     previousNhcSnapshot: previous,
     fetchHkoWarningsFn: async () => {
       if (calls) calls.hko += 1;
@@ -288,6 +290,56 @@ test('optional cone and past-point failures do not remove a point-confirmed stor
   assert.equal(calls.get(8), 2);
   assert.equal(calls.get(11), 2);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
+});
+
+test('identity rejection logs bounded predicates and keeps retained clocks', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  for (const [field, value] of [['stormname', ''], ['stormnum', '1'], ['advisnum', null], ['advdate', '800 AM XYZ Mon Sep 07 2026']]) {
+    logs.length = 0;
+    const payload = await runNhc({ now: NOW + MIN, runStartedAtMs: NOW, nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties: { ...currentStormPoint.properties, [field]: value } }] : [])) });
+    const line = logs.find(line => line.startsWith('[NHC identity] '));
+    assert.ok(line, field);
+    const diagnostic = JSON.parse(line.slice('[NHC identity] '.length));
+    assert.equal(diagnostic.layerId, 32);
+    assert.equal(diagnostic.attemptAt, NOW + MIN);
+    assert.equal(diagnostic.runStartedAtMs, NOW);
+    assert.deepEqual(diagnostic.failedPredicates, [field]);
+    assert.equal(diagnostic.fields[field].type, value === null ? 'null' : typeof value);
+    if (field === 'advdate') assert.equal(diagnostic.fields.advdate.value, value);
+    assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
+    assert.equal(payload._nhcSnapshot.retainedUntil, previousNhcSnapshot.retainedUntil);
+    assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_RESPONSE_INVALID');
+    assert.equal(payload._nhcSnapshot.consecutiveFailures, 2);
+    assert.deepEqual(payload.events.filter(e => e.sourceName === 'NHC'), [retainedStorm]);
+    assert.equal(JSON.stringify(naturalEventsPublishTransform(payload)).includes('failedPredicates'), false);
+  }
+});
+
+test('identity diagnostics redact unsafe and oversized strings and never serialize nested fields', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  const properties = { ...currentStormPoint.properties, stormname: 'https://private.example/?token=SECRET', stormnum: { secret: 'SECRET' }, advisnum: 'Bearer SECRET', advdate: 'SECRET'.repeat(10000), unrelated: 'SECRET' };
+  await runNhc({ nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties }] : [])) });
+  const line = logs.find(line => line.startsWith('[NHC identity] '));
+  assert.ok(line);
+  assert.ok(line.length < 1500);
+  assert.doesNotMatch(line, /SECRET|private|https|unrelated/);
+  const d = JSON.parse(line.slice('[NHC identity] '.length));
+  assert.deepEqual(d.failedPredicates, ['stormnum', 'advdate']);
+  assert.equal(d.fields.advdate.length, 60000);
+  assert.equal(d.fields.advdate.value, undefined);
+  assert.deepEqual(d.fields.stormnum, { type: 'object' });
+});
+
+test('valid identity and earlier wind rejection do not emit identity diagnostics', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  for (const maxwind of [45, -1, 201, '45']) {
+    const payload = await runNhc({ nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties: { ...currentStormPoint.properties, maxwind } }] : [])) });
+    assert.equal(payload._nhcSnapshot.errorCode, maxwind === 45 ? null : 'NHC_POINT_RESPONSE_INVALID');
+  }
+  assert.equal(logs.some(line => line.startsWith('[NHC identity] ')), false);
 });
 
 test('accepts time-first advisory dates across NHC time zones', async () => {
@@ -525,7 +577,7 @@ test('canonical publication strips NHC recovery state and diagnostics', () => {
 
 async function seedProcess(initial, now, {
   failStateWrite = false, eonetEmpty = false, eonetFails = false, eonetTransient = false,
-  gdacsFails = [], gdacsFeatures = {}, nhcHealthy = false, failSourceStateWrite = false,
+  gdacsFails = [], gdacsFeatures = {}, nhcHealthy = false, nhcIdentityPoint = null, failSourceStateWrite = false,
 } = {}) {
   Date.now = () => now;
   const store = new Map(initial);
@@ -573,6 +625,7 @@ async function seedProcess(initial, now, {
     }
     if (url.hostname === 'mapservices.weather.noaa.gov') {
       calls.nhc += 1;
+      if (nhcIdentityPoint) return Response.json({ type: 'FeatureCollection', features: url.pathname.endsWith('/32/query') ? [nhcIdentityPoint] : [] });
       if (nhcHealthy) return Response.json({ type: 'FeatureCollection', features: [] });
       return new Response('', { status: 503 });
     }
@@ -609,6 +662,26 @@ function runSeedFixture(initial, now, options = {}) {
     ...JSON.parse(result.stdout.split('FIXTURE_RESULT=')[1].trim()),
   };
 }
+
+test('real seeder correlates identity diagnostics without persisting them or renewing retention', () => {
+  const result = runSeedFixture([['natural:events:nhc-snapshot:v1', JSON.stringify(previousNhcSnapshot)]], NOW + MIN, {
+    nhcIdentityPoint: { ...currentStormPoint, properties: { ...currentStormPoint.properties, stormnum: '1' } },
+  });
+  assert.equal(result.status, 0, result.output);
+  const line = result.output.split('\n').find(line => line.startsWith('[NHC identity] '));
+  assert.ok(line, result.output);
+  const diagnostic = JSON.parse(line.slice('[NHC identity] '.length));
+  assert.equal(diagnostic.runStartedAtMs, NOW + MIN);
+  assert.match(result.output, new RegExp('Run ID:  ' + diagnostic.runStartedAtMs + '-'));
+  assert.deepEqual(diagnostic.failedPredicates, ['stormnum']);
+  const store = new Map(result.store);
+  const state = JSON.parse(store.get('natural:events:nhc-snapshot:v1'));
+  assert.equal(state.fetchedAt, NOW);
+  assert.equal(state.retainedUntil, previousNhcSnapshot.retainedUntil);
+  assert.equal(state.consecutiveFailures, 2);
+  assert.equal(JSON.stringify(result.store).includes('failedPredicates'), false);
+  assert.deepEqual(result.calls, { eonet: 1, gdacs: 6, nhc: 17, hko: 1 });
+});
 
 test('real seeder persists NHC recovery state before replacing the canonical payload', () => {
   const canonical = JSON.stringify({

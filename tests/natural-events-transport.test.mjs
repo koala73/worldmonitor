@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import dns from 'node:dns';
+import { gzipSync } from 'node:zlib';
 import { fetchNaturalEvents, naturalEventsAfterPublish } from '../scripts/seed-natural-events.mjs';
 
 const NOW = Date.parse('2026-09-18T06:00:00Z');
@@ -39,6 +40,132 @@ function fixture(fail) {
 const run = transport => fetchNaturalEvents({
   now: NOW, fetchFn: transport.fetchFn,
   fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true, sourceDecision: { status: 'used' } }),
+});
+
+test('late EONET headers leave progressing body time within the shared budget', { timeout: 25_000 }, async t => {
+  const body = JSON.stringify({ events: [event] });
+  const timers = [];
+  const server = createServer((_req, res) => {
+    timers.push(setTimeout(() => { res.writeHead(200); res.write(body.slice(0, 20)); }, 12_900));
+    timers.push(setTimeout(() => res.end(body.slice(20)), 16_000));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { timers.forEach(clearTimeout); server.closeAllConnections(); server.close(); });
+  const transport = fixture((source, attempt, options) => {
+    if (source !== 'eonet') return;
+    if (attempt === 1) throw dualFamilyFailure();
+    return fetch(`http://127.0.0.1:${server.address().port}`, options);
+  });
+  const started = performance.now();
+  const result = await run(transport);
+  assert.ok(result.events.some(item => item.id === event.id));
+  assert.equal(result._eonetFailed, false);
+  assert.ok(performance.now() - started < 20_000);
+  assert.equal(transport.calls.get('eonet'), 2);
+});
+
+test('EONET aborts a silent body and retries within the existing source budget', { timeout: 15_000 }, async t => {
+  let disconnected = 0;
+  const server = createServer((req, res) => {
+    req.on('close', () => disconnected++);
+    res.writeHead(200); res.write('{"events":[');
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const transport = fixture((source, _attempt, options) => source === 'eonet'
+    ? fetch(`http://127.0.0.1:${server.address().port}`, options) : undefined);
+  const started = performance.now();
+  const result = await run(transport);
+  assert.equal(result._eonetFailed, true);
+  assert.equal(transport.calls.get('eonet'), 2);
+  assert.ok(performance.now() - started < 13_000);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(disconnected, 2);
+});
+
+test('EONET progressing body cannot renew the total deadline', { timeout: 35_000 }, async t => {
+  let interval;
+  let disconnected = false;
+  const server = createServer((req, res) => {
+    res.writeHead(200); res.write('{"events":[');
+    interval = setInterval(() => res.write(' '), 250);
+    req.on('close', () => { disconnected = true; clearInterval(interval); });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { clearInterval(interval); server.closeAllConnections(); server.close(); });
+  const transport = fixture((source, _attempt, options) => source === 'eonet'
+    ? fetch(`http://127.0.0.1:${server.address().port}`, options) : undefined);
+  const started = performance.now();
+  const result = await run(transport);
+  const elapsed = performance.now() - started;
+  assert.equal(result._eonetFailed, true);
+  assert.equal(transport.calls.get('eonet'), 1);
+  assert.ok(elapsed >= 30_000 && elapsed < 33_000, `elapsed=${elapsed}`);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(disconnected, true);
+});
+
+test('EONET decoded-size rejection cancels acquisition and preserves last-good without retry', async () => {
+  let cancelled = false;
+  const first = await run(fixture());
+  const transport = fixture(source => source === 'eonet' ? new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(2 * 1024 * 1024 + 1)); },
+    cancel() { cancelled = true; },
+  })) : undefined);
+  const result = await fetchNaturalEvents({ now: NOW + 1000, previousSources: first._sourceSnapshots,
+    fetchFn: transport.fetchFn, fetchHkoWarningsFn: async () => ({ warnings: [], dataAvailable: true }) });
+  assert.equal(result._eonetFailed, true);
+  assert.equal(transport.calls.get('eonet'), 1);
+  assert.equal(cancelled, true);
+  assert.deepEqual(result._sourceSnapshots.eonet, first._sourceSnapshots.eonet);
+});
+
+test('EONET streamed JSON preserves native BOM and invalid UTF-8 decoding', async () => {
+  const bytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(JSON.stringify({ events: [event] }).replace('Volcano', 'VolcXno'))]);
+  bytes[bytes.indexOf('X')] = 0xff;
+  const expected = await new Response(bytes).json();
+  const result = await run(fixture(source => source === 'eonet' ? new Response(bytes) : undefined));
+  assert.equal(result._eonetFailed, false);
+  assert.equal(result.events.find(item => item.id === event.id).title, expected.events[0].title);
+});
+
+test('EONET bounds decompressed bytes and rejects a truncated native response', async t => {
+  const compressed = gzipSync(JSON.stringify({ events: [], padding: 'x'.repeat(2 * 1024 * 1024) }));
+  let mode = 'oversize';
+  const server = createServer((_req, res) => {
+    if (mode === 'oversize') { res.writeHead(200, { 'Content-Encoding': 'gzip' }); res.end(compressed); }
+    else { res.writeHead(200, { 'Content-Length': '1000' }); res.end('{"events":['); }
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  for (mode of ['oversize', 'truncated']) {
+    const transport = fixture((source, _attempt, options) => source === 'eonet'
+      ? fetch(`http://127.0.0.1:${server.address().port}`, options) : undefined);
+    const result = await run(transport);
+    assert.equal(result._eonetFailed, true);
+    assert.equal(transport.calls.get('eonet'), mode === 'oversize' ? 1 : 2);
+    assert.equal(result._sourceSnapshots.eonet, null);
+  }
+});
+
+test('EONET success and malformed JSON release header and idle timers', async t => {
+  const active = new Set();
+  const timer = globalThis.setTimeout;
+  const clear = globalThis.clearTimeout;
+  t.mock.method(globalThis, 'setTimeout', (callback, delay, ...args) => {
+    const handle = timer(callback, delay, ...args);
+    if (delay === 5000 || delay === 15000) active.add(handle);
+    return handle;
+  });
+  t.mock.method(globalThis, 'clearTimeout', handle => { active.delete(handle); clear(handle); });
+  for (const body of [JSON.stringify({ events: [event] }), '{"events":']) {
+    await run(fixture(source => source === 'eonet' ? new Response(body) : undefined));
+    assert.equal(active.size, 0);
+  }
 });
 
 function dualFamilyFailure() {
@@ -119,7 +246,7 @@ test('failed IPv4 retry destroys its dispatcher and preserves the previous succe
   assert.equal(health.status, 'retained');
   assert.equal(health.lastSuccessAt, NOW);
   assert.equal(health.lastAttemptAt, now);
-  assert.equal(health.retainedUntil, NOW + 9 * 3_600_000);
+  assert.equal(health.retainedUntil, NOW + 18 * 3_600_000);
 });
 
 test('a body-stage failure does not select the EONET connect fallback', async () => {
@@ -201,7 +328,7 @@ test('exhaustion preserves last success and fixed expiry while companions succee
   assert.equal(source.status, 'retained');
   assert.equal(source.lastSuccessAt, NOW);
   assert.equal(source.lastAttemptAt, now);
-  assert.equal(result._sourceSnapshots.eonet.retainedUntil, NOW + 9 * 3_600_000);
+  assert.equal(result._sourceSnapshots.eonet.retainedUntil, NOW + 18 * 3_600_000);
 });
 
 test('safe diagnostics retain source, stage and code without raw error content', async t => {
@@ -283,8 +410,10 @@ test('Retry-After is honored and an elapsed deadline prevents a late retry', asy
   });
   let clock = 0;
   const waits = [];
+  const realTimer = globalThis.setTimeout;
   t.mock.method(performance, 'now', () => clock);
   t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    if (delay !== 2000) return realTimer(callback, delay);
     waits.push(delay);
     clock = 31_000;
     queueMicrotask(callback);
@@ -375,7 +504,9 @@ test('failure timing separates each request duration from total elapsed time', a
   t.mock.method(performance, 'now', () => clock);
   t.mock.method(console, 'warn', (...args) => logs.push(args.join(' ')));
   t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
-  t.mock.method(globalThis, 'setTimeout', (callback) => {
+  const realTimer = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    if (delay !== 500) return realTimer(callback, delay);
     clock += 500;
     queueMicrotask(callback);
   });
@@ -395,7 +526,11 @@ test('failure phase timings distinguish late headers from a stalled body and res
   t.mock.method(performance, 'now', () => clock);
   t.mock.method(console, 'warn', (...args) => logs.push(args.join(' ')));
   t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
-  t.mock.method(globalThis, 'setTimeout', callback => { clock += 500; queueMicrotask(callback); });
+  const realTimer = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    if (delay !== 500) return realTimer(callback, delay);
+    clock += 500; queueMicrotask(callback);
+  });
   const initial = await run(fixture());
   const transport = fixture((source, attempt) => {
     if (source !== 'eonet') return;

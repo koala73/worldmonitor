@@ -474,6 +474,7 @@
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_climate-zones.mjs",
+      "scripts/_natural-events-dashboard.mjs",
       "scripts/_content-age-helpers.mjs",
       "scripts/_open-meteo-archive.mjs",
       "scripts/_proxy-utils.cjs",
