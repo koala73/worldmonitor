@@ -290,6 +290,44 @@ test('optional cone and past-point failures do not remove a point-confirmed stor
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
 });
 
+test('identity rejection logs bounded predicates and keeps retained clocks', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  for (const [field, value] of [['stormname', ''], ['stormnum', '1'], ['advisnum', null], ['advdate', '800 AM XYZ Mon Sep 07 2026']]) {
+    logs.length = 0;
+    const payload = await runNhc({ now: NOW + MIN, nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties: { ...currentStormPoint.properties, [field]: value } }] : [])) });
+    const line = logs.find(line => line.startsWith('[NHC identity] '));
+    assert.ok(line, field);
+    const diagnostic = JSON.parse(line.slice('[NHC identity] '.length));
+    assert.equal(diagnostic.layerId, 32);
+    assert.equal(diagnostic.attemptAt, NOW + MIN);
+    assert.deepEqual(diagnostic.failedPredicates, [field]);
+    assert.equal(diagnostic.fields[field].type, value === null ? 'null' : typeof value);
+    assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
+    assert.equal(payload._nhcSnapshot.retainedUntil, previousNhcSnapshot.retainedUntil);
+    assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_RESPONSE_INVALID');
+    assert.equal(payload._nhcSnapshot.consecutiveFailures, 2);
+    assert.deepEqual(payload.events.filter(e => e.sourceName === 'NHC'), [retainedStorm]);
+    assert.equal(JSON.stringify(naturalEventsPublishTransform(payload)).includes('failedPredicates'), false);
+  }
+});
+
+test('identity diagnostics redact unsafe and oversized strings and never serialize nested fields', async t => {
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => logs.push(args.join(' ')));
+  const properties = { ...currentStormPoint.properties, stormname: 'https://private.example/?token=SECRET', stormnum: { secret: 'SECRET' }, advisnum: 'Bearer SECRET', advdate: 'SECRET'.repeat(10000), unrelated: 'SECRET' };
+  await runNhc({ nhc: async (_input, id) => Response.json(collection(id === 32 ? [{ ...currentStormPoint, properties }] : [])) });
+  const line = logs.find(line => line.startsWith('[NHC identity] '));
+  assert.ok(line);
+  assert.ok(line.length < 1500);
+  assert.doesNotMatch(line, /SECRET|private|https|unrelated/);
+  const d = JSON.parse(line.slice('[NHC identity] '.length));
+  assert.deepEqual(d.failedPredicates, ['stormnum', 'advdate']);
+  assert.equal(d.fields.advdate.length, 60000);
+  assert.equal(d.fields.advdate.value, undefined);
+  assert.deepEqual(d.fields.stormnum, { type: 'object' });
+});
+
 test('accepts time-first advisory dates across NHC time zones', async () => {
   for (const [advdate, expectedDate] of [
     ['800 AM PDT Mon Sep 07 2026', '2026-09-07T15:00:00.000Z'],
