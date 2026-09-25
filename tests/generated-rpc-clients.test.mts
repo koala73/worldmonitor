@@ -162,3 +162,41 @@ test('lazy generated RPC client ignores symbol lookups without loading construct
   assert.equal(symbolValue, undefined);
   assert.equal(attempts, 0);
 });
+
+test('lazy generated RPC client rejects a property read that resolves to a non-method (#4550)', async () => {
+  class TestClient {
+    // A public field is the shape the proxy cannot represent: the bare read
+    // must still return an invoker (the chunk is not loaded yet), so the only
+    // honest outcome is a loud rejection when that invoker runs.
+    baseURL = 'https://example.test';
+    version = 3;
+    missing: undefined;
+
+    async ping(): Promise<string> {
+      return 'pong';
+    }
+  }
+
+  const LazyTestClient = createLazyRpcClientConstructor<TestClient>(async () => TestClient);
+  const client = new LazyTestClient('https://example.test');
+
+  // The read itself is an invoker, by construction.
+  assert.equal(typeof Reflect.get(client, 'baseURL'), 'function');
+
+  await assert.rejects(
+    () => (client.baseURL as unknown as () => Promise<unknown>)(),
+    (error: unknown) => error instanceof TypeError
+      && /"baseURL" is not a method on the loaded client \(got string\)/.test(error.message),
+  );
+  await assert.rejects(
+    () => (client.version as unknown as () => Promise<unknown>)(),
+    /"version" is not a method on the loaded client \(got number\)/,
+  );
+  await assert.rejects(
+    () => (Reflect.get(client, 'notDeclared') as () => Promise<unknown>)(),
+    /"notDeclared" is not a method on the loaded client \(got undefined\)/,
+  );
+
+  // Methods are unaffected.
+  assert.equal(await client.ping(), 'pong');
+});
