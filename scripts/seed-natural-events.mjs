@@ -629,6 +629,36 @@ const NHC_STORM_TYPES = {
   EX: 'Post-Tropical', PT: 'Post-Tropical',
 };
 
+function nhcIdentityField(value, pattern) {
+  const type = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+  if (type === 'string') {
+    return { type, length: value.length, ...(value.length <= 80 && pattern.test(value) ? { value } : {}) };
+  }
+  if (type === 'number') return { type, ...(Number.isFinite(value) && Math.abs(value) <= 1e15 ? { value } : {}) };
+  return { type };
+}
+
+function nhcIdentityDiagnostics(layerId, p, advDate) {
+  const predicates = {
+    stormname: typeof p.stormname === 'string' && p.stormname.trim().length > 0,
+    stormnum: Number.isInteger(p.stormnum) && p.stormnum >= 1 && p.stormnum <= 99,
+    advisnum: ['string', 'number'].includes(typeof p.advisnum) && String(p.advisnum).trim().length > 0,
+    maxwind: Number.isFinite(p.maxwind) && p.maxwind >= 0 && p.maxwind <= 200,
+    advdate: Number.isFinite(advDate),
+  };
+  return {
+    layerId,
+    failedPredicates: Object.keys(predicates).filter(key => !predicates[key]),
+    fields: {
+      stormname: nhcIdentityField(p.stormname, /^[A-Za-z -]{0,40}$/),
+      stormnum: nhcIdentityField(p.stormnum, /^\d{0,3}$/),
+      advisnum: nhcIdentityField(p.advisnum, /^\d{0,4}[A-Za-z]?$/),
+      maxwind: nhcIdentityField(p.maxwind, /^\d{0,3}(?:\.\d{1,2})?$/),
+      advdate: nhcIdentityField(p.advdate, /^(?:[\dTtZz :+.,/-]{0,40}|\d{1,4} (?:AM|PM) [A-Z]{2,6} (?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2} \d{4})$/),
+    },
+  };
+}
+
 async function fetchNhc(fetchFn = globalThis.fetch) {
   const pointQueries = NHC_STORM_SLOTS.map(s => nhcQuery(s.forecastPoints, NHC_POINT_GEOMETRY_TYPES, fetchFn));
   const pointResults = await Promise.allSettled(pointQueries);
@@ -692,10 +722,12 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
       || !['string', 'number'].includes(typeof p.advisnum) || String(p.advisnum).trim().length === 0
       || !Number.isFinite(p.maxwind) || p.maxwind < 0 || p.maxwind > 200
       || !Number.isFinite(advDate)) {
-      throw new NhcQueryError(`NHC layer ${slot.forecastPoints} has invalid current storm identity`, {
+      const error = new NhcQueryError(`NHC layer ${slot.forecastPoints} has invalid current storm identity`, {
         code: 'NHC_POINT_RESPONSE_INVALID',
         nonRetryable: true,
       });
+      error.identityDiagnostics = nhcIdentityDiagnostics(slot.forecastPoints, p, advDate);
+      throw error;
     }
     const stormName = p.stormname || '';
     const windKt = p.maxwind || 0;
@@ -916,6 +948,7 @@ function toWesternPacificObservation(event) {
 
 export async function fetchNaturalEvents({
   now = Date.now(),
+  runStartedAtMs = null,
   previousNhcSnapshot = null,
   previousSources = null,
   fetchFn = globalThis.fetch,
@@ -961,6 +994,13 @@ export async function fetchNaturalEvents({
     console.log('[GDACS] partial coverage —', gdacsResult.value.failedTypes.map((t) => `${t.eventtype}: ${t.message}`).join('; '));
   }
   if (nhcResult.status === 'rejected') console.log('[NHC]', nhcResult.reason?.message);
+  if (nhcResult.status === 'rejected' && nhcResult.reason?.identityDiagnostics) {
+    console.log('[NHC identity]', JSON.stringify({
+      ...nhcResult.reason.identityDiagnostics,
+      attemptAt: now,
+      runStartedAtMs: Number.isSafeInteger(runStartedAtMs) ? runStartedAtMs : null,
+    }));
+  }
   if (hkoResult.status === 'rejected') console.log('[HKO]', hkoResult.reason?.message);
 
   // Uncapped TC list (see fetchGdacs): the general feed's 100-event cap must
@@ -1130,12 +1170,12 @@ export function naturalEventsAfterPublish(data) {
   return { completionState: 'DEGRADED', freshnessMetaPatch: patch };
 }
 
-async function fetchNaturalEventsForSeed() {
+async function fetchNaturalEventsForSeed({ runStartedAtMs } = {}) {
   const [previousNhcSnapshot, previousSources] = await Promise.all([
     readSeedSnapshot(NHC_SNAPSHOT_KEY, { strict: true }),
     readSeedSnapshot(SOURCE_SNAPSHOT_KEY, { strict: true }),
   ]);
-  return fetchNaturalEvents({ previousNhcSnapshot, previousSources });
+  return fetchNaturalEvents({ previousNhcSnapshot, previousSources, runStartedAtMs });
 }
 
 export function runNaturalEventsSeed() {
