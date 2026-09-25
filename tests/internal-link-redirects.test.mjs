@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { after, describe, it } from 'node:test';
 
 import { buildCorpus, GENERATED_DIRS } from '../scripts/build-crawlable-corpus.mjs';
+import { getRootlessDocsDestination } from '../src/config/docs-root-redirects.ts';
 import { LEGAL_DOCUMENT_DIGESTS } from '../shared/legal.ts';
 
 // #8603. Googlebot follows an internal link as a crawl signal. A link that
@@ -121,22 +122,90 @@ const vercelConfig = JSON.parse(readRepo('vercel.json'));
  */
 const DIGEST_LOCKED_DOCS = new Set(Object.keys(LEGAL_DOCUMENT_DIGESTS));
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Vercel path tokens: `:name`, `:name*`, and `:name(regex)`. */
+function compileVercelSource(source) {
+  let pattern = '';
+  const token = /:([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\)|\*)?/g;
+  let last = 0;
+  for (const match of source.matchAll(token)) {
+    pattern += escapeRegex(source.slice(last, match.index));
+    const custom = match[2];
+    if (custom === '*') pattern += '.*';
+    else if (custom) pattern += custom;
+    else pattern += '[^/]+';
+    last = match.index + match[0].length;
+  }
+  pattern += escapeRegex(source.slice(last));
+  return new RegExp(`^${pattern}$`);
+}
+
+const sourcePatterns = new Map();
+function sourcePattern(source) {
+  let compiled = sourcePatterns.get(source);
+  if (!compiled) {
+    compiled = compileVercelSource(source);
+    sourcePatterns.set(source, compiled);
+  }
+  return compiled;
+}
+
+function ruleAppliesToHost(rule, host) {
+  const hostCondition = (rule.has ?? []).find((condition) => condition.type === 'host');
+  return !hostCondition || new RegExp(hostCondition.value).test(host);
+}
+
 /**
- * Redirect `source` values that fire for a request to `host`. Vercel applies
- * `redirects` before middleware, and a `has` host condition scopes a rule to
- * the hosts its regex matches — so `/` is a redirect on a variant host and a
- * real page on www, and a host-blind check would reject every homepage link.
- * Only parameter-free sources are returned: those are the ones an href can
- * equal exactly.
+ * A redirect fires only when its host, `has` query, and `missing` query
+ * conditions all hold. `/` on a variant host 308s to /dashboard unless
+ * `mode=agent` is present; that same path on www is a page.
  */
-function literalRedirectSourcesFor(host) {
-  return new Set(vercelConfig.redirects
-    .filter((rule) => {
-      const hostCondition = (rule.has ?? []).find((condition) => condition.type === 'host');
-      return !hostCondition || new RegExp(hostCondition.value).test(host);
-    })
-    .map((rule) => rule.source)
-    .filter((source) => !source.includes(':')));
+function redirectRuleMatches(rule, url) {
+  if (!ruleAppliesToHost(rule, url.hostname)) return false;
+  for (const condition of rule.has ?? []) {
+    if (condition.type === 'query' && url.searchParams.get(condition.key) !== condition.value) return false;
+  }
+  for (const condition of rule.missing ?? []) {
+    if (condition.type === 'query' && url.searchParams.get(condition.key) === condition.value) return false;
+  }
+  return sourcePattern(rule.source).test(url.pathname);
+}
+
+function paramSkeleton(source) {
+  return source.replace(/:([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\)|\*)?/g, ':$1');
+}
+
+/** Destination is the source plus one trailing slash, literals and `:slug` alike. */
+function isTrailingSlashRedirect(rule) {
+  if (rule.destination.startsWith('http')) return false;
+  return paramSkeleton(rule.destination) === `${paramSkeleton(rule.source)}/`;
+}
+
+/**
+ * Slashless pathnames that actually 308. Generated directory routes are not
+ * all slash-normalised: vercel.json adds the slash only for named families,
+ * and `trailingSlash` is unset, so `/sources/geopolitics` answers 200.
+ */
+function slashlessRedirectForms(routes) {
+  const forms = new Set();
+  for (const rule of vercelConfig.redirects) {
+    if (!ruleAppliesToHost(rule, 'www.worldmonitor.app')) continue;
+    if (!isTrailingSlashRedirect(rule)) continue;
+    if (!rule.source.includes(':')) {
+      forms.add(rule.source);
+      continue;
+    }
+    const destination = sourcePattern(rule.destination);
+    for (const route of routes) {
+      if (route.endsWith('/') && route !== '/' && destination.test(route)) {
+        forms.add(route.slice(0, -1));
+      }
+    }
+  }
+  return forms;
 }
 
 /** Every path the generated corpus actually writes: `/a/b/` for index.html, `/a/b.json` for a file. */
@@ -330,18 +399,31 @@ function linkViolations({ page, href, url }, context, { waiveRedirectRule = fals
       violations.push(`${where} — legacy root deep link (${legacy.join(', ')}) 308s to /dashboard; link /dashboard directly`);
     }
   }
-  if (hosts.includes(url.hostname) && (url.pathname === '/' || url.pathname === '')) {
+  if (
+    hosts.includes(url.hostname)
+    && (url.pathname === '/' || url.pathname === '')
+    && url.searchParams.get('mode') !== 'agent'
+  ) {
     violations.push(`${where} — links a bare variant host (308 to /dashboard); link the /dashboard path directly`);
   }
-  if (!waiveRedirectRule && literalRedirectSourcesFor(url.hostname).has(url.pathname)) {
-    violations.push(`${where} — equals a vercel.json redirect source, so it never answers 200`);
+  if (!waiveRedirectRule && vercelConfig.redirects.some((rule) => redirectRuleMatches(rule, url))) {
+    violations.push(`${where} — matches a vercel.json redirect, so it never answers 200`);
+  }
+  const rootlessDocs = getRootlessDocsDestination(url.pathname);
+  if (rootlessDocs) {
+    violations.push(`${where} — rootless docs path 308s to ${new URL(rootlessDocs).pathname}; link that path`);
   }
   if (slashlessCorpusForms.has(url.pathname)) {
     violations.push(`${where} — slashless form of a slash-normalised corpus route; link ${url.pathname}/`);
   }
+  // A generated route stored with its trailing slash still answers 200 at the
+  // slashless form when vercel does not redirect that family. Counting the
+  // slashed route as published stops the 404 rule from re-banning it.
+  const publishedRoute = routes.has(url.pathname)
+    || (routes.has(`${url.pathname}/`) && !slashlessCorpusForms.has(url.pathname));
   // Variant and api hosts serve a different application from a different
   // route table, so only www hrefs are resolved against the www route set.
-  if (url.hostname === 'www.worldmonitor.app' && modelsRoutesUnder(url.pathname) && !routes.has(url.pathname)) {
+  if (url.hostname === 'www.worldmonitor.app' && modelsRoutesUnder(url.pathname) && !publishedRoute) {
     violations.push(`${where} — resolves to no published route (404)`);
   }
   return violations;
@@ -388,9 +470,7 @@ async function corpusFixture() {
       shapes: middlewareBotRedirectShapes(),
       hosts: variantHosts(),
       routes: knownRoutes(outDir, manifest),
-      slashlessCorpusForms: new Set([...generatedRoutes(outDir)]
-        .filter((route) => route.endsWith('/') && route !== '/')
-        .map((route) => route.slice(0, -1))),
+      slashlessCorpusForms: slashlessRedirectForms(generatedRoutes(outDir)),
     },
   };
   return fixture;
@@ -474,14 +554,32 @@ describe('internal links never redirect or 404 (#8603)', () => {
     // (scripts/build-llms-full.mjs), so no regeneration will ever repair a bad
     // link in them — this gate is the only thing that can. They are also the
     // primary AI-crawler surface: llms.txt links world-monitor.md by name.
-    const artifacts = readdirSync(join(repoRoot, 'public'), { withFileTypes: true })
-      .filter((entry) => entry.isFile() && /\.(?:md|txt)$/.test(entry.name))
-      .map((entry) => `public/${entry.name}`);
+    // Nested on purpose: public/developers/llms.txt and public/api/llms.txt
+    // are published agent files, and a top-level readdir never sees them.
+    // Skip generated corpus roots so a local `public/countries` build cannot
+    // change the scan. Those pages are checked from the fresh corpus build.
+    const generatedRoots = new Set(GENERATED_DIRS.map((dir) => dir.split('/')[0]));
+    const artifacts = [];
+    const visitPublic = (relative) => {
+      const directory = relative === '' ? join(repoRoot, 'public') : join(repoRoot, 'public', relative);
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (relative === '' && generatedRoots.has(entry.name)) continue;
+          visitPublic(child);
+        } else if (/\.(?:md|txt)$/.test(entry.name)) {
+          artifacts.push(`public/${child}`);
+        }
+      }
+    };
+    visitPublic('');
     // Per surface, not a total: a single floor over the sum keeps passing if
     // the blog moves to .mdx and its filter matches nothing.
     assert.ok(docs.length > 200, `expected the published docs pages, saw ${docs.length}`);
     assert.ok(blog.length > 40, `expected the blog posts, saw ${blog.length}`);
     assert.ok(artifacts.length > 10, `expected the public agent artifacts, saw ${artifacts.length}`);
+    assert.ok(artifacts.includes('public/developers/llms.txt'), 'the developer briefing must be scanned');
+    assert.ok(artifacts.includes('public/api/llms.txt'), 'the API section briefing must be scanned');
 
     const violations = [];
     for (const file of [...docs, ...blog, ...artifacts]) {
@@ -513,12 +611,30 @@ describe('internal links never redirect or 404 (#8603)', () => {
   it('publishes no welcome-page href that redirects or 404s', async () => {
     const { context } = await corpusFixture();
     const welcomeDir = join(repoRoot, 'pro-test/src/welcome');
-    const files = readdirSync(welcomeDir).filter((file) => file.endsWith('.tsx'));
-    assert.ok(files.length > 0, 'expected welcome section sources to scan');
+    const sectionFiles = readdirSync(welcomeDir).filter((file) => file.endsWith('.tsx'));
+    assert.ok(sectionFiles.length > 0, 'expected welcome section sources to scan');
+    // WelcomeApp renders Footer and LegalFooterNav outside pro-test/src/welcome.
+    // PressFooterNav is third-party press URLs and stays out.
+    const files = [
+      ...sectionFiles.map((file) => `pro-test/src/welcome/${file}`),
+      'pro-test/src/components/Footer.tsx',
+      'pro-test/src/components/LegalFooterNav.tsx',
+    ];
+    const aboutDocsPath = readRepo('shared/press.ts').match(/export const ABOUT_DOCS_PATH = '([^']+)'/)?.[1];
+    assert.equal(aboutDocsPath, '/docs/about');
+    const legalSource = readRepo('shared/legal.ts');
+    const legalBlock = legalSource.match(/export const LEGAL_FOOTER_LINKS[\s\S]*?=\s*\[([\s\S]*?)\];/)?.[1];
+    assert.ok(legalBlock, 'LEGAL_FOOTER_LINKS extraction found nothing');
+    const legalPaths = [...legalBlock.matchAll(/path:\s*([A-Z_]+)/g)].map((match) => {
+      const path = legalSource.match(new RegExp(`export const ${match[1]} = '([^']+)'`))?.[1];
+      assert.ok(path, `${match[1]} has no string path`);
+      return path;
+    });
+    assert.ok(legalPaths.length >= 5, `expected the legal footer paths, saw ${legalPaths.length}`);
     const violations = [];
     let scanned = 0;
     for (const file of files) {
-      const source = readFileSync(join(welcomeDir, file), 'utf8');
+      const source = readFileSync(join(repoRoot, file), 'utf8').replaceAll('ABOUT_DOCS_PATH', aboutDocsPath);
       // DASHBOARD_PATH is the one template hole in these hrefs and always
       // expands to a path, so substituting it keeps the URL parseable. Both
       // spellings are matched: `href={DASHBOARD_PATH}` is the shape every CTA
@@ -527,6 +643,9 @@ describe('internal links never redirect or 404 (#8603)', () => {
       const targets = [...source.matchAll(
         /href[=:]\s*[{`'"]*((?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z.]*worldmonitor\.app|\/)[^`'"\s,}]*)/g,
       )].map((match) => match[1].replace(/^\$\{DASHBOARD_PATH\}|^DASHBOARD_PATH/, '/dashboard'));
+      // LegalFooterNav stores the href on the shared link list, not next to
+      // the JSX attribute, so the regex above sees nothing in that file.
+      if (source.includes('href={link.path}')) targets.push(...legalPaths);
       for (const target of targets) {
         let url;
         try {
@@ -537,7 +656,7 @@ describe('internal links never redirect or 404 (#8603)', () => {
         if (!/(^|\.)worldmonitor\.app$/.test(url.hostname)) continue;
         scanned += 1;
         violations.push(...linkViolations(
-          { page: `pro-test/src/welcome/${file}`, href: target, url },
+          { page: file, href: target, url },
           context,
         ));
       }
@@ -549,7 +668,10 @@ describe('internal links never redirect or 404 (#8603)', () => {
     // twelve dashboard CTAs by shape; this pins every welcome href by URL
     // semantics, which is what catches a bare variant host or a redirect
     // source that a tail-only shape check cannot see.
-    assert.equal(scanned, 32, `expected every welcome same-site href to be scanned, saw ${scanned}`);
+    // 32 welcome-section hrefs, 10 Footer anchors (including status.worldmonitor.app),
+    // and the 5 LEGAL_FOOTER_LINKS paths. Exact, so a footer href that drops
+    // out of the scan does not hide behind the section count.
+    assert.equal(scanned, 47, `expected every welcome same-site href to be scanned, saw ${scanned}`);
     assert.deepEqual(violations, [], `${violations.length} welcome links do not answer 200:\n${violations.join('\n')}`);
   });
 
@@ -573,7 +695,11 @@ describe('internal links never redirect or 404 (#8603)', () => {
       // Legacy root deep link: pathname `/` plus any bounded map-state key.
       ['/?country=US', /legacy root deep link \(country\)/],
       ['https://tech.worldmonitor.app', /links a bare variant host/],
-      ['/docs', /equals a vercel\.json redirect source/],
+      ['/docs', /matches a vercel\.json redirect/],
+      ['/api-reference/supplychainservice/listfuelshortages', /matches a vercel\.json redirect/],
+      ['https://tech.worldmonitor.app/sources/geopolitics/', /matches a vercel\.json redirect/],
+      ['https://api.worldmonitor.app', /matches a vercel\.json redirect/],
+      ['/corrections', /rootless docs path 308s to \/docs\/corrections/],
       ['/countries/norway', /slashless form of a slash-normalised corpus route/],
       ['/countries/not-a-country/', /resolves to no published route \(404\)/],
       ['/docs/not-a-page', /resolves to no published route \(404\)/],
@@ -585,6 +711,9 @@ describe('internal links never redirect or 404 (#8603)', () => {
         `${href} must be rejected by ${expected} — got ${JSON.stringify(reasons)}`,
       );
     }
+    assert.equal(context.slashlessCorpusForms.has('/countries/norway'), true);
+    assert.equal(context.slashlessCorpusForms.has('/sources/geopolitics'), false);
+    assert.equal(context.slashlessCorpusForms.has('/reference/changelog/page/2'), false);
     // Negative control: the shapes that legitimately answer 200 must stay
     // silent, or the rules above would pass by rejecting everything.
     for (const href of [
@@ -592,8 +721,11 @@ describe('internal links never redirect or 404 (#8603)', () => {
       '/dashboard?country=NO&expanded=1',
       '/pro?wm_content_source=worldmonitor-use-cases',
       'https://tech.worldmonitor.app/dashboard',
+      'https://tech.worldmonitor.app/?mode=agent',
       '/countries/norway/',
       '/docs/algorithms',
+      '/docs/corrections',
+      '/docs/api-reference/supplychainservice/listfuelshortages',
       '/blog/glossary/suez-canal/',
       '/llms.txt',
       '/api/product-catalog',
