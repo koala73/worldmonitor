@@ -517,13 +517,24 @@ describe('Search Console collector on live data', () => {
 
   it('records one failed inspection and keeps inspecting the rest', async () => {
     const failing = 'https://www.worldmonitor.app/countries/chad/';
-    const { indexation } = await collectFrom(memoryTransport({
+    const snapshot = await collectFrom(memoryTransport({
       inspect: async (url) => {
         if (url === failing) throw new Error('Search Console request failed with HTTP 503 after 4 attempts');
         return indexedResponse;
       },
     }));
+    const { indexation } = snapshot;
     assert.equal(indexation.sample.inspected, 4);
+    // A failed call is an absence of a measurement, so the sample is not
+    // complete and the scorecard must not receive the count as a total.
+    assert.equal(indexation.sample.complete, false);
+    assert.equal(indexation.status, 'partial');
+    assert.match(indexation.reason, /1 inspection failed/);
+    const [exported] = toScorecardSearchExport(snapshot).windows;
+    assert.equal(exported.indexedPages, null);
+    const familyRow = (family) => exported.pageFamilyRows.find((row) => row.pageFamily === family);
+    assert.equal(familyRow('country_pages').indexedPages, null, 'the family with the failed URL is not a count');
+    assert.equal(familyRow('crises').indexedPages, 1, 'a fully measured family keeps its exact count');
     assert.equal(indexation.byFamily.country_pages.indexed, 1);
     assert.equal(indexation.inspectionErrors.length, 1);
     assert.equal(indexation.inspectionErrors[0].url, failing);

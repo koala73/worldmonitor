@@ -16,9 +16,7 @@ on:
     - cron: '17 5 * * 2'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 concurrency:
   group: seo-gsc-weekly
@@ -48,6 +46,10 @@ jobs:
 
   collect:
     needs: guard
+    # Only this job pushes the weekly branch and opens its PR.
+    permissions:
+      contents: write
+      pull-requests: write
     if: needs.guard.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60

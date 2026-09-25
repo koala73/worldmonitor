@@ -963,14 +963,24 @@ export async function collectGscSnapshot({
     && (record.probe.status === null || (record.probe.status >= 200 && record.probe.status < 300))
   ));
 
-  const sampleComplete = records.length === inventory.urls.length && quotaReason === null;
+  // A URL whose inspection failed or came back empty is an absence of a
+  // measurement, not a "not indexed", so it keeps the sample incomplete.
+  const inspectionErrors = records.filter((record) => record.inspectionError !== null);
+  const unmeasured = records.filter((record) => record.indexStatus === null).length;
+  const unmeasuredReason = unmeasured > 0
+    ? `${unmeasured} ${unmeasured === 1 ? 'inspection' : 'inspections'} failed or returned no index status; the sample is not complete`
+    : null;
+  const sampleComplete = records.length === inventory.urls.length
+    && quotaReason === null
+    && unmeasured === 0;
   const samplingNotes = [];
-  if (!sampleComplete) {
+  if (records.length < inventory.urls.length) {
     samplingNotes.push(
       `Inspected ${records.length} of ${inventory.urls.length} declared URLs. Shares below are measured over the inspected rows and are not projected onto the declared total.`,
     );
   }
   if (quotaReason) samplingNotes.push(quotaReason);
+  if (unmeasuredReason) samplingNotes.push(`${unmeasuredReason}.`);
   for (const [label, total] of Object.entries(reportedTotals)) {
     const seen = records.filter(
       (record) => normalizeState(record.indexStatus?.coverageState) === normalizeState(label),
@@ -992,16 +1002,18 @@ export async function collectGscSnapshot({
       );
     }
   }
-  const inspectionErrors = records.filter((record) => record.inspectionError !== null);
-  if (inspectionErrors.length > 0) {
-    samplingNotes.push(
-      `${inspectionErrors.length} inspections failed after retries and have no index status.`,
-    );
-  }
+  // A family's HTML count is exact only when every declared HTML URL in it
+  // returned an index status; otherwise it is null rather than an undercount.
+  const htmlDeclaredByFamily = countBy(
+    inventory.urls.filter((entry) => entry.kind === 'html'),
+    (entry) => entry.family,
+  );
   const htmlIndexedByFamily = {};
-  for (const record of htmlWithStatus) {
-    htmlIndexedByFamily[record.family] = (htmlIndexedByFamily[record.family] ?? 0)
-      + (record.indexStatus.verdict === INDEXED_VERDICT ? 1 : 0);
+  for (const [family, declared] of Object.entries(htmlDeclaredByFamily)) {
+    const measured = htmlWithStatus.filter((record) => record.family === family);
+    htmlIndexedByFamily[family] = measured.length === declared
+      ? measured.filter((record) => record.indexStatus.verdict === INDEXED_VERDICT).length
+      : null;
   }
 
   const flagged = (predicate, mapper) => records
@@ -1032,7 +1044,7 @@ export async function collectGscSnapshot({
       status: records.length === 0 ? 'unavailable' : (sampleComplete ? 'available' : 'partial'),
       reason: records.length === 0
         ? (quotaReason ?? 'no URL was inspected')
-        : (sampleComplete ? null : (quotaReason ?? 'the inspection sample is capped')),
+        : (sampleComplete ? null : (quotaReason ?? unmeasuredReason ?? 'the inspection sample is capped')),
       sample: {
         cap: sampleCap,
         selected: sample.length,
@@ -1329,8 +1341,9 @@ export function renderGscMarkdown(snapshot) {
  */
 export function toScorecardSearchExport(snapshot) {
   // The scorecard's indexedPages means HTML pages in the declared inventory.
-  // A sampled count is only that number when every declared URL was
-  // inspected; otherwise it is an absence of a measurement, so null.
+  // The site total is only that number when every declared URL returned an
+  // index status; a family row is exact when its own URLs all did. Anything
+  // else is an absence of a measurement, so null.
   const { htmlPages, sample } = snapshot.indexation;
   const complete = sample.complete === true;
   return {
@@ -1353,7 +1366,7 @@ export function toScorecardSearchExport(snapshot) {
         impressions: metrics.impressions,
         ctr: metrics.ctr,
         position: metrics.averagePosition,
-        indexedPages: complete ? (htmlPages.indexedByFamily[pageFamily] ?? null) : null,
+        indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
       })),
       queryRows: [],
     })),
