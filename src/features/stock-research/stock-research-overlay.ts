@@ -217,11 +217,22 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
     const sentiment = analysis.newsSentiment == null
       ? ''
       : `<p data-news-overlay="model">News overlay (model): ${analysis.newsSentiment.toFixed(2)}</p>`;
+    // analyze-stock substitutes a deterministic template (provider 'rules',
+    // fallback true) built from the same indicators whenever the LLM call
+    // fails or times out. The prose reads like the model's, so the reader has
+    // to be told which one they are looking at (#5498). The numbers are
+    // genuine either way; only the narrative framing changes.
+    const isRulesFallback = analysis.fallback === true || analysis.provider === 'rules';
+    const provenance = isRulesFallback
+      ? '<p class="stock-research-provenance" data-analysis-provenance="rules-fallback">Rules-based template: the AI commentary was unavailable for this run, so the summary below is assembled from the indicators alone.</p>'
+      : `<p class="stock-research-provenance" data-analysis-provenance="model">AI commentary${analysis.provider ? ` · ${escapeHtml(analysis.provider)}` : ''}${analysis.model ? ` (${escapeHtml(analysis.model)})` : ''}</p>`;
     analyzeHost.dataset.analyzeState = 'ready';
+    analyzeHost.dataset.analysisProvenance = isRulesFallback ? 'rules-fallback' : 'model';
     setTrustedHtml(
       analyzeHost,
       trustedHtml(`
         <h2>Analysis</h2>
+        ${provenance}
         <p>${escapeHtml(analysis.ratingSummary || analysis.summary || 'No analysis summary.')}</p>
         ${sentiment}
         ${headlines ? `<ul class="stock-research-news">${headlines}</ul>` : '<p>No headlines.</p>'}
