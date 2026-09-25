@@ -90,6 +90,10 @@ Running a candidate read path against real production traffic while continuing t
 
 Two rules make a shadow comparable rather than merely reassuring. The candidate must be measured entirely off the response path, so enabling it on live traffic cannot change what any client receives. And the incumbent must be measured on the *same* traffic over the *same* window, because a candidate's latency means nothing against a baseline drawn from different requests or a different hour. A shadow that clears its gate answers only "is the candidate faster here"; the serving path's own failure and slowness handling still has to be proven separately, since a shadow never exercises them. See also: The Lever Test, Bootstrap Tier.
 
+### Held-Out Judged Set
+
+A human-labelled sample of headlines, judged blind to any model output and after the prompt, model and criteria under test were fixed, used only to score a labeller, never to choose one. Each title carries a judged level and a borderline flag, which separates the clear-cut slice from titles the annotator placed between two levels. The set is single-use for tuning: once any prompt, threshold or criterion is chosen by reading its results, it becomes a tuning set and a fresh held-out sample is owed. A replacement decision on it is therefore pre-registered: the rule, the runs and the inputs are frozen before the candidate answers. See also: Shadow Measurement.
+
 ## Notifications & Alert Delivery
 
 ### Alert Rule
