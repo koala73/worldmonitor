@@ -349,11 +349,38 @@ function tagReason(error, reason) {
   return error;
 }
 
+const NBS_DIAGNOSTIC_CODES = new Set([
+  ...PERMANENT_TLS_CODES,
+  'EAI_AGAIN', 'ENOTFOUND', 'ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET',
+  'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'ETIMEDOUT', 'UND_ERR_CONNECT',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
+
+function logNbsTransportFailure(error, url, attempt) {
+  try {
+    let code = 'UNKNOWN';
+    let cause = error;
+    for (let depth = 0; cause && depth < 4; depth++, cause = cause.cause) {
+      if (NBS_DIAGNOSTIC_CODES.has(cause.code)) { code = cause.code; break; }
+      if (cause.name === 'TimeoutError') { code = 'TIMEOUT'; break; }
+    }
+    const status = error?.status;
+    // Never serialize error messages, URLs, stacks, bodies, or arbitrary codes.
+    console.warn(JSON.stringify({
+      event: 'china_calendar_transport_failure', host: 'www.stats.gov.cn',
+      resource: url === NBS_CALENDAR_INDEX_URL ? 'index' : 'calendar',
+      transport: 'direct', attempt, code,
+      ...(Number.isInteger(status) && status >= 100 && status <= 599 ? { httpStatus: status } : {}),
+    }));
+  } catch { /* Diagnostics must not change the fetch result or retry policy. */ }
+}
+
 async function fetchTextWithTransientRetry(fetchFn, url, { onRequest, deadlineAt, sleepFn }) {
   for (let attempt = 1; ; attempt++) {
     try {
       return await fetchText(fetchFn, url, { onRequest, deadlineAt });
     } catch (error) {
+      logNbsTransportFailure(error, url, attempt);
       if (isCertificateValidationFailure(error)) throw tagReason(error, TLS_CERT_UNTRUSTED_REASON);
       if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
       // Grows with the attempt, but never undercuts an explicit Retry-After
