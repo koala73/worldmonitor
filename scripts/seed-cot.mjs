@@ -4,7 +4,9 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const COT_KEY = 'market:cot:v1';
-const COT_TTL = 604800;
+// Keep the weekly report through cron startup delays and the 10-day stale warning.
+// Retention does not refresh fetchedAt or the CFTC report date.
+const COT_TTL = 1209600;
 
 const FINANCIAL_INSTRUMENTS = [
   { name: 'S&P 500 E-Mini',    code: 'ES', pattern: /E-MINI S&P 500 - CHICAGO/i },
