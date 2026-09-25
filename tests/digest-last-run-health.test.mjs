@@ -39,14 +39,27 @@ describe('digest-notifications last-run health heartbeat', () => {
     assert.match(writer, /\['SET', DIGEST_LAST_RUN_META_KEY, JSON\.stringify\(run\), 'EX', String\(DIGEST_LAST_RUN_TTL_SECONDS\)\]/);
   });
 
-  it('stamps SEED_ERROR metadata for rule-fetch failures', () => {
-    assert.match(
-      src,
-      /if \(!res\.ok\) \{[\s\S]*?await writeDigestLastRunMeta\(\{[\s\S]*?status: 'error'[\s\S]*?errorReason: `fetch_rules_http_\$\{res\.status\}`,[\s\S]*?\}\);[\s\S]*?return;/,
+  it('stamps SEED_ERROR metadata for rule-fetch failures, then exits non-zero (#8215)', () => {
+    // Both arms used to `return` after the seed-meta write, which resolved
+    // main() and let the process exit 0: the 2026-09-16 relay 401 (#8208)
+    // showed as a green cron in Railway. The write must still come first
+    // (health reads the reason), then the run must fail loudly.
+    const rulesFetch = sourceBetween(
+      "const res = await fetch(`${CONVEX_SITE_URL}/relay/digest-rules`",
+      'if (!Array.isArray(rules) || rules.length === 0) {',
     );
     assert.match(
-      src,
-      /catch \(err\) \{[\s\S]*?await writeDigestLastRunMeta\(\{[\s\S]*?status: 'error'[\s\S]*?errorReason: `fetch_rules_failed:\$\{err\.message\}`,[\s\S]*?\}\);[\s\S]*?return;/,
+      rulesFetch,
+      /if \(!res\.ok\) \{[\s\S]*?await writeDigestLastRunMeta\(\{[\s\S]*?status: 'error'[\s\S]*?errorReason: `fetch_rules_http_\$\{res\.status\}`,[\s\S]*?\}\);[\s\S]*?await flushPendingLlmEvents\(\);\s*process\.exit\(1\);/,
+    );
+    assert.match(
+      rulesFetch,
+      /catch \(err\) \{[\s\S]*?await writeDigestLastRunMeta\(\{[\s\S]*?status: 'error'[\s\S]*?errorReason: `fetch_rules_failed:\$\{err\.message\}`,[\s\S]*?\}\);[\s\S]*?await flushPendingLlmEvents\(\);\s*process\.exit\(1\);/,
+    );
+    assert.doesNotMatch(
+      rulesFetch,
+      /\breturn;/,
+      'a failed rules fetch must not return from main() — that is the exit-0 path #8215 closes',
     );
   });
 
