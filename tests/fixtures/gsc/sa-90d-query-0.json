@@ -1,0 +1,32 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "world monitor"
+      ],
+      "clicks": 90,
+      "impressions": 3000,
+      "ctr": 0.03,
+      "position": 2.8
+    },
+    {
+      "keys": [
+        "acled alternative"
+      ],
+      "clicks": 5,
+      "impressions": 410,
+      "ctr": 0.012195,
+      "position": 19.2
+    },
+    {
+      "keys": [
+        "suez canal traffic"
+      ],
+      "clicks": 7,
+      "impressions": 520,
+      "ctr": 0.013462,
+      "position": 16.4
+    }
+  ],
+  "responseAggregationType": "byQuery"
+}

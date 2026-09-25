@@ -10,7 +10,8 @@ root_cause: logic_error
 resolution_type: code_fix
 symptoms:
   - "getVesselTypeFromAis(35) returned 'destroyer' for AIS ship type 35, a generic military-ops activity code that establishes no hull class"
-  - "an unidentified type-35 vessel rendered as Destroyer across eight surfaces: map popup, cluster list, globe tooltip and marker colour, country-brief timeline, CSV export, PDF report, correlation severity, and the posture destroyer count"
+  - "an unidentified type-35 vessel would render as Destroyer across eight surfaces: map popup, cluster list, globe tooltip and marker colour, country-brief timeline, CSV export, PDF report, correlation severity, and the posture destroyer count"
+  - "latent, not observed: the relay delivers zero per-vessel military candidates to browsers, so the mislabel had no production reach on web at the time of the fix"
   - "the obvious narrowing (return undefined) drops the vessel from the feed entirely, because the tracking gate consumes the classifier's return for truthiness rather than value"
   - "the classifier fix alone stayed invisible to returning users for up to 24h, because the breaker persists snapshots that replay the pre-fix label"
 related_components:
@@ -98,6 +99,17 @@ The rehydration rewrite is safe because the three-part signature is unambiguous 
 
 So `vesselType === 'destroyer' && !hullNumber && aisShipType === 'Military Ops'` selects the old type-35 records and nothing else. The regression test at the bottom of `tests/dom/military-vessel-ais-classification.test.mts` pins the other side of the line: a persisted `USS ZUMWALT` with `hullNumber: 'DDG-1000'` and `aisShipType: 'Military Ops'` must survive rehydration as a destroyer.
 
+## Production reach at the time of the fix
+
+The defect is deterministic in source and the tests pin it, but it was **latent on the web dashboard, not observed**. Probing production on 2026-09-24 while writing this up:
+
+- The relay is healthy — `status: {connected: true, vessels: 20000, messages: 365929}` — and `densityZones` is populated (200 zones).
+- `candidateReports` and `tankerReports` are both **empty**, across two samples ~5.5 minutes apart in which the snapshot `sequence` advanced 1047 -> 1161 and the relay processed ~37,000 further AIS messages.
+- `candidateReports` is the browser's only per-vessel AIS input (`src/services/maritime/index.ts:275` emits it to the callbacks `processAisPosition` registers), so with it empty the classifier never runs client-side.
+- Every military vessel the live dashboard shows is therefore USNI-derived: all 34 in that session came from the fleet report, all hull-numbered (amphibious 6, carrier 3, destroyer 23, frigate 1, auxiliary 1).
+
+So the 23 destroyers a user sees today are real, named, hull-numbered ships, correctly classified. **That is a separate and larger defect** — the AIS-derived military vessel layer delivers nothing — and it is tracked in #8634. The lesson for this doc is narrower and worth stating plainly: a classifier bug confirmed in source is not evidence of user impact. Establish reach before assigning severity; "confirmed in source" and "observed in production" are different claims, and only the second justifies urgency.
+
 ## Prevention
 
 When you change a classifier whose output is (a) read for truthiness by a gate somewhere, or (b) stored in a persisted or cached snapshot, these two checks are obligatory, not optional.
@@ -118,7 +130,7 @@ When you change a classifier whose output is (a) read for truthiness by a gate s
 ## Related Issues
 
 - Issue #8611 — AIS Military Ops classified as destroyer.
-- PR #8624 (`fix/8611-ais-military-ops-classification`) — open and unmerged as of 2026-09-24; carries both commits, the classifier fix and the surface/rehydration follow-up.
+- PR #8624 (`fix/8611-ais-military-ops-classification`) — merged 2026-09-24; carries the classifier fix and the surface/rehydration follow-up.
 - Tests: `tests/dom/military-vessel-ais-classification.test.mts`, `tests/dom/military-vessel-ops-label.test.mts`, `tests/dom/military-vessel-label-surfaces.test.mts`, `tests/military-vessel-type-label.test.mts`, `tests/country-evidence-bundle-export.test.mts`.
 
 ## Related

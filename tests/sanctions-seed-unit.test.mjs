@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { gzipSync, gunzipSync } from 'node:zlib';
+import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -35,6 +37,104 @@ const {
   buildCountryCounts,
   buildProgramPressure,
 } = ctx;
+
+const fetchPressureSrc = seedSrc.slice(
+  seedSrc.indexOf('async function fetchSanctionsPressure()'),
+  seedSrc.indexOf('\nfunction validate('),
+);
+
+async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson } = {}) {
+  const context = vm.createContext({
+    console: { log() {}, warn() {} },
+    SEMA_SOURCE, Buffer, gzipSync, gunzipSync,
+    mergeSanctionEntries,
+    verifySeedKey: async (key) => key === 'sanctions:pressure:v1' ? { entries: cached } : null,
+    readSeedSnapshot: async () => snapshots,
+    ingestSemaEntries: semaJson === undefined
+      ? async () => ({ records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' })
+      : () => ingestSemaEntries({ fetchFn: async () => new Response(JSON.stringify(semaJson)) }),
+    fetchSource: async ({ label }) => {
+      if (!sources.includes(label)) throw new Error('source timeout');
+      return {
+        datasetDate: Date.UTC(2026, 8, 14),
+        entries: [{ id: `${label}:1`, name: `${label} entity`, sourceLists: [label],
+          countryCodes: ['RU'], countryNames: ['Russia'], programs: [label],
+          entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY', effectiveAt: '0', isNew: false }],
+      };
+    },
+  });
+  vm.runInContext(`${pureSrc}\n${fetchPressureSrc}`, context);
+  return normalize(await context.fetchSanctionsPressure());
+}
+
+describe('partial sanctions publication', () => {
+  it('publishes valid JSON and retains only eligible cached rows on JSON failure', async () => {
+    const semaJson = JSON.parse(readFileSync(new URL('./fixtures/sema-table-slice.json', import.meta.url), 'utf8'));
+    const healthy = await partialPublication({ semaJson });
+    assert.equal(healthy.semaCount, semaJson.data.length);
+    assert.equal(healthy.semaError, undefined);
+    assert.ok(healthy.entries.some(row => row.id === 'sema-ca:russia:1-1:731'));
+    const cached = healthy.entries.filter(row => row.sourceLists.includes(SEMA_SOURCE));
+    cached.push({ ...cached[0], id: 'sema-ca:unspecified:unspecified:0', name: '1, Part 1' });
+    const snapshots = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify(healthy._sourceSnapshots)).toString('base64') };
+    semaJson.data[1]['Item Number'] = '';
+    const failed = await partialPublication({ semaJson, cached, snapshots });
+    assert.equal(failed.semaError, 'SEMA_INVALID_RECORD');
+    assert.equal(failed.semaCount, cached.length - 1);
+    assert.equal(failed.sdnCount, 0);
+    assert.equal(failed.consolidatedCount, 1);
+    assert.ok(!failed.entries.some(row => row.id.endsWith(':0')));
+  });
+
+  it('keeps Consolidated counts attributed when SDN fails', async () => {
+    const data = await partialPublication();
+    assert.equal(data.sdnCount, 0);
+    assert.equal(data.consolidatedCount, 1);
+    assert.equal(data.entries[0].sourceLists[0], 'CONSOLIDATED');
+    assert.equal(data.datasetDate, String(Date.UTC(2026, 8, 14)));
+    assert.equal(data.semaError, 'SEMA_INVALID_RECORD');
+  });
+
+  it('keeps SDN counts attributed when Consolidated fails', async () => {
+    const data = await partialPublication({ sources: ['SDN'] });
+    assert.equal(data.sdnCount, 1);
+    assert.equal(data.consolidatedCount, 0);
+  });
+
+  it('counts both sources when both succeed', async () => {
+    const data = await partialPublication({ sources: ['SDN', 'CONSOLIDATED'] });
+    assert.equal(data.sdnCount, 1);
+    assert.equal(data.consolidatedCount, 1);
+    assert.equal(data.totalCount, 2);
+  });
+
+  it('does not republish the malformed retained Canadian identities', async () => {
+    const cached = ['sema-ca:unspecified:unspecified:0', 'sema-ca:1972:unspecified:0'].map((id) => ({
+      id, name: '1, Part 1', sourceLists: [SEMA_SOURCE], countryCodes: [], countryNames: [],
+      programs: ['SEMA'], entityType: 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL', effectiveAt: '0', isNew: false,
+    }));
+    const data = await partialPublication({ cached });
+    assert.equal(data.semaCount, 0);
+    assert.equal(data.totalCount, 1);
+    assert.ok(data.entries.every((e) => !e.sourceLists.includes(SEMA_SOURCE)));
+    assert.ok(data._entityIndex.every((e) => !e.id.startsWith('sema-ca:')));
+    assert.equal((await partialPublication({ sources: [], cached })).totalCount, 0);
+  });
+
+  it('retains valid undated cached identities with an optional schedule', async () => {
+    const { records } = parseSemaXml('<record><Country>Russia</Country><Item>7</Item><LastName>Example</LastName></record>');
+    const cached = records.map(({ _aliases, _identifiers, _publishedAt, _regime, ...entry }) => entry);
+    const fetchedAt = Date.now() - 1000;
+    const snapshots = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify({
+      [SEMA_SOURCE]: { version: 1, fetchedAt, retainedUntil: fetchedAt + 720 * 60000, publishedAt: 0, records: cached },
+    })).toString('base64') };
+    const data = await partialPublication({ snapshots });
+    assert.equal(data.semaCount, 1);
+    assert.equal(data.totalCount, 2);
+    assert.equal(data.entries.find((e) => e.id === records[0].id).effectiveAt, '0');
+    assert.equal(data.semaError, 'SEMA_INVALID_RECORD');
+  });
+});
 
 // ---------------------------------------------------------------------------
 // uniqueSorted

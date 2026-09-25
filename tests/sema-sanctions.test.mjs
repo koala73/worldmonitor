@@ -10,11 +10,11 @@ import {
   SEMA_INGEST_ERROR_CODE,
   SEMA_MAX_BYTES,
   SEMA_SOURCE,
-  SEMA_XML_URL,
+  SEMA_JSON_URL,
   SANCTIONS_MAX_CONTENT_AGE_MIN,
   SANCTIONS_SOURCE_VERSION,
   buildSanctionsMergeSnapshot,
-  fetchSemaXml,
+  fetchSemaJson,
   ingestSemaEntries,
   mergeSanctionEntries,
   ofacRegistrationToIdentifier,
@@ -31,6 +31,7 @@ const fixtureXml = readFileSync(
   new URL('./fixtures/sema-lmes-slice.xml', import.meta.url),
   'utf8',
 );
+const fixtureJson = readFileSync(new URL('./fixtures/sema-table-slice.json', import.meta.url), 'utf8');
 const parseSrc = readFileSync(
   new URL('../scripts/_sema-sanctions.mjs', import.meta.url),
   'utf8',
@@ -142,7 +143,10 @@ describe('SEMA source identity validation', () => {
   // First two records from the official XML on 2026-09-24. Column values
   // shifted under unrelated tags; a nonempty name alone is not a valid row.
   const malformedXml = readFileSync(new URL('./fixtures/sema-lmes-malformed-slice.xml', import.meta.url), 'utf8');
-  const ingest = (text) => ingestSemaEntries({ fetchFn: async () => new Response(text) });
+  const ingest = (text) => {
+    try { return { ...parseSemaXml(text), error: null }; }
+    catch (err) { return { records: [], publishedAtMs: 0, error: err.message }; }
+  };
 
   it('rejects the malformed live source instead of publishing fabricated identities', async () => {
     const result = await ingest(malformedXml);
@@ -482,19 +486,7 @@ describe('one list failing does not empty the panel', () => {
     assert.ok(merged.every((row) => row.sourceLists.includes(SEMA_SOURCE)));
   });
 
-  it('seeder catches each list independently and only throws when every list failed', () => {
-    assert.match(seedSrc, /SEMA fetch failed/);
-    assert.match(seedSrc, /all sanctions lists failed/);
-    assert.match(seedSrc, /mergeSanctionEntries/);
-    assert.match(seedSrc, /ingestSemaEntries/);
-    assert.match(seedSrc, /semaError/);
-    assert.match(seedSrc, /sanctionsSemaHealthMeta/);
-    const fnStart = seedSrc.indexOf('async function fetchSanctionsPressure()');
-    const fnEnd = seedSrc.indexOf('\nfunction validate(');
-    const body = seedSrc.slice(fnStart, fnEnd);
-    assert.match(body, /try \{/);
-    assert.match(body, /semaEntries/);
-  });
+
 });
 
 describe('byte cap, allowlist, cache key, UA, redirect', () => {
@@ -505,20 +497,20 @@ describe('byte cap, allowlist, cache key, UA, redirect', () => {
     assert.match(parseSrc, /SEMA_MAX_BYTES = 8 \* 1024 \* 1024/);
   });
 
-  it('allowlists www.international.gc.ca and uses the XML URL as the cache key', () => {
+  it('allowlists www.international.gc.ca and uses the official JSON URL as the cache key', () => {
     assert.equal(SEMA_HOST, 'www.international.gc.ca');
-    assert.equal(SEMA_XML_URL, 'https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sema-lmes.xml');
-    assert.equal(SEMA_CACHE_KEY, SEMA_XML_URL);
-    assert.match(seedSrc, /SEMA_CACHE_KEY|SEMA_XML_URL|fetchSemaEntries|ingestSemaEntries/);
+    assert.equal(SEMA_JSON_URL, 'https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sanctions-consolidated-list-eng.json');
+    assert.equal(SEMA_CACHE_KEY, SEMA_JSON_URL);
+    assert.match(seedSrc, /SEMA_CACHE_KEY|SEMA_JSON_URL|fetchSemaEntries|ingestSemaEntries/);
   });
 
   it('rejects untrusted hosts and asks fetch to error on redirects', async () => {
     await assert.rejects(
-      () => fetchSemaXml('https://evil.example/sema.xml'),
+      () => fetchSemaJson('https://evil.example/sema.xml'),
       /UNTRUSTED_SOURCE_HOST/,
     );
     await assert.rejects(
-      () => fetchSemaXml('http://www.international.gc.ca/sema.xml'),
+      () => fetchSemaJson('http://www.international.gc.ca/sema.xml'),
       /UNTRUSTED_SOURCE_HOST/,
     );
 
@@ -528,10 +520,10 @@ describe('byte cap, allowlist, cache key, UA, redirect', () => {
       return {
         ok: true,
         headers: { get: () => null },
-        text: async () => fixtureXml,
+        text: async () => fixtureJson,
       };
     };
-    await fetchSemaXml(SEMA_XML_URL, { fetchFn });
+    await fetchSemaJson(SEMA_JSON_URL, { fetchFn });
     assert.equal(seen.opts.redirect, 'error');
     assert.ok(seen.opts.signal);
     assert.match(seen.opts.headers['User-Agent'], /Mozilla/);
@@ -547,7 +539,7 @@ describe('byte cap, allowlist, cache key, UA, redirect', () => {
       text: async () => '<data-set/>',
     });
     await assert.rejects(
-      () => fetchSemaXml(SEMA_XML_URL, { fetchFn, maxBytes: SEMA_MAX_BYTES }),
+      () => fetchSemaJson(SEMA_JSON_URL, { fetchFn, maxBytes: SEMA_MAX_BYTES }),
       /RESPONSE_TOO_LARGE/,
     );
   });
@@ -582,7 +574,7 @@ describe('seeder merge, health, railway, no new surface', () => {
     assert.doesNotMatch(seedSrc, /ais-relay/);
     assert.doesNotMatch(seedSrc, /SanctionsPressurePanel/);
     assert.doesNotMatch(parseSrc, /proto\/worldmonitor/);
-    assert.equal(SANCTIONS_SOURCE_VERSION, 'ofac-sls-advanced-xml+sema-ca-v3');
+    assert.equal(SANCTIONS_SOURCE_VERSION, 'ofac-sls-advanced-xml+sema-ca-json-v4');
     assert.match(seedSrc, /sourceVersion:\s*SANCTIONS_SOURCE_VERSION/);
   });
 
@@ -770,7 +762,7 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
       fetchFn: async () => ({
         ok: true,
         headers: { get: () => null },
-        text: async () => '<data-set></data-set>',
+        text: async () => JSON.stringify({ data: [] }),
       }),
     });
     assert.equal(empty.error, SEMA_EMPTY_ERROR);
@@ -786,7 +778,7 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
       fetchFn: async () => ({
         ok: true,
         headers: { get: () => null },
-        text: async () => fixtureXml,
+        text: async () => fixtureJson,
       }),
     });
     assert.equal(healthy.error, null);
@@ -799,7 +791,7 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
 
     assert.match(seedSrc, /ingestSemaEntries/);
     assert.match(seedSrc, /semaError/);
-    assert.match(seedSrc, /sanctionsSemaHealthMeta/);
+    assert.match(seedSrc, /sourceHealth/);
     assert.match(seedSrc, /freshnessMetaPatch/);
     assert.match(healthSrc, /sourceDegraded/);
     assert.match(seedHealthSrc, /sourceError/);
@@ -807,57 +799,4 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
   });
 });
 
-describe('SEMA outage must not delete the last-good Canadian cohort', () => {
-  // The failure this closes: a SEMA fetch error left semaEntries empty while the
-  // OFAC half still succeeded, so the run COMPLETED and overwrote the canonical
-  // key with an OFAC-only merge. Every Canadian designation vanished from the
-  // published list until GAC recovered. preserveKeys does not help — it is the
-  // whole-seed-failure cohort, and this run does not fail.
-  //
-  // sanctionsSemaHealthMeta already made the failure visible; visibility does not
-  // put the entries back. These pin the carry-forward itself.
-
-  it('re-reads the canonical key and keeps the sema-ca entries when SEMA errors', () => {
-    // The read has to be of the CANONICAL key, not the state key: the state key
-    // holds ids for isNew diffing, not the entries themselves.
-    const carryBlock = /if \(semaError\) \{[\s\S]*?\} else \{/.exec(seedSrc);
-    assert.ok(carryBlock, 'the SEMA error branch must exist');
-    assert.match(carryBlock[0], /verifySeedKey\(CANONICAL_KEY\)/);
-    assert.match(carryBlock[0], /sourceLists[\s\S]*?includes\(SEMA_SOURCE\)/);
-    assert.match(carryBlock[0], /semaEntries = carried/);
-  });
-
-  it('filters the carried cohort by sourceLists, the field that survives publication', () => {
-    // _regime is stripped by the public transform, so it cannot identify a
-    // carried entry. sourceLists is not stripped — depending on _regime here
-    // would silently carry nothing.
-    assert.match(seedSrc, /const \{ _aliases, _identifiers, _publishedAt, _regime, \.\.\.publicEntry \}/);
-    assert.equal(
-      /verifySeedKey\(CANONICAL_KEY\)[\s\S]{0,400}?_regime/.test(seedSrc),
-      false,
-      'carry-forward must not filter on a field the public transform removes',
-    );
-  });
-
-  it('keeps the failure loud while carrying data forward', () => {
-    // Carrying last-good must not launder the outage into a healthy read. The
-    // afterPublish patch still reports sourceState error for the same run.
-    assert.match(seedSrc, /sanctionsSemaHealthMeta\(data\.semaError\)/);
-    assert.match(seedSrc, /freshnessMetaPatch: semaHealth/);
-    const meta = sanctionsSemaHealthMeta('GAC 503');
-    assert.equal(meta.sourceState, 'error');
-  });
-
-  it('does not carry anything forward on a healthy SEMA run', () => {
-    // The carry-forward lives inside the error branch only. If it ran
-    // unconditionally, a recovered SEMA list would be unioned with stale
-    // entries and delistings would never take effect.
-    const elseBlock = /\} else \{\s*console\.log\(` {2}SEMA:/.exec(seedSrc);
-    assert.ok(elseBlock, 'the success branch must remain a plain log');
-    assert.equal(
-      /else \{[\s\S]{0,200}?verifySeedKey\(CANONICAL_KEY\)/.test(seedSrc),
-      false,
-      'a successful SEMA fetch must replace the cohort, not union with last-good',
-    );
-  });
-});
+// Complete producer retention and health behavior is exercised in sanctions-source-lifecycle.test.mjs.

@@ -70,22 +70,57 @@ export const OECD_CPI_COUNTRIES = [
 async function fetchFrequency(iso3Codes, frequency, observations) {
   const url = `${OECD_BASE}/${iso3Codes.join('+')}.${frequency}.N.CPI.IX._T.N._Z`
     + `?lastNObservations=${observations}`;
-  return withRetry(async () => {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: SDMX_CSV_ACCEPT },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!resp.ok) {
-      const err = new Error(`OECD CPI ${frequency}: HTTP ${resp.status}`);
-      if (resp.status === 400 || resp.status === 404 || resp.status === 406) err.nonRetryable = true;
-      const retryAfter = Number(resp.headers?.get?.('retry-after'));
-      if (resp.status === 429 || resp.status === 503) {
-        if (Number.isFinite(retryAfter) && retryAfter > 0) err.retryAfterMs = retryAfter * 1000;
+  let attempt = 0;
+  try {
+    return await withRetry(async () => {
+      attempt += 1;
+      const started = performance.now();
+      let resp;
+      let stage = 'headers';
+      let retryAfterMs = null;
+      try {
+        resp = await fetch(url, {
+          headers: { 'User-Agent': CHROME_UA, Accept: SDMX_CSV_ACCEPT },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        stage = 'http';
+        if (!resp.ok) {
+          const retryAfter = Number(resp.headers.get('retry-after'));
+          if ((resp.status === 429 || resp.status === 503) && Number.isFinite(retryAfter) && retryAfter > 0) {
+            retryAfterMs = retryAfter * 1000;
+          }
+          // Do not consume or log arbitrary provider error bodies.
+          void resp.body?.cancel().catch(() => {});
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        stage = 'body';
+        const text = await resp.text();
+        stage = 'complete';
+        return text;
+      } catch (cause) {
+        const reason = stage === 'http' ? `HTTP ${resp.status}`
+          : `${stage} ${cause?.name === 'TimeoutError' || cause?.name === 'AbortError' ? 'timeout' : 'failure'}`;
+        const error = new Error(`OECD CPI ${frequency}: ${reason}`);
+        if ([400, 404, 406].includes(resp?.status)) error.nonRetryable = true;
+        if (retryAfterMs !== null) error.retryAfterMs = retryAfterMs;
+        throw error;
+      } finally {
+        const mediaType = resp?.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+        const ray = resp?.headers.get('cf-ray');
+        console.log(`  OECD CPI request: ${JSON.stringify({
+          frequency, attempt, countryCount: iso3Codes.length, observations,
+          stage, status: resp?.status ?? null, elapsedMs: Math.round(performance.now() - started),
+          contentType: ['text/plain', 'text/html', 'application/json', 'application/vnd.sdmx.data+csv'].includes(mediaType) ? mediaType : null,
+          cfRay: /^[a-f0-9]{16}-[A-Z]{3}$/.test(ray ?? '') ? ray : null,
+          retryAfterMs,
+        })}`);
       }
-      throw err;
-    }
-    return resp.text();
-  }, 2, 20_000);
+    }, 2, 20_000);
+  } catch (error) {
+    // This frequency already owns retries. runSeed must not restart the batch.
+    error.nonRetryable = true;
+    throw error;
+  }
 }
 
 /**

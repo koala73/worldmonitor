@@ -1,0 +1,38 @@
+{
+  "recordedAt": "2026-09-24T00:00:00Z",
+  "recordedFrom": "Search Console API responses, hand-trimmed to the named fields plus one payload field the collector must not copy",
+  "propertyKind": "domain",
+  "rowLimit": 3,
+  "sitemaps": [
+    {
+      "url": "https://www.worldmonitor.app/sitemap-main.xml",
+      "file": "sitemap-main.xml"
+    }
+  ],
+  "reportedTotals": {
+    "Crawled - currently not indexed": 1486,
+    "Not found (404)": 1
+  },
+  "searchAnalytics": {
+    "28d": {
+      "page": [
+        "sa-28d-page-0.json",
+        "sa-28d-page-1.json"
+      ],
+      "query": [
+        "sa-28d-query-0.json"
+      ]
+    },
+    "90d": {
+      "page": [
+        "sa-90d-page-0.json"
+      ],
+      "query": [
+        "sa-90d-query-0.json",
+        "sa-90d-query-1.json"
+      ]
+    }
+  },
+  "urlInspection": "url-inspection.json",
+  "liveProbes": "live-probes.json"
+}

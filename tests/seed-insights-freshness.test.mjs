@@ -795,3 +795,14 @@ test('the run-meta seam projects detail and signature into the patch args', () =
   assert.equal(args.failureDetail, 'strait of hormuz');
   assert.equal(args.storiesSignature, sig);
 });
+
+test('the synthesis resolver rejects a lead whose only survivor lost its acronym subject', () => {
+  const story = { ...SEAM_STORY, primaryTitle: 'US Navy moved a carrier into the Gulf as Iran tensions rose' };
+  const result = resolveInsightsSynthesis({
+    synthesisResult: { text: JSON.stringify({ lead: 'The U.S. Navy moved a carrier into the Gulf as Iran tensions rose [1].', lines: [{ n: 1, text: `${story.primaryTitle} [1]` }] }), provider: 'test', model: 'test' },
+    topStories: [story],
+    validatorMode: 'enforce',
+  });
+  assert.equal(result.composed, null);
+  assert.equal(result.failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED);
+});

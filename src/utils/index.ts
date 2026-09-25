@@ -157,7 +157,7 @@ export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircu
 export type { CircuitBreakerOptions } from './circuit-breaker';
 export * from './analysis-constants';
 export { getCSSColor, invalidateColorCache } from './theme-colors';
-export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
+export { getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
 export type { Theme, ThemePreference } from './theme-manager';
 export { toFlagEmoji } from './country-flag';
 export { showToast } from './toast';

@@ -2,6 +2,7 @@
 
 import { loadEnvFile, runSeed, CHROME_UA, verifySeedKey, loadSharedConfig } from './_seed-utils.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
+import { projectNaturalEventsRetention } from './_natural-events-dashboard.mjs';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -392,7 +393,7 @@ async function fetchNaturalClimateDisasters() {
     console.warn('  [NaturalEvents] natural:events:v1 key is empty or missing in Redis');
     return [];
   }
-  const events = asArray(data?.events);
+  const events = asArray(projectNaturalEventsRetention(data)?.events);
   console.log(`  [NaturalEvents] ${events.length} raw events from natural:events:v1`);
   const climate = events.filter(isClimateNaturalEvent);
   console.log(`  [NaturalEvents] ${climate.length} matched climate filter`);
@@ -480,6 +481,7 @@ async function fetchClimateDisasters() {
 export {
   buildReliefWebRequestBodies,
   collectDisasterSourceResults,
+  fetchNaturalClimateDisasters,
   getNaturalSourceMeta,
   getReliefWebAppname,
   isClimateNaturalEvent,

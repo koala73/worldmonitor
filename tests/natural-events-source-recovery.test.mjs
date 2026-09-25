@@ -8,6 +8,21 @@ import {
 
 const NOW = Date.parse('2026-09-17T06:00:00Z');
 const HOUR = 3_600_000;
+
+test('EONET survives nine-hour freshness with a fixed eighteen-hour expiry independently of GDACS', async () => {
+  const first = await run();
+  assert.equal(first._sourceSnapshots.eonet.retainedUntil, NOW + 18 * HOUR);
+  assert.equal(first._sourceSnapshots['gdacs:FL'].retainedUntil, NOW + 9 * HOUR);
+  const retained = await run({ previousSources: first._sourceSnapshots, now: NOW + 10 * HOUR, failures: ['eonet'], types: { EQ: [feature('EQ', 2)] } });
+  assert.ok(retained.events.some(event => event.id === 'eonet-volcano'));
+  assert.ok(retained.events.some(event => event.id === 'gdacs-EQ-2'));
+  assert.equal(retained.fetchedAt, NOW);
+  const repeated = await run({ previousSources: retained._sourceSnapshots, now: NOW + 17 * HOUR, failures: ['eonet'] });
+  assert.deepEqual(repeated._sourceSnapshots.eonet, first._sourceSnapshots.eonet);
+  const expired = await run({ previousSources: repeated._sourceSnapshots, now: NOW + 18 * HOUR, failures: ['eonet'] });
+  assert.equal(expired._sourceSnapshots.eonet, null);
+  assert.ok(!expired.events.some(event => event.id === 'eonet-volcano'));
+});
 const eonet = [{
   id: 'eonet-volcano', title: 'Volcano', categories: [{ id: 'volcanoes' }],
   geometry: [{ type: 'Point', coordinates: [10, 20], date: new Date(NOW).toISOString() }],
@@ -87,7 +102,7 @@ test('source failure preserves pre-merge data while healthy companions update, w
   assert.equal(second.fetchedAt, NOW);
   for (const source of ['eonet', 'gdacs:FL']) {
     assert.equal(second._sourceSnapshots[source].fetchedAt, NOW);
-    assert.equal(second._sourceSnapshots[source].retainedUntil, NOW + 9 * HOUR);
+    assert.equal(second._sourceSnapshots[source].retainedUntil, NOW + (source === 'eonet' ? 18 : 9) * HOUR);
     const health = naturalEventsAfterPublish(second).freshnessMetaPatch.sourceHealth[source];
     assert.equal(health.status, 'retained');
     assert.equal(health.lastSuccessAt, NOW);
@@ -95,7 +110,7 @@ test('source failure preserves pre-merge data while healthy companions update, w
   }
   assert.deepEqual(naturalEventsAfterPublish(second).freshnessMetaPatch.failedSources, ['gdacs:FL', 'eonet']);
   const third = await run({ previousSources: second._sourceSnapshots, now: NOW + 8 * HOUR, failures: ['eonet', 'gdacs:FL'] });
-  assert.equal(third._sourceSnapshots.eonet.retainedUntil, NOW + 9 * HOUR);
+  assert.equal(third._sourceSnapshots.eonet.retainedUntil, NOW + 18 * HOUR);
   assert.equal(naturalEventsPublishTransform(third)._sourceSnapshots, undefined);
 });
 
@@ -119,7 +134,7 @@ test('validated empty source observations are retained, but never renewed by fai
 test('expired, future or malformed source snapshots cannot be reused', async () => {
   const first = await run();
   const variants = [
-    [first._sourceSnapshots, NOW + 9 * HOUR],
+    [first._sourceSnapshots, NOW + 18 * HOUR],
     [{ ...first._sourceSnapshots, eonet: { ...first._sourceSnapshots?.eonet, fetchedAt: NOW + HOUR } }, NOW],
     [{ ...first._sourceSnapshots, eonet: { ...first._sourceSnapshots?.eonet, records: [{}] } }, NOW],
   ];
@@ -182,7 +197,7 @@ test('all GDACS type requests can fail without discarding valid uncapped last-go
 test('failure logs report fixed retention clocks without changing published health', async (t) => {
   const first = await run();
   const retained = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['eonet'] });
-  const expired = await run({ previousSources: first._sourceSnapshots, now: NOW + 9 * HOUR, failures: ['eonet'] });
+  const expired = await run({ previousSources: first._sourceSnapshots, now: NOW + 18 * HOUR, failures: ['eonet'] });
   const warnings = [];
   t.mock.method(console, 'warn', message => warnings.push(message));
   const before = structuredClone(retained);
@@ -190,7 +205,7 @@ test('failure logs report fixed retention clocks without changing published heal
   const prefix = '[natural-events] failed source health=';
   const logged = JSON.parse(warnings.find(message => message.startsWith(prefix)).slice(prefix.length));
   assert.deepEqual(Object.keys(logged), ['eonet']);
-  assert.deepEqual(logged.eonet, { ...result.freshnessMetaPatch.sourceHealth.eonet, remainingRetentionMs: 8 * HOUR });
+  assert.deepEqual(logged.eonet, { ...result.freshnessMetaPatch.sourceHealth.eonet, remainingRetentionMs: 17 * HOUR });
   assert.deepEqual(retained, before);
   assert.equal('remainingRetentionMs' in result.freshnessMetaPatch.sourceHealth.eonet, false);
   warnings.length = 0;

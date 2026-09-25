@@ -1023,6 +1023,13 @@ const EXCLUDED_HOSTS = new Set([
   'search.seznam.cz',
   'searchadvisor.naver.com',
   'www.bing.com',
+  // Search Console reports our own property back to us. The OAuth token
+  // endpoint and the scope namespace are control surfaces on the way to it.
+  // None of them is an ingested upstream dataset, so they belong with the
+  // other webmaster-console hosts above rather than in the provider count.
+  'oauth2.googleapis.com',
+  'searchconsole.googleapis.com',
+  'www.googleapis.com',
   'yandex.com',
   'cloudflare-dns.com',
   'challenges.cloudflare.com',

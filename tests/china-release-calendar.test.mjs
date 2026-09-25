@@ -27,6 +27,100 @@ const chinaMoneyResponse = () => new Response(fixture('chinamoney-lpr.json'), {
   headers: { 'Content-Type': 'application/json' },
 });
 
+describe('NBS calendar transport diagnostics', () => {
+  it('logs nested transport codes without secrets and preserves the failed request sequence', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+    const requests = [];
+    const sleeps = [];
+    const decisions = [];
+    await assert.rejects(fetchChinaReleaseCalendar({
+      now: TEST_NOW,
+      fetchFn: async (url, options) => {
+        requests.push({ url, redirect: options.redirect });
+        throw Object.assign(new TypeError('secret-token https://user:pass@example.test'), {
+          cause: { code: 'ENOTFOUND', message: 'secret-host', address: 'secret-address' },
+        });
+      },
+      sleepFn: async (ms) => sleeps.push(ms),
+      onDecision: (entry) => decisions.push(entry),
+    }), /NBS_REQUIRED_SOURCE_UNAVAILABLE:FETCH_FAILED/);
+    assert.deepEqual(requests, Array(3).fill({ url: NBS_CALENDAR_INDEX_URL, redirect: 'manual' }));
+    assert.deepEqual(sleeps, [500, 1000]);
+    assert.equal(decisions[0].requestCount, 3);
+    assert.equal(decisions[0].checkedAt, new Date(TEST_NOW).toISOString());
+    assert.deepEqual(logs, [1, 2, 3].map((attempt) => ({
+      event: 'china_calendar_transport_failure', host: 'www.stats.gov.cn',
+      resource: 'index', transport: 'direct', attempt, code: 'ENOTFOUND',
+    })));
+  });
+
+  it('labels annual-page failures and retains HTTP status without emitting the URL', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+    await assert.rejects(fetchChinaReleaseCalendar({
+      now: TEST_NOW,
+      fetchFn: async (url) => url === NBS_CALENDAR_INDEX_URL
+        ? new Response('<a href="calendar.html?secret-token">2026</a>')
+        : new Response('secret-body', { status: 403 }),
+      onDecision: () => {},
+    }), /NBS_REQUIRED_SOURCE_UNAVAILABLE:HTTP_403/);
+    assert.deepEqual(logs, [{
+      event: 'china_calendar_transport_failure', host: 'www.stats.gov.cn',
+      resource: 'calendar', transport: 'direct', attempt: 1, code: 'UNKNOWN', httpStatus: 403,
+    }]);
+  });
+
+  it('bounds cause traversal and only emits approved codes and statuses', async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+    const cycle = { code: 'secret-token' };
+    cycle.cause = cycle;
+    const cases = [
+      [cycle, 'UNKNOWN'],
+      [{ cause: { cause: { cause: { code: 'ECONNRESET' } } } }, 'ECONNRESET'],
+      [{ cause: { cause: { cause: { cause: { code: 'ECONNRESET' } } } } }, 'UNKNOWN'],
+      [{ name: 'TimeoutError' }, 'TIMEOUT'],
+      [{ code: 'CERT_HAS_EXPIRED' }, 'CERT_HAS_EXPIRED'],
+      [{ code: 'secret-token', status: 999 }, 'UNKNOWN'],
+    ];
+    for (const [error, expectedCode] of cases) {
+      logs.length = 0;
+      await assert.rejects(fetchChinaReleaseCalendar({
+        now: TEST_NOW, fetchFn: async () => { throw error; },
+        sleepFn: async () => {}, onDecision: () => {},
+      }));
+      assert.ok(logs.length > 0);
+      for (const entry of logs) {
+        assert.equal(entry.code, expectedCode);
+        assert.equal(entry.httpStatus, undefined);
+        assert.equal(JSON.stringify(entry).includes('secret'), false);
+      }
+    }
+  });
+
+  it('preserves recovery and source clocks when the diagnostic logger throws', async (t) => {
+    let logCalls = 0;
+    t.mock.method(console, 'warn', () => { logCalls++; throw new Error('logger unavailable'); });
+    let nbsCalls = 0;
+    const sleeps = [];
+    const calendar = await fetchChinaReleaseCalendar({
+      now: TEST_NOW,
+      fetchFn: async (url) => {
+        if (String(url).includes('chinamoney')) return chinaMoneyResponse();
+        if (++nbsCalls === 1) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } });
+        return new Response(fixture('nbs-calendar.html'));
+      },
+      sleepFn: async (ms) => sleeps.push(ms), onDecision: () => {},
+    });
+    assert.equal(logCalls, 1);
+    assert.equal(nbsCalls, 2);
+    assert.deepEqual(sleeps, [500]);
+    assert.equal(calendar.generatedAt, new Date(TEST_NOW).toISOString());
+    assert.ok(calendar.events.length > 0);
+  });
+});
+
 describe('China official release calendar', () => {
   it('keeps blank NBS months empty and captures quarterly plus Spring Festival-shifted releases', () => {
     const events = parseNbsReleaseCalendar(fixture('nbs-calendar.html'), 2026, 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html');

@@ -220,51 +220,110 @@ async function readTargetCancellationSupported(page: Page, toolName: string): Pr
   }, toolName);
 }
 
+function isEvaluateNavigationDestroyedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Execution context was destroyed|Most likely because of a navigation|Target closed/i.test(
+    message,
+  );
+}
+
 async function executeDashboardToolObserved(
   page: Page,
   name: string,
   input: Record<string, unknown>,
 ): Promise<{ output: unknown; targetCancellationSupported: boolean }> {
-  return page.evaluate(async ({ toolName, payload }) => {
-    type ExecutableModelContext = WebMCP.ModelContext & {
-      executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
-    };
-    const provider = document.modelContext as ExecutableModelContext | undefined;
-    if (!provider || typeof provider.executeTool !== 'function') {
-      throw new Error('Chrome WebMCP execution API is unavailable.');
-    }
-    const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
-    if (!tool) throw new Error(`${toolName} was not discovered.`);
-    const raw = await provider.executeTool(tool, JSON.stringify(payload));
-    let output: unknown = raw;
-    if (typeof raw === 'string') {
+  // switch_monitor may call location.reload()/assign before executeTool's
+  // promise settles back through Playwright's bridge. Persist the observation
+  // in sessionStorage (survives same-origin reload) so a destroyed evaluate
+  // context is recoverable from the next document instead of racing sleeps.
+  const storageKey = `__wmWebMcpObserved:${name}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+
+  type ObservedToolResult = { output: unknown; targetCancellationSupported: boolean };
+
+  const readStoredObservation = async (): Promise<ObservedToolResult | null> => {
+    return page.evaluate((key) => {
+      const raw = sessionStorage.getItem(key);
+      if (raw == null) return null;
+      sessionStorage.removeItem(key);
       try {
-        output = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as ObservedToolResult;
+        if (!parsed || typeof parsed !== 'object' || typeof parsed.targetCancellationSupported !== 'boolean') {
+          return null;
+        }
+        return parsed;
       } catch {
-        output = raw;
+        return null;
       }
-    }
-    // Read the mark before returning. switch_monitor reloads on success, and
-    // a later evaluate can land on the next document, which has no mark.
-    const supported = (window as Window & {
-      __wmLcpDebug?: {
-        getSnapshot?: () => {
-          marks: Array<{
-            detail?: { targetCancellationSupported?: boolean; tool?: string };
-            name: string;
-          }>;
-        };
+    }, storageKey);
+  };
+
+  try {
+    const result = await page.evaluate(async ({ toolName, payload, storageKey: key }) => {
+      type ExecutableModelContext = WebMCP.ModelContext & {
+        executeTool(tool: WebMCP.RegisteredTool, input: string): Promise<unknown>;
       };
-    }).__wmLcpDebug?.getSnapshot?.().marks
-      ?.filter((mark) => mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === toolName)
-      .at(-1)?.detail?.targetCancellationSupported;
-    if (typeof supported !== 'boolean') {
-      throw new Error(
-        `missing targetCancellationSupported mark for ${toolName}; install the LCP debug recorder before navigation`,
-      );
-    }
-    return { output, targetCancellationSupported: supported };
-  }, { toolName: name, payload: input });
+      const provider = document.modelContext as ExecutableModelContext | undefined;
+      if (!provider || typeof provider.executeTool !== 'function') {
+        throw new Error('Chrome WebMCP execution API is unavailable.');
+      }
+      const tool = (await provider.getTools()).find((candidate) => candidate.name === toolName);
+      if (!tool) throw new Error(`${toolName} was not discovered.`);
+      const raw = await provider.executeTool(tool, JSON.stringify(payload));
+      let output: unknown = raw;
+      if (typeof raw === 'string') {
+        try {
+          output = JSON.parse(raw);
+        } catch {
+          output = raw;
+        }
+      }
+      // Read the mark before returning. switch_monitor reloads on success, and
+      // a later evaluate can land on the next document, which has no mark.
+      const supported = (window as Window & {
+        __wmLcpDebug?: {
+          getSnapshot?: () => {
+            marks: Array<{
+              detail?: { targetCancellationSupported?: boolean; tool?: string };
+              name: string;
+            }>;
+          };
+        };
+      }).__wmLcpDebug?.getSnapshot?.().marks
+        ?.filter((mark) => mark.name === 'wm:webmcp:tool-start' && mark.detail?.tool === toolName)
+        .at(-1)?.detail?.targetCancellationSupported;
+      if (typeof supported !== 'boolean') {
+        throw new Error(
+          `missing targetCancellationSupported mark for ${toolName}; install the LCP debug recorder before navigation`,
+        );
+      }
+      const observed = { output, targetCancellationSupported: supported };
+      try {
+        sessionStorage.setItem(key, JSON.stringify(observed));
+      } catch {
+        // Private mode / quota: return path may still win the race.
+      }
+      return observed;
+    }, { toolName: name, payload: input, storageKey });
+    await page.evaluate((key) => {
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+    }, storageKey).catch(() => undefined);
+    return result;
+  } catch (error) {
+    if (!isEvaluateNavigationDestroyedError(error)) throw error;
+  }
+
+  await page.waitForLoadState('domcontentloaded');
+  const recovered = await readStoredObservation();
+  if (!recovered) {
+    throw new Error(
+      `executeDashboardToolObserved(${name}): evaluation context was destroyed by navigation and no sessionStorage observation was found`,
+    );
+  }
+  return recovered;
 }
 
 async function installReadinessRecorder(page: Page): Promise<void> {

@@ -1,0 +1,141 @@
+name: Weekly Search Console Snapshot
+
+# Collects the weekly Search Console snapshot (#8606) and opens or updates a
+# review PR with it. The snapshot answers which URLs Google declined and why,
+# and which families earn impressions per indexed page.
+#
+# Gated on the credential. Until the owner creates the service account and adds
+# GSC_SERVICE_ACCOUNT_JSON plus GSC_PROPERTY, the guard job reports that the run
+# was skipped and the collect job never starts. A missing secret is a pending
+# prerequisite, not a failure, so this workflow stays green in the meantime.
+#
+# It never merges. It opens the PR and reports it as ready; a human merges.
+
+on:
+  schedule:
+    - cron: '17 5 * * 2'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: seo-gsc-weekly
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Check for the Search Console credential
+        id: check
+        env:
+          # Secrets cannot be read from a job-level condition, so the gate is a
+          # step that publishes a plain output the collect job depends on.
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_PROPERTY: ${{ secrets.GSC_PROPERTY }}
+        run: |
+          if [ -z "${GSC_SERVICE_ACCOUNT_JSON:-}" ] || [ -z "${GSC_PROPERTY:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping: GSC_SERVICE_ACCOUNT_JSON and GSC_PROPERTY are not both configured. See issue 8606 for the owner prerequisites."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+  collect:
+    needs: guard
+    # Only this job pushes the weekly branch and opens its PR.
+    permissions:
+      contents: write
+      pull-requests: write
+    if: needs.guard.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          # A workflow_dispatch can target a feature branch; publication always
+          # branches from main so the review PR stays free of unrelated commits.
+          ref: refs/heads/main
+      - name: Reconcile the weekly review branch
+        id: reconcile
+        env:
+          # Prefer a user or app token when one is configured. A PR opened with
+          # github.token needs the repository setting that lets Actions create
+          # pull requests, and it triggers no CI, which the required checks on
+          # main then block. With REVIEW_PR_TOKEN unset this falls back to
+          # github.token.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+        run: |
+          # ISO year-week keys the branch, so a rerun in the same week updates
+          # that week rather than opening a second PR.
+          period=$(date -u +%G-W%V)
+          branch="automation/seo-gsc-${period}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          # Only an open or merged PR means this week is done. A closed one was
+          # rejected, so the week is collected again.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,state \
+            --jq '[.[] | select(.state != "CLOSED")][0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm ci --ignore-scripts
+      - name: Collect the snapshot
+        id: collect
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          # The collector reads these through loadEnvFile, which falls through
+          # to process.env, and never prints either value. The snapshot writer
+          # refuses to emit a file containing the property identifier.
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_PROPERTY: ${{ secrets.GSC_PROPERTY }}
+        run: node scripts/seo-gsc-collect.mjs --live
+      - name: Verify the snapshot contract
+        if: steps.collect.outcome == 'success'
+        run: |
+          node --import tsx --test --test-concurrency=1 \
+            tests/seo-gsc-collector.test.mjs \
+            tests/seo-url-taxonomy.test.mjs
+      - name: Open the weekly snapshot PR
+        if: steps.collect.outcome == 'success'
+        env:
+          # Same preference as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          snapshot_date=$(date -u +%F)
+          git switch -c "$BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/research/seo-ai-visibility/gsc
+          if git diff --cached --quiet; then
+            echo "::notice::The collector produced no change to commit."
+            exit 0
+          fi
+          git commit -m "chore(seo): Search Console snapshot ${snapshot_date} (#8606)"
+          # The branch belongs to this workflow and is rebuilt from main on every
+          # run. A branch left behind by a run whose PR step failed, or by a
+          # closed PR, is replaced rather than rejected as non-fast-forward.
+          git push --force --set-upstream origin "$BRANCH_NAME"
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
+            --body "$(printf '%s\n\n%s\n\n%s' \
+              "Weekly Search Console snapshot. Per-URL index state and per-family search performance, collected from the API rather than transcribed from the UI." \
+              "Read the HTML indexability headline, not the raw coverage count: render subresources and machine-readable twins are bucketed separately on purpose. Shares are measured over inspected rows and are never projected onto a reported total." \
+              "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"
