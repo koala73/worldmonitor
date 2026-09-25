@@ -10,11 +10,11 @@ import {
   SEMA_INGEST_ERROR_CODE,
   SEMA_MAX_BYTES,
   SEMA_SOURCE,
-  SEMA_XML_URL,
+  SEMA_JSON_URL,
   SANCTIONS_MAX_CONTENT_AGE_MIN,
   SANCTIONS_SOURCE_VERSION,
   buildSanctionsMergeSnapshot,
-  fetchSemaXml,
+  fetchSemaJson,
   ingestSemaEntries,
   mergeSanctionEntries,
   ofacRegistrationToIdentifier,
@@ -31,6 +31,7 @@ const fixtureXml = readFileSync(
   new URL('./fixtures/sema-lmes-slice.xml', import.meta.url),
   'utf8',
 );
+const fixtureJson = readFileSync(new URL('./fixtures/sema-table-slice.json', import.meta.url), 'utf8');
 const parseSrc = readFileSync(
   new URL('../scripts/_sema-sanctions.mjs', import.meta.url),
   'utf8',
@@ -142,7 +143,10 @@ describe('SEMA source identity validation', () => {
   // First two records from the official XML on 2026-09-24. Column values
   // shifted under unrelated tags; a nonempty name alone is not a valid row.
   const malformedXml = readFileSync(new URL('./fixtures/sema-lmes-malformed-slice.xml', import.meta.url), 'utf8');
-  const ingest = (text) => ingestSemaEntries({ fetchFn: async () => new Response(text) });
+  const ingest = (text) => {
+    try { return { ...parseSemaXml(text), error: null }; }
+    catch (err) { return { records: [], publishedAtMs: 0, error: err.message }; }
+  };
 
   it('rejects the malformed live source instead of publishing fabricated identities', async () => {
     const result = await ingest(malformedXml);
@@ -505,20 +509,20 @@ describe('byte cap, allowlist, cache key, UA, redirect', () => {
     assert.match(parseSrc, /SEMA_MAX_BYTES = 8 \* 1024 \* 1024/);
   });
 
-  it('allowlists www.international.gc.ca and uses the XML URL as the cache key', () => {
+  it('allowlists www.international.gc.ca and uses the official JSON URL as the cache key', () => {
     assert.equal(SEMA_HOST, 'www.international.gc.ca');
-    assert.equal(SEMA_XML_URL, 'https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sema-lmes.xml');
-    assert.equal(SEMA_CACHE_KEY, SEMA_XML_URL);
-    assert.match(seedSrc, /SEMA_CACHE_KEY|SEMA_XML_URL|fetchSemaEntries|ingestSemaEntries/);
+    assert.equal(SEMA_JSON_URL, 'https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sanctions-consolidated-list-eng.json');
+    assert.equal(SEMA_CACHE_KEY, SEMA_JSON_URL);
+    assert.match(seedSrc, /SEMA_CACHE_KEY|SEMA_JSON_URL|fetchSemaEntries|ingestSemaEntries/);
   });
 
   it('rejects untrusted hosts and asks fetch to error on redirects', async () => {
     await assert.rejects(
-      () => fetchSemaXml('https://evil.example/sema.xml'),
+      () => fetchSemaJson('https://evil.example/sema.xml'),
       /UNTRUSTED_SOURCE_HOST/,
     );
     await assert.rejects(
-      () => fetchSemaXml('http://www.international.gc.ca/sema.xml'),
+      () => fetchSemaJson('http://www.international.gc.ca/sema.xml'),
       /UNTRUSTED_SOURCE_HOST/,
     );
 
@@ -528,10 +532,10 @@ describe('byte cap, allowlist, cache key, UA, redirect', () => {
       return {
         ok: true,
         headers: { get: () => null },
-        text: async () => fixtureXml,
+        text: async () => fixtureJson,
       };
     };
-    await fetchSemaXml(SEMA_XML_URL, { fetchFn });
+    await fetchSemaJson(SEMA_JSON_URL, { fetchFn });
     assert.equal(seen.opts.redirect, 'error');
     assert.ok(seen.opts.signal);
     assert.match(seen.opts.headers['User-Agent'], /Mozilla/);
@@ -547,7 +551,7 @@ describe('byte cap, allowlist, cache key, UA, redirect', () => {
       text: async () => '<data-set/>',
     });
     await assert.rejects(
-      () => fetchSemaXml(SEMA_XML_URL, { fetchFn, maxBytes: SEMA_MAX_BYTES }),
+      () => fetchSemaJson(SEMA_JSON_URL, { fetchFn, maxBytes: SEMA_MAX_BYTES }),
       /RESPONSE_TOO_LARGE/,
     );
   });
@@ -582,7 +586,7 @@ describe('seeder merge, health, railway, no new surface', () => {
     assert.doesNotMatch(seedSrc, /ais-relay/);
     assert.doesNotMatch(seedSrc, /SanctionsPressurePanel/);
     assert.doesNotMatch(parseSrc, /proto\/worldmonitor/);
-    assert.equal(SANCTIONS_SOURCE_VERSION, 'ofac-sls-advanced-xml+sema-ca-v3');
+    assert.equal(SANCTIONS_SOURCE_VERSION, 'ofac-sls-advanced-xml+sema-ca-json-v4');
     assert.match(seedSrc, /sourceVersion:\s*SANCTIONS_SOURCE_VERSION/);
   });
 
@@ -770,7 +774,7 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
       fetchFn: async () => ({
         ok: true,
         headers: { get: () => null },
-        text: async () => '<data-set></data-set>',
+        text: async () => JSON.stringify({ data: [] }),
       }),
     });
     assert.equal(empty.error, SEMA_EMPTY_ERROR);
@@ -786,7 +790,7 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
       fetchFn: async () => ({
         ok: true,
         headers: { get: () => null },
-        text: async () => fixtureXml,
+        text: async () => fixtureJson,
       }),
     });
     assert.equal(healthy.error, null);

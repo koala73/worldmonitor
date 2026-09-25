@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -42,13 +42,15 @@ const fetchPressureSrc = seedSrc.slice(
   seedSrc.indexOf('\nfunction validate('),
 );
 
-async function partialPublication({ sources = ['CONSOLIDATED'], cached = [] } = {}) {
+async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], semaJson } = {}) {
   const context = vm.createContext({
     console: { log() {}, warn() {} },
     SEMA_SOURCE,
     mergeSanctionEntries,
     verifySeedKey: async (key) => key === 'sanctions:pressure:v1' ? { entries: cached } : null,
-    ingestSemaEntries: async () => ({ records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' }),
+    ingestSemaEntries: semaJson === undefined
+      ? async () => ({ records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' })
+      : () => ingestSemaEntries({ fetchFn: async () => new Response(JSON.stringify(semaJson)) }),
     fetchSource: async ({ label }) => {
       if (!sources.includes(label)) throw new Error('source timeout');
       return {
@@ -64,6 +66,23 @@ async function partialPublication({ sources = ['CONSOLIDATED'], cached = [] } = 
 }
 
 describe('partial sanctions publication', () => {
+  it('publishes valid JSON and retains only eligible cached rows on JSON failure', async () => {
+    const semaJson = JSON.parse(readFileSync(new URL('./fixtures/sema-table-slice.json', import.meta.url), 'utf8'));
+    const healthy = await partialPublication({ semaJson });
+    assert.equal(healthy.semaCount, semaJson.data.length);
+    assert.equal(healthy.semaError, undefined);
+    assert.ok(healthy.entries.some(row => row.id === 'sema-ca:russia:1-1:731'));
+    const cached = healthy.entries.filter(row => row.sourceLists.includes(SEMA_SOURCE));
+    cached.push({ ...cached[0], id: 'sema-ca:unspecified:unspecified:0', name: '1, Part 1' });
+    semaJson.data[1]['Item Number'] = '';
+    const failed = await partialPublication({ semaJson, cached });
+    assert.equal(failed.semaError, 'SEMA_INVALID_RECORD');
+    assert.equal(failed.semaCount, cached.length - 1);
+    assert.equal(failed.sdnCount, 0);
+    assert.equal(failed.consolidatedCount, 1);
+    assert.ok(!failed.entries.some(row => row.id.endsWith(':0')));
+  });
+
   it('keeps Consolidated counts attributed when SDN fails', async () => {
     const data = await partialPublication();
     assert.equal(data.sdnCount, 0);
