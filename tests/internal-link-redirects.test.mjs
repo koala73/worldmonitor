@@ -126,17 +126,23 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Vercel path tokens: `:name`, `:name*`, and `:name(regex)`. */
+/**
+ * Vercel path tokens: `:name`, `:name(regex)`, and `:name*`.
+ * The star repeats zero or more segments, so `/zh/:match*` matches `/zh`
+ * itself, not only `/zh/something`. A required slash before `.*` missed the
+ * bare prefix.
+ */
 function compileVercelSource(source) {
   let pattern = '';
-  const token = /:([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\)|\*)?/g;
+  const token = /(\/)?(:([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\)|\*)?)/g;
   let last = 0;
   for (const match of source.matchAll(token)) {
     pattern += escapeRegex(source.slice(last, match.index));
-    const custom = match[2];
-    if (custom === '*') pattern += '.*';
-    else if (custom) pattern += custom;
-    else pattern += '[^/]+';
+    const slash = match[1] ?? '';
+    const custom = match[4];
+    if (custom === '*') pattern += slash ? `(?:${escapeRegex(slash)}.*)?` : '.*';
+    else if (custom) pattern += `${escapeRegex(slash)}${custom}`;
+    else pattern += `${escapeRegex(slash)}[^/]+`;
     last = match.index + match[0].length;
   }
   pattern += escapeRegex(source.slice(last));
@@ -364,9 +370,25 @@ function authoredLinkTargets(source) {
   // Leave unmatched runs alone: they do not turn the rest of a paragraph into code.
   source = prose.replace(/(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, ' ');
   return [
-    ...[...source.matchAll(/\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/g)].map((match) => match[1]),
-    ...[...source.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map((match) => decodeHtmlAttribute(match[1])),
+    // A title after the URL (`](/docs "Docs")`) is still a link. Requiring `)`
+    // immediately after the URL dropped those.
+    ...[...source.matchAll(/\]\((https?:\/\/[^)\s]+|\/[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)/g)].map((match) => match[1]),
+    // MDX components (`<Card href="...">`) are anchors too. `<a` alone missed them.
+    ...[...source.matchAll(/<[A-Za-z][\w.]*\b[^>]*\bhref=["']([^"']+)["']/g)].map((match) => decodeHtmlAttribute(match[1])),
   ];
+}
+
+const WELCOME_HREF = /href[=:]\s*[{`'"]*((?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z.]*worldmonitor\.app|\/)(?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
+
+/** Turn a welcome JSX href into the URL a browser would open. */
+function expandWelcomeHref(raw) {
+  return raw
+    .replace(/^(?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH)/, '/dashboard')
+    .replace(/\s*\+\s*(['"])(.*?)\1/g, '$2');
+}
+
+function welcomeHrefTargets(source) {
+  return [...source.matchAll(WELCOME_HREF)].map((match) => expandWelcomeHref(match[1]));
 }
 
 /**
@@ -500,6 +522,17 @@ it('excludes code examples while preserving authored links', () => {
   assert.deepEqual(authoredLinkTargets(`Unmatched \`\n\n${realLinks}\n\nAnother \``), [
     '/docs/algorithms', '/countries/norway/',
   ], 'inline code cannot cross a paragraph boundary');
+  assert.deepEqual(authoredLinkTargets('[Titled](/docs/algorithms "Algorithms") <Card href=\'/countries/norway/\' />'), [
+    '/docs/algorithms', '/countries/norway/',
+  ]);
+  assert.deepEqual(authoredLinkTargets('```md\n<Card href="/docs" />\n```\n[Kept](/blog/ "Blog")'), [
+    '/blog/',
+  ], 'a fenced component href is an example, not a link');
+  assert.deepEqual(
+    welcomeHrefTargets("href={DASHBOARD_PATH + '?utm_source=welcome'}"),
+    ['/dashboard?utm_source=welcome'],
+  );
+  assert.deepEqual(welcomeHrefTargets('href={DASHBOARD_PATH}'), ['/dashboard']);
 });
 
 describe('internal links never redirect or 404 (#8603)', () => {
@@ -640,9 +673,7 @@ describe('internal links never redirect or 404 (#8603)', () => {
       // spellings are matched: `href={DASHBOARD_PATH}` is the shape every CTA
       // took once #8603 dropped its query, and requiring the interpolated
       // `${DASHBOARD_PATH}` form alone made this scan skip all twelve of them.
-      const targets = [...source.matchAll(
-        /href[=:]\s*[{`'"]*((?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z.]*worldmonitor\.app|\/)[^`'"\s,}]*)/g,
-      )].map((match) => match[1].replace(/^\$\{DASHBOARD_PATH\}|^DASHBOARD_PATH/, '/dashboard'));
+      const targets = welcomeHrefTargets(source);
       // LegalFooterNav stores the href on the shared link list, not next to
       // the JSX attribute, so the regex above sees nothing in that file.
       if (source.includes('href={link.path}')) targets.push(...legalPaths);
@@ -697,6 +728,11 @@ describe('internal links never redirect or 404 (#8603)', () => {
       ['https://tech.worldmonitor.app', /links a bare variant host/],
       ['/docs', /matches a vercel\.json redirect/],
       ['/api-reference/supplychainservice/listfuelshortages', /matches a vercel\.json redirect/],
+      // `:match*` is zero or more segments. A pattern that requires the slash
+      // misses the bare prefix, which still 308s.
+      ['/api-reference', /matches a vercel\.json redirect/],
+      ['/zh', /matches a vercel\.json redirect/],
+      ['/zh/terms', /matches a vercel\.json redirect/],
       ['https://tech.worldmonitor.app/sources/geopolitics/', /matches a vercel\.json redirect/],
       ['https://api.worldmonitor.app', /matches a vercel\.json redirect/],
       ['/corrections', /rootless docs path 308s to \/docs\/corrections/],

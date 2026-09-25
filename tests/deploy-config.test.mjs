@@ -1322,7 +1322,10 @@ const AFFILIATE_PARAM_IN_URL = /[?&](?:ref|wm_referral)=/;
 // URL. The capture is the tail AFTER the path, so an untagged CTA matches with
 // an empty capture and a tagged one exposes its query — matching only on `?`
 // would make the scan silently skip every CTA the moment tagging stops.
-const DASHBOARD_CTA = /href[=:]\s*[{`'"]*(?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z]+\.worldmonitor\.app\/dashboard)([^`'"\s,}]*)/g;
+// The tail includes a quoted concatenation (`DASHBOARD_PATH + '?utm_source=…'`).
+// Stopping at the space left that tail empty, so the CTA still counted as clean.
+const DASHBOARD_CTA = /href[=:]\s*[{`'"]*(?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z]+\.worldmonitor\.app\/dashboard)((?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
+const INDEX_NOISE_IN_HREF = /href\s*[:=]\s*["'`][^"'`]*[?&](?:utm_[a-z0-9_]+|ref|wm_referral)=/i;
 
 function readWelcomeSources() {
   const welcomeDir = resolve(__dirname, '../pro-test/src/welcome');
@@ -1767,6 +1770,31 @@ describe('welcome landing page routing', () => {
       AFFILIATE_PARAM_IN_URL,
       'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test (npm run build:pro)'
     );
+    const generatedWelcomeJs = readGeneratedWelcomeAsset(generatedWelcomeHtml);
+    assert.doesNotMatch(
+      generatedWelcomeJs,
+      INDEX_NOISE_IN_HREF,
+      'generated welcome JS still ships an index-noise query on an href — middleware 308s utm_*, ref, and wm_referral'
+    );
+    assert.doesNotMatch(
+      generatedWelcomeHtml.replace(/&amp;/g, '&'),
+      INDEX_NOISE_IN_HREF,
+      'prerendered welcome HTML still ships an index-noise query on an href'
+    );
+  });
+
+  it('treats a concatenated dashboard query as part of the CTA', () => {
+    const tagged = [..."href={DASHBOARD_PATH + '?utm_source=welcome'}".matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+    assert.deepEqual(tagged, [" + '?utm_source=welcome'"]);
+    assert.notEqual(tagged[0], '');
+    for (const clean of [
+      'href={DASHBOARD_PATH}',
+      'href={`${DASHBOARD_PATH}`}',
+      'href="https://tech.worldmonitor.app/dashboard"',
+    ]) {
+      const tails = [...clean.matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+      assert.deepEqual(tails, [''], clean);
+    }
   });
 
   it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', { skip: shouldSkipProBuiltOutput() }, () => {
