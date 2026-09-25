@@ -466,6 +466,8 @@ describe('GEO residue #7746 (compare discoverability)', () => {
   it('links the Liveuamap FAQ answer to the comparison page on the homepage and its agent mirror', () => {
     const label = 'worldmonitor.app/compare/liveuamap-alternatives';
     const href = '/compare/liveuamap-alternatives/';
+    const dashboardHref = '/compare/best-geopolitical-risk-dashboards/';
+    const dashboardLabel = `worldmonitor.app${dashboardHref.slice(0, -1)}`;
     const en = readJson('pro-test/src/locales/en.json');
     assert.equal(en.welcome.faq.q5, 'How is this different from a conflict map like Liveuamap?');
     // The destination rides inside the answer string, like the terms link in
@@ -475,10 +477,9 @@ describe('GEO residue #7746 (compare discoverability)', () => {
     for (const file of readdirSync(join(repoRoot, 'pro-test/src/locales'))) {
       const answer = readJson(`pro-test/src/locales/${file}`).welcome?.faq?.a5;
       assert.ok(typeof answer === 'string' && answer.includes(label), `${file} a5 must keep the comparison destination`);
+      assert.ok(answer.includes(dashboardLabel), `${file} a5 must include the dashboard comparison destination`);
     }
-    // The baseline records the English used for the existing translations;
-    // new English copy must not mark those translations as already refreshed.
-    assert.ok(readJson('scripts/locale-baselines/pro-test.json')['welcome.faq.a5'].includes(label));
+    assert.equal(readJson('scripts/locale-baselines/pro-test.json')['welcome.faq.a5'], en.welcome.faq.a5);
     // FAQ.tsx maps that label to the route, and the route must be one the
     // comparison registry actually emits, so a renamed slug cannot leave the
     // homepage on a 404 while every generated surface moves.
@@ -491,8 +492,6 @@ describe('GEO residue #7746 (compare discoverability)', () => {
       comparisonDiscoveryEntries('https://www.worldmonitor.app').some((entry) => entry.url === `https://www.worldmonitor.app${href}`),
       'the FAQ route must be a registered comparison page',
     );
-    const dashboardHref = '/compare/best-geopolitical-risk-dashboards/';
-    const dashboardLabel = `worldmonitor.app${dashboardHref.slice(0, -1)}`;
     assert.ok(en.welcome.faq.a5.includes(dashboardLabel));
     assert.ok(faqSource.includes(`label: '${dashboardLabel}', href: '${dashboardHref}'`));
     assert.ok(comparisonDiscoveryEntries('https://www.worldmonitor.app').some((entry) => entry.url === `https://www.worldmonitor.app${dashboardHref}`));
