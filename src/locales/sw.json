@@ -66,7 +66,13 @@
       "sortableTable": "Jedwali la bei ya crypto linaloweza kupangwa na kichujio cha utafutaji",
       "animatedCounters": "Kaunta zilizohuishwa za viashirio muhimu vya kiuchumi",
       "tabbedComparison": "Ulinganisho wa kichupo wa matukio ya migogoro kwa eneo"
-    }
+    },
+    "quotaExhausted": "Kiwango cha matumizi ya widget kimefikiwa.",
+    "quotaUnavailable": "Kiwango cha matumizi ya widget hakipatikani kwa sasa.",
+    "quotaRetryLater": "Jaribu tena baadaye.",
+    "quotaRetryAfter": "Jaribu tena baada ya dakika {{count}}.",
+    "quotaRetryAfter_one": "Jaribu tena baada ya dakika {{count}}.",
+    "quotaRetryAfter_other": "Jaribu tena baada ya dakika {{count}}."
   },
   "countryBrief": {
     "identifying": "Inatambulisha nchi...",

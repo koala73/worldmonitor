@@ -66,7 +66,13 @@
       "sortableTable": "खोज फ़िल्टर के साथ सॉर्ट करने वाली क्रिप्टो कीमतों की तालिका",
       "animatedCounters": "मुख्य आर्थिक संकेतकों के लिए एनिमेटेड काउंटर",
       "tabbedComparison": "क्षेत्र अनुसार संघर्ष घटनाओं की टैब्ड तुलना"
-    }
+    },
+    "quotaExhausted": "widget का कोटा समाप्त हो गया है।",
+    "quotaUnavailable": "widget का कोटा अस्थायी रूप से उपलब्ध नहीं है।",
+    "quotaRetryLater": "बाद में फिर से कोशिश करें।",
+    "quotaRetryAfter": "{{count}} मिनट बाद फिर से कोशिश करें।",
+    "quotaRetryAfter_one": "{{count}} मिनट बाद फिर से कोशिश करें।",
+    "quotaRetryAfter_other": "{{count}} मिनट बाद फिर से कोशिश करें।"
   },
   "countryBrief": {
     "identifying": "देश पहचान रहे हैं...",

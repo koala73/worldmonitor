@@ -61,6 +61,22 @@ interface BuiltAuthHeaders {
   usedTesterKey: boolean;
 }
 
+function quotaErrorMessage(status: unknown, error: unknown, retryAfter: unknown): string | null {
+  const message = status === 429 && error === 'Widget quota exhausted. Try again later.'
+    ? t('widgets.quotaExhausted')
+    : status === 503 && error === 'Widget quota unavailable. Try again later.'
+      ? t('widgets.quotaUnavailable')
+      : null;
+  if (!message) return null;
+  const seconds = typeof retryAfter === 'number'
+    ? retryAfter
+    : typeof retryAfter === 'string' && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+  const retry = Number.isSafeInteger(seconds) && seconds > 0 && seconds <= 86_400
+    ? t('widgets.quotaRetryAfter', { count: Math.ceil(seconds / 60) })
+    : t('widgets.quotaRetryLater');
+  return `${message} ${retry}`;
+}
+
 function reportWidgetEntitlementDesync(
   status: number,
   payload: WidgetAgentHealth | null,
@@ -314,6 +330,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
           requestBelief,
           requestUserId,
         );
+        const quotaMessage = quotaErrorMessage(res.status, payload?.error, res.headers.get('Retry-After'));
+        if (quotaMessage) throw new Error(quotaMessage);
         throw new Error(t('widgets.serverError', { status: res.status }));
       }
       if (!res.body) {
@@ -390,7 +408,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
             requestInFlight = false;
             syncComposerState();
           } else if (event.type === 'error') {
-            const message = String(event.message ?? t('widgets.unknownError'));
+            const message = quotaErrorMessage(event.status, event.message, event.retryAfter)
+              ?? String(event.message ?? t('widgets.unknownError'));
             radarEl.remove();
             statusEl.textContent = `${t('common.error')}: ${message}`;
             renderPreviewState(previewEl, 'error', message);

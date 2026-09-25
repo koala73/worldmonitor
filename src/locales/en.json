@@ -19,6 +19,11 @@
     "fetching": "Fetching {{target}}...",
     "requestTimedOut": "Request timed out. Please try again.",
     "serverError": "Server error: {{status}}",
+    "quotaExhausted": "Widget quota exhausted.",
+    "quotaUnavailable": "Widget quota is temporarily unavailable.",
+    "quotaRetryAfter_one": "Try again in {{count}} minute.",
+    "quotaRetryAfter_other": "Try again in {{count}} minutes.",
+    "quotaRetryLater": "Try again later.",
     "unknownError": "Unknown error",
     "generatedWidget": "Generated widget: {{title}}",
     "saveFailed": "Widget could not be saved. Please try again.",
@@ -66,7 +71,8 @@
       "sortableTable": "Sortable crypto price table with search filter",
       "animatedCounters": "Animated counters for key economic indicators",
       "tabbedComparison": "Tabbed comparison of conflict events by region"
-    }
+    },
+    "quotaRetryAfter": "Try again in {{count}} minutes."
   },
   "countryBrief": {
     "identifying": "Identifying country...",

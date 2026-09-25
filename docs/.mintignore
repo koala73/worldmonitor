@@ -46,6 +46,10 @@ methodology/energy-v2-flag-flip-runbook.md
 methodology/financial-system-exposure-flag-flip-runbook.md
 railway-seed-consolidation-runbook.md
 relay-credentials.md
+# Widget spend ledger and signing-secret rollout. Tracked with the quota
+# code, kept off the public site because it names tariff ceilings, Redis
+# key layout, and the signing secret contract.
+widget-quota.md
 tradingview-screener-integration.md
 user-requests.md
 zh/.glossary.md
