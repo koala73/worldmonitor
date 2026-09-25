@@ -699,10 +699,10 @@ describe('internal links never redirect or 404 (#8603)', () => {
     // twelve dashboard CTAs by shape; this pins every welcome href by URL
     // semantics, which is what catches a bare variant host or a redirect
     // source that a tail-only shape check cannot see.
-    // 32 welcome-section hrefs, 10 Footer anchors (including status.worldmonitor.app),
+    // 33 welcome-section hrefs, 10 Footer anchors (including status.worldmonitor.app),
     // and the 5 LEGAL_FOOTER_LINKS paths. Exact, so a footer href that drops
     // out of the scan does not hide behind the section count.
-    assert.equal(scanned, 47, `expected every welcome same-site href to be scanned, saw ${scanned}`);
+    assert.equal(scanned, 48, `expected every welcome same-site href to be scanned, saw ${scanned}`);
     assert.deepEqual(violations, [], `${violations.length} welcome links do not answer 200:\n${violations.join('\n')}`);
   });
 
