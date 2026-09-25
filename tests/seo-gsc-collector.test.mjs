@@ -541,6 +541,25 @@ describe('Search Console collector on live data', () => {
     assert.match(indexation.inspectionErrors[0].reason, /HTTP 503/);
   });
 
+  it('treats an unknown or missing verdict as unmeasured', async () => {
+    const unknown = { inspectionResult: { indexStatusResult: { verdict: 'VERDICT_UNSPECIFIED', coverageState: 'URL is unknown to Google' } } };
+    assert.equal(pickIndexStatus(unknown), null);
+    assert.equal(pickIndexStatus({ inspectionResult: { indexStatusResult: { coverageState: 'Submitted and indexed' } } }), null);
+    assert.equal(
+      pickIndexStatus({ inspectionResult: { indexStatusResult: { verdict: 'NEUTRAL', coverageState: 'URL is unknown to Google' } } }).verdict,
+      'NEUTRAL',
+      'a known verdict that is not PASS is still a measurement',
+    );
+
+    const snapshot = await collectFrom(memoryTransport({
+      inspect: async (url) => (url.endsWith('/crises/sudan-conflict/') ? unknown : indexedResponse),
+    }));
+    assert.equal(snapshot.indexation.sample.complete, false);
+    const [exported] = toScorecardSearchExport(snapshot).windows;
+    assert.equal(exported.indexedPages, null);
+    assert.equal(exported.pageFamilyRows.find((row) => row.pageFamily === 'crises').indexedPages, null);
+  });
+
   it('records a probe that fails instead of aborting the run', async () => {
     const { indexation } = await collectFrom(memoryTransport({
       probe: async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); },

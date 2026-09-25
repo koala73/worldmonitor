@@ -552,10 +552,17 @@ export function stratifiedSample(urls, cap) {
 // Collection
 // ---------------------------------------------------------------------------
 
+/**
+ * Verdicts Google documents as an outcome. `VERDICT_UNSPECIFIED` means the
+ * outcome is unknown, so it is no measurement at all, not a "not indexed".
+ */
+const KNOWN_VERDICTS = new Set(['PASS', 'PARTIAL', 'FAIL', 'NEUTRAL']);
+
 /** Pick the named index-status fields. Never copy the payload. */
 export function pickIndexStatus(response) {
   const status = response?.inspectionResult?.indexStatusResult;
   if (!status || typeof status !== 'object') return null;
+  if (!KNOWN_VERDICTS.has(status.verdict)) return null;
   const asString = (value) => (typeof value === 'string' && value !== '' ? value : null);
   return {
     verdict: asString(status.verdict),
