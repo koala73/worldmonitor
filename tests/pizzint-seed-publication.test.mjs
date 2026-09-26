@@ -18,11 +18,17 @@ const validResponse = { success: true, data: [{
 }] };
 
 function harness() {
-  const state = { source: validResponse, writes: [], warnings: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false };
+  const state = {
+    source: validResponse, writes: [], warnings: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false,
+    urls: [], gdelt: { ok: true, status: 200, json: async () => ({}) },
+  };
   class Clock extends Date { static now() { return state.now; } }
   const context = vm.createContext({
     Date: Clock, AbortSignal, CHROME_UA: 'test', console: { log() {}, warn: (...args) => state.warnings.push(args) },
-    fetch: async (url) => ({ ok: true, json: async () => url.includes('dashboard-data') ? state.source : {} }),
+    fetch: async (url) => {
+      state.urls.push(url);
+      return url.includes('dashboard-data') ? { ok: true, json: async () => state.source } : state.gdelt;
+    },
     upstashSet: async (key, data, ttl) => {
       if (key === payloadKey && state.failPayload) return false;
       state.writes.push(key);
@@ -113,4 +119,30 @@ test('a sustained empty source still expires the payload and fails the real heal
   assert.notEqual(expired.status, 'OK');
   assert.equal(expired.seedAgeMin, 31);
   assert.ok(['warn', 'crit'].includes(health.STATUS_COUNTS[expired.status]));
+});
+
+// The GDELT batch endpoint rejects a request without a window (400 "Missing
+// required query parameters: pairs, method, dateStart, dateEnd") and validates
+// "Invalid date format. Expected YYYYMMDD." — observed live 2026-09-26.
+test('requests GDELT tensions with the YYYYMMDD window the endpoint requires', async () => {
+  const { state, seed } = harness();
+  state.gdelt = { ok: true, status: 200, json: async () => ({
+    usa_iran: [{ t: '20260924', v: 2 }, { t: '20260925', v: 3 }],
+  }) };
+  await seed();
+  const gdeltUrl = new URL(state.urls.find((url) => url.includes('gdelt/batch')));
+  assert.equal(gdeltUrl.searchParams.get('method'), 'gpr');
+  assert.equal(gdeltUrl.searchParams.get('dateEnd'), '20260925');
+  assert.equal(gdeltUrl.searchParams.get('dateStart'), '20260826');
+  const payload = JSON.stringify(state.cache.get(payloadKey).data);
+  assert.match(payload, /"id":"usa_iran"/);
+  assert.match(payload, /"changePercent":50/);
+});
+
+test('reports a rejected GDELT request by status without logging its body', async () => {
+  const { state, seed } = harness();
+  state.gdelt = { ok: false, status: 400, json: async () => ({ error: 'synthetic-secret' }) };
+  await seed();
+  assert.deepEqual(state.warnings, [['[PizzINT] GDELT tensions request rejected (HTTP 400)']]);
+  assert.ok(state.writes.includes(payloadKey), 'a GDELT failure never blocks the PizzINT publication');
 });
