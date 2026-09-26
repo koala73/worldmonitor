@@ -38,6 +38,7 @@ import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
 import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
+  withUrlFragment,
   debounce,
   loadFromStorage,
   saveToStorage,
@@ -348,7 +349,7 @@ export class EventHandlerManager implements AppModule {
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
-    try { history.replaceState(history.state, '', shareUrl); } catch { }
+    try { history.replaceState(history.state, '', withUrlFragment(shareUrl, window.location.hash)); } catch { }
   };
   private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
