@@ -8072,6 +8072,7 @@ const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
 const GDELT_BATCH_API = 'https://www.pizzint.watch/api/gdelt/batch';
 const DEFAULT_GDELT_PAIRS = 'usa_russia,russia_ukraine,usa_china,china_taiwan,usa_iran,usa_venezuela';
+const GDELT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 let pizzintSeedInFlight = false;
 
 async function seedPizzint() {
@@ -8144,11 +8145,15 @@ async function seedPizzint() {
     // Fetch GDELT tensions (non-fatal if unavailable)
     let tensionPairs = [];
     try {
-      const gdeltUrl = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`;
+      // The endpoint requires a YYYYMMDD window and 400s without one.
+      const gdeltDate = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
+      const gdeltUrl = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`
+        + `&dateStart=${gdeltDate(Date.now() - GDELT_WINDOW_MS)}&dateEnd=${gdeltDate(Date.now())}`;
       const gdeltResp = await fetch(gdeltUrl, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(15_000),
       });
+      if (!gdeltResp.ok) console.warn(`[PizzINT] GDELT tensions request rejected (HTTP ${Number(gdeltResp.status) || 0})`);
       if (gdeltResp.ok) {
         const gdeltRaw = await gdeltResp.json();
         tensionPairs = Object.entries(gdeltRaw).map(([pairKey, dataPoints]) => {
