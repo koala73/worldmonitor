@@ -320,16 +320,31 @@ const SEMA_JSON_FIELDS = Object.freeze({
   DateOfListing: 'Date of Listing',
 });
 
+// A row whose own identity fields are unusable is held back, not repaired: the
+// official table has published rows with a name in `Ship IMO number` and the
+// names shifted one row, so no field of such a row can be trusted. More than
+// this share of such rows means the table itself is broken, not a few rows.
+export const SEMA_MAX_QUARANTINE_SHARE = 0.01;
+
+function semaRowDefect(fields) {
+  if (!fields.Country) return 'MISSING_COUNTRY';
+  if (!/^[1-9]\d*$/.test(fields.Item)) return 'INVALID_ITEM';
+  if (fields.ShipIMONumber && !/^\d{7}$/.test(fields.ShipIMONumber)) return 'INVALID_IMO';
+  if (!(fields.EntityOrShip || fields.LastName || fields.GivenName)) return 'MISSING_NAME';
+  return null;
+}
+
 export function parseSemaJson(text) {
   let data;
   try { data = JSON.parse(text)?.data; } catch { throw new Error('SEMA_INVALID_JSON'); }
   if (!Array.isArray(data)) throw new Error('SEMA_INVALID_JSON');
   if (data.length === 0) throw new Error(SEMA_EMPTY_ERROR);
   const records = [];
+  const quarantined = [];
   const ids = new Set();
   let newest = 0;
   let oldest = Infinity;
-  for (const row of data) {
+  for (const [index, row] of data.entries()) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('SEMA_INVALID_RECORD');
     const fields = {};
     for (const [field, key] of Object.entries(SEMA_JSON_FIELDS)) {
@@ -339,10 +354,15 @@ export function parseSemaJson(text) {
       if (typeof value !== 'string' && !numericIdentifier) throw new Error('SEMA_INVALID_RECORD');
       fields[field] = String(value).replace(/\s+/g, ' ').trim();
     }
-    if (!fields.Country || !/^[1-9]\d*$/.test(fields.Item)
-      || (fields.ShipIMONumber && !/^\d{7}$/.test(fields.ShipIMONumber))
-      || !(fields.EntityOrShip || fields.LastName || fields.GivenName)) {
-      throw new Error('SEMA_INVALID_RECORD');
+    const defect = semaRowDefect(fields);
+    if (defect) {
+      const identified = defect !== 'MISSING_COUNTRY' && defect !== 'INVALID_ITEM';
+      quarantined.push({
+        id: identified ? semaRecordId(fields.Country, fields.Schedule, fields.Item) : `${SEMA_SOURCE}:row:${index}`,
+        reason: defect,
+      });
+      if (quarantined.length > data.length * SEMA_MAX_QUARANTINE_SHARE) throw new Error('SEMA_INVALID_RECORD');
+      continue;
     }
     const listed = fields.DateOfListing;
     const epoch = listingEpoch(listed);
@@ -356,7 +376,7 @@ export function parseSemaJson(text) {
     newest = Math.max(newest, epoch);
     oldest = Math.min(oldest, epoch);
   }
-  return { records, publishedAtMs: newest, oldestItemAt: oldest };
+  return { records, quarantined, publishedAtMs: newest, oldestItemAt: oldest };
 }
 
 export function mergeSanctionEntries(parts = {}) {
@@ -549,6 +569,7 @@ export async function ingestSemaEntries(options = {}) {
     }
     return {
       records,
+      quarantined: parsed.quarantined || [],
       publishedAtMs: parsed.publishedAtMs || 0,
       oldestItemAt: parsed.oldestItemAt || 0,
       error: null,

@@ -634,6 +634,12 @@ async function fetchSanctionsPressure() {
     _sourceSnapshots[source] = selected.snapshot;
     _sourceHealth[source] = selected.health;
   }
+  // Quarantined rows are bounded by SEMA_MAX_QUARANTINE_SHARE and belong to this
+  // run's ingest only; a retained snapshot must not claim them.
+  if (_sourceHealth[SEMA_SOURCE].status === 'ok' && sema.quarantined?.length) {
+    _sourceHealth[SEMA_SOURCE].quarantined = sema.quarantined;
+    console.warn(`  SEMA quarantined ${sema.quarantined.length} row(s): ${sema.quarantined.map(q => `${q.id} ${q.reason}`).join(', ')}`);
+  }
   const semaEntries = _sourceSnapshots[SEMA_SOURCE]?.records ?? [];
   const semaError = _sourceHealth[SEMA_SOURCE].status === 'ok' ? null : sema.error || 'SEMA_INVALID_RECORD';
   const ofacEntries = OFAC_SOURCES.flatMap(({ label }) => _sourceSnapshots[label]?.records ?? []);
