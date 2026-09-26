@@ -207,6 +207,5 @@ WorldMonitor **不会**因用户越过上限而自动升级、收取超额费用
 ## 硬上限（非软限制）
 
 - Webhook 回调 URL 必须为 HTTPS（localhost 除外）。
-- `api/download` 文件大小限制约为每请求 50 MB。
 - 当待处理队列超过 **100** 时，`POST /api/scenario/v1/run-scenario` 会全局暂停接收新作业 — 返回 429。
 - `api/v2/shipping/webhooks` 的 TTL 为 **30 天** — 需重新注册以延长。
