@@ -1,0 +1,89 @@
+---
+title: "Self-hosting: what you get, what you run, what needs a licence"
+description: "A plain answer to the self-hosting question — what the AGPL source gives a self-hoster, what stays on World Monitor's hosted infrastructure, which AGPL obligations attach when you modify and serve it, when a commercial licence is needed, and what running the stack yourself actually costs."
+---
+
+Yes, you can self-host World Monitor, and you do not need a subscription to do it. This page answers the question the [license page](/license) and the [self-hosting guide](https://github.com/koala73/worldmonitor/blob/main/SELF_HOSTING.md) each answer half of: **what does self-hosting give you, what does it not, and what does it cost?**
+
+This is a plain-language summary, not legal advice. The [`LICENSE`](https://github.com/koala73/worldmonitor/blob/main/LICENSE) file and the [EULA](/eula) are authoritative.
+
+## The short version
+
+| | Hosted at worldmonitor.app | Self-hosted from source |
+|---|---|---|
+| Source code | AGPL-3.0-only, same code | AGPL-3.0-only, same code |
+| Dashboard, map, panels | Included | Included |
+| Data pipeline (seeders, relay, Redis) | Operated by World Monitor | **You operate it** |
+| Upstream data provider keys | World Monitor's keys and paid tiers | **Your keys**, your tiers, your rate limits |
+| Hosted API, MCP server, SDK calls to `worldmonitor.app` | Governed by the [EULA](/eula) and a plan | Not included — your own instance answers instead |
+| Accounts, billing, entitlements (Clerk, Convex) | Included | Not present in Docker mode |
+| Subscription required | For hosted plans | **No** |
+
+## What self-hosting gives you
+
+The repository contains the whole stack, not a demo build:
+
+- the dashboard and every variant (`full`, `tech`, `finance`, `commodity`, `happy`, `energy`);
+- the Sebuf RPC handlers under `server/` and the edge gateway under `api/`;
+- the AIS relay and the Node.js sidecar;
+- the seed scripts under `scripts/` that fetch upstream data into Redis: 176 standalone `seed-*.mjs` scripts and 19 `seed-bundle-*.mjs` bundles at the time of writing;
+- the desktop app source under `src-tauri/`;
+- a `docker-compose.yml` that runs dashboard, relay, Redis and the Redis REST proxy together.
+
+`SELF_HOSTING.md` walks through the Docker or Podman quick start. Public data sources (earthquakes, weather, natural events, displacement, prediction markets, crypto, climate anomalies, cables, BIS data, cyber threats) work with no keys at all. Other feeds need the provider key you supply through `docker-compose.override.yml`.
+
+## What self-hosting does not give you
+
+**World Monitor's hosted data pipeline.** In production the seeders run as scheduled Railway services (52 are declared in `scripts/railway-services.json`) writing into World Monitor's Redis. A self-hosted instance starts with an empty cache. You fill it by running `./scripts/run-seeders.sh` on a schedule you own, against a Redis you own.
+
+**World Monitor's provider keys and paid tiers.** The keys for Finnhub, FRED, EIA, ACLED, NASA FIRMS, AISstream, AviationStack, Cloudflare Radar and the LLM providers are World Monitor's. You bring your own. Free tiers cover most sources; Cloudflare Radar is paid, and LLM usage is metered by whichever provider you point `LLM_API_URL` at, including a local Ollama or LM Studio endpoint.
+
+**The hosted API and MCP server.** Calling `worldmonitor.app` endpoints, the hosted MCP server, or the SDKs against the hosted base URL is use of the hosted Service, governed by the [EULA](/eula) and a plan. Self-hosting the code needs no plan; calling World Monitor's servers does. The SDKs and CLI accept a self-hosted base URL, so your own instance can answer the same API surface.
+
+**Accounts, billing and entitlements.** Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex backend. The dashboard mints an anonymous `wms_` session signed by `WM_SESSION_SECRET`. Among the premium routes served through the Sebuf gateway, `GET /api/intelligence/v1/get-country-intel-brief` is the only one where that session satisfies the gateway's authentication boundary in Docker mode; its direct-LLM spend is capped at 50 calls per UTC day per client IP. The other premium gateway routes require an API key from your own `WORLDMONITOR_VALID_KEYS` allowlist. Some direct edge routes outside the gateway, such as the RSS proxy and the X and Telegram feed proxies, accept the session as well, as they do on the hosted deployment. This is the answer to the recurring "self-hosted instance returns 401 before the handler runs" report: the route was gated by the entitlement check that the hosted deployment uses, and Docker mode now accepts the local session there.
+
+**Native administration routes.** `/api/local-*` returns `403` in Docker mode. Operator settings are changed through Compose environment variables or Docker secrets, then a container recreate.
+
+## AGPL obligations, plainly
+
+AGPL-3.0-only permits commercial use, private use, modification and redistribution. What it asks in return depends on what you do:
+
+- **Run the unmodified project, internally or publicly.** No source offer is required beyond keeping copyright and license notices intact. The project's own source is already public.
+- **Modify it without letting anyone interact with it remotely over a network.** You may keep those modifications private. Section 13 attaches to remote network interaction, not to modification itself. Note that it does not carve out your own staff: colleagues who use your modified instance over the network are users under section 13, so the source offer below applies to them too.
+- **Modify it and let users interact with it over a network.** Section 13 applies: you must prominently offer those users the corresponding source of your modified version, licensed AGPL-3.0-only. This is the obligation people usually mean when they ask whether self-hosting is "allowed".
+- **Distribute copies or binaries.** Provide corresponding source under AGPL-3.0-only and document your changes.
+
+The official thin clients (npm CLI, Python, Ruby and Go SDKs) are MIT-licensed, so embedding them in a proprietary application carries no copyleft obligation.
+
+## When a commercial licence is needed
+
+You do **not** need a commercial licence to self-host, to use the stack commercially, to charge for hosting or support, or to modify it while complying with the AGPL.
+
+You need one when you want something the AGPL does not grant:
+
+- keep modifications to the platform private while serving them to users over a network;
+- combine World Monitor code into a proprietary product in a way that would otherwise pull that product under the AGPL;
+- ship a proprietary fork;
+- use the World Monitor name, logo or branding beyond what the [Trademark Policy](/trademark-policy) allows;
+- receive contractual terms, warranties, support or indemnity.
+
+Contact the maintainer through the [GitHub repository](https://github.com/koala73/worldmonitor) for commercial terms. The Pro Business, API Starter and API Business plans license the hosted Service and its outputs; they are not a substitute for a source-code licence and do not waive AGPL obligations.
+
+## What running it yourself costs
+
+Self-hosting is free of licence fees. It is not free of work.
+
+- **Compute and storage.** The dashboard container, the relay, Redis with persistence, and a host that runs seeders on a schedule. `redis-data` persists across restarts but is lost on `docker compose down -v`, after which you re-seed.
+- **Scheduling.** The hosted deployment runs its seeders as dozens of independently scheduled services with per-section budgets and health metadata. Reproducing comparable freshness means a cron or scheduler of your own, per-seeder timeouts (`SEED_TIMEOUT`, default 30 minutes), and watching `seed-meta:*` health keys yourself.
+- **Provider relationships.** Free tiers rate-limit. Yahoo Finance in particular throttles aggressively; the seeders stagger requests for that reason. Some providers (ACLED, ICAO NOTAM) require accounts with terms of their own. Paid tiers, where you want them, are billed to you.
+- **Keeping up.** Upstream endpoints move and schemas change. The repository fixes those in `main` continuously; a self-hosted instance inherits the fixes only when you pull and rebuild.
+- **Model spend.** Intelligence briefs and summaries call whatever LLM endpoint you configure. A local model costs hardware; a hosted one costs per token.
+
+For a single team that wants the dashboard on its own network with data it already has keys for, this is a modest, well-trodden setup. For continuous global coverage at the freshness the hosted service publishes, it is a standing operations job. That difference, not the licence, is what the hosted plans price.
+
+## Where to go next
+
+- [Self-hosting guide](https://github.com/koala73/worldmonitor/blob/main/SELF_HOSTING.md) — Docker/Podman quick start, required secrets, API keys, seeding, troubleshooting.
+- [Getting Started](/getting-started#3-self-hosted-docker-stack) — the same stack described alongside the development setup.
+- [License](/license) — the AGPL summary and commercial licensing options in full.
+- [EULA](/eula) — what governs the hosted Service, and section 6.2 on where a self-hosted deployment meets the hosted API.

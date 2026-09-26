@@ -1,0 +1,89 @@
+---
+title: "自托管：你能得到什么、需要自己运行什么、何时需要许可"
+description: "对自托管问题的直接回答 —— AGPL 源代码给自托管者带来什么，哪些部分仍留在 World Monitor 的托管基础设施上，修改并对外提供服务时附带哪些 AGPL 义务，何时需要商业许可，以及自己运行整套栈的真实成本。"
+---
+
+是的，你可以自托管 World Monitor，而且不需要订阅。本页回答了[许可证页面](/zh/license)与[自托管指南](https://github.com/koala73/worldmonitor/blob/main/SELF_HOSTING.md)各自只回答了一半的问题：**自托管给你什么、不给你什么、要花多少成本？**
+
+本页是通俗语言摘要，不是法律建议。[`LICENSE`](https://github.com/koala73/worldmonitor/blob/main/LICENSE) 文件与[最终用户许可协议](/zh/eula)才是权威文本。
+
+## 简短版本
+
+| | 托管于 worldmonitor.app | 从源码自托管 |
+|---|---|---|
+| 源代码 | AGPL-3.0-only，同一份代码 | AGPL-3.0-only，同一份代码 |
+| 仪表盘、地图、面板 | 包含 | 包含 |
+| 数据管线（种子脚本、中继、Redis） | 由 World Monitor 运维 | **由你运维** |
+| 上游数据提供方密钥 | World Monitor 的密钥与付费档位 | **你的密钥**、你的档位、你的速率限制 |
+| 托管 API、MCP 服务器、面向 `worldmonitor.app` 的 SDK 调用 | 受[最终用户许可协议](/zh/eula)与套餐管辖 | 不包含 —— 由你自己的实例应答 |
+| 账户、计费、权益（Clerk、Convex） | 包含 | Docker 模式下不存在 |
+| 是否需要订阅 | 托管套餐需要 | **不需要** |
+
+## 自托管给你什么
+
+仓库包含完整的栈，而不是演示版本：
+
+- 仪表盘及全部变体（`full`、`tech`、`finance`、`commodity`、`happy`、`energy`）；
+- `server/` 下的 Sebuf RPC 处理器与 `api/` 下的边缘网关；
+- AIS 中继与 Node.js sidecar；
+- `scripts/` 下把上游数据抓取进 Redis 的种子脚本：撰写本文时共有 176 个独立的 `seed-*.mjs` 脚本与 19 个 `seed-bundle-*.mjs` 捆绑脚本；
+- `src-tauri/` 下的桌面应用源码；
+- 一份把仪表盘、中继、Redis 与 Redis REST 代理一起运行的 `docker-compose.yml`。
+
+`SELF_HOSTING.md` 逐步讲解 Docker 或 Podman 快速启动。公开数据源（地震、天气、自然事件、流离失所、预测市场、加密货币、气候异常、海缆、BIS 数据、网络威胁）无需任何密钥即可工作。其他数据源需要你通过 `docker-compose.override.yml` 提供的提供方密钥。
+
+## 自托管不给你什么
+
+**World Monitor 的托管数据管线。** 在生产环境中，种子脚本以定时的 Railway 服务运行（`scripts/railway-services.json` 中声明了 52 个），写入 World Monitor 自己的 Redis。自托管实例从空缓存开始。你需要在自己拥有的调度上、针对自己拥有的 Redis 运行 `./scripts/run-seeders.sh` 来填充它。
+
+**World Monitor 的提供方密钥与付费档位。** Finnhub、FRED、EIA、ACLED、NASA FIRMS、AISstream、AviationStack、Cloudflare Radar 以及各 LLM 提供方的密钥属于 World Monitor。你需要自带密钥。免费档位覆盖大多数数据源；Cloudflare Radar 是付费的，LLM 用量由你在 `LLM_API_URL` 指向的提供方计量，包括本地的 Ollama 或 LM Studio 端点。
+
+**托管 API 与 MCP 服务器。** 调用 `worldmonitor.app` 端点、托管的 MCP 服务器，或以托管基础 URL 使用 SDK，都属于使用托管服务，受[最终用户许可协议](/zh/eula)与套餐管辖。自托管代码不需要套餐；调用 World Monitor 的服务器才需要。SDK 与 CLI 接受自托管基础 URL，因此你自己的实例可以应答同一套 API 表面。
+
+**账户、计费与权益。** Docker 模式（`LOCAL_API_MODE=docker`）没有 Clerk 或 Convex 后端。仪表盘会签发一个由 `WM_SESSION_SECRET` 签名的匿名 `wms_` 会话。在经由 Sebuf 网关提供的高级路由中，`GET /api/intelligence/v1/get-country-intel-brief` 是 Docker 模式下唯一接受该会话作为网关认证边界的路由；其直连 LLM 开销被限制为每个客户端 IP 每 UTC 日 50 次调用。其他高级网关路由需要来自你自己 `WORLDMONITOR_VALID_KEYS` 允许列表的 API 密钥。网关之外的部分直连边缘路由（如 RSS 代理、X 与 Telegram 订阅源代理）同样接受该会话，与托管部署上的行为一致。这也是对反复出现的"自托管实例在处理器执行前返回 401"报告的回答：该路由曾被托管部署所使用的权益检查拦截，如今 Docker 模式在该路由上接受本地会话。
+
+**原生管理路由。** `/api/local-*` 在 Docker 模式下返回 `403`。运维设置通过 Compose 环境变量或 Docker secrets 修改，然后重建容器。
+
+## AGPL 义务，说明白
+
+AGPL-3.0-only 允许商业使用、私人使用、修改与再分发。它要求你回馈什么，取决于你做了什么：
+
+- **运行未修改的项目，无论内部还是公开。** 除保持版权与许可声明完整外，不要求额外提供源代码。项目自身的源代码本已公开。
+- **修改后不让任何人通过网络远程与之交互。** 你可以保留这些修改为私有。第 13 条针对的是远程网络交互，而不是修改本身。注意它并未为你自己的员工开设例外：通过网络使用你修改后实例的同事，也属于第 13 条意义上的用户，因此下文的源代码提供义务同样适用于他们。
+- **修改后让用户通过网络与之交互。** 第 13 条适用：你必须向这些用户显著地提供修改版本的对应源代码，并以 AGPL-3.0-only 授权。人们问"自托管是否被允许"时，通常指的就是这项义务。
+- **分发副本或二进制文件。** 以 AGPL-3.0-only 提供对应源代码，并记录你的更改。
+
+官方轻量客户端（npm CLI、Python、Ruby 与 Go SDK）采用 MIT 许可，因此把它们嵌入专有应用不附带 copyleft 义务。
+
+## 何时需要商业许可
+
+自托管、商业使用该栈、对托管或支持收费、在遵守 AGPL 的前提下修改它，都**不需要**商业许可。
+
+当你想要 AGPL 不授予的东西时才需要：
+
+- 在通过网络向用户提供服务的同时，保留对平台的修改为私有；
+- 以会把产品拉入 AGPL 范围的方式，把 World Monitor 代码组合进专有产品；
+- 发布专有分支；
+- 超出[商标政策](/zh/trademark-policy)允许范围使用 World Monitor 名称、徽标或品牌；
+- 获得合同条款、保证、支持或赔偿。
+
+商业条款请通过 [GitHub 仓库](https://github.com/koala73/worldmonitor)联系维护者。Pro Business、API Starter 与 API Business 套餐授权的是托管服务及其输出；它们不能替代源代码许可，也不豁免 AGPL 义务。
+
+## 自己运行的成本
+
+自托管没有许可费。但它不是没有工作量。
+
+- **算力与存储。** 仪表盘容器、中继、带持久化的 Redis，以及一台按计划运行种子脚本的主机。`redis-data` 在重启间持久保存，但在 `docker compose down -v` 后丢失，之后需要重新填充。
+- **调度。** 托管部署把种子脚本作为数十个独立调度的服务运行，带有分段预算与健康元数据。要复现可比的新鲜度，你需要自己的 cron 或调度器、按脚本的超时（`SEED_TIMEOUT`，默认 30 分钟），并自行监控 `seed-meta:*` 健康键。
+- **提供方关系。** 免费档位有速率限制。尤其是 Yahoo Finance 限流激进；种子脚本正因此错开请求。部分提供方（ACLED、ICAO NOTAM）要求注册账户并接受其自身条款。你想用的付费档位由你付费。
+- **跟进更新。** 上游端点会迁移，数据结构会变化。仓库在 `main` 中持续修复这些问题；自托管实例只有在你拉取并重建后才继承这些修复。
+- **模型开销。** 情报简报与摘要会调用你配置的任意 LLM 端点。本地模型花的是硬件，托管模型按 token 计费。
+
+对于一个想在自己网络上运行仪表盘、且已持有所需密钥的团队，这是一套规模适中、路径成熟的部署。若要达到托管服务所发布的新鲜度并持续覆盖全球，这就是一份常态化的运维工作。托管套餐定价的正是这一差别，而非许可证。
+
+## 下一步
+
+- [自托管指南](https://github.com/koala73/worldmonitor/blob/main/SELF_HOSTING.md) —— Docker/Podman 快速启动、必需密钥、API 密钥、数据填充、故障排查。
+- [入门](/zh/getting-started) —— 与开发环境搭建并列描述的同一套栈。
+- [许可证](/zh/license) —— 完整的 AGPL 摘要与商业许可选项。
+- [最终用户许可协议](/zh/eula) —— 管辖托管服务的条款，以及关于自托管部署与托管 API 交汇处的第 6.2 节。
