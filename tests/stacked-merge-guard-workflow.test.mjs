@@ -65,7 +65,23 @@ describe('orphaned stacked merge monitor workflow', () => {
       contents: 'read',
       issues: 'write',
       'pull-requests': 'write',
+      actions: 'write',
     });
+  });
+
+  it('retargets open children first, then still reconciles when the retarget fails (#8518)', () => {
+    const steps = monitor.jobs.monitor.steps;
+    const retarget = steps.findIndex((step) => step.name === 'Retarget open children of the closed PR');
+    const reconcile = steps.findIndex((step) => step.name === 'Reconcile closed PR and merged descendants');
+    assert.ok(retarget !== -1, 'workflow must retarget children of a merged parent');
+    assert.ok(retarget < reconcile, 'retarget is time-critical and must run before the slow reconcile');
+    assert.equal(steps[retarget].run, 'node scripts/check-stacked-merge.mjs --mode retarget');
+    assert.equal(steps[retarget].env.GH_TOKEN, '${{ github.token }}');
+    assert.equal(steps[reconcile].if, '${{ !cancelled() }}');
+    assert.equal(monitor.on.pull_request_target, undefined, 'must not run under pull_request_target');
+    const checkouts = steps.filter((step) => step.uses?.startsWith('actions/checkout@'));
+    assert.equal(checkouts.length, 1);
+    assert.equal(checkouts[0].with.ref, '${{ github.event.repository.default_branch }}', 'never execute PR-head code with a write token');
   });
 
   it('checks out the default branch and reconciles the closed stack', () => {

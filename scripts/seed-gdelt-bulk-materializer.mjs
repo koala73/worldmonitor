@@ -51,6 +51,9 @@ loadEnvFile(import.meta.url);
 const MASTER_TAIL_BYTES = 65_536;
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 const REQUEST_TIMEOUT_MS = 30_000;
+// The state key runs ~4MB. The 5s default timed out its body read on the
+// first attempt of every Railway run and exhausted all retries 1 run in 8.
+const SNAPSHOT_READ_TIMEOUT_MS = 30_000;
 const FETCH_CONCURRENCY = 4;
 const MAX_CATCHUP_FILES_PER_KIND = 8;
 const RECENT_GKG_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -378,7 +381,7 @@ function feedCoverage({
 export async function fetchMaterializedGdelt(deps = {}) {
   const {
     _now = () => Date.now(),
-    _readSnapshot = (key) => readSeedSnapshot(key, { strict: true }),
+    _readSnapshot = (key) => readSeedSnapshot(key, { strict: true, timeoutMs: SNAPSHOT_READ_TIMEOUT_MS }),
     _fetchFiles = fetchGdeltBulkFiles,
   } = deps;
   const nowMs = _now();

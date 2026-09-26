@@ -32,7 +32,7 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 
 > The overall health verdict lives in the JSON `status` field, not the HTTP code. Evaluated health verdicts return `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure. `REFRESH_PENDING` also returns `503`, but only when no earlier verdict is retained while refresh is pending; it is not a confirmed Redis outage.
 
-On a cache miss, only the Redis lease owner performs the registry sweep. Other requests wait up to 3 seconds for its snapshot. If none lands, they return the last published verdict with HTTP `200`, plus `"stale": true` and `"staleReason": "REFRESH_PENDING"`. Its `status` and `checkedAt` are the ones that verdict was published with. The last verdict is retained for 10 minutes and is never served past a grace deadline. Only when no verdict is retained do they return `503` with `Retry-After: 3` and `{ "status": "REFRESH_PENDING", "error": "Health refresh is pending. Retry shortly.", "retryAfterSeconds": 3 }`. That response has no `checkedAt`, summary, or fabricated checks. Neither response is cached.
+On a cache miss, only the Redis lease owner performs the registry sweep. Other requests wait up to 3 seconds for its snapshot. If none lands, they return the last published verdict with HTTP `200`, plus `"stale": true` and `"staleReason": "REFRESH_PENDING"`. Its `status` and `checkedAt` are the ones that verdict was published with. The last verdict is retained for 10 minutes and is never served past a grace deadline. Only when no verdict is retained do they return `503` with `Retry-After: 3` and `{ "status": "REFRESH_PENDING", "error": "Health refresh is pending. Retry shortly.", "retryAfterSeconds": 3 }`. That response has no `checkedAt`, summary, or fabricated checks. Neither response is cached. The lease owner itself works against a 22-second request deadline: each Redis command and the relay-gate probe time out at the lower of its own timeout and the time left. An owner that runs out answers the same way a waiter does, instead of running past the 25-second edge first-byte limit: the last published verdict as a stale `200` when one is retained, otherwise `503` `REFRESH_PENDING` with `Retry-After: 3`.
 
 Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
 
@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 295,
-    "ok": 295,
+    "total": 310,
+    "ok": 310,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -72,6 +72,22 @@ Containment checks all required diagnostics independently of the selected status
 `humanitarianSummary` needs more than its aggregate marker for containment. Health reads every country in the producer's required-country contract and checks each summary's identity, fields, timestamp, and finite Redis TTL. `containmentUntil` is the earliest country expiry or six hours after its original data timestamp. Failed refreshes do not renew country TTLs or advance `lastSuccessAt`. `seedAgeMin` continues to increase from that success. `lastSourceAttemptAt` and `retryAt` describe the failed refresh separately. The source warning and error code remain visible. During HAPI API cooldown, the worker permits one bounded HDX-only recovery probe per 15-minute interval; the API cooldown deadline stays fixed.
 
 With `?compact=1`, `problems` contains every actionable failure and on-demand empty entry, including warnings contained from the availability verdict. `pending` contains diagnostics inside an active grace period. Empty maps are omitted. Full `checks` retain the same diagnosis. Cached verdicts still expire at active grace deadlines, and the scheduled monitor rechecks them before suppressing an alert. Strict data-quality monitoring must inspect `summary.warn` and `problems`; it must not use the top-level availability status alone.
+
+### Sanctions source failures
+
+Sanctions ingestion tracks SDN, Consolidated, and Canadian SEMA independently. A failed or invalid source keeps `sourceState: error`, `failedSources`, and per-source `sourceHealth` in freshness metadata. Each source reports its attempt time, last success time, original publication time, retained deadline, and selected record count. Recovery clears the error only for the recovered source.
+
+The worker can retain a complete validated source snapshot for 12 hours after its last successful fetch. Failed attempts and healthy sibling sources do not extend that deadline. The 60-entry display preview is never a retention source; initial retention requires a successful full-source fetch. Private snapshots use bounded gzip storage and do not change public payload shapes.
+
+On each run, the worker excludes expired or invalid snapshots before rebuilding the pressure payload, entity index, and country counts. If no source remains usable, those outputs become empty while source errors remain visible. This is unavailable data, not a confirmed empty sanctions list. Readers do not independently remove expired source cohorts between worker runs; existing cache TTL and health checks still apply. Source publication dates remain unchanged.
+
+Snapshot reads distinguish a missing key from Redis errors. Snapshot persistence precedes canonical publication, but canonical, companion, and freshness writes are not one transaction. A later companion-write failure can leave the new canonical payload with older companion data or metadata; the run fails without a completed health patch. The empty envelope's `OK_ZERO` describes publication only: source metadata remains `error`, completion is `DEGRADED`, and the panel shows unavailable.
+
+### HAPI reference periods
+
+Each `conflict:humanitarian:v1:<COUNTRY>` payload keeps `summary` for the newest available HAPI reference period. Its optional `previousCompleteSummary` holds the previous UTC calendar month from the same fetch. Both summaries include `referencePeriod` and `updatedAt`. When the newest available period is the previous month, both fields contain that summary. If the source has no rows for the previous month, `previousCompleteSummary` is absent, not a zero total or an older substitute.
+
+The seeder writes both summaries in one country payload with the existing TTL and freshness metadata. The single-country RPC passes through this payload, including the extra field. Its declared schema still exposes only `summary`, and the batch RPC returns only the newest summary. Consumers of the retained field must match `referencePeriod` before comparing HAPI with another source. A complete calendar month does not guarantee that upstream reporting is final.
 
 ### Cable cache continuity
 
@@ -159,6 +175,12 @@ IMD is optional when `IMD_API_KEY` is absent, including after intentional remova
 The v2 activation marker requires a successful documented-product response. Valid quiet responses qualify. Total failures and carried-only snapshots do not. The older marker is ignored because failed product batches could write it.
 
 ### Producers That Serve Last-Known-Good
+
+NHC current-point identity rejections log a bounded `[NHC identity]` diagnostic with the layer, failed field predicates, source attempt time and seed run start time. The seed run start and surrounding Run ID log correlate the diagnostic with its execution. Field summaries include types and lengths; only allowlisted short public identity/date representations are included. Nested values and unsafe or oversized strings are omitted. These diagnostics do not enter Redis payloads and do not change validation, retries, failure counts or retention. A logged identity rejection still needs its field evidence before a parser defect can be established.
+
+New successful EONET observations can remain available for 18 hours. This is an availability policy, not an extension of the 540-minute health limit. Failed attempts retain the original success time and absolute expiry; older nine-hour snapshots keep their existing deadlines. RPC, bootstrap Redis reads, MCP, and the climate-disaster seeder remove expired EONET records before filtering, while preserving healthy companion records. Legacy payloads without expiry metadata remain readable. Data already delivered to a browser follows its existing cache behavior; this policy does not schedule client-side removal.
+
+EONET acquisition keeps a 15-second header deadline and the shared 30.5-second request budget, including retry delay. A progressing body can use the remaining budget, but five seconds without a decoded body chunk aborts the attempt. Decoded responses are limited to 2 MiB. These limits address local acquisition behavior; they do not establish the cause of upstream delays. GDACS and NHC retention and transport limits are unchanged.
 
 Taiwan MND records failed source attempts in its source metadata. One failed attempt is pending only while positive last-good records remain fresh. The same error on the next distinct attempt warns. The pending deadline is 210 minutes after the first failure, or the last-good freshness deadline if earlier. A different error does not extend that deadline. Health reads do not advance the failure count.
 

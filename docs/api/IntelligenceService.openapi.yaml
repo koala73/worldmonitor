@@ -587,8 +587,13 @@ paths:
                                 "brief": "example"
                                 "countryCode": "US"
                                 "countryName": "US"
+                                "evidence":
+                                    - "asOf": "example"
+                                      "factText": "example"
+                                      "id": "example-id"
+                                      "kind": "example"
+                                      "label": "example"
                                 "generatedAt": 1717200000000
-                                "model": "example"
                             schema:
                                 $ref: '#/components/schemas/GetCountryIntelBriefResponse'
                 "400":
@@ -7318,6 +7323,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/BriefSource'
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BriefEvidence'
             description: GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.
         BriefSource:
             type: object
@@ -7335,6 +7344,23 @@ components:
                     type: string
                     description: Article publication time, when available.
             description: BriefSource describes one article used to ground an AI-generated brief.
+        BriefEvidence:
+            type: object
+            properties:
+                id:
+                    type: string
+                kind:
+                    type: string
+                label:
+                    type: string
+                value:
+                    type: string
+                factText:
+                    type: string
+                asOf:
+                    type: string
+                url:
+                    type: string
         GetCountryCoverageRequest:
             type: object
             properties:

@@ -13,6 +13,7 @@ import { proxyUrl } from '@/utils/proxy';
 import { premiumFetch } from '@/services/premium-fetch';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 interface McpConnectOptions {
@@ -65,6 +66,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   overlay.className = 'modal-overlay active';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute('aria-label', t('mcp.modalTitle'));
 
   const modal = document.createElement('div');

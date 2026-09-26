@@ -2857,6 +2857,28 @@
       "idleKeepPlaying": "Mantieni la riproduzione durante l'inattività",
       "idleSettingsHint": "Cambia questa impostazione in qualsiasi momento in Impostazioni › Media.",
       "idleKeepPlayingToast": "Il video in diretta continuerà a riprodursi durante l'inattività. Modifica in Impostazioni › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Un solo editore",
+      "singlePublisherHint": "Solo un editore sta riportando questa notizia finora. Questo descrive la copertura, non l'accuratezza.",
+      "tier4Only": "Solo fonti di basso livello",
+      "tier4OnlyHint": "Ogni testata che riporta questa notizia è una fonte di livello 4 (aggregatori e blog). Questo descrive la copertura, non l'accuratezza.",
+      "rosterListed": "({{listed}} elencati)",
+      "rosterFeeds": "Feed visualizzati: {{labels}}",
+      "rosterLegend": "I livelli classificano le fonti; non giudicano questa affermazione.",
+      "tierDocsLink": "Come vengono assegnati i livelli",
+      "tierChip": "L{{tier}}",
+      "tierChipUndeclared": "L?",
+      "tierTitle1": "Livello 1: Agenzie di stampa e organismi ufficiali",
+      "tierTitle2": "Livello 2: Principali testate",
+      "tierTitle3": "Livello 3: Fonti specializzate, regionali e think tank",
+      "tierTitle4": "Livello 4: Aggregatori e blog",
+      "tierTitleUndeclared": "Livello non dichiarato: non ancora esaminato",
+      "rosterSummary": "Segnalato da {{publishers}}",
+      "rosterSummaryTier1": "Segnalato da {{publishers}}, di cui {{tier1}} di livello 1",
+      "rosterPublishers_one": "{{count}} editore",
+      "rosterPublishers_many": "{{count}} editori",
+      "rosterPublishers_other": "{{count}} editori"
     }
   },
   "popups": {

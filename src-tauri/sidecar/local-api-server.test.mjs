@@ -26,6 +26,27 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
   assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
 });
 
+test('jsonForScript keeps any value inside an inline <script> as data', () => {
+  const { jsonForScript } = __testing__;
+  const hostile = '</script><script>alert(1)</script>\u2028\u2029<!--&';
+  const encoded = jsonForScript(hostile);
+  assert.doesNotMatch(encoded, /[<>&\u2028\u2029]/);
+  assert.equal(runInNewContext(`(${encoded})`), hostile);
+  assert.equal(jsonForScript(null), 'null');
+  assert.equal(runInNewContext(`(${jsonForScript('live_stream')})`), 'live_stream');
+});
+
+test('isYahooFinanceHost matches finance.yahoo.com and its subdomains only', () => {
+  const { isYahooFinanceHost } = __testing__;
+  for (const host of ['finance.yahoo.com', 'query1.finance.yahoo.com', 'query2.finance.yahoo.com',
+    'finance.yahoo.com.', 'query1.finance.yahoo.com.']) {
+    assert.equal(isYahooFinanceHost(host), true, host);
+  }
+  for (const host of ['evilfinance.yahoo.com', 'finance.yahoo.com.evil.example', 'yahoo.com', 'example.com', 'finance.yahoo.com..']) {
+    assert.equal(isYahooFinanceHost(host), false, host);
+  }
+});
+
 test('keeps seed-owned WSB snapshots cloud-preferred', () => {
   assert.equal(__testing__.isCloudPreferred('/api/intelligence/v1/list-wsb-tickers'), true);
 });

@@ -2457,6 +2457,27 @@
       "idleKeepPlaying": "Videostream afspelen bij inactiviteit",
       "idleSettingsHint": "Wijzig dit op elk moment in Instellingen › Media.",
       "idleKeepPlayingToast": "Livevideostream blijft afspelen bij inactiviteit. Wijzigen in Instellingen › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Enkele uitgever",
+      "singlePublisherHint": "Tot nu toe meldt slechts één uitgever dit. Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "tier4Only": "Alleen laag-tier bronnen",
+      "tier4OnlyHint": "Elk medium dat hierover bericht, is een tier-4-bron (aggregators en blogs). Dit beschrijft de verslaggeving, niet de nauwkeurigheid.",
+      "rosterListed": "({{listed}} vermeld)",
+      "rosterFeeds": "Feeds gezien: {{labels}}",
+      "rosterLegend": "Tiers rangschikken bronnen; ze beoordelen deze bewering niet.",
+      "tierDocsLink": "Hoe tiers worden toegekend",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Tier 1: Persbureaus en officiële instanties",
+      "tierTitle2": "Tier 2: Grote media",
+      "tierTitle3": "Tier 3: Gespecialiseerde, regionale en denktankbronnen",
+      "tierTitle4": "Tier 4: Aggregators en blogs",
+      "tierTitleUndeclared": "Tier niet opgegeven: nog niet beoordeeld",
+      "rosterSummary": "Gemeld door {{publishers}}",
+      "rosterSummaryTier1": "Gemeld door {{publishers}}, waaronder {{tier1}} tier-1",
+      "rosterPublishers_one": "{{count}} uitgever",
+      "rosterPublishers_other": "{{count}} uitgevers"
     }
   },
   "popups": {

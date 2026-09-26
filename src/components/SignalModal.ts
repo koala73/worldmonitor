@@ -8,6 +8,7 @@ import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
 
 // Render-side display ceiling for a keyword spike's evidence list. Independent
 // of the emitter's own cap (MAX_SPIKE_ARTICLES) and deliberately higher, so it
@@ -36,6 +37,14 @@ export class SignalModal {
     this.element.className = 'signal-modal-overlay';
     this.element.setAttribute('role', 'dialog');
     this.element.setAttribute('aria-modal', 'true');
+    // Read-only on every path: background correlation (`show`), a click on a
+    // finding (`showSignal`), a click on an alert (`showAlert`). The sound
+    // toggle is the only control and it resets on reload anyway, so the
+    // contract is constant and declared once. Before this line the modal was
+    // silent, silence blocks, and `show` has no auto-dismiss, so an ignored
+    // background popup wedged both reload consumers for the whole session
+    // (WORLDMONITOR-15X/15Z, 150 of 198 deferrals named this overlay).
+    declareOverlay(this.element, { reload: 'safe' });
     setTrustedHtml(this.element, trustedHtml(`
       <div class="signal-modal">
         <div class="signal-modal-header">

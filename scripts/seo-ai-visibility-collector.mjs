@@ -24,6 +24,7 @@ import { dirname, resolve } from 'node:path';
 import {
   PAGE_FAMILIES,
   BING_AI_METRICS,
+  pageFamiliesForSchemaVersion,
   REFERRAL_METRICS,
   SEARCH_PERFORMANCE_METRICS,
   SEARCH_METRICS,
@@ -426,7 +427,7 @@ function hasBreakdownCoverage(rows, groupSelector, expectedGroups, windows) {
   ));
 }
 
-function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
+function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet, schemaVersion) {
   if (requested === 'unavailable') return 'unavailable';
   const complete = windows.every(({ metrics }) => metricsAreComplete(metrics))
     && queryRows.every(({ metrics }) => performanceMetricsAreComplete(metrics))
@@ -440,13 +441,16 @@ function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
     && hasBreakdownCoverage(
       pageFamilyRows,
       (row) => row.pageFamily,
-      PAGE_FAMILIES,
+      pageFamiliesForSchemaVersion(schemaVersion),
       windows,
     );
   return requested === 'partial' || !complete ? 'partial' : 'available';
 }
 
-export function normalizeSearchExport(raw, { querySet, observedAt, provider = 'search' }) {
+export function normalizeSearchExport(
+  raw,
+  { querySet, observedAt, provider = 'search', schemaVersion = 1 },
+) {
   if (!raw || raw.status === 'unavailable') {
     return unavailableSearchSource(
       observedAt,
@@ -514,6 +518,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
     queryRows,
     pageFamilyRows,
     querySet,
+    schemaVersion,
   );
   return {
     status,
@@ -1021,12 +1026,12 @@ export function collectBaseline({
 
   const googleSearchConsole = normalizeSearchExport(
     sources.googleSearchConsole,
-    { querySet, observedAt, provider: 'Google Search Console' },
+    { querySet, observedAt, provider: 'Google Search Console', schemaVersion },
   );
   const bingSource = sources.bingWebmaster ?? {};
   const bingWebmaster = normalizeSearchExport(
     bingSource.search ?? bingSource,
-    { querySet, observedAt, provider: 'Bing Webmaster' },
+    { querySet, observedAt, provider: 'Bing Webmaster', schemaVersion },
   );
   bingWebmaster.aiPerformance = normalizeBingAiPerformance(
     bingSource.aiPerformance ?? sources.bingAiPerformance,

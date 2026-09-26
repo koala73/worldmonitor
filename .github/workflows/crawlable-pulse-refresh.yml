@@ -164,7 +164,8 @@ jobs:
             tests/country-mention.test.mjs \
             tests/freeze-crawlable-live-pulse.test.mjs \
             tests/welcome-teasers.test.mjs \
-            tests/sitemap-generation.test.mjs
+            tests/sitemap-generation.test.mjs \
+            tests/country-corpus-slugs-freshness.test.mjs
       - name: Prune superseded pulse snapshots
         # Runs after a failed verification, never after a rejected build.
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -189,7 +190,12 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt pro-test/src/generated/teasers.json pro-test/welcome.html pro-test/index.html
+          # build:crawlable-corpus above also rewrites the country slug map that
+          # api/story.js canonicalises share stubs against. The pulse snapshot
+          # is not its input, so it normally shows no diff — but staging it here
+          # means a map that is stale for any other reason self-heals with the
+          # pulse instead of waiting for the monthly snapshot PR (#8604).
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt pro-test/src/generated/teasers.json pro-test/welcome.html pro-test/index.html api/_country-corpus-slugs.generated.js
           git commit -m "chore(corpus): refresh crawlable live pulse ${snapshot_date}"
           # Route lastmod dates come from committed material sources.
           npm run build:sitemap

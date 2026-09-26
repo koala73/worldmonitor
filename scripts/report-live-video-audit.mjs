@@ -25,7 +25,10 @@ function isUnfilled(slot) {
   return slot.status === 'empty' && !slot.shownByDefault;
 }
 const VERDICTS = new Set(['live', 'recording', 'failed', 'unverifiable', 'invalid']);
-const FINDINGS_HEADER = ['Slot', 'Where it shows', 'Status', 'Entry', 'Why', 'Shown instead'];
+const FINDINGS_HEADER = ['Slot', 'Where it shows', 'Status', 'Entry', 'Why', 'Shown instead', 'Live now'];
+/** The only shape a suggested entry may take: the checker builds it from an 11-character id. */
+const SUGGESTED_ENTRY = /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/;
+const RESOLUTION_COUNTS = ['attempted', 'live', 'notLive', 'unreadable'];
 
 function ghJson(args, payload) {
   const result = spawnSync('gh', args, {
@@ -66,6 +69,11 @@ function assertCompleteReport(report, catalog) {
     throw incomplete('the canaries do not match AUDIT_CANARIES');
   }
   if (!Array.isArray(report.slots)) throw incomplete('slots is not a list');
+  // Written by checkers that resolve channel pages; a report from before them has neither field.
+  if (report.resolution !== undefined && !(report.resolution && typeof report.resolution === 'object'
+    && RESOLUTION_COUNTS.every((key) => Number.isInteger(report.resolution[key]) && report.resolution[key] >= 0))) {
+    throw incomplete('resolution is not a set of counts');
+  }
 
   const expected = new Map(catalogSlots(catalog));
   const seen = new Set();
@@ -76,6 +84,7 @@ function assertCompleteReport(report, catalog) {
     const wellFormed = typeof slot.surface === 'string' && SAFE_TEXT.test(slot.surface)
       && typeof slot.shownByDefault === 'boolean'
       && (slot.shownInstead === null || (typeof slot.shownInstead === 'string' && SAFE_TEXT.test(slot.shownInstead)))
+      && (slot.suggestedEntry === undefined || slot.suggestedEntry === null || (typeof slot.suggestedEntry === 'string' && SUGGESTED_ENTRY.test(slot.suggestedEntry)))
       && Array.isArray(slot.attempts) && slot.attempts.length === entries.length
       && slot.attempts.every((attempt, index) => isAttempt(attempt, entries[index]))
       && STATUSES.has(slot.status) && slotStatus(slot.attempts) === slot.status;
@@ -114,7 +123,9 @@ function entryCell(attempt, index) {
 /** One row per dead entry ahead of whatever plays; an empty slot gets one row. */
 function findingRows(slot) {
   const lead = [text(slot.slot), text(slot.surface), text(slot.status)];
-  if (slot.status === 'empty') return [[...lead, '—', 'no entries configured', text(slot.shownInstead ?? '—')]];
+  // The video the slot's channel has live now, when a pinned entry ahead of the channel is what needs replacing.
+  const liveNow = slot.suggestedEntry ? code(slot.suggestedEntry) : '—';
+  if (slot.status === 'empty') return [[...lead, '—', 'no entries configured', text(slot.shownInstead ?? '—'), liveNow]];
   const liveAt = slot.attempts.findIndex((attempt) => attempt.verdict === 'live');
   const unverifiedAt = slot.attempts.findIndex((attempt) => attempt.unverifiableFromRunner);
   // With nothing live, every dead entry is a row: an unverifiable entry ahead of them proves nothing plays.
@@ -126,7 +137,7 @@ function findingRows(slot) {
     .slice(0, stopAt)
     .map((attempt, index) => ({ attempt, index }))
     .filter(({ attempt }) => !attempt.unverifiableFromRunner)
-    .map(({ attempt, index }) => [...lead, entryCell(attempt, index), because(attempt), text(instead)]);
+    .map(({ attempt, index }) => [...lead, entryCell(attempt, index), because(attempt), text(instead), liveNow]);
 }
 
 /** Hotspot wall slots first, in grid priority order; everything else keeps the report's order. */
@@ -152,6 +163,16 @@ function table(header, rows, maxRows) {
   ];
 }
 
+/** How many channel pages resolved to a live video; none at all points at the proxy exit or the page, not the catalog. */
+function channelPageLines(resolution) {
+  if (!resolution) return [];
+  const lines = [`- Channel pages: ${resolution.live} of ${resolution.attempted} resolved to a live video`];
+  if (resolution.attempted > 0 && resolution.live === 0) {
+    lines.push('- No channel page resolved to a live video: channel entries were checked as channel embeds. A walled proxy exit or a changed page reads like this.');
+  }
+  return lines;
+}
+
 export function renderAuditBody(report, { runUrl = '', canaries, gridPriority = [], maxRows = Number.POSITIVE_INFINITY }) {
   const findings = report.slots.filter(isFinding);
   const shown = inAttentionOrder(findings.filter((slot) => slot.shownByDefault), gridPriority);
@@ -163,6 +184,7 @@ export function renderAuditBody(report, { runUrl = '', canaries, gridPriority = 
     '',
     `- Checked: ${new Date(report.checkedAt).toISOString()}${runUrl ? ` — [Workflow run](${runUrl})` : ''}`,
     `- Canaries: ${canaries}`,
+    ...channelPageLines(report.resolution),
     ...(recheckSkipped > 0
       ? [`- Alone checks skipped: ${recheckSkipped} stalled YouTube ${recheckSkipped === 1 ? 'entry' : 'entries'}, because the audit time budget was used up`]
       : []),
@@ -178,7 +200,7 @@ export function renderAuditBody(report, { runUrl = '', canaries, gridPriority = 
       .map(({ attempt, index }) => [text(slot.slot), text(slot.surface), entryCell(attempt, index), because(attempt)]));
     lines.push(
       '', '### Could not verify from the runner', '',
-      'An HLS 403, 451, 429 or 5xx, an HLS timeout, connection error or incomplete certificate chain, a YouTube player that never became ready, gave no verdict or never started while no canary played, a player that stopped reporting whether a video is live, or a YouTube player API that did not load can depend on the runner (its network, its region, or YouTube itself). These slots may still play for viewers, so they are not counted above. A YouTube player that stalls while a canary plays is checked alone up to twice within the audit time budget, and is counted above only if both checks stall.',
+      'An HLS 403, 451, 429 or 5xx, an HLS timeout, connection error or incomplete certificate chain, an HLS playlist that did not advance between reloads (a CDN edge can keep serving a cached copy), a region-locked channel refused outside its regions (HLS 403 or 451, YouTube player error 101 or 150), a YouTube player that never became ready, gave no verdict or never started while no canary played, a player that stopped reporting whether a video is live, or a YouTube player API that did not load can depend on the runner (its network, its region, or YouTube itself). These slots may still play for viewers, so they are not counted above. A YouTube player that stalls while a canary plays is checked alone up to twice within the audit time budget, and is counted above only if both checks stall.',
       '', ...table(['Slot', 'Where it shows', 'Entry', 'Why'], rows, maxRows),
     );
   }
@@ -198,9 +220,10 @@ export function renderAuditBody(report, { runUrl = '', canaries, gridPriority = 
   }
   lines.push(
     '', '### Fix a slot', '',
-    '1. Find a live stream for the slot and check it: `npm run live-video:check -- <url>`',
-    '2. When it prints `LIVE`, paste its `paste:` line into the slot\'s list in `src/config/live-video-sources.ts`. Entries are tried in order.',
-    '3. Re-check the slot before committing: `npm run live-video:check -- --slot <slot>`',
+    '1. When a row shows a `Live now` URL, replace the dead pinned entry with that URL, immediately before the slot\'s channel entry: the channel has moved to a new live video. Then skip to step 4.',
+    '2. Otherwise find a live stream for the slot and check it: `npm run live-video:check -- <url>`',
+    '3. When it prints `LIVE`, paste its `paste:` line into the slot\'s list in `src/config/live-video-sources.ts`. Entries are tried in order.',
+    '4. Re-check the slot before committing: `npm run live-video:check -- --slot <slot>`',
     '',
     'Each daily run rewrites this issue, closes it once no slot needs attention, and reopens it if a slot regresses.',
   );

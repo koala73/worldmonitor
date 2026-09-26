@@ -2945,6 +2945,29 @@
       "idleKeepPlaying": "Продовжити відтворення при бездіяльності",
       "idleSettingsHint": "Змінити це можна будь-коли в Параметри › Медіа.",
       "idleKeepPlayingToast": "Пряма трансляція відео продовжиться при бездіяльності. Змініть у Параметри › Медіа."
+    },
+    "corroboration": {
+      "singlePublisher": "Один видавець",
+      "singlePublisherHint": "Поки що про це повідомляє лише один видавець. Це описує охоплення, а не точність.",
+      "tier4Only": "Тільки низькорівневі джерела",
+      "tier4OnlyHint": "Усі видавці, які повідомляють про це, є джерелами рівня 4 (агрегатори та блоги). Це описує охоплення, а не точність.",
+      "rosterListed": "({{listed}} у списку)",
+      "rosterFeeds": "Переглянуті стрічки: {{labels}}",
+      "rosterLegend": "Рівні ранжують джерела; вони не оцінюють це твердження.",
+      "tierDocsLink": "Як призначаються рівні",
+      "tierChip": "Р{{tier}}",
+      "tierChipUndeclared": "Р?",
+      "tierTitle1": "Рівень 1: Інформаційні агентства та офіційні органи",
+      "tierTitle2": "Рівень 2: Великі медіа-видання",
+      "tierTitle3": "Рівень 3: Спеціалізовані, регіональні джерела та аналітичні центри",
+      "tierTitle4": "Рівень 4: Агрегатори та блоги",
+      "tierTitleUndeclared": "Рівень не визначений: ще не переглянуто",
+      "rosterSummary": "Повідомляють {{publishers}}",
+      "rosterSummaryTier1": "Повідомляють {{publishers}}, зокрема рівня 1: {{tier1}}",
+      "rosterPublishers_one": "{{count}} видавець",
+      "rosterPublishers_few": "{{count}} видавці",
+      "rosterPublishers_many": "{{count}} видавців",
+      "rosterPublishers_other": "{{count}} видавців"
     }
   },
   "popups": {

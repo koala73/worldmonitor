@@ -35,6 +35,9 @@
  *     date-precision unions                  -> components $refs
  *     (all in openapi-dedup-schemas.mjs; every dedup transform is resolved
  *     back to the source document in tests, proving they are lossless)
+ *   - repeated subtrees too deep for an inline-target ref to pay for
+ *     (the pointer into the document is longer than the subtree itself)
+ *                                            -> shared WMShared<N> components
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
  *
@@ -56,6 +59,7 @@ import {
   dedupeSharedChinaProvenanceSchemas,
   dedupeSharedResponseHeaders,
   dedupeSharedSchemaSubtrees,
+  dedupeSharedSubtreeComponents,
 } from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
@@ -141,6 +145,11 @@ export function buildBundle({ spec: provided } = {}) {
   const chinaDateStats = dedupeRepeatedChinaDateSchemas(spec);
   const int64Stats = dedupeRepeatedInt64Schemas(spec);
   const schemaSubtreeStats = dedupeSharedSchemaSubtrees(spec);
+  // After the named passes and the inline-target pass: anything still repeated
+  // here sat deep in a long-named component, where a $ref INTO the document is
+  // longer than the repeated subtree itself and only a compact shared
+  // component ref wins (see openapi-dedup-schemas.mjs).
+  const sharedSubtreeStats = dedupeSharedSubtreeComponents(spec);
   const paramStats = dedupeSharedParameters(spec);
   const inlineTypedStats = ensureInlineTypedInput(spec);
   injectDeprecationPolicyMetadata(spec);
@@ -163,6 +172,7 @@ export function buildBundle({ spec: provided } = {}) {
     headerStats,
     schemaStats,
     schemaSubtreeStats,
+    sharedSubtreeStats,
     chinaDateStats,
     int64Stats,
     paramStats,
@@ -181,6 +191,7 @@ function main() {
     stats,
     schemaStats,
     schemaSubtreeStats,
+    sharedSubtreeStats,
     chinaDateStats,
     int64Stats,
     headerStats,
@@ -201,6 +212,7 @@ function main() {
       `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
       `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
+      `hoisted ${sharedSubtreeStats.replacedRefs} deep repeated subtrees into ${sharedSubtreeStats.groups} shared components (${sharedSubtreeStats.bytesFreed} bytes); ` +
       `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );

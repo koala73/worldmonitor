@@ -296,7 +296,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.primarySource, 'news schema must declare primarySource');
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
     assert.deepEqual(newsStory.sourceProvenance.required, [
-      'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed',
+      'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
     ]);
     assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
       'low', 'medium', 'high', 'unknown',
@@ -305,6 +305,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       'wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown',
     ]);
     assert.ok(newsStory.sourceProvenance.properties.stateAffiliated);
+    assert.deepEqual(newsStory.sourceProvenance.properties.knownBiases.items, { type: 'string' });
+    assert.match(newsStory.sourceProvenance.properties.knownBiases.description, /not assessed, not neutral/);
+    assert.equal(newsStory.sourceProvenance.properties.summary.type, 'string');
     assert.deepEqual(newsStory.countryCode.type, ['string', 'null']);
     assert.equal(newsStory.title, undefined, 'news schema must not advertise the drifted title field');
     assert.equal(newsStory.summary, undefined, 'news schema must not advertise the drifted summary field');
@@ -902,7 +905,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `adds` lists the keys `_execute` layers on top; they are legitimately
   // absent from the wire, so they are subtracted before comparing.
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
-    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories'] }],
+    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
   ]);
 
   for (const [toolName, { adds }] of SPREAD_PASSTHROUGH_TOOLS) {

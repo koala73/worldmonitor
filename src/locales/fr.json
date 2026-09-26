@@ -2857,6 +2857,28 @@
       "idleKeepPlaying": "Continuer la lecture en cas d'inactivité",
       "idleSettingsHint": "Modifiez ce paramètre à tout moment dans Paramètres › Média.",
       "idleKeepPlayingToast": "La vidéo en direct continuera de se lire en cas d'inactivité. Modifiez dans Paramètres › Média."
+    },
+    "corroboration": {
+      "singlePublisher": "Éditeur unique",
+      "singlePublisherHint": "Un seul éditeur rapporte cela pour l'instant. Cela décrit la couverture, pas l'exactitude.",
+      "tier4Only": "Sources de bas niveau uniquement",
+      "tier4OnlyHint": "Chaque média qui rapporte cela est une source de niveau 4 (agrégateurs et blogs). Cela décrit la couverture, pas l'exactitude.",
+      "rosterListed": "({{listed}} listés)",
+      "rosterFeeds": "Flux détectés : {{labels}}",
+      "rosterLegend": "Les niveaux classent les sources ; ils ne jugent pas cette affirmation.",
+      "tierDocsLink": "Comment les niveaux sont attribués",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Niveau 1 : Agences de presse et organismes officiels",
+      "tierTitle2": "Niveau 2 : Grands médias",
+      "tierTitle3": "Niveau 3 : Sources spécialisées, régionales et instituts de recherche",
+      "tierTitle4": "Niveau 4 : Agrégateurs et blogs",
+      "tierTitleUndeclared": "Niveau non déclaré : pas encore examiné",
+      "rosterSummary": "Signalé par {{publishers}}",
+      "rosterSummaryTier1": "Signalé par {{publishers}}, dont {{tier1}} de niveau 1",
+      "rosterPublishers_one": "{{count}} éditeur",
+      "rosterPublishers_many": "{{count}} éditeurs",
+      "rosterPublishers_other": "{{count}} éditeurs"
     }
   },
   "popups": {

@@ -56,3 +56,32 @@ it('loads the scenario after premium access arrives and discards an older entitl
     harness.cleanup();
   }
 });
+
+it('lists cited evidence under the brief sources in summary and full views', async () => {
+  const harness = await createCountryDeepDivePanelHarness();
+  try {
+    const panel = harness.createPanel();
+    panel.show('Finland', 'FI', null, {});
+    panel.updateBrief({
+      code: 'FI',
+      country: 'Finland',
+      brief: "SITUATION NOW\nFinland's fiscal space scores 28 of 100 in the Country Resilience Index. [E2]",
+      sources: [{ title: 'Finland budget talks', source: 'Yle', url: 'https://example.com/fi' }],
+      evidence: [{ id: 'E2', kind: 'resilience', label: 'Fiscal space', value: '28 of 100', factText: '', asOf: '2026-09-21T00:00:00.000Z', url: '' }],
+    });
+    // The mini DOM keeps trusted HTML as a string, so read each footer host's markup.
+    const root = harness.getPanelRoot();
+    const hosts = [...root.querySelectorAll('.cdp-summary-only'), ...root.querySelectorAll('.cdp-expanded-only')]
+      .map((node) => node.innerHTML)
+      .filter((html) => html.includes('cdp-brief-evidence'));
+    assert.equal(hosts.length >= 2, true, 'summary and expanded views each list the evidence');
+    for (const html of hosts) {
+      assert.match(html, /<details class="cdp-brief-sources cdp-brief-evidence">E2 Fiscal space<\/details>/);
+      assert.ok(html.indexOf('Finland budget talks') < html.indexOf('cdp-brief-evidence'), 'evidence follows the sources list');
+    }
+    await settleWidgets(harness);
+    panel.hide();
+  } finally {
+    harness.cleanup();
+  }
+});

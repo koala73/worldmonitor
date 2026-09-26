@@ -2457,6 +2457,27 @@
       "idleKeepPlaying": "Fortsätt spela när inaktiv",
       "idleSettingsHint": "Ändra detta när som helst i Inställningar › Media.",
       "idleKeepPlayingToast": "Livevideo fortsätter spela när inaktiv. Ändra i Inställningar › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "En enda utgivare",
+      "singlePublisherHint": "Endast en utgivare rapporterar om detta hittills. Detta beskriver bevakningen, inte korrektheten.",
+      "tier4Only": "Endast låg-nivå-källor",
+      "tier4OnlyHint": "Alla medier som rapporterar om detta är tier-4-källor (aggregatorer och bloggar). Detta beskriver bevakningen, inte korrektheten.",
+      "rosterListed": "({{listed}} listade)",
+      "rosterFeeds": "Sedda flöden: {{labels}}",
+      "rosterLegend": "Nivåerna rangordnar källor; de bedömer inte detta påstående.",
+      "tierDocsLink": "Hur nivåerna tilldelas",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Nivå 1: Nyhetsbyråer och officiella organ",
+      "tierTitle2": "Nivå 2: Större medieorgan",
+      "tierTitle3": "Nivå 3: Specialiserade och regionala källor samt tankesmedjor",
+      "tierTitle4": "Nivå 4: Aggregatorer och bloggar",
+      "tierTitleUndeclared": "Nivå inte angiven: ännu inte granskad",
+      "rosterSummary": "Rapporterat av {{publishers}}",
+      "rosterSummaryTier1": "Rapporterat av {{publishers}}, varav {{tier1}} på nivå 1",
+      "rosterPublishers_one": "{{count}} utgivare",
+      "rosterPublishers_other": "{{count}} utgivare"
     }
   },
   "popups": {

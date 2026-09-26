@@ -32,6 +32,8 @@ Panel id is `sanctions-pressure`; canonical component is `src/components/Sanctio
 
 The seeder pulls each list independently, concatenates OFAC and SEMA (SEMA may attach onto OFAC only), and diffs against the previous snapshot to compute `newEntryCount`. SEMA `<Country>` is the regulation, not nationality, so it is stored on `programs` / the note rather than `countryCodes`.
 
+A SEMA row whose own identity fields are unusable (no regulation, a non-numeric item, an IMO that is not seven digits, or no name) is held back rather than repaired, and the rest of the list still publishes. The held-back row IDs and reasons appear under `sourceHealth["sema-ca"].quarantined` in `seed-meta:sanctions:pressure`. If more than 1% of rows are held back, or any row breaks the table's field or date contract, the whole SEMA source is rejected for that run.
+
 ## Refresh cadence
 
 OFAC publishes list updates on an irregular cadence (daily-to-weekly). The panel reads the most recent snapshot; freshness is surfaced indirectly via `newEntryCount`.

@@ -2933,6 +2933,28 @@
       "idleKeepPlaying": "Nastavi reproduciranje kada je korisnik neaktivan",
       "idleSettingsHint": "Promijeni ovo bilo kada u Postavkama › Mediji.",
       "idleKeepPlayingToast": "Live video će se nastaviti reproducirati kada je korisnik neaktivan. Promijeni u Postavkama › Mediji."
+    },
+    "corroboration": {
+      "singlePublisher": "Jedan izdavač",
+      "singlePublisherHint": "Za sada samo jedan izdavač izvještava o tome. Ovo opisuje doseg izvještavanja, ne točnost.",
+      "tier4Only": "Samo izvori niske razine",
+      "tier4OnlyHint": "Svaki medij koji izvještava o tome izvor je 4. razine (agregatori i blogovi). Ovo opisuje doseg izvještavanja, ne točnost.",
+      "rosterListed": "({{listed}} na popisu)",
+      "rosterFeeds": "Viđeni kanali: {{labels}}",
+      "rosterLegend": "Razine rangiraju izvore; ne ocjenjuju ovu tvrdnju.",
+      "tierDocsLink": "Kako se dodjeljuju razine",
+      "tierChip": "R{{tier}}",
+      "tierChipUndeclared": "R?",
+      "tierTitle1": "Razina 1: Novinske agencije i službena tijela",
+      "tierTitle2": "Razina 2: Veliki mediji",
+      "tierTitle3": "Razina 3: Specijalizirani i regionalni izvori te think-tankovi",
+      "tierTitle4": "Razina 4: Agregatori i blogovi",
+      "tierTitleUndeclared": "Razina nije navedena: još nije pregledano",
+      "rosterSummary": "Izvještava {{publishers}}",
+      "rosterSummaryTier1": "Izvještava {{publishers}}, uključujući {{tier1}} razine 1",
+      "rosterPublishers_one": "{{count}} izdavač",
+      "rosterPublishers_few": "{{count}} izdavača",
+      "rosterPublishers_other": "{{count}} izdavača"
     }
   },
   "popups": {

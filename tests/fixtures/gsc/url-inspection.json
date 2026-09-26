@@ -1,0 +1,254 @@
+{
+  "https://tech.worldmonitor.app/dashboard": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://tech.worldmonitor.app/dashboard",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://tech.worldmonitor.app/dashboard",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://worldmonitor.app/mcp": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://worldmonitor.app/mcp",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://worldmonitor.app/mcp",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://www.worldmonitor.app/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/api/llms.txt": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://www.worldmonitor.app/api/llms.txt",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/api/llms.txt",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Duplicate, Google chose different canonical than user",
+        "googleCanonical": "https://www.worldmonitor.app/compare/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/countries/france/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Crawled - currently not indexed",
+        "googleCanonical": "https://www.worldmonitor.app/countries/france/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/countries/france/",
+        "verdict": "NEUTRAL"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/crises/sudan-conflict/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Not found (404)",
+        "googleCanonical": "https://www.worldmonitor.app/crises/sudan-conflict/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "NOT_FOUND",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/crises/sudan-conflict/",
+        "verdict": "FAIL"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/docs/_next/static/chunks/main-abc123.js": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Crawled - currently not indexed",
+        "googleCanonical": "https://www.worldmonitor.app/docs/_next/static/chunks/main-abc123.js",
+        "indexingState": "BLOCKED_BY_META_TAG",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/docs/_next/static/chunks/main-abc123.js",
+        "verdict": "NEUTRAL"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/docs/zh/about": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Alternate page with proper canonical tag",
+        "googleCanonical": "https://www.worldmonitor.app/docs/about",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/docs/about",
+        "verdict": "NEUTRAL"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/pricing.md": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Crawled - currently not indexed",
+        "googleCanonical": "https://www.worldmonitor.app/pricing.md",
+        "indexingState": "BLOCKED_BY_META_TAG",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/pricing.md",
+        "verdict": "NEUTRAL"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/research/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://www.worldmonitor.app/research/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/research/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/sources/news/page/2/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://www.worldmonitor.app/sources/news/page/2/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/sources/news/page/2/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/tools/signal-convergence/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://www.worldmonitor.app/tools/signal-convergence/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/tools/signal-convergence/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  },
+  "https://www.worldmonitor.app/use-cases/monitor-country-risk/": {
+    "inspectionResult": {
+      "indexStatusResult": {
+        "coverageState": "Submitted and indexed",
+        "googleCanonical": "https://www.worldmonitor.app/use-cases/monitor-country-risk/",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-09-20T04:11:23Z",
+        "pageFetchState": "SUCCESSFUL",
+        "robotsTxtState": "ALLOWED",
+        "sitemap": [
+          "https://www.worldmonitor.app/sitemap-main.xml"
+        ],
+        "userCanonical": "https://www.worldmonitor.app/use-cases/monitor-country-risk/",
+        "verdict": "PASS"
+      },
+      "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:worldmonitor.app&id=RECORDED"
+    }
+  }
+}

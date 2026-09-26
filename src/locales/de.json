@@ -2838,6 +2838,27 @@
       "idleKeepPlaying": "Live-Video bei Inaktivität weiterspielen",
       "idleSettingsHint": "Dies können Sie jederzeit unter Einstellungen › Medien ändern.",
       "idleKeepPlayingToast": "Live-Video wird bei Inaktivität weitergespielt. Ändern Sie dies unter Einstellungen › Medien."
+    },
+    "corroboration": {
+      "singlePublisher": "Einzelner Verleger",
+      "singlePublisherHint": "Bislang berichtet nur ein Verleger darüber. Dies beschreibt die Berichterstattung, nicht die Genauigkeit.",
+      "tier4Only": "Nur niedrigstufige Quellen",
+      "tier4OnlyHint": "Jedes Medium, das darüber berichtet, ist eine Tier-4-Quelle (Aggregatoren und Blogs). Dies beschreibt die Berichterstattung, nicht die Genauigkeit.",
+      "rosterListed": "({{listed}} aufgeführt)",
+      "rosterFeeds": "Gesehene Feeds: {{labels}}",
+      "rosterLegend": "Tiers ordnen Quellen ein; sie beurteilen diese Aussage nicht.",
+      "tierDocsLink": "Wie Tiers vergeben werden",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Tier 1: Nachrichtenagenturen und offizielle Stellen",
+      "tierTitle2": "Tier 2: Große Medien",
+      "tierTitle3": "Tier 3: Fach-, Regional- und Think-Tank-Quellen",
+      "tierTitle4": "Tier 4: Aggregatoren und Blogs",
+      "tierTitleUndeclared": "Tier nicht angegeben: noch nicht geprüft",
+      "rosterSummary": "Berichtet von {{publishers}}",
+      "rosterSummaryTier1": "Berichtet von {{publishers}}, darunter {{tier1}} Tier-1",
+      "rosterPublishers_one": "{{count}} Verleger",
+      "rosterPublishers_other": "{{count}} Verlegern"
     }
   },
   "popups": {

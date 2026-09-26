@@ -2907,6 +2907,27 @@
       "idleKeepPlaying": "ادامه پخش هنگام عدم فعالیت",
       "idleSettingsHint": "می‌توانید این را هر زمانی در تنظیمات › رسانه تغییر دهید.",
       "idleKeepPlayingToast": "ویدیوی زنده هنگام عدم فعالیت ادامه خواهد یافت. در تنظیمات › رسانه تغییر دهید."
+    },
+    "corroboration": {
+      "singlePublisher": "یک منتشر کننده",
+      "singlePublisherHint": "تاکنون تنها یک منتشر کننده این خبر را گزارش کرده است. این توصیف دامنه پوشش است، نه دقت.",
+      "tier4Only": "تنها منابع پایین‌رتبه",
+      "tier4OnlyHint": "هر رسانه‌ای که این خبر را گزارش می‌کند یک منبع رتبه ۴ است (تجمیع‌کنندگان و وبلاگ‌ها). این توصیف دامنه پوشش است، نه دقت.",
+      "rosterListed": "({{listed}} در فهرست)",
+      "rosterFeeds": "خوراک‌های مشاهده‌شده: {{labels}}",
+      "rosterLegend": "درجه‌بندی منابع را مشخص می‌کند؛ درستی این ادعا را قضاوت نمی‌کند.",
+      "tierDocsLink": "نحوه تخصیص درجه‌بندی",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T؟",
+      "tierTitle1": "درجه ۱: آژانس‌های خبری و نهادهای رسمی",
+      "tierTitle2": "درجه ۲: رسانه‌های بزرگ",
+      "tierTitle3": "درجه ۳: منابع تخصصی، منطقه‌ای و مراکز فکری",
+      "tierTitle4": "درجه ۴: تجمع‌کنندگان و وبلاگ‌ها",
+      "tierTitleUndeclared": "درجه اعلام‌نشده: هنوز بررسی‌نشده",
+      "rosterSummary": "گزارش‌شده توسط {{publishers}}",
+      "rosterSummaryTier1": "گزارش‌شده توسط {{publishers}}، شامل {{tier1}} ناشر درجه ۱",
+      "rosterPublishers_one": "{{count}} ناشر",
+      "rosterPublishers_other": "{{count}} ناشر"
     }
   },
   "popups": {

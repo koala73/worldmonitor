@@ -2857,6 +2857,28 @@
       "idleKeepPlaying": "Continuă redarea când este inactiv",
       "idleSettingsHint": "Modifică acest lucru oricând în Setări › Media.",
       "idleKeepPlayingToast": "Video live va continua redarea când este inactiv. Modifică în Setări › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Un singur editor",
+      "singlePublisherHint": "Doar un editor raportează aceasta până acum. Aceasta descrie acoperirea de presă, nu acuratețea.",
+      "tier4Only": "Doar surse de nivel scăzut",
+      "tier4OnlyHint": "Fiecare publicație care raportează aceasta este o sursă de nivel 4 (site-uri agregatoare și bloguri). Aceasta descrie acoperirea de presă, nu acuratețea.",
+      "rosterListed": "({{listed}} listați)",
+      "rosterFeeds": "Fluxuri văzute: {{labels}}",
+      "rosterLegend": "Nivelurile clasifică sursele; ele nu judecă această afirmație.",
+      "tierDocsLink": "Cum sunt atribuite nivelurile",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Nivelul 1: Agenții de presă și organisme oficiale",
+      "tierTitle2": "Nivelul 2: Publicații majore",
+      "tierTitle3": "Nivelul 3: Surse specializate, regionale și think tank-uri",
+      "tierTitle4": "Nivelul 4: Agregatoare și bloguri",
+      "tierTitleUndeclared": "Nivel nedeclarat: încă neverificat",
+      "rosterSummary": "Relatat de {{publishers}}",
+      "rosterSummaryTier1": "Relatat de {{publishers}}, inclusiv {{tier1}} de nivel 1",
+      "rosterPublishers_one": "{{count}} editor",
+      "rosterPublishers_few": "{{count}} editori",
+      "rosterPublishers_other": "{{count}} de editori"
     }
   },
   "popups": {

@@ -12,7 +12,7 @@ import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import {
   CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS,
@@ -60,12 +60,14 @@ afterEach(() => {
 });
 
 describe("checkout stamps a signed login email (#6335)", () => {
-  test("the authenticated action stamps a verifiable login email alongside the userId", async () => {
+  test("the checkout action stamps a verifiable login email alongside the userId", async () => {
     const t = convexTest(schema, modules);
 
-    await t
-      .withIdentity(CLERK_USER)
-      .action(api.payments.checkout.createCheckout, { productId: PRODUCT_ID });
+    await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: CLERK_USER.subject,
+      email: CLERK_USER.email,
+      productId: PRODUCT_ID,
+    });
 
     const metadata = capturedMetadata();
     // Billing email remains a provider input; signed login identity is separate.
@@ -89,9 +91,11 @@ describe("checkout stamps a signed login email (#6335)", () => {
   test("the stamped token expires on the documented window, not never", async () => {
     const t = convexTest(schema, modules);
 
-    await t
-      .withIdentity(CLERK_USER)
-      .action(api.payments.checkout.createCheckout, { productId: PRODUCT_ID });
+    await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: CLERK_USER.subject,
+      email: CLERK_USER.email,
+      productId: PRODUCT_ID,
+    });
 
     const metadata = capturedMetadata();
     const wellPastTheWindow = Date.now() + CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS + 60_000;
@@ -106,18 +110,14 @@ describe("checkout stamps a signed login email (#6335)", () => {
   });
 
   // The production shape for a phone-only signup, or any session whose Clerk
-  // JWT template omits the `email` claim. Driven through the PUBLIC action so
-  // the `identity?.email` path itself is exercised, not just the relay's
-  // explicit argument.
-  test("the authenticated action stamps nothing when the identity carries no email", async () => {
+  // JWT template omits the `email` claim: the edge gateway relays no email.
+  test("the checkout action stamps nothing when the caller carries no email", async () => {
     const t = convexTest(schema, modules);
 
-    await t
-      .withIdentity({
-        subject: "user_no_email_claim",
-        tokenIdentifier: "clerk|user_no_email_claim",
-      })
-      .action(api.payments.checkout.createCheckout, { productId: PRODUCT_ID });
+    await t.action(internal.payments.checkout.internalCreateCheckout, {
+      userId: "user_no_email_claim",
+      productId: PRODUCT_ID,
+    });
 
     const metadata = capturedMetadata();
     expect(metadata.wm_login_email).toBeUndefined();

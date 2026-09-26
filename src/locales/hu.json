@@ -2907,6 +2907,27 @@
       "idleKeepPlaying": "Élő videó lejátszása üresjárat során",
       "idleSettingsHint": "Ezt bármikor módosíthatja a Beállítások › Média menüben.",
       "idleKeepPlayingToast": "Az élő videó üresjárat során is lejátszódik. Módosítása a Beállítások › Média menüben."
+    },
+    "corroboration": {
+      "singlePublisher": "Egyetlen kiadó",
+      "singlePublisherHint": "Egyelőre csak egy kiadó számol be erről. Ez a lefedettséget jellemzi, nem a pontosságot.",
+      "tier4Only": "Csak alacsony szintű források",
+      "tier4OnlyHint": "Minden erről beszámoló médium 4. szintű forrás (aggregátorok és blogok). Ez a lefedettséget jellemzi, nem a pontosságot.",
+      "rosterListed": "({{listed}} felsorolva)",
+      "rosterFeeds": "Látott hírcsatornák: {{labels}}",
+      "rosterLegend": "A szintek a forrásokat rangsorolják; nem ítélik meg ezt az állítást.",
+      "tierDocsLink": "Hogyan történik a szintek meghatározása",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "1. szint: Hírügynökségek és hivatalos szervek",
+      "tierTitle2": "2. szint: Nagy médiumok",
+      "tierTitle3": "3. szint: Szakosodott, regionális és kutatóintézeti források",
+      "tierTitle4": "4. szint: Aggregátorok és blogok",
+      "tierTitleUndeclared": "Szint nincs megadva: még nem ellenőrzött",
+      "rosterSummary": "{{publishers}} által közölve",
+      "rosterSummaryTier1": "{{publishers}} által közölve, köztük {{tier1}} 1. szintű",
+      "rosterPublishers_one": "{{count}} kiadó",
+      "rosterPublishers_other": "{{count}} kiadó"
     }
   },
   "popups": {

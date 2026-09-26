@@ -14,6 +14,14 @@
  * Fail-open with `unavailable: true` when Redis cannot be read: the SW
  * treats that as "no information" and still navigates, rather than
  * stranding every notification click during a Redis outage.
+ *
+ * Origin invocations are metered per IP (60/min, fail-open). The 60s shared
+ * cache plus the SW's own 60s snapshot cache means a legitimate client
+ * reaches the function about once a minute per cache key, so the budget
+ * only bites on callers deliberately missing the cache. A limiter outage
+ * serves the snapshot unmetered, and a 429 is no-store so one caller's
+ * exhausted budget is never served to other service workers (the SW treats
+ * any non-OK response as "no information" and navigates).
  */
 
 export const config = { runtime: 'edge' };
@@ -24,6 +32,8 @@ import { getCorsHeaders } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { getRedisCredentials } from './_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from './_rate-limit.js';
 
 const SUPPRESSIONS_KEY = 'notif:blocked-links:v1';
 const HOST_PREFIX = 'host:';
@@ -34,6 +44,8 @@ const LINK_RESOLUTION_BASE = 'https://worldmonitor.app/';
 const RESOLVABLE_LINK_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/)/i;
 // One shared cache entry: the refusal of a query string is itself cached.
 const CACHEABLE_HEADERS = { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30' };
+const RATE_LIMIT_SCOPE = 'notification-suppressions';
+const RATE_LIMIT_PER_MINUTE = 60;
 
 function warnUnavailable(reason, context = '') {
   const suffix = context ? ` ${context}` : '';
@@ -150,7 +162,7 @@ export async function readSuppressionSnapshot(fetchImpl = (...args) => globalThi
   }
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   const cors = getCorsHeaders(req, 'GET, OPTIONS');
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: cors });
@@ -164,6 +176,17 @@ export default async function handler(req) {
   if (new URL(req.url).search) {
     return jsonResponse({ error: 'Unexpected query string' }, 400, { ...cors, ...CACHEABLE_HEADERS });
   }
+
+  // After the query refusal, which never touches Redis: metering it would
+  // spend the Redis call the refusal exists to avoid. Fail-open (the
+  // default) keeps the endpoint's contract through a limiter outage.
+  const limited = await checkRateLimit(req, { ...cors, 'Cache-Control': 'no-store' }, {
+    ctx,
+    scope: RATE_LIMIT_SCOPE,
+    limit: RATE_LIMIT_PER_MINUTE,
+    window: '60 s',
+  });
+  if (limited) return limited;
 
   const creds = getRedisCredentials();
   if (!creds) {

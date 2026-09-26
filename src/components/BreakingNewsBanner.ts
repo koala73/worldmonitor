@@ -5,6 +5,7 @@ import { t } from '@/services/i18n';
 import { isMobileDevice } from '@/utils';
 import { rawHtml, trustedHtml } from '@/utils/dom-utils';
 import { sanitizeUrl } from '@/utils/sanitize';
+import { corroborationFlag } from '@/utils/corroboration-flag';
 import { renderPrimarySourceProvenance } from './news/source-provenance';
 
 const MAX_ALERTS = 3;
@@ -271,13 +272,22 @@ export class BreakingNewsBanner {
 
     const provenance = document.createElement('span');
     provenance.className = 'breaking-alert-provenance';
-    const { riskBadge, tierBadge } = renderPrimarySourceProvenance(alert.source);
+    const { riskBadge, tierBadge, facts } = renderPrimarySourceProvenance(alert.source);
     this.appendProvenanceBadge(provenance, tierBadge, 'breaking-news banner source tier badge');
     const sourceName = document.createElement('span');
     sourceName.className = 'breaking-alert-source';
     sourceName.textContent = alert.source;
     provenance.appendChild(sourceName);
     this.appendProvenanceBadge(provenance, riskBadge, 'breaking-news banner source propaganda badge');
+    this.appendProvenanceBadge(provenance, facts, 'breaking-news banner source provenance facts');
+    const flag = corroborationFlag(alert.corroboration);
+    if (flag) {
+      const pill = document.createElement('span');
+      pill.className = 'corroboration-flag';
+      pill.title = flag.hint;
+      pill.textContent = flag.text;
+      provenance.appendChild(pill);
+    }
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'breaking-alert-time';

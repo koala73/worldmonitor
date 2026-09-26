@@ -37,6 +37,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
+import { corroborateRunListings, supersedesRun as supersedes } from './lib/gh-run-listing.mjs';
 
 import { isMainModule } from './lib/main-module.mjs';
 import { REPOSITORY, readArgument } from './railway-cli.mjs';
@@ -158,11 +159,59 @@ const INDETERMINATE_RUN_CONCLUSIONS = new Set([
 
 const GH_CALL_TIMEOUT_MS = 30_000;
 
+// Independent samples of a workflow's run listing per tick. See readNewestRun
+// for the stale-index-snapshot failure this defends against, and for why the
+// defence is `total_count` comparison plus a quorum rather than three votes:
+// production's own rate (21 alarms in 120 ticks, ~17%) is 5x the rate the
+// tight CI loop showed, so outvoting alone would still leave roughly one false
+// alarm a day. Three samples is what makes the discard-and-quorum rule work
+// while staying inside the budgets below.
+export const RUN_LISTING_SAMPLES = 3;
+
+// Non-stale samples that must agree before this monitor will say a workflow
+// stopped deploying. Below it, the tick is UNKNOWN (a warning on a green job),
+// never an alarm — a missing deploy persists, so the next tick still catches a
+// real one, while a stale shard's lie does not survive to it.
+export const RUN_LISTING_ALARM_QUORUM = 2;
+
+// Wall-clock one workflow's sampling may spend before it settles for the
+// samples already in hand. A slow but ANSWERING 5xx is the retryable path, so
+// the samples that cost the most are the ones returning nothing. This caps how
+// many of them one workflow pays for; it does NOT cap a read already in
+// flight, which is what MONITOR_WALL_BUDGET_MS below exists for. The single
+// source of the arithmetic is there — do not restate it here, so the two
+// cannot drift apart.
+export const RUN_LISTING_SAMPLE_BUDGET_MS = 90_000;
+
 // Retries AFTER the first attempt, so the worst case is 3 calls. Sized against
 // the workflow's `timeout-minutes: 10`: a transport failure returns in about a
-// second, so 3 workflows x 2 reads x 3 attempts costs seconds, not minutes.
-// The deployed-baseline read adds nothing here: it is a local `git rev-parse`
-// of the tag the deploy workflow writes, not a GitHub call.
+// second, so 3 workflows x 4 reads x 3 attempts costs seconds, not minutes,
+// and RUN_LISTING_SAMPLE_BUDGET_MS bounds the slow-5xx tail. The deployed-
+// baseline read adds nothing here: it is a local `git rev-parse` of the tag
+// the deploy workflow writes, not a GitHub call.
+// The whole walk's wall-clock ceiling, against the workflow's
+// `timeout-minutes: 10` (600s). Per-read budgets cannot bound this on their
+// own, and the arithmetic is worth writing down once because every factor is a
+// constant in this file:
+//
+//   one attempt          <= GH_CALL_TIMEOUT_MS                        30.0s
+//   one read             1 + GH_READ_RETRY_ATTEMPTS attempts + backoff
+//                        3 x 30s + (500ms + 1000ms)                   91.5s
+//   one workflow         2 listing samples (the 2nd starts under
+//                        RUN_LISTING_SAMPLE_BUDGET_MS and overshoots
+//                        it, since the budget is checked BETWEEN
+//                        samples) + 1 unbudgeted readRunJobs
+//                        3 x 91.5s                                   274.5s
+//   three workflows      3 x 274.5s                                  823.5s
+//
+// 823.5s against a 600s timeout: the runner kills the job —
+// which reports as a RED monitor with no verdict for any workflow, the exact
+// false alarm this file exists to remove. The deadline is checked before every
+// gh ATTEMPT (it wraps the callee of createRetryingGh, not its caller), so the
+// overshoot is one in-flight call rather than a whole retry ladder, and every
+// workflow after it is reached still gets its own UNKNOWN rather than nothing.
+export const MONITOR_WALL_BUDGET_MS = 8 * 60 * 1000;
+
 export const GH_READ_RETRY_ATTEMPTS = 2;
 export const GH_READ_RETRY_BASE_MS = 500;
 export const GH_READ_RETRY_MAX_MS = 4_000;
@@ -232,6 +281,10 @@ export function isGithubRecordUnreadability(error) {
   if (error.code === 'ENOENT') return false;
   const message = error.message;
   if (error.timedOut === true) return true;
+  // "I could not corroborate this" is a statement about the READ, not a
+  // GitHub answer about the deploy, so it warns like any other unreadability
+  // rather than claiming a production deploy stopped happening.
+  if (error.githubRecordUncorroborated === true) return true;
   const status = message.match(/\(HTTP (\d{3})\)/);
   if (status) {
     const code = Number(status[1]);
@@ -264,6 +317,28 @@ export function createRetryingGh({ gh, sleep = sleepSync, attempts = GH_READ_RET
   };
 }
 
+/**
+ * Refuse a gh read once the monitor's wall-clock budget is spent.
+ *
+ * Marked `timedOut` on purpose rather than with a bespoke flag: running out of
+ * time IS a timeout, and the two behaviours that classification already buys
+ * are exactly the ones wanted here — never retried (retrying is what spent the
+ * budget) and classified as unreadability, so the job warns rather than
+ * claiming a deploy failed.
+ */
+export function createDeadlineGh({ gh, deadlineAt, clock = () => Date.now() }) {
+  return (args) => {
+    if (clock() >= deadlineAt) {
+      const error = markGithubReadFailure(new Error(
+        `the monitor's ${MONITOR_WALL_BUDGET_MS / 1000}s wall-clock budget was spent before this read could run`,
+      ));
+      error.timedOut = true;
+      throw error;
+    }
+    return gh(args);
+  };
+}
+
 function runGh(args) {
   const result = spawnSync('gh', args, {
     encoding: 'utf8',
@@ -289,12 +364,21 @@ function parseTimestamp(value) {
 }
 
 /**
- * Resolve the newest run of one workflow on main, including queued or active
- * work, or a structured verdict when there is none.
+ * Read the run listing for one workflow on main once.
  *
- * `gh` is injected rather than imported so the I/O path is testable.
+ * Returns `{ runs, totalCount }` — runs newest-first, and the listing's own
+ * `total_count`. `totalCount` is not decoration: a stale index snapshot
+ * under-reports it (1366 against a true 3168 in the incident that motivated
+ * the sampling below), which makes it the one field that tells a stale answer
+ * from a fresh one by comparison rather than by guessing. `null` when the
+ * payload omits it or it is not an integer, which the caller treats as
+ * "cannot judge this sample" rather than as zero.
+ *
+ * Throws (never returns a partial answer) when the payload or any timestamp in
+ * it is unreadable, so a malformed listing is a read failure rather than a
+ * quietly shorter history.
  */
-export function readNewestRun({ gh, repository, workflowFile, now, noRunWindowMs = DEFAULT_NO_RUN_WINDOW_MS }) {
+function readRunListingOnce({ gh, repository, workflowFile }) {
   const query = [
     'branch=main',
     'per_page=100',
@@ -317,15 +401,86 @@ export function readNewestRun({ gh, repository, workflowFile, now, noRunWindowMs
   // the newest run cannot depend on an undocumented ordering. The validation
   // above makes any unreadable timestamp a read failure instead of hiding it.
   const ordered = [...runs].sort((left, right) => {
-    const leftMs = parseTimestamp(left?.created_at);
-    const rightMs = parseTimestamp(right?.created_at);
-    if (leftMs === null && rightMs === null) return 0;
-    if (leftMs === null) return 1;
-    if (rightMs === null) return -1;
-    return rightMs - leftMs;
+    if (supersedes(left, right)) return -1;
+    if (supersedes(right, left)) return 1;
+    return 0;
+  });
+  return {
+    runs: ordered,
+    totalCount: Number.isInteger(payload?.total_count) ? payload.total_count : null,
+  };
+}
+
+/**
+ * Resolve the newest run of one workflow on main, including queued or active
+ * work, or a structured verdict when there is none.
+ *
+ * `gh` is injected rather than imported so the I/O path is testable.
+ *
+ * WHY THIS READS THE LISTING MORE THAN ONCE
+ *
+ * GitHub intermittently answers this URL with a STALE INDEX SNAPSHOT — HTTP
+ * 200, a smaller `total_count`, and a newest run from weeks ago — interleaved
+ * with correct answers to the identical request. Measured from a runner on
+ * 2026-09-24, 1 read in 30 of convex-deploy.yml came back pinned at run
+ * 34136482776 (2026-09-07, total_count 1366 against a true 3168); that is what
+ * made this monitor report NO_RUN_IN_WINDOW on a workflow that had deployed
+ * minutes earlier, on 21 of 120 consecutive ticks. `createRetryingGh` cannot
+ * help: it classifies by whether GitHub answered, and a stale snapshot IS an
+ * answer — a successful one.
+ *
+ * The defence is comparison, in two layers, because outvoting alone is weaker
+ * than it looks. The per-tick failure rate observed in production (21 of 120)
+ * is ~17%, not the ~3% the tight CI loop showed, so three purely statistical
+ * samples would still leave roughly one false alarm a day. Hence:
+ *
+ *   1. PROVEN stale samples are DISCARDED, not outvoted. `total_count` is
+ *      monotonic for a workflow whose runs are not being deleted, so a sample
+ *      reporting fewer total runs than another sample of the same listing is
+ *      demonstrably an older view. That turns the common case from a vote into
+ *      a decision. A sample that omits `total_count` is kept (fail open — the
+ *      reduction below still protects it).
+ *   2. Whatever survives is reduced with `supersedes`, a total order. Taking
+ *      the later record is safe in the direction that matters: a stale sample
+ *      is an older snapshot of the same history, never a run that does not
+ *      exist, so the winner can only ever be a real run.
+ *
+ * An alarm additionally needs RUN_LISTING_ALARM_QUORUM non-stale samples to
+ * agree. The two verdicts a stale or truncated listing can manufacture —
+ * "no runs at all" and "the newest run predates the window" — are exactly the
+ * two this monitor shouts about, so neither may rest on a single read. Failing
+ * that quorum is UNKNOWN (a warning on a green job), never a claim that a
+ * deploy failed: the same direction-of-failure rule this file opens with.
+ *
+ * Pinned by 'outvotes a stale run-listing snapshot instead of alarming on it',
+ * 'discards a sample that total_count proves stale', 'keeps a sample that
+ * answered when a sibling sample throws', and 'prefers the later attempt of a
+ * re-run when two samples share a created_at'.
+ */
+export function readNewestRun({
+  gh,
+  repository,
+  workflowFile,
+  now,
+  noRunWindowMs = DEFAULT_NO_RUN_WINDOW_MS,
+  samples = RUN_LISTING_SAMPLES,
+  alarmQuorum = RUN_LISTING_ALARM_QUORUM,
+  sampleBudgetMs = RUN_LISTING_SAMPLE_BUDGET_MS,
+  clock = () => Date.now(),
+}) {
+  const corroborating = corroborateRunListings({
+    read: () => readRunListingOnce({ gh, repository, workflowFile }),
+    samples, alarmQuorum, sampleBudgetMs, clock, workflowFile,
   });
 
-  const newest = ordered[0];
+  // Layer 2: reduce the survivors on the total order.
+  let newest = null;
+  for (const sample of corroborating) {
+    const candidate = sample.runs[0];
+    if (!candidate) continue;
+    if (newest === null || supersedes(candidate, newest)) newest = candidate;
+  }
+
   if (!newest) {
     return {
       found: false,
@@ -827,7 +982,11 @@ async function main() {
   const results = checkPostmergeDeploys({
     repository,
     // Reads retry; a transient TLS or DNS failure must not become a verdict.
-    gh: createRetryingGh({ gh: runGh }),
+    // The deadline sits INSIDE the retry wrapper so it is consulted before
+    // every attempt, not once per read.
+    gh: createRetryingGh({
+      gh: createDeadlineGh({ gh: runGh, deadlineAt: Date.now() + MONITOR_WALL_BUDGET_MS }),
+    }),
     git: (args) => {
       const result = spawnSync('git', args, {
         encoding: 'utf8',

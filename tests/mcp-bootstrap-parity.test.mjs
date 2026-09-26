@@ -38,6 +38,9 @@ const { TOOL_REGISTRY } = mcpTesting;
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
 
+  ['live-video:resolved:v1',
+    'dashboard-internal: channel id to current live YouTube video id, read by the Live News and Live Webcams players to try a fresh embed before the channel entry (#8545); a playback hint with no analytical content, not a queryable MCP slice.'],
+
   // ===========================================================================
   // #4920 completeness-measurement ops keys (pipeline health, not content)
   // ===========================================================================
@@ -128,6 +131,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: previous-year displacement snapshot used by the dashboard year-over-year diff. Current-year key is exposed via get_displacement_data; the executeTool label-walk would collide on both years (matches api/health.js:482 + api/mcp.ts:346-350 rationale).'],
   ['positive-events:geo:v1',
     'cascade-mirror: live counterpart of positive_events:geo-bootstrap:v1 (covered by get_positive_events).'],
+  ['research:tech-events:v1',
+    'cascade-mirror: RPC cache independently monitored for the hourly research seeder (#8572). get_research_signals reads research:tech-events-bootstrap:v1; adding this mirror would duplicate events and change the tool response envelope.'],
   ['aviation:delays:faa:v1',
     'cascade-mirror: RPC variant of aviation:delays-bootstrap:v2 (covered by get_aviation_status). Its own seed-meta:aviation:faa carries the FAA-only count; the aggregate counts itself since #6987.'],
   ['cyber:threats:v2',
@@ -214,6 +219,32 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health probe for the sharded Treasury par curve. GetUsTreasuryParYieldCurve serves the series; the history is too large for the composite economic cache tool (#8480).'],
   ['seed-meta:economic:us-interest-rates',
     'operational: meta-only health probe for the sharded Fed funds, Treasury yield, and SOFR history. GetUsInterestRates serves the series; the history is too large for the composite economic cache tool (#8485).'],
+  ['seed-meta:economic:world-cpi-imf',
+    'operational: meta-only health probe for the worldwide IMF CPI payload (~1 MB across 190 countries). GetWorldCpiMonthly serves the data; the payload is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:world-cpi-eurostat',
+    'operational: meta-only health probe for the Eurostat HICP overlay. GetWorldCpiMonthly serves the data; the 29-geo index history is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:world-cpi-estat',
+    'operational: meta-only health probe for the Japan e-Stat national CPI overlay. GetWorldCpiMonthly serves the data; the 1970-onward index history is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:world-cpi-abs',
+    'operational: meta-only health probe for the Australia ABS quarterly CPI overlay. GetWorldCpiMonthly serves the data; the 1948-onward index history is too large for the composite economic cache tool (#8538).'],
+  ['seed-meta:economic:yield-curve-jp',
+    'operational: meta-only health probe for the sharded JGB CMT history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-ca',
+    'operational: meta-only health probe for the sharded BoC benchmark + T-bill history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-de',
+    'operational: meta-only health probe for the sharded Bundesbank par-curve history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-gb',
+    'operational: meta-only health probe for the sharded BoE nominal spot history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-au',
+    'operational: meta-only health probe for the sharded RBA AGS history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-ch',
+    'operational: meta-only health probe for the sharded SNB spot history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-no',
+    'operational: meta-only health probe for the sharded Norges zero-coupon history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:yield-curve-se',
+    'operational: meta-only health probe for the sharded Riksbank fixing history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:economic:oecd-lt-rates',
+    'operational: meta-only health probe for the OECD monthly 10Y fallback. GetGovernmentYieldCurve serves the uncovered markets through it; the multi-market history is too large for the composite economic cache tool (#8522).'],
   ['research:arxiv:v1:cs.AI::50',
     'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
 

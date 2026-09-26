@@ -2876,6 +2876,29 @@
       "idleKeepPlaying": "Продолжить воспроизведение при неактивности",
       "idleSettingsHint": "Измените это в любой момент в Параметры › Медиа.",
       "idleKeepPlayingToast": "Прямая трансляция будет продолжаться при неактивности. Измените в Параметры › Медиа."
+    },
+    "corroboration": {
+      "singlePublisher": "Один издатель",
+      "singlePublisherHint": "Об этом пока сообщает только один издатель. Это описывает охват, а не точность.",
+      "tier4Only": "Только источники низкого уровня",
+      "tier4OnlyHint": "Все издания, сообщающие об этом, являются источниками уровня 4 (агрегаторы и блоги). Это описывает охват, а не точность.",
+      "rosterListed": "({{listed}} в списке)",
+      "rosterFeeds": "Ленты: {{labels}}",
+      "rosterLegend": "Уровни классифицируют источники; они не оценивают это утверждение.",
+      "tierDocsLink": "Как присваиваются уровни",
+      "tierChip": "У{{tier}}",
+      "tierChipUndeclared": "У?",
+      "tierTitle1": "Уровень 1: Информационные агентства и официальные органы",
+      "tierTitle2": "Уровень 2: Крупные издания",
+      "tierTitle3": "Уровень 3: Специализированные, региональные источники и аналитические центры",
+      "tierTitle4": "Уровень 4: Агрегаторы и блоги",
+      "tierTitleUndeclared": "Уровень не определён: ещё не проверен",
+      "rosterSummary": "Сообщают {{publishers}}",
+      "rosterSummaryTier1": "Сообщают {{publishers}}, в том числе уровня 1: {{tier1}}",
+      "rosterPublishers_one": "{{count}} издатель",
+      "rosterPublishers_few": "{{count}} издателя",
+      "rosterPublishers_many": "{{count}} издателей",
+      "rosterPublishers_other": "{{count}} издателей"
     }
   },
   "popups": {

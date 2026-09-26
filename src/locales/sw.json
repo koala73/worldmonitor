@@ -2907,6 +2907,27 @@
       "idleKeepPlaying": "Endelea kumweka video moja kwa moja ikicheza wakati umekaa bila kufanya kitu",
       "idleSettingsHint": "Badilisha hii wakati wowote katika Mipangilio › Media.",
       "idleKeepPlayingToast": "Video moja kwa moja itaendelea kumweka ikicheza wakati umekaa bila kufanya kitu. Badilisha katika Mipangilio › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Mchapishaji mmoja",
+      "singlePublisherHint": "Mchapishaji mmoja tu ndiye anayeripoti hili kwa sasa. Hii inaeleza kiwango cha uripoti, si usahihi.",
+      "tier4Only": "Vyanzo vya kiwango cha chini tu",
+      "tier4OnlyHint": "Kila chombo cha habari kinachoripoti hili ni chanzo cha kiwango cha 4 (tovuti za kukusanya habari na blogu). Hii inaeleza kiwango cha uripoti, si usahihi.",
+      "rosterListed": "({{listed}} wameorodheshwa)",
+      "rosterFeeds": "Milisho iliyoonekana: {{labels}}",
+      "rosterLegend": "Viwango vinapanga vyanzo; havihukumu dai hili.",
+      "tierDocsLink": "Jinsi viwango vinavyogawanywa",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Kiwango 1: Mashirika ya habari na vyombo rasmi",
+      "tierTitle2": "Kiwango 2: Vyombo vikuu vya habari",
+      "tierTitle3": "Kiwango 3: Vyanzo maalum, vya kikanda na taasisi za utafiti wa sera",
+      "tierTitle4": "Kiwango 4: Tovuti za kukusanya habari na blogu",
+      "tierTitleUndeclared": "Kiwango hakijatangazwa: bado hakijakaguliwa",
+      "rosterSummary": "Imeripotiwa na {{publishers}}",
+      "rosterSummaryTier1": "Imeripotiwa na {{publishers}}, wakiwemo {{tier1}} wa kiwango cha 1",
+      "rosterPublishers_one": "mchapishaji {{count}}",
+      "rosterPublishers_other": "wachapishaji {{count}}"
     }
   },
   "popups": {

@@ -1,0 +1,32 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "https://www.worldmonitor.app/"
+      ],
+      "clicks": 41,
+      "impressions": 2100,
+      "ctr": 0.019524,
+      "position": 12.4
+    },
+    {
+      "keys": [
+        "https://tech.worldmonitor.app/dashboard"
+      ],
+      "clicks": 9,
+      "impressions": 380,
+      "ctr": 0.023684,
+      "position": 21.7
+    },
+    {
+      "keys": [
+        "https://worldmonitor.app/mcp"
+      ],
+      "clicks": 6,
+      "impressions": 210,
+      "ctr": 0.028571,
+      "position": 18.2
+    }
+  ],
+  "responseAggregationType": "byPage"
+}

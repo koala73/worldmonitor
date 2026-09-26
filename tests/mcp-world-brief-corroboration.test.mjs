@@ -137,7 +137,76 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       entityCorroboration: true,
       sourceTier: 1,
       sources: ['Reuters', 'AP', 'BBC', 'AFP', 'Kyodo', 'DPA'],
+      corroboration: { state: 'corroborated', publishers: 6 },
+      publishers: [
+        { name: 'AFP', tier: 1, labels: ['AFP'], labelsUnlisted: 0 },
+        { name: 'Reuters', tier: 1, labels: ['Reuters'], labelsUnlisted: 0 },
+        { name: 'AP', tier: null, labels: ['AP'], labelsUnlisted: 0 },
+        { name: 'BBC', tier: null, labels: ['BBC'], labelsUnlisted: 0 },
+        { name: 'DPA', tier: null, labels: ['DPA'], labelsUnlisted: 0 },
+        { name: 'Kyodo', tier: null, labels: ['Kyodo'], labelsUnlisted: 0 },
+      ],
+      publishersUnlisted: 0,
     }]);
+  });
+
+  it('flags single-publisher and tier-4-only stories from their outlet names (#6419)', async () => {
+    stubInsights([
+      seededStory({ primaryTitle: 'One newsroom, three feeds', sources: ['Reuters World', 'Reuters US', 'Reuters Business'] }),
+      seededStory({ primaryTitle: 'Aggregators only', sources: ['The Verge', 'Hacker News'] }),
+      seededStory({ primaryTitle: 'Aggregator plus a wire', sources: ['The Verge', 'Reuters World'] }),
+    ]);
+
+    const { payload } = await callWorldBrief();
+
+    assert.deepEqual(payload.topStories.map((s) => s.corroboration), [
+      { state: 'single-publisher', publishers: 1 },
+      { state: 'tier4-only', publishers: 2 },
+      { state: 'corroborated', publishers: 2 },
+    ]);
+  });
+
+  it('trusts the digest publisher count over the labels that survived the category cap (#6419)', async () => {
+    stubInsights([
+      seededStory({ primaryTitle: 'One surviving label, three publishers', sources: ['Reuters World'], corroborationCount: 3 }),
+      seededStory({ primaryTitle: 'One label, one publisher', sources: ['Reuters World'], corroborationCount: 1 }),
+    ]);
+
+    const { payload } = await callWorldBrief();
+
+    assert.deepEqual(payload.topStories.map((s) => s.corroboration), [
+      { state: 'corroborated', publishers: 3 },
+      { state: 'single-publisher', publishers: 1 },
+    ]);
+  });
+
+  it('lists each story\'s publishers with their declared tiers, reconciled with the verdict (#6419 step 3)', async () => {
+    stubInsights([
+      seededStory({ primaryTitle: 'Mixed tiers', sources: ['The Verge', 'Reuters World', 'Reuters US', 'Unreviewed Local Desk'] }),
+      seededStory({ primaryTitle: 'Digest counted more', sources: ['Reuters World'], corroborationCount: 3 }),
+      seededStory({ primaryTitle: 'Legacy', sources: undefined }),
+    ]);
+
+    const { payload } = await callWorldBrief();
+
+    const [mixed, counted, legacy] = payload.topStories;
+    assert.deepEqual(mixed.publishers, [
+      { name: 'Reuters', tier: 1, labels: ['Reuters World', 'Reuters US'], labelsUnlisted: 0 },
+      { name: 'The Verge', tier: 4, labels: ['The Verge'], labelsUnlisted: 0 },
+      { name: 'Unreviewed Local Desk', tier: null, labels: ['Unreviewed Local Desk'], labelsUnlisted: 0 },
+    ]);
+    assert.equal(mixed.publishersUnlisted, 0);
+    assert.deepEqual([counted.publishers.length, counted.publishersUnlisted], [1, 2]);
+    assert.deepEqual([legacy.publishers, legacy.publishersUnlisted], [[], 0]);
+  });
+
+  it('documents the roster on topStories items', async () => {
+    const { RPC_TOOLS } = await import('../api/mcp/registry/rpc-tools.ts');
+    const tool = RPC_TOOLS.find((entry) => entry.name === 'get_world_brief');
+    const item = tool.outputSchema.properties.topStories.items;
+    assert.deepEqual(item.properties.publishers.items.required, ['name', 'tier', 'labels', 'labelsUnlisted']);
+    assert.equal(item.properties.publishersUnlisted.type, 'integer');
+    assert.match(tool.description, /publishers roster/);
   });
 
   it('keeps topStories index-aligned with headlines', async () => {
@@ -201,6 +270,9 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     assert.deepEqual(payload.topStories, [{
       title: 'Legacy story with no corroboration fields',
       sources: ['Real Outlet'],
+      corroboration: { state: 'single-publisher', publishers: 1 },
+      publishers: [{ name: 'Real Outlet', tier: null, labels: ['Real Outlet'], labelsUnlisted: 0 }],
+      publishersUnlisted: 0,
     }]);
   });
 
@@ -223,6 +295,9 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
       entityCorroboration: false,
       sourceTier: 1,
       sources: [],
+      corroboration: { state: 'unknown', publishers: null },
+      publishers: [],
+      publishersUnlisted: 0,
     }]);
   });
 
@@ -231,8 +306,19 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
     // 12-outlet cap. If this ever exceeds the budget, api/mcp/dispatch.ts
     // replaces the entire response with { _budget_exceeded: true } — a
     // user-visible regression, not a silent truncation.
+    // Each story also carries ten publisher families of six case-variant
+    // labels, so the roster fills all eight publisher slots and all four label
+    // slots with strings at the 40-byte wire cap.
     const longTitle = 'W'.repeat(600);
-    const outlets = Array.from({ length: 12 }, (_, i) => `Long Outlet Name Number ${i + 1}`);
+    const caseVariant = (base, variant) => [...base]
+      .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
+    const outlets = [
+      ...Array.from({ length: 12 }, (_, i) => `Long Outlet Name Number ${i + 1}`),
+      ...Array.from({ length: 10 }, (_, family) => Array.from(
+        { length: 6 },
+        (_, variant) => caseVariant(`outlet${family}-${'o'.repeat(60)}`, variant),
+      )).flat(),
+    ];
     stubInsights(Array.from({ length: 12 }, (_, i) => seededStory({
       primaryTitle: `${i} ${longTitle}`,
       sources: outlets,
@@ -242,6 +328,8 @@ describe('get_world_brief story corroboration (#4925 item 3)', () => {
 
     assert.equal(payload._budget_exceeded, undefined, 'response must not be replaced by the budget guard');
     assert.equal(payload.topStories.length, 12);
+    assert.ok(payload.topStories.every((story) => story.publishers.length === 8 && story.publishersUnlisted === 14),
+      'the fixture must fill every roster slot');
     assert.ok(
       Buffer.byteLength(rawText, 'utf8') < 65_536,
       `serialized world brief is ${Buffer.byteLength(rawText, 'utf8')} bytes, over the 65536 budget`,

@@ -2870,10 +2870,9 @@ const {
   capWithAnnualFloor: ucdpCapWithAnnualFloor,
   candidateContentMeta: ucdpCandidateContentMeta,
 } = require('./shared/ucdp-candidate.cjs');
-const UCDP_MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
-// Retained Redis input window. CII v8's classifier accepts a 2-year window, but
-// this Redis writer fetches the newest pages only and keeps at most UCDP_MAX_EVENTS
-// from a 365-day trailing slice until retention is deliberately widened.
+const UCDP_MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
+// CII accepts two years, but these newest annual pages and the candidate release
+// only cover a 365-day trailing slice. Candidate rows can exceed the default cap.
 const UCDP_TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 const UCDP_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const UCDP_TTL_SECONDS = 86400; // 24h safety net
@@ -3065,10 +3064,7 @@ async function seedUcdpEvents() {
       sourceOriginal: (e.source_original || '').substring(0, 300),
     })).sort((a, b) => b.dateStart - a.dateStart);
 
-    // Cap newest-first, but reserve slots for the annual base. Every candidate
-    // event is newer than every annual one, so a plain slice hands the whole
-    // payload to the candidate as soon as it outgrows the cap — evicting the
-    // history get-risk-scores.ts needs for per-country conflict floors.
+    // Keep monthly candidate aggregates and the annual conflict-floor history.
     const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
@@ -6664,13 +6660,6 @@ const TECH_EVENTS_BOOTSTRAP_KEY = 'research:tech-events-bootstrap:v1';
 const TECH_EVENTS_ICS_URL = 'https://www.techmeme.com/newsy_events.ics';
 const TECH_EVENTS_RSS_URL = 'https://dev.events/rss.xml';
 
-const TECH_EVENTS_CURATED = [
-  { id: 'gitex-global-2026', title: 'GITEX Global 2026', type: 'conference', location: 'Dubai World Trade Centre, Dubai', startDate: '2026-12-07', endDate: '2026-12-11', url: 'https://www.gitex.com', source: 'curated', description: "World's largest tech & startup show" },
-  { id: 'token2049-dubai-2026', title: 'TOKEN2049 Dubai 2026', type: 'conference', location: 'Dubai, UAE', startDate: '2026-04-29', endDate: '2026-04-30', url: 'https://www.token2049.com', source: 'curated', description: 'Premier crypto event in Dubai' },
-  { id: 'collision-2026', title: 'Collision 2026', type: 'conference', location: 'Toronto, Canada', startDate: '2026-06-22', endDate: '2026-06-25', url: 'https://collisionconf.com', source: 'curated', description: "North America's fastest growing tech conference" },
-  { id: 'web-summit-2026', title: 'Web Summit 2026', type: 'conference', location: 'Lisbon, Portugal', startDate: '2026-11-02', endDate: '2026-11-05', url: 'https://websummit.com', source: 'curated', description: "The world's premier tech conference" },
-];
-
 function techEventsParseICS(icsText) {
   const events = [];
   const blocks = icsText.split('BEGIN:VEVENT').slice(1);
@@ -6800,12 +6789,6 @@ async function seedTechEvents() {
       console.log(`[TechEvents] dev.events RSS: ${parsed.length} events`);
     } else {
       console.warn('[TechEvents] dev.events RSS fetch failed');
-    }
-
-    // Add curated events that are still in the future
-    const today = new Date().toISOString().split('T')[0];
-    for (const curated of TECH_EVENTS_CURATED) {
-      if (curated.startDate >= today) events.push(curated);
     }
 
     // Deduplicate by normalized title + year
@@ -8089,6 +8072,7 @@ const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
 const GDELT_BATCH_API = 'https://www.pizzint.watch/api/gdelt/batch';
 const DEFAULT_GDELT_PAIRS = 'usa_russia,russia_ukraine,usa_china,china_taiwan,usa_iran,usa_venezuela';
+const GDELT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 let pizzintSeedInFlight = false;
 
 async function seedPizzint() {
@@ -8105,8 +8089,10 @@ async function seedPizzint() {
       return;
     }
     const raw = await resp.json();
-    if (!raw.success || !Array.isArray(raw.data)) {
-      console.warn('[PizzINT] No data in API response');
+    if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
+      const reason = !raw.success ? 'unsuccessful_response'
+        : !Array.isArray(raw.data) ? 'non_array_data' : 'empty_array';
+      console.warn(`[PizzINT] No data in API response (${reason}); preserving last good observation`);
       return;
     }
 
@@ -8159,11 +8145,15 @@ async function seedPizzint() {
     // Fetch GDELT tensions (non-fatal if unavailable)
     let tensionPairs = [];
     try {
-      const gdeltUrl = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`;
+      // The endpoint requires a YYYYMMDD window and 400s without one.
+      const gdeltDate = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
+      const gdeltUrl = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`
+        + `&dateStart=${gdeltDate(Date.now() - GDELT_WINDOW_MS)}&dateEnd=${gdeltDate(Date.now())}`;
       const gdeltResp = await fetch(gdeltUrl, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(15_000),
       });
+      if (!gdeltResp.ok) console.warn(`[PizzINT] GDELT tensions request rejected (HTTP ${Number(gdeltResp.status) || 0})`);
       if (gdeltResp.ok) {
         const gdeltRaw = await gdeltResp.json();
         tensionPairs = Object.entries(gdeltRaw).map(([pairKey, dataPoints]) => {
@@ -8187,7 +8177,7 @@ async function seedPizzint() {
 
     const payload = { pizzint, tensionPairs };
     const ok1 = await envelopeWrite(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL, { recordCount: locations.length, sourceVersion: 'pizzint' });
-    const ok2 = await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
+    const ok2 = ok1 && await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} gdelt:${tensionPairs.length} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PizzINT] Seed error:', e?.message || e);
@@ -13354,10 +13344,10 @@ When refusing, output ONLY this — no explanation, no apology:
 
 ## Available data tools
 
-### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no bootstrap key or RPC matches.
+### fetch_worldmonitor_data — use when a bootstrap key or RPC below matches the request. Use search_web for data the catalog does not cover.
 
-## Tool budget — CRITICAL
-Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have — even if sparse. NEVER keep probing.
+## Tool budget
+You have 3 tool calls in total; the server rejects any beyond that. If 2 calls have not produced usable data, build the widget from what you have, even if sparse.
 
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
@@ -13436,13 +13426,13 @@ Never use hex colors (#xxx), rgb(), or named colors in inline styles. Use only:
 - Accent: var(--widget-accent, var(--accent)) for highlights
 
 ### Spacing — compact and tight
-Rows: padding 5–8px vertical, 8px horizontal. Section gaps: 8–12px. NEVER use padding > 12px on rows.
+Rows: padding 5–8px vertical, 8px horizontal. Section gaps: 8–12px. Row padding never exceeds 8px.
 
 ### Border radius — flat, not rounded
 Max 4px. NEVER use border-radius > 4px (no 8px, 12px, 16px rounded cards).
 
 ### Titles — NEVER duplicate the panel header
-The outer panel frame already displays the widget title. NEVER add an h1/h2/h3 or any top-level title element to the widget body. Start content immediately (tabs, rows, stats grid, or a section label).
+The outer panel frame already displays the widget title. NEVER add an h1/h2/h3 or any top-level title element to the widget body. Start content immediately (rows, stats grid, table, or a section label).
 
 ### Labels — uppercase monospace
 Section headers and column labels: font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted)
@@ -13506,14 +13496,14 @@ Text: economic-empty, economic-footer, economic-source, economic-warning,
 
 Market items: market-item, market-item-name, market-item-price, market-item-change
 
-Status: status-active, status-notified, status-terminated, panel-tabs, panel-tab
+Status: status-active, status-notified, status-terminated
 
 ## Output format
 1. First line MUST be: <!-- title: Your Widget Title -->
 2. Wrap everything in: <!-- widget-html --> ... <!-- /widget-html -->
 3. Generate ONLY display-only HTML. No <script>, no onclick/oninput/onload, no <iframe>.
-4. No interactive elements (no buttons, no tabs, no inputs).
-5. Tables use class="trade-tariffs-table". Lists use class="trade-restrictions-list".
+4. No interactive elements (no buttons, no tabs, no inputs): the sanitizer strips button, input, form, select and textarea.
+5. Tables go inside a <div class="trade-tariffs-table"> wrapper. Lists use class="trade-restrictions-list".
 6. Always include a source footer: <div class="economic-footer"><span class="economic-source">Source: WorldMonitor</span></div>
 7. If tool returns no data or an error: use <div class="economic-empty">No live data available</div> — NEVER write prose explanations.
 8. If tool response contains "<!DOCTYPE" or "<html": it is an error — treat as no data and use the empty state HTML.
@@ -13841,7 +13831,7 @@ async function handleWidgetAgentRequest(req, res) {
       // Finalization is irreversible, including after an incomplete response.
       finalizing ||= toolCallCount >= WIDGET_MAX_TOOL_CALLS || turn >= maxTurns - 2;
       const turnMessages = finalizing
-        ? [...messages, { role: 'user', content: 'FINAL TURN: You have used all available tool calls. You MUST emit the completed widget HTML now using the data you already have. No more tool calls — output <!-- widget-html --> immediately.' }]
+        ? [...messages, { role: 'user', content: 'Tools are now disabled. Output the complete widget inside <!-- widget-html --> markers, using the data you already have.' }]
         : messages;
 
       const response = await client.messages.create({
@@ -14097,10 +14087,10 @@ When refusing, output ONLY this — no explanation, no apology:
 
 ## Available data tools
 
-### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no bootstrap key or RPC matches.
+### fetch_worldmonitor_data — use when a bootstrap key or RPC below matches the request. Use search_web for data the catalog does not cover.
 
-## Tool budget — CRITICAL
-Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have. NEVER keep probing.
+## Tool budget
+You have 3 tool calls in total; the server rejects any beyond that. If 2 calls have not produced usable data, build the widget from what you have.
 
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
@@ -14185,7 +14175,7 @@ CSS variables are pre-defined in the iframe: --bg, --surface, --text, --text-sec
 - Numbers/prices: font-variant-numeric: tabular-nums
 - Positive values: color: var(--green) | Negative values: color: var(--red)
 - Design for 400px height with overflow-y: auto for larger content
-- NEVER add a <style> block — use the pre-defined classes below and inline styles only
+- Don't add a <style> block: it loads after the host CSS and would override the font and palette guardrails. Use the pre-defined classes below and inline styles.
 - Always include a source footer: <div style="font-size:10px;color:var(--text-muted);padding:6px 8px">Source: WorldMonitor</div>
 
 ## Pre-defined CSS classes — use these, do NOT reinvent them

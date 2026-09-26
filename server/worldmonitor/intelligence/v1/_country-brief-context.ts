@@ -17,6 +17,7 @@ import { getCachedJson } from '../../../_shared/redis';
 import { filterRevokedUrls, readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
+import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
 
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
 const MAX_GROUNDING_ITEMS = 15;
@@ -52,17 +53,18 @@ export interface CountryIntelCacheKeyOpts {
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
-  // v8 retires briefs generated with forced impacts and forecasts beyond their source titles.
+  // v9 retires headline-only briefs: their empty-section disclaimers and
+  // "withheld" notices, and their grounding on sports and global items.
   const energyTag = opts.energyYear ? `:e${opts.energyYear}` : '';
   const energyImportTag = opts.energyImportYear ? `:i${opts.energyImportYear}` : '';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:v8:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
+    return `ci-sebuf:v9:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
   }
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
-  return `ci-sebuf:v8:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}${energyImportTag}`;
+  return `ci-sebuf:v9:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}${energyImportTag}`;
 }
 
 interface DigestItemForBrief {
@@ -162,14 +164,18 @@ export function buildSharedCountryContext(
   // Union (AU)", "2pm ET" or "CM Maryam" — the defect the corpus freeze
   // published (#7748). Raw text, NOT lowercased: demonyms are case-sensitive.
   const terms = countryMentionTerms(countryCode);
+  // Sports, entertainment and awards items mention a country without saying
+  // anything about its situation (shared/brief-relevance.js).
   const countryItems = allItems.filter((item) => {
     const text = `${typeof item.title === 'string' ? item.title : ''} ${typeof item.snippet === 'string' ? item.snippet : ''}`;
-    return mentionsCountry(text, terms);
+    return mentionsCountry(text, terms) && isBriefRelevantTitle(item.title);
   });
 
-  // No country match → ground on the top global items instead. A generic
-  // world-situation brief beats an empty prompt (mirrors the MCP tool).
-  const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, MAX_GROUNDING_ITEMS);
+  // No relevant country match → no grounding. The old fallback to top global
+  // items produced briefs that read as claims about a country no headline
+  // covered; the handler's empty path is the honest answer.
+  if (countryItems.length === 0) return EMPTY_CONTEXT;
+  const groundingItems = countryItems.slice(0, MAX_GROUNDING_ITEMS);
   const sources = collectBriefSources(groundingItems);
   const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
   // Digest titles are feed-derived and land one-per-line under a 'Headlines:'

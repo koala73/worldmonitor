@@ -156,14 +156,16 @@ The server publishes `dynamicScore` as a signed movement delta in the range
 `-100..100` against a valid CII snapshot from approximately 24 hours earlier:
 
 - **Rising**: score movement is greater than 1 point.
-- **Stable**: score movement is between -1 and +1 points, or no valid prior
-  snapshot is available.
+- **Stable**: score movement is between -1 and +1 points.
 - **Falling**: score movement is less than -1 point.
+- **Unspecified**: no valid prior snapshot is available, so no movement was
+  measured.
 
 Because CII `combinedScore` is rounded to whole points, `+2` and `-2` are the
 first integer movements that produce rising/falling trend labels. `dynamicScore`
 is `0` during cold start or when the server cannot find a valid approximate
-24-hour prior snapshot.
+24-hour prior snapshot; `trend` is then `TREND_DIRECTION_UNSPECIFIED`, which
+separates a missing comparison from a measured zero (`TREND_DIRECTION_STABLE`).
 
 During initial dashboard startup, Learning Mode suppresses noisy early CII
 alerts while data and trend baselines settle. Server-side pre-computation means

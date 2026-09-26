@@ -4,11 +4,21 @@ import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
-const { default: handler, __testing__: keys } = await import('../api/health.js');
+const { default: handler, handleHealth, __testing__: keys } = await import('../api/health.js');
 const realFetch = globalThis.fetch;
 const realNow = Date.now;
 afterEach(() => { globalThis.fetch = realFetch; Date.now = realNow; });
 const request = () => handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
+// An owner paused past its 30 s lease has necessarily outlived the request
+// deadline too, and would bail to the stale verdict before writing. These
+// suites prove the Redis-boundary fencing for writes that land after expiry
+// anyway, so they lift the deadline (tests/health-request-deadline.test.mjs
+// covers the deadline itself).
+const requestWithoutDeadline = () => handleHealth(
+  new Request('https://api.worldmonitor.app/api/health?compact=1'),
+  undefined,
+  { workBudgetMs: Number.POSITIVE_INFINITY },
+);
 const deferred = () => Promise.withResolvers();
 
 // Stateful Redis transport double: real handler, election, polling, classifier,
@@ -195,7 +205,7 @@ test('failed release leaves a bounded lease that a later owner can acquire', asy
 
 test('expired owner cannot overwrite snapshots or delete a successor lease', async () => {
   const f = redisFixture({ holdFirstSweep: true, failRelease: true });
-  const owner = request();
+  const owner = requestWithoutDeadline();
   await f.started;
   f.advance(30_001);
   assert.equal((await request()).status, 200);
@@ -262,7 +272,7 @@ test('a lock acknowledgement arriving after lease expiry cannot start a sweep', 
     if (op === 'SET') now += 30_000;
     return Response.json([{ result: op === 'GET' ? null : 'OK' }]);
   };
-  const response = await request();
+  const response = await requestWithoutDeadline();
   assert.equal((await response.json()).status, 'REFRESH_PENDING');
   // Snapshot read, lease claim, release, then the last-known lookup (none here).
   assert.deepEqual(operations, ['GET', 'SET', 'EVAL', 'GET']);

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<data-set xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <record>
+    <EntityOrShip-EntiteOuNavire>1, Part 1</EntityOrShip-EntiteOuNavire>
+    <TitleOrShipType-TitreOuTypeDeNavire>1</TitleOrShipType-TitreOuTypeDeNavire>
+    <LastName-NomDeFamille>44102</LastName-NomDeFamille>
+  </record>
+  <record>
+    <Country-Pays>1972</Country-Pays>
+    <EntityOrShip-EntiteOuNavire>1, Part 1</EntityOrShip-EntiteOuNavire>
+    <TitleOrShipType-TitreOuTypeDeNavire>2</TitleOrShipType-TitreOuTypeDeNavire>
+    <LastName-NomDeFamille>44102</LastName-NomDeFamille>
+  </record>
+</data-set>

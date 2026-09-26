@@ -18,6 +18,7 @@ import { MARKET_SYMBOLS, REGION_LABELS, STOCK_CATALOG } from '@/config/markets';
 import { WatchlistEditor } from './WatchlistEditor';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 let activeOverlay: HTMLElement | null = null;
@@ -30,6 +31,7 @@ export function openWatchlistModal(): void {
   overlay.id = 'marketWatchlistModal';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute('aria-labelledby', 'wmMarketWatchlistTitle');
 
   const editor = new WatchlistEditor({ initial: getMarketWatchlistEntries() });

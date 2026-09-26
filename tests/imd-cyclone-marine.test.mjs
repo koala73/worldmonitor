@@ -444,7 +444,8 @@ test('documents the complete IMD Railway credential setup', () => {
   assert.doesNotMatch(setup, /IMD_API_TOKEN=/);
 });
 
-test('mints a fresh IMD JWT before each product batch', async () => {
+test('mints a fresh IMD JWT before each product batch', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
   let minted = 0;
   const productTokens = [];
   const fetchFn = async (url, init = {}) => {
@@ -472,6 +473,7 @@ test('mints a fresh IMD JWT before each product batch', async () => {
   await fetchImdCycloneMarine({ env: LIVE_ENV, fetchFn, now: NOW + 1, userAgent: 'worldmonitor-imd-test' });
 
   assert.equal(minted, 2);
+  assert.equal(warn.mock.callCount(), 0);
   assert.deepEqual(new Set(productTokens), new Set([
     'Bearer fresh-token-1',
     'Bearer fresh-token-2',
@@ -540,6 +542,82 @@ test('redacts proxy credentials from IMD transport failures', async () => {
   assert.equal(snapshot.coverageState, 'unavailable');
   assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
   assert.doesNotMatch(JSON.stringify(snapshot), /proxy-secret/);
+});
+
+test('logs sanitized IMD auth transport context without changing the failure snapshot', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (line) => logs.push(JSON.parse(line)));
+  const failure = Object.assign(new Error('https://user:secret@proxy.test private response'), {
+    cause: Object.assign(new Error('Bearer secret-token'), { code: 'ERR_TLS_CERT_ALTNAME_INVALID' }),
+    proxyFailure: { stage: 'target_tls', proxyConnectStatus: 200, httpStatus: null },
+  });
+  let requests = 0;
+  const snapshot = await fetchImdCycloneMarine({
+    env: LIVE_ENV,
+    fetchFn: createImdProxyFetch('proxy.test:443:user:password', {
+      proxyFetchFn: async (url, config, options) => {
+        requests++;
+        assert.equal(url, IMD_OAUTH_TOKEN_URL);
+        assert.equal(options.timeoutMs, 15_000);
+        assert.ok(options.signal instanceof AbortSignal);
+        throw failure;
+      },
+    }),
+    now: NOW,
+  });
+  assert.deepEqual(logs, [{
+    event: 'imd_auth_failure', code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+    stage: 'target_tls', proxyConnectStatus: 200,
+  }]);
+  const baseline = await fetchImdCycloneMarine({
+    env: LIVE_ENV, now: NOW, fetchFn: async () => { throw new Error('fetch failed'); },
+  });
+  assert.deepEqual(snapshot, baseline);
+  assert.equal(requests, 1);
+  assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
+  assert.equal(snapshot.products.cycloneTrack.requestCount, 0);
+  assert.equal(snapshot.generatedAt, NOW);
+  assert.equal(shouldActivateImdSnapshot(snapshot), false);
+  assert.equal(imdAfterPublish(snapshot).freshnessMetaPatch.errorCode, 'IMD_PRODUCTS_UNAVAILABLE');
+});
+
+test('IMD auth diagnostics reject hostile fields and cannot change failure handling', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (line) => {
+    logs.push(JSON.parse(line));
+    throw new Error('logger failed');
+  });
+  const secret = 'https://operator:password@proxy.test/?token=private';
+  const failures = [
+    Object.assign(new Error(secret), {
+      code: secret, stack: secret, body: secret, url: secret,
+      proxyFailure: { stage: secret, httpStatus: secret, proxyConnectStatus: 999, token: secret },
+    }),
+    Object.assign(new Error(secret), {
+      code: 'ECONNRESET', proxyFailure: { stage: 'response_body', httpStatus: 200, proxyConnectStatus: 407 },
+    }),
+    Object.assign(new Error(secret), {
+      code: 'ENOTFOUND', proxyFailure: { stage: 'proxy_connect', httpStatus: 403, proxyConnectStatus: 407 },
+    }),
+    Object.assign(new Error(secret), {
+      proxyFailure: { stage: 'response_body', httpStatus: 600, proxyConnectStatus: '200' },
+    }),
+  ];
+  failures[0].cause = failures[0];
+  for (const failure of failures) {
+    const snapshot = await fetchImdCycloneMarine({
+      env: LIVE_ENV, now: NOW, fetchFn: async () => { throw failure; },
+    });
+    assert.equal(snapshot.products.cycloneTrack.reason, 'IMD_AUTH_FAILED');
+    assert.equal(shouldActivateImdSnapshot(snapshot), false);
+    assert.doesNotMatch(JSON.stringify(snapshot), /operator|password|private/);
+  }
+  assert.deepEqual(logs, [
+    { event: 'imd_auth_failure', code: 'UNKNOWN' },
+    { event: 'imd_auth_failure', code: 'ECONNRESET', stage: 'response_body', httpStatus: 200 },
+    { event: 'imd_auth_failure', code: 'ENOTFOUND', stage: 'proxy_connect', proxyConnectStatus: 407 },
+    { event: 'imd_auth_failure', code: 'UNKNOWN', stage: 'response_body' },
+  ]);
 });
 
 test('classifies bounded proxy responses without exposing transport details', async () => {

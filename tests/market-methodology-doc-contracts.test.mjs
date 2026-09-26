@@ -123,7 +123,7 @@ describe('market and health methodology docs match source contracts', () => {
   });
 
   it('documents implemented disease source paths without the old RSS source names', () => {
-    assert.match(diseaseMethodology, /CDC HAN and Outbreak News Today RSS/);
+    assert.match(diseaseMethodology, /CDC HAN, ECDC epidemiological update, and CIDRAP disease news RSS/);
     assert.match(diseaseMethodology, /ThinkGlobalHealth disease tracker, backed by ProMED-sourced real-time alerts/);
     assert.doesNotMatch(diseaseMethodology, /HealthMap \/ ProMED RSS/);
   });

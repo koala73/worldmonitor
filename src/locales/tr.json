@@ -2838,6 +2838,27 @@
       "idleKeepPlaying": "Hareketsizlik sırasında oynatmaya devam et",
       "idleSettingsHint": "Bunu istediğiniz zaman Ayarlar › Medya bölümünde değiştirebilirsiniz.",
       "idleKeepPlayingToast": "Canlı video hareketsizlik sırasında oynatmaya devam edecektir. Ayarlar › Medya bölümünden değiştirin."
+    },
+    "corroboration": {
+      "singlePublisher": "Tek yayıncı",
+      "singlePublisherHint": "Şu ana kadar bu haberi sadece bir yayıncı bildiriyor. Bu, haber kapsamını gösterir; doğruluk değildir.",
+      "tier4Only": "Yalnızca düşük seviye kaynaklar",
+      "tier4OnlyHint": "Bu haberi bildiren her kuruluş bir seviye-4 kaynaktır (toplayıcılar ve bloglar). Bu, haber kapsamını gösterir; doğruluk değildir.",
+      "rosterListed": "({{listed}} listede)",
+      "rosterFeeds": "Görülen beslemeler: {{labels}}",
+      "rosterLegend": "Seviyeler kaynakları sıralar; bu iddiayı yargılamaz.",
+      "tierDocsLink": "Seviyeler nasıl atanır",
+      "tierChip": "S{{tier}}",
+      "tierChipUndeclared": "S?",
+      "tierTitle1": "Seviye 1: Haber ajansları ve resmi kurumlar",
+      "tierTitle2": "Seviye 2: Büyük yayın kuruluşları",
+      "tierTitle3": "Seviye 3: Uzman, bölgesel ve düşünce kuruluşu kaynakları",
+      "tierTitle4": "Seviye 4: Toplayıcılar ve bloglar",
+      "tierTitleUndeclared": "Seviye belirtilmemiş: henüz incelenmedi",
+      "rosterSummary": "{{publishers}} tarafından bildirildi",
+      "rosterSummaryTier1": "{{publishers}} tarafından bildirildi; bunların {{tier1}} tanesi seviye 1",
+      "rosterPublishers_one": "{{count}} yayıncı",
+      "rosterPublishers_other": "{{count}} yayıncı"
     }
   },
   "popups": {

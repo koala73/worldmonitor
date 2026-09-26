@@ -2474,6 +2474,28 @@
       "idleKeepPlaying": "Continuar reproduzindo quando inativo",
       "idleSettingsHint": "Altere isso a qualquer momento em Configurações › Mídia.",
       "idleKeepPlayingToast": "O vídeo ao vivo continuará reproduzindo quando inativo. Altere em Configurações › Mídia."
+    },
+    "corroboration": {
+      "singlePublisher": "Um único veículo",
+      "singlePublisherHint": "Apenas um veículo está reportando isso até agora. Isso descreve cobertura, não precisão.",
+      "tier4Only": "Apenas fontes de baixo nível",
+      "tier4OnlyHint": "Todos os veículos reportando isso são fontes de nível 4 (agregadores e blogs). Isso descreve cobertura, não precisão.",
+      "rosterListed": "({{listed}} listados)",
+      "rosterFeeds": "Feeds vistos: {{labels}}",
+      "rosterLegend": "Os níveis classificam as fontes; não julgam esta afirmação.",
+      "tierDocsLink": "Como os níveis são atribuídos",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Nível 1: Agências de notícias e órgãos oficiais",
+      "tierTitle2": "Nível 2: Grandes veículos",
+      "tierTitle3": "Nível 3: Fontes especializadas, regionais e think tanks",
+      "tierTitle4": "Nível 4: Agregadores e blogs",
+      "tierTitleUndeclared": "Nível não declarado: ainda não revisado",
+      "rosterSummary": "Noticiado por {{publishers}}",
+      "rosterSummaryTier1": "Noticiado por {{publishers}}, incluindo {{tier1}} de nível 1",
+      "rosterPublishers_one": "{{count}} veículo",
+      "rosterPublishers_many": "{{count}} veículos",
+      "rosterPublishers_other": "{{count}} veículos"
     }
   },
   "popups": {

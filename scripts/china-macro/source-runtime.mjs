@@ -34,6 +34,45 @@ const PROXY_RETRYABLE_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
+const DIAGNOSTIC_CODES = new Set([
+  ...PROXY_RETRYABLE_CODES,
+  'SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'ERR_TLS_CERT_ALTNAME_INVALID', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
+const PROXY_STAGES = new Set([
+  'proxy_connection', 'proxy_connect', 'target_tls', 'response_headers', 'response_body',
+]);
+
+// Log only fixed labels and validated status numbers. Error messages, stacks,
+// proxy configuration and response bodies can contain credentials.
+function logTransportFailure(error, target, transport, attempt) {
+  try {
+    let code = 'UNKNOWN';
+    let cause = error;
+    for (let depth = 0; cause && depth < 4; depth++, cause = cause.cause) {
+      if (DIAGNOSTIC_CODES.has(cause.code)) { code = cause.code; break; }
+      if (cause.name === 'TimeoutError'
+        || cause.message === 'CONNECT tunnel timeout'
+        || cause.message === 'proxy fetch timeout') { code = 'TIMEOUT'; break; }
+    }
+    const details = error?.proxyFailure;
+    const stage = transport === 'proxy' && PROXY_STAGES.has(details?.stage)
+      ? details.stage : null;
+    const status = details?.proxyConnectStatus;
+    console.warn(JSON.stringify({
+      event: 'china_macro_transport_failure',
+      host: target.hostname,
+      resource: target.pathname === '/robots.txt' ? 'robots' : 'source',
+      transport, attempt, code,
+      ...(stage ? { stage } : {}),
+      ...(['proxy_connect', 'target_tls'].includes(stage)
+        && Number.isInteger(status) && status >= 100 && status <= 599
+        ? { proxyConnectStatus: status } : {}),
+    }));
+  } catch { /* Diagnostics must not alter the fetch result or retry budget. */ }
+}
+
 function sourceContractError(message) {
   return Object.assign(new Error(`SOURCE_CONTRACT_VIOLATION:${message}`), {
     code: 'SOURCE_CONTRACT_VIOLATION',
@@ -101,6 +140,10 @@ export function shouldRetryViaProxy(error) {
   return false;
 }
 
+export function hasUsableProxy(proxyUrl) {
+  return Boolean(proxyUrl && parseProxyConfigForAttempt(proxyUrl, 0));
+}
+
 /**
  * The same declared request, from a different egress point.
  *
@@ -117,10 +160,20 @@ export function shouldRetryViaProxy(error) {
  * Accept-Language reaching the publisher over a different route, not a
  * different client. `location` is carried across because fetchText does its own
  * `redirect: 'manual'` handling and would otherwise lose the hop.
+ *
+ * Returns a Response, null when no exit ran (unusable config, or `deadlineAt`
+ * left less than the floor), or throws the last exit's error. A caller with its
+ * own wall budget passes `deadlineAt` so the ladder ends inside it; the
+ * calendar's 75s NBS budget relies on that to keep its pinned ceiling.
+ * `stopRotationOn(error)` ends the ladder with that exit's error when another
+ * exit would only launder its verdict (a certificate or size rejection, or the
+ * publisher already having answered).
  */
-async function fetchThroughProxy(target, init, proxyUrl, {
+export async function fetchThroughProxy(target, init, proxyUrl, {
   proxyFetchFn = proxyFetch,
   now = Date.now,
+  deadlineAt: callerDeadlineAt = Infinity,
+  stopRotationOn = () => false,
 } = {}) {
   let lastError = null;
   // Rotate exits. parseProxyConfigForAttempt maps the attempt index onto a
@@ -137,7 +190,7 @@ async function fetchThroughProxy(target, init, proxyUrl, {
   // never contacted and no load was placed on it. The budget bounds load on the
   // source, not attempts made on our side. Wall-clock is a separate cap
   // (PROXY_FALLBACK_BUDGET_MS) so four live 12s exits cannot blow the seeder.
-  const deadlineAt = now() + PROXY_FALLBACK_BUDGET_MS;
+  const deadlineAt = Math.min(now() + PROXY_FALLBACK_BUDGET_MS, callerDeadlineAt);
   for (let attempt = 0; attempt < PROXY_EXIT_ATTEMPTS; attempt += 1) {
     const remainingMs = deadlineAt - now();
     if (remainingMs < PROXY_BUDGET_FLOOR_MS) break;
@@ -158,6 +211,8 @@ async function fetchThroughProxy(target, init, proxyUrl, {
         signal,
       });
     } catch (error) {
+      logTransportFailure(error, target, 'proxy', attempt + 1);
+      if (stopRotationOn(error)) throw error;
       lastError = error;
       continue;
     }
@@ -225,7 +280,7 @@ export async function fetchText(fetchFn, value, {
   let redirected = false;
   let redirects = 0;
   let transientRetries = 0;
-  const usableProxy = Boolean(proxyUrl && parseProxyConfigForAttempt(proxyUrl, 0));
+  const usableProxy = hasUsableProxy(proxyUrl);
   for (;;) {
     budget.consume();
     let response;
@@ -244,6 +299,7 @@ export async function fetchText(fetchFn, value, {
     try {
       response = await fetchFn(target.toString(), requestInit);
     } catch (error) {
+      logTransportFailure(error, target, 'direct', transientRetries + 1);
       const permanentTls = error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || /self signed certificate|certificate chain/i.test(

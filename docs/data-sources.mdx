@@ -7,6 +7,8 @@ World Monitor fuses attributed structured APIs, news and OSINT feeds, and operat
 
 Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
 
+Compare the dashboard with its underlying event-data services: [World Monitor vs ACLED](https://www.worldmonitor.app/compare/worldmonitor-vs-acled/) and [World Monitor vs GDELT](https://www.worldmonitor.app/compare/worldmonitor-vs-gdelt/).
+
 ## Coverage at a Glance
 
 | Domain | What you get | Representative providers |
@@ -398,14 +400,16 @@ Resource management is aggressive — iframes are lazy-loaded via Intersection O
 
 ### Source Credibility & Feed Tiering
 
-Every RSS feed is assigned a source tier reflecting editorial reliability:
+Feeds are assigned a source tier reflecting editorial reliability:
 
-| Tier       | Description                                | Examples                                    |
-| ---------- | ------------------------------------------ | ------------------------------------------- |
-| **Tier 1** | Wire services, official government sources | Reuters, AP, BBC, DOD                       |
-| **Tier 2** | Major established outlets                  | CNN, NYT, The Guardian, Al Jazeera          |
-| **Tier 3** | Specialized/niche outlets                  | Defense One, Breaking Defense, The War Zone |
-| **Tier 4** | Aggregators and blogs                      | Google News, individual analyst blogs       |
+| Tier       | Description                                 | Examples                                             |
+| ---------- | ------------------------------------------- | ---------------------------------------------------- |
+| **Tier 1** | Wire services and official bodies           | Reuters, AP News, AFP, Pentagon                      |
+| **Tier 2** | Major outlets                               | BBC, CNN World, New York Times, The Guardian, Al Jazeera |
+| **Tier 3** | Specialist, regional and think-tank sources | Defense One, Breaking Defense, The War Zone          |
+| **Tier 4** | Aggregators and blogs                       | Hacker News, The Verge, Yahoo Finance                |
+
+A clustered story lists its publishers with the best tier declared among the feeds seen for that story. A feed with no declared tier shows as "tier not declared" and never counts as tier 4 when the corroboration flags are computed. Tiers rank sources; they do not judge whether a claim is true.
 
 Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Those same inputs feed the per-headline [`credibilityScore`](/methodology/news-credibility) (0-100 source reliability, distinct from `importanceScore` newsworthiness). Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
 

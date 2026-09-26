@@ -38,7 +38,9 @@ const NEW_TRANSLATED_KEYS = [
 // English product term may raise one explicitly, but bulk placeholder copies
 // must not pass only because their keys exist.
 const ENGLISH_CEILING = {
-  ar: 359, bg: 250, cs: 292, de: 276, el: 359, es: 433,
+  // de 276 -> 277: the publisher roster's tier chip codes ("T{{tier}}", "T?")
+  // are the same in German, which keeps the "Tier" term the catalogue uses.
+  ar: 359, bg: 250, cs: 292, de: 277, el: 359, es: 433,
   // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
   // (divergence regime) are spelled identically in French. Both are correct
   // translations, not placeholder copies.

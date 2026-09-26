@@ -104,4 +104,11 @@ describe('ensureHydrated public on-demand key guard (WORLDMONITOR-XP)', () => {
       'each demanded dataset gets one independently cacheable request',
     );
   });
+
+  it('serves the live video resolved map through its public key URL (#8545)', async () => {
+    assert.equal(ON_DEMAND.has('liveVideoResolved'), true, 'liveVideoResolved must be on-demand, never tier freight');
+    assert.deepEqual(await ensureHydrated('liveVideoResolved'), { ok: true });
+    assert.equal(requested.length, 1);
+    assert.match(requested[0] ?? '', /\/api\/bootstrap\?keys=liveVideoResolved&public=1$/);
+  });
 });

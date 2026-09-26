@@ -8,12 +8,14 @@ import { STORAGE_KEYS } from '@/config';
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
-import type { OfflineReason } from '@/services/live-video/model';
+import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
+import { withResolvedLiveVideos } from '@/services/live-video/resolved';
 import { createFailureMemory, openLiveVideo, type LiveVideoSession, type LiveVideoState } from '@/services/live-video/session';
 import { track } from '@/services/analytics';
 import { createLiveMediaIdleNotice, trackLiveMediaIdleStop } from './live-media-idle-notice';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { OPTIONAL_LIVE_CHANNELS, getDefaultLiveChannels, hasBuiltinStreams, liveVideoSourceFor, loadChannelsFromStorage, saveChannelsToStorage, type LiveChannel } from '@/services/live-channels';
+import { declareOverlay } from '@/utils/open-modal';
 export { getDefaultLiveChannels, loadChannelsFromStorage } from '@/services/live-channels';
 
 function offlineReasonText(reason: OfflineReason, name: string): string {
@@ -78,6 +80,8 @@ export class LiveNewsPanel extends Panel {
 
   // One verified live session for the active channel. Callbacks from a replaced session carry a stale generation.
   private videoSession: LiveVideoSession | null = null;
+  // A player waiting for the resolved channel map before its session opens (renderPlayer).
+  private pendingMount = false;
   private videoPhase: LiveVideoState['phase'] | null = null;
   private playerContainer: HTMLDivElement | null = null;
   private playerGeneration = 0;
@@ -142,6 +146,8 @@ export class LiveNewsPanel extends Panel {
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  /** Removes the open channel-management overlay and its document listener. Null while none is open. */
+  private dismissChannelManagementModal: (() => void) | null = null;
   // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
   private readonly boundPlayAllStarter = () => {
     if (this.canHostLiveMedia()) this.triggerInit();
@@ -292,6 +298,7 @@ export class LiveNewsPanel extends Panel {
     return this.deferredInit ||
       this.isPlaying ||
       this.videoSession !== null ||
+      this.pendingMount ||
       this.ownsLiveNewsMedia() ||
       (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.isPanelVisible());
   }
@@ -346,6 +353,7 @@ export class LiveNewsPanel extends Panel {
 
   private destroyPlayer(): void {
     this.playerGeneration += 1;
+    this.pendingMount = false;
     this.videoSession?.destroy();
     this.videoSession = null;
     this.videoPhase = null;
@@ -371,7 +379,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private togglePlayback(): void {
-    if (this.isPlaying || this.videoSession) {
+    if (this.isPlaying || this.videoSession || this.pendingMount) {
       stopLiveMediaPlayback('live-news', 'user-paused');
       return;
     }
@@ -540,6 +548,7 @@ export class LiveNewsPanel extends Panel {
     overlay.className = 'live-channels-modal-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    declareOverlay(overlay, { reload: 'blocking' });
     overlay.setAttribute('aria-label', t('components.liveNews.manage') ?? 'Manage channels');
 
     const modal = document.createElement('div');
@@ -564,10 +573,14 @@ export class LiveNewsPanel extends Panel {
       await initLiveChannelsWindow(container);
     }).catch(console.error);
 
-    const close = () => {
+    const dismiss = () => {
       focusTrap.deactivate();
       overlay.remove();
       document.removeEventListener('keydown', onKey);
+      this.dismissChannelManagementModal = null;
+    };
+    const close = () => {
+      dismiss();
       this.refreshChannelsFromStorage();
     };
     const focusTrap = createFocusTrap(overlay);
@@ -580,6 +593,7 @@ export class LiveNewsPanel extends Panel {
       if (e.target === overlay) close();
     });
     document.addEventListener('keydown', onKey);
+    this.dismissChannelManagementModal = dismiss;
   }
 
   private refreshChannelSwitcher(): void {
@@ -742,8 +756,25 @@ export class LiveNewsPanel extends Panel {
     const isCurrent = () => generation === this.playerGeneration;
     const channel = this.activeChannel;
     const container = this.ensurePlayerContainer();
+    const source = liveVideoSourceFor(channel);
+    if (!sourceListsChannel(source)) {
+      this.openPlayer(container, channel, source, isCurrent);
+      return;
+    }
+    // A slot that lists a channel first asks for that channel's resolved live video (at most 1.5 s), showing the
+    // connecting cover meanwhile. A stop, a channel switch or a new render bumps the generation and drops the mount.
+    this.pendingMount = true;
+    this.showPlayerStatus('cover', t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) }));
+    void withResolvedLiveVideos(source).then((resolved) => {
+      if (!isCurrent()) return;
+      this.pendingMount = false;
+      this.openPlayer(container, channel, resolved, isCurrent);
+    });
+  }
+
+  private openPlayer(container: HTMLDivElement, channel: LiveChannel, source: LiveVideoSource, isCurrent: () => boolean): void {
     const session = openLiveVideo(container, {
-      source: liveVideoSourceFor(channel),
+      source,
       autoplay: true,
       muted: this.isMuted,
       presentation: { title: `${this.getChannelDisplayName(channel)} live feed`, className: 'live-news-media', controls: true },
@@ -889,7 +920,7 @@ export class LiveNewsPanel extends Panel {
     const sourceChanged = liveVideoSourceFor(current).entries.join('\n') !== liveVideoSourceFor(this.activeChannel).entries.join('\n');
     this.activeChannel = current;
     if (!sourceChanged) return;
-    if (this.videoSession) this.renderPlayer();
+    if (this.videoSession || this.pendingMount) this.renderPlayer();
     else if (this.ownsActiveLiveMedia()) this.beginPlayback('explicit');
   }
 
@@ -897,7 +928,7 @@ export class LiveNewsPanel extends Panel {
     const wasIdleStopped = this.idleStoppedAfterMs !== null;
     this.idleStoppedAfterMs = null;
     stopLiveMediaPlayback('live-news', 'destroyed');
-    if (wasIdleStopped || this.videoSession) {
+    if (wasIdleStopped || this.videoSession || this.pendingMount) {
       this.isPlaying = false;
       this.updateLiveIndicator();
       this.destroyPlayer();
@@ -915,6 +946,11 @@ export class LiveNewsPanel extends Panel {
   }
 
   public destroy(): void {
+    // The overlay is parented to document.body and hides only by unmounting
+    // (main.css toggles opacity, not display), so destroying the panel while
+    // it was open left it on screen holding every automatic reload off for
+    // the rest of the session, with a document keydown listener to match.
+    this.dismissChannelManagementModal?.();
     unregisterLiveMediaStarter('live-news', this.boundPlayAllStarter);
     releaseLiveMediaPlayback('live-news');
     this.destroyPlayer();

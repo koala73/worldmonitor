@@ -2819,6 +2819,26 @@
       "idleKeepPlaying": "アイドル時にライブ動画を再生し続ける",
       "idleSettingsHint": "この設定はいつでも設定 › メディアで変更できます。",
       "idleKeepPlayingToast": "ライブ動画はアイドル時にも再生され続けます。設定 › メディアで変更してください。"
+    },
+    "corroboration": {
+      "singlePublisher": "単一の報道機関",
+      "singlePublisherHint": "現在のところ、1つの報道機関のみがこれを報じています。これは報道範囲を示すもので、正確性ではありません。",
+      "tier4Only": "低レベルのソースのみ",
+      "tier4OnlyHint": "これを報じているすべてのメディアはTier4ソース（アグリゲーターとブログ）です。これは報道範囲を示すもので、正確性ではありません。",
+      "rosterListed": "（{{listed}}社を表示）",
+      "rosterFeeds": "確認されたフィード: {{labels}}",
+      "rosterLegend": "ティアは情報源の順位付けであり、この主張の真偽を判断するものではありません。",
+      "tierDocsLink": "ティアの割り当て方法",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "ティア1: 通信社および公式機関",
+      "tierTitle2": "ティア2: 主要メディア",
+      "tierTitle3": "ティア3: 専門・地域メディアおよびシンクタンク",
+      "tierTitle4": "ティア4: アグリゲーターおよびブログ",
+      "tierTitleUndeclared": "ティア未申告: 未審査",
+      "rosterSummary": "{{publishers}}が報道",
+      "rosterSummaryTier1": "{{publishers}}が報道（うちティア1は{{tier1}}社）",
+      "rosterPublishers_other": "{{count}}社の報道機関"
     }
   },
   "popups": {

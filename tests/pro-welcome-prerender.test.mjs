@@ -92,15 +92,20 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.match(rootContent, /Which World Monitor license do I need\?/);
   assert.match(rootContent, /API Business lets that organization embed World Monitor data/);
   assert.match(rootContent, /href="\/docs\/terms"[^>]*>worldmonitor\.app\/docs\/terms<\/a>/);
-  // The Liveuamap FAQ is the homepage's one link into the /compare/ family;
+  // Comparison links must remain real anchors in the static FAQ;
   // it has to survive prerender so non-JS crawlers see it (#7746).
   const faqStart = rootContent.indexOf('id="faq"');
   assert.ok(faqStart >= 0, 'the FAQ section must be prerendered');
   const faqContent = rootContent.slice(faqStart);
+  assert.match(faqContent, /href="\/compare\/best-geopolitical-risk-dashboards\/"[^>]*>worldmonitor\.app\/compare\/best-geopolitical-risk-dashboards<\/a>/);
   assert.match(faqContent, /href="\/compare\/liveuamap-alternatives\/"[^>]*>worldmonitor\.app\/compare\/liveuamap-alternatives<\/a>/);
-  assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-hero"/);
-  assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-depth"/);
-  assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-footer"[^>]*>Sources<\/a>/);
+  // Untagged since #8603: middleware 308s utm_* away, so every one of these
+  // was a redirect hop. Each link is still identified individually, by the
+  // Umami target or link text that replaced its utm tag as the attribution.
+  assert.match(rootContent, /href="\/sources\/"[^>]*data-umami-event-target="welcome-sources-proof"/);
+  assert.match(rootContent, /href="\/sources\/"[^>]*data-umami-event-target="welcome-sources-depth"/);
+  assert.match(rootContent, /href="\/sources\/"[^>]*>Sources<\/a>/);
+  assert.doesNotMatch(rootContent, /href="\/sources\/\?/);
   assert.match(rootContent, /Map layer types/);
   const navContent = rootContent.slice(
     rootContent.indexOf('<nav'),
@@ -108,7 +113,7 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   );
   assert.match(navContent, /href="\/blog\/"/);
   assert.match(navContent, />Blog<\/a>/);
-  assert.match(navContent, /href="\/sources\/\?utm_source=welcome-nav"[^>]*>Attributed providers<\/a>/);
+  assert.match(navContent, /href="\/sources\/"[^>]*>Attributed providers<\/a>/);
   assert.match(navContent, /id="welcome-tablet-navigation"/);
   assert.match(navContent, />Menu</);
   const headlineIndex = rootContent.indexOf('By the time it&#x27;s news,');
@@ -129,17 +134,39 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   assert.ok(liveIndex > taskIndex, 'live proof should follow the task routes');
 
   const taskLinks = [
-    ['crises', 'task-verify', 'welcome-task-verify'],
-    ['chokepoints', 'task-chokepoint', 'welcome-task-chokepoint'],
-    ['countries', 'task-country-risk', 'welcome-task-country-risk'],
+    ['crises', 'welcome-task-verify'],
+    ['chokepoints', 'welcome-task-chokepoint'],
+    ['countries', 'welcome-task-country-risk'],
   ];
-  for (const [route, content, target] of taskLinks) {
+  for (const [route, target] of taskLinks) {
     assert.match(
       rootContent,
-      new RegExp(`href="/${route}/\\?utm_source=welcome&amp;utm_content=${content}"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="${target}"`),
+      new RegExp(`href="/${route}/"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="${target}"`),
     );
   }
-  assert.doesNotMatch(rootContent, /href="\/(?:crises|chokepoints|countries)\/\?[^"#]*(?:ref|wm_referral)=/);
+  assert.doesNotMatch(rootContent, /href="\/(?:crises|chokepoints|countries)\/\?/);
+
+  // #8603 replaced the utm_content tag on these with an Umami attribute. The
+  // noise-key 308 is bot-gated (middleware.ts), so a human always kept the
+  // param and the analytics cost of dropping it falls entirely on human
+  // traffic — these four are the ones that carried nothing else.
+  // Order-independent: framer-motion forwards these through to the DOM element
+  // and does not promise to preserve prop order, so both attributes are matched
+  // within one anchor tag rather than in sequence.
+  const anchorTags = rootContent.match(/<a\b[^>]*>/g) ?? [];
+  assert.ok(anchorTags.length > 20, `expected the prerendered anchors, saw ${anchorTags.length}`);
+  for (const target of [
+    'welcome-depth-n1',
+    'welcome-depth',
+    'welcome-f5m',
+    'welcome-moment-m1',
+    'welcome-moment-m4',
+  ]) {
+    assert.ok(
+      anchorTags.some((tag) => tag.includes(`data-umami-event-target="${target}"`) && tag.includes('data-umami-event="welcome-cta"')),
+      `the ${target} CTA must keep an attribution attribute after losing its utm tag`,
+    );
+  }
 
   const navContent = rootContent.slice(
     rootContent.indexOf('<nav'),
@@ -151,11 +178,37 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   const agentLinks = [
     /href="\/llms\.txt"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-briefing"/,
     /href="https:\/\/worldmonitor\.app\/mcp"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-mcp"/,
-    /href="https:\/\/api\.worldmonitor\.app"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
+    // #8603: the bare api host root is a 308 to the www homepage, so the card
+    // now links the API reference itself, and its displayed string tracks the
+    // destination — see the display assertion below.
+    /href="https:\/\/www\.worldmonitor\.app\/docs\/api-reference"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
     /href="\/\?mode=agent"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-view"/,
   ];
   for (const linkPattern of agentLinks) {
     assert.match(agentSection, linkPattern);
+  }
+  // This block is what an LLM summarising the section reads, so the string a
+  // card displays has to be the URL it actually opens. Every card is checked,
+  // not just the one #8603 repointed.
+  for (const [href, display] of [
+    ['/llms.txt', '/llms.txt'],
+    ['https://worldmonitor.app/mcp', 'worldmonitor.app/mcp'],
+    ['https://www.worldmonitor.app/docs/api-reference', 'worldmonitor.app/docs/api-reference'],
+    ['/?mode=agent', '/?mode=agent'],
+  ]) {
+    const escapeRe = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Two bounds, both load-bearing. `[^>]*>` forces the match past the end
+    // of the opening tag, because an absolute href CONTAINS its own display
+    // string (https://www.worldmonitor.app/docs/api-reference contains
+    // worldmonitor.app/docs/api-reference) and without it this passed
+    // vacuously against the very attribute it exists to compare. Refusing to
+    // cross the closing tag keeps it inside the one card, so it cannot pass on
+    // a neighbouring card's display string either.
+    assert.match(
+      agentSection.replace(/&#x2F;/g, '/').replace(/&amp;/g, '&'),
+      new RegExp(`href="${escapeRe(href)}"[^>]*>(?:(?!</a>)[\\s\\S])*?${escapeRe(display)}`),
+      `the agent card for ${href} must display its own destination`,
+    );
   }
 });
 

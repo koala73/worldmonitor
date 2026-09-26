@@ -1,6 +1,6 @@
 ---
 title: "疾病爆发"
-description: "疾病爆发面板实时聚合全球活跃传染病警报，来源包括世卫组织 WHO DON 疫情通报、美国 CDC HAN 健康警报网、Outbreak News Today 与 ThinkGlobalHealth 依托 ProMED 的疫情追踪器，按严重性排序并支持全文搜索，为公共卫生监测、旅行安全与生物安全风险预警提供统一视图。"
+description: "疾病爆发面板实时聚合全球活跃传染病警报，来源包括世卫组织 WHO DON 疫情通报、美国 CDC HAN 健康警报网、欧洲疾控中心 ECDC、CIDRAP 与 ThinkGlobalHealth 依托 ProMED 的疫情追踪器，按严重性排序并支持全文搜索，为公共卫生监测、旅行安全与生物安全风险预警提供统一视图。"
 ---
 
 **Disease Outbreaks** 面板展示全球活跃的爆发警报 — 确诊病例、受影响地区、病例数和每事件的威胁级别。它是仪表盘的公共卫生信号层。
@@ -30,7 +30,8 @@ description: "疾病爆发面板实时聚合全球活跃传染病警报，来源
 
 - **WHO Disease Outbreak News** — 官方 WHO DON JSON API。全球重大爆发的主要来源。
 - **CDC Health Alert Network (HAN)** — 以美国为中心的源，补充 WHO 的北美事件。
-- **Outbreak News Today** — 第三方聚合器，整合 WHO、CDC 和区域卫生部的警报。
+- **ECDC 流行病学更新** — 欧洲疾病预防控制中心发布的疫情更新，包括欧盟/欧洲经济区以外的事件。
+- **CIDRAP 疾病新闻** — 明尼苏达大学 CIDRAP 的埃博拉、病毒性出血热、禽流感、猴痘、霍乱、麻疹、登革热、脊髓灰质炎和食源性疾病订阅源。仅保留同时点名已知疾病与国家、且发布不超过 90 天的报道；多主题的 "Quick takes" 汇总会被跳过。
 - **ThinkGlobalHealth disease tracker** — 包含约 1,600+ ProMED 来源实时警报的开源包，附经纬度（保持 90 天回溯，使地图不被旧事件淹没）。
 
 注意：面板内的信息工具提示为简洁起见将其概括为 "WHO、ProMED 和卫生部"。以上是种子器中实现的完整上游列表。结果被标准化、去重，并写入 Redis 中的 `health:disease-outbreaks:v1`，TTL 为 72 小时（每日 cron 间隔的 3 倍）。

@@ -137,7 +137,15 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function escapeHtml(value) { return String(value ?? ''); }
       export function sanitizeUrl(value) { return value ?? ''; }
     `],
-    ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['intel-brief-stub', `
+      export function formatIntelBrief(value) { return value; }
+      // Echoes its input so a test can see which evidence and class the page passed.
+      export function renderBriefEvidenceFooter(evidence, options) {
+        if (!Array.isArray(evidence) || evidence.length === 0) return '';
+        const rows = evidence.map((item) => item.id + '=' + item.label + ': ' + item.value).join('|');
+        return '<details data-evidence-footer="' + (options?.className ?? '') + '">' + rows + '</details>';
+      }
+    `],
     ['i18n-stub', `
       export function t(key, params) {
         if (params && typeof params.count === 'number') return key + ':' + params.count;
@@ -190,6 +198,12 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
         }
         page.appendChild(trigger);
         page.appendChild(menu);
+        // updateBrief writes into this section, so give it a real node.
+        if (String(html).includes('class="cb-brief-content"')) {
+          const briefContent = document.createElement('div');
+          briefContent.className = 'cb-brief-content';
+          page.appendChild(briefContent);
+        }
         root.appendChild(page);
       }
 
@@ -634,6 +648,34 @@ describe('country evidence bundle export', () => {
     }
   });
 
+  it('renders the World Monitor data footer from the brief evidence', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: true });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+      page.updateBrief({
+        code: 'FR',
+        brief: 'SITUATION NOW\nFiscal space scores 28 of 100. [E2]',
+        generatedAt: '2026-06-10T11:55:00.000Z',
+        evidence: [
+          { id: 'E2', kind: 'resilience', label: 'Fiscal space', value: '28/100', asOf: '2026-06-01', url: 'https://www.worldmonitor.app/country/FR' },
+        ],
+      });
+
+      const section = harness.getOverlay()?.querySelector('.cb-brief-content') as HTMLElement | null;
+      assert.ok(section, 'expected brief section');
+      const html = section.innerHTML;
+      assert.match(html, /data-evidence-footer="cb-brief-sources cb-brief-evidence"/);
+      assert.match(html, /E2=Fiscal space: 28\/100/);
+      assert.ok(
+        html.indexOf('data-evidence-footer') > html.indexOf('cb-brief-text'),
+        'evidence footer renders after the brief text',
+      );
+    } finally {
+      harness.cleanup();
+    }
+  });
+
   it('blocks country brief JSON/CSV export when the data-export gate is locked (R9)', async () => {
     const harness = await createCountryBriefPageHarness({ premiumAccess: false, exportGateLocked: true });
     try {
@@ -884,6 +926,52 @@ describe('CSV spreadsheet safety', () => {
       assert.ok(brief.includes('"change","-3"'));
       assert.ok(brief.includes('"count","0"'));
       assert.ok(brief.includes('"missing","null"'));
+    } finally {
+      restoreGlobal('document', originalDocument);
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
+
+describe('CSV military vessel class', () => {
+  it('exports the AIS activity for a vessel whose only military evidence is ship type 35', async () => {
+    // #8611: AIS type 35 means "Military Ops" activity, not a hull class, so
+    // the vessel carries vesselType 'unknown'. The map shows the supported
+    // activity; the CSV a user keeps must not drop it back to a bare unknown.
+    const exports = await loadExportUtils();
+    const originalDocument = snapshotGlobal('document');
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const blobs: Blob[] = [];
+    URL.createObjectURL = (blob: Blob) => { blobs.push(blob); return 'blob:test'; };
+    URL.revokeObjectURL = () => {};
+    defineGlobal('document', {
+      createElement: () => ({ click() {} }),
+      body: { appendChild() {}, removeChild() {} },
+    });
+    const vessel = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ais-235123456', mmsi: '235123456', name: 'SEA FALCON',
+      vesselType: 'unknown', aisShipType: 'Military Ops',
+      operator: 'other', operatorCountry: 'Yemen',
+      lat: 12, lon: 44, heading: 0, speed: 4,
+      lastAisUpdate: new Date(0), confidence: 'low',
+      ...overrides,
+    });
+    try {
+      exports.exportToCSV({
+        timestamp: 0,
+        intelligence: { military: { vessels: [vessel()], flights: [] } },
+      } as never);
+      const csv = await blobs[0]!.text();
+      assert.ok(csv.includes('"SEA FALCON","235123456","Yemen","Military Ops"'), csv);
+
+      exports.exportToCSV({
+        timestamp: 0,
+        intelligence: { military: { vessels: [vessel({ name: 'USS ZUMWALT', vesselType: 'destroyer' })], flights: [] } },
+      } as never);
+      const known = await blobs[1]!.text();
+      assert.ok(known.includes('"USS ZUMWALT","235123456","Yemen","destroyer"'), known);
     } finally {
       restoreGlobal('document', originalDocument);
       URL.createObjectURL = originalCreate;

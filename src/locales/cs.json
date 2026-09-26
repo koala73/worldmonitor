@@ -2876,6 +2876,29 @@
       "idleKeepPlaying": "Pokračovat v přehrávání při nečinnosti",
       "idleSettingsHint": "Toto můžete kdykoli změnit v Nastavení › Média.",
       "idleKeepPlayingToast": "Živé video se bude přehrávat při nečinnosti. Toto nastavení můžete změnit v Nastavení › Média."
+    },
+    "corroboration": {
+      "singlePublisher": "Jeden vydavatel",
+      "singlePublisherHint": "Zatím o tom podává zprávu pouze jeden vydavatel. Toto popisuje pokrytí, nikoli přesnost.",
+      "tier4Only": "Pouze nízko-hodnotené zdroje",
+      "tier4OnlyHint": "Všechny portály, které o tom podávají zprávu, jsou zdroje tier-4 (agregátory a blogy). Toto popisuje pokrytí, nikoli přesnost.",
+      "rosterListed": "({{listed}} uvedeno)",
+      "rosterFeeds": "Zobrazené kanály: {{labels}}",
+      "rosterLegend": "Úrovně klasifikují zdroje; nehodnotí toto tvrzení.",
+      "tierDocsLink": "Jak se přiřazují úrovně",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T?",
+      "tierTitle1": "Úroveň 1: Tiskové agentury a oficiální orgány",
+      "tierTitle2": "Úroveň 2: Hlavní vydavatelství",
+      "tierTitle3": "Úroveň 3: Specializované, regionální a think-tank zdroje",
+      "tierTitle4": "Úroveň 4: Agregátory a blogy",
+      "tierTitleUndeclared": "Úroveň neuvedena: dosud nekontrolováno",
+      "rosterSummary": "Zprávu přináší {{publishers}}",
+      "rosterSummaryTier1": "Zprávu přináší {{publishers}}, z toho {{tier1}} úrovně 1",
+      "rosterPublishers_one": "{{count}} vydavatel",
+      "rosterPublishers_few": "{{count}} vydavatelé",
+      "rosterPublishers_many": "{{count}} vydavatelů",
+      "rosterPublishers_other": "{{count}} vydavatelů"
     }
   },
   "popups": {

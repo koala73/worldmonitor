@@ -1660,3 +1660,100 @@ describe('bounded compact-health refresh retries', () => {
     assert.deepEqual(f.sleeps, [1000]);
   });
 });
+
+// ── CONTENT_AGE_PREWARNING (pre-breach lead time) ─────────────────────────
+
+describe('content-age pre-warning diagnostics', () => {
+  const NOW = Date.parse('2026-08-04T00:00:00.000Z');
+  const budgetMin = 331200;                       // 230 days
+  const ageMin = 265000;                          // 80.0%
+  const warnAt = Math.ceil(budgetMin * 0.8);      // 264960
+  const breachAt = '2026-09-19T00:00:30.000Z';
+
+  const warningEntry = () => ({
+    status: 'CONTENT_AGE_PREWARNING',
+    records: 58,
+    contentAgeMin: ageMin,
+    maxContentAgeMin: budgetMin,
+    warnAtContentAgeMin: warnAt,
+    contentAgeRemainingMin: budgetMin - ageMin,
+    contentAgeBreachAt: breachAt,
+  });
+
+  const compactPayload = () => ({
+    status: 'HEALTHY',
+    checkedAt: new Date(NOW).toISOString(),
+    summary: { total: 1, ok: 1, warn: 0, crit: 0 },
+    pending: { jodiGas: warningEntry() },
+  });
+
+  it('never blocks operational acceptance, even when the entry is malformed', () => {
+    for (const broken of [
+      { status: 'CONTENT_AGE_PREWARNING' },
+      { ...warningEntry(), contentAgeMin: 'many' },
+      { ...warningEntry(), warnAtContentAgeMin: 100 },
+      { ...warningEntry(), contentAgeRemainingMin: 1 },
+      { ...warningEntry(), contentAgeBreachAt: 'not-a-date' },
+      { ...warningEntry(), contentAgeMin: budgetMin + 1 },   // over budget: stale territory
+      { ...warningEntry(), contentAgeMin: warnAt - 1 },      // below threshold
+    ]) {
+      const problems = findOperationalProblems({ ...compactPayload(), pending: { jodiGas: broken } }, NOW);
+      assert.equal(problems.length, 0, `malformed entry must not block: ${JSON.stringify(broken)}`);
+    }
+    // An object with NO status string is not a pre-warning at all: it falls
+    // through to the unknown-problem path and blocks, which is correct
+    // fail-closed behavior for unrecognized shapes.
+    const unknown = findOperationalProblems({ ...compactPayload(), pending: { jodiGas: {} } }, NOW);
+    assert.equal(unknown.length, 1, 'status-less entry stays a blocking unknown');
+  });
+
+  it('reports a valid pre-warning as a pending diagnostic with lead-time fields', () => {
+    const diagnostics = findPendingDiagnostics(compactPayload(), NOW);
+    assert.equal(diagnostics.length, 1);
+    const d = diagnostics[0];
+    assert.equal(d.name, 'jodiGas');
+    assert.equal(d.status, 'CONTENT_AGE_PREWARNING');
+    assert.equal(d.graceUntil, null);
+    assert.equal(d.usedPercent, 80);
+    assert.equal(d.remainingMin, budgetMin - ageMin);
+    assert.equal(d.breachAt, breachAt);
+    assert.equal(d.breachObserved, false, 'checkedAt precedes the breach instant');
+  });
+
+  it('validates against the fenced checkedAt, not the wall clock', () => {
+    // A snapshot that crossed the breach before the monitor read it still
+    // reports, with breachObserved true.
+    const lateNow = Date.parse(breachAt) + 60_000;
+    const diagnostics = findPendingDiagnostics({
+      ...compactPayload(),
+      checkedAt: new Date(lateNow).toISOString(),
+    }, lateNow);
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0].breachObserved, true);
+  });
+
+  it('drops pre-warning diagnostics from the sorted list when invalid', () => {
+    const diagnostics = findPendingDiagnostics(
+      { ...compactPayload(), pending: { jodiGas: { status: 'CONTENT_AGE_PREWARNING' } } },
+      NOW,
+    );
+    assert.equal(diagnostics.length, 0, 'malformed advisory is dropped, not reported');
+  });
+
+  it('does not let the advisory alter the exit verdict for a fresh observation', () => {
+    const observation = buildAcceptanceObservation(compactPayload(), { expiresAt: '2099-01-01', acknowledged: [] }, NOW);
+    assert.equal(observation.report.failed, false);
+    assert.equal(observation.acceptance.blocking.length, 0);
+  });
+
+  it('keeps a problems-lane entry of the same name authoritative', () => {
+    // Duplicate name across lanes: problems wins. Hard status stays blocking.
+    const payload = {
+      ...compactPayload(),
+      problems: { jodiGas: { status: 'STALE_CONTENT', records: 58 } },
+    };
+    const problems = findOperationalProblems(payload, NOW);
+    assert.equal(problems.length, 1);
+    assert.equal(problems[0].status, 'STALE_CONTENT');
+  });
+});

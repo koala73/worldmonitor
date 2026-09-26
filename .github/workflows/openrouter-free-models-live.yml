@@ -1,0 +1,79 @@
+name: OpenRouter Free Models Live
+
+# Fails when either OpenRouter free-chain model (scripts/lib/llm-model-policy.cjs)
+# stops being usable for free: delisted from /models, within 14 days of its
+# expiration_date, without a zero-price endpoint production can route to, or
+# (when the key secret is set) refusing a real completion.
+#
+# Why this workflow exists: OpenRouter has twice stopped serving the backup
+# model for free without notice. `openai/gpt-oss-20b:free` was found dead on
+# 2026-08-28 and `minimax/minimax-m3:free` on 2026-09-24 (#8570). Each time
+# every call returned HTTP 404, so the chain walked primary 429 -> backup 404
+# -> nothing for seed-insights, seed-forecasts, ais-relay, lib/llm-chain, the
+# regional-snapshot brief and server/_shared/llm.ts. Mock-based tests cannot
+# see a delisting, so nothing noticed for an unknown span.
+#
+# No `npm ci`: the suite imports only the policy module plus node builtins.
+# The listing and endpoint checks are keyless. The completion check runs only
+# when the OPENROUTER_API_KEY repository secret exists; it sends one
+# max_tokens:1 request per model and passes on 429/5xx upstream load.
+#
+# Triggers:
+#   - schedule (daily at :37, offset from the other live probes): OpenRouter
+#     changes its catalog independently of our commits.
+#   - push to main touching the policy, the suite, or this workflow, so a
+#     model swap is checked the moment it lands.
+#   - workflow_dispatch: manual re-runs from the Actions UI.
+# NOT pull_request: the target is a live third-party service, so a PR run could
+# fail for reasons the PR did not cause.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/llm-model-policy.cjs'
+      - 'tests/openrouter-free-models-live.test.mjs'
+      - '.github/workflows/openrouter-free-models-live.yml'
+  schedule:
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Check the free-chain models are still usable for free
+        env:
+          LIVE_OPENROUTER_FREE_MODELS_TESTS: '1'
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        # `node --test` exits 0 when a describe is skipped, and the suite also
+        # has always-on fixture cases, so a pass count cannot prove the live
+        # cases ran. Require each live case by name as a passing, unskipped TAP
+        # line instead. The TAP reporter is pinned because Node picks the
+        # default reporter from TTY-ness.
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap tests/openrouter-free-models-live.test.mjs 2>&1 | tee /tmp/openrouter-free-models.log
+          required=(
+            'lists every free-chain model at zero price with no expiry inside 14 days'
+            'keeps a usable free endpoint for every free-chain model'
+          )
+          if [ -n "$OPENROUTER_API_KEY" ]; then
+            required+=('answers a real completion from every free-chain model')
+          else
+            echo "::notice::OPENROUTER_API_KEY secret is not set; the real-completion check was skipped."
+          fi
+          for name in "${required[@]}"; do
+            if ! grep -E "^ *ok [0-9]+ - ${name}\$" /tmp/openrouter-free-models.log > /dev/null; then
+              echo "::error::Live case did not pass: ${name}"
+              exit 1
+            fi
+          done

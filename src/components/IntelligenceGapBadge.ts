@@ -9,6 +9,7 @@ import { trackFindingClicked } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { bindActivationKeys } from '@/utils/activation';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 const LOW_COUNT_THRESHOLD = 3;
@@ -521,6 +522,8 @@ export class IntelligenceFindingsBadge {
     overlay.className = 'findings-modal-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    // Read-only findings list; a reload rebuilds it from the same data.
+    declareOverlay(overlay, { reload: 'safe' });
     overlay.setAttribute('aria-label', t('components.intelligenceFindings.all', { count: String(this.findings.length) }));
 
     const findingsHtml = this.findings.map(finding => {

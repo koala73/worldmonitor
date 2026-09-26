@@ -8,7 +8,7 @@
 // what these tests are for.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -133,8 +133,9 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the exact 83-service fleet accepted by the terminal production run', () => {
-    // The roster is not a baseline to be
+  it('ships the 85-service fleet including the provisioned live-video resolver', () => {
+    // 84 -> 85: seed-live-video-resolved (service 11581ac4, cron 0 */6 * * *)
+    // was provisioned after #8596 merged. The roster is not a baseline to be
     // quieted — every mismatch is red — but it must list every repo-backed
     // service, or a service whose GitHub source detaches vanishes before
     // repository filtering and both read-only monitors report healthy. An
@@ -143,13 +144,21 @@ describe('immutable native-autodeploy fleet', () => {
     // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
     // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 83);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 83);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 83);
+    assert.equal(fleet.length, 85);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 85);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 85);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),
     );
+  });
+
+  it('keeps planned services out of the active fleet', () => {
+    const registry = JSON.parse(readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8'));
+    const fleet = readExpectedRepositoryFleet();
+    for (const entry of registry.filter((entry) => entry.lifecycle === 'planned')) {
+      assert.ok(!fleet.some((service) => service.name === entry.service), `${entry.service} is not provisioned`);
+    }
   });
 
   it('rejects malformed immutable fleet manifests', () => {

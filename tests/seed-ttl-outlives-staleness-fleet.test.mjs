@@ -74,7 +74,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-climate-news.mjs',
   'seed-co2-monitoring.mjs',
   'seed-commodity-quotes.mjs',
-  'seed-cot.mjs',
   'seed-cross-source-signals.mjs',
   'seed-crypto-sectors.mjs',
   'seed-cyber-threats.mjs',

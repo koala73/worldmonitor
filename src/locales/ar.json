@@ -2914,6 +2914,31 @@
       "idleKeepPlaying": "الاستمرار في التشغيل عند عدم النشاط",
       "idleSettingsHint": "غيّر هذا في أي وقت في الإعدادات › الوسائط.",
       "idleKeepPlayingToast": "سيستمر الفيديو المباشر في التشغيل عند عدم النشاط. غيّر هذا في الإعدادات › الوسائط."
+    },
+    "corroboration": {
+      "singlePublisher": "ناشر واحد",
+      "singlePublisherHint": "ناشر واحد فقط يغطي هذا حتى الآن. هذا يصف نطاق التغطية، وليس الدقة.",
+      "tier4Only": "مصادر منخفضة المستوى فقط",
+      "tier4OnlyHint": "كل منفذ ينشر هذا هو مصدر من المستوى 4 (المجمّعات والمدونات). هذا يصف نطاق التغطية، وليس الدقة.",
+      "rosterListed": "({{listed}} مدرجة)",
+      "rosterFeeds": "الخلاصات التي شوهدت: {{labels}}",
+      "rosterLegend": "المستويات ترتّب المصادر؛ ولا تحكم على هذا الادعاء.",
+      "tierDocsLink": "كيفية تعيين المستويات",
+      "tierChip": "T{{tier}}",
+      "tierChipUndeclared": "T؟",
+      "tierTitle1": "المستوى 1: وكالات الأنباء والهيئات الرسمية",
+      "tierTitle2": "المستوى 2: المنافذ الإعلامية الرئيسية",
+      "tierTitle3": "المستوى 3: مصادر متخصصة وإقليمية ومراكز بحثية",
+      "tierTitle4": "المستوى 4: المجمّعات والمدونات",
+      "tierTitleUndeclared": "المستوى غير محدد: لم تتم مراجعته بعد",
+      "rosterSummary": "نقلها {{publishers}}",
+      "rosterSummaryTier1": "نقلها {{publishers}}، بينهم {{tier1}} من المستوى 1",
+      "rosterPublishers_zero": "{{count}} ناشر",
+      "rosterPublishers_one": "{{count}} ناشر",
+      "rosterPublishers_two": "{{count}} ناشران",
+      "rosterPublishers_few": "{{count}} ناشرين",
+      "rosterPublishers_many": "{{count}} ناشراً",
+      "rosterPublishers_other": "{{count}} ناشر"
     }
   },
   "popups": {

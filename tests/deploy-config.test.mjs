@@ -231,6 +231,16 @@ const sourceToRegExp = (source) => {
         out += '[^/]+';
         i = j - 1;
       }
+    } else if (ch === '\\' && i + 1 < source.length) {
+      // A backslash already in the source is the author escaping the NEXT
+      // character (`(.*)\.json`). Copy both through verbatim. Without this the
+      // helper escaped the backslash itself, producing `\\.` — a literal
+      // backslash followed by any char — so such a source modelled as matching
+      // nothing and every `assert.equal(effectiveHeader(p, k), null)` against it
+      // passed vacuously. No source in vercel.json needs it today; the branch
+      // exists so the first one that does is not silently green.
+      out += source[i] + source[i + 1];
+      i += 1;
     } else {
       out += /[.*+?^${}|[\]\\]/.test(ch) ? `\\${ch}` : ch;
     }
@@ -531,9 +541,16 @@ describe('crawlable content corpus deployment contracts', () => {
   });
 
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
-    assert.equal(
+    // #8604 prepends the country slug generator. api/story.js canonicalises
+    // every share stub against api/_country-corpus-slugs.generated.js, which is
+    // derived from the same resilience snapshot this builder reads, so the map
+    // has to be regenerated in the same step that republishes the pages -- a
+    // map that lags the corpus emits a canonical to a slug that 404s. The
+    // corpus builder stays the tail of the command, so the ordering assertions
+    // below still describe where the pages are produced.
+    assert.match(
       packageJson.scripts['build:crawlable-corpus'],
-      'node --import tsx scripts/build-crawlable-corpus.mjs'
+      /^npm run corpus:country-slugs && node --import tsx scripts\/build-crawlable-corpus\.mjs$/
     );
     assert.equal(
       packageJson.scripts['build:sitemap'],
@@ -738,6 +755,91 @@ describe('crawlable content corpus deployment contracts', () => {
     }
     for (const symbol of ['AAPL', 'ZZZZFAKE', 'BRK.B', '7203.T']) {
       assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: `/stocks/${symbol}` })?.destination, DASHBOARD_HTML_DESTINATION);
+    }
+  });
+
+  // #8608: the corpus dataset downloads, the OpenAPI/plugin descriptors and the
+  // .well-known JSON descriptors are machine-readable files, not pages. They
+  // answered 200 with no robots directive, which made them the largest
+  // actionable slice of the 2026-09-24 "Crawled - currently not indexed" export
+  // (178 of 1,000 sampled rows, 103 of them /countries/<slug>/resilience.json).
+  // `noindex, follow` keeps them fetchable, which a robots.txt Disallow would
+  // not: every corpus page carries a schema.org DataDownload `contentUrl`
+  // pointing at these files, and a disallowed URL is a claim Google is
+  // forbidden to verify (#7660).
+  it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
+    const dataFiles = [
+      // Corpus dataset downloads - scripts/build-crawlable-corpus.mjs.
+      '/country-instability-index/cii-ranking.json',
+      '/countries/resilience-ranking.json',
+      '/countries/iran/resilience.json',
+      '/countries/iran/cii.json',
+      '/chokepoints/status.json',
+      '/chokepoints/strait-of-hormuz/reference.json',
+      '/crises/sudan/tracker.json',
+      '/accuracy/scorecard.json',
+      '/sources/search-index.json',
+      '/research/grain-corridor/grain-corridor.json',
+      // Service descriptions.
+      '/openapi.json',
+      '/openapi.yaml',
+      '/plugin.json',
+      '/docs/api/ForecastService.openapi.yaml',
+      '/docs/snapshots/github-stars-2026-09-03.json',
+      // Standalone machine JSON outside the corpus families.
+      '/product-facts.json',
+      '/agent-view.json',
+      '/sandbox/index.json',
+    ];
+    for (const path of dataFiles) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), 'noindex, follow', path);
+    }
+
+    for (const prefix of CONTENT_CORPUS_PREFIXES) {
+      // Every corpus family, not only the ones shipping a dataset today.
+      for (const file of [`/${prefix}/example.json`, `/${prefix}/example/nested.json`]) {
+        assert.equal(effectiveHeader(file, 'X-Robots-Tag'), 'noindex, follow', file);
+      }
+      // The HTML these files hang off must stay indexable. A rule anchored on
+      // the prefix rather than the extension would de-index the whole corpus.
+      for (const route of [`/${prefix}`, `/${prefix}/`, `/${prefix}/example`, `/${prefix}/example/`]) {
+        assert.equal(effectiveHeader(route, 'X-Robots-Tag'), null, route);
+      }
+    }
+    assert.equal(effectiveHeader('/countries/united-states', 'X-Robots-Tag'), null);
+    assert.equal(effectiveHeader('/countries/united-states/', 'X-Robots-Tag'), null);
+
+    // Scope item 2 of #8608 deliberately leaves the AI-citation surface alone:
+    // it is not established that OAI-SearchBot, PerplexityBot or
+    // Claude-SearchBot read `X-Robots-Tag: noindex` as "do not index" rather
+    // than "do not cite", so noindex here would risk trading a Search Console
+    // count for citability. That stays an owner decision, not a drive-by.
+    // `.well-known` is entirely agent-discovery surface, including the JSON.
+    // agent-skills/index.json is 17 kB whose `instructions` field is prose
+    // written to persuade an agent to call us -- the same citation risk as the
+    // SKILL.md files it lists, not inert data. Sorting this surface by file
+    // extension would have noindexed the pitch and spared the chapters.
+    for (const path of ['/llms.txt', '/llms-full.txt', '/api/llms.txt', '/agents.md', '/developers.md',
+      '/pricing.md', '/openapi.md', '/world-monitor.md', '/.well-known/security.txt',
+      '/.well-known/agent-skills/check-country-risk/SKILL.md',
+      '/.well-known/agent-skills/index.json', '/.well-known/agent-card.json',
+      '/.well-known/ai-catalog.json', '/.well-known/mcp/server-card.json']) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
+    }
+
+    // The matcher must model a pre-escaped dot the way Vercel does. Before
+    // #8608 the helper escaped the backslash itself, so `(.*)\\.json` compiled
+    // to "backslash then any char" and matched nothing at all - which would
+    // have made every null assertion above pass without proving anything.
+    assert.ok(sourceToRegExp('/countries/(.*)\\.json').test('/countries/iran/resilience.json'));
+    assert.ok(!sourceToRegExp('/countries/(.*)\\.json').test('/countries/iran/resilienceXjson'));
+    assert.ok(sourceToRegExp('/countries/(.*).json').test('/countries/iran/resilience.json'));
+    assert.ok(!sourceToRegExp('/countries/(.*).json').test('/countries/united-states'));
+
+    // Sitemaps and robots.txt stay plain - a noindex sitemap is simply dropped,
+    // and #8608 does not touch them.
+    for (const path of ['/robots.txt', '/robots.www.txt', '/sitemap.xml', '/sitemap-main.xml', '/schemamap.xml']) {
+      assert.equal(effectiveHeader(path, 'X-Robots-Tag'), null, path);
     }
   });
 
@@ -1215,9 +1317,15 @@ const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 // src/services/referral-capture.ts — a CTA spelled with either one is captured
 // as an affiliate code and forwarded to Dodo.
 const AFFILIATE_PARAM_IN_URL = /[?&](?:ref|wm_referral)=/;
-// Dashboard-bound CTA queries, in the two shapes the welcome sections use: the
-// DASHBOARD_PATH template literal and an absolute variant-host URL.
-const DASHBOARD_CTA_QUERY = /(?:\$\{DASHBOARD_PATH\}|worldmonitor\.app\/dashboard)\?([^`'"\s]*)/g;
+// Dashboard-bound CTAs, in the shapes the welcome sections use: the
+// DASHBOARD_PATH constant (bare or interpolated) and an absolute variant-host
+// URL. The capture is the tail AFTER the path, so an untagged CTA matches with
+// an empty capture and a tagged one exposes its query — matching only on `?`
+// would make the scan silently skip every CTA the moment tagging stops.
+// The tail includes a quoted concatenation (`DASHBOARD_PATH + '?utm_source=…'`).
+// Stopping at the space left that tail empty, so the CTA still counted as clean.
+const DASHBOARD_CTA = /href[=:]\s*[{`'"]*(?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z]+\.worldmonitor\.app\/dashboard)((?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
+const INDEX_NOISE_IN_HREF = /href\s*[:=]\s*["'`][^"'`]*[?&](?:utm_[a-z0-9_]+|ref|wm_referral)=/i;
 
 function readWelcomeSources() {
   const welcomeDir = resolve(__dirname, '../pro-test/src/welcome');
@@ -1612,36 +1720,41 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('tags welcome dashboard CTAs with utm params, never an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
+  it('leaves welcome dashboard CTAs untagged, and never uses an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
     // `ref=` and `wm_referral=` on a dashboard URL are read by
     // src/services/referral-capture.ts as an AFFILIATE code: persisted for 7
     // days and forwarded to Dodo as `affonso_referral`. Internal welcome CTAs
-    // tagged that way credit "welcome-nav" for organic purchases (#6493), so
-    // the source tag must be a utm_* param — which Umami reports natively and
-    // referral-capture ignores. Both param names are banned: wm_referral is
-    // read FIRST, so a CTA spelled that way is the identical bug.
+    // tagged that way credit "welcome-nav" for organic purchases (#6493).
+    // Both param names are banned: wm_referral is read FIRST, so a CTA spelled
+    // that way is the identical bug.
+    //
+    // The utm_* replacement these CTAs used to carry is banned too (#8603):
+    // middleware strips every INDEX_NOISE_QUERY_KEY with a 308, so a tagged
+    // internal link sent Googlebot through a redirect on every welcome CTA.
+    // Attribution rides data-umami-event-target, which Umami reports natively
+    // and which costs no redirect hop.
     const welcomeSources = readWelcomeSources();
 
-    let taggedCtas = 0;
+    let scannedCtas = 0;
     for (const [file, source] of welcomeSources) {
       assert.doesNotMatch(
         source,
         AFFILIATE_PARAM_IN_URL,
         `${file}: welcome CTAs must never use an affiliate referral param (see REFERRAL_PARAM_NAMES in referral-capture.ts)`
       );
-      for (const [, query] of source.matchAll(DASHBOARD_CTA_QUERY)) {
-        assert.match(
-          query,
-          /(?:^|&)utm_source=welcome(?:&|$)/,
-          `${file}: dashboard CTA "?${query}" must carry utm_source=welcome`
+      for (const [, tail] of source.matchAll(DASHBOARD_CTA)) {
+        assert.equal(
+          tail,
+          '',
+          `${file}: dashboard CTA carries "${tail}" — middleware 308s index-noise query keys away`
         );
-        taggedCtas += 1;
+        scannedCtas += 1;
       }
     }
     // Exact, not a floor: a floor with slack lets a CTA drop out of the scan
     // (moved behind a helper, or re-pointed off /dashboard) while still
     // reading as covered. Bump this deliberately when a CTA is added.
-    assert.equal(taggedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${taggedCtas}`);
+    assert.equal(scannedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${scannedCtas}`);
 
     const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
     assert.doesNotMatch(
@@ -1657,6 +1770,31 @@ describe('welcome landing page routing', () => {
       AFFILIATE_PARAM_IN_URL,
       'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test (npm run build:pro)'
     );
+    const generatedWelcomeJs = readGeneratedWelcomeAsset(generatedWelcomeHtml);
+    assert.doesNotMatch(
+      generatedWelcomeJs,
+      INDEX_NOISE_IN_HREF,
+      'generated welcome JS still ships an index-noise query on an href — middleware 308s utm_*, ref, and wm_referral'
+    );
+    assert.doesNotMatch(
+      generatedWelcomeHtml.replace(/&amp;/g, '&'),
+      INDEX_NOISE_IN_HREF,
+      'prerendered welcome HTML still ships an index-noise query on an href'
+    );
+  });
+
+  it('treats a concatenated dashboard query as part of the CTA', () => {
+    const tagged = [..."href={DASHBOARD_PATH + '?utm_source=welcome'}".matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+    assert.deepEqual(tagged, [" + '?utm_source=welcome'"]);
+    assert.notEqual(tagged[0], '');
+    for (const clean of [
+      'href={DASHBOARD_PATH}',
+      'href={`${DASHBOARD_PATH}`}',
+      'href="https://tech.worldmonitor.app/dashboard"',
+    ]) {
+      const tails = [...clean.matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+      assert.deepEqual(tails, [''], clean);
+    }
   });
 
   it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', { skip: shouldSkipProBuiltOutput() }, () => {
@@ -4444,10 +4582,11 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     // the worst of both, and it moves the volume into "Blocked by robots.txt"
     // rather than removing it.
     //
-    // Shapes are the ones the corpus builders actually emit
-    // (scripts/build-crawlable-corpus.mjs withUtmSource, scripts/build-use-cases.mjs
-    // content attribution, scripts/crawlable-sources-page.mjs,
-    // scripts/build-research-reports.mjs).
+    // Shapes are the ones the corpus builders actually emit: the parameterised
+    // dashboard deep links in scripts/build-crawlable-corpus.mjs and
+    // scripts/build-research-reports.mjs, plus the wm_content_* attribution in
+    // scripts/build-use-cases.mjs. The utm_source wrapper that used to sit on
+    // top of those was deleted in #8603.
     // `/*?*lat=` is a substring match over the whole query, not a parameter-NAME
     // match: it also catches any param ending in the token (`?colon=` matches
     // `/*?*lon=`) and value-side text (`?q=flat=earth` matches `/*?*lat=`).
@@ -4568,15 +4707,20 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
         });
       }
 
+      // Six: the parameterised dashboard deep links, including both `layers=`
+      // use-case CTAs this test was written to catch. It was eight until #8603
+      // deleted the two `?utm_source=` literals, which were redirect hops.
       assert.ok(
-        emitted.size >= 8,
+        emitted.size >= 6,
         `expected to read the corpus builders' query-bearing hrefs, found ${emitted.size} — ` +
           'the extraction regex probably stopped matching, which would make this test vacuous'
       );
 
-      // The attribution wrappers every builder applies on top of those literals.
+      // The attribution wrapper build-use-cases.mjs applies on top of those
+      // literals. wm_content_* only: utm_* keys were removed in #8603 because
+      // middleware 308s them away.
       const TAGGED = (href) =>
-        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case`;
+        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases`;
 
       const blocked = [];
       for (const [href, where] of emitted) {

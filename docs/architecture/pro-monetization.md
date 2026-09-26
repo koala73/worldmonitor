@@ -42,12 +42,9 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 
 ### Checkout creation
 
-Two Convex actions at `convex/payments/checkout.ts`:
+One Convex action at `convex/payments/checkout.ts`: `internalCreateCheckout` (internal action), called by `/relay/create-checkout` with the trusted userId from the edge gateway (`api/create-checkout.ts`). There is no public checkout action: a direct Convex call would skip the edge's per-user and per-IP budgets, and Dodo rate-limits our shared API key.
 
-- `createCheckout` (public action): Convex/Clerk auth.
-- `internalCreateCheckout` (internal action): called by `/relay/create-checkout` with trusted userId from the edge gateway.
-
-Both share `_createCheckoutSession()` which:
+It calls `_createCheckoutSession()`, which:
 
 1. Validates `returnUrl` against an allow-listed set of worldmonitor.app origins.
 2. Builds metadata: `wm_user_id` (HMAC-signed via `convex/lib/identitySigning.ts`), `wm_login_email` + `wm_login_email_sig` (the Clerk login email authenticated for this checkout, signed as a **separate** field so the `wm_user_id_sig` payload stays `userId` alone and pre-existing sessions keep verifying), + optional `affonso_referral`.
@@ -124,7 +121,7 @@ src/components/
 └── payment-failure-banner.ts # on_hold red banner
 
 convex/payments/
-├── checkout.ts               # createCheckout + internalCreateCheckout
+├── checkout.ts               # internalCreateCheckout (relay-only)
 ├── subscriptionHelpers.ts    # Webhook → subscription lifecycle
 ├── webhookMutations.ts       # Idempotent webhook event processing
 └── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl

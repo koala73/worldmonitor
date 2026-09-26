@@ -106,6 +106,7 @@ const EXPECTED_BANNED = [
   '曆史',
   '髮生',
   '隻基金',
+  '列錶',
 ];
 
 /** Flatten to dotted paths, descending into arrays — the plan-feature bullets live there. */

@@ -19,6 +19,8 @@
  * only; raw server text never reaches the dialog.
  */
 
+import { declareOverlay } from '@/utils/open-modal';
+
 export interface CheckoutConfirmDialogOptions {
   /** Unique element id; also used for the title id and `aria-labelledby`. */
   id: string;
@@ -48,6 +50,8 @@ export function showCheckoutConfirmDialog(options: CheckoutConfirmDialogOptions)
   backdrop.id = options.id;
   backdrop.setAttribute('role', 'dialog');
   backdrop.setAttribute('aria-modal', 'true');
+  // A pending payment decision, with a 3DS challenge possibly live behind it.
+  declareOverlay(backdrop, { reload: 'blocking' });
   backdrop.setAttribute('aria-labelledby', `${options.id}-title`);
   Object.assign(backdrop.style, {
     position: 'fixed',

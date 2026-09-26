@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
+import { getRootlessDocsDestination } from '../src/config/docs-root-redirects.ts';
 import { COMPARISON_MATRIX_COLUMNS, comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
 import { renderAccuracyLlmsSection } from './build-accuracy-page.mjs';
 import { resolveLatestLivePulseSnapshotPath, resolveLatestResilienceSnapshotPath, slugify } from './build-crawlable-corpus.mjs';
@@ -77,10 +78,47 @@ export function redactInternalApiOrigins(text) {
   }).join('\n');
 }
 
+/**
+ * Mintlify resolves a root-relative href against /docs. llms-full.txt is
+ * served from the site root, so the same href 308s (middleware rootless docs
+ * map, or vercel /api-reference/:match*). Rewrite only those paths. A site
+ * route such as /countries/ stays put.
+ */
+function rebaseInlinedDocsHref(href) {
+  const splitAt = [href.indexOf('#'), href.indexOf('?')].filter((index) => index >= 0);
+  const cut = splitAt.length > 0 ? Math.min(...splitAt) : href.length;
+  const path = href.slice(0, cut);
+  const suffix = href.slice(cut);
+  const normalized = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  const destination = getRootlessDocsDestination(normalized);
+  if (destination) return `${new URL(destination).pathname}${suffix}`;
+  if (normalized === '/api-reference' || normalized.startsWith('/api-reference/')) {
+    return `/docs${normalized}${suffix}`;
+  }
+  return null;
+}
+
+function rebaseInlinedDocsLinks(text) {
+  return mapProseLines(text, (line) => line.replace(
+    /\]\((\/[^)\s]+)(\s+"[^"]*")?\)/g,
+    (full, href, title = '') => {
+      const next = rebaseInlinedDocsHref(href);
+      return next ? `](${next}${title})` : full;
+    },
+  ).replace(
+    /(<a\b[^>]*\bhref=")(\/[^"]+)(")/g,
+    (full, open, href, close) => {
+      const next = rebaseInlinedDocsHref(href);
+      return next ? `${open}${next}${close}` : full;
+    },
+  ));
+}
+
 function stripMdx(source) {
   let text = stripFrontmatter(source);
   text = text.replace(/<[A-Z][A-Za-z0-9]*[^>]*\/>/g, '');
   text = text.replace(/<\/?[A-Z][A-Za-z0-9]*[^>]*>/g, '');
+  text = rebaseInlinedDocsLinks(text);
   return redactInternalApiOrigins(text.replace(/\n{3,}/g, '\n\n').trim());
 }
 

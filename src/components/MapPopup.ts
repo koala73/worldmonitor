@@ -23,6 +23,7 @@ import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot
 import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
@@ -2913,7 +2914,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
   private renderClusterVesselItem(v: MilitaryVessel): string {
     const code = this.getOperatorCountryCode(v);
     const flag = code ? this.getFlagEmoji(code) : '';
-    return `<div class="cluster-vessel-item">${flag ? `<span class="flag-icon-small">${flag}</span> ` : ''}${escapeHtml(v.name)} - ${escapeHtml(v.vesselType)}</div>`;
+    return `<div class="cluster-vessel-item">${flag ? `<span class="flag-icon-small">${flag}</span> ` : ''}${escapeHtml(v.name)} - ${escapeHtml(vesselTypeLabel(v))}</div>`;
   }
 
   private renderMilitaryVesselPopup(vessel: MilitaryVessel): string {
@@ -2956,15 +2957,11 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       : '';
 
     // Show AIS ship type when military type is unknown
-    const displayType = vessel.vesselType === 'unknown' && vessel.aisShipType
-      ? vessel.aisShipType
-      : (typeLabels[vessel.vesselType] || vessel.vesselType);
-    const badgeType = vessel.vesselType === 'unknown' && vessel.aisShipType
-      ? vessel.aisShipType.toUpperCase()
-      : vessel.vesselType.toUpperCase();
+    const displayType = vesselTypeLabel(vessel, typeLabels);
+    const badgeType = vesselTypeLabel(vessel).toUpperCase();
     const vesselName = escapeHtml(vessel.name || `${t('popups.militaryVessel.vessel')} ${vessel.mmsi}`);
     const vesselOperator = escapeHtml(operatorLabels[vessel.operator] || vessel.operatorCountry || t('popups.unknown'));
-    const vesselTypeLabel = escapeHtml(displayType);
+    const vesselTypeText = escapeHtml(displayType);
     const vesselBadgeType = escapeHtml(badgeType);
     const vesselMmsi = escapeHtml(vessel.mmsi || '—');
     const vesselHull = vessel.hullNumber ? escapeHtml(vessel.hullNumber) : '';
@@ -3037,7 +3034,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
-            <span class="stat-value">${vesselTypeLabel}</span>
+            <span class="stat-value">${vesselTypeText}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.speed')}</span>

@@ -1,0 +1,26 @@
+{
+  "https://www.worldmonitor.app/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/compare/worldmonitor-vs-acled/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/countries/france/": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": null
+  },
+  "https://www.worldmonitor.app/pricing.md": {
+    "contentType": "text/html; charset=utf-8",
+    "location": null,
+    "status": 200,
+    "xRobotsTag": "noindex, nofollow"
+  }
+}

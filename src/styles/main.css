@@ -3223,7 +3223,10 @@ body.panel-resize-active iframe {
   margin-top: 20px;
 }
 
-/* Channel management modal overlay */
+/* Channel management modal overlay. Hides only by unmounting: the base rule
+   is display:flex with opacity:0 and .active raises the opacity, while the
+   reload guard's checkVisibility() probe ignores opacity, so a leaked overlay
+   reads as open for the rest of the session. LiveNewsPanel.destroy() removes it. */
 .live-channels-modal-overlay {
   position: fixed;
   inset: 0;
@@ -4797,6 +4800,29 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   border-radius: 8px;
 }
 
+/* Coverage disclosure (#6419), deliberately neutral: it is not a warning. */
+.corroboration-flag {
+  display: inline-block;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 0 5px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.breaking-alert .corroboration-flag {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.cdp-news-meta .corroboration-flag {
+  margin-inline-start: 6px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
 .cluster-meta {
   display: flex;
   align-items: center;
@@ -4805,33 +4831,83 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   gap: 8px;
 }
 
-.top-sources {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+.cluster-roster {
+  min-width: 0;
 }
 
-.top-source {
-  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: var(--panel-border);
+/* Publisher roster (#6419 step 3): who reports a claim and each declared tier. */
+.publisher-roster {
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
-.top-source.tier-1 {
+.publisher-roster summary {
+  cursor: pointer;
+}
+
+.publisher-roster ol {
+  margin: 4px 0 0;
+  padding-inline-start: 16px;
+}
+
+.publisher-roster li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+  row-gap: 1px;
+}
+
+.publisher-roster li + li {
+  margin-top: 5px;
+}
+
+.publisher-roster .publisher-feeds {
+  flex-basis: 100%;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+.tier-chip {
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  cursor: help;
+}
+
+.tier-chip.tier-1 {
   background: rgba(0, 255, 136, 0.15);
   color: var(--green);
 }
 
-.top-source.tier-2 {
+.tier-chip.tier-2 {
   background: rgba(0, 170, 255, 0.15);
   color: var(--accent);
 }
 
-.top-source.tier-3 {
+.tier-chip.tier-3 {
   background: rgba(255, 170, 0, 0.15);
   color: var(--yellow);
+}
+
+.tier-legend {
+  margin: 4px 0 0;
+  font-style: italic;
+}
+
+.tier-legend a {
+  color: inherit;
+}
+
+.insight-story .publisher-roster {
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+.cdp-news-entry .publisher-roster {
+  padding: 4px 0 8px;
 }
 
 /* Source credibility tier badge */
@@ -4854,24 +4930,6 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   background: rgba(0, 170, 255, 0.15);
   color: var(--accent);
   border: 1px solid rgba(0, 170, 255, 0.3);
-}
-
-/* "Also reported by" label */
-.also-reported {
-  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-dim);
-  margin-right: 4px;
-  font-style: italic;
-}
-
-/* Enhanced tier indicators for top sources */
-.top-source.tier-1 {
-  font-weight: 500;
-  border: 1px solid rgba(0, 255, 136, 0.3);
-}
-
-.top-source.tier-2 {
-  border: 1px solid rgba(0, 170, 255, 0.2);
 }
 
 .item.clustered {
@@ -8531,6 +8589,24 @@ a.prediction-link:hover {
   color: var(--text-dim);
   font-size: calc(20px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
+}
+
+/* Clerk's mounted card brings its own surface; the wrapper only positions it and the close button. */
+.signup-resume-modal {
+  position: relative;
+  padding: 0;
+  max-width: none;
+  width: auto;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+.signup-resume-close {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  z-index: 1;
 }
 
 .confirm-modal-message {
@@ -17223,10 +17299,31 @@ a.prediction-link:hover {
   border: 1px solid rgba(160, 160, 170, 0.25);
 }
 
-.top-source .propaganda-badge {
+.publisher-roster .propaganda-badge {
   font-size: calc(7px * var(--wm-panel-effective-scale, 1));
   padding: 0 3px;
   margin-left: 2px;
+}
+
+/* Perspective and affiliation are disclosure, not caution: neutral styling. */
+.provenance-fact {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  margin-left: 4px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  background: var(--overlay-medium);
+  border: 1px solid var(--border);
+}
+
+.provenance-fact-marker {
+  font-size: calc(7px * var(--wm-panel-effective-scale, 1));
+  margin-left: 2px;
+  color: var(--text-secondary);
 }
 
 /* --- Intelligence Findings Badge --- */
@@ -21210,7 +21307,8 @@ body:has(.tauri-titlebar) .breaking-news-container {
 }
 
 .breaking-alert .tier-badge,
-.breaking-alert .propaganda-badge {
+.breaking-alert .propaganda-badge,
+.breaking-alert .provenance-fact {
   flex-shrink: 0;
 }
 
@@ -21218,7 +21316,8 @@ body:has(.tauri-titlebar) .breaking-news-container {
   margin-right: 0;
 }
 
-.breaking-alert .propaganda-badge {
+.breaking-alert .propaganda-badge,
+.breaking-alert .provenance-fact {
   margin-left: 0;
 }
 
@@ -22689,6 +22788,10 @@ body.has-breaking-alert .panels-grid {
 
 /* ============================================
    Country Brief Page (full-page overlay)
+
+   Hides via `opacity` while staying mounted, which is safe ONLY because the
+   element carries no dialog role. See the note in CountryBriefPage's
+   constructor before adding one.
    ============================================ */
 
 .country-brief-overlay {
@@ -23622,6 +23725,7 @@ body.map-width-resizing {
 }
 
 .telegram-intel-channel-wrapper .propaganda-badge,
+.telegram-intel-channel-wrapper .provenance-fact,
 .telegram-intel-channel-wrapper .tier-badge {
   flex-shrink: 0;
   margin-left: 0;

@@ -2819,6 +2819,26 @@
       "idleKeepPlaying": "Tiếp tục phát khi không hoạt động",
       "idleSettingsHint": "Thay đổi bất kỳ lúc nào trong Cài đặt › Media.",
       "idleKeepPlayingToast": "Video trực tiếp sẽ tiếp tục phát khi không hoạt động. Thay đổi trong Cài đặt › Media."
+    },
+    "corroboration": {
+      "singlePublisher": "Một nhà xuất bản duy nhất",
+      "singlePublisherHint": "Hiện tại chỉ có một nhà xuất bản đưa tin về điều này. Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
+      "tier4Only": "Chỉ các nguồn cấp thấp",
+      "tier4OnlyHint": "Mọi cơ quan báo chí đưa tin về điều này đều là nguồn cấp 4 (các trang tổng hợp tin tức và blog). Điều này mô tả phạm vi báo chí, không phải độ chính xác.",
+      "rosterListed": "({{listed}} được liệt kê)",
+      "rosterFeeds": "Kênh tin đã thấy: {{labels}}",
+      "rosterLegend": "Các cấp xếp hạng nguồn; chúng không đánh giá tuyên bố này.",
+      "tierDocsLink": "Cách phân cấp",
+      "tierChip": "C{{tier}}",
+      "tierChipUndeclared": "C?",
+      "tierTitle1": "Cấp 1: Hãng thông tấn và cơ quan chính thức",
+      "tierTitle2": "Cấp 2: Các cơ quan báo chí lớn",
+      "tierTitle3": "Cấp 3: Nguồn chuyên ngành, khu vực và viện nghiên cứu chính sách",
+      "tierTitle4": "Cấp 4: Trang tổng hợp tin tức và blog",
+      "tierTitleUndeclared": "Chưa khai báo cấp: chưa được xem xét",
+      "rosterSummary": "Được đưa tin bởi {{publishers}}",
+      "rosterSummaryTier1": "Được đưa tin bởi {{publishers}}, trong đó {{tier1}} thuộc cấp 1",
+      "rosterPublishers_other": "{{count}} nhà xuất bản"
     }
   },
   "popups": {

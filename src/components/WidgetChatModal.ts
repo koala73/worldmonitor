@@ -12,6 +12,7 @@ import { classifyPremiumDenial, type ClientEntitlementBelief } from '@/services/
 import { readClientEntitlementBelief } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 interface WidgetChatOptions {
@@ -104,6 +105,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   overlay.className = 'modal-overlay active';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute('aria-label', options.mode === 'modify' ? t('widgets.modifyTitle') : t('widgets.chatTitle'));
 
   const modal = document.createElement('div');

@@ -5,6 +5,7 @@ import {
   buildMapUrl,
   readDashboardSearchQuery,
   DASHBOARD_SEARCH_QUERY_MAX_CHARS,
+  withUrlFragment,
 } from '../src/utils/urlState.ts';
 
 const EMPTY_LAYERS = {
@@ -204,5 +205,21 @@ describe('expanded param round-trip', () => {
     const url = buildMapUrl(base, { ...baseState, chokepoint: 'hormuz_strait' });
     const parsed = parseMapUrlState(new URL(url).search, EMPTY_LAYERS);
     assert.equal(parsed.chokepoint, 'hormuz_strait');
+  });
+});
+
+describe('withUrlFragment', () => {
+  const synced = 'https://www.worldmonitor.app/dashboard?zoom=1.00&view=global&layers=hotspots';
+
+  it('keeps a hash route another surface is routing on', () => {
+    assert.equal(withUrlFragment(synced, '#/verify-email-address'), `${synced}#/verify-email-address`);
+  });
+
+  it('adds nothing when there is no fragment', () => {
+    assert.equal(withUrlFragment(synced, ''), synced);
+  });
+
+  it('replaces a fragment already on the synced url', () => {
+    assert.equal(withUrlFragment(`${synced}#old`, '#new'), `${synced}#new`);
   });
 });

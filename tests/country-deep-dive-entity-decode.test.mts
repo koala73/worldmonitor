@@ -106,6 +106,6 @@ describe('normalizeHeadlineKey / dedupeHeadlines: single-level decode', () => {
     );
     const out = dedupeHeadlines(items);
     assert.equal(out.length, 1);
-    assert.equal(out[0]!.extraSources.length, 1);
+    assert.equal(out[0]!.sources.length, 2);
   });
 });

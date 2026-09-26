@@ -13,6 +13,7 @@ import {
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
 import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
+import { PUBLISHER_FAMILIES } from '../shared/publisher-families.js';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -255,6 +256,16 @@ describe('#5697 NLP MCP tools', () => {
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.source.type, 'string');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.risk.type, 'string');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.stateAffiliated.type, 'string');
+    assert.ok(clusterSchema.properties.sourceProvenance.items.required.includes('knownBiases'));
+    assert.ok(clusterSchema.properties.sourceProvenance.items.required.includes('summary'));
+    assert.deepEqual(clusterSchema.properties.primarySourceProvenance.properties.knownBiases.items, { type: 'string' });
+    assert.ok(clusterSchema.properties.sourceProvenance.items.required.includes('tier'));
+    assert.deepEqual(clusterSchema.properties.sourceProvenance.items.properties.tier.enum, [1, 2, 3, 4, null]);
+    assert.ok(clusterSchema.required.includes('publishers'));
+    assert.ok(clusterSchema.required.includes('publishersUnlisted'));
+    assert.deepEqual(clusterSchema.properties.publishers.items.required, ['name', 'tier', 'labels', 'labelsUnlisted']);
+    assert.deepEqual(clusterSchema.properties.publishers.items.properties.tier.enum, [1, 2, 3, 4, null]);
+    assert.equal(clusterSchema.properties.publishersUnlisted.type, 'integer');
     const digestCoverageFields = [
       'state',
       'servedItems',
@@ -834,6 +845,8 @@ describe('#5697 NLP MCP tools', () => {
         );
         assert.equal(provenanceBySource.get('The Astana Times').stateAffiliated, 'Kazakhstan');
         assert.equal(provenanceBySource.get('The Astana Times').riskReviewed, true);
+        assert.deepEqual(provenanceBySource.get('The Astana Times').knownBiases, []);
+        assert.match(provenanceBySource.get('The Astana Times').summary, /State-affiliated: Kazakhstan\. Perspective: none recorded\./);
         assert.equal(provenanceBySource.get('Unreviewed Local Desk').risk, 'unknown');
         assert.equal(provenanceBySource.get('Unreviewed Local Desk').riskReviewed, false);
         assert.equal(provenanceBySource.get('Unreviewed Local Desk').typeReviewed, false);
@@ -841,10 +854,19 @@ describe('#5697 NLP MCP tools', () => {
     });
 
     it('stays inside the dispatcher budget at the maximum provenance-rich shape', async () => {
-      const sources = Array.from(
-        { length: 8 },
-        (_, sourceIndex) => `source${sourceIndex}-${'s'.repeat(5_000)}`,
-      );
+      // 25 clusters x 40 members fills MAX_CLUSTER_NEWS_ITEMS. Eight publisher
+      // families per cluster: Reuters with all twelve curated labels, past the
+      // wire's label cap, and seven uncurated families at the cap, whose
+      // labels differ only in case and so fold into one family each.
+      const caseVariant = (base, variant) => [...base]
+        .map((char, index) => (index < 6 && (variant >> index) & 1 ? char.toUpperCase() : char)).join('');
+      const sources = [
+        ...PUBLISHER_FAMILIES.reuters.labels,
+        ...Array.from({ length: 7 }, (_, family) => Array.from(
+          { length: 4 },
+          (_, variant) => caseVariant(`source${family}-${'s'.repeat(5_000)}`, variant),
+        )).flat(),
+      ];
       const items = Array.from({ length: 25 }, (_, clusterIndex) => (
         sources.map((source, sourceIndex) => ({
           source,
@@ -866,6 +888,17 @@ describe('#5697 NLP MCP tools', () => {
           result.clusters.every((cluster) => cluster.sourceProvenance.length === 8),
           'the fixture must actually exercise all eight provenance slots',
         );
+        assert.ok(
+          result.clusters.every((cluster) => cluster.publishers.length === 8),
+          'the fixture must actually exercise all eight roster slots',
+        );
+        for (const cluster of result.clusters) {
+          assert.deepEqual(
+            cluster.publishers.map((publisher) => [publisher.labels.length, publisher.labelsUnlisted]),
+            [[4, 8], ...Array.from({ length: 7 }, () => [4, 0])],
+            'every family lists its first four labels and counts the rest',
+          );
+        }
         for (const cluster of result.clusters) {
           assert.ok(Buffer.byteLength(cluster.title, 'utf8') <= 512);
           assert.ok(Buffer.byteLength(cluster.link, 'utf8') <= 2_048);
@@ -1139,6 +1172,108 @@ describe('#5697 NLP MCP tools', () => {
       } finally {
         globalThis.fetch = originalFetchImpl;
       }
+    });
+
+    it('reports corroboration per cluster and picks the primary by real source tier (#6419)', async () => {
+      const originalFetchImpl = globalThis.fetch;
+      const serve = (items) => {
+        globalThis.fetch = async (input, init = {}) => {
+          const url = String(input);
+          if (url.includes('/api/news/v1/list-feed-digest')) {
+            requests.push({ url, init });
+            return Response.json({
+              generatedAt: '2026-09-20T12:00:00.000Z',
+              categories: {
+                politics: {
+                  items: items.map(([source, corroborationCount], i) => ({
+                    source,
+                    title: `Sanctions package advances through committee ${'vote '.repeat(i)}`.trim(),
+                    link: `https://s/${i}`,
+                    // The tier-4 outlet is the newest, so a recency-only primary would pick it.
+                    publishedAt: 1785405600000 - i * 1000,
+                    isAlert: false,
+                    ...(corroborationCount ? { corroborationCount } : {}),
+                  })),
+                },
+              },
+            });
+          }
+          return originalFetchImpl(input, init);
+        };
+      };
+      const corroborationOf = async (items) => {
+        serve(items);
+        const { result } = await callTool('get_news_clusters', {});
+        assert.equal(result.totalClusters, 1, 'fixture must cluster into one story');
+        return result.clusters[0];
+      };
+
+      try {
+        assert.deepEqual((await corroborationOf([['Reuters World'], ['Reuters US']])).corroboration,
+          { state: 'single-publisher', publishers: 1 });
+        assert.deepEqual((await corroborationOf([['The Verge'], ['Hacker News']])).corroboration,
+          { state: 'tier4-only', publishers: 2 });
+        const aboveSeen = await corroborationOf([['The Verge', 3], ['Hacker News', 3]]);
+        assert.deepEqual(aboveSeen.corroboration, { state: 'corroborated', publishers: 3 },
+          'a digest count above the seen families means unseen publishers of unknown tier');
+        assert.equal(aboveSeen.distinctSourceCount, 2, 'distinctSourceCount stays the member-family count min_sources filters on');
+        assert.equal(aboveSeen.publishers.length, 2);
+        assert.equal(aboveSeen.publishersUnlisted, 1, 'the roster names 2 of the 3 publishers the verdict counts');
+
+        const mixed = await corroborationOf([['The Verge'], ['Reuters World']]);
+        assert.deepEqual(mixed.corroboration, { state: 'corroborated', publishers: 2 });
+        assert.equal(mixed.primarySource, 'Reuters World', 'tier 1 outranks a newer tier-4 member');
+      } finally {
+        globalThis.fetch = originalFetchImpl;
+      }
+    });
+
+    it('declares each source tier and lists the publisher roster, never defaulting an undeclared tier to 4 (#6419 step 3)', async () => {
+      const labels = ['The Verge', 'Reuters World', 'Reuters US', 'The Vergecast', 'Unreviewed Local Desk'];
+      await withDigestCategories({
+        politics: {
+          items: labels.map((source, i) => ({
+            source,
+            title: 'Sanctions package advances through committee vote',
+            link: `https://n/roster/${i}`,
+            publishedAt: 1785405600000 - i * 1000,
+          })),
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', {});
+        assert.equal(result.totalClusters, 1, 'fixture must cluster into one story');
+        const [cluster] = result.clusters;
+        assert.deepEqual(
+          Object.fromEntries(cluster.sourceProvenance.map((entry) => [entry.source, entry.tier])),
+          { 'The Verge': 4, 'Reuters World': 1, 'Reuters US': 1, 'The Vergecast': 3, 'Unreviewed Local Desk': null },
+        );
+        assert.deepEqual(cluster.publishers, [
+          { name: 'Reuters', tier: 1, labels: ['Reuters World', 'Reuters US'], labelsUnlisted: 0 },
+          { name: 'The Verge', tier: 3, labels: ['The Verge', 'The Vergecast'], labelsUnlisted: 0 },
+          { name: 'Unreviewed Local Desk', tier: null, labels: ['Unreviewed Local Desk'], labelsUnlisted: 0 },
+        ]);
+        assert.equal(cluster.publishersUnlisted, 0);
+        assert.equal(cluster.publishers.length, cluster.distinctSourceCount, 'roster and count read the same members');
+      });
+    });
+
+    it('caps the roster at eight publishers and counts the rest', async () => {
+      await withDigestCategories({
+        politics: {
+          items: Array.from({ length: 11 }, (_, i) => ({
+            source: `Unreviewed Desk ${i}`,
+            title: 'Sanctions package advances through committee vote',
+            link: `https://n/cap/${i}`,
+            publishedAt: 1785405600000 - i * 1000,
+          })),
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', {});
+        const [cluster] = result.clusters;
+        assert.equal(cluster.distinctSourceCount, 11);
+        assert.equal(cluster.publishers.length, 8);
+        assert.equal(cluster.publishersUnlisted, 3);
+      });
     });
   });
 

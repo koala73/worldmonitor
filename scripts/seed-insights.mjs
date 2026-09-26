@@ -65,7 +65,7 @@ import {
 // the seeder on startup. The local pattern is the `./shared/geo-extract.mjs`
 // line above. PR #3836 review caught this. See skill
 // railway-deploy-gotchas/reference/nixpacks-root-dir-scripts-cross-dir-import-escape.
-import { validateNoHallucinatedProperNouns } from './shared/brief-llm-core.js';
+import { validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from './shared/brief-llm-core.js';
 
 // Hallucination validator rollout mode (PR-2 of brief-content-quality
 // regressions). `shadow` = log violations to Sentry but ship the LLM
@@ -350,9 +350,15 @@ async function generateLegacySingleHeadlineBrief(topStories, { callBudgetMs } = 
   // Hallucination check: did the LLM invent proper nouns not in the
   // headline? (May 19 incident: "Lebanese President Michel Aoun pledged…"
   // against a nameless headline. docs/plans/2026-05-19-001 U2.)
-  const validation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
-  if (!validation.ok) {
-    const hallucinated = (validation.hallucinated || []).join(' ');
+  // The proper-noun gate reads "Former President" as a title prefix and
+  // grounds only "Trump", so the qualifier needs its own check (#8441).
+  const nounValidation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
+  const qualifierValidation = validateNoHallucinatedStatusQualifiers(llmResult.text, topHeadline);
+  if (!nounValidation.ok || !qualifierValidation.ok) {
+    const hallucinated = [
+      ...(nounValidation.hallucinated || []),
+      ...(qualifierValidation.hallucinated || []),
+    ].join(' ');
     if (BRIEF_VALIDATOR_MODE === 'enforce') {
       console.warn(`  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`);
       return {
@@ -1136,6 +1142,10 @@ async function fetchInsights() {
       // attribution the publisher is owed.
       uniqueSourceCount: story.uniquePublisherCount ?? 0,
       sources: Array.isArray(story.sources) ? story.sources : [],
+      // #6419: `sources` holds only the labels that survived the digest's
+      // per-category cap; the digest's origin-aware publisher count is the
+      // floor a single-publisher verdict has to respect.
+      corroborationCount: story.corroborationCount ?? 0,
       lastUpdated: story.lastUpdated,
       memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
       sourceTier: story.sourceTier,
@@ -1274,7 +1284,7 @@ async function finalizeInsightsRun(data, outcome, { previousMeta } = {}) {
   };
 }
 
-export { callLLM, __setInsightsLlmTransportForTests };
+export { callLLM, generateLegacySingleHeadlineBrief, __setInsightsLlmTransportForTests };
 
 if (_isDirectRun) {
   runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {

@@ -215,7 +215,7 @@ ${cards}
 }
 
 function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/monitor-country-risk/';
   const description =
     'A repeatable World Monitor country-risk workflow: establish a baseline, review live instability, check corroborating signals, record uncertainty, then act.';
@@ -243,22 +243,10 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution('/dashboard?country=TW&expanded=1', handoffs.dashboard),
-    'seo-use-case',
-  );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const dashboardHref = withContentAttribution('/dashboard?country=TW&expanded=1', handoffs.dashboard);
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Monitor country risk</h1>
@@ -397,7 +385,7 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
 }
 
 function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/verify-breaking-news/';
   const description =
     'Verify a breaking claim with World Monitor: capture it, assess sources, check independent signals, record contradictions, then take a qualified next action.';
@@ -425,25 +413,13 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution(
-      '/dashboard?view=mena&layers=ais,flights,fires,outages,hotspots,natural,military&timeRange=24h',
-      handoffs.dashboard,
-    ),
-    'seo-use-case',
+  const dashboardHref = withContentAttribution(
+    '/dashboard?view=mena&layers=ais,flights,fires,outages,hotspots,natural,military&timeRange=24h',
+    handoffs.dashboard,
   );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Verify breaking news</h1>
@@ -588,7 +564,7 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
 }
 
 function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/monitor-supply-chain-disruptions/';
   const description =
     'Monitor supply-chain disruption with World Monitor: define exposure, baseline routes, detect signals, test transmission paths, record uncertainty, then act.';
@@ -616,25 +592,13 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
       placement: 'use-case-cta-mcp',
     },
   };
-  const dashboardHref = withUtmSource(
-    withContentAttribution(
-      '/dashboard?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
-      handoffs.dashboard,
-    ),
-    'seo-use-case',
+  const dashboardHref = withContentAttribution(
+    '/dashboard?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
+    handoffs.dashboard,
   );
-  const proHref = withUtmSource(
-    withContentAttribution('/pro', handoffs.pro),
-    'seo-use-case',
-  );
-  const apiHref = withUtmSource(
-    withContentAttribution('/docs/api-reference', handoffs.api),
-    'seo-use-case',
-  );
-  const mcpHref = withUtmSource(
-    withContentAttribution('/docs/mcp-quickstart', handoffs.mcp),
-    'seo-use-case',
-  );
+  const proHref = withContentAttribution('/pro', handoffs.pro);
+  const apiHref = withContentAttribution('/docs/api-reference', handoffs.api);
+  const mcpHref = withContentAttribution('/docs/mcp-quickstart', handoffs.mcp);
 
   const body = `      <p class="eyebrow">Use case</p>
       <h1>Monitor supply-chain disruptions</h1>

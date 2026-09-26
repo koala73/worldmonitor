@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createDodoCheckoutSession } from "../lib/dodo";
 import schema from "../schema";
@@ -14,12 +14,12 @@ const sentinel = "synthetic-private-provider-detail";
 const productId = PRODUCT_CATALOG.pro_monthly.dodoProductId!;
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
-test("public action masks provider details and keeps server diagnostics", async () => {
+test("checkout action masks provider details and keeps server diagnostics", async () => {
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   vi.mocked(createDodoCheckoutSession).mockRejectedValue(new Error(sentinel));
   const t = convexTest(schema, modules);
-  const error = await t.withIdentity({ subject: "error-boundary-buyer" }).action(
-    api.payments.checkout.createCheckout, { productId },
+  const error = await t.action(
+    internal.payments.checkout.internalCreateCheckout, { userId: "error-boundary-buyer", productId },
   ).catch((error: unknown) => error);
   expect(String(error)).toContain("CHECKOUT_FAILED");
   expect(String(error)).not.toContain(sentinel);
