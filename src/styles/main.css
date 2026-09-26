@@ -8591,6 +8591,24 @@ a.prediction-link:hover {
   cursor: pointer;
 }
 
+/* Clerk's mounted card brings its own surface; the wrapper only positions it and the close button. */
+.signup-resume-modal {
+  position: relative;
+  padding: 0;
+  max-width: none;
+  width: auto;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+.signup-resume-close {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  z-index: 1;
+}
+
 .confirm-modal-message {
   margin: 0 0 16px;
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));

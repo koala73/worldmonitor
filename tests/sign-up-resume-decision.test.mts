@@ -103,14 +103,14 @@ describe('decideResume', () => {
     assert.deepEqual(decideResume(input(), now), resumeLive);
   });
 
-  const table: Array<[string, ResumeInput, EpochMsLike, unknown]> = [
+  const table: Array<[string, ResumeInput, number, unknown]> = [
     ['signed in wins over everything', input({ signedIn: true, clerkModalOpen: true }), NOW, { kind: 'none', reason: 'signed-in' }],
     ['no attempt', input({ signUp: { kind: 'none' } }), NOW, { kind: 'none', reason: 'no-attempt' }],
     ['completed attempt', input({ signUp: { kind: 'complete', id: asSignUpAttemptId(ATTEMPT_ID) } }), NOW, { kind: 'none', reason: 'complete' }],
     ['email link strategy', input({}, { strategy: 'email_link' }), NOW, { kind: 'none', reason: 'not-email-code' }],
     ['email already verified', input({}, { emailUnverified: false }), NOW, { kind: 'none', reason: 'email-already-verified' }],
     ['abandonAt reached', input(), ABANDON_AT, { kind: 'none', reason: 'abandoned' }],
-    ['abandonAt null is alive', input({}, { abandonAt: null }), ABANDON_AT + 1, resumeLive],
+    ['abandonAt null is alive past the old deadline', input({}, { abandonAt: null }), ABANDON_AT + 1, { ...resumeLive, code: 'expired' }],
     ['dismissed this attempt', input({ dismissedAttemptId: asSignUpAttemptId(ATTEMPT_ID) }), NOW, { kind: 'none', reason: 'dismissed' }],
     ['dismissed another attempt', input({ dismissedAttemptId: asSignUpAttemptId('sua_other') }), NOW, resumeLive],
     ["Clerk's own modal is open", input({ clerkModalOpen: true }), NOW, { kind: 'none', reason: 'clerk-modal-open' }],
@@ -126,5 +126,3 @@ describe('decideResume', () => {
     });
   }
 });
-
-type EpochMsLike = number;

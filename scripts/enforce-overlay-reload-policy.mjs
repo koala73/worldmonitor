@@ -118,8 +118,8 @@ export const SAFE_DECLARATION_RE = /\bdeclareOverlay\(\s*([^,{]+?)\s*,\s*\{\s*re
 /** Hits this close together are one element's attributes, not two sites. */
 export const SITE_CLUSTER_RADIUS_LINES = 3;
 
-/** 21 sites in 19 files when this gate landed. A scan that finds fewer has drifted. */
-export const MIN_SITE_COUNT = 21;
+/** 21 sites in 19 files when this gate landed; 22 with the sign-up resume overlay. A scan that finds fewer has drifted. */
+export const MIN_SITE_COUNT = 22;
 
 /** The module that defines the vocabulary; its selector strings are not sites. */
 export const EXCLUDED_FILES = new Set(['src/utils/open-modal.ts']);
@@ -134,13 +134,14 @@ export const RELOAD_GUARD = 'findReloadBlockingModal';
  * an unguarded reload, so the entry cannot outlive what it excuses.
  *
  * chunk-reload.ts reloads once on `vite:preloadError`, when the running bundle
- * can no longer load its own code. It predates the guard and has no retry
- * path. Deferring it means deciding who reloads later (the stale-bundle check
- * does, on its next trigger, when the failure is a post-deploy hash mismatch)
- * and what happens to its one-shot session key. That is its own change.
+ * can no longer load its own code. It stays immediate: a broken chunk under a
+ * modal is worse than the reload, and the one overlay whose work a reload used
+ * to destroy for good, the email-code sign-up, now resumes on the same attempt
+ * (src/services/sign-up-resume.ts). Deferring it with a retry is optional
+ * polish, not a sign-up fix (#8662).
  */
 export const RELOAD_GUARD_EXEMPT = new Map([
-  ['src/bootstrap/chunk-reload.ts', 'failure recovery with no retry path; deferral semantics undecided'],
+  ['src/bootstrap/chunk-reload.ts', 'failure recovery; an interrupted sign-up resumes via sign-up-resume'],
 ]);
 
 /**

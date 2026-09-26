@@ -212,6 +212,8 @@ import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { initialRegionFromCache, resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
+import { installSignUpResume } from '@/services/sign-up-resume';
+import { createSignUpResumeOverlay } from '@/components/SignUpResumeOverlay';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
@@ -2603,6 +2605,7 @@ export class App {
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
     await initAuthState();
     initAuthAnalytics();
+    installSignUpResume(createSignUpResumeOverlay());
     installCloudPrefsSync(SITE_VARIANT);
     window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
     window.addEventListener(

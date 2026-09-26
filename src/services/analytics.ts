@@ -8,6 +8,7 @@ export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
  */
 
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
@@ -191,6 +192,11 @@ const EVENTS = {
   // Auth (wired in PR #1812 — do not remove)
   'sign-in': true,
   'sign-up': true,
+  // Sign-up resume funnel (#8577): started once per attempt, resumed after a
+  // reload, dismissed by the user; `sign-up` carries `resumed`.
+  'sign-up-started': true,
+  'sign-up-resumed': true,
+  'sign-up-resume-dismissed': true,
   'sign-out': true,
   'gate-hit': true,
   // Conversion funnel (#4931) — pageview → gate-hit → checkout-start →
@@ -721,7 +727,7 @@ export function initAuthAnalytics(): void {
         !hasTrackedSignupInSession(nextUserId) &&
         isLikelyFreshSignup(prevUserId, nextUserId, getClerkUserCreatedAt(), Date.now())
       ) {
-        trackSignUp('clerk');
+        trackSignUp('clerk', { resumed: consumeSignUpResumed() });
         markSignupTrackedInSession(nextUserId);
       }
     }
@@ -754,28 +760,43 @@ export function trackSignIn(method: string): void {
   track('sign-in', { method });
 }
 
-export function trackSignUp(method: string, _opts?: { resumed?: boolean }): void {
-  track('sign-up', { method });
+export function trackSignUp(method: string, opts?: { resumed?: boolean }): void {
+  track('sign-up', { method, resumed: opts?.resumed === true });
 }
 
+/**
+ * Sign-up funnel: started -> (resumed) -> sign-up. Abandonment is
+ * started minus sign-up; resume effectiveness is sign-up{resumed} over resumed.
+ * `started` fires once per attempt id (the resume service keeps the marker),
+ * so a reload mid-attempt does not count a second start.
+ */
 export function trackSignUpStarted(): void {
-  throw new Error('not implemented');
+  track('sign-up-started');
 }
 
-export function trackSignUpResumed(_props: { trigger: 'hydration' | 'user'; code: 'live' | 'expired'; sinceBootMs: number }): void {
-  throw new Error('not implemented');
+export function trackSignUpResumed(props: { trigger: 'hydration' | 'user'; code: 'live' | 'expired'; sinceBootMs: number }): void {
+  track('sign-up-resumed', { trigger: props.trigger, code: props.code, since_boot_ms: props.sinceBootMs });
 }
 
 export function trackSignUpResumeDismissed(): void {
-  throw new Error('not implemented');
+  track('sign-up-resume-dismissed');
 }
 
+/**
+ * Set when the resumed verify card mounts; read and cleared by the completion
+ * `sign-up` event on the next page load. localStorage rather than session
+ * scope for the same cross-tab reason as `wm-signup-tracked:`.
+ */
+const SIGNUP_RESUMED_KEY = 'wm-signup-resumed';
+
 export function markSignUpResumed(): void {
-  throw new Error('not implemented');
+  safeStorageSet(SIGNUP_RESUMED_KEY, '1');
 }
 
 export function consumeSignUpResumed(): boolean {
-  throw new Error('not implemented');
+  const resumed = safeStorageGet(SIGNUP_RESUMED_KEY) === '1';
+  if (resumed) safeStorageRemove(SIGNUP_RESUMED_KEY);
+  return resumed;
 }
 
 export function trackAnalystControlAction(actionType: string, status: string, reason?: string): void {
