@@ -140,9 +140,7 @@ export const RELOAD_GUARD = 'findReloadBlockingModal';
  * (src/services/sign-up-resume.ts). Deferring it with a retry is optional
  * polish, not a sign-up fix (#8662).
  */
-export const RELOAD_GUARD_EXEMPT = new Map([
-  ['src/bootstrap/chunk-reload.ts', 'failure recovery; an interrupted sign-up resumes via sign-up-resume'],
-]);
+export const RELOAD_GUARD_EXEMPT = new Map();
 
 /**
  * @typedef {{ line: number, clause: string, receiver: string | null, idiom: string }} Site
