@@ -1,3 +1,5 @@
+import { findReloadBlockingModal, type ModalDocumentLike } from '@/utils/open-modal';
+
 interface EventTargetLike {
   addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
 }
@@ -8,11 +10,22 @@ interface StorageLike {
   removeItem: (key: string) => void;
 }
 
+/**
+ * The document surface needed for the modal probe and the visibilitychange
+ * retry trigger. Extends ModalDocumentLike so the fake cannot model a document
+ * that answers visibilitychange but not the modal probe.
+ */
+interface DocumentTargetLike extends ModalDocumentLike {
+  addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
+  visibilityState?: string;
+}
+
 interface ChunkReloadGuardOptions {
   eventTarget?: EventTargetLike;
   storage?: StorageLike;
   eventName?: string;
   reload?: () => void;
+  documentTarget?: DocumentTargetLike;
 }
 
 const memorySessionStorage = new Map<string, string>();
@@ -71,12 +84,55 @@ export function installChunkReloadGuard(
   const eventTarget = options.eventTarget ?? window;
   const storage = options.storage ?? getSafeSessionStorage();
   const reload = options.reload ?? (() => window.location.reload());
+  const documentTarget = options.documentTarget;
+
+  /**
+   * True when a vite:preloadError has been seen but a modal is blocking
+   * the reload. The session key is NOT written until the reload actually
+   * fires, so the one-shot guard is still available for the retry.
+   */
+  let pendingReload = false;
+
+  /**
+   * Probe the live DOM at the moment of the irreversible action. If a
+   * blocking modal is open, remember the debt and return. On clear DOM,
+   * burn the session key and reload.
+   *
+   * No document means no modal to protect — reload immediately.
+   */
+  const reloadOrDefer = (): void => {
+    const blocker = documentTarget ? findReloadBlockingModal(documentTarget) : null;
+    if (blocker !== null) {
+      pendingReload = true;
+      return;
+    }
+    pendingReload = false;
+    storage.setItem(storageKey, '1');
+    reload();
+  };
+
+  /**
+   * Retry handler: fires on focus and visibilitychange. A no-op when no
+   * reload is owed; otherwise re-probes the DOM and fires if clear.
+   */
+  const retryHandler = (): void => {
+    if (!pendingReload) return;
+    reloadOrDefer();
+  };
 
   eventTarget.addEventListener(eventName, () => {
     if (storage.getItem(storageKey)) return;
-    storage.setItem(storageKey, '1');
-    reload();
+    reloadOrDefer();
   });
+
+  // Retry the deferred reload when the user returns to the tab.
+  eventTarget.addEventListener('focus', retryHandler);
+
+  if (documentTarget) {
+    documentTarget.addEventListener('visibilitychange', () => {
+      if (documentTarget.visibilityState === 'visible') retryHandler();
+    });
+  }
 
   return storageKey;
 }
