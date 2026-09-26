@@ -754,8 +754,28 @@ export function trackSignIn(method: string): void {
   track('sign-in', { method });
 }
 
-export function trackSignUp(method: string): void {
+export function trackSignUp(method: string, _opts?: { resumed?: boolean }): void {
   track('sign-up', { method });
+}
+
+export function trackSignUpStarted(): void {
+  throw new Error('not implemented');
+}
+
+export function trackSignUpResumed(_props: { trigger: 'hydration' | 'user'; code: 'live' | 'expired'; sinceBootMs: number }): void {
+  throw new Error('not implemented');
+}
+
+export function trackSignUpResumeDismissed(): void {
+  throw new Error('not implemented');
+}
+
+export function markSignUpResumed(): void {
+  throw new Error('not implemented');
+}
+
+export function consumeSignUpResumed(): boolean {
+  throw new Error('not implemented');
 }
 
 export function trackAnalystControlAction(actionType: string, status: string, reason?: string): void {

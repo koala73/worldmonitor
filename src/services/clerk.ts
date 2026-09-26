@@ -656,6 +656,26 @@ export function openSignUp(): void {
 }
 
 /**
+ * Consulted by `openSignUp()` once Clerk is loaded. Returning true means the
+ * resume surface took the click; `openClerkSignUp` is the fallback it may call
+ * later if resuming fails.
+ */
+export type SignUpResumeHook = (openClerkSignUp: () => void) => boolean;
+
+export function registerSignUpResumeHook(_hook: SignUpResumeHook | null): void {}
+
+export function mountSignUpInto(
+  _host: HTMLDivElement,
+  _props: { routing: 'hash'; fallbackRedirectUrl: string },
+): void {
+  throw new Error('not implemented');
+}
+
+export function unmountSignUpFrom(_host: HTMLDivElement): void {
+  throw new Error('not implemented');
+}
+
+/**
  * Epoch ms of the current Clerk user's account creation, or null when
  * signed out. Read at the source rather than projected through
  * getCurrentClerkUser() so analytics can gate fresh-signup detection on
