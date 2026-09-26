@@ -6,7 +6,7 @@ import { contentMeta, latestExtraKeyEntry, yearExtraKeyEntry } from '../scripts/
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
-const sourceUrl = 'https://www.rba.gov.au/statistics/tables/xls/f02d.xlsx';
+const sourceUrl = 'https://www.rba.gov.au/statistics/tables/csv/f2-data.csv';
 
 async function rejectedResponse(response) {
   let requests = 0;
@@ -95,22 +95,41 @@ it('distinguishes an absent response body', async () => {
   assert.equal(diagnostic.sampledBytes, 0);
 });
 
-it('preserves successful workbook parsing, source clocks, latest and year publication', async () => {
+// RBA publishes the same F2 table as an 8.2 MB workbook and a 200 KB CSV. The
+// workbook's ExcelJS load peaked at 1.69 GB RSS against the 2 GB
+// seed-bundle-yield-curves container, and the AU section stopped publishing on
+// 2026-09-24, so the seeder reads the CSV (served with a UTF-8 BOM).
+const csvFixture = () => `\ufeff${readFileSync(new URL('./fixtures/yield-curves/rba-f2-data.csv', import.meta.url), 'utf8')}`;
+
+it('preserves successful CSV parsing, source clocks, latest and year publication', async () => {
   let requests = 0;
   globalThis.fetch = async (url, init) => {
     requests++;
     assert.equal(url, sourceUrl);
-    assert.match(init.headers.Accept, /spreadsheetml/);
+    assert.match(init.headers.Accept, /text\/csv/);
     assert.ok(init.headers['User-Agent']);
     assert.ok(init.signal instanceof AbortSignal);
-    return new Response(readFileSync(new URL('./fixtures/yield-curves/rba-f02d.xlsx', import.meta.url)));
+    return new Response(csvFixture());
   };
   const payload = await fetchRbaCurve();
   assert.equal(requests, 1);
-  assert.equal(payload.curves.length, 4);
+  assert.deepEqual(payload.curves, [
+    { date: '2013-05-20', tenors: { '10y': 3.229 } },
+    { date: '2013-05-21', tenors: { '10y': 3.263 } },
+    { date: '2026-09-15', tenors: { '2y': 5.055, '3y': 5.049, '5y': 5.098, '10y': 5.411 } },
+    { date: '2026-09-16', tenors: { '2y': 5, '3y': 4.99, '5y': 5.041, '10y': 5.348 } },
+  ]);
   assert.equal(payload.curves.at(-1).date, '2026-09-16');
   assert.deepEqual(Object.keys(payload.curves.at(-1).tenors).sort(), ['10y', '2y', '3y', '5y']);
   assert.equal(contentMeta(payload).newestItemAt, Date.parse('2026-09-16T00:00:00Z'));
   assert.deepEqual(latestExtraKeyEntry('AU').transform(payload).curves, payload.curves.slice(-1));
   assert.deepEqual(yearExtraKeyEntry('AU', 2026, true).transform(payload).curves, payload.curves.filter(c => c.date.startsWith('2026-')));
+});
+
+it('rejects a CSV whose series header moved instead of publishing shifted tenors', async () => {
+  globalThis.fetch = async () => new Response(csvFixture().replace('FCMYGBAG2D,FCMYGBAG3D', 'FCMYGBAG3D,FCMYGBAG2D'));
+  const payload = await fetchRbaCurve();
+  assert.equal(payload.curves.at(-1).tenors['2y'], 4.99, 'columns are mapped by Series ID, not position');
+  globalThis.fetch = async () => new Response(csvFixture().replace('Series ID,', 'Series,'));
+  await assert.rejects(fetchRbaCurve(), /RBA F2 parsed no business days/);
 });

@@ -26,7 +26,7 @@ import { parseBundesbankCsv } from '../scripts/lib/yield-curves/bundesbank.mjs';
 import { parseBoeNominalWorkbook } from '../scripts/lib/yield-curves/boe.mjs';
 import { fetchBoeCurve } from '../scripts/seed-yield-curve-gb.mjs';
 import { latestTransform } from '../scripts/seed-oecd-lt-rates.mjs';
-import { parseRbaWorkbook } from '../scripts/lib/yield-curves/rba.mjs';
+import { parseRbaCsv } from '../scripts/lib/yield-curves/rba.mjs';
 import { parseSnbConfederationCsv } from '../scripts/lib/yield-curves/snb.mjs';
 import { parseNorgesZeroCouponCsv } from '../scripts/lib/yield-curves/norges.mjs';
 import { parseRiksbankObservations } from '../scripts/lib/yield-curves/riksbank.mjs';
@@ -197,11 +197,8 @@ describe('per-source parsers (captured fixtures)', () => {
     assert.ok(Object.keys(first.tenors).includes('9m'), 'short-end months are folded in');
   });
 
-  it('parses the RBA F2 workbook: four nominal tenors, indexed bond excluded', async () => {
-    const { default: ExcelJS } = await import('exceljs');
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(readFileSync(new URL('./fixtures/yield-curves/rba-f02d.xlsx', import.meta.url)));
-    const curves = parseRbaWorkbook(workbook);
+  it('parses the RBA F2 CSV: four nominal tenors, indexed bond excluded', () => {
+    const curves = parseRbaCsv(fixture('rba-f2-data.csv'));
     assert.equal(curves.length, 4);
     assert.equal(curves[0].date, '2013-05-20');
     // 2013-05-20 carried only the 10Y print.
