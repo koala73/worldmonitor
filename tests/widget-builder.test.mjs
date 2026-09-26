@@ -19,6 +19,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import widgetResponseParser from '../scripts/_widget-response-parser.cjs';
+import { WIDGET_DATA_CATALOG, buildWidgetDataUrl } from '../scripts/_widget-data-policy.cjs';
 
 const { parseWidgetAgentResponse } = widgetResponseParser;
 
@@ -94,7 +95,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     PRO_WIDGET_KEY: 'test', WIDGET_ANTHROPIC_KEY: 'test',
     WIDGET_PRO_MAX_HTML: 100000, WIDGET_MAX_HTML: 50000,
     WIDGET_PRO_SYSTEM_PROMPT: 'test', WIDGET_SYSTEM_PROMPT: 'test',
-    isWidgetEndpointAllowed: endpoint => endpoint === '/api/test',
+    buildWidgetDataUrl,
     performWidgetWebSearch: async query => {
       effects.push(`search:${query}`);
       if (failSearch) throw new Error('Search fixture failure');
@@ -154,7 +155,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
 
 const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- /widget-html -->';
 const widgetResponse = (stop_reason, content = [{ type: 'text', text: widgetText }]) => ({ stop_reason, content });
-const widgetTool = (id, name = 'fetch_worldmonitor_data', input = { endpoint: '/api/test' }) => ({ type: 'tool_use', id, name, input });
+const widgetTool = (id, name = 'fetch_worldmonitor_data', input = { endpoint: '/api/news/v1/list-feed-digest' }) => ({ type: 'tool_use', id, name, input });
 const toolResultsFor = request => request.messages.flatMap(m => Array.isArray(m.content) ? m.content.filter(b => b.type === 'tool_result') : []);
 function assertWidgetSuccess(result) {
   assert.deepEqual(result.events.filter(e => ['html_complete', 'done', 'error'].includes(e.type)).map(e => e.type), ['html_complete', 'done']);
@@ -344,7 +345,7 @@ describe('widget data-tool contracts', () => {
   function constant(name) {
     const match = relay.match(new RegExp('^const ' + name + ' = (`[\\s\\S]*?`|\\{[\\s\\S]*?^\\});$', 'm'));
     assert.ok(match, `${name} must exist`);
-    return vm.runInNewContext(`(${match[1]})`);
+    return vm.runInNewContext(`(${match[1]})`, { WIDGET_DATA_CATALOG });
   }
   const fetchTool = constant('WIDGET_FETCH_TOOL');
   const searchTool = constant('WIDGET_SEARCH_TOOL');
@@ -422,7 +423,7 @@ describe('widget data-tool contracts', () => {
     const end = resultStart + resultInsertion.length;
     const helpers = relay.slice(relay.indexOf('function sanitizeToolContent('), relay.indexOf('const WIDGET_FETCH_TOOL'));
     const context = vm.createContext({
-      URL, AbortSignal, fetch, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
+      URL, AbortSignal, fetch, buildWidgetDataUrl, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,
       WIDGET_MAX_TOOL_CALLS: 3,
       sendWidgetSSE() {}, WIDGET_EXA_KEY: 'fixture', WIDGET_BRAVE_KEY: 'fixture', console,
@@ -560,81 +561,6 @@ describe('widget-agent relay — security', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     const handlerBody = relay.slice(handlerStart, handlerStart + 500);
     assert.ok(handlerBody.includes('163840'), 'Body limit must be enforced in handleWidgetAgentRequest');
-  });
-
-  it('SSRF guard — isWidgetEndpointAllowed function is present', () => {
-    assert.ok(
-      relay.includes('isWidgetEndpointAllowed'),
-      'isWidgetEndpointAllowed guard function must exist',
-    );
-    // Must reject non-API paths
-    assert.ok(
-      relay.includes("startsWith('/api/')"),
-      'Guard must restrict to /api/ prefix',
-    );
-  });
-
-  it('SSRF guard — allowlist is checked before any fetch call in tool loop', () => {
-    const allowlistCheck = relay.indexOf('isWidgetEndpointAllowed(endpoint)');
-    assert.ok(allowlistCheck !== -1, 'isWidgetEndpointAllowed() check missing in tool loop');
-    // The fetch call to api.worldmonitor.app must come AFTER the check
-    const fetchCallIdx = relay.indexOf("'https://api.worldmonitor.app'", allowlistCheck);
-    assert.ok(
-      fetchCallIdx > allowlistCheck,
-      'fetch() to api.worldmonitor.app must appear after allowlist check',
-    );
-  });
-
-  it('SSRF guard — dangerous inference/write paths are blocked', () => {
-    assert.ok(
-      relay.includes('analyze-stock') && relay.includes('summarize-article'),
-      'Blocklist must explicitly exclude inference-only paths',
-    );
-  });
-
-  it('SSRF guard — deduct-situation blocklist entry matches the real method name (#3740)', () => {
-    // Regression: blocklist previously had a one-char typo 'deduce-situation' that
-    // never matched the real /api/intelligence/v1/deduct-situation path, leaving an
-    // expensive LLM endpoint freely callable.
-    //
-    // A fully behavioral test (calling isWidgetEndpointAllowed() with the real URL)
-    // would catch a wider set of regressions than these structural assertions, but
-    // requires extracting the function from ais-relay.cjs into its own module —
-    // ais-relay.cjs starts an HTTP server unconditionally at module-load time, so
-    // it can't be required from a unit test without that refactor. The structural
-    // checks below catch the failure modes the audit explicitly named: the typo,
-    // the substring leaving the blocked-array, and a refactor away from the
-    // substring-match dispatch that re-opens the gap.
-
-    // 1. The correct entry is present (and the typo is gone).
-    assert.ok(
-      relay.includes("'deduct-situation'"),
-      "Blocklist must contain 'deduct-situation' (matches /api/intelligence/v1/deduct-situation)",
-    );
-    assert.ok(
-      !relay.includes("'deduce-situation'"),
-      "Blocklist must not contain the typo 'deduce-situation' — it never matches any real URL",
-    );
-
-    // 2. The entry lives inside the `blocked = [...]` array literal, not in some
-    //    comment that happens to mention the method name. This catches a regression
-    //    where the array is commented out or guarded by a falsy condition but the
-    //    string survives elsewhere in the file.
-    const blockedArrayMatch = relay.match(/const blocked = \[[\s\S]*?\];/);
-    assert.ok(blockedArrayMatch, "isWidgetEndpointAllowed must define `const blocked = [...]`");
-    assert.ok(
-      blockedArrayMatch[0].includes("'deduct-situation'"),
-      "'deduct-situation' must appear inside the blocked array literal, not just somewhere in the file",
-    );
-
-    // 3. The dispatch still uses substring matching (`endpoint.includes(b)`). A
-    //    refactor to exact equality (`endpoint === b`) would silently re-open the
-    //    gap because callers pass the full `/api/intelligence/v1/deduct-situation`
-    //    path, not the bare method name.
-    assert.ok(
-      /blocked\.some\([^)]*=>\s*endpoint\.includes\(/.test(relay),
-      "isWidgetEndpointAllowed must keep substring matching (`endpoint.includes(b)`); switching to `endpoint === b` would re-open the SSRF gap",
-    );
   });
 
   it('injection guard — isWidgetInjectionAttempt function is present', () => {
