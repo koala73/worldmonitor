@@ -3,29 +3,16 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
 import {
+  STANDARD_WEBHOOK_HEADER_NAMES,
+  type SvixVerifyFailure,
+  verifySvixSignature,
+} from "../lib/svixVerify";
+import {
   WebhookPayloadSchema,
   type WebhookPayload,
 } from "@dodopayments/core";
 
 const WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
-
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
 
 /**
  * Signature-only half of the SDK's verifyWebhookPayload, same vendored
@@ -35,50 +22,31 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
  * but fails to parse or validate is handled as a provider-side defect
  * (dead-letter + 500) instead of being mislabeled as a signature failure
  * (401). Throws Error with the SDK's message on any verification failure.
+ *
+ * The verification itself is the shared Svix verifier (#8491); this wrapper
+ * only maps its failure reasons onto the messages the SDK would have thrown,
+ * which is what the failure-tracking rows and Sentry signal record.
  */
+const DODO_SIGNATURE_ERROR_MESSAGES: Record<SvixVerifyFailure, string> = {
+  missing_headers: "Invalid Signature Headers",
+  invalid_timestamp: "Invalid Signature Headers",
+  timestamp_too_old: "Message timestamp too old",
+  timestamp_too_new: "Message timestamp too new",
+  no_matching_signature: "No matching signature found",
+};
+
 async function verifyDodoSignature(
   webhookKey: string,
-  webhookId: string,
-  webhookTimestamp: string,
-  webhookSignature: string,
+  headers: Headers,
   body: string,
 ): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-  const timestamp = Number.parseInt(webhookTimestamp, 10);
-  if (Number.isNaN(timestamp)) {
-    throw new Error("Invalid Signature Headers");
+  const verified = await verifySvixSignature(body, headers, webhookKey, {
+    headerNames: STANDARD_WEBHOOK_HEADER_NAMES,
+    skewSeconds: WEBHOOK_SIGNATURE_TOLERANCE_SECONDS,
+  });
+  if (!verified.ok) {
+    throw new Error(DODO_SIGNATURE_ERROR_MESSAGES[verified.reason]);
   }
-  if (now - timestamp > WEBHOOK_SIGNATURE_TOLERANCE_SECONDS) {
-    throw new Error("Message timestamp too old");
-  }
-  if (timestamp > now + WEBHOOK_SIGNATURE_TOLERANCE_SECONDS) {
-    throw new Error("Message timestamp too new");
-  }
-
-  const secretBytes = Uint8Array.from(
-    atob(webhookKey.replace("whsec_", "")),
-    (c) => c.charCodeAt(0),
-  );
-  const key = await crypto.subtle.importKey(
-    "raw",
-    secretBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const computed = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`${webhookId}.${timestamp}.${body}`),
-  );
-  const expected = btoa(String.fromCharCode(...new Uint8Array(computed)));
-
-  for (const versionedSignature of webhookSignature.split(" ")) {
-    const [version, signature] = versionedSignature.split(",");
-    if (version !== "v1" || !signature) continue;
-    if (await timingSafeEqualStrings(signature, expected)) return;
-  }
-  throw new Error("No matching signature found");
 }
 
 /**
@@ -210,13 +178,7 @@ export const webhookHandler = httpAction(async (ctx, request) => {
   //    credentials that do not verify — see step 5 for authenticated but
   //    malformed payloads.
   try {
-    await verifyDodoSignature(
-      webhookKey,
-      webhookId,
-      webhookTimestamp,
-      webhookSignature,
-      body,
-    );
+    await verifyDodoSignature(webhookKey, request.headers, body);
   } catch (error) {
     // sentry-coverage-ok: the scheduled mutation below throws a
     // structured error that Convex auto-Sentry captures. Required because
