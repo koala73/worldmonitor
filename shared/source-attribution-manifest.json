@@ -9670,6 +9670,23 @@
       ]
     },
     {
+      "host": "threatfox.abuse.ch",
+      "provider": "threatfox.abuse.ch",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit threatfox.abuse.ch and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "scripts/seed-cyber-threats.mjs"
+        }
+      ]
+    },
+    {
       "host": "tiles.openfreemap.org",
       "provider": "tiles.openfreemap.org",
       "kind": "structured",

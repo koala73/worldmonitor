@@ -25,6 +25,7 @@ const EXPECTED_ENUMS = [
     'CYBER_THREAT_SOURCE_C2INTEL',
     'CYBER_THREAT_SOURCE_OTX',
     'CYBER_THREAT_SOURCE_ABUSEIPDB',
+    'CYBER_THREAT_SOURCE_THREATFOX',
   ]],
   ['CyberService', '/api/cyber/v1/list-cyber-threats', 'get', 'min_severity', [
     'CRITICALITY_LEVEL_LOW',

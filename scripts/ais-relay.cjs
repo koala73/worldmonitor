@@ -4266,7 +4266,7 @@ const CYBER_COUNTRY_CENTROIDS = {
 };
 
 const CYBER_THREAT_TYPE_MAP = { c2_server:'CYBER_THREAT_TYPE_C2_SERVER', malware_host:'CYBER_THREAT_TYPE_MALWARE_HOST', phishing:'CYBER_THREAT_TYPE_PHISHING', malicious_url:'CYBER_THREAT_TYPE_MALICIOUS_URL' };
-const CYBER_SOURCE_MAP = { feodo:'CYBER_THREAT_SOURCE_FEODO', urlhaus:'CYBER_THREAT_SOURCE_URLHAUS', c2intel:'CYBER_THREAT_SOURCE_C2INTEL', otx:'CYBER_THREAT_SOURCE_OTX', abuseipdb:'CYBER_THREAT_SOURCE_ABUSEIPDB' };
+const CYBER_SOURCE_MAP = { feodo:'CYBER_THREAT_SOURCE_FEODO', urlhaus:'CYBER_THREAT_SOURCE_URLHAUS', c2intel:'CYBER_THREAT_SOURCE_C2INTEL', otx:'CYBER_THREAT_SOURCE_OTX', abuseipdb:'CYBER_THREAT_SOURCE_ABUSEIPDB', threatfox:'CYBER_THREAT_SOURCE_THREATFOX' };
 const CYBER_INDICATOR_MAP = { ip:'CYBER_THREAT_INDICATOR_TYPE_IP', domain:'CYBER_THREAT_INDICATOR_TYPE_DOMAIN', url:'CYBER_THREAT_INDICATOR_TYPE_URL' };
 const CYBER_SEVERITY_MAP = { low:'CRITICALITY_LEVEL_LOW', medium:'CRITICALITY_LEVEL_MEDIUM', high:'CRITICALITY_LEVEL_HIGH', critical:'CRITICALITY_LEVEL_CRITICAL' };
 const CYBER_SEVERITY_RANK = { CRITICALITY_LEVEL_CRITICAL:4, CRITICALITY_LEVEL_HIGH:3, CRITICALITY_LEVEL_MEDIUM:2, CRITICALITY_LEVEL_LOW:1, CRITICALITY_LEVEL_UNSPECIFIED:0 };
@@ -4338,6 +4338,22 @@ function cyberHttpGetText(url, reqHeaders, timeoutMs) {
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+// POST + JSON helper (ThreatFox API is POST-only with a JSON body).
+function cyberHttpPostJson(url, body, reqHeaders, timeoutMs) {
+  return new Promise((resolve) => {
+    const payload = Buffer.from(JSON.stringify(body));
+    const req = https.request(url, { method: 'POST', headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json', 'Content-Length': payload.length, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+      if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.write(payload);
+    req.end();
   });
 }
 
@@ -4450,6 +4466,43 @@ async function cyberFetchUrlhaus(limit, cutoffMs) {
     return out;
   } catch (e) { console.warn('[Cyber] URLhaus fetch failed:', e?.message || e); return []; }
 }
+async function cyberFetchThreatFox(limit, cutoffMs, days) {
+  if (!URLHAUS_AUTH_KEY) return [];
+  try {
+    const payload = await cyberHttpPostJson('https://threatfox.abuse.ch/api/v1/', { query: 'get_iocs', days: days || 14 }, { Accept: 'application/json', 'Auth-Key': URLHAUS_AUTH_KEY }, CYBER_SOURCE_TIMEOUT_MS);
+    if (!payload || (payload?.query_status && payload.query_status !== 'ok')) return [];
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const out = [];
+    for (const r of rows) {
+      const rawIoc = cyberClean(r?.ioc || '', 1024); if (!rawIoc) continue;
+      const iocType = cyberClean(r?.ioc_type || '', 20).toLowerCase();
+      let indType = 'url'; let indicator = rawIoc;
+      if (iocType === 'ip:port' || cyberIsIp(rawIoc)) {
+        const host = iocType === 'ip:port' ? rawIoc.slice(0, rawIoc.lastIndexOf(':')) : rawIoc;
+        if (!cyberIsIp(host)) continue;
+        indicator = host.toLowerCase(); indType = 'ip';
+      } else if (iocType === 'domain') {
+        indType = 'domain';
+      } else if (iocType === 'url') {
+        try { new URL(rawIoc); } catch { continue; }
+      } else {
+        try { const u = new URL(rawIoc); const host = cyberClean(u.hostname, 255).toLowerCase(); if (!host) continue; indicator = host; indType = cyberIsIp(host) ? 'ip' : 'domain'; } catch { if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(rawIoc)) continue; indicator = rawIoc.toLowerCase(); indType = 'domain'; }
+      }
+      const threatType = cyberClean(r?.threat_type || '', 60).toLowerCase();
+      const type = /botnet_cc|^c2$|c2_server/.test(threatType) ? 'c2_server' : /phish/.test(threatType) ? 'phishing' : /payload|malware|download|ip_src|hacktool/.test(threatType) ? 'malware_host' : 'malicious_url';
+      const firstSeen = cyberToMs(r?.first_seen); const lastSeen = cyberToMs(r?.last_seen || r?.first_seen);
+      if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
+      const confidence = cyberToNum(r?.confidence_level);
+      const malwareFamily = cyberClean(r?.malware_printable || r?.malware || '', 80);
+      let sev = 'medium';
+      if (confidence !== null) sev = confidence >= 90 ? 'critical' : (confidence >= 75 ? 'high' : (confidence >= 50 ? 'medium' : 'low'));
+      if (/emotet|qakbot|trickbot|dridex|ransom/i.test(malwareFamily) && sev !== 'critical') sev = 'high';
+      const t = cyberSanitize({ id: `threatfox:${indType}:${indicator}`, type, source: 'threatfox', indicator, indicatorType: indType, lat: null, lon: null, country: '', severity: sev, malwareFamily, tags: cyberNormTags(['threatfox', ...(r?.tags || [])]), firstSeen, lastSeen });
+      if (t) { out.push(t); if (out.length >= limit) break; }
+    }
+    return out;
+  } catch (e) { console.warn('[Cyber] ThreatFox fetch failed:', e?.message || e); return []; }
+}
 async function cyberFetchC2Intel(limit) {
   try {
     const text = await cyberHttpGetText('https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv', { Accept: 'text/plain' }, CYBER_SOURCE_TIMEOUT_MS);
@@ -4520,22 +4573,23 @@ async function seedCyberThreats() {
     const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
     const MAX_LIMIT = 1000;
 
-    const [feodo, urlhaus, c2intel, otx, abuseipdb] = await Promise.all([
+    const [feodo, urlhaus, threatfox, c2intel, otx, abuseipdb] = await Promise.all([
       cyberFetchFeodo(MAX_LIMIT, cutoffMs),
       cyberFetchUrlhaus(MAX_LIMIT, cutoffMs),
+      cyberFetchThreatFox(MAX_LIMIT, cutoffMs, days),
       cyberFetchC2Intel(MAX_LIMIT),
       cyberFetchOtx(MAX_LIMIT, days),
       cyberFetchAbuseIpDb(MAX_LIMIT),
     ]);
 
-    if (feodo.length + urlhaus.length + c2intel.length + otx.length + abuseipdb.length === 0) {
+    if (feodo.length + urlhaus.length + threatfox.length + c2intel.length + otx.length + abuseipdb.length === 0) {
       console.warn('[Cyber] All sources returned 0 threats — extending TTL, retrying in 20min');
       try { await upstashExpire(CYBER_RPC_KEY, CYBER_SEED_TTL); await upstashExpire(CYBER_BOOTSTRAP_KEY, CYBER_SEED_TTL); } catch {}
       cyberRetryTimer = setTimeout(() => { seedCyberThreats().catch(() => {}); }, CYBER_RETRY_MS);
       return 0;
     }
 
-    const combined = cyberDedupe([...feodo, ...urlhaus, ...c2intel, ...otx, ...abuseipdb]);
+    const combined = cyberDedupe([...feodo, ...urlhaus, ...threatfox, ...c2intel, ...otx, ...abuseipdb]);
     const hydrated = await cyberHydrateGeo(combined);
     const geoCount = hydrated.filter((t) => cyberValidCoords(t.lat, t.lon)).length;
     console.log(`[Cyber] Geo resolved: ${geoCount}/${hydrated.length}`);

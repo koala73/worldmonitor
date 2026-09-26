@@ -8,7 +8,7 @@ import "worldmonitor/core/v1/geo.proto";
 import "worldmonitor/core/v1/severity.proto";
 
 // CyberThreat represents a cyber threat indicator aggregated from multiple sources.
-// Sources include Feodo Tracker, URLhaus, OTX, AbuseIPDB, and C2Intel.
+// Sources include Feodo Tracker, URLhaus, ThreatFox, OTX, AbuseIPDB, and C2Intel.
 message CyberThreat {
   // Unique threat identifier.
   string id = 1 [
@@ -55,7 +55,7 @@ enum CyberThreatType {
 }
 
 // CyberThreatSource represents the intelligence source of a cyber threat.
-// Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb'.
+// Maps to TS union: 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb' | 'threatfox'.
 enum CyberThreatSource {
   // Unspecified source.
   CYBER_THREAT_SOURCE_UNSPECIFIED = 0;
@@ -69,6 +69,8 @@ enum CyberThreatSource {
   CYBER_THREAT_SOURCE_OTX = 4;
   // AbuseIPDB.
   CYBER_THREAT_SOURCE_ABUSEIPDB = 5;
+  // ThreatFox (abuse.ch).
+  CYBER_THREAT_SOURCE_THREATFOX = 6;
 }
 
 // CyberThreatIndicatorType represents the type of threat indicator.

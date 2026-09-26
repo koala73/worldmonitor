@@ -1,5 +1,10 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { CyberThreat as ProtoCyberThreat, ListCyberThreatsResponse } from '@/generated/client/worldmonitor/cyber/v1/service_client';
+import type {
+  CyberThreat as ProtoCyberThreat,
+  ListCyberThreatsResponse,
+  CyberThreatSource as ProtoCyberThreatSource,
+  CriticalityLevel as ProtoCriticalityLevel,
+} from '@/generated/client/worldmonitor/cyber/v1/service_client';
 import type {
   CyberThreat,
   CyberThreatType,
@@ -35,6 +40,7 @@ const SOURCE_REVERSE: Record<string, CyberThreatSource> = {
   CYBER_THREAT_SOURCE_C2INTEL: 'c2intel',
   CYBER_THREAT_SOURCE_OTX: 'otx',
   CYBER_THREAT_SOURCE_ABUSEIPDB: 'abuseipdb',
+  CYBER_THREAT_SOURCE_THREATFOX: 'threatfox',
 };
 
 const INDICATOR_TYPE_REVERSE: Record<string, CyberThreatIndicatorType> = {
@@ -82,17 +88,53 @@ function clampInt(rawValue: number | undefined, fallback: number, min: number, m
   return Math.max(min, Math.min(max, Math.floor(rawValue as number)));
 }
 
-export async function fetchCyberThreats(options: { limit?: number; days?: number } = {}): Promise<CyberThreat[]> {
+export interface FetchCyberThreatsOptions {
+  limit?: number;
+  days?: number;
+  /** Optional proto source filter, e.g. 'CYBER_THREAT_SOURCE_THREATFOX'. */
+  source?: ProtoCyberThreatSource;
+  /** Optional minimum proto severity filter, e.g. 'CRITICALITY_LEVEL_HIGH'. */
+  minSeverity?: ProtoCriticalityLevel;
+}
+
+// Proto severity rank mirrors SEVERITY_RANK on the server so minSeverity can be
+// applied to the hydrated bootstrap payload, which bypasses the RPC filter.
+const PROTO_SEVERITY_RANK: Record<string, number> = {
+  CRITICALITY_LEVEL_CRITICAL: 4,
+  CRITICALITY_LEVEL_HIGH: 3,
+  CRITICALITY_LEVEL_MEDIUM: 2,
+  CRITICALITY_LEVEL_LOW: 1,
+  CRITICALITY_LEVEL_UNSPECIFIED: 0,
+};
+
+function filterProtoThreats(
+  threats: ProtoCyberThreat[],
+  source?: ProtoCyberThreatSource,
+  minSeverity?: ProtoCriticalityLevel,
+): ProtoCyberThreat[] {
+  let results = threats;
+  if (source && source !== 'CYBER_THREAT_SOURCE_UNSPECIFIED') {
+    results = results.filter((t) => t.source === source);
+  }
+  if (minSeverity && minSeverity !== 'CRITICALITY_LEVEL_UNSPECIFIED') {
+    const minRank = PROTO_SEVERITY_RANK[minSeverity] ?? 0;
+    results = results.filter((t) => (PROTO_SEVERITY_RANK[t.severity || ''] ?? 0) >= minRank);
+  }
+  return results;
+}
+
+export async function fetchCyberThreats(options: FetchCyberThreatsOptions = {}): Promise<CyberThreat[]> {
   // `cyberThreats` is an on-demand bootstrap key (#5300): it no longer rides in
   // the slow tier, because loadCyberThreats is gated on the cyber layer being ON
   // and that layer is off by default in every variant — so the tier was shipping
   // 364 KB to every visitor for data the default visitor never read. Callers that
   // reach here have already passed that gate, so fetch it now, through its own
   // CDN-shielded per-key URL. Falls through to the RPC below if that fetch fails.
+  const { source, minSeverity } = options;
   const hydrated = await ensureHydrated('cyberThreats');
   if (isCyberThreatSnapshot(hydrated)) {
     breaker.recordSuccess({ threats: hydrated.threats }, AVAILABLE_CACHE_KEY);
-    return hydrated.threats.map(toCyberThreat);
+    return filterProtoThreats(hydrated.threats, source, minSeverity).map(toCyberThreat);
   }
 
   const limit = clampInt(options.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
@@ -106,8 +148,8 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
       pageSize: limit,
       cursor: '',
       type: 'CYBER_THREAT_TYPE_UNSPECIFIED',
-      source: 'CYBER_THREAT_SOURCE_UNSPECIFIED',
-      minSeverity: 'CRITICALITY_LEVEL_UNSPECIFIED',
+      source: source ?? 'CYBER_THREAT_SOURCE_UNSPECIFIED',
+      minSeverity: minSeverity ?? 'CRITICALITY_LEVEL_UNSPECIFIED',
     });
     if (!isCyberThreatSnapshot(response)) throw new Error('Cyber threats unavailable');
     return response;

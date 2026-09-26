@@ -352,7 +352,7 @@ export interface APTGroup {
 }
 
 export type CyberThreatType = 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url';
-export type CyberThreatSource = 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb';
+export type CyberThreatSource = 'feodo' | 'urlhaus' | 'c2intel' | 'otx' | 'abuseipdb' | 'threatfox';
 export type CyberThreatSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type CyberThreatIndicatorType = 'ip' | 'domain' | 'url';
 
