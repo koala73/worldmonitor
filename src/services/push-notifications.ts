@@ -22,6 +22,7 @@
 
 import { getClerkToken, getCurrentClerkUser } from '@/services/clerk';
 import { VAPID_PUBLIC_KEY, isWebPushConfigured, urlBase64ToUint8Array, arrayBufferToBase64 } from '@/config/push';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 
 export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
@@ -39,7 +40,7 @@ export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
  */
 export function isWebPushSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) return false;
+  if (isDesktopRuntime()) return false;
   if (!('serviceWorker' in navigator)) return false;
   if (!('PushManager' in window)) return false;
   if (typeof Notification === 'undefined') return false;
