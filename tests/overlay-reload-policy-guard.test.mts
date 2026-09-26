@@ -261,15 +261,14 @@ describe('overlay reload-contract gate', () => {
       '  });',
       '}',
     ].join('\n');
+    // Line 2 is the injectable default's own definition, not a trigger; it runs
+    // only when a caller invokes `reload()`, and line 4 is that caller.
     assert.deepEqual(unguardedReloadsIn(fixture).map((h) => [h.line, h.text]), [
-      [2, 'window.location.reload()'],
       [4, 'reload()'],
     ]);
   });
 
-  it('accepts a reload anywhere inside an installer that consults the guard', () => {
-    // The sw-update shape: the auto path asks, the manual Reload click does
-    // not, and both live in one installer. The manual click is user intent.
+  it('accepts the sw-update shape: guard in the same body, click marked', () => {
     const fixture = [
       'export function installSw(options = {}) {',
       '  const reload = options.reload ?? (() => window.location.reload());',
@@ -277,10 +276,50 @@ describe('overlay reload-contract gate', () => {
       '    if (findReloadBlockingModal(document) !== null) return;',
       '    reload();',
       '  };',
-      "  toast.addEventListener('click', () => { reload(); });",
+      "  toast.addEventListener('click', () => {",
+      '    // reload:user-initiated',
+      '    reload();',
+      '  });',
       '}',
     ].join('\n');
     assert.deepEqual(unguardedReloadsIn(fixture), []);
+  });
+
+  it('flags a second reload the guard does not cover, on another branch (#8663 review)', () => {
+    // The hole the outermost-function rule left: the installer DOES consult the
+    // guard, so "somewhere in this function" passed. A guard reached later
+    // cannot protect a reload that already happened.
+    const fixture = [
+      'export function installStale(options = {}) {',
+      '  const reload = options.reload ?? (() => window.location.reload());',
+      '  const reloadOrDefer = () => {',
+      '    if (findReloadBlockingModal(document) !== null) return;',
+      '    reload();',
+      '  };',
+      '  const onGiveUp = () => {',
+      '    reload();',
+      '  };',
+      '}',
+    ].join('\n');
+    assert.deepEqual(unguardedReloadsIn(fixture).map((h) => [h.line, h.text]), [
+      [8, 'reload()'],
+    ]);
+  });
+
+  it('does not let a marker on an ancestor cover an unguarded reload', () => {
+    // Marking the handler rather than the statement would re-open the hole.
+    const fixture = [
+      'export function installSw(options = {}) {',
+      '  const reload = options.reload ?? (() => window.location.reload());',
+      '  // reload:user-initiated',
+      "  toast.addEventListener('click', () => {",
+      '    reload();',
+      '  });',
+      '}',
+    ].join('\n');
+    assert.deepEqual(unguardedReloadsIn(fixture).map((h) => [h.line, h.text]), [
+      [5, 'reload()'],
+    ]);
   });
 
   it('a comment mentioning reload is not a call', () => {

@@ -233,6 +233,10 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         dwellTimerId = null;
         currentDwellCancel = null;
         logSw('reload-clicked');
+        // reload:user-initiated — the user pressed Reload, so the modal guard
+        // does not apply. Deferring a direct instruction would be a bug, not a
+        // protection. The marker is what keeps this exception explicit rather
+        // than implied by the shape of the enclosing installer.
         reload();
       } else if (action === 'dismiss') {
         clearTimer(dwellTimerId);

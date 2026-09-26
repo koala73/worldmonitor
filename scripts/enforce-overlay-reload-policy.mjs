@@ -259,11 +259,29 @@ export function adviceFor(violation) {
 }
 
 /**
- * Every `reload()` / `.reload()` call whose OUTERMOST enclosing function never
- * calls `findReloadBlockingModal`. The outermost function is the consumer's
- * installer, so this is "a consumer without the guard", the shape #8577 had.
- * A manual Reload button inside a guarded installer is fine; a new
- * `installFooReload()` that never asks is not.
+ * An explicit, greppable opt-out for a reload the user asked for by clicking.
+ *
+ * Automatic reloads must be guarded. A Reload button the user pressed must not
+ * be, because deferring it would ignore a direct instruction. That difference
+ * is intent, which no amount of structure reveals, so the call site states it.
+ */
+export const USER_INITIATED_MARKER = 'reload:user-initiated';
+
+/**
+ * Every `reload()` / `.reload()` call that its OWN function does not guard.
+ *
+ * The rule is same-body: the function containing the reload must itself call
+ * `findReloadBlockingModal`, and a guard sitting in a sibling or nested closure
+ * does not count. An earlier version accepted any reload whose outermost
+ * enclosing function mentioned the guard anywhere, which let a SECOND reload
+ * added on another branch of an already-guarded installer through untouched
+ * (caught in review on #8663). A guard reached later cannot protect a reload
+ * that already happened, so "somewhere in this installer" is not a safe test.
+ *
+ * Both shipped automatic reloads satisfy the same-body rule already:
+ * `reloadOrDefer` in stale-bundle-check and `onHidden` in sw-update each call
+ * the guard and the reload in one body. The only legitimate unguarded reload is
+ * the toast's Reload click, which carries `USER_INITIATED_MARKER`.
  *
  * Matched on the TypeScript AST rather than text, because "enclosing function"
  * is structure, and because a comment mentioning reload is simply not a node.
@@ -275,7 +293,8 @@ export function unguardedReloadsIn(source) {
     (ts.isIdentifier(node.expression) && node.expression.text === 'reload')
     || (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'reload')
   );
-  const consultsGuard = (root) => {
+  /** Calls the guard in `fn`'s own body. A nested closure's guard is not `fn`'s. */
+  const guardsInOwnBody = (fn) => {
     let found = false;
     const visit = (node) => {
       if (found) return;
@@ -283,23 +302,51 @@ export function unguardedReloadsIn(source) {
         found = true;
         return;
       }
+      if (node !== fn && ts.isFunctionLike(node)) return;
       ts.forEachChild(node, visit);
     };
-    visit(root);
+    visit(fn);
     return found;
   };
-  const outermostFunction = (node) => {
-    let top = null;
+  const nearestFunction = (node) => {
     for (let cursor = node.parent; cursor; cursor = cursor.parent) {
-      if (ts.isFunctionLike(cursor)) top = cursor;
+      if (ts.isFunctionLike(cursor)) return cursor;
     }
-    return top;
+    return null;
+  };
+  /**
+   * The marker on the reload's own statement. Deliberately not inherited from an
+   * ancestor: marking a whole handler would re-open the hole this rule closes.
+   */
+  const isUserInitiated = (node) => {
+    for (let cursor = node; cursor; cursor = cursor.parent) {
+      if (ts.isStatement(cursor)) {
+        const ranges = ts.getLeadingCommentRanges(source, cursor.getFullStart()) ?? [];
+        return ranges.some((r) => source.slice(r.pos, r.end).includes(USER_INITIATED_MARKER));
+      }
+    }
+    return false;
+  };
+  /**
+   * Inside the initializer of the injectable `reload` binding, as in
+   * `const reload = options.reload ?? (() => window.location.reload())`.
+   *
+   * That is the escape hatch's DEFINITION, not a trigger. It runs only when a
+   * caller invokes `reload()`, and that caller is what this rule checks. Counting
+   * it would demand a guard inside a one-line default factory, which can never
+   * have one.
+   */
+  const isReloadDefaultFactory = (node) => {
+    for (let cursor = node; cursor; cursor = cursor.parent) {
+      if (ts.isVariableDeclaration(cursor) && ts.isIdentifier(cursor.name) && cursor.name.text === 'reload') return true;
+    }
+    return false;
   };
   const out = [];
   const visit = (node) => {
-    if (isReloadCall(node)) {
-      const fn = outermostFunction(node);
-      if (fn === null || !consultsGuard(fn)) {
+    if (isReloadCall(node) && !isReloadDefaultFactory(node)) {
+      const fn = nearestFunction(node);
+      if ((fn === null || !guardsInOwnBody(fn)) && !isUserInitiated(node)) {
         out.push({ line: file.getLineAndCharacterOfPosition(node.getStart()).line + 1, text: node.getText() });
       }
     }
