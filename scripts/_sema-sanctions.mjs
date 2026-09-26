@@ -354,24 +354,26 @@ export function parseSemaJson(text) {
       if (typeof value !== 'string' && !numericIdentifier) throw new Error('SEMA_INVALID_RECORD');
       fields[field] = String(value).replace(/\s+/g, ' ').trim();
     }
-    const defect = semaRowDefect(fields);
-    if (defect) {
-      const identified = defect !== 'MISSING_COUNTRY' && defect !== 'INVALID_ITEM';
-      quarantined.push({
-        id: identified ? semaRecordId(fields.Country, fields.Schedule, fields.Item) : `${SEMA_SOURCE}:row:${index}`,
-        reason: defect,
-      });
-      if (quarantined.length > data.length * SEMA_MAX_QUARANTINE_SHARE) throw new Error('SEMA_INVALID_RECORD');
-      continue;
-    }
+    // The date and duplicate-ID contracts hold for every row, held back or not:
+    // quarantine is for an unusable identity, never a way past a table-wide break.
     const listed = fields.DateOfListing;
     const epoch = listingEpoch(listed);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(listed) || !epoch) {
       throw new Error('SEMA_INVALID_DATE');
     }
+    const defect = semaRowDefect(fields);
+    const identified = defect !== 'MISSING_COUNTRY' && defect !== 'INVALID_ITEM';
+    const id = identified ? semaRecordId(fields.Country, fields.Schedule, fields.Item) : `${SEMA_SOURCE}:row:${index}`;
+    if (identified) {
+      if (ids.has(id)) throw new Error('SEMA_DUPLICATE_ID');
+      ids.add(id);
+    }
+    if (defect) {
+      quarantined.push({ id, reason: defect });
+      if (quarantined.length > data.length * SEMA_MAX_QUARANTINE_SHARE) throw new Error('SEMA_INVALID_RECORD');
+      continue;
+    }
     const entry = fieldsToCanonical(fields);
-    if (ids.has(entry.id)) throw new Error('SEMA_DUPLICATE_ID');
-    ids.add(entry.id);
     records.push(entry);
     newest = Math.max(newest, epoch);
     oldest = Math.min(oldest, epoch);

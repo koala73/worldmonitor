@@ -199,6 +199,8 @@ describe('SEMA row quarantine', () => {
       [{ 'Ship IMO number': null }, 'SEMA_INVALID_RECORD'],
       [{ 'Date of Listing': 'yesterday' }, 'SEMA_INVALID_DATE'],
       [{ 'Item Number': '2' }, 'SEMA_DUPLICATE_ID'],
+      [{ 'Ship IMO number': 'N/A', 'Date of Listing': 'yesterday' }, 'SEMA_INVALID_DATE'],
+      [{ 'Ship IMO number': 'N/A', 'Item Number': '2' }, 'SEMA_DUPLICATE_ID'],
     ]) {
       const rows = validRows(600);
       Object.assign(rows[0], patch);
@@ -206,5 +208,8 @@ describe('SEMA row quarantine', () => {
       assert.equal(result.error, error, JSON.stringify(patch));
       assert.deepEqual(result.records, []);
     }
+    const trailingCopy = validRows(600);
+    Object.assign(trailingCopy[599], { 'Item Number': '1', 'Ship IMO number': 'N/A' });
+    assert.equal((await ingest({ data: trailingCopy })).error, 'SEMA_DUPLICATE_ID');
   });
 });
