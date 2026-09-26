@@ -113,7 +113,9 @@ export function decideResume(input: ResumeInput, now: EpochMs): ResumeDecision {
   if (signUp.strategy !== 'email_code') return { kind: 'none', reason: 'not-email-code' };
   if (!signUp.emailUnverified) return { kind: 'none', reason: 'email-already-verified' };
   if (signUp.abandonAt !== null && signUp.abandonAt <= now) return { kind: 'none', reason: 'abandoned' };
-  if (input.dismissedAttemptId === signUp.id) return { kind: 'none', reason: 'dismissed' };
+  // A dismissal only stops the automatic open; a click must still resume, or
+  // Clerk's modal restarts at SignUpStart and sends a second email.
+  if (input.trigger === 'hydration' && input.dismissedAttemptId === signUp.id) return { kind: 'none', reason: 'dismissed' };
   if (input.clerkModalOpen) return { kind: 'none', reason: 'clerk-modal-open' };
   const expired = signUp.codeExpiresAt !== null && signUp.codeExpiresAt - now <= CODE_EXPIRY_MARGIN_MS;
   return { kind: 'resume', attemptId: signUp.id, email: signUp.email, code: expired ? 'expired' : 'live' };
@@ -162,13 +164,13 @@ export interface SignUpResumeController {
 }
 
 export function createSignUpResumeController(ports: SignUpResumePorts): SignUpResumeController {
-  const decide = (): ResumeDecision => {
+  const decide = (trigger: ResumeTrigger): ResumeDecision => {
     const snap = ports.readSnapshot();
     if (!snap) return { kind: 'none', reason: 'no-attempt' };
     const dismissedAttemptId = snap.signUp.kind === 'pending' && ports.markers.dismissed(snap.signUp.id)
       ? snap.signUp.id
       : null;
-    return decideResume({ ...snap, dismissedAttemptId, clerkModalOpen: ports.clerkModalOpen() }, ports.now());
+    return decideResume({ ...snap, trigger, dismissedAttemptId, clerkModalOpen: ports.clerkModalOpen() }, ports.now());
   };
 
   const open = (decision: Extract<ResumeDecision, { kind: 'resume' }>, trigger: ResumeTrigger, onResendFailed: () => void): void => {
@@ -194,11 +196,11 @@ export function createSignUpResumeController(ports: SignUpResumePorts): SignUpRe
       if (snap?.signUp.kind === 'pending' && ports.markers.claimStarted(snap.signUp.id)) ports.track.started();
       if (snap?.signedIn && ports.surface.isOpen()) ports.surface.close();
       if (!first) return;
-      const decision = decide();
+      const decision = decide('hydration');
       if (decision.kind === 'resume' && decision.code === 'live') open(decision, 'hydration', () => {});
     },
     resumeOnUserIntent(fallback) {
-      const decision = decide();
+      const decision = decide('user');
       if (decision.kind !== 'resume') return false;
       open(decision, 'user', fallback);
       return true;

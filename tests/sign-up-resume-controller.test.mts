@@ -59,7 +59,10 @@ function harness(signUp: SignUpSnapshot = pending()): Harness {
     open: (_attempt: { attemptId: string; email: string }, onDismiss: () => void) => {
       open = true;
       surface.opened += 1;
-      surface.dismiss = onDismiss;
+      surface.dismiss = () => {
+        open = false;
+        onDismiss();
+      };
     },
     close: () => {
       open = false;
