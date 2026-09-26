@@ -66,6 +66,52 @@ afterEach(() => {
   restoreGlobals();
 });
 
+describe('country geometry political overrides', () => {
+  it('rewrites CN-TW feature properties to TW and indexes under TW', async () => {
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === '/data/countries.geojson') {
+        return Promise.resolve(jsonResponse({
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                name: 'Taiwan',
+                'ISO3166-1-Alpha-2': 'CN-TW',
+                'ISO3166-1-Alpha-3': 'TWN',
+              },
+              geometry: {
+                type: 'Polygon',
+                coordinates: [[[120, 22], [122, 22], [122, 25], [120, 25], [120, 22]]],
+              },
+            },
+          ],
+        }));
+      }
+      if (url === 'https://maps.worldmonitor.app/country-boundary-overrides.geojson') {
+        return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
+      }
+      return Promise.reject(new Error(`Unexpected URL: ${url}`));
+    }) as typeof fetch;
+
+    const countryGeometry = await loadFreshCountryGeometryModule();
+    await countryGeometry.preloadCountryGeometry();
+
+    assert.equal(countryGeometry.canonicalizeCountryCode('CN-TW'), 'TW');
+    assert.equal(countryGeometry.canonicalizeCountryCode('tw'), 'TW');
+    assert.equal(countryGeometry.canonicalizeCountryCode('JP'), 'JP');
+    assert.deepEqual(countryGeometry.getCountryAtCoordinates(23.5, 121), {
+      code: 'TW',
+      name: 'Taiwan',
+    });
+    const geojson = await countryGeometry.getCountriesGeoJson();
+    assert.equal(geojson?.features[0]?.properties?.['ISO3166-1-Alpha-2'], 'TW');
+    assert.equal(countryGeometry.hasCountryGeometry('TW'), true);
+    assert.equal(countryGeometry.hasCountryGeometry('CN-TW'), false);
+  });
+});
+
 describe('country geometry overrides', () => {
   it('loads bundled geometry when override fetch times out', async () => {
     installFastAbortTimeout();
