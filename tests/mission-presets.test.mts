@@ -338,7 +338,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   const urlStateModule = JSON.stringify(fileURLToPath(new URL('../src/utils/urlState.ts', import.meta.url)));
   const stubs = new Map<string, string>([
     ['@/utils', `
-      export { urlHasAsyncFlyTo } from ${urlStateModule};
+      export { urlHasAsyncFlyTo, withUrlFragment } from ${urlStateModule};
       export function buildMapUrl(baseUrl, state) {
         const url = new URL(baseUrl);
         if (state.center) {
