@@ -52,6 +52,7 @@ const pending: SignUpSnapshot = {
   email: EMAIL,
   strategy: 'email_code',
   emailUnverified: true,
+  codeSpent: false,
   codeExpiresAt: asEpochMs(CODE_EXPIRES_AT),
   abandonAt: asEpochMs(ABANDON_AT),
 };
@@ -85,6 +86,17 @@ describe('readSignUpSnapshot', () => {
       id: ATTEMPT_ID,
     });
   });
+
+  // Captured on the #8665 preview: once the code lapses Clerk reports the
+  // verification as 'expired', not 'unverified'; 'failed' is too many attempts.
+  for (const status of ['expired', 'failed'] as const) {
+    it(`reads a '${status}' verification as a still-unverified email with a spent code`, () => {
+      const snap = readSignUpSnapshot(capturedSignUp({
+        verifications: { emailAddress: { status, strategy: 'email_code', attempts: 1, expireAt: new Date(CODE_EXPIRES_AT) } },
+      }));
+      assert.deepEqual(snap, { ...pending, codeSpent: true });
+    });
+  }
 
   it('keeps a null expireAt as null and reads emailUnverified from both fields', () => {
     const snap = readSignUpSnapshot(capturedSignUp({
@@ -120,6 +132,7 @@ describe('decideResume', () => {
     ['code inside the safety margin', input(), CODE_EXPIRES_AT - CODE_EXPIRY_MARGIN_MS, { ...resumeLive, code: 'expired' }],
     ['code just outside the safety margin', input(), CODE_EXPIRES_AT - CODE_EXPIRY_MARGIN_MS - 1, resumeLive],
     ['no expireAt counts as live', input({}, { codeExpiresAt: null }), NOW, resumeLive],
+    ['a code Clerk marked spent is expired before its deadline', input({}, { codeSpent: true }), NOW, { ...resumeLive, code: 'expired' }],
   ];
 
   for (const [name, given, at, expected] of table) {
