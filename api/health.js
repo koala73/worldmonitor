@@ -534,11 +534,10 @@ const STANDALONE_KEYS = {
   usTreasuryParYield:    'seed-meta:economic:us-treasury-par-yield',
   usInterestRates:       'seed-meta:economic:us-interest-rates',
   // #8538. One probe per worldwide CPI source. The canonical keys are 115 KB –
-  // 1 MB and the read path pipelines five of them, so health reads the
+  // 1 MB and the read path pipelines four of them, so health reads the
   // seed-meta keys instead of paying for the full payloads.
   worldCpiImf:           'seed-meta:economic:world-cpi-imf',
   worldCpiEurostat:      'seed-meta:economic:world-cpi-eurostat',
-  worldCpiOecd:          'seed-meta:economic:world-cpi-oecd',
   worldCpiEstat:         'seed-meta:economic:world-cpi-estat',
   worldCpiAbs:           'seed-meta:economic:world-cpi-abs',
   // Meta-only probes for the yield-curve bundle. Every market's history is
@@ -1478,7 +1477,7 @@ const SEED_META = {
   },
   // #8538. Worldwide CPI sources. Each is a macro-bundle tail section on a
   // daily interval, so 72h covers one missed tick; content age is the tighter
-  // clock and is declared per seeder (IMF 120d, OECD 180d, Eurostat 120d,
+  // clock and is declared per seeder (IMF 120d, Eurostat 120d,
   // e-Stat 120d, ABS 400d) because their publication lags differ structurally.
   worldCpiImf: {
     key: 'seed-meta:economic:world-cpi-imf',
@@ -1500,17 +1499,6 @@ const SEED_META = {
       fromKey: null,
       issue: 8538,
       activationKey: 'seed-activated:economic:world-cpi-eurostat',
-    },
-  },
-  worldCpiOecd: {
-    key: 'seed-meta:economic:world-cpi-oecd',
-    maxStaleMin: 4320,
-    activationKey: 'seed-activated:economic:world-cpi-oecd',
-    cutover: {
-      mode: 'activation-marker',
-      fromKey: null,
-      issue: 8538,
-      activationKey: 'seed-activated:economic:world-cpi-oecd',
     },
   },
   worldCpiEstat: {
@@ -1948,11 +1936,10 @@ const ON_DEMAND_KEYS = new Set([
   'usTreasuryParYield',
   // #8485. Same deploy-before-first-tick bridge for the US rate basket.
   'usInterestRates',
-  // #8538. Same bridge for the five worldwide CPI sources: the reader ships
+  // #8538. Same bridge for the four worldwide CPI sources: the reader ships
   // with the world CPI endpoint before the macro-bundle tail sections run.
   'worldCpiImf',
   'worldCpiEurostat',
-  'worldCpiOecd',
   'worldCpiEstat',
   'worldCpiAbs',
   // Scheduled Toronto CAD producer deployment bridges. Each seeder writes a
@@ -2066,7 +2053,6 @@ const ACTIVATION_MARKERS = {
   usInterestRates: SEED_META.usInterestRates.activationKey,
   worldCpiImf: SEED_META.worldCpiImf.activationKey,
   worldCpiEurostat: SEED_META.worldCpiEurostat.activationKey,
-  worldCpiOecd: SEED_META.worldCpiOecd.activationKey,
   worldCpiEstat: SEED_META.worldCpiEstat.activationKey,
   worldCpiAbs: SEED_META.worldCpiAbs.activationKey,
   torontoTfs: SEED_META.torontoTfs.activationKey,

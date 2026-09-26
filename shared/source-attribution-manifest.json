@@ -8293,15 +8293,10 @@
       "host": "sdmx.oecd.org",
       "provider": "sdmx.oecd.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit sdmx.oecd.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-world-cpi-oecd.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "sealevel.nasa.gov",

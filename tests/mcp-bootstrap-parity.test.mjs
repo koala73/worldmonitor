@@ -223,8 +223,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health probe for the worldwide IMF CPI payload (~1 MB across 190 countries). GetWorldCpiMonthly serves the data; the payload is too large for the composite economic cache tool (#8538).'],
   ['seed-meta:economic:world-cpi-eurostat',
     'operational: meta-only health probe for the Eurostat HICP overlay. GetWorldCpiMonthly serves the data; the 29-geo index history is too large for the composite economic cache tool (#8538).'],
-  ['seed-meta:economic:world-cpi-oecd',
-    'operational: meta-only health probe for the OECD CPI overlay. GetWorldCpiMonthly serves the data; the multi-country index history is too large for the composite economic cache tool (#8538).'],
   ['seed-meta:economic:world-cpi-estat',
     'operational: meta-only health probe for the Japan e-Stat national CPI overlay. GetWorldCpiMonthly serves the data; the 1970-onward index history is too large for the composite economic cache tool (#8538).'],
   ['seed-meta:economic:world-cpi-abs',

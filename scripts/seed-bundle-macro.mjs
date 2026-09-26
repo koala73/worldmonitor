@@ -72,7 +72,6 @@ const MACRO_SECTIONS = [
   // selects a per-country source with a staleness fall-through.
   { label: 'World-CPI-IMF', script: 'seed-world-cpi-imf.mjs', seedMetaKey: 'economic:world-cpi-imf', canonicalKey: 'economic:world-cpi:imf:v1', completionMetaKey: 'seed-completion:economic:world-cpi-imf', intervalMs: DAY, timeoutMs: 240_000 },
   { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
-  { label: 'World-CPI-OECD', script: 'seed-world-cpi-oecd.mjs', seedMetaKey: 'economic:world-cpi-oecd', canonicalKey: 'economic:world-cpi:oecd:v1', completionMetaKey: 'seed-completion:economic:world-cpi-oecd', intervalMs: DAY, timeoutMs: 240_000 },
   { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
 ];

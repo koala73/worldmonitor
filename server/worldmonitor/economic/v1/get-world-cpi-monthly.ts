@@ -21,7 +21,7 @@ function isPayload(value: unknown): value is NonNullable<WorldCpiSourcePayloads[
 }
 
 /**
- * Read the five source payloads in one Redis pipeline. `raw` is required: the
+ * Read the four source payloads in one Redis pipeline. `raw` is required: the
  * seeders write unprefixed keys and this reader must not add a prefix.
  *
  * `getCachedJsonBatch` returns an empty Map on HTTP error or timeout instead of

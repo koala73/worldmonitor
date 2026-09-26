@@ -32,7 +32,7 @@ message WorldCpiPeriod {
 message WorldCpiCountry {
   // ISO 3166-1 alpha-2 country code.
   string country = 1;
-  // Which source supplied this series. One of: estat-cpi, eurostat-hicp, imf-cpi, imf-hicp, oecd-cpi, abs-cpi.
+  // Which source supplied this series. One of: estat-cpi, eurostat-hicp, imf-cpi, imf-hicp, abs-cpi.
   string source = 2;
   // Series frequency: M for monthly, Q for quarterly. Australia is quarterly.
   string frequency = 3;

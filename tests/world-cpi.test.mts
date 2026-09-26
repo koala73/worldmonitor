@@ -30,7 +30,6 @@ import {
   eurostatHicpUrl,
   EUROSTAT_HICP_KEY,
 } from '../scripts/seed-world-cpi-eurostat.mjs';
-import { parseOecdCpiRows, OECD_CPI_KEY } from '../scripts/seed-world-cpi-oecd.mjs';
 import { estatCpiPeriod, parseEstatCpi, ESTAT_CPI_KEY } from '../scripts/seed-world-cpi-estat.mjs';
 import { parseAbsCpiRows, ABS_CPI_KEY, ABS_CPI_ACTIVATION_KEY } from '../scripts/seed-world-cpi-abs.mjs';
 import {
@@ -243,19 +242,6 @@ describe('Eurostat source', () => {
   });
 });
 
-describe('OECD source', () => {
-  it('keeps only CPI index-level rows and reads the base year', () => {
-    const rows = [
-      { REF_AREA: 'USA', FREQ: 'M', MEASURE: 'CPI', UNIT_MEASURE: 'IX', TIME_PERIOD: '2026-08', OBS_VALUE: '141.3', BASE_PER: '2015' },
-      { REF_AREA: 'USA', FREQ: 'M', MEASURE: 'CPI', UNIT_MEASURE: 'PA', TIME_PERIOD: '2026-08', OBS_VALUE: '3.1', BASE_PER: '2015' },
-      { REF_AREA: 'WLD', FREQ: 'M', MEASURE: 'CPI', UNIT_MEASURE: 'IX', TIME_PERIOD: '2026-08', OBS_VALUE: '120', BASE_PER: '2015' },
-    ];
-    const parsed = parseOecdCpiRows(rows, ISO3_TO_ISO2);
-    assert.deepEqual(Object.keys(parsed.byCountry), ['US']);
-    assert.equal(parsed.indexBases.US, '2015=100');
-  });
-});
-
 describe('e-Stat source', () => {
   it('decodes the e-Stat time code and rejects fiscal-year entries', () => {
     assert.equal(estatCpiPeriod('2026000808'), '2026-08');
@@ -306,7 +292,6 @@ describe('source key parity', () => {
     assert.equal(IMF_CPI_KEY, WORLD_CPI_CANONICAL_KEYS['imf-cpi']);
     assert.equal(IMF_CPI_LATEST_KEY, WORLD_CPI_LATEST_KEYS['imf-cpi']);
     assert.equal(EUROSTAT_HICP_KEY, WORLD_CPI_CANONICAL_KEYS['eurostat-hicp']);
-    assert.equal(OECD_CPI_KEY, WORLD_CPI_CANONICAL_KEYS['oecd-cpi']);
     assert.equal(ESTAT_CPI_KEY, WORLD_CPI_CANONICAL_KEYS['estat-cpi']);
     assert.equal(ABS_CPI_KEY, WORLD_CPI_CANONICAL_KEYS['abs-cpi']);
   });
@@ -320,9 +305,9 @@ describe('source key parity', () => {
 describe('country source selection', () => {
   const imfUs = sourcePayload({ US: { frequency: 'M', points: points([['2026-06', 100], ['2026-07', 101], ['2026-08', 102]]) } });
 
-  it('prefers the IMF feed over OECD for a shared country', () => {
-    const oecdUs = sourcePayload({ US: { frequency: 'M', points: points([['2026-08', 500]]) } });
-    const selected = selectCountrySeries({ 'imf-cpi': imfUs, 'oecd-cpi': oecdUs });
+  it('prefers the IMF feed over a lower-precedence source for a shared country', () => {
+    const absUs = sourcePayload({ US: { frequency: 'M', points: points([['2026-08', 500]]) } });
+    const selected = selectCountrySeries({ 'imf-cpi': imfUs, 'abs-cpi': absUs });
     assert.equal(selected.US.source, 'imf-cpi');
     assert.equal(selected.US.points.length, 3);
   });
@@ -379,16 +364,16 @@ describe('country source selection', () => {
 
   it('falls through to the next source when the preferred one has stalled', () => {
     const stalledEurostat = sourcePayload({ DE: { frequency: 'M', points: points([['2024-01', 120]]) } });
-    const currentOecd = sourcePayload({ DE: { frequency: 'M', points: points([['2026-08', 126]]) } });
-    const sources = { 'eurostat-hicp': stalledEurostat, 'oecd-cpi': currentOecd };
+    const currentImf = sourcePayload({ DE: { frequency: 'M', points: points([['2026-08', 126]]) } });
+    const sources = { 'eurostat-hicp': stalledEurostat, 'imf-cpi': currentImf };
     const selected = selectCountrySeries(sources);
-    assert.equal(selected.DE.source, 'oecd-cpi');
+    assert.equal(selected.DE.source, 'imf-cpi');
   });
 
   it('does NOT fall through while the preferred source is within the lag budget', () => {
     const lagging = sourcePayload({ DE: { frequency: 'M', points: points([['2026-05', 125]]) } });
     const fresher = sourcePayload({ DE: { frequency: 'M', points: points([['2026-08', 126]]) } });
-    const sources = { 'eurostat-hicp': lagging, 'oecd-cpi': fresher };
+    const sources = { 'eurostat-hicp': lagging, 'imf-cpi': fresher };
     const selected = selectCountrySeries(sources);
     assert.equal(selected.DE.source, 'eurostat-hicp');
   });
@@ -411,10 +396,10 @@ describe('country source selection', () => {
   it('ranks a stale candidate below a non-stale one whatever the precedence', () => {
     const index = buildCandidateIndex({
       'eurostat-hicp': sourcePayload({ DE: { frequency: 'M', points: points([['2024-01', 120]]) } }),
-      'oecd-cpi': sourcePayload({ DE: { frequency: 'M', points: points([['2026-08', 126]]) } }),
+      'imf-cpi': sourcePayload({ DE: { frequency: 'M', points: points([['2026-08', 126]]) } }),
     });
     const ranked = rankCountrySources('DE', index, '2026-08');
-    assert.equal(ranked[0].sourceId, 'oecd-cpi');
+    assert.equal(ranked[0].sourceId, 'imf-cpi');
     assert.equal(ranked[0].stale, false);
     assert.equal(ranked[1].sourceId, 'eurostat-hicp');
     assert.equal(ranked[1].stale, true);
@@ -563,7 +548,7 @@ describe('latest window and content age', () => {
   });
 
   it('budgets each source for its own structural publication lag', () => {
-    assert.ok(CPI_MAX_CONTENT_AGE_MIN['abs-cpi'] > CPI_MAX_CONTENT_AGE_MIN['oecd-cpi']);
+    assert.ok(CPI_MAX_CONTENT_AGE_MIN['abs-cpi'] > CPI_MAX_CONTENT_AGE_MIN['imf-cpi']);
   });
 
   // Eurostat publishes month M in the middle of M+1, so a monthly series frozen

@@ -6943,7 +6943,7 @@ components:
                     description: ISO 3166-1 alpha-2 country code.
                 source:
                     type: string
-                    description: 'Which source supplied this series. One of: estat-cpi, eurostat-hicp, imf-cpi, imf-hicp, oecd-cpi, abs-cpi.'
+                    description: 'Which source supplied this series. One of: estat-cpi, eurostat-hicp, imf-cpi, imf-hicp, abs-cpi.'
                 frequency:
                     type: string
                     description: 'Series frequency: M for monthly, Q for quarterly. Australia is quarterly.'

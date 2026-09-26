@@ -1,9 +1,8 @@
 // Shared worldwide CPI helpers. Pure transforms only — no I/O, no env access.
 //
-// Five sources feed one country-indexed dataset:
+// Four sources feed one country-indexed dataset:
 //   IMF STA CPI        monthly/quarterly, national + HICP, 190+ countries (default)
 //   Eurostat HICP      monthly, EU geos                                     (EU overlay)
-//   OECD SDMX          monthly/quarterly, members + partners                (gap fill)
 //   JP e-Stat          monthly, Japan                                       (national overlay)
 //   AU ABS             quarterly, Australia                                 (national overlay)
 //
@@ -18,7 +17,7 @@
 // merge across sources.
 //
 // Index bases differ per source and MUST NOT be compared directly:
-//   IMF 2020=100, Eurostat 2015=100, OECD 2015=100, e-Stat 2020=100, ABS 2025=100.
+//   IMF 2020=100, Eurostat 2015=100, e-Stat 2020=100, ABS 2025=100.
 // That is why each country row carries indexBase and why only percent changes
 // are surfaced to callers.
 
@@ -44,24 +43,21 @@ export const QUARTERLY_PINNED_COUNTRIES = new Set(['AU']);
 // Inputs whose publication lag is structural, not an outage. Budgets are the
 // maximum tolerated age of the NEWEST observation in the source:
 //   IMF   monthly prints land ~1-2 months after the reference month.
-//   OECD  members publish on national schedules; ~2-3 months.
 //   Eurostat HICP for month M lands mid M+1 (flash estimate at the end of M).
 //   ABS   quarterly CPI, published ~4 weeks after quarter end.
 //   e-Stat publishes the month's CPI ~3 weeks after month end.
 export const CPI_MAX_CONTENT_AGE_MIN = {
   'imf-cpi': 120 * DAY_MIN,
-  'oecd-cpi': 180 * DAY_MIN,
   'eurostat-hicp': 120 * DAY_MIN,
   'estat-cpi': 120 * DAY_MIN,
   'abs-cpi': 400 * DAY_MIN,
 };
 
-export const CPI_SOURCE_IDS = ['estat-cpi', 'eurostat-hicp', 'imf-cpi', 'oecd-cpi', 'abs-cpi'];
+export const CPI_SOURCE_IDS = ['estat-cpi', 'eurostat-hicp', 'imf-cpi', 'abs-cpi'];
 
 export const CPI_CANONICAL_KEYS = {
   'imf-cpi': 'economic:world-cpi:imf:v1',
   'eurostat-hicp': 'economic:world-cpi:eurostat:v1',
-  'oecd-cpi': 'economic:world-cpi:oecd:v1',
   'estat-cpi': 'economic:world-cpi:estat:v1',
   'abs-cpi': 'economic:world-cpi:abs:v1',
 };
@@ -69,7 +65,6 @@ export const CPI_CANONICAL_KEYS = {
 export const CPI_LATEST_KEYS = {
   'imf-cpi': 'economic:world-cpi:imf:latest:v1',
   'eurostat-hicp': 'economic:world-cpi:eurostat:latest:v1',
-  'oecd-cpi': 'economic:world-cpi:oecd:latest:v1',
   'estat-cpi': 'economic:world-cpi:estat:latest:v1',
   'abs-cpi': 'economic:world-cpi:abs:latest:v1',
 };
@@ -77,7 +72,6 @@ export const CPI_LATEST_KEYS = {
 export const CPI_ACTIVATION_KEYS = {
   'imf-cpi': 'seed-activated:economic:world-cpi-imf',
   'eurostat-hicp': 'seed-activated:economic:world-cpi-eurostat',
-  'oecd-cpi': 'seed-activated:economic:world-cpi-oecd',
   'estat-cpi': 'seed-activated:economic:world-cpi-estat',
   'abs-cpi': 'seed-activated:economic:world-cpi-abs',
 };
@@ -317,7 +311,7 @@ export function splitCsvLine(line) {
 }
 
 /**
- * Parse an SDMX CSV document (IMF / OECD / ABS share the shape) into row
+ * Parse an SDMX CSV document (IMF / ABS share the shape) into row
  * objects keyed by header name. The first line may carry a `STRUCTURE[;]`
  * marker; a UTF-8 BOM is tolerated. Empty lines are dropped.
  */
