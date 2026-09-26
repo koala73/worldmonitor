@@ -28,6 +28,7 @@ import {
   isCountryHeadline,
 } from '../../shared/country-headline-match';
 import {
+  canonicalizeCountryCode,
   getCountryAtCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
@@ -394,6 +395,8 @@ export class CountryIntelManager implements AppModule {
       if (token !== this.briefRequestToken || this.ctx.isDestroyed) return;
       const page = this.ctx.countryBriefPage;
       if (!page) return;
+      // Map GeoJSON can still stamp Taiwan as CN-TW; APIs require ISO alpha-2.
+      code = canonicalizeCountryCode(code);
       const hasVisibleBrief = this.hasVisibleRealCountryBrief();
       // An agent open must not replace visible state while it works. Ownership
       // is explicit because shipping WebMCP browsers omit the target signal.
