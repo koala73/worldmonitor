@@ -130,6 +130,18 @@ it('rejects a CSV whose series header moved instead of publishing shifted tenors
   globalThis.fetch = async () => new Response(csvFixture().replace('FCMYGBAG2D,FCMYGBAG3D', 'FCMYGBAG3D,FCMYGBAG2D'));
   const payload = await fetchRbaCurve();
   assert.equal(payload.curves.at(-1).tenors['2y'], 4.99, 'columns are mapped by Series ID, not position');
-  globalThis.fetch = async () => new Response(csvFixture().replace('Series ID,', 'Series,'));
-  await assert.rejects(fetchRbaCurve(), /RBA F2 parsed no business days/);
+  for (const broken of [
+    csvFixture().replace('Series ID,', 'Series,'),
+    csvFixture().replace('FCMYGBAG5D', 'FCMYGBAG5Y'),
+    csvFixture().replace('FCMYGBAG5D', 'FCMYGBAG2D'),
+  ]) {
+    globalThis.fetch = async () => new Response(broken);
+    await assert.rejects(fetchRbaCurve(), /RBA F2 parsed no business days/);
+  }
+});
+
+it('skips impossible calendar dates instead of throwing', async () => {
+  globalThis.fetch = async () => new Response(`${csvFixture()}00-Jan-2026,1,1,1,1,1\n32-Jan-2026,1,1,1,1,1\n30-Feb-2026,1,1,1,1,1\n`);
+  const payload = await fetchRbaCurve();
+  assert.equal(payload.curves.length, 4);
 });

@@ -26,7 +26,8 @@ function csvDateToIso(token) {
   const month = match && CSV_MONTHS[match[2]];
   if (!month) return null;
   const iso = `${match[3]}-${String(month).padStart(2, '0')}-${match[1]}`;
-  return new Date(`${iso}T00:00:00Z`).toISOString().slice(0, 10) === iso ? iso : null;
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : null;
 }
 
 /**
@@ -44,6 +45,10 @@ export function parseRbaCsv(text) {
     const id = cell.trim();
     if (Object.hasOwn(RBA_SERIES, id)) columns.push({ col, tenor: RBA_SERIES[id] });
   });
+  // A renamed or duplicated series would publish curves with a tenor silently
+  // missing; require each nominal series exactly once.
+  const tenors = new Set(columns.map(({ tenor }) => tenor));
+  if (columns.length !== Object.keys(RBA_SERIES).length || tenors.size !== columns.length) return [];
   const out = [];
   for (const line of lines) {
     const cells = line.split(',');
