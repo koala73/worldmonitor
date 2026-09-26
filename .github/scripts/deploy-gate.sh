@@ -151,7 +151,7 @@ trap post_pending_on_exit EXIT
 # define a job with the id `changes`; the latter two publish under
 # `typecheck-changes` / `lint-changes` so all three are evaluated
 # instead of two being masked by the third (#5822).
-required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
+required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","docker-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness"]'
 # The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
 # names it inspects. A rules change that left the stamp alone would inherit
 # every success earned under the old rules, because the sweep only re-evaluates

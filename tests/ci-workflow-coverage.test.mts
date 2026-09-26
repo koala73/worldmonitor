@@ -167,6 +167,21 @@ const REQUIRED_RESILIENCE_VALIDATION_INPUTS = [
   'scripts/_bundle-runner.mjs',
 ] as const;
 
+// docker-image's change filter: the literal awk patterns it must keep, so a
+// filter refactor cannot silently un-gate a Dockerfile-breaking path class
+// and go back to "the next release publish is the first execution of this change".
+const REQUIRED_DOCKER_IMAGE_INPUTS = [
+  'docker/',
+  'package.json',
+  'package-lock.json',
+  'pro-test/package.json',
+  'pro-test/package-lock.json',
+  'scripts/generate-inventory-facts.mjs',
+  'scripts/build-crawlable-corpus.mjs',
+  'scripts/build-sitemap.mjs',
+  'scripts/source-attribution.mjs',
+] as const;
+
 // Desktop drift gates (#5902): the literal awk patterns each change filter
 // must keep, so a filter refactor cannot silently un-gate a desktop-breaking
 // path class (the exact drift class #5902 exists to close).
@@ -1570,13 +1585,93 @@ describe('CI workflow coverage', () => {
   });
 
   it('routes the root Docker context policy into image build jobs', () => {
-    for (const variable of ['DIGEST', 'UMAMI']) {
+    for (const variable of ['DIGEST', 'UMAMI', 'DOCKER']) {
       const awkBlock = shellAwkAssignmentBlock(variable);
       assert.ok(
         evaluateAwkAssignmentBlock(awkBlock, ['.dockerignore']) > 0,
         `.dockerignore must set ${variable.toLowerCase()}=true`,
       );
     }
+  });
+
+  it('keeps the docker-image build gate wired to its own inputs, and only those', () => {
+    assert.ok(
+      testWorkflow.includes('docker: ${{ steps.diff.outputs.docker }}'),
+      'test.yml must expose a docker change output',
+    );
+    const dockerFilter = shellAwkAssignmentBlock('DOCKER');
+    // Check each required input against the individual RULES, not the whole
+    // block. Raw containment is satisfied by a SIBLING pattern whenever one is
+    // a substring of another -- `package\.json` occurs inside
+    // `/^pro-test\/package\.json$/`, so deleting the root rule left the loop
+    // green and the guard blind (proven by mutation: the suite stayed 53/53).
+    // Require a rule anchored to the input itself instead: an exact file match
+    // (`^package\.json$`) or a directory prefix (`^docker\/`).
+    const dockerRulePatterns = dockerFilter
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('/^'))
+      .map((line) => line.slice(line.indexOf('/^') + 1, line.lastIndexOf('/')));
+    for (const input of REQUIRED_DOCKER_IMAGE_INPUTS) {
+      const escaped = workflowRegexNeedle(input);
+      assert.ok(
+        dockerRulePatterns.includes(`^${escaped}$`) || dockerRulePatterns.includes(`^${escaped}`),
+        `test.yml docker filter must have a rule covering ${input}, not just a sibling pattern containing it`,
+      );
+    }
+    for (const [files, expected, why] of [
+      [['docker/Dockerfile'], 1, 'the Dockerfile itself is the whole point'],
+      [['docker/nginx.conf.template'], 1, 'a sibling config the Dockerfile COPYs must gate it too'],
+      [['.dockerignore'], 1, 'the build-context policy is part of the image build'],
+      [['package.json'], 1, 'the root manifest defines every build:* script the Dockerfile invokes'],
+      [['package-lock.json'], 1, 'the npm ci input the build stage actually runs'],
+      [['pro-test/package.json'], 1, 'build:pro installs pro-test from this manifest'],
+      [['pro-test/package-lock.json'], 1, 'build:pro installs this lockfile on its own'],
+      [['scripts/generate-inventory-facts.mjs'], 1, 'the Dockerfile runs this script directly'],
+      [['scripts/build-crawlable-corpus.mjs'], 1, 'build:crawlable-corpus runs inside the image build'],
+      [['scripts/build-sitemap.mjs'], 1, 'build:sitemap runs inside the image build'],
+      [['scripts/source-attribution.mjs'], 1, 'the corpus build imports this scanner; #7439 broke the image through it'],
+      [['shared/source-attribution-manifest.json'], 0, 'docs-stats checks the manifest on every PR'],
+      [['src/components/GlobeMap.ts'], 0, 'app logic is unit/typecheck\'s job, not a docker-specific one'],
+      [['docs/DOCUMENTATION.md'], 0, 'docs never reach the image'],
+    ] as [string[], number, string][]) {
+      assert.equal(evaluateAwkAssignmentBlock(dockerFilter, files), expected, why);
+    }
+
+    const job = testJobBlock('docker-image');
+    assert.match(job, /needs: changes/);
+    assert.match(job, /if: needs\.changes\.outputs\.docker == 'true'/, 'docker-image must gate on the docker change output');
+    assert.match(job, /\n {4}timeout-minutes: \d+\n/, 'a hung npm install must not hold the gate for the 360-minute default');
+    assert.match(job, /docker build -f docker\/Dockerfile /, 'must build the actual production Dockerfile');
+    // Never reaches `latest`: that publish stays docker-publish.yml's job
+    // alone, which is the check that actually gates what self-hosters pull.
+    assert.doesNotMatch(job, /push: true|docker push/, 'PR-time coverage must never publish the image itself');
+    // But it does run what it built and request the routes docker/Dockerfile
+    // asserts the inputs for -- build-time assertions prove the files exist,
+    // only a running container proves nginx serves them.
+    assert.match(job, /docker run -d --name wm-docker-smoke/, 'must actually run the built image, not just build it');
+    const smoke = String(job).slice(String(job).indexOf('docker run -d --name wm-docker-smoke'));
+    const pathLoop = smoke.match(/for path in ([^;]+); do/);
+    assert.ok(pathLoop, 'the smoke step must enumerate the paths it requests');
+    assert.deepEqual(pathLoop[1].trim().split(/\s+/), ['/', '/pro/'], 'must request exactly the routes docker/Dockerfile asserts at build time');
+    assert.match(smoke, /expected 200/, 'a non-200 must fail the job, not just print');
+    assert.match(smoke, /returned 200 with an empty body/, 'a 200 with no body must also fail the job');
+    // Under set -e, a refused connection (curl exit 7) would end the step
+    // before the ::error line names the route; `|| true` keeps curl's 000.
+    assert.match(
+      smoke,
+      /code="\$\(curl -s -o \/dev\/null -w '%\{http_code\}' "http:\/\/127\.0\.0\.1:8080\$\{path\}" \|\| true\)"/,
+      'the status probe must survive a refused connection so the ::error line reports it',
+    );
+    // The empty-body guard must read the loop's $path, not a route hardcoded
+    // to `/` alone -- otherwise a 200-with-empty-body response from `/pro/`
+    // would pass silently while `/` alone stayed covered.
+    const loopBody = smoke.slice(smoke.indexOf('for path in'));
+    assert.match(
+      loopBody,
+      /elif \[ -z "\$\(curl -fsS "http:\/\/127\.0\.0\.1:8080\$\{path\}"\)" \]/,
+      'the empty-body check must be scoped to the loop variable, not hardcoded to /',
+    );
   });
 
   it('keeps desktop drift-gate inputs in the CI change filter (#5902)', () => {

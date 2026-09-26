@@ -27,6 +27,7 @@ jobs:
       code: ${{ steps.diff.outputs.code }}
       browser: ${{ steps.diff.outputs.browser }}
       digest: ${{ steps.diff.outputs.digest }}
+      docker: ${{ steps.diff.outputs.docker }}
       validation: ${{ steps.diff.outputs.validation }}
       umami: ${{ steps.diff.outputs.umami }}
       consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
@@ -48,6 +49,7 @@ jobs:
             echo "browser=true" >> "$GITHUB_OUTPUT"
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
             echo "umami=true" >> "$GITHUB_OUTPUT"
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
@@ -185,6 +187,37 @@ jobs:
             END { print count + 0 }
           ')
           echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # docker/Dockerfile builds the whole frontend inside the image, but
+          # this filter does not try to cover every input that could make that
+          # build fail -- unit/typecheck already gate src/, api/, etc. for
+          # LOGIC correctness. What is scoped here is narrower and specific to
+          # the container: the Dockerfile and its sibling nginx/entrypoint
+          # configs (docker/), the npm install inputs the build stage actually
+          # runs (package.json, package-lock.json), the pro-test lockfile
+          # build:pro installs on its own, and the scripts the Dockerfile RUN
+          # steps execute: generate-inventory-facts.mjs, plus the
+          # build:crawlable-corpus / build:sitemap scripts and the
+          # source-attribution.mjs scanner the corpus build imports (#7439
+          # broke every image build through that scanner while unit stayed
+          # green). The attribution manifest is left out: docs-stats checks it
+          # on every PR. Before this, none of
+          # these had a PR-time build at all -- docker-publish.yml runs only on
+          # a published release or a manual dispatch, so its build was the
+          # first execution of any change to the Dockerfile.
+          DOCKER=$(printf '%s\n' "$FILES" | awk '
+            /^\.dockerignore$/ { count++; next }
+            /^docker\// { count++; next }
+            /^package\.json$/ { count++; next }
+            /^package-lock\.json$/ { count++; next }
+            /^pro-test\/package\.json$/ { count++; next }
+            /^pro-test\/package-lock\.json$/ { count++; next }
+            /^scripts\/generate-inventory-facts\.mjs$/ { count++; next }
+            /^scripts\/build-crawlable-corpus\.mjs$/ { count++; next }
+            /^scripts\/build-sitemap\.mjs$/ { count++; next }
+            /^scripts\/source-attribution\.mjs$/ { count++; next }
+            END { print count + 0 }
+          ')
+          echo "docker=$( [ "$DOCKER" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # resilience-validation-smoke job: run the no-secrets artifact/schema
           # and script-contract gate when the validation bundle, its Dockerfile,
           # its committed artifacts, or its focused tests change.
@@ -1076,3 +1109,79 @@ jobs:
         # COPY+install steps and surfaces native-dep / package-lock issues
         # the static walk can't see.
         run: docker build -f Dockerfile.digest-notifications -t wm-digest .
+
+  docker-image:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    # A full frontend build (crawlable-corpus, sitemap, inventory facts, pro,
+    # tsc + vite) inside node:24-alpine, so it runs longer than the other
+    # Docker smokes here. No push, so this never reaches `latest` -- that stays
+    # docker-publish.yml's job alone. 25min catches a base-image-pull stall or
+    # a hung npm install without holding the queue for the 360-minute default.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Build the app image (smoke)
+        run: docker build -f docker/Dockerfile -t wm-docker-smoke .
+
+      # The build above already asserts the files it produced are non-empty
+      # (`test -s dist/product-facts.json` and the /pro pair inside
+      # docker/Dockerfile). What only a running container answers is whether
+      # nginx actually serves what got built: a template edit that builds clean
+      # but 404s every route, or serves an empty body. #7808 additionally adds
+      # a `test -s dist/dashboard.html` build assertion and a publish-time
+      # runtime smoke; until that lands, this job is the repo's only runtime
+      # check on the image.
+      - name: Smoke the image (build proved the files exist; this proves nginx serves them)
+        run: |
+          set -euo pipefail
+          docker run -d --name wm-docker-smoke -p 8080:80 wm-docker-smoke
+
+          cleanup() {
+            echo "--- container logs ---"
+            docker logs wm-docker-smoke 2>&1 | tail -50 || true
+            docker rm -f wm-docker-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # nginx is up in well under this budget; the loop is for the runner,
+          # not the server.
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+              break
+            fi
+            sleep 1
+          done
+
+          failed=""
+          # The two routes docker/Dockerfile's own build-time assertions cover
+          # -- `/` is the SPA entry the nginx template indexes and falls back
+          # to, `/pro` is a live nginx route that 404s if the pro build did not
+          # survive the public/ -> dist/ copy (#6898). Requesting exactly the
+          # asserted set is what keeps this gate from going red on an unasserted
+          # path that nothing builds. #7808's publish-time smoke requests the
+          # same pair from the same image; keep the two in step.
+          for path in / /pro/; do
+            # `|| true`: a refused connection exits 7 and would trip set -e
+            # before the ::error line; curl still writes 000 for -w.
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}" || true)"
+            if [ "$code" != "200" ]; then
+              echo "::error::GET ${path} returned ${code}, expected 200"
+              failed="yes"
+            # A 200 that served an empty body is not a working page either --
+            # checked per path, not just for `/` (#8503 review, CodeRabbit):
+            # otherwise a 200-with-empty-body response from `/pro/` would
+            # pass silently while `/` alone stayed covered.
+            elif [ -z "$(curl -fsS "http://127.0.0.1:8080${path}")" ]; then
+              echo "::error::GET ${path} returned 200 with an empty body"
+              failed="yes"
+            else
+              echo "GET ${path} -> 200"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error::Image smoke test failed."
+            exit 1
+          fi
