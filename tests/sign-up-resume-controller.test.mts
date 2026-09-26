@@ -195,7 +195,17 @@ describe('sign-up resume controller', () => {
     const again = createSignUpResumeController(h.ports);
     again.onClerkEmission(true);
     assert.equal(h.surface.opened, 1);
-    assert.equal(again.resumeOnUserIntent(() => {}), false, 'a click after dismissal goes to Clerk');
+  });
+
+  it('still resumes a dismissed attempt when the user clicks Create account', () => {
+    const h = harness();
+    const c = createSignUpResumeController(h.ports);
+    c.onClerkEmission(true);
+    h.surface.dismiss?.();
+
+    const again = createSignUpResumeController(h.ports);
+    assert.equal(again.resumeOnUserIntent(() => {}), true, "Clerk's modal would restart at SignUpStart and send a second email");
+    assert.equal(h.surface.opened, 2);
   });
 
   it('tracks started once per attempt id across reloads and emissions', () => {

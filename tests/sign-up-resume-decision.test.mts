@@ -59,6 +59,7 @@ const pending: SignUpSnapshot = {
 function input(overrides: Partial<ResumeInput> = {}, signUp: Partial<Extract<SignUpSnapshot, { kind: 'pending' }>> = {}): ResumeInput {
   return {
     signUp: { ...pending, ...signUp },
+    trigger: 'hydration',
     signedIn: false,
     dismissedAttemptId: null,
     clerkModalOpen: false,
@@ -112,6 +113,7 @@ describe('decideResume', () => {
     ['abandonAt reached', input(), ABANDON_AT, { kind: 'none', reason: 'abandoned' }],
     ['abandonAt null is alive past the old deadline', input({}, { abandonAt: null }), ABANDON_AT + 1, { ...resumeLive, code: 'expired' }],
     ['dismissed this attempt', input({ dismissedAttemptId: asSignUpAttemptId(ATTEMPT_ID) }), NOW, { kind: 'none', reason: 'dismissed' }],
+    ['a click resumes a dismissed attempt', input({ trigger: 'user', dismissedAttemptId: asSignUpAttemptId(ATTEMPT_ID) }), NOW, resumeLive],
     ['dismissed another attempt', input({ dismissedAttemptId: asSignUpAttemptId('sua_other') }), NOW, resumeLive],
     ["Clerk's own modal is open", input({ clerkModalOpen: true }), NOW, { kind: 'none', reason: 'clerk-modal-open' }],
     ['code past expireAt', input(), CODE_EXPIRES_AT + 1, { ...resumeLive, code: 'expired' }],

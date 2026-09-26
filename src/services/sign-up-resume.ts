@@ -75,6 +75,7 @@ export function readSignUpSnapshot(signUp: ClerkSignUp | null | undefined): Sign
 
 export interface ResumeInput {
   readonly signUp: SignUpSnapshot;
+  readonly trigger: ResumeTrigger;
   readonly signedIn: boolean;
   readonly dismissedAttemptId: SignUpAttemptId | null;
   readonly clerkModalOpen: boolean;
