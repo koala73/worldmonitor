@@ -233,3 +233,11 @@ export function buildMapUrl(
   url.search = params.toString();
   return url.toString();
 }
+
+/**
+ * The map URL sync owns the query string, not the fragment. Another surface
+ * (Clerk's hash-routed sign-up resume) can be routing on `location.hash`.
+ */
+export function withUrlFragment(url: string, _hash: string): string {
+  return url;
+}
