@@ -358,6 +358,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['services9.arcgis.com', 'ArcGIS'],
   ['stats.bis.org', 'Bank for International Settlements (BIS)'],
   ['tools.cdc.gov', 'U.S. Centers for Disease Control and Prevention'],
+  ['threatfox.abuse.ch', 'ThreatFox'],
   ['travel.state.gov', 'U.S. Department of State'],
   ['ucdpapi.pcr.uu.se', 'Uppsala Conflict Data Program (UCDP)'],
   ['urlhaus-api.abuse.ch', 'URLhaus'],

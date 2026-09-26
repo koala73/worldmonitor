@@ -1905,6 +1905,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
     const sourceLabels: Record<string, string> = {
       feodo: 'Feodo Tracker',
       urlhaus: 'URLhaus',
+      threatfox: 'ThreatFox',
       c2intel: 'C2 Intel Feeds',
       otx: 'AlienVault OTX',
       abuseipdb: 'AbuseIPDB',
