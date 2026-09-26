@@ -57,7 +57,7 @@ describe('official SEMA table JSON', () => {
     }
   });
 
-  it('rejects missing identities and names even with valid neighbors', async () => {
+  it('fails the whole source when a small table has a row missing its identity or name', async () => {
     for (const patch of [{ Regulation: ' ' }, { 'Item Number': ' ' }, { 'Item Number': '0' },
       { 'Entity or Ship': ' ', 'Last Name': ' ', 'Given Names': ' ' }]) {
       const data = structuredClone(fixture);
@@ -68,7 +68,7 @@ describe('official SEMA table JSON', () => {
     }
   });
 
-  it('rejects malformed string identifiers without dropping the affected rows', async () => {
+  it('fails the whole source when a small table has a malformed identifier', async () => {
     for (const [key, value] of [
       ['Item Number', '-1'], ['Item Number', 'N/A'], ['Item Number', '1e2'],
       ['Ship IMO number', 'N/A'], ['Ship IMO number', '123'],
@@ -135,5 +135,76 @@ describe('official SEMA table JSON', () => {
       assert.ok(timed.error);
       assert.deepEqual(timed.records, []);
     } finally { clearTimeout(keepAlive); }
+  });
+});
+
+// Canada's official table carries five Iran Schedule 1, Part 2 rows (items
+// 116-120, listed 2026-09-22) with Persian names in `Ship IMO number` and the
+// Latin names shifted one row. Their identities are unrecoverable, so only
+// those rows are held back; the rest of the source still publishes.
+const LIVE_CORRUPT_ROWS = [
+  ['116', 'Davoud Moazami', 'Goudrazi', 'مجتبی خامنه\u200cای'],
+  ['117', 'Eskandar', 'Momeni', 'داوود معظمی گودرزی'],
+  ['118', 'Rasoul', 'Jalili', '\u00a0اسکندر مهمی'],
+  ['119', 'Mohsen', 'Fathizadeh', 'رسول جلیلی'],
+  ['120', 'Ruhollah Momen', 'Nasab', '\u00a0· روح الله مؤمن نسب'],
+].map(([item, last, given, imo]) => ({
+  ...fixture.data[0], Regulation: 'Iran', Schedule: '1, Part 2', 'Item Number': item,
+  'Last Name': last, 'Given Names': given, 'Ship IMO number': imo, 'Date of Listing': '2026-09-22',
+}));
+const validRows = (count) => Array.from({ length: count }, (_, i) => ({
+  ...fixture.data[0], Schedule: '9', 'Item Number': String(i + 1),
+}));
+
+describe('SEMA row quarantine', () => {
+  it('publishes the valid rows and quarantines the five live corrupt Iran rows', async () => {
+    const result = await ingest({ data: [...validRows(600), ...LIVE_CORRUPT_ROWS] });
+    assert.equal(result.error, null);
+    assert.equal(result.records.length, 600);
+    assert.ok(result.records.every(r => !r.id.startsWith('sema-ca:iran:')));
+    assert.deepEqual(result.quarantined, ['116', '117', '118', '119', '120'].map(item => ({
+      id: `sema-ca:iran:1-part-2:${item}`, reason: 'INVALID_IMO',
+    })));
+  });
+
+  it('names each row-level identity defect without publishing the row', async () => {
+    const defects = [
+      [{ 'Ship IMO number': '123' }, 'INVALID_IMO'],
+      [{ 'Entity or Ship': ' ', 'Last Name': ' ', 'Given Names': ' ' }, 'MISSING_NAME'],
+      [{ 'Item Number': 'N/A' }, 'INVALID_ITEM'],
+      [{ Regulation: ' ' }, 'MISSING_COUNTRY'],
+    ];
+    const rows = validRows(600);
+    defects.forEach(([patch], i) => Object.assign(rows[i], patch));
+    const result = await ingest({ data: rows });
+    assert.equal(result.error, null);
+    assert.equal(result.records.length, 600 - defects.length);
+    assert.deepEqual(result.quarantined.map(q => q.reason), defects.map(([, reason]) => reason));
+    assert.equal(result.quarantined[0].id, 'sema-ca:belarus:9:1');
+    assert.equal(result.quarantined[2].id, 'sema-ca:row:2');
+    assert.equal(result.quarantined[3].id, 'sema-ca:row:3');
+  });
+
+  it('fails the whole source once quarantined rows exceed one percent', async () => {
+    const rows = validRows(100);
+    rows[0]['Ship IMO number'] = 'N/A';
+    rows[1]['Ship IMO number'] = 'N/A';
+    const result = await ingest({ data: rows });
+    assert.equal(result.error, 'SEMA_INVALID_RECORD');
+    assert.deepEqual(result.records, []);
+  });
+
+  it('still rejects the whole source on schema drift, bad dates and duplicates', async () => {
+    for (const [patch, error] of [
+      [{ 'Ship IMO number': null }, 'SEMA_INVALID_RECORD'],
+      [{ 'Date of Listing': 'yesterday' }, 'SEMA_INVALID_DATE'],
+      [{ 'Item Number': '2' }, 'SEMA_DUPLICATE_ID'],
+    ]) {
+      const rows = validRows(600);
+      Object.assign(rows[0], patch);
+      const result = await ingest({ data: rows });
+      assert.equal(result.error, error, JSON.stringify(patch));
+      assert.deepEqual(result.records, []);
+    }
   });
 });

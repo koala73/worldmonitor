@@ -20,7 +20,7 @@ const row = (source, i) => ({
 });
 const canadian = Array.from({ length: 80 }, (_, i) => row(SEMA_SOURCE, i + 1));
 
-async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE], stored = null, preview = [], clock = now, writeError = false, readError = false, semaRecords = canadian, io = {} } = {}) {
+async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE], stored = null, preview = [], clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
   const writes = [];
   let options;
   const context = vm.createContext({
@@ -38,7 +38,7 @@ async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE], store
       return { entries: [row(label, 1)], datasetDate: now - 86400000 };
     },
     ingestSemaEntries: async () => successes.includes(SEMA_SOURCE)
-      ? { records: semaRecords, publishedAtMs: now - 2 * 86400000, error: null }
+      ? { records: semaRecords, quarantined: semaQuarantined, publishedAtMs: now - 2 * 86400000, error: null }
       : { records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' },
     writeExtraKeyWithMeta: async (...args) => {
       if (writeError) throw new Error('synthetic cache write failure');
@@ -74,6 +74,24 @@ describe('sanctions source lifecycle', () => {
       assert.equal(verdict.status, 'SEED_ERROR');
       assert.equal(verdict.errorCode, 'OFAC_INGEST_FAILED');
     }
+  });
+
+  it('keeps health OK and names the quarantined Canadian rows in source health', async () => {
+    const quarantined = ['116', '117', '118', '119', '120'].map(item => ({ id: `sema-ca:iran:1-part-2:${item}`, reason: 'INVALID_IMO' }));
+    const { data, options } = await publish({ semaQuarantined: quarantined });
+    assert.equal(data.semaCount, 80);
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.sourceState, 'ok');
+    assert.equal(result.completionState, 'OK');
+    assert.deepEqual(normalize(result.freshnessMetaPatch.sourceHealth[SEMA_SOURCE].quarantined), quarantined);
+    assert.equal(result.freshnessMetaPatch.sourceHealth.SDN.quarantined, undefined);
+    const key = health.BOOTSTRAP_KEYS.sanctionsPressure;
+    const meta = { fetchedAt: now, recordCount: data.totalCount, ...result.freshnessMetaPatch };
+    const verdict = health.classifyKey('sanctionsPressure', key, { allowOnDemand: false }, {
+      now, containmentEvidenceByName: new Map(), keyStrens: new Map([[key, 1024]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[health.SEED_META.sanctionsPressure.key, JSON.stringify(meta)]]), keyMetaErrors: new Map(),
+    });
+    assert.equal(verdict.status, 'OK');
   });
 
   it('retains all 80 Canadian records and both OFAC cohorts with their original clocks and aliases', async () => {
