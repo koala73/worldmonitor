@@ -28,6 +28,7 @@ function pending(codeExpiresAt: number = NOW + 10 * 60_000): SignUpSnapshot {
     email: 'new-user@example.com',
     strategy: 'email_code',
     emailUnverified: true,
+    codeSpent: false,
     codeExpiresAt: asEpochMs(codeExpiresAt),
     abandonAt: asEpochMs(NOW + 24 * 3_600_000),
   };

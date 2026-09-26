@@ -51,6 +51,8 @@ export type SignUpSnapshot =
       readonly email: string;
       readonly strategy: string | null;
       readonly emailUnverified: boolean;
+      /** Clerk already retired the code ('expired', or 'failed' after too many attempts). */
+      readonly codeSpent: boolean;
       readonly codeExpiresAt: EpochMs | null;
       readonly abandonAt: EpochMs | null;
     }
@@ -62,12 +64,14 @@ export function readSignUpSnapshot(signUp: ClerkSignUp | null | undefined): Sign
   const id = asSignUpAttemptId(signUp.id);
   if (signUp.status === 'complete') return { kind: 'complete', id };
   const verification = signUp.verifications.emailAddress;
+  const codeSpent = verification.status === 'expired' || verification.status === 'failed';
   return {
     kind: 'pending',
     id,
     email: signUp.emailAddress ?? '',
     strategy: verification.strategy,
-    emailUnverified: signUp.unverifiedFields.includes('email_address') && verification.status === 'unverified',
+    emailUnverified: signUp.unverifiedFields.includes('email_address') && (verification.status === 'unverified' || codeSpent),
+    codeSpent,
     codeExpiresAt: verification.expireAt ? asEpochMs(verification.expireAt.getTime()) : null,
     abandonAt: signUp.abandonAt === null ? null : asEpochMs(signUp.abandonAt),
   };
@@ -117,7 +121,7 @@ export function decideResume(input: ResumeInput, now: EpochMs): ResumeDecision {
   // Clerk's modal restarts at SignUpStart and sends a second email.
   if (input.trigger === 'hydration' && input.dismissedAttemptId === signUp.id) return { kind: 'none', reason: 'dismissed' };
   if (input.clerkModalOpen) return { kind: 'none', reason: 'clerk-modal-open' };
-  const expired = signUp.codeExpiresAt !== null && signUp.codeExpiresAt - now <= CODE_EXPIRY_MARGIN_MS;
+  const expired = signUp.codeSpent || (signUp.codeExpiresAt !== null && signUp.codeExpiresAt - now <= CODE_EXPIRY_MARGIN_MS);
   return { kind: 'resume', attemptId: signUp.id, email: signUp.email, code: expired ? 'expired' : 'live' };
 }
 
