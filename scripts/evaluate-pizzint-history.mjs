@@ -5,8 +5,8 @@ import { loadEnvFile, getRedisCredentials, redisCommand } from './_seed-utils.mj
 
 const require = createRequire(import.meta.url);
 const { PREFIX, PROVIDERS, RETENTION_DAYS, decodePizzintHistoryRecord, evaluatePizzintHistory } = require('./shared/pizzint-history.cjs');
-const MAX_REPORT_RECORDS = 100_000;
-const MAX_REPORT_BYTES = 64 * 1024 * 1024;
+const MAX_REPORT_RECORDS = 4000 * (RETENTION_DAYS + 1) * PROVIDERS.length;
+const MAX_REPORT_BYTES = MAX_REPORT_RECORDS * 1024;
 
 function parseArgs(argv) {
   const options = { input: null, asOf: new Date().toISOString(), days: RETENTION_DAYS };
@@ -18,7 +18,7 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (options.input === undefined || options.asOf === undefined || !Number.isInteger(options.days) || options.days < 1 || options.days > 90) throw new Error('usage: evaluate-pizzint-history [--input fixture.json] [--as-of ISO] [--days 1..90]');
-  if (!Number.isFinite(Date.parse(options.asOf))) throw new Error('--as-of must be an ISO timestamp');
+  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf))) throw new Error('--as-of must be an ISO timestamp with an explicit timezone');
   return options;
 }
 
@@ -56,7 +56,7 @@ async function readLive(options) {
     } catch {
       throw new Error('Redis history read failed');
     }
-    results.forEach((result, index) => appendHash(records, result, counters, batch[index]));
+    results.forEach((result, index) => appendHash(records, result.result, counters, batch[index]));
   }
   return records;
 }

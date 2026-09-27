@@ -718,6 +718,8 @@ function upstashEval(script, keys, args) {
       timeout: 5000,
     }, (resp) => {
       let data = '';
+      resp.on('error', () => resolve(null));
+      resp.on('aborted', () => resolve(null));
       resp.on('data', (chunk) => { data += chunk; });
       resp.on('end', () => {
         try { resolve(JSON.parse(data)?.result); } catch { resolve(null); }
@@ -8178,7 +8180,7 @@ async function fetchPizzintBestTimeLocations(apiKey) {
         historyLocations.push({
           placeId: venue.venueId,
           currentPopularity: null,
-          forecastPopularity: Number.isFinite(reply?.analysis?.venue_forecasted_busyness) ? reply.analysis.venue_forecasted_busyness : null,
+          forecastPopularity: reply?.analysis?.venue_forecast_busyness_available === true && Number.isFinite(reply?.analysis?.venue_forecasted_busyness) ? reply.analysis.venue_forecasted_busyness : null,
           dataSource: 'besttime',
           recordedAt: '',
           dataFreshness: 'DATA_FRESHNESS_FRESH',

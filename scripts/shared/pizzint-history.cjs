@@ -42,6 +42,15 @@ for i = 1, #ARGV - 2, 3 do
   end
 end
 redis.call('EXPIREAT', KEYS[1], tonumber(ARGV[#ARGV - 1]))
+local latest = 0
+for i = 1, #ARGV - 2, 3 do latest = math.max(latest, tonumber(ARGV[i + 1])) end
+local metaRaw = redis.call('GET', KEYS[2])
+if metaRaw then
+  local ok, meta = pcall(cjson.decode, metaRaw)
+  if ok and type(meta) == 'table' then latest = math.max(latest, tonumber(meta.fetchedAt) or 0) end
+end
+redis.call('SET', KEYS[2], cjson.encode({ fetchedAt = latest, recordCount = redis.call('HLEN', KEYS[1]) }))
+redis.call('EXPIREAT', KEYS[2], tonumber(ARGV[#ARGV - 1]))
 return {inserted, replaced, skipped, redis.call('HLEN', KEYS[1])}
 `;
 
@@ -114,7 +123,8 @@ function buildPizzintHistoryWrite({ provider, locations, capturedAt }) {
     return { field: `${placeId}|${slot}`, capturedMs, value };
   });
   const bucketEndMs = Date.parse(`${day}T00:00:00.000Z`) + 86400000;
-  return { keys: [`${PREFIX}:${provider}:${day}`], records, expireAt: Math.floor((bucketEndMs + RETENTION_DAYS * 86400000) / 1000) };
+  const key = `${PREFIX}:${provider}:${day}`;
+  return { keys: [key, `seed-meta:${key}`], records, expireAt: Math.floor((bucketEndMs + RETENTION_DAYS * 86400000) / 1000) };
 }
 
 async function recordPizzintHistory(input, evalCommand) {

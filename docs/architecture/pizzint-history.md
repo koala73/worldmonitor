@@ -12,7 +12,7 @@ Run the report against a fixture:
 node scripts/evaluate-pizzint-history.mjs --input fixture.json --as-of 2026-09-28T00:00:00Z --days 90
 ```
 
-The fixture is a JSON array of expanded observation records. Omit `--input` to read Redis with `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. Live mode only sends bounded `HGETALL` commands. It stops above 100000 fields or 64 MiB.
+The fixture is a JSON array of expanded observation records. Omit `--input` to read Redis with `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`. Live mode only sends bounded `HGETALL` commands. It allows at most 728000 fields and 745472000 encoded bytes, covering 91 physical buckets for each provider at the 4000-field and 1024-byte record caps. A full report can use substantial memory; it is an operator command, not a serving path.
 
 The report groups records by provider, venue, New York weekday, and New York hour. It excludes unavailable quality, future data, the current New York date, and records outside the exact read window. It also rejects a PizzINT source time after capture or more than 15 minutes before capture. It deduplicates PizzINT source timestamps. Each date contributes one median. A cohort becomes `ready` after six matching dates. The report then gives the median of date medians and the median absolute deviation. A zero baseline is valid.
 
@@ -53,3 +53,5 @@ An expanded fixture record has this shape (a true live zero is valid):
 ```
 
 Writer: `seedPizzint` in `scripts/ais-relay.cjs`. Reader: `scripts/evaluate-pizzint-history.mjs`. Both use the `intelligence:pizzint:history:v1:<provider>:YYYY-MM-DD` namespace through the shared history module. No public health probe or browser consumes these keys.
+
+Each bucket has a `seed-meta:<bucket-key>` entry written by the same Lua operation with the latest capture time and hash record count. It has the same fixed expiry. Retries cannot regress the metadata clock, and a capacity refusal leaves both keys unchanged. The operator can inspect these entries independently of live-seed freshness.
