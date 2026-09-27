@@ -8,6 +8,7 @@ const relay = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url),
 const envelopeWriter = relay.slice(relay.indexOf('function buildEnvelope('), relay.indexOf('// Envelope-aware read.'));
 const envelopeReader = relay.slice(relay.indexOf('async function envelopeRead('), relay.indexOf('function notifySimpleHash('));
 const producer = relay.slice(relay.indexOf('const PIZZINT_SEED_INTERVAL_MS'), relay.indexOf('function startPizzintSeedLoop()'));
+const history = await import('../scripts/shared/pizzint-history.cjs');
 const emptyResponse = {
   success: true, data: [], events: [], overall_index: 0, defcon_level: 5,
   active_spikes: 0, has_active_spikes: false, timestamp: '2026-09-25T12:09:33.653Z',
@@ -22,7 +23,7 @@ function harness() {
   const state = {
     source: validResponse, writes: [], warnings: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false,
     urls: [], gdelt: { ok: true, status: 200, json: async () => ({}) },
-    env: {}, besttime: new Map(), besttimeCalls: [],
+    env: {}, besttime: new Map(), besttimeCalls: [], historyCalls: [], failHistory: false,
   };
   class Clock extends Date { static now() { return state.now; } }
   const context = vm.createContext({
@@ -49,10 +50,45 @@ function harness() {
       state.cache.set(key, { data: structuredClone(data), expiresAt: state.now + ttl * 1000 });
       return true;
     },
+    recordPizzintHistory: async (input, evalCommand) => {
+      state.historyCalls.push(structuredClone(input));
+      if (state.failHistory) throw new Error('secret archive failure');
+      return history.default.recordPizzintHistory(input, evalCommand);
+    },
+    upstashEval: async () => state.historyWait ? await state.historyWait : [1, 0, 0, 1],
   });
   vm.runInContext(envelopeWriter + envelopeReader + producer, context);
   return { state, seed: () => vm.runInContext('seedPizzint()', context) };
 }
+
+test('archives the normalized poll through the real helper', async () => {
+  const { state, seed } = harness();
+  await seed();
+  assert.equal(state.historyCalls.length, 1);
+  assert.equal(state.historyCalls[0].provider, 'pizzint');
+  assert.equal(state.historyCalls[0].locations[0].placeId, 'test-location');
+});
+
+test('an archive failure logs a fixed category and does not block publication', async () => {
+  const { state, seed } = harness();
+  state.failHistory = true;
+  await seed();
+  assert.ok(state.cache.has(payloadKey));
+  assert.deepEqual(state.warnings, [['[PizzINT] History archive failed']]);
+});
+
+test('a pending archive does not delay live publication or permit overlapping polls', async () => {
+  const { state, seed } = harness();
+  let finish;
+  state.historyWait = new Promise((resolve) => { finish = resolve; });
+  const pending = seed();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(state.cache.has(payloadKey));
+  await seed();
+  assert.equal(state.historyCalls.length, 1);
+  finish([1, 0, 0, 1]);
+  await pending;
+});
 
 const liveUnavailable = { status: 'Error', message: 'No live data available.', analysis: { venue_live_busyness_available: false, venue_forecasted_busyness: 20 }, venue_info: { venue_open: 'Open' } };
 const liveReading = (live, forecast, extra = {}) => ({
