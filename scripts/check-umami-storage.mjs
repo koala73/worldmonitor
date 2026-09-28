@@ -171,16 +171,48 @@ export function evaluateUmamiStorage({ volume, samples = [], now = Date.now() })
 export function evaluateSampleFreshness({ state, now = Date.now() }) {
   const nowMs = timestampMs(now);
   if (nowMs === null) throw new Error('Freshness evaluation time must be a valid timestamp');
+  const nextState = { version: 1, samples: [], ...state };
   // Not normalizeSamples: its trend-window cutoff would drop a days-old last
   // sample and turn a long-blind monitor back into "no history".
-  const sampledAtMs = (Array.isArray(state?.samples) ? state.samples : [])
-    .map((sample) => timestampMs(sample?.sampledAt))
-    .filter((valueMs) => valueMs !== null && valueMs <= nowMs);
-  if (sampledAtMs.length === 0) return { status: 'no-history', ageHours: null };
-  const ageHours = (nowMs - Math.max(...sampledAtMs)) / HOUR_MS;
+  let lastSample = null;
+  let lastSampleMs = null;
+  for (const sample of Array.isArray(state?.samples) ? state.samples : []) {
+    const sampledAtMs = timestampMs(sample?.sampledAt);
+    if (sampledAtMs === null || sampledAtMs > nowMs || finiteNonNegative(sample?.currentSizeMB) === null) continue;
+    if (lastSampleMs === null || sampledAtMs > lastSampleMs) {
+      lastSample = sample;
+      lastSampleMs = sampledAtMs;
+    }
+  }
+
+  let lastStatus = null;
+  let sinceMs = lastSampleMs;
+  if (lastSample) {
+    // Re-judge the last measured size as of when it was taken, so a sample
+    // that failed its own run as critical keeps failing while Railway is
+    // unreadable instead of reading as merely recent.
+    const capacityMB = finiteNonNegative(state.capacityMB);
+    if (capacityMB !== null && capacityMB > 0) {
+      lastStatus = evaluateUmamiStorage({
+        volume: { sizeMB: capacityMB, currentSizeMB: finiteNonNegative(lastSample.currentSizeMB), status: 'Ready' },
+        samples: state.samples,
+        now: lastSampleMs,
+      }).status;
+    }
+  } else {
+    // No sample to age: start the clock at the first failed read and keep it
+    // in the persisted state, so a lost history plus an outage still fails.
+    const unreadSinceMs = timestampMs(state?.unreadSince);
+    sinceMs = unreadSinceMs !== null && unreadSinceMs <= nowMs ? unreadSinceMs : nowMs;
+    nextState.unreadSince = new Date(sinceMs).toISOString();
+  }
+
+  const ageHours = (nowMs - sinceMs) / HOUR_MS;
   return {
     status: ageHours > UMAMI_STORAGE_POLICY.maxSampleAgeHours ? 'stale' : 'fresh',
     ageHours,
+    lastStatus,
+    state: nextState,
   };
 }
 
@@ -235,18 +267,21 @@ async function main() {
   const statePath = args.state || process.env.UMAMI_STORAGE_STATE || '.cache/umami-storage-state.json';
   if (args['freshness-only']) {
     const freshness = evaluateSampleFreshness({ state: existsSync(statePath) ? readJson(statePath) : undefined });
+    writeState(statePath, freshness.state);
+    const age = freshness.ageHours.toFixed(1);
     if (freshness.status === 'stale') {
       console.error(
-        `::error::Railway volume reads keep failing: no Umami capacity sample for ${freshness.ageHours.toFixed(1)} hours `
+        `::error::Railway volume reads keep failing: no Umami capacity sample for ${age} hours `
           + `(limit ${UMAMI_STORAGE_POLICY.maxSampleAgeHours}).`,
       );
       process.exitCode = 1;
-    } else if (freshness.status === 'fresh') {
-      console.error(
-        `::warning::Umami capacity was not re-measured; the last sample is ${freshness.ageHours.toFixed(1)} hours old.`,
-      );
+    } else if (freshness.lastStatus === 'critical') {
+      console.error(`::error::Railway is unreachable, and the last measured Umami storage (${age} hours ago) was critical.`);
+      process.exitCode = 1;
     } else {
-      console.error('::warning::Umami capacity was not re-measured and no stored sample exists.');
+      const since = freshness.state.unreadSince ? 'reads started failing' : 'the last sample';
+      const last = freshness.lastStatus ? `; that sample was ${freshness.lastStatus}` : '';
+      console.error(`::warning::Umami capacity was not re-measured; ${since} ${age} hours ago${last}.`);
     }
     return;
   }

@@ -19,7 +19,10 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Two ~100 s volume attempts plus a retention read that can also run into
+    # the CLI's ~90 s timeout must fit, or the retention alarm never prints.
+    # Still under the 15-minute cadence, so runs do not overlap.
+    timeout-minutes: 8
     environment:
       name: ingestion-acceptance-production
       deployment: false

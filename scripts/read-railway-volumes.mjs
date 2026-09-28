@@ -6,13 +6,14 @@
  * `railway volume list` is a project-wide GraphQL query. It usually answers in
  * a second, but on 2026-09-28 it took 44-70 s and sometimes hit the CLI's ~90 s
  * request timeout, failing 7 of 35 scheduled runs while a service-scoped call
- * one second later answered in 1-3 s. A timeout is retried; an error a retry
- * cannot fix (a bad token, an unknown project) fails at once.
+ * one second later answered in 1-3 s. A transport failure (a timeout, a
+ * dropped or refused connection, a 502-504) is retried; an error a retry cannot
+ * fix (a bad token, an unknown project) fails at once.
  *
- * Writes `read=true|false` to $GITHUB_OUTPUT. When every attempt times out it
- * warns and writes `read=false` without an output file, and the workflow falls
- * back to a freshness check on the stored samples instead of failing on a
- * Railway latency spike.
+ * Writes `read=true|false` to $GITHUB_OUTPUT. When Railway stays unreachable
+ * it warns and writes `read=false` without an output file, and the workflow
+ * falls back to a check on the stored samples, which fails once they are too
+ * old or last measured critical.
  */
 
 import { spawn } from 'node:child_process';
@@ -25,7 +26,7 @@ import { isMainModule } from './lib/main-module.mjs';
 export const RAILWAY_VOLUME_READ_POLICY = Object.freeze({
   attempts: 2,
   // A backstop above the CLI's own ~90 s request timeout, so a hung CLI cannot
-  // spend the whole 5-minute job and starve the retention alarm after it.
+  // spend the whole job and starve the retention alarm after it.
   attemptTimeoutMs: 100_000,
   retryDelayMs: 5_000,
 });
@@ -34,13 +35,20 @@ const TRANSIENT_ERROR = /operation timed out|error sending request|connection (?
 
 function runRailway(args, timeoutMs) {
   return new Promise((resolve) => {
-    const child = spawn('railway', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // @railway/cli's npm wrapper runs the real binary with stdio: 'inherit'.
+    // Killing only the wrapper leaves the binary holding both pipes, and
+    // `close` never fires, so the attempt gets its own process group.
+    const child = spawn('railway', args, { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error;
+      }
     }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
@@ -102,14 +110,14 @@ async function main() {
     if (!result.timedOut && !TRANSIENT_ERROR.test(result.stderr)) {
       throw new Error(`railway volume list failed with exit code ${result.code}`);
     }
-    console.error(`Railway volume list attempt ${attempt} timed out.`);
+    console.error(`Railway volume list attempt ${attempt} could not reach Railway.`);
     if (attempt < RAILWAY_VOLUME_READ_POLICY.attempts && retryDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
 
   console.error(
-    `::warning::Railway API timed out on all ${RAILWAY_VOLUME_READ_POLICY.attempts} volume reads; `
+    `::warning::Railway API was unreachable on all ${RAILWAY_VOLUME_READ_POLICY.attempts} volume reads; `
       + 'capacity is checked against the stored samples instead.',
   );
   setOutput(false);

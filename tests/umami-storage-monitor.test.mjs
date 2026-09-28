@@ -465,7 +465,8 @@ describe('Umami storage monitor', () => {
       },
       'the Railway token must stay in the main-only environment without deployment tracking',
     );
-    assert.equal(workflow.jobs.monitor['timeout-minutes'], 5);
+    // Under the 15-minute cadence, so a run never overlaps the next one.
+    assert.equal(workflow.jobs.monitor['timeout-minutes'], 8);
   });
 });
 
@@ -487,6 +488,11 @@ if (outcome === 'ok') {
   process.stderr.write('Unauthorized. Please login with \`railway login\`\\n');
   process.exit(1);
 } else if (outcome === 'hang') {
+  setTimeout(() => {}, 60_000);
+} else if (outcome === 'hang-with-child') {
+  // @railway/cli's npm wrapper runs the real binary with stdio: 'inherit',
+  // so killing the wrapper alone leaves the binary holding both pipes open.
+  require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'inherit' });
   setTimeout(() => {}, 60_000);
 }
 `;
@@ -559,13 +565,21 @@ describe('Railway volume read', () => {
     const run = runVolumeRead({ plan: 'timeout,timeout,timeout' });
     assert.equal(run.status, 0, run.stderr);
     assert.equal(run.calls.length, RAILWAY_VOLUME_READ_POLICY.attempts);
-    assert.match(run.stderr, /::warning::.*Railway API timed out/);
+    assert.match(run.stderr, /::warning::.*Railway API was unreachable on all 2 volume reads/);
     assert.equal(run.output, null, 'no partial volume list may reach the capacity check');
     assert.equal(run.githubOutput, 'read=false\n');
   });
 
   it('kills an attempt that outlives its own deadline and retries it', () => {
     const run = runVolumeRead({ plan: 'hang,ok', extraArgs: ['--attempt-timeout-ms', '2000'] });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.calls.length, 2);
+    assert.equal(run.githubOutput, 'read=true\n');
+  });
+
+  it('kills the whole CLI process tree, not only the npm wrapper', () => {
+    const run = runVolumeRead({ plan: 'hang-with-child,ok', extraArgs: ['--attempt-timeout-ms', '2000'] });
+    assert.equal(run.error, undefined, 'the read must not hang on pipes a surviving child holds open');
     assert.equal(run.status, 0, run.stderr);
     assert.equal(run.calls.length, 2);
     assert.equal(run.githubOutput, 'read=true\n');
@@ -583,10 +597,15 @@ describe('Railway volume read', () => {
   it('fits every attempt inside the job timeout, ahead of the retention steps', () => {
     const { attempts, attemptTimeoutMs, retryDelayMs } = RAILWAY_VOLUME_READ_POLICY;
     const readBudgetSeconds = (attempts * attemptTimeoutMs + (attempts - 1) * retryDelayMs) / 1000;
-    // Setup, checkout, the CLI install, and the history restore take ~25 s;
-    // the retention read and check take ~5 s. Leave them a minute.
+    // Setup, checkout, the CLI install, and the history restore take ~25 s.
+    // On a day slow enough to exhaust these attempts, the retention read can
+    // run into the CLI's own ~90 s timeout too, and its verdict must still print.
+    const setupSeconds = 60;
+    const retentionReadSeconds = attemptTimeoutMs / 1000;
+    const marginSeconds = 30;
     assert.ok(
-      readBudgetSeconds + 60 <= workflow.jobs.monitor['timeout-minutes'] * 60,
+      setupSeconds + readBudgetSeconds + retentionReadSeconds + marginSeconds
+        <= workflow.jobs.monitor['timeout-minutes'] * 60,
       `${readBudgetSeconds}s of Railway attempts leave the retention alarm too little of the job`,
     );
   });
@@ -617,9 +636,24 @@ describe('capacity sample freshness', () => {
     assert.equal(evaluateSampleFreshness({ state: state(4 * 24), now: NOW }).status, 'stale');
   });
 
-  it('treats a missing history as no history, not as stale', () => {
-    assert.equal(evaluateSampleFreshness({ state: { version: 1, samples: [] }, now: NOW }).status, 'no-history');
-    assert.equal(evaluateSampleFreshness({ state: undefined, now: NOW }).status, 'no-history');
+  // With no sample to age, the clock starts at the first failed read, so a
+  // lost history plus a Railway outage cannot stay green forever.
+  it('starts the clock at the first failed read when no sample exists', () => {
+    for (const empty of [undefined, { version: 1, samples: [] }]) {
+      const result = evaluateSampleFreshness({ state: empty, now: NOW });
+      assert.equal(result.status, 'fresh');
+      assert.equal(result.ageHours, 0);
+      assert.equal(result.state.unreadSince, new Date(NOW).toISOString());
+    }
+    const blind = { version: 1, samples: [], unreadSince: new Date(NOW - 7 * 60 * 60 * 1000).toISOString() };
+    const result = evaluateSampleFreshness({ state: blind, now: NOW });
+    assert.equal(result.status, 'stale');
+    assert.equal(result.state.unreadSince, blind.unreadSince, 'a later failed read must not restart the clock');
+  });
+
+  it('forgets the failed-read clock once a volume read succeeds', () => {
+    const blind = { version: 1, samples: [], unreadSince: new Date(NOW - DAY_MS).toISOString() };
+    assert.equal(updateStorageState(blind, volume({ currentSizeMB: 28_000 }), NOW).unreadSince, undefined);
   });
 
   function runFreshnessCli(stateValue) {
@@ -627,9 +661,10 @@ describe('capacity sample freshness', () => {
     const statePath = join(directory, 'state.json');
     if (stateValue) writeFileSync(statePath, JSON.stringify(stateValue));
     try {
-      return spawnSync(process.execPath, [storageCheckScript, '--state', statePath, '--freshness-only'], {
+      const run = spawnSync(process.execPath, [storageCheckScript, '--state', statePath, '--freshness-only'], {
         encoding: 'utf8',
       });
+      return { ...run, state: existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : null };
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -648,6 +683,27 @@ describe('capacity sample freshness', () => {
     const missing = runFreshnessCli(null);
     assert.equal(missing.status, 0, missing.stderr);
     assert.match(missing.stderr, /::warning::/);
+    assert.ok(missing.state?.unreadSince, 'the persisted state must carry the failed-read clock');
+  });
+
+  it('fails the run once reads have failed for the whole window with no history', () => {
+    const run = runFreshnessCli({
+      version: 1,
+      samples: [],
+      unreadSince: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+    });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /::error::.*no Umami capacity sample for 7\.0 hours/);
+  });
+
+  // A critical run saves its sample and fails. If the next read times out,
+  // that known-critical sample must keep the run red, not turn it green.
+  it('keeps failing on the last known critical capacity while Railway is unreadable', () => {
+    const critical = state(1, Date.now());
+    critical.samples[0].currentSizeMB = 46_000;
+    const run = runFreshnessCli(critical);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /::error::.*last measured .*critical/);
   });
 });
 

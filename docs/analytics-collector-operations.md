@@ -470,21 +470,32 @@ starts a new trend.
 A warning emits a GitHub annotation but leaves the scheduled workflow green so
 the 15-minute probe does not send repeated failed-run alerts during a bounded
 retention drain. A critical condition fails the workflow. Input, Railway, or
-state-processing errors also fail closed, with one exception: a Railway API
-timeout.
+state-processing errors also fail closed, with one exception: Railway being
+unreachable.
 
 [`scripts/read-railway-volumes.mjs`](../scripts/read-railway-volumes.mjs) reads
-the volume list and retries a timeout. `railway volume list` is a project-wide
-query. On 2026-09-28 it took 44–70 s against the CLI's ~90 s request timeout, and
-7 of 35 runs failed on a single timed-out request. The workflow no longer runs
+the volume list and retries transport failures: a timeout, a dropped or refused
+connection, or a 502–504. `railway volume list` is a project-wide query. On
+2026-09-28 it took 44–70 s against the CLI's ~90 s request timeout, and 7 of 35
+runs failed on a single timed-out request. The workflow no longer runs
 `railway status` first, because that call took 41–90 s and checked nothing the
-volume read does not. A bad token or an unknown project still fails at once.
+volume read does not. A bad token or an unknown project still fails at once. A
+timed-out attempt kills the CLI's whole process group, because the npm wrapper
+runs the real binary with inherited pipes.
 
-When every attempt times out, the run warns and checks the stored samples
-instead. It stays green while the newest sample is at most 6 hours old, which
-is one Railway size refresh, and fails after that. A Railway latency spike
-therefore produces an annotation, and an outage that leaves the monitor blind
-fails the workflow.
+When every attempt fails, the run warns and judges the stored samples instead:
+
+- It fails when the newest sample is more than 6 hours old, which is one
+  Railway size refresh. With no stored sample at all, the state records when
+  reads started failing, and the same 6 hours count from then.
+- It fails when the newest sample measured critical, so a critical run is not
+  followed by a green one just because the next read timed out.
+- Otherwise it only warns.
+
+A Railway latency spike therefore produces an annotation, and an outage that
+leaves the monitor blind fails the workflow. The job timeout is 8 minutes, so
+the retention runner check still runs when both the volume attempts and the
+retention read run into the CLI timeout.
 
 ## Retention runner alarm
 
