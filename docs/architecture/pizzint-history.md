@@ -1,6 +1,6 @@
 # PizzINT retained history
 
-The relay stores normalized venue observations separately from the 30-minute live seed. This archive supports an operator report. It does not change the public score, the API, or the browser.
+The relay stores normalized venue observations separately from the 45-minute live seed. This archive supports an operator report. It does not change the public score, the API, or the browser.
 
 `scripts/shared/pizzint-history.cjs` owns the record schema, validation, atomic write, decode rules, and evaluation. Each provider has one Redis hash per UTC capture date. A field identifies the venue and its UTC ten-minute slot. One Lua call writes a complete poll, keeps the newest capture in a slot, applies a fixed expiry at the UTC bucket end plus 90 days, and rejects a bucket above 4000 fields before it changes data. A poll has at most 24 venues.
 
