@@ -71,14 +71,14 @@ describe('briefIrrelevanceReason', () => {
   });
 });
 
-describe('brief relevance replay over the 2026-09-21 frozen snapshot', () => {
+describe('brief relevance replay over the 2026-09-28 frozen snapshot', () => {
   // The relevance filter must remove noise without collapsing grounding. The
-  // 2026-09-21 freeze published 119 briefs; the filter may cost only those
+  // 2026-09-28 freeze published 101 briefs; the filter may cost only those
   // whose grounding was the noise itself (Kenya: every other row is one
   // publisher; Cape Verde: the only curated row is a FIFA story).
-  const snapshot = JSON.parse(readFileSync(new URL('../docs/snapshots/crawlable-live-pulse-2026-09-21.json', import.meta.url), 'utf8'));
+  const snapshot = JSON.parse(readFileSync(new URL('../docs/snapshots/crawlable-live-pulse-2026-09-28.json', import.meta.url), 'utf8'));
 
-  it('keeps at least 110 of the 119 published briefs grounded', () => {
+  it('keeps at least 90 of the 101 published briefs grounded', () => {
     let published = 0;
     let stillGrounded = 0;
     for (const country of Object.values(snapshot.countries)) {
@@ -88,7 +88,7 @@ describe('brief relevance replay over the 2026-09-21 frozen snapshot', () => {
       const eligible = developments.headlines.filter((row) => isBriefRelevantTitle(row.title));
       if (briefGroundingGap(eligible) === null) stillGrounded += 1;
     }
-    assert.equal(published, 119);
-    assert.ok(stillGrounded >= 110, `only ${stillGrounded} of ${published} briefs keep grounding`);
+    assert.equal(published, 101);
+    assert.ok(stillGrounded >= 90, `only ${stillGrounded} of ${published} briefs keep grounding`);
   });
 });

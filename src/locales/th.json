@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "statusNormal": "ปกติ",
+      "statusNoData": "ไม่มีข้อมูล",
+      "statusNoBaseline": "ไม่มีค่าฐาน",
+      "vsUsual": "เทียบกับปกติ",
       "title": "ดัชนีพิซซ่าเพนตากอน",
       "defcon": "DEFCON {{level}}",
       "updated": "อัปเดต {{timeAgo}}",
       "tensionsTitle": "ความตึงเครียดภูมิรัฐศาสตร์",
+      "tensionsSource": "ความตึงเครียด: World Monitor คำนวณจากเหตุการณ์ของ GDELT",
+      "insufficientData": "ข้อมูลไม่เพียงพอ",
+      "pizzaUnavailable": "ไม่มีข้อมูลกิจกรรมของร้านพิซซ่า",
       "source": "แหล่งที่มา:",
       "statusClosed": "ปิด",
       "statusSpike": "พุ่งสูง",

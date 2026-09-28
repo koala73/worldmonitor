@@ -1,7 +1,7 @@
 // Unit tests for the buildDigest feel-good filter (U3).
 //
 // buildDigest is not exported from scripts/seed-digest-notifications.mjs,
-// so these tests are source-textual (mirroring digest-no-reclassify.test.mjs):
+// so these tests are source-textual:
 // they assert the structural invariants of the wiring rather than
 // invoking buildDigest with live Redis fixtures. The classifier's
 // behavior is fully covered by tests/feelgood-classifier.test.mjs.

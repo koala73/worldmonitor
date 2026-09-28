@@ -126,7 +126,7 @@ describe('partial sanctions publication', () => {
     const cached = records.map(({ _aliases, _identifiers, _publishedAt, _regime, ...entry }) => entry);
     const fetchedAt = Date.now() - 1000;
     const snapshots = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify({
-      [SEMA_SOURCE]: { version: 1, fetchedAt, retainedUntil: fetchedAt + 720 * 60000, publishedAt: 0, records: cached },
+      [SEMA_SOURCE]: { version: 1, fetchedAt, retainedUntil: fetchedAt + 48 * 3600000, publishedAt: 0, records: cached },
     })).toString('base64') };
     const data = await partialPublication({ snapshots });
     assert.equal(data.semaCount, 1);

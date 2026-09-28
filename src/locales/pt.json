@@ -771,8 +771,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Índice: World Monitor · dados dos locais:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "SEM DADOS",
+      "statusNoBaseline": "SEM REFERÊNCIA",
+      "vsUsual": "em relação ao habitual",
       "title": "Índice de Pizza do Pentágono",
       "tensionsTitle": "Tensões Geopolíticas",
+      "tensionsSource": "Tensões: World Monitor com base em eventos do GDELT",
+      "insufficientData": "Dados insuficientes",
+      "pizzaUnavailable": "Atividade das pizzarias indisponível",
       "source": "Fonte:",
       "defcon": "DEFCON{{level}}",
       "updated": "Atualizado {{timeAgo}}",

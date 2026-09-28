@@ -1078,10 +1078,18 @@
       "skipToEnd": "跳到结尾"
     },
     "pizzint": {
+      "indexSource": "指数：World Monitor · 场所数据：",
+      "statusNormal": "正常",
+      "statusNoData": "无数据",
+      "statusNoBaseline": "无基准",
+      "vsUsual": "较平常",
       "title": "五角大楼披萨指数",
       "defcon": "DEFCON {{level}}",
       "updated": "更新于{{timeAgo}}",
       "tensionsTitle": "地缘政治紧张局势",
+      "tensionsSource": "紧张局势：World Monitor 根据 GDELT 事件计算",
+      "insufficientData": "数据不足",
+      "pizzaUnavailable": "披萨店活动数据不可用",
       "source": "来源：",
       "statusClosed": "已关闭",
       "statusSpike": "激增",

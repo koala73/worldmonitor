@@ -1942,6 +1942,23 @@
       ]
     },
     {
+      "host": "besttime.app",
+      "provider": "besttime.app",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit besttime.app and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "src/components/PizzIntIndicator.ts"
+        }
+      ]
+    },
+    {
       "host": "bihus.info",
       "provider": "bihus.info",
       "kind": "feed",
@@ -13205,6 +13222,9 @@
         },
         {
           "path": "scripts/seed-conflict-intel.mjs"
+        },
+        {
+          "path": "src/components/PizzIntIndicator.ts"
         }
       ]
     },

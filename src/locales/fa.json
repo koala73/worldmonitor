@@ -1222,10 +1222,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "شاخص: World Monitor · داده‌های مکان‌ها:",
+      "statusNormal": "عادی",
+      "statusNoData": "بدون داده",
+      "statusNoBaseline": "بدون مبنا",
+      "vsUsual": "نسبت به معمول",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "تنش‌ها: World Monitor بر اساس رویدادهای GDELT",
+      "insufficientData": "داده‌های ناکافی",
+      "pizzaUnavailable": "اطلاعات فعالیت پیتزافروشی‌ها در دسترس نیست",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",

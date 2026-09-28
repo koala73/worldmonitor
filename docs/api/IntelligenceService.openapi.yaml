@@ -7112,24 +7112,24 @@ components:
                 currentPopularity:
                     type: integer
                     format: int32
-                    description: Current popularity score (0-200+).
+                    description: Live busyness (0-200+).
                 percentageOfUsual:
                     type: integer
                     format: int32
-                    description: Percentage of usual activity. Zero if unavailable.
+                    description: 'Percent of usual; see has_baseline (JSON: hasBaseline).'
                 isSpike:
                     type: boolean
-                    description: Whether activity constitutes a spike.
+                    description: Sustained anomaly.
                 spikeMagnitude:
                     type: number
                     format: double
-                    description: Spike magnitude above baseline. Zero if no spike.
+                    description: Confirmed excess busyness; otherwise zero.
                 dataSource:
                     type: string
-                    description: Data source identifier.
+                    description: Data provider.
                 recordedAt:
                     type: string
-                    description: Recording timestamp as ISO 8601 string.
+                    description: ISO 8601 observation time.
                 dataFreshness:
                     type: string
                     enum:
@@ -7139,16 +7139,22 @@ components:
                     description: DataFreshness represents how current the data is.
                 isClosedNow:
                     type: boolean
-                    description: Whether the location is currently closed.
+                    description: Venue is closed.
                 lat:
                     type: number
                     format: double
-                    description: Latitude of the location.
+                    description: Latitude.
                 lng:
                     type: number
                     format: double
-                    description: Longitude of the location.
-            description: PizzintLocation represents a single monitored pizza location near the Pentagon.
+                    description: Longitude.
+                noLiveSignal:
+                    type: boolean
+                    description: Live signal is missing.
+                hasBaseline:
+                    type: boolean
+                    description: Hourly baseline is known.
+            description: PizzintLocation is a monitored Pentagon-area venue.
         GdeltTensionPair:
             type: object
             properties:

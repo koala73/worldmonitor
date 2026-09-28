@@ -1044,10 +1044,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "المؤشر: World Monitor · بيانات المطاعم:",
+      "statusNormal": "طبيعي",
+      "statusNoData": "لا توجد بيانات",
+      "statusNoBaseline": "لا يوجد خط أساس",
+      "vsUsual": "مقارنة بالمعتاد",
       "title": "مؤشر بيتزا البنتاغون",
       "defcon": "DEFCON {{level}}",
       "updated": "تم التحديث {{timeAgo}}",
       "tensionsTitle": "التوترات الجيوسياسية",
+      "tensionsSource": "التوترات: World Monitor استنادًا إلى أحداث GDELT",
+      "insufficientData": "بيانات غير كافية",
+      "pizzaUnavailable": "نشاط مطاعم البيتزا غير متاح",
       "source": "المصدر:",
       "statusClosed": "مغلق",
       "statusSpike": "ارتفاع حاد",

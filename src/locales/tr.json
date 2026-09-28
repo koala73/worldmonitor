@@ -1081,10 +1081,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Endeks: World Monitor · mekân verileri:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "VERİ YOK",
+      "statusNoBaseline": "REFERANS YOK",
+      "vsUsual": "olağana göre",
       "title": "Pentagon Pizza Endeksi",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} guncellendi",
       "tensionsTitle": "Jeopolitik Gerilimler",
+      "tensionsSource": "Gerilimler: GDELT olaylarından World Monitor hesaplaması",
+      "insufficientData": "Yetersiz veri",
+      "pizzaUnavailable": "Pizzacıların etkinlik verileri kullanılamıyor",
       "source": "Kaynak:",
       "statusClosed": "KAPALI",
       "statusSpike": "ANI ARTIS",

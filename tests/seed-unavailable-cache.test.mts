@@ -134,11 +134,11 @@ it('preserves a genuine PizzINT miss as a cacheable empty response', async () =>
   assert.match(response.headers.get('Cache-Control') ?? '', /^private, max-age=300(?:,|$)/);
   assert.deepEqual(await response.json(), { tensionPairs: [] });
 });
-it('preserves PizzINT includeGdelt filtering on a valid seed', async () => {
+it('never serves legacy PizzINT tension scores as World Monitor scores', async () => {
   mode = 'hit';
   const payload = { pizzint: { locations: [], defconLevel: 5 }, tensionPairs: [{ pair: 'usa_china' }] };
   cache.set('intelligence:pizzint:seed:v1', payload);
-  assert.deepEqual((await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json()).tensionPairs, payload.tensionPairs);
+  assert.deepEqual((await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json()).tensionPairs, []);
   assert.deepEqual((await (await request('intelligence/v1/get-pizzint-status?include_gdelt=false')).json()).tensionPairs, []);
 });
 for (const entry of cases.filter(entry => !entry.path.includes('pizzint'))) {
@@ -387,3 +387,42 @@ for (const payload of [{}, [{ total: null }, null], [{ total: 1 }, {}]]) {
     assert.equal(writes, 0);
   });
 }
+
+it('serves bounded dyad scores independently of a missing pizza payload', async () => {
+  mode = 'hit';
+  const pair = { id: 'usa_russia', countries: ['US', 'RU'], label: 'US–Russia', score: 50,
+    trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' };
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [pair, { ...pair, score: 101 }] });
+  const response = await request('intelligence/v1/get-pizzint-status?include_gdelt=true');
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.pizzint, undefined);
+  assert.deepEqual(body.tensionPairs, [pair]);
+  assertNoStore(response);
+  const pizzaOnly = await request('intelligence/v1/get-pizzint-status?include_gdelt=false');
+  assert.deepEqual((await pizzaOnly.json()).tensionPairs, []);
+});
+
+it('does not discard tensions when only the pizza Redis read fails', async () => {
+  mode = 'hit';
+  const pair = { id: 'usa_russia', countries: ['US', 'RU'], label: 'US–Russia', score: 50,
+    trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' };
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [pair] });
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => decodeURIComponent(String(input)).includes('intelligence:pizzint:seed:v1')
+    ? new Response('', { status: 503 }) : redisFetch(input, init);
+  const response = await request('intelligence/v1/get-pizzint-status?include_gdelt=true');
+  assertNoStore(response);
+  assert.deepEqual((await response.json()).tensionPairs, [pair]);
+});
+
+it('withholds stale dyad scores while preserving pizza data', async () => {
+  mode = 'hit';
+  cache.set('intelligence:pizzint:seed:v1', { pizzint: { locations: [], defconLevel: 5 } });
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now() - 46 * 60_000,
+    tensionPairs: [{ id: 'usa_russia', score: 50, changePercent: 0 }] });
+  const response = await request('intelligence/v1/get-pizzint-status?include_gdelt=true');
+  const body = await response.json();
+  assert.equal(body.pizzint.defconLevel, 5);
+  assert.deepEqual(body.tensionPairs, []);
+});

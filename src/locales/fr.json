@@ -1035,10 +1035,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Indice : World Monitor · données des lieux :",
+      "statusNormal": "NORMAL",
+      "statusNoData": "AUCUNE DONNÉE",
+      "statusNoBaseline": "SANS RÉFÉRENCE",
+      "vsUsual": "par rapport à la normale",
       "title": "Index des pizzas du Pentagone",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} mis à jour",
       "tensionsTitle": "Tensions géopolitiques",
+      "tensionsSource": "Tensions : World Monitor à partir des événements GDELT",
+      "insufficientData": "Données insuffisantes",
+      "pizzaUnavailable": "Activité des pizzerias indisponible",
       "source": "Source:",
       "statusClosed": "FERMÉ",
       "statusSpike": "POINTE",

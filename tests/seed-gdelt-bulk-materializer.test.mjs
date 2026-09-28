@@ -53,10 +53,15 @@ function exportRow({
 }) {
   const fields = Array.from({ length: 61 }, () => '');
   fields[0] = id;
+  fields[7] = 'USA';
+  fields[17] = 'RUS';
   fields[25] = '1';
   fields[26] = '190';
   fields[28] = '19';
   fields[29] = '4';
+  fields[30] = '-5';
+  fields[31] = '2';
+  fields[34] = '-3';
   fields[53] = country;
   fields[59] = timestamp;
   fields[60] = `https://example.com/${id}`;
@@ -339,6 +344,19 @@ function publicationData() {
 }
 
 describe('seed-gdelt-bulk-materializer fetch integration', () => {
+  it('replays an export without double-counting an independently published dyad snapshot', async () => {
+    let previousDyads = null;
+    const deps = {
+      _now: () => Date.parse('2026-07-30T12:05:00Z'),
+      _readSnapshot: async key => key === 'gdelt:bulk:dyad-tension:v1' ? previousDyads : null,
+      _fetchFiles: async () => materializationFiles(),
+    };
+    const first = await fetchMaterializedGdelt(deps);
+    previousDyads = first._dyads;
+    const replay = await fetchMaterializedGdelt(deps);
+    assert.deepEqual(replay._dyads, first._dyads);
+    assert.equal(first._dyads.days['2026-07-30'].pairs.usa_russia.intensity, 10);
+  });
   it('advances per-kind cursors and merges the rolling conflict window', async () => {
     const previousState = {
       cursor: { gkg: '20260730114500', export: '20260730114500' },
@@ -390,6 +408,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
         if (key === GDELT_INTEL_KEY) return null;
         if (key === GDELT_BULK_STATE_KEY) return previousState;
         if (key === GDELT_BULK_COUNTRY_ARTICLES_KEY) return null;
+        if (key === 'gdelt:bulk:dyad-tension:v1') return null;
         throw new Error(`unexpected key ${key}`);
       },
       _fetchFiles: async ({ afterTimestamp }) => {
@@ -407,11 +426,14 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       },
     });
 
-    assert.deepEqual(reads.sort(), [GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, GDELT_BULK_COUNTRY_ARTICLES_KEY].sort());
+    assert.deepEqual(reads.sort(), [GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, GDELT_BULK_COUNTRY_ARTICLES_KEY, 'gdelt:bulk:dyad-tension:v1'].sort());
     assert.deepEqual(result._state.cursor, {
       gkg: '20260730120000',
       export: '20260730120000',
     });
+    assert.equal(result._dyads.cursor, '20260730120000');
+    assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
+    assert.equal(result._dyads.insufficientPairs.length, 4);
     assert.deepEqual(
       result._state.recentGkgBatches.flatMap((batch) =>
         batch.records.map((record) => record.id)),
@@ -486,7 +508,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     // first attempt of every Railway run and crashed 1 in 8 (2026-09-23).
     assert.deepEqual(
       reads.map(({ key }) => key).sort(),
-      [GDELT_BULK_COUNTRY_ARTICLES_KEY, GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY].sort(),
+      [GDELT_BULK_COUNTRY_ARTICLES_KEY, GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, 'gdelt:bulk:dyad-tension:v1'].sort(),
     );
     for (const { key, timeoutMs } of reads) {
       assert.ok(timeoutMs >= 30_000, `${key} read with ${timeoutMs}ms`);
@@ -778,6 +800,10 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       assert.ok(writes.some((write) => write.key === key), `missing write for ${key}`);
     }
     assert.equal(writes.at(-1).key, GDELT_BULK_STATE_KEY);
+    const dyadWrite = writes.find(({ key }) => key === 'gdelt:bulk:dyad-tension:v1');
+    assert.equal(dyadWrite.type, 'meta');
+    assert.equal(dyadWrite.args[2], 92 * 86_400);
+    assert.equal(dyadWrite.args[4], 'seed-meta:gdelt:bulk:dyad-tension');
     const countryIndexWrite = writes.find(({ key }) => key === GDELT_BULK_COUNTRY_ARTICLES_KEY);
     assert.equal(countryIndexWrite.type, 'meta', 'the per-country index publishes with its own seed-meta record (#7748)');
     assert.deepEqual(countryIndexWrite.args[1], data._countryIndex);
@@ -1074,4 +1100,20 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
       `positive-events TTL ${positiveTtl}s must outlive its ${gate[1]}min health gate`,
     );
   });
+});
+
+describe('dyad health activation', () => {
+  for (const succeeds of [false, true]) {
+    it(`activates only when its data and metadata publish succeeds (${succeeds})`, async () => {
+      let activated = false;
+      const outcome = await afterPublish(publicationData(), undefined, {
+        _writeExtraKey: async () => {},
+        _writeExtraKeyWithMeta: async key => key === 'gdelt:bulk:dyad-tension:v1' ? succeeds : true,
+        _writeActivationMarker: async () => {},
+        _writeDyadActivationMarker: async () => { activated = true; },
+      });
+      assert.equal(activated, succeeds);
+      assert.equal(outcome.completionState, succeeds ? 'OK' : 'DEGRADED');
+    });
+  }
 });

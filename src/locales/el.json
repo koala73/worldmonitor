@@ -1081,10 +1081,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Δείκτης: World Monitor · δεδομένα καταστημάτων:",
+      "statusNormal": "ΚΑΝΟΝΙΚΟ",
+      "statusNoData": "ΧΩΡΙΣ ΔΕΔΟΜΕΝΑ",
+      "statusNoBaseline": "ΧΩΡΙΣ ΒΑΣΗ",
+      "vsUsual": "σε σχέση με το σύνηθες",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ενημερώθηκε {{timeAgo}}",
       "tensionsTitle": "Γεωπολιτικές Εντάσεις",
+      "tensionsSource": "Εντάσεις: World Monitor με βάση συμβάντα GDELT",
+      "insufficientData": "Ανεπαρκή δεδομένα",
+      "pizzaUnavailable": "Η δραστηριότητα των πιτσαριών δεν είναι διαθέσιμη",
       "source": "Πηγή:",
       "statusClosed": "ΚΛΕΙΣΤΟ",
       "statusSpike": "ΚΟΡΥΦΩΣΗ",

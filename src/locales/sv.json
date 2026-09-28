@@ -770,8 +770,16 @@
       "info": "INFO"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · platsdata:",
+      "statusNormal": "NORMALT",
+      "statusNoData": "INGA DATA",
+      "statusNoBaseline": "INGEN REFERENS",
+      "vsUsual": "jämfört med normalt",
       "title": "Pentagon Pizza Index",
       "tensionsTitle": "Geopolitiska spänningar",
+      "tensionsSource": "Spänningar: World Monitor utifrån GDELT-händelser",
+      "insufficientData": "Otillräckliga data",
+      "pizzaUnavailable": "Pizzeriornas aktivitet är inte tillgänglig",
       "source": "Källa:",
       "defcon": "DEFCON {{level}}",
       "updated": "Uppdaterad {{timeAgo}}",

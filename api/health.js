@@ -414,6 +414,7 @@ const STANDALONE_KEYS = {
   // it is monitored here rather than bootstrap-tiered. Without this gate an
   // evicted or stale index stays invisible until the next weekly freeze.
   gdeltCountryArticles: 'gdelt:bulk:country-articles:v1',
+  gdeltDyadTension: 'gdelt:bulk:dyad-tension:v1',
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   // Control-plane heartbeat only. Convex owns every durable scan lease,
   // checkpoint, receipt, and replay decision; this Redis value is disposable.
@@ -584,6 +585,13 @@ const STANDALONE_KEYS = {
   newsThreatSummary:        'news:threat:summary:v1',
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
+  // Retained PizzINT observations (docs/architecture/pizzint-history.md). No
+  // browser or RPC consumer, so it is registered here per the standalone-health
+  // rule. The watched key is the provider-agnostic heartbeat the archive's Lua
+  // advances on every successful write: the daily buckets themselves rotate by
+  // UTC date and split by provider, so watching one of those would read EMPTY at
+  // every midnight and STALE whenever the BestTime fallback took over.
+  pizzintHistory:           'seed-meta:intelligence:pizzint:history:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
@@ -1178,6 +1186,14 @@ const SEED_META = {
   },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
+  gdeltDyadTension: {
+    key: 'seed-meta:gdelt:bulk:dyad-tension', maxStaleMin: 45,
+    activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    cutover: {
+      mode: 'activation-marker', fromKey: null, issue: 8676,
+      activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    },
+  },
   // Same materializer tick as gdeltIntel; the 2-day data TTL outlives this
   // gate. Pending until the materializer's first successful index publish
   // writes the durable marker, strict after it (#7748).
@@ -1631,7 +1647,24 @@ const SEED_META = {
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 540 }, // relay loop every 180min (3h; was 60min, dropped now that ScrapeCreators handles Reddit); 540 = 3x interval. Co-pinned with SOCIAL_VELOCITY_TTL=43200 (ais-relay.cjs): the data-key TTL must STRICTLY exceed this (720min > 540min) so a dead relay shows STALE_SEED before the key expires to EMPTY.
   wsbTickers:        { key: 'seed-meta:intelligence:wsb-tickers',      maxStaleMin: 540 }, // relay loop every 180min (3h); 540 = 3x interval. Co-pinned with WSB_TICKERS_TTL=43200 (ais-relay.cjs); TTL strictly > maxStaleMin (see socialVelocity note).
-  pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
+  pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval
+  // Same relay loop and cadence as pizzint above, so the same 3x-interval budget.
+  // The archive write is fire-and-forget alongside live publication, so this can
+  // go stale while the live key stays fresh — that asymmetry is the signal, and
+  // it is the only one an operator gets that archiving has stopped.
+  pizzintHistory:    {
+    key: 'seed-meta:intelligence:pizzint:history:v1',
+    maxStaleMin: 45,
+    // The archive's Lua writes this marker on its first write that lands records,
+    // so the on-demand EMPTY grace below expires on evidence rather than never.
+    activationKey: 'seed-activated:intelligence:pizzint-history',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 8679,
+      activationKey: 'seed-activated:intelligence:pizzint-history',
+    },
+  },
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
@@ -1954,6 +1987,7 @@ const ON_DEMAND_KEYS = new Set([
   // writes the marker after the index and its seed-meta publish; absence is
   // pending until that first tick and strict afterward.
   'gdeltCountryArticles',
+  'gdeltDyadTension',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -2010,6 +2044,11 @@ const ON_DEMAND_KEYS = new Set([
   // #scoreEnergy). Do NOT add these labels back to ON_DEMAND_KEYS
   // without revisiting that plan.
   'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
+  // The archive starts empty on the deploy that introduces it and stays empty
+  // until the first relay poll. Absence is therefore not a fault; a STOPPED
+  // archive is, and that still reports STALE_SEED because on-demand softening
+  // never covers a key that has data behind it (see classifyKey).
+  'pizzintHistory',
   // #6070 retired six expired deployment-order bridges after live producer
   // verification. Future temporary softening needs an activation marker or an
   // enforced wall-clock expiry; a prose-only removal reminder is not a control.
@@ -2040,6 +2079,8 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
+  // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
+  pizzintHistory: SEED_META.pizzintHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
@@ -2061,6 +2102,7 @@ const ACTIVATION_MARKERS = {
   // Written by scripts/seed-gdelt-bulk-materializer.mjs after the per-country
   // article index publishes with its seed-meta (#7748).
   gdeltCountryArticles: SEED_META.gdeltCountryArticles.activationKey,
+  gdeltDyadTension: SEED_META.gdeltDyadTension.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
@@ -2303,6 +2345,11 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastBets', // #5233 shadow bet-engine stream; absent before the cron ships it and empty on weeks the energy feed yields no bet — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). A COLLAPSED funnel still surfaces via seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this branch.
   'viarailLive', // unofficial optional VIA Rail live JSON (#6615); unconfigured / 404 is STALE_SEED then NOT_CONFIGURED, never EMPTY/crit
+  // Venues closed or not yet reporting: the relay advances seed-meta only when
+  // BestTime answers every venue cleanly with no live reading, for up to 24h
+  // after the last live one. Provider errors, a dead loop, or a longer silence
+  // stop the heartbeat, so an absent payload then reads STALE_SEED.
+  'pizzint',
   // Compact projections stay STALE_SEED before their first producer tick or
   // after metadata turns stale. Fresh metadata plus a missing payload is
   // deliberately strict: MISSING_DATA_IS_FAILURE_KEYS reports EMPTY (crit).

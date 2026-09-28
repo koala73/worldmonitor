@@ -1222,10 +1222,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Index: World Monitor · venue data:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "NO DATA",
+      "statusNoBaseline": "NO BASELINE",
+      "vsUsual": "vs usual",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "Tensions: World Monitor from GDELT events",
+      "insufficientData": "Insufficient data",
+      "pizzaUnavailable": "Pizza activity unavailable",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",

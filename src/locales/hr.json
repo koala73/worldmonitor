@@ -1230,10 +1230,18 @@
       "skipToEnd": "Preskoči na kraj"
     },
     "pizzint": {
+      "indexSource": "Indeks: World Monitor · podaci o objektima:",
+      "statusNormal": "NORMALNO",
+      "statusNoData": "NEMA PODATAKA",
+      "statusNoBaseline": "NEMA OSNOVE",
+      "vsUsual": "u odnosu na uobičajeno",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ažurirano {{timeAgo}}",
       "tensionsTitle": "Geopolitička napetost",
+      "tensionsSource": "Napetosti: World Monitor na temelju događaja GDELT-a",
+      "insufficientData": "Nedovoljno podataka",
+      "pizzaUnavailable": "Aktivnost pizzerija nije dostupna",
       "source": "Izvor:",
       "statusClosed": "ZATVORENO",
       "statusSpike": "SKOK",

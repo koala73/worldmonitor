@@ -1081,10 +1081,18 @@
       "skipToEnd": "Към края"
     },
     "pizzint": {
+      "indexSource": "Индекс: World Monitor · данни за заведенията:",
+      "statusNormal": "НОРМАЛНО",
+      "statusNoData": "НЯМА ДАННИ",
+      "statusNoBaseline": "НЯМА БАЗОВО НИВО",
+      "vsUsual": "спрямо обичайното",
       "title": "Индекс на пица на Пентагона",
       "defcon": "DEFCON {{level}}",
       "updated": "Актуализирано {{timeAgo}}",
       "tensionsTitle": "Геополитични напрежения",
+      "tensionsSource": "Напрежение: World Monitor по събития от GDELT",
+      "insufficientData": "Недостатъчно данни",
+      "pizzaUnavailable": "Данните за активността на пицариите не са налични",
       "source": "Източник:",
       "statusClosed": "ЗАТВОРЕНО",
       "statusSpike": "СКОК",

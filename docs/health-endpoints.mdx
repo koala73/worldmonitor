@@ -44,8 +44,8 @@ The top-level `status` describes user-visible platform availability, not perfect
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 310,
-    "ok": 310,
+    "total": 312,
+    "ok": 312,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 0,
@@ -77,7 +77,7 @@ With `?compact=1`, `problems` contains every actionable failure and on-demand em
 
 Sanctions ingestion tracks SDN, Consolidated, and Canadian SEMA independently. A failed or invalid source keeps `sourceState: error`, `failedSources`, and per-source `sourceHealth` in freshness metadata. Each source reports its attempt time, last success time, original publication time, retained deadline, and selected record count. Recovery clears the error only for the recovered source.
 
-The worker can retain a complete validated source snapshot for 12 hours after its last successful fetch. Failed attempts and healthy sibling sources do not extend that deadline. The 60-entry display preview is never a retention source; initial retention requires a successful full-source fetch. Private snapshots use bounded gzip storage and do not change public payload shapes.
+The worker can retain a complete validated source snapshot for 48 hours after its last successful fetch, so a worker that loses egress to OFAC for several 6-hour runs keeps serving the last validated lists while `OFAC_INGEST_FAILED` stays visible. Failed attempts and healthy sibling sources do not extend that deadline. The 60-entry display preview is never a retention source; initial retention requires a successful full-source fetch. Private snapshots use bounded gzip storage and do not change public payload shapes.
 
 On each run, the worker excludes expired or invalid snapshots before rebuilding the pressure payload, entity index, and country counts. If no source remains usable, those outputs become empty while source errors remain visible. This is unavailable data, not a confirmed empty sanctions list. Readers do not independently remove expired source cohorts between worker runs; existing cache TTL and health checks still apply. Source publication dates remain unchanged.
 

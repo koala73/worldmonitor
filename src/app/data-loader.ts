@@ -4757,16 +4757,15 @@ export class DataLoaderManager implements AppModule {
         fetchGdeltTensions()
       ]);
 
+      this.ctx.pizzintIndicator?.show();
+      this.ctx.pizzintIndicator?.updateStatus(status);
+      this.ctx.pizzintIndicator?.updateTensions(tensions);
       if (status.locationsMonitored === 0) {
-        this.ctx.pizzintIndicator?.hide();
         this.ctx.statusPanel?.updateApi('PizzINT', { status: 'error' });
         dataFreshness.recordError('pizzint', 'No monitored locations returned');
         return;
       }
 
-      this.ctx.pizzintIndicator?.show();
-      this.ctx.pizzintIndicator?.updateStatus(status);
-      this.ctx.pizzintIndicator?.updateTensions(tensions);
       this.ctx.statusPanel?.updateApi('PizzINT', { status: 'ok' });
       dataFreshness.recordUpdate('pizzint', Math.max(status.locationsMonitored, tensions.length));
     } catch (error) {

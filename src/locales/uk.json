@@ -1230,10 +1230,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "Індекс: World Monitor · дані закладів:",
+      "statusNormal": "НОРМА",
+      "statusNoData": "НЕМАЄ ДАНИХ",
+      "statusNoBaseline": "НЕМАЄ БАЗОВОГО РІВНЯ",
+      "vsUsual": "відносно норми",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Updated {{timeAgo}}",
       "tensionsTitle": "Geopolitical Tensions",
+      "tensionsSource": "Напруженість: World Monitor на основі подій GDELT",
+      "insufficientData": "Недостатньо даних",
+      "pizzaUnavailable": "Дані про активність піцерій недоступні",
       "source": "Source:",
       "statusClosed": "CLOSED",
       "statusSpike": "SPIKE",

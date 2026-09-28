@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "指数: World Monitor · 店舗データ:",
+      "statusNormal": "通常",
+      "statusNoData": "データなし",
+      "statusNoBaseline": "基準なし",
+      "vsUsual": "通常比",
       "title": "ペンタゴンピザ指数",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}}に更新",
       "tensionsTitle": "地政学的緊張",
+      "tensionsSource": "緊張度：GDELTのイベントに基づくWorld Monitorの算出値",
+      "insufficientData": "データ不足",
+      "pizzaUnavailable": "ピザ店の活動データを取得できません",
       "source": "ソース:",
       "statusClosed": "閉鎖",
       "statusSpike": "急上昇",

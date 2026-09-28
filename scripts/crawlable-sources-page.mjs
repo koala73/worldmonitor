@@ -117,6 +117,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['Barchart', 'finance'],
   ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
+  // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
+  ['besttime.app', 'military'],
   ['api.scrapecreators.com', 'news'],
   ['api.telegram.org', 'news'],
   ['api.tzevaadom.co.il', 'military'],

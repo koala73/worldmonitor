@@ -14503,11 +14503,6 @@ a.prediction-link:hover {
   color: var(--accent);
 }
 
-.pizzint-score {
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-dim);
-}
-
 .pizzint-panel {
   position: absolute;
   top: 100%;
@@ -14686,6 +14681,8 @@ a.prediction-link:hover {
 
 .pizzint-footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   justify-content: space-between;
   padding: 8px 16px;
   border-top: 1px solid var(--overlay-medium);

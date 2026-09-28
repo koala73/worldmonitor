@@ -1222,10 +1222,18 @@
       "skipToEnd": "अंत पर जाएं"
     },
     "pizzint": {
+      "indexSource": "सूचकांक: World Monitor · स्थल डेटा:",
+      "statusNormal": "सामान्य",
+      "statusNoData": "डेटा नहीं",
+      "statusNoBaseline": "आधार नहीं",
+      "vsUsual": "सामान्य की तुलना में",
       "title": "पेंटागन पिज़्ज़ा इंडेक्स",
       "defcon": "डिफकॉन {{level}}",
       "updated": "{{timeAgo}} पहले अपडेट हुआ",
       "tensionsTitle": "भू-राजनीतिक तनाव",
+      "tensionsSource": "तनाव: GDELT घटनाओं पर आधारित World Monitor",
+      "insufficientData": "अपर्याप्त डेटा",
+      "pizzaUnavailable": "पिज़्ज़ा दुकानों की गतिविधि उपलब्ध नहीं है",
       "source": "स्रोत:",
       "statusClosed": "बंद",
       "statusSpike": "स्पाइक",

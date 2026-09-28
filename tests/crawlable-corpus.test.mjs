@@ -183,11 +183,19 @@ function assertPulseCountryRecords(countries) {
       assertPulseRecordFields(headline, articleFields, `${path}.developments.headlines[${index}]`, { origin: 'string' });
     }
     if (developments.brief !== null) {
+      // Pre-migration briefs carry `model`; evidence-grounded freezes omit it
+      // and publish an `evidence` array instead (freeze-crawlable-live-pulse).
       assertPulseRecordFields(developments.brief, {
-        text: 'string', model: 'string', generatedAt: 'string', sources: 'array',
-      }, `${path}.developments.brief`);
+        text: 'string', generatedAt: 'string', sources: 'array',
+      }, `${path}.developments.brief`, { model: 'string', evidence: 'array' });
       for (const [index, source] of developments.brief.sources.entries()) {
         assertPulseRecordFields(source, articleFields, `${path}.developments.brief.sources[${index}]`, { origin: 'string' });
+      }
+      for (const [index, item] of (developments.brief.evidence ?? []).entries()) {
+        assertPulseRecordFields(item, {
+          id: 'string', kind: 'string', label: 'string', value: 'string',
+          factText: 'string', asOf: 'string',
+        }, `${path}.developments.brief.evidence[${index}]`, { url: 'string' });
       }
     }
     for (const [index, event] of (developments.timeline ?? []).entries()) {
@@ -6964,7 +6972,12 @@ describe('country recent developments', () => {
       const name = names.get(code);
       assert.ok(name, `pulse country ${code} must resolve to a display name`);
       const html = renderCountryDevelopments({ countryName: name, developments });
-      assertCountryBriefPresentation({ pagePath: `/countries/${code}/`, html, sources: developments.brief.sources });
+      assertCountryBriefPresentation({
+        pagePath: `/countries/${code}/`,
+        html,
+        sources: developments.brief.sources,
+        evidence: developments.brief.evidence || [],
+      });
     }
     assert.ok(briefCount + withheldCount >= 10, 'the sweep must inspect published and withdrawn briefs');
   });

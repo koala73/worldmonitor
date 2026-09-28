@@ -1084,10 +1084,18 @@
       "skipToEnd": "Treci la final"
     },
     "pizzint": {
+      "indexSource": "Indice: World Monitor · date despre localuri:",
+      "statusNormal": "NORMAL",
+      "statusNoData": "FĂRĂ DATE",
+      "statusNoBaseline": "FĂRĂ REFERINȚĂ",
+      "vsUsual": "față de normal",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Actualizat {{timeAgo}}",
       "tensionsTitle": "Tensiuni geopolitice",
+      "tensionsSource": "Tensiuni: World Monitor pe baza evenimentelor GDELT",
+      "insufficientData": "Date insuficiente",
+      "pizzaUnavailable": "Activitatea pizzeriilor nu este disponibilă",
       "source": "Sursa:",
       "statusClosed": "ÎNCHIS",
       "statusSpike": "SPIKE",

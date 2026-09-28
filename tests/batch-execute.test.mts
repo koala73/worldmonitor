@@ -101,8 +101,12 @@ describe('executeBatch handler', () => {
     });
 
     assert.equal(calls.length, 2);
-    assert.equal(calls[0]!.url, `${ORIGIN}/api/market/v1/get-fear-greed-index`);
-    assert.equal(calls[0]!.init.method, 'GET');
+    // Admission is asynchronous; dispatch order is not the result-order contract.
+    assert.deepEqual(calls.map(({ url }) => url).sort(), [
+      `${ORIGIN}/api/market/v1/get-fear-greed-index`,
+      `${ORIGIN}/api/market/v1/list-market-quotes`,
+    ].sort());
+    assert.ok(calls.every(({ init }) => init.method === 'GET'));
     assert.deepEqual(res.results[0], { id: 'fg', status: 200, body: { compositeScore: 42 }, error: '' });
     // Blank id defaults to the zero-based index.
     assert.equal(res.results[1]!.id, '1');

@@ -1078,10 +1078,18 @@
       "skipToEnd": "Skip to end"
     },
     "pizzint": {
+      "indexSource": "지수: World Monitor · 매장 데이터:",
+      "statusNormal": "정상",
+      "statusNoData": "데이터 없음",
+      "statusNoBaseline": "기준 없음",
+      "vsUsual": "평소 대비",
       "title": "펜타곤 피자 지수",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} 업데이트",
       "tensionsTitle": "지정학적 긴장",
+      "tensionsSource": "긴장도: GDELT 이벤트를 바탕으로 World Monitor가 산출",
+      "insufficientData": "데이터 부족",
+      "pizzaUnavailable": "피자 가게 활동 데이터를 사용할 수 없습니다",
       "source": "출처:",
       "statusClosed": "폐점",
       "statusSpike": "급증",

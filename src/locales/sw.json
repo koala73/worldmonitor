@@ -1222,10 +1222,18 @@
       "skipToEnd": "Ruka hadi mwisho"
     },
     "pizzint": {
+      "indexSource": "Faharasa: World Monitor · data za maeneo:",
+      "statusNormal": "KAWAIDA",
+      "statusNoData": "HAKUNA DATA",
+      "statusNoBaseline": "HAKUNA MSINGI",
+      "vsUsual": "dhidi ya kawaida",
       "title": "Pentagon Pizza Index",
       "defcon": "DEFCON {{level}}",
       "updated": "Ilisasishwa {{timeAgo}}",
       "tensionsTitle": "Mvutano wa Kijiografia",
+      "tensionsSource": "Mivutano: World Monitor kwa kutumia matukio ya GDELT",
+      "insufficientData": "Data haitoshi",
+      "pizzaUnavailable": "Data ya shughuli za migahawa ya pizza haipatikani",
       "source": "Chanzo:",
       "statusClosed": "IMEFUNGWA",
       "statusSpike": "SPIKE",

@@ -155,7 +155,7 @@ describe('CII docs drift guards', () => {
     const riskLevels = markdownSection(doc, '### Risk Levels');
     const trendSection = markdownSection(doc, '### Trend Detection');
     const pizzintSection = markdownSection(doc, '### DEFCON-Style Alerting');
-    const gdeltSection = markdownSection(doc, '### GDELT Tension Pairs');
+    const gdeltSection = markdownSection(doc, '### World Monitor Tension Pairs');
     const multipliersSection = markdownSection(doc, '### Event Significance Multipliers');
 
     assert.match(
@@ -218,17 +218,16 @@ describe('CII docs drift guards', () => {
       'USA ↔ Russia',
       'Russia ↔ Ukraine',
       'USA ↔ China',
-      'China ↔ Taiwan',
       'USA ↔ Iran',
-      'USA ↔ Venezuela',
     ]) {
       assert.match(gdeltSection, new RegExp(`\\|\\s*${pair}\\s*\\|`));
     }
     assert.doesNotMatch(
       gdeltSection,
-      /Israel ↔ Iran/,
-      'strategic-risk GDELT table must match DEFAULT_GDELT_PAIRS and omit stale Israel-Iran pair',
+      /Israel ↔ Iran|China ↔ Taiwan|USA ↔ Venezuela/,
+      'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
+    assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
     assert.equal(CII_COUNTRY_WEIGHTS.US.eventMultiplier, 0.3);
     assert.match(
       multipliersSection,
