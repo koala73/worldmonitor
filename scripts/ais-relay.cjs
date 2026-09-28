@@ -8069,8 +8069,9 @@ function startChokepointFlowsSeedLoop() {
 // Fetches from pizzint.watch on Railway (datacenter IPs blocked
 // from Vercel Edge). Vercel handler reads from seed key only.
 // ─────────────────────────────────────────────────────────────
-const PIZZINT_SEED_INTERVAL_MS = 10 * 60 * 1000; // 10 min
-const PIZZINT_SEED_TTL = 1800; // 30 min (3× interval)
+// 15 min is the BestTime paid-plan budget: 4 venues × 96 polls/day.
+const PIZZINT_SEED_INTERVAL_MS = 15 * 60 * 1000;
+const PIZZINT_SEED_TTL = 2700; // 45 min (3× interval)
 const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
 // Fallback feed while PizzINT itself is down: BestTime live busyness for the
@@ -8088,8 +8089,9 @@ let pizzintSeedInFlight = false;
 
 // World Monitor index, identical for both providers; provider DEFCON is ignored.
 // A candidate needs >=150% of hourly usual AND >=25 busyness points of excess.
-// Require 20 elapsed minutes of fresh, distinct observations with polling gaps
-// of 9–15 minutes. Missing/closed/stale readings or a provider change reset it.
+// Require three consecutive fresh, distinct observations: each gap must be
+// 0.9–1.5× the polling interval, so 1.8× elapsed means at least three readings.
+// Missing/closed/stale readings or a provider change reset it.
 // Each sustained venue contributes min(25, excess percent / 5) index points.
 // Sum thresholds 25/50/70/85 map to DEFCON 4/3/2/1; otherwise DEFCON 5.
 // See docs/algorithms.mdx. This is a venue-activity index, not military readiness.
@@ -8107,16 +8109,16 @@ function scorePizzintLocations(locations, previous, now) {
     const observedAt = Date.parse(location.recordedAt);
     const candidate = !location.isClosedNow && !location.noLiveSignal
       && location.dataFreshness === 'DATA_FRESHNESS_FRESH'
-      && Number.isFinite(observedAt) && observedAt <= now && now - observedAt <= 15 * 60_000
+      && Number.isFinite(observedAt) && observedAt <= now && now - observedAt <= PIZZINT_SEED_INTERVAL_MS
       && location.percentageOfUsual >= 150 && delta >= 25;
     const prior = priorLocations.find(l => l.placeId === location.placeId && l.dataSource === location.dataSource);
-    const continues = candidate && gap >= 9 * 60_000 && gap <= 15 * 60_000
+    const continues = candidate && gap >= 0.9 * PIZZINT_SEED_INTERVAL_MS && gap <= 1.5 * PIZZINT_SEED_INTERVAL_MS
       && prior?.anomalyStartedAt > 0 && prior.anomalyStartedAt <= previous.updatedAt
       && observedAt > Date.parse(prior.recordedAt);
     // Internal cache fields survive relay restarts. Old payloads have no start
     // time and start afresh.
     location.anomalyStartedAt = candidate ? (continues ? prior.anomalyStartedAt : now) : 0;
-    location.isSpike = candidate && now - location.anomalyStartedAt >= 20 * 60_000;
+    location.isSpike = candidate && now - location.anomalyStartedAt >= 1.8 * PIZZINT_SEED_INTERVAL_MS;
     location.spikeMagnitude = location.isSpike ? delta : 0;
     if (location.isSpike) score += Math.min(25, (location.percentageOfUsual - 100) / 5);
   }

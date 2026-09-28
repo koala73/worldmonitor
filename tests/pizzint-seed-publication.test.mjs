@@ -192,9 +192,12 @@ test('a sustained empty source still expires the payload and fails the real heal
   state.source = emptyResponse;
   state.now += 31 * 60_000;
   await seed();
+  assert.equal(classify().status, 'OK', 'two missed 15-minute polls stay within the 3x budget');
+  state.now += 15 * 60_000;
+  await seed();
   const expired = classify();
   assert.notEqual(expired.status, 'OK');
-  assert.equal(expired.seedAgeMin, 31);
+  assert.equal(expired.seedAgeMin, 46);
   assert.ok(['warn', 'crit'].includes(health.STATUS_COUNTS[expired.status]));
 });
 
@@ -410,22 +413,22 @@ test('a real zero against a small baseline remains distinct from an unavailable 
   assert.equal(run.status().locationsOpen, 2);
 });
 
-async function advance(run, minutes = 10) {
+async function advance(run, minutes = 15) {
   run.state.now += minutes * 60_000;
   await run.seed();
 }
 
-test('September 27 anomalies sustained for 20 minutes publish DEFCON 4', async () => {
+test('September 27 anomalies sustained across three polls publish DEFCON 4', async () => {
   const run = await besttimeHarness([[70, 45], [0, 40], [65, 35], [100, 100]]);
   await run.seed();
   await advance(run);
-  assert.equal(run.status().defconLevel, 5, '10 elapsed minutes is not 20');
+  assert.equal(run.status().defconLevel, 5, 'two readings are not sustained');
   await advance(run);
   assert.equal(run.status().activeSpikes, 2);
   assert.equal(run.status().defconLevel, 4);
 });
 
-test('three late-night surges at twice forecast sustained for 20 minutes publish DEFCON 3', async () => {
+test('three late-night surges at twice forecast sustained across three polls publish DEFCON 3', async () => {
   const run = await besttimeHarness([[60, 30], [60, 30], [60, 30]]);
   await run.seed();
   await advance(run);
@@ -448,12 +451,40 @@ test('single-reading blip never raises DEFCON and small baselines do not create 
 test('a missed polling interval resets persistence', async () => {
   const run = await besttimeHarness([[90, 30], [90, 30], [90, 30]]);
   await run.seed();
-  await advance(run, 20);
+  await advance(run, 30);
   assert.equal(run.status().activeSpikes, 0);
   await advance(run);
   assert.equal(run.status().activeSpikes, 0);
   await advance(run);
   assert.equal(run.status().activeSpikes, 3);
+});
+
+for (const [label, gaps] of [['late', [15.2, 15.2]], ['early', [14.8, 14.8]], ['mixed', [13.5, 22.5]]]) {
+  test(`scheduler jitter (${label}) around the 15-minute cadence keeps persistence`, async () => {
+    const run = await besttimeHarness([[60, 30], [60, 30], [60, 30]]);
+    await run.seed();
+    await advance(run, gaps[0]);
+    assert.equal(run.status().activeSpikes, 0, 'two readings are not sustained');
+    await advance(run, gaps[1]);
+    assert.equal(run.status().activeSpikes, 3);
+  });
+}
+
+test('two readings never count as sustained, even at the widest allowed gap', async () => {
+  const run = await besttimeHarness([[60, 30]]);
+  await run.seed();
+  await advance(run, 22.5);
+  assert.equal(run.status().activeSpikes, 0);
+});
+
+test('a gap shorter than the polling cadence does not continue persistence', async () => {
+  const run = await besttimeHarness([[60, 30]]);
+  await run.seed();
+  await advance(run, 5);
+  await advance(run);
+  assert.equal(run.status().activeSpikes, 0, 'the early reading restarted the sequence');
+  await advance(run);
+  assert.equal(run.status().activeSpikes, 1);
 });
 
 test('equivalent PizzINT and BestTime observations use the same rule, ignoring provider DEFCON', async () => {
@@ -472,8 +503,8 @@ test('equivalent PizzINT and BestTime observations use the same rule, ignoring p
     const actual = primary.state.cache.get(payloadKey).data.data.pizzint;
     assert.equal(actual.defconLevel, best.status().defconLevel);
     assert.equal(actual.activeSpikes, best.status().activeSpikes);
-    primary.state.now += 600_000;
-    best.state.now += 600_000;
+    primary.state.now += 15 * 60_000;
+    best.state.now += 15 * 60_000;
   }
   assert.equal(best.status().defconLevel, 3);
 });

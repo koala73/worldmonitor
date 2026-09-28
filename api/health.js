@@ -1647,14 +1647,14 @@ const SEED_META = {
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 540 }, // relay loop every 180min (3h; was 60min, dropped now that ScrapeCreators handles Reddit); 540 = 3x interval. Co-pinned with SOCIAL_VELOCITY_TTL=43200 (ais-relay.cjs): the data-key TTL must STRICTLY exceed this (720min > 540min) so a dead relay shows STALE_SEED before the key expires to EMPTY.
   wsbTickers:        { key: 'seed-meta:intelligence:wsb-tickers',      maxStaleMin: 540 }, // relay loop every 180min (3h); 540 = 3x interval. Co-pinned with WSB_TICKERS_TTL=43200 (ais-relay.cjs); TTL strictly > maxStaleMin (see socialVelocity note).
-  pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
+  pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval
   // Same relay loop and cadence as pizzint above, so the same 3x-interval budget.
   // The archive write is fire-and-forget alongside live publication, so this can
   // go stale while the live key stays fresh — that asymmetry is the signal, and
   // it is the only one an operator gets that archiving has stopped.
   pizzintHistory:    {
     key: 'seed-meta:intelligence:pizzint:history:v1',
-    maxStaleMin: 30,
+    maxStaleMin: 45,
     // The archive's Lua writes this marker on its first write that lands records,
     // so the on-demand EMPTY grace below expires on evidence rather than never.
     activationKey: 'seed-activated:intelligence:pizzint-history',
