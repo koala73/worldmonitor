@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -9,16 +9,21 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 
 import {
+  evaluateSampleFreshness,
   evaluateUmamiStorage,
   normalizeVolumeRows,
   parseArguments,
   updateStorageState,
 } from '../scripts/check-umami-storage.mjs';
+import { RAILWAY_VOLUME_READ_POLICY } from '../scripts/read-railway-volumes.mjs';
 
 const NOW = Date.parse('2026-08-01T12:00:00.000Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
 const storageCheckScript = fileURLToPath(
   new URL('../scripts/check-umami-storage.mjs', import.meta.url),
+);
+const volumeReadScript = fileURLToPath(
+  new URL('../scripts/read-railway-volumes.mjs', import.meta.url),
 );
 const workflowSource = readFileSync(
   new URL('../.github/workflows/umami-storage-monitor.yml', import.meta.url),
@@ -292,7 +297,7 @@ describe('Umami storage monitor', () => {
   });
 
   it('wires the read-only Railway check and bounded SQL contract', () => {
-    assert.match(workflowSource, /railway volume .* list --json/);
+    assert.match(workflowSource, /read-railway-volumes\.mjs/);
     assert.match(workflowSource, /check-umami-storage\.mjs/);
 
     // The repository's Actions cache sits at its 10 GB cap, so GitHub evicted
@@ -302,7 +307,7 @@ describe('Umami storage monitor', () => {
     assert.doesNotMatch(workflowSource, /actions\/cache/, 'cache eviction erases the growth history');
     const steps = workflow.jobs.monitor.steps;
     const restoreStep = steps.find((step) => /gh run download/.test(step.run ?? ''));
-    const checkStep = steps.find((step) => /check-umami-storage\.mjs/.test(step.run ?? ''));
+    const checkStep = steps.find((step) => /check-umami-storage\.mjs --input/.test(step.run ?? ''));
     const saveStep = steps.find((step) => (step.uses ?? '').startsWith('actions/upload-artifact@'));
     assert.ok(restoreStep, 'the growth history must be restored from the previous run');
     assert.ok(saveStep, 'the growth history must be saved by an explicit step');
@@ -461,5 +466,215 @@ describe('Umami storage monitor', () => {
       'the Railway token must stay in the main-only environment without deployment tracking',
     );
     assert.equal(workflow.jobs.monitor['timeout-minutes'], 5);
+  });
+});
+
+// A stand-in `railway` binary put first on PATH. Each call takes the next
+// outcome from FAKE_RAILWAY_PLAN and logs its argv, so the tests exercise the
+// real read script and its real child process.
+const FAKE_RAILWAY = `#!/usr/bin/env node
+const { appendFileSync, readFileSync, existsSync } = require('node:fs');
+const log = process.env.FAKE_RAILWAY_LOG;
+const calls = existsSync(log) ? readFileSync(log, 'utf8').split('\\n').filter(Boolean).length : 0;
+appendFileSync(log, JSON.stringify(process.argv.slice(2)) + '\\n');
+const outcome = process.env.FAKE_RAILWAY_PLAN.split(',')[calls] ?? 'ok';
+if (outcome === 'ok') {
+  process.stdout.write(JSON.stringify([{ serviceName: 'Postgres Umami', currentSizeMB: 1 }]));
+} else if (outcome === 'timeout') {
+  process.stderr.write('Failed to fetch: error sending request for url (https://backboard.railway.com/graphql/v2)\\n\\nCaused by:\\n    0: error sending request for url (https://backboard.railway.com/graphql/v2)\\n    1: operation timed out\\n');
+  process.exit(1);
+} else if (outcome === 'unauthorized') {
+  process.stderr.write('Unauthorized. Please login with \`railway login\`\\n');
+  process.exit(1);
+} else if (outcome === 'hang') {
+  setTimeout(() => {}, 60_000);
+}
+`;
+
+function runVolumeRead({ plan, extraArgs = [] }) {
+  const directory = mkdtempSync(join(tmpdir(), 'umami-volume-read-'));
+  const fakeRailway = join(directory, 'railway');
+  writeFileSync(fakeRailway, FAKE_RAILWAY);
+  chmodSync(fakeRailway, 0o755);
+  const outputPath = join(directory, 'volumes.json');
+  const githubOutput = join(directory, 'github-output');
+  const log = join(directory, 'calls.log');
+  writeFileSync(githubOutput, '');
+  try {
+    const run = spawnSync(process.execPath, [
+      volumeReadScript,
+      '--output', outputPath,
+      '--retry-delay-ms', '0',
+      ...extraArgs,
+    ], {
+      encoding: 'utf8',
+      // The fake's `hang` outcome sleeps 60 s; a read that never kills it
+      // must fail here rather than stall the suite.
+      timeout: 15_000,
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        RAILWAY_PROJECT_ID: 'project-1',
+        GITHUB_OUTPUT: githubOutput,
+        FAKE_RAILWAY_LOG: log,
+        FAKE_RAILWAY_PLAN: plan,
+      },
+    });
+    const calls = existsSync(log)
+      ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+      : [];
+    return {
+      ...run,
+      calls,
+      githubOutput: readFileSync(githubOutput, 'utf8'),
+      output: existsSync(outputPath) ? JSON.parse(readFileSync(outputPath, 'utf8')) : null,
+    };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+describe('Railway volume read', () => {
+  it('writes the volume list and reports a successful read', () => {
+    const run = runVolumeRead({ plan: 'ok' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(run.calls, [
+      ['volume', '--project', 'project-1', '--environment', 'production', 'list', '--json'],
+    ]);
+    assert.deepEqual(run.output, [{ serviceName: 'Postgres Umami', currentSizeMB: 1 }]);
+    assert.equal(run.githubOutput, 'read=true\n');
+  });
+
+  // 2026-09-28: 7 of 35 runs died on one backboard timeout while the next
+  // Railway call, a second later, answered in 1-3 s.
+  it('retries a Railway API timeout', () => {
+    const run = runVolumeRead({ plan: 'timeout,ok' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.calls.length, 2);
+    assert.deepEqual(run.output, [{ serviceName: 'Postgres Umami', currentSizeMB: 1 }]);
+    assert.equal(run.githubOutput, 'read=true\n');
+  });
+
+  it('warns without failing when every attempt times out', () => {
+    const run = runVolumeRead({ plan: 'timeout,timeout,timeout' });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.calls.length, RAILWAY_VOLUME_READ_POLICY.attempts);
+    assert.match(run.stderr, /::warning::.*Railway API timed out/);
+    assert.equal(run.output, null, 'no partial volume list may reach the capacity check');
+    assert.equal(run.githubOutput, 'read=false\n');
+  });
+
+  it('kills an attempt that outlives its own deadline and retries it', () => {
+    const run = runVolumeRead({ plan: 'hang,ok', extraArgs: ['--attempt-timeout-ms', '2000'] });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.calls.length, 2);
+    assert.equal(run.githubOutput, 'read=true\n');
+  });
+
+  it('fails at once on an error a retry cannot fix', () => {
+    const run = runVolumeRead({ plan: 'unauthorized,ok' });
+    assert.equal(run.status, 1);
+    assert.equal(run.calls.length, 1, 'a bad token must not be retried');
+    assert.match(run.stderr, /Unauthorized/);
+    assert.equal(run.output, null);
+    assert.equal(run.githubOutput, '');
+  });
+
+  it('fits every attempt inside the job timeout, ahead of the retention steps', () => {
+    const { attempts, attemptTimeoutMs, retryDelayMs } = RAILWAY_VOLUME_READ_POLICY;
+    const readBudgetSeconds = (attempts * attemptTimeoutMs + (attempts - 1) * retryDelayMs) / 1000;
+    // Setup, checkout, the CLI install, and the history restore take ~25 s;
+    // the retention read and check take ~5 s. Leave them a minute.
+    assert.ok(
+      readBudgetSeconds + 60 <= workflow.jobs.monitor['timeout-minutes'] * 60,
+      `${readBudgetSeconds}s of Railway attempts leave the retention alarm too little of the job`,
+    );
+  });
+});
+
+describe('capacity sample freshness', () => {
+  const state = (hoursAgo, now = NOW) => ({
+    version: 1,
+    volumeIdentity: 'volume-1',
+    capacityMB: 50_000,
+    samples: [{ sampledAt: new Date(now - hoursAgo * 60 * 60 * 1000).toISOString(), currentSizeMB: 20_000 }],
+  });
+
+  it('accepts a sample inside the freshness window', () => {
+    assert.equal(evaluateSampleFreshness({ state: state(5), now: NOW }).status, 'fresh');
+  });
+
+  it('flags a sample older than the freshness window', () => {
+    const result = evaluateSampleFreshness({ state: state(7), now: NOW });
+    assert.equal(result.status, 'stale');
+    assert.equal(Math.round(result.ageHours), 7);
+  });
+
+  // The trend fit ignores samples past its 3-day window. Freshness must not:
+  // a monitor blind for 4 days would otherwise read as having no history and
+  // turn green again.
+  it('stays stale once the last sample is older than the trend window', () => {
+    assert.equal(evaluateSampleFreshness({ state: state(4 * 24), now: NOW }).status, 'stale');
+  });
+
+  it('treats a missing history as no history, not as stale', () => {
+    assert.equal(evaluateSampleFreshness({ state: { version: 1, samples: [] }, now: NOW }).status, 'no-history');
+    assert.equal(evaluateSampleFreshness({ state: undefined, now: NOW }).status, 'no-history');
+  });
+
+  function runFreshnessCli(stateValue) {
+    const directory = mkdtempSync(join(tmpdir(), 'umami-freshness-'));
+    const statePath = join(directory, 'state.json');
+    if (stateValue) writeFileSync(statePath, JSON.stringify(stateValue));
+    try {
+      return spawnSync(process.execPath, [storageCheckScript, '--state', statePath, '--freshness-only'], {
+        encoding: 'utf8',
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  it('fails the run once Railway has been unreadable past the window', () => {
+    const run = runFreshnessCli(state(7, Date.now()));
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /::error::.*no Umami capacity sample for 7\.0 hours/);
+  });
+
+  it('warns without failing while the last sample is fresh or history is gone', () => {
+    const fresh = runFreshnessCli(state(1, Date.now()));
+    assert.equal(fresh.status, 0, fresh.stderr);
+    assert.match(fresh.stderr, /::warning::/);
+    const missing = runFreshnessCli(null);
+    assert.equal(missing.status, 0, missing.stderr);
+    assert.match(missing.stderr, /::warning::/);
+  });
+});
+
+describe('storage monitor workflow', () => {
+  const steps = workflow.jobs.monitor.steps;
+  const readStep = steps.find((step) => /read-railway-volumes\.mjs/.test(step.run ?? ''));
+  const checkStep = steps.find((step) => /check-umami-storage\.mjs --input/.test(step.run ?? ''));
+  const freshnessStep = steps.find((step) => /check-umami-storage\.mjs .*--freshness-only/.test(step.run ?? ''));
+
+  // `railway status` loads the whole project graph: 41-49 s on a normal day
+  // and 55-90 s on 2026-09-28, against the CLI's ~90 s request timeout. It
+  // proved nothing the volume read does not prove itself.
+  it('makes no project-wide status call', () => {
+    for (const step of steps) assert.doesNotMatch(step.run ?? '', /railway status/);
+  });
+
+  it('runs the capacity check only on a read, and the freshness check only without one', () => {
+    assert.ok(readStep?.id, 'the read step needs an id for its output');
+    assert.equal(checkStep.if, `\${{ steps.${readStep.id}.outputs.read == 'true' }}`);
+    assert.equal(freshnessStep.if, `\${{ steps.${readStep.id}.outputs.read == 'false' }}`);
+    assert.ok(steps.indexOf(readStep) < steps.indexOf(checkStep));
+    assert.ok(steps.indexOf(readStep) < steps.indexOf(freshnessStep));
+  });
+
+  it('still refuses to run without Railway credentials', () => {
+    assert.match(readStep.run, /-z "\$RAILWAY_TOKEN"/);
+    assert.match(readStep.run, /-z "\$RAILWAY_PROJECT_ID"/);
+    assert.equal(readStep.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
   });
 });

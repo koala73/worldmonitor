@@ -470,7 +470,21 @@ starts a new trend.
 A warning emits a GitHub annotation but leaves the scheduled workflow green so
 the 15-minute probe does not send repeated failed-run alerts during a bounded
 retention drain. A critical condition fails the workflow. Input, Railway, or
-state-processing errors also fail closed.
+state-processing errors also fail closed, with one exception: a Railway API
+timeout.
+
+[`scripts/read-railway-volumes.mjs`](../scripts/read-railway-volumes.mjs) reads
+the volume list and retries a timeout. `railway volume list` is a project-wide
+query. On 2026-09-28 it took 44–70 s against the CLI's ~90 s request timeout, and
+7 of 35 runs failed on a single timed-out request. The workflow no longer runs
+`railway status` first, because that call took 41–90 s and checked nothing the
+volume read does not. A bad token or an unknown project still fails at once.
+
+When every attempt times out, the run warns and checks the stored samples
+instead. It stays green while the newest sample is at most 6 hours old, which
+is one Railway size refresh, and fails after that. A Railway latency spike
+therefore produces an annotation, and an outage that leaves the monitor blind
+fails the workflow.
 
 ## Retention runner alarm
 

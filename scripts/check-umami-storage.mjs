@@ -38,6 +38,10 @@ export const UMAMI_STORAGE_POLICY = Object.freeze({
   criticalUsageRatio: 0.9,
   warningHeadroomDays: 30,
   criticalHeadroomDays: 14,
+  // One Railway size refresh. When the volume read keeps timing out, the job
+  // stays green until the stored samples are this old, then fails: a Railway
+  // latency spike warns, an outage that blinds the monitor alarms.
+  maxSampleAgeHours: 6,
 });
 
 function finiteNonNegative(value) {
@@ -164,6 +168,22 @@ export function evaluateUmamiStorage({ volume, samples = [], now = Date.now() })
   };
 }
 
+export function evaluateSampleFreshness({ state, now = Date.now() }) {
+  const nowMs = timestampMs(now);
+  if (nowMs === null) throw new Error('Freshness evaluation time must be a valid timestamp');
+  // Not normalizeSamples: its trend-window cutoff would drop a days-old last
+  // sample and turn a long-blind monitor back into "no history".
+  const sampledAtMs = (Array.isArray(state?.samples) ? state.samples : [])
+    .map((sample) => timestampMs(sample?.sampledAt))
+    .filter((valueMs) => valueMs !== null && valueMs <= nowMs);
+  if (sampledAtMs.length === 0) return { status: 'no-history', ageHours: null };
+  const ageHours = (nowMs - Math.max(...sampledAtMs)) / HOUR_MS;
+  return {
+    status: ageHours > UMAMI_STORAGE_POLICY.maxSampleAgeHours ? 'stale' : 'fresh',
+    ageHours,
+  };
+}
+
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
@@ -193,6 +213,7 @@ export function parseArguments(argv) {
     options: {
       input: { type: 'string' },
       state: { type: 'string' },
+      'freshness-only': { type: 'boolean' },
     },
     allowPositionals: false,
     strict: true,
@@ -212,6 +233,23 @@ async function main() {
   const args = parseArguments(process.argv.slice(2));
   const inputPath = args.input || process.env.UMAMI_STORAGE_INPUT;
   const statePath = args.state || process.env.UMAMI_STORAGE_STATE || '.cache/umami-storage-state.json';
+  if (args['freshness-only']) {
+    const freshness = evaluateSampleFreshness({ state: existsSync(statePath) ? readJson(statePath) : undefined });
+    if (freshness.status === 'stale') {
+      console.error(
+        `::error::Railway volume reads keep failing: no Umami capacity sample for ${freshness.ageHours.toFixed(1)} hours `
+          + `(limit ${UMAMI_STORAGE_POLICY.maxSampleAgeHours}).`,
+      );
+      process.exitCode = 1;
+    } else if (freshness.status === 'fresh') {
+      console.error(
+        `::warning::Umami capacity was not re-measured; the last sample is ${freshness.ageHours.toFixed(1)} hours old.`,
+      );
+    } else {
+      console.error('::warning::Umami capacity was not re-measured and no stored sample exists.');
+    }
+    return;
+  }
   if (!inputPath) throw new Error('Provide Railway volume JSON with --input <path> or UMAMI_STORAGE_INPUT');
 
   const payload = readJson(inputPath);
