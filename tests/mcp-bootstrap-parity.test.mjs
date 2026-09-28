@@ -245,6 +245,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: meta-only health probe for the sharded Riksbank fixing history. GetGovernmentYieldCurve serves the market; the history is too large for the composite economic cache tool (#8522).'],
   ['seed-meta:economic:oecd-lt-rates',
     'operational: meta-only health probe for the OECD monthly 10Y fallback. GetGovernmentYieldCurve serves the uncovered markets through it; the multi-market history is too large for the composite economic cache tool (#8522).'],
+  ['seed-meta:intelligence:pizzint:history:v1',
+    'operational: meta-only health heartbeat for the PizzINT retained archive (#8679). Daily per-provider buckets rotate by UTC date so they cannot sit in the static registry; this stable seed-meta key is what /api/health watches. Archive rows are not a queryable MCP slice — intelligence:pizzint:seed:v1 remains deferred to a future expanded intelligence tool.'],
   ['research:arxiv:v1:cs.AI::50',
     'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
 

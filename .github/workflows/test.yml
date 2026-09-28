@@ -422,6 +422,15 @@ jobs:
           path: ${{ runner.temp }}/openapi-capacity.json
           if-no-files-found: warn
           retention-days: 14
+      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
+      # archive's Lua runs against a real server: the relay harness stubs the
+      # EVAL and the proxy command-gate test only matches the script TEXT. That
+      # suite self-skips when the binaries are absent, so without this step the
+      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
+      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
+      # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
+      - name: Install Redis for the archive Lua suite
+        run: sudo apt-get install -y --no-install-recommends redis-server redis-tools
       - name: Build /pro artifacts for built-output tests
         # public/pro/ stopped being committed in #6898, so the suites that read
         # it need the same treatment dist/ already gets. Ordered before the
@@ -441,15 +450,6 @@ jobs:
           npm run bundle:check
           npm run bundle:check:pro
           npm run bundle:check:embed
-      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
-      # archive's Lua runs against a real server: the relay harness stubs the
-      # EVAL and the proxy command-gate test only matches the script TEXT. That
-      # suite self-skips when the binaries are absent, so without this step the
-      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
-      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
-      # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
-      - name: Install Redis for the archive Lua suite
-        run: sudo apt-get install -y --no-install-recommends redis-server redis-tools
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --shard=${{ matrix.shard }}/3 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
