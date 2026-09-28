@@ -274,6 +274,44 @@ export function readTimeAgeCutoffMs(windowStartMs) {
 }
 
 /**
+ * Absolute importance-score floor applied to the digest AFTER dedup.
+ * Mirrors the realtime notification-relay gate (IMPORTANCE_SCORE_MIN)
+ * but lives on the brief/digest side so operators can tune them
+ * independently — e.g. let realtime page at score>=63 while the brief
+ * digest drops anything <50. Default 0 = no filtering. Setting the var
+ * to any positive integer drops every cluster whose representative
+ * currentScore is below it.
+ *
+ * Read on every call, not at module load, so a Railway env flip takes
+ * effect on the next cron tick without a redeploy. A NaN or negative
+ * value degrades to 0 ("no floor") rather than failing the cron.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {number}
+ */
+export function getDigestScoreMin(env = process.env) {
+  const raw = Number.parseInt(env.DIGEST_SCORE_MIN ?? '0', 10);
+  return Number.isInteger(raw) && raw >= 0 ? raw : 0;
+}
+
+/**
+ * Drop deduped cluster representatives whose currentScore is below
+ * `scoreFloor`. The rep is the highest-scoring member of its cluster,
+ * so only clusters whose best member is below the floor are dropped.
+ * A floor of 0 returns the input array unchanged.
+ *
+ * @template {{ currentScore?: unknown }} T
+ * @param {T[]} reps
+ * @param {number} scoreFloor
+ * @returns {T[]}
+ */
+export function applyDigestScoreFloor(reps, scoreFloor) {
+  return scoreFloor > 0
+    ? reps.filter((s) => Number(s.currentScore ?? 0) >= scoreFloor)
+    : reps;
+}
+
+/**
  * Sprint 1 / U2 — option (a) canonical-send mapping.
  *
  * Given the per-user winner record from the compose phase
