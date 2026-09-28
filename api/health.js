@@ -2345,6 +2345,11 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastBets', // #5233 shadow bet-engine stream; absent before the cron ships it and empty on weeks the energy feed yields no bet — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). A COLLAPSED funnel still surfaces via seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this branch.
   'viarailLive', // unofficial optional VIA Rail live JSON (#6615); unconfigured / 404 is STALE_SEED then NOT_CONFIGURED, never EMPTY/crit
+  // Venues closed or not yet reporting: the relay advances seed-meta only when
+  // BestTime answers every venue cleanly with no live reading, for up to 24h
+  // after the last live one. Provider errors, a dead loop, or a longer silence
+  // stop the heartbeat, so an absent payload then reads STALE_SEED.
+  'pizzint',
   // Compact projections stay STALE_SEED before their first producer tick or
   // after metadata turns stale. Fresh metadata plus a missing payload is
   // deliberately strict: MISSING_DATA_IS_FAILURE_KEYS reports EMPTY (crit).

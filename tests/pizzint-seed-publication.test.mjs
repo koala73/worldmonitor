@@ -525,7 +525,7 @@ test('all missing live signals preserve the previous payload and expiry', async 
   const previous = structuredClone(run.state.cache);
   run.state.besttime.set(run.ids[0], liveReading(0, 40));
   await advance(run);
-  assert.deepEqual(run.state.cache, previous);
+  assert.deepEqual(run.state.cache, previous, 'a suspected dead sensor is no data, not quiet');
 });
 
 for (const currentPopularity of [0, undefined]) {
@@ -684,12 +684,12 @@ test('BestTime mixed poll counts reset without changing partial publication or h
   assert.equal(state.historyCalls.at(-1).locations.length, 2);
   state.besttime.clear();
   state.warnings.length = 0;
-  const previous = structuredClone(state.cache);
+  const previous = structuredClone(state.cache.get(payloadKey));
   await seed();
   assert.deepEqual(state.warnings.at(-1), [
     '[PizzINT] BestTime fallback: no live readings (0/4 venues); accepted=0 unavailable=4 invalid=0 http=0 transport=0 json=0; preserving last good observation',
   ]);
-  assert.deepEqual(state.cache, previous);
+  assert.deepEqual(state.cache.get(payloadKey), previous);
 });
 
 for (const cancelFails of [false, true]) {
@@ -745,3 +745,90 @@ for (const kind of ['abort', 'read', 'malformed']) {
     assert.doesNotMatch(JSON.stringify(state.warnings), /secret\.invalid|pri_test_secret_value/);
   });
 }
+
+// Quiet hours: the provider answers every venue cleanly but has no live reading
+// (venues closed or not yet reporting). That is a normal state, not an outage.
+function classifyPizzint(state) {
+  const payload = state.cache.get(payloadKey);
+  const meta = state.cache.get(metaKey);
+  return health.classifyKey('pizzint', payloadKey, { allowOnDemand: false }, {
+    keyStrens: new Map([[payloadKey, payload && state.now < payload.expiresAt ? 100 : 0]]),
+    keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, meta ? JSON.stringify(meta.data) : null]]),
+    now: state.now,
+  });
+}
+
+async function quietAfterLive() {
+  const run = await besttimeHarness([[40, 40]]);
+  await run.seed();
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now, 'a live publish records lastLiveAt');
+  run.state.besttime.clear();
+  return run;
+}
+
+test('quiet hours keep health OK after the live payload expires', async () => {
+  const run = await quietAfterLive();
+  const payload = structuredClone(run.state.cache.get(payloadKey));
+  await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.recordCount, 0);
+  assert.equal(classifyPizzint(run.state).status, 'OK', 'a zero-record heartbeat beside the unexpired payload is OK');
+  for (let tick = 0; tick < 7; tick++) await advance(run);
+  assert.equal(run.state.now >= payload.expiresAt, true, 'the live payload expired');
+  const meta = run.state.cache.get(metaKey).data;
+  assert.equal(meta.fetchedAt, run.state.now, 'every clean quiet poll advances the heartbeat');
+  assert.equal(meta.recordCount, 0);
+  assert.equal(meta.lastLiveAt, payload.data.data.pizzint.updatedAt, 'lastLiveAt is carried, not refreshed');
+  assert.equal(classifyPizzint(run.state).status, 'OK');
+});
+
+test('quiet hours stop counting as healthy 24 hours after the last live reading', async () => {
+  const run = await quietAfterLive();
+  const lastLiveAt = run.state.now;
+  while (run.state.now - lastLiveAt < 24 * 60 * 60_000) await advance(run);
+  const frozen = run.state.cache.get(metaKey).data.fetchedAt;
+  assert.ok(frozen <= lastLiveAt + 24 * 60 * 60_000);
+  for (let tick = 0; tick < 4; tick++) await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, frozen, 'the heartbeat stops advancing');
+  const status = classifyPizzint(run.state);
+  assert.equal(status.status, 'STALE_SEED');
+  assert.equal(health.STATUS_COUNTS[status.status], 'warn');
+});
+
+for (const [label, failure] of [
+  ['rejected key or exhausted plan', { ok: false, status: 409 }],
+  ['transport failure', new Error('socket hang up')],
+  ['schema drift', { ok: true, json: async () => ({ analysis: { venue_live_busyness_available: true } }) }],
+]) {
+  test(`a provider ${label} does not advance the heartbeat and surfaces as STALE_SEED`, async () => {
+    const run = await quietAfterLive();
+    const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+    for (const id of run.ids) run.state.besttime.set(id, failure);
+    for (let tick = 0; tick < 4; tick++) await advance(run);
+    assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat);
+    assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
+  });
+}
+
+test('one failing venue among quiet venues does not advance the heartbeat', async () => {
+  const run = await quietAfterLive();
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+  run.state.besttime.set(run.ids[0], { ok: false, status: 429 });
+  await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat);
+});
+
+test('a source that has never produced a live reading does not advance the heartbeat', async () => {
+  const run = await besttimeHarness([]);
+  for (let tick = 0; tick < 3; tick++) await advance(run);
+  assert.equal(run.state.cache.has(metaKey), false);
+});
+
+test('heartbeat metadata written before lastLiveAt existed dates the last live reading from fetchedAt', async () => {
+  const run = await besttimeHarness([]);
+  const legacyFetchedAt = run.state.now - 60 * 60_000;
+  run.state.cache.set(metaKey, { data: { fetchedAt: legacyFetchedAt, recordCount: 1 }, expiresAt: run.state.now + 604_800_000 });
+  await advance(run);
+  assert.deepEqual(run.state.cache.get(metaKey).data, { fetchedAt: run.state.now, recordCount: 0, lastLiveAt: legacyFetchedAt });
+  assert.equal(classifyPizzint(run.state).status, 'OK');
+});

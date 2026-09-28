@@ -8072,6 +8072,11 @@ function startChokepointFlowsSeedLoop() {
 // 15 min is the BestTime paid-plan budget: 4 venues × 96 polls/day.
 const PIZZINT_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const PIZZINT_SEED_TTL = 2700; // 45 min (3× interval)
+const PIZZINT_SEED_META_KEY = 'seed-meta:intelligence:pizzint';
+// Venues that answer cleanly without a live reading (closed, or not reporting
+// yet) keep the heartbeat fresh, but only this long after the last live
+// reading, so a venue that never comes back still surfaces as stale.
+const PIZZINT_QUIET_MAX_MS = 24 * 60 * 60 * 1000;
 const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
 // Fallback feed while PizzINT itself is down: BestTime live busyness for the
@@ -8199,12 +8204,28 @@ async function fetchPizzintBestTimeLocations(apiKey) {
     }
   }
   const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
+  // Every venue answered cleanly; with no accepted reading, all reported unavailable.
+  const answered = counts.accepted + counts.unavailable === PIZZINT_BESTTIME_VENUES.length;
   if (locations.length === 0) {
     console.warn(`[PizzINT] BestTime fallback: no live readings (0/${PIZZINT_BESTTIME_VENUES.length} venues); ${summary}; preserving last good observation`);
-    return historyLocations.length ? { locations, historyLocations } : null;
+    return historyLocations.length ? { locations, historyLocations, answered } : null;
   }
   console.log(`[PizzINT] BestTime fallback: ${locations.length}/${PIZZINT_BESTTIME_VENUES.length} venues live; ${summary}`);
-  return { locations, historyLocations };
+  return { locations, historyLocations, answered };
+}
+
+// A clean poll with no live reading is quiet hours, not an outage: advance the
+// heartbeat without touching the live payload. api/health.js lists pizzint in
+// EMPTY_DATA_OK_KEYS, so the expired payload then reads OK while this runs, and
+// STALE_SEED once it stops (provider errors, a dead loop, or 24h without a live
+// reading).
+async function recordPizzintQuietPoll() {
+  const meta = await upstashGet(PIZZINT_SEED_META_KEY);
+  // Metadata written before lastLiveAt existed: its fetchedAt was a live publish.
+  const lastLiveAt = Number(meta?.lastLiveAt) || (meta?.recordCount > 0 ? Number(meta.fetchedAt) || 0 : 0);
+  const now = Date.now();
+  if (!lastLiveAt || now - lastLiveAt > PIZZINT_QUIET_MAX_MS) return;
+  await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: now, recordCount: 0, lastLiveAt }, 604800);
 }
 
 async function seedPizzint() {
@@ -8276,7 +8297,11 @@ async function seedPizzint() {
         : e?.message === 'history_write_failed' ? 'write_rejected' : 'unknown';
       console.warn('[PizzINT] History archive failed:', category);
     });
-    if (locations.length === 0) return;
+    if (locations.length === 0) {
+      // BestTime reported every venue as having no live data right now.
+      if (fallback?.answered) await recordPizzintQuietPoll();
+      return;
+    }
     if (locations.every(l => l.noLiveSignal)) {
       console.warn('[PizzINT] No live signals; preserving last good observation');
       return;
@@ -8310,7 +8335,7 @@ async function seedPizzint() {
 
     const payload = { pizzint, tensionPairs: [] };
     const ok1 = await envelopeWrite(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL, { recordCount: locations.length, sourceVersion: fallback ? 'besttime-live' : 'pizzint' });
-    const ok2 = ok1 && await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
+    const ok2 = ok1 && await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: locations.length, lastLiveAt: Date.now() }, 604800);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PizzINT] Seed error:', e?.message || e);
