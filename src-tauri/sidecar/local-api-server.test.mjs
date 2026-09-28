@@ -271,6 +271,10 @@ test('youtube embed bridge plays a channel live embed and rejects ambiguous or m
     assert.equal(video.playerOptions.playerVars.controls, 1);
     const chromeless = executeYoutubeEmbedHtml(await (await embed('videoId=zp6LNSoq000&controls=0')).text());
     assert.equal(chromeless.playerOptions.playerVars.controls, 0);
+    // Muted by default so autoplay is allowed; an unmuted session must get sound, not a hardcoded mute.
+    assert.equal(video.playerOptions.playerVars.mute, 1);
+    const unmuted = executeYoutubeEmbedHtml(await (await embed('videoId=zp6LNSoq000&mute=0')).text());
+    assert.equal(unmuted.playerOptions.playerVars.mute, 0);
 
     for (const query of [
       'videoId=zp6LNSoq000&channel=UCNye-wNBqNL5ZzHSJj3l8Bg',

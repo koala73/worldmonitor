@@ -366,9 +366,13 @@ describe('Live News live verification', () => {
     await flush(POLL);
     expect(channelButton('cnn').classList.contains('offline')).toBe(true);
 
-    // Stop ownership so the next switch is preview-only (no playback intent).
+    // Stop ownership so the next switch is preview-only (no playback intent). The offline card still
+    // owns the media slot, so the first toggle resumes playback and the second one stops it.
     headerButton('Toggle playback').click();
     await flush();
+    headerButton('Toggle playback').click();
+    await flush();
+    expect(showsPlayIcon()).toBe(true);
 
     const bloomberg = internals().channels.find((channel) => channel.id === 'bloomberg');
     if (!bloomberg) throw new Error('bloomberg channel missing');
@@ -377,6 +381,8 @@ describe('Live News live verification', () => {
 
     expect(channelButton('bloomberg').classList.contains('active')).toBe(true);
     expect(channelButton('cnn').classList.contains('offline')).toBe(true);
+    // A preview-only switch starts no media.
+    expect(content().querySelectorAll('iframe, video.live-news-media')).toHaveLength(0);
   });
 
   it('keeps connecting and offline marks when the switcher is rebuilt from storage', async () => {

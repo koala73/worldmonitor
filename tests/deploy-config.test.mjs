@@ -2618,6 +2618,21 @@ describe('security header guardrails', () => {
     assert.ok(headerMediaSrc.split(/\s+/).includes('https:'), 'header media-src must keep https: for live media and CSP filtering');
   });
 
+  it('desktop (Tauri) CSP lets the sidecar YouTube embed frame and HLS media load', () => {
+    // Desktop Live News plays YouTube through the sidecar's /api/youtube-embed page on
+    // 127.0.0.1/localhost, and HLS streams directly from https CDNs.
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const tauriCsp = tauriConfig.app.security.csp;
+    const sidecarOrigins = ['http://127.0.0.1:*', 'http://localhost:*'];
+    const frameSrc = getCspDirectiveTokens(tauriCsp, 'frame-src');
+    const mediaSrc = getCspDirectiveTokens(tauriCsp, 'media-src');
+    for (const origin of sidecarOrigins) {
+      assert.ok(frameSrc.includes(origin), `Tauri CSP frame-src must allow ${origin} for the sidecar embed iframe`);
+      assert.ok(mediaSrc.includes(origin), `Tauri CSP media-src must allow ${origin} for sidecar media`);
+    }
+    assert.ok(mediaSrc.includes('https:'), 'Tauri CSP media-src must allow https: for direct HLS CDN streams');
+  });
+
   it('CSP connect-src does not contain localhost in production', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
