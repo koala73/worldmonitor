@@ -660,3 +660,57 @@ test('BestTime mixed poll counts reset without changing partial publication or h
   ]);
   assert.deepEqual(state.cache, previous);
 });
+
+for (const cancelFails of [false, true]) {
+  test(`HTTP error bodies are canceled without reading, including cancellation failure=${cancelFails}`, async () => {
+    const { state, seed } = harness();
+    state.source = emptyResponse;
+    state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+    await seed();
+    const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+    let cancellations = 0;
+    for (const id of ids) state.besttime.set(id, new Response(new ReadableStream({
+      cancel() {
+        cancellations++;
+        if (cancelFails) throw new Error(`https://secret.invalid/?token=${BESTTIME_KEY}`);
+      },
+    }), { status: 503 }));
+    state.warnings.length = 0;
+    const previous = structuredClone(state.cache);
+    await seed();
+    assert.equal(cancellations, ids.length);
+    assert.deepEqual(state.warnings.at(-1), [
+      `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length} transport=0 json=0; preserving last good observation`,
+    ]);
+    assert.deepEqual(state.cache, previous);
+    assert.doesNotMatch(JSON.stringify(state.warnings), /secret\.invalid|pri_test_secret_value/);
+  });
+}
+
+for (const kind of ['abort', 'read', 'malformed']) {
+  test(`response body ${kind} is classified without exposing body or exception text`, async () => {
+    const { state, seed } = harness();
+    state.source = emptyResponse;
+    state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+    await seed();
+    const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+    for (const id of ids) {
+      const secret = `https://secret.invalid/?token=${BESTTIME_KEY}`;
+      const response = kind === 'malformed' ? new Response(`{${secret}`) : new Response(new ReadableStream({
+        pull(controller) {
+          queueMicrotask(() => controller.error(kind === 'abort'
+            ? new DOMException(secret, 'AbortError') : new TypeError(secret)));
+        },
+      }));
+      state.besttime.set(id, response);
+    }
+    state.warnings.length = 0;
+    const previous = structuredClone(state.cache);
+    await seed();
+    assert.deepEqual(state.warnings.at(-1), [
+      `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=0 transport=${kind === 'malformed' ? 0 : ids.length} json=${kind === 'malformed' ? ids.length : 0}; preserving last good observation`,
+    ]);
+    assert.deepEqual(state.cache, previous);
+    assert.doesNotMatch(JSON.stringify(state.warnings), /secret\.invalid|pri_test_secret_value/);
+  });
+}

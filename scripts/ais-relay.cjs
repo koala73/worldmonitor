@@ -8162,13 +8162,15 @@ async function fetchPizzintBestTimeLocations(apiKey) {
       });
       if (!resp.ok) {
         counts.http++;
+        try { await resp.body?.cancel(); } catch { /* Keep the HTTP outcome if cleanup fails. */ }
         continue;
       }
       let reply;
       try {
         reply = await resp.json();
-      } catch {
-        counts.json++;
+      } catch (error) {
+        if (error?.name === 'SyntaxError') counts.json++;
+        else counts.transport++;
         continue;
       }
       const location = pizzintLocationFromBestTime(venue, reply);
