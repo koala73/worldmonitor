@@ -8214,17 +8214,21 @@ async function fetchPizzintBestTimeLocations(apiKey) {
   return { locations, historyLocations, answered };
 }
 
+function pizzintLastLiveAt(meta) {
+  if (meta && 'lastLiveAt' in meta) return Number(meta.lastLiveAt) || 0;
+  // Metadata written before lastLiveAt existed: its fetchedAt was a live publish.
+  return meta?.recordCount > 0 ? Number(meta.fetchedAt) || 0 : 0;
+}
+
 // A clean poll with no live reading is quiet hours, not an outage: advance the
 // heartbeat without touching the live payload. api/health.js lists pizzint in
 // EMPTY_DATA_OK_KEYS, so the expired payload then reads OK while this runs, and
 // STALE_SEED once it stops (provider errors, a dead loop, or 24h without a live
 // reading).
 async function recordPizzintQuietPoll() {
-  const meta = await upstashGet(PIZZINT_SEED_META_KEY);
-  // Metadata written before lastLiveAt existed: its fetchedAt was a live publish.
-  const lastLiveAt = Number(meta?.lastLiveAt) || (meta?.recordCount > 0 ? Number(meta.fetchedAt) || 0 : 0);
+  const lastLiveAt = pizzintLastLiveAt(await upstashGet(PIZZINT_SEED_META_KEY));
   const now = Date.now();
-  if (!lastLiveAt || now - lastLiveAt > PIZZINT_QUIET_MAX_MS) return;
+  if (!lastLiveAt || now - lastLiveAt >= PIZZINT_QUIET_MAX_MS) return;
   await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: now, recordCount: 0, lastLiveAt }, 604800);
 }
 
@@ -8335,7 +8339,9 @@ async function seedPizzint() {
 
     const payload = { pizzint, tensionPairs: [] };
     const ok1 = await envelopeWrite(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL, { recordCount: locations.length, sourceVersion: fallback ? 'besttime-live' : 'pizzint' });
-    const ok2 = ok1 && await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: locations.length, lastLiveAt: Date.now() }, 604800);
+    // A stale-only publication carries lastLiveAt forward; it is not a live reading.
+    const lastLiveAt = hasFresh ? Date.now() : pizzintLastLiveAt(await upstashGet(PIZZINT_SEED_META_KEY));
+    const ok2 = ok1 && await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: locations.length, lastLiveAt }, 604800);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PizzINT] Seed error:', e?.message || e);

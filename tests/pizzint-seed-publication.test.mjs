@@ -832,3 +832,37 @@ test('heartbeat metadata written before lastLiveAt existed dates the last live r
   assert.deepEqual(run.state.cache.get(metaKey).data, { fetchedAt: run.state.now, recordCount: 0, lastLiveAt: legacyFetchedAt });
   assert.equal(classifyPizzint(run.state).status, 'OK');
 });
+
+test('the quiet heartbeat stops at exactly 24 hours after the last live reading', async () => {
+  const run = await besttimeHarness([]);
+  run.state.cache.set(metaKey, {
+    data: { fetchedAt: run.state.now, recordCount: 0, lastLiveAt: run.state.now + 15 * 60_000 - 24 * 60 * 60_000 },
+    expiresAt: run.state.now + 604_800_000,
+  });
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+  await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat);
+});
+
+test('a stale-only publication does not renew the quiet allowance', async () => {
+  const run = harness();
+  const staleOnly = { success: true, data: [{ ...validResponse.data[0], data_freshness: 'stale' }] };
+  const lastLiveAt = run.state.now - 60 * 60_000;
+  run.state.cache.set(metaKey, { data: { fetchedAt: lastLiveAt, recordCount: 1, lastLiveAt }, expiresAt: run.state.now + 604_800_000 });
+  run.state.source = staleOnly;
+  await run.seed();
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now, 'the stale publication still refreshes the heartbeat');
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, lastLiveAt, 'lastLiveAt is carried, not renewed');
+});
+
+test('a stale-only publication with no live history leaves no quiet allowance', async () => {
+  const run = harness();
+  run.state.source = { success: true, data: [{ ...validResponse.data[0], data_freshness: 'stale' }] };
+  await run.seed();
+  assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, 0);
+  run.state.source = emptyResponse;
+  run.state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+  await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'recordCount > 0 must not resurrect the legacy fallback');
+});
