@@ -8255,8 +8255,18 @@ async function seedPizzint() {
       provider: fallback ? 'besttime' : 'pizzint',
       locations: fallback?.historyLocations || locations,
       capturedAt: new Date(Date.now()).toISOString(),
-    }, upstashEval).catch(() => {
-      console.warn('[PizzINT] History archive failed');
+    }, upstashEval).catch((e) => {
+      // A FIXED vocabulary, never the raw message: upstream error text can carry
+      // the request URL and its embedded credential, which is why the publication
+      // suite throws 'secret archive failure' and asserts it never reaches a log.
+      // The category still tells an operator whether the next poll can recover --
+      // bounds and validation repeat forever (a 25th upstream venue tripping
+      // MAX_LOCATIONS, say), write_rejected may be a one-off. Compared by name
+      // rather than instanceof so it survives a cross-realm error.
+      const category = e?.name === 'RangeError' ? 'bounds'
+        : e?.name === 'TypeError' ? 'validation'
+        : e?.message === 'history_write_failed' ? 'write_rejected' : 'unknown';
+      console.warn('[PizzINT] History archive failed:', category);
     });
     if (locations.length === 0) return;
     if (locations.every(l => l.noLiveSignal)) {

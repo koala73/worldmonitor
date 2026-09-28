@@ -8,6 +8,23 @@ const MAX_PLACE_ID_BYTES = 200;
 const MAX_RECORD_BYTES = 1024;
 const MAX_FIELDS = 4000;
 const RETENTION_DAYS = 90;
+// A seed-meta key must survive its data key's disappearance so health reports
+// STALE_SEED (present-but-stale) rather than losing the heartbeat at the same
+// moment as the payload -- see SEED_META_MIN_TTL_SECONDS in scripts/_seed-utils.mjs.
+// The archive's buckets rotate daily, so the meta carries this much extra life.
+const META_GRACE_DAYS = 7;
+// A single provider-agnostic heartbeat, advanced by every successful archive
+// write whichever provider produced it. The per-bucket seed-meta keys rotate
+// daily and split by provider, so neither can be registered in api/health.js's
+// static SEED_META registry without false-alarming at UTC midnight or whenever
+// the BestTime fallback takes over. This key is stable, so it can.
+const HEARTBEAT_KEY = `seed-meta:${PREFIX}`;
+const HEARTBEAT_TTL_SECONDS = 86400 * META_GRACE_DAYS;
+// Durable proof the archive has published at least once. api/health.js softens the
+// heartbeat's EMPTY window until this exists, so the grace expires on real
+// evidence instead of lasting forever. Written with no TTL, per the marker
+// convention in scripts/seed-physical-premiums.mjs.
+const ACTIVATION_KEY = 'seed-activated:intelligence:pizzint-history';
 // PizzINT publishes its own recorded_at; a source time outside this window of
 // the capture is a clock error, not an observation. Shared by the writer's
 // quality decision and the reader's inclusion filter so the two cannot drift.
@@ -21,7 +38,7 @@ const SUSPECT_ZERO_MIN_BASELINE = 20;
 const WRITE_LUA = `
 local missing = 0
 local seen = {}
-for i = 1, #ARGV - 2, 3 do
+for i = 1, #ARGV - 3, 3 do
   if not seen[ARGV[i]] and redis.call('HEXISTS', KEYS[1], ARGV[i]) == 0 then missing = missing + 1 end
   seen[ARGV[i]] = true
 end
@@ -31,7 +48,7 @@ end
 local inserted = 0
 local replaced = 0
 local skipped = 0
-for i = 1, #ARGV - 2, 3 do
+for i = 1, #ARGV - 3, 3 do
   local field = ARGV[i]
   local captured = tonumber(ARGV[i + 1])
   local value = ARGV[i + 2]
@@ -50,17 +67,27 @@ for i = 1, #ARGV - 2, 3 do
     inserted = inserted + 1
   end
 end
-redis.call('EXPIREAT', KEYS[1], tonumber(ARGV[#ARGV - 1]))
+redis.call('EXPIREAT', KEYS[1], tonumber(ARGV[#ARGV - 2]))
 local latest = 0
-for i = 1, #ARGV - 2, 3 do latest = math.max(latest, tonumber(ARGV[i + 1])) end
+for i = 1, #ARGV - 3, 3 do latest = math.max(latest, tonumber(ARGV[i + 1])) end
 local metaRaw = redis.call('GET', KEYS[2])
 if metaRaw then
   local ok, meta = pcall(cjson.decode, metaRaw)
   if ok and type(meta) == 'table' then latest = math.max(latest, tonumber(meta.fetchedAt) or 0) end
 end
-redis.call('SET', KEYS[2], cjson.encode({ fetchedAt = latest, recordCount = redis.call('HLEN', KEYS[1]) }))
+local fields = redis.call('HLEN', KEYS[1])
+redis.call('SET', KEYS[2], cjson.encode({ fetchedAt = latest, recordCount = fields }))
 redis.call('EXPIREAT', KEYS[2], tonumber(ARGV[#ARGV - 1]))
-return {inserted, replaced, skipped, redis.call('HLEN', KEYS[1])}
+local beat = latest
+local beatRaw = redis.call('GET', KEYS[3])
+if beatRaw then
+  local okBeat, prior = pcall(cjson.decode, beatRaw)
+  if okBeat and type(prior) == 'table' then beat = math.max(beat, tonumber(prior.fetchedAt) or 0) end
+end
+redis.call('SET', KEYS[3], cjson.encode({ fetchedAt = beat, recordCount = fields }))
+redis.call('EXPIRE', KEYS[3], 604800)
+if fields > 0 then redis.call('SET', KEYS[4], '1') end
+return {inserted, replaced, skipped, fields}
 `;
 
 function isoMillis(value, name) {
@@ -166,7 +193,11 @@ function buildPizzintHistoryWrite({ provider, locations, capturedAt }) {
   });
   const bucketEndMs = Date.parse(`${day}T00:00:00.000Z`) + 86400000;
   const key = `${PREFIX}:${provider}:${day}`;
-  return { keys: [key, `seed-meta:${key}`], records, expireAt: Math.floor((bucketEndMs + RETENTION_DAYS * 86400000) / 1000) };
+  const expireAt = Math.floor((bucketEndMs + RETENTION_DAYS * 86400000) / 1000);
+  return {
+    keys: [key, `seed-meta:${key}`, HEARTBEAT_KEY, ACTIVATION_KEY], records, expireAt,
+    metaExpireAt: expireAt + META_GRACE_DAYS * 86400,
+  };
 }
 
 async function recordPizzintHistory(input, evalCommand) {
@@ -174,7 +205,7 @@ async function recordPizzintHistory(input, evalCommand) {
   const write = buildPizzintHistoryWrite(input);
   if (write.records.length === 0) return { ok: true, inserted: 0, replaced: 0, skipped: 0, fields: 0 };
   const args = write.records.flatMap(({ field, capturedMs, value }) => [field, capturedMs, value]);
-  args.push(write.expireAt, MAX_FIELDS);
+  args.push(write.expireAt, write.metaExpireAt, MAX_FIELDS);
   const result = await evalCommand(WRITE_LUA, write.keys, args);
   if (!Array.isArray(result) || result.length !== 4 || result.some((n) => !Number.isInteger(Number(n)))) throw new Error('history_write_failed');
   return { ok: true, inserted: Number(result[0]), replaced: Number(result[1]), skipped: Number(result[2]), fields: Number(result[3]) };
@@ -293,6 +324,7 @@ function evaluatePizzintHistory(records, { asOf = new Date().toISOString(), days
 
 module.exports = {
   PREFIX, PROVIDERS: [...PROVIDERS], RETENTION_DAYS, WRITE_LUA,
-  SUSPECT_ZERO_MIN_BASELINE,
+  SUSPECT_ZERO_MIN_BASELINE, META_GRACE_DAYS, HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS, ACTIVATION_KEY,
+  MAX_FIELDS, MAX_RECORD_BYTES,
   buildPizzintHistoryWrite, decodePizzintHistoryRecord, recordPizzintHistory, evaluatePizzintHistory,
 };

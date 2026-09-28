@@ -6,6 +6,8 @@ The relay stores normalized venue observations separately from the 30-minute liv
 
 The archive stores the provider, the venue ID, capture time, source time, live value, provider forecast, quality, and clock basis. It does not store names, addresses, or provider responses. Quality describes what the provider returned, never what the relay inferred about it: a reading is `missing` only when no usable number arrived, so the scorer's live-index judgements cannot remove observations from the archive. PizzINT cohorts use `recorded_at`. BestTime has no source time, so its cohorts use collection time.
 
+Add `--include-suspect-zeros` to either invocation to fold withheld zero readings back into the baseline.
+
 Run the report against a fixture:
 
 ```sh
@@ -26,7 +28,7 @@ For duplicate PizzINT source times, the report uses the earliest retained captur
 
 Daily hashes were selected over per-venue sorted sets so the reader can discover every retained venue from a bounded date range without a second registry. Each date receives equal weight even if its polling coverage differs. The six-date threshold is a minimum coverage rule, not a statistical confidence guarantee. BestTime collection times cannot establish when its provider sample changed.
 
-The relay starts the archive write alongside live publication and waits for it before allowing the next poll. Archive failures produce `[PizzINT] History archive failed` and do not prevent live publication. Empty responses and rejected requests do not invent observations. Whole Redis buckets expire at the bucket end plus 90 days; the report enforces the exact 90-day window.
+The relay starts the archive write alongside live publication and waits for it before allowing the next poll. Archive failures do not prevent live publication. Empty responses and rejected requests do not invent observations. Whole Redis buckets expire at the bucket end plus 90 days; the report enforces the exact 90-day window.
 
 After deployment, the operator should check natural polls for archive failures and run the read-only report. Counts should increase while valid cohorts remain `insufficient_history` until six matching dates exist. Confirm live seed timestamps and expiry still advance normally. If archive failures persist or relay latency regresses, revert the archive integration; existing history expires automatically. No history is backfilled and no public scoring change is activated by this report.
 
@@ -58,4 +60,8 @@ An expanded fixture record has this shape (a true live zero is valid). `suspectZ
 
 Writer: `seedPizzint` in `scripts/ais-relay.cjs`. Reader: `scripts/evaluate-pizzint-history.mjs`. Both use the `intelligence:pizzint:history:v1:<provider>:YYYY-MM-DD` namespace through the shared history module. No public health probe or browser consumes these keys.
 
-Each bucket has a `seed-meta:<bucket-key>` entry written by the same Lua operation with the latest capture time and hash record count. It has the same fixed expiry. Retries cannot regress the metadata clock, and a capacity refusal leaves both keys unchanged. The operator can inspect these entries independently of live-seed freshness.
+Each bucket has a `seed-meta:<bucket-key>` entry written by the same Lua operation with the latest capture time and hash record count. It outlives its bucket by seven days so health reports a stale heartbeat rather than losing the heartbeat and the payload in the same instant.
+
+The same operation advances one provider-agnostic heartbeat at `seed-meta:intelligence:pizzint:history:v1` on a rolling seven-day TTL, whichever provider produced the write. That key is what `api/health.js` registers (`pizzintHistory`, `maxStaleMin` 30, matching the live sibling's 3x-interval budget): the daily buckets rotate by UTC date and split by provider, so watching one of those directly would read empty at every UTC midnight and stale whenever the BestTime fallback took over. The label is listed as on-demand, so an archive that has never run does not alarm, while one that has run and stopped reports `STALE_SEED`. Its clock never regresses.
+
+An archive failure logs `[PizzINT] History archive failed:` followed by one of `bounds`, `validation`, `write_rejected`, or `unknown`. The category is fixed vocabulary, never the upstream error text, which can carry the BestTime request URL and its key. `bounds` and `validation` repeat on every poll and need a code change; `write_rejected` can be a single failed round trip. Retries cannot regress the metadata clock, and a capacity refusal leaves both keys unchanged. The operator can inspect these entries independently of live-seed freshness.

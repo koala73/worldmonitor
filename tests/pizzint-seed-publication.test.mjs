@@ -23,7 +23,7 @@ function harness() {
   const state = {
     source: validResponse, writes: [], warnings: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false,
     urls: [], gdelt: { ok: true, status: 200, json: async () => ({}) },
-    env: {}, besttime: new Map(), besttimeCalls: [], historyCalls: [], failHistory: false,
+    env: {}, besttime: new Map(), besttimeCalls: [], historyCalls: [], failHistory: false, historyError: null,
   };
   class Clock extends Date { static now() { return state.now; } }
   const context = vm.createContext({
@@ -52,7 +52,7 @@ function harness() {
     },
     recordPizzintHistory: async (input, evalCommand) => {
       state.historyCalls.push(structuredClone(input));
-      if (state.failHistory) throw new Error('secret archive failure');
+      if (state.failHistory) throw state.historyError || new Error('secret archive failure');
       return history.default.recordPizzintHistory(input, evalCommand);
     },
     upstashEval: async () => state.historyWait ? await state.historyWait : [1, 0, 0, 1],
@@ -74,7 +74,25 @@ test('an archive failure logs a fixed category and does not block publication', 
   state.failHistory = true;
   await seed();
   assert.ok(state.cache.has(payloadKey));
-  assert.deepEqual(state.warnings, [['[PizzINT] History archive failed']]);
+  // A category, never the upstream text: the stub's message is deliberately
+  // secret-shaped because an archive error can carry the BestTime request URL.
+  assert.deepEqual(state.warnings, [['[PizzINT] History archive failed:', 'unknown']]);
+  assert.ok(!JSON.stringify(state.warnings).includes('secret'), 'raw error text must never be logged');
+});
+
+test('an archive failure category distinguishes a permanent fault from a one-off', async () => {
+  for (const [error, category] of [
+    [new RangeError('locations must contain at most 24 rows'), 'bounds'],
+    [new TypeError('provider must be pizzint or besttime'), 'validation'],
+    [new Error('history_write_failed'), 'write_rejected'],
+  ]) {
+    const { state, seed } = harness();
+    state.failHistory = true;
+    state.historyError = error;
+    await seed();
+    assert.ok(state.cache.has(payloadKey), 'publication must survive any archive failure');
+    assert.deepEqual(state.warnings, [['[PizzINT] History archive failed:', category]]);
+  }
 });
 
 test('a pending archive does not delay live publication or permit overlapping polls', async () => {
@@ -496,3 +514,86 @@ for (const currentPopularity of [0, undefined]) {
     assert.equal(status.aggregateActivity, 100);
   });
 }
+
+// The BestTime fallback archives from historyLocations, not locations, and pushes
+// a synthetic placeholder for every venue with no live reading. Both were
+// previously unasserted: every historyCalls assertion ran without the API key, so
+// only provider 'pizzint' was ever observed.
+test('archives the BestTime fallback, including venues with no live reading', async () => {
+  const { state, seed } = harness();
+  state.source = emptyResponse;
+  state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+  await seed();
+  const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+  assert.ok(ids.length >= 3, 'expected several BestTime venues');
+  state.besttime.set(ids[0], liveReading(55, 40));
+  // No live signal, but a usable forecast: the archive must still retain a row.
+  state.besttime.set(ids[1], {
+    ok: true, status: 200, json: async () => ({
+      analysis: { venue_live_busyness_available: false, venue_forecast_busyness_available: true, venue_forecasted_busyness: 35 },
+      venue_info: { venue_open: 'Open' },
+    }),
+  });
+  // Closed, and no forecast at all.
+  state.besttime.set(ids[2], {
+    ok: true, status: 200, json: async () => ({
+      analysis: { venue_live_busyness_available: false, venue_forecast_busyness_available: false },
+      venue_info: { venue_open: 'Closed' },
+    }),
+  });
+  state.historyCalls.length = 0;
+  await seed();
+
+  assert.equal(state.historyCalls.length, 1);
+  const call = state.historyCalls[0];
+  assert.equal(call.provider, 'besttime', 'the fallback must be archived under its own provider');
+  const archived = new Map(call.locations.map((l) => [l.placeId, l]));
+  assert.equal(archived.size, ids.length, 'every polled venue is archived, live or dark');
+
+  assert.equal(archived.get(ids[0]).currentPopularity, 55);
+  assert.equal(archived.get(ids[1]).currentPopularity, null);
+  assert.equal(archived.get(ids[1]).noLiveSignal, true);
+  assert.equal(archived.get(ids[1]).forecastPopularity, 35, 'a dark venue still carries its forecast');
+  assert.equal(archived.get(ids[2]).isClosedNow, true);
+  assert.equal(archived.get(ids[2]).forecastPopularity, null);
+
+  // And the archived records classify the way the report expects.
+  const write = history.default.buildPizzintHistoryWrite({
+    provider: call.provider, locations: call.locations, capturedAt: call.capturedAt,
+  });
+  const byField = write.records.map((r) => history.default.decodePizzintHistoryRecord(r.value));
+  assert.equal(byField.find((r) => r.placeId === ids[0]).quality, 'available');
+  assert.equal(byField.find((r) => r.placeId === ids[1]).quality, 'missing');
+  assert.equal(byField.find((r) => r.placeId === ids[2]).quality, 'closed');
+});
+
+// The archive dataset has no dashboard or RPC consumer, so AGENTS.md requires it
+// be registered as a standalone health key. Drive the REAL classifier over the
+// registered label in each of its three states.
+test('the registered archive health label reports run-then-stopped, not never-run', async () => {
+  const beat = history.default.HEARTBEAT_KEY;
+  const classify = (metaValue, now, allowOnDemand = true) => health.classifyKey(
+    'pizzintHistory', beat, { allowOnDemand },
+    {
+      keyStrens: new Map([[beat, metaValue === null ? 0 : 100]]),
+      keyErrors: new Map(), keyMetaErrors: new Map(),
+      keyMetaValues: new Map(metaValue === null ? [] : [[beat, metaValue]]),
+      now,
+    },
+  );
+  const now = 1_780_000_000_000;
+
+  // 1. Never archived (the deploy that introduces this). Absence must not page.
+  const never = classify(null, now);
+  assert.match(never.status, /ON_DEMAND/, `never-run should soften, got ${never.status}`);
+
+  // 2. Archiving normally: the heartbeat advanced one poll ago.
+  const fresh = classify(JSON.stringify({ fetchedAt: now - 10 * 60_000, recordCount: 24 }), now);
+  assert.equal(fresh.status, 'OK');
+
+  // 3. Archived, then stopped. On-demand softening must NOT cover a key that has
+  //    data behind it, so this is the signal an operator actually gets.
+  const stopped = classify(JSON.stringify({ fetchedAt: now - 3 * 60 * 60_000, recordCount: 24 }), now);
+  assert.notEqual(stopped.status, 'OK');
+  assert.equal(stopped.seedAgeMin, 180);
+});

@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 import { readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { constants } from 'node:buffer';
 import { loadEnvFile, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
 
 const require = createRequire(import.meta.url);
-const { PREFIX, PROVIDERS, RETENTION_DAYS, decodePizzintHistoryRecord, evaluatePizzintHistory } = require('./shared/pizzint-history.cjs');
-const MAX_REPORT_RECORDS = 4000 * (RETENTION_DAYS + 1) * PROVIDERS.length;
-const MAX_REPORT_BYTES = MAX_REPORT_RECORDS * 1024;
+const { PREFIX, PROVIDERS, RETENTION_DAYS, MAX_FIELDS, MAX_RECORD_BYTES, decodePizzintHistoryRecord, evaluatePizzintHistory } = require('./shared/pizzint-history.cjs');
+// Derived from the writer's own bounds rather than re-typed, so raising a cap in
+// the shared module cannot silently desynchronise this reader's safety limit.
+const MAX_REPORT_RECORDS = MAX_FIELDS * (RETENTION_DAYS + 1) * PROVIDERS.length;
+// The record bound above is what the buckets can hold; this one is what Node can
+// actually read. readFile(..., 'utf8') throws ERR_STRING_TOO_LONG above V8's max
+// string length, so a fixture between the two limits would fail opaquely instead
+// of hitting the bound this file reports.
+const MAX_REPORT_BYTES = Math.min(MAX_REPORT_RECORDS * MAX_RECORD_BYTES, constants.MAX_STRING_LENGTH);
 
 function parseArgs(argv) {
   const options = { input: null, asOf: new Date().toISOString(), days: RETENTION_DAYS, includeSuspectZeros: false };
@@ -21,7 +28,7 @@ function parseArgs(argv) {
     else if (arg === '--include-suspect-zeros') options.includeSuspectZeros = true;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (options.input === undefined || options.asOf === undefined || !Number.isInteger(options.days) || options.days < 1 || options.days > 90) throw new Error('usage: evaluate-pizzint-history [--input fixture.json] [--as-of ISO] [--days 1..90] [--include-suspect-zeros]');
+  if (options.input === undefined || options.input === '' || options.asOf === undefined || !Number.isInteger(options.days) || options.days < 1 || options.days > 90) throw new Error('usage: evaluate-pizzint-history [--input fixture.json] [--as-of ISO] [--days 1..90] [--include-suspect-zeros]');
   if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf))) throw new Error('--as-of must be an ISO timestamp with an explicit timezone');
   return options;
 }
@@ -80,8 +87,14 @@ async function main() {
     records = await readLive(options);
   }
   const report = evaluatePizzintHistory(records, options);
-  if (report.exclusions.invalid > 0) throw new Error('input contains invalid observation records');
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  // Still a nonzero exit, but emit the report first: it took a full Redis read to
+  // compute, the exclusion counters name what was rejected, and discarding it
+  // left an operator with no way to see which records were bad.
+  if (report.exclusions.invalid > 0) {
+    process.stderr.write(`${report.exclusions.invalid} invalid observation record(s); exclusions: ${JSON.stringify(report.exclusions)}\n`);
+    throw new Error('input contains invalid observation records');
+  }
 }
 
 main().catch((error) => {

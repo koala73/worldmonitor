@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import history from '../scripts/shared/pizzint-history.cjs';
 
-const { buildPizzintHistoryWrite, decodePizzintHistoryRecord, evaluatePizzintHistory, SUSPECT_ZERO_MIN_BASELINE } = history;
+const { buildPizzintHistoryWrite, decodePizzintHistoryRecord, evaluatePizzintHistory, recordPizzintHistory, SUSPECT_ZERO_MIN_BASELINE } = history;
 
 function row(date, live, extra = {}) {
   return {
@@ -209,4 +209,59 @@ test('the suspect-zero baseline floor is exact and published in the report', () 
     SUSPECT_ZERO_MIN_BASELINE,
     'the report states the threshold that produced it',
   );
+});
+
+test('rejects an eval result that is not the four-integer tuple', async () => {
+  const input = {
+    provider: 'pizzint', capturedAt: '2026-06-10T18:05:00.000Z', locations: [{
+      placeId: 'venue-a', currentPopularity: 12, forecastPopularity: 40,
+      dataFreshness: 'DATA_FRESHNESS_FRESH', isClosedNow: false, recordedAt: '2026-06-10T18:05:00.000Z',
+    }],
+  };
+  // upstashEval resolves null on every transport failure, so this is the shape
+  // the relay actually hands back when Redis is unreachable.
+  await assert.rejects(() => recordPizzintHistory(input, async () => null), /history_write_failed/);
+  await assert.rejects(() => recordPizzintHistory(input, async () => [1, 2, 3]), /history_write_failed/);
+  await assert.rejects(() => recordPizzintHistory(input, async () => [1, 0, 0, 'x']), /history_write_failed/);
+  await assert.rejects(() => recordPizzintHistory(input, 'not a function'), /evalCommand must be a function/);
+
+  const ok = await recordPizzintHistory(input, async () => [1, 0, 0, 1]);
+  assert.deepEqual(ok, { ok: true, inserted: 1, replaced: 0, skipped: 0, fields: 1 });
+
+  // An empty poll must not reach Redis at all.
+  let called = false;
+  const empty = await recordPizzintHistory({ ...input, locations: [] }, async () => { called = true; return [0, 0, 0, 0]; });
+  assert.equal(called, false, 'an empty poll must not spend a Redis round trip');
+  assert.deepEqual(empty, { ok: true, inserted: 0, replaced: 0, skipped: 0, fields: 0 });
+});
+
+test('breaks an exact capture tie on the smaller live value', () => {
+  const capturedAt = '2026-09-21T14:09:00Z';
+  const pair = (live) => row('2026-09-21T14:00:00Z', live, { capturedAt });
+  const options = { asOf: '2026-09-28T15:00:00Z', days: 90 };
+  for (const order of [[90, 10], [10, 90]]) {
+    const report = evaluatePizzintHistory(order.map(pair), options);
+    assert.equal(report.exclusions.duplicate_source_time, 1);
+    assert.equal(report.cohorts[0].daily[0].median, 10, `smaller live must win for order ${order}`);
+  }
+});
+
+test('the six-date threshold holds at exactly five and six dates', () => {
+  const dates = ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-22', '2026-06-29', '2026-07-06'];
+  const at = (count) => evaluatePizzintHistory(
+    dates.slice(0, count).map((date) => row(`${date}T14:05:00.000Z`, 30)),
+    { asOf: '2026-07-20T14:30:00.000Z', days: 90 },
+  ).cohorts[0];
+
+  const five = at(5);
+  assert.equal(five.dateCount, 5);
+  assert.equal(five.status, 'insufficient_history');
+  assert.equal(five.baseline, null);
+  assert.equal(five.mad, null);
+
+  const six = at(6);
+  assert.equal(six.dateCount, 6);
+  assert.equal(six.status, 'ready');
+  assert.equal(six.baseline, 30);
+  assert.equal(six.mad, 0);
 });
