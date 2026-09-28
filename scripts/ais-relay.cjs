@@ -8151,9 +8151,7 @@ function pizzintLocationFromBestTime(venue, reply) {
 async function fetchPizzintBestTimeLocations(apiKey) {
   const locations = [];
   const historyLocations = [];
-  // A rejected request (bad key, quota) must not read as "no live readings".
-  let rejected = 0;
-  let rejection = '';
+  const counts = { accepted: 0, unavailable: 0, invalid: 0, http: 0, transport: 0, json: 0 };
   for (const venue of PIZZINT_BESTTIME_VENUES) {
     const url = `${PIZZINT_BESTTIME_LIVE_API}?api_key_private=${encodeURIComponent(apiKey)}&venue_id=${encodeURIComponent(venue.venueId)}`;
     try {
@@ -8163,20 +8161,24 @@ async function fetchPizzintBestTimeLocations(apiKey) {
         signal: AbortSignal.timeout(15_000),
       });
       if (!resp.ok) {
-        rejected++;
-        if (!rejection) {
-          const body = await resp.json().catch(() => null);
-          const message = typeof body?.message === 'string' ? body.message : '';
-          rejection = `HTTP ${Number(resp.status) || 0}${message ? ` ${message.split(apiKey).join('***').slice(0, 120)}` : ''}`;
-        }
+        counts.http++;
         continue;
       }
-      const reply = await resp.json();
+      let reply;
+      try {
+        reply = await resp.json();
+      } catch {
+        counts.json++;
+        continue;
+      }
       const location = pizzintLocationFromBestTime(venue, reply);
       if (location) {
+        counts.accepted++;
         locations.push(location);
         historyLocations.push(location);
       } else {
+        if (reply?.analysis?.venue_live_busyness_available === false) counts.unavailable++;
+        else counts.invalid++;
         historyLocations.push({
           placeId: venue.venueId,
           currentPopularity: null,
@@ -8188,14 +8190,16 @@ async function fetchPizzintBestTimeLocations(apiKey) {
           noLiveSignal: true,
         });
       }
-    } catch { /* one venue's failure never blocks the others */ }
+    } catch {
+      counts.transport++;
+    }
   }
-  const rejectedNote = rejected ? `; ${rejected} rejected: ${rejection}` : '';
+  const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
   if (locations.length === 0) {
-    console.warn(`[PizzINT] BestTime fallback: no live readings (0/${PIZZINT_BESTTIME_VENUES.length} venues${rejectedNote}); preserving last good observation`);
+    console.warn(`[PizzINT] BestTime fallback: no live readings (0/${PIZZINT_BESTTIME_VENUES.length} venues); ${summary}; preserving last good observation`);
     return historyLocations.length ? { locations, historyLocations } : null;
   }
-  console.log(`[PizzINT] BestTime fallback: ${locations.length}/${PIZZINT_BESTTIME_VENUES.length} venues live${rejectedNote}`);
+  console.log(`[PizzINT] BestTime fallback: ${locations.length}/${PIZZINT_BESTTIME_VENUES.length} venues live; ${summary}`);
   return { locations, historyLocations };
 }
 

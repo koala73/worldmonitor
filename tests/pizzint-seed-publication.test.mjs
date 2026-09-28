@@ -21,13 +21,13 @@ const validResponse = { success: true, data: [{
 
 function harness() {
   const state = {
-    source: validResponse, writes: [], warnings: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false,
+    source: validResponse, writes: [], warnings: [], logs: [], cache: new Map(), now: 1_790_335_140_000, failPayload: false,
     urls: [], gdelt: { ok: true, status: 200, json: async () => ({}) },
     env: {}, besttime: new Map(), besttimeCalls: [], historyCalls: [], failHistory: false, historyError: null,
   };
   class Clock extends Date { static now() { return state.now; } }
   const context = vm.createContext({
-    Date: Clock, AbortSignal, CHROME_UA: 'test', console: { log() {}, warn: (...args) => state.warnings.push(args) },
+    Date: Clock, AbortSignal, CHROME_UA: 'test', console: { log: (...args) => state.logs.push(args), warn: (...args) => state.warnings.push(args) },
     process: { env: state.env },
     upstashGet: async (key) => {
       const cached = state.cache.get(key);
@@ -263,7 +263,7 @@ test('falls back to BestTime live busyness when PizzINT is empty', async () => {
   assert.ok(ids.length >= 4, 'every registered venue is polled');
   assert.ok(state.besttimeCalls.every(({ method, url }) => method === 'POST' && new URL(url).pathname === '/api/v1/forecasts/live'));
   assert.equal(state.cache.has(payloadKey), false, 'no live reading, nothing published');
-  assert.deepEqual(state.warnings.at(-1), [`[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); preserving last good observation`]);
+  assert.deepEqual(state.warnings.at(-1), [`[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=${ids.length} invalid=0 http=0 transport=0 json=0; preserving last good observation`]);
 
   state.besttime.set(ids[0], liveReading(90, 40));
   state.besttime.set(ids[1], liveReading(30, 35));
@@ -361,7 +361,7 @@ test('reports a rejected BestTime request instead of calling it no live readings
   state.warnings.length = 0;
   await seed();
   assert.deepEqual(state.warnings.at(-1), [
-    `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues; ${ids.length} rejected: HTTP 400 Error: Invalid private API key ***); preserving last good observation`,
+    `[PizzINT] BestTime fallback: no live readings (0/${ids.length} venues); accepted=0 unavailable=0 invalid=0 http=${ids.length} transport=0 json=0; preserving last good observation`,
   ]);
   assert.doesNotMatch(JSON.stringify(state.warnings), /pri_test_secret_value/);
 });
@@ -596,4 +596,67 @@ test('the registered archive health label reports run-then-stopped, not never-ru
   const stopped = classify(JSON.stringify({ fetchedAt: now - 3 * 60 * 60_000, recordCount: 24 }), now);
   assert.notEqual(stopped.status, 'OK');
   assert.equal(stopped.seedAgeMin, 180);
+});
+
+for (const category of ['accepted', 'unavailable', 'invalid', 'http', 'transport', 'json']) {
+  test(`BestTime poll counts ${category} without emitting provider content`, async () => {
+    const { state, seed } = harness();
+    state.source = emptyResponse;
+    state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+    await seed();
+    const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+    const secret = `https://example.invalid/?key=${BESTTIME_KEY}&other=second-secret\nforged message`;
+    let errorBodyReads = 0;
+    const replies = {
+      accepted: liveReading(30, 35),
+      unavailable: { ok: true, json: async () => ({ analysis: { venue_live_busyness_available: false }, message: secret }) },
+      invalid: { ok: true, json: async () => ({ analysis: { venue_live_busyness_available: true, venue_live_busyness: secret } }) },
+      http: { ok: false, status: 400, json: async () => { errorBodyReads++; return { message: secret }; } },
+      transport: new Error(secret),
+      json: { ok: true, json: async () => { throw new SyntaxError(secret); } },
+    };
+    for (const id of ids) state.besttime.set(id, replies[category]);
+    state.warnings.length = 0;
+    state.logs.length = 0;
+    const previous = structuredClone(state.cache);
+    await seed();
+    assert.equal(errorBodyReads, 0, 'HTTP error bodies must not be read');
+    const counts = ['accepted', 'unavailable', 'invalid', 'http', 'transport', 'json']
+      .map(name => `${name}=${name === category ? ids.length : 0}`).join(' ');
+    const prefix = category === 'accepted'
+      ? `${ids.length}/${ids.length} venues live`
+      : `no live readings (0/${ids.length} venues)`;
+    const suffix = category === 'accepted' ? '' : '; preserving last good observation';
+    const summaries = [...state.logs, ...state.warnings].filter(args => String(args[0]).includes('BestTime fallback:'));
+    assert.deepEqual(summaries, [[`[PizzINT] BestTime fallback: ${prefix}; ${counts}${suffix}`]]);
+    assert.doesNotMatch(JSON.stringify([...state.logs, ...state.warnings]), /pri_test_secret_value|second-secret|example\.invalid|forged message/);
+    if (category !== 'accepted') assert.deepEqual(state.cache, previous);
+  });
+}
+
+test('BestTime mixed poll counts reset without changing partial publication or history', async () => {
+  const { state, seed } = harness();
+  state.source = emptyResponse;
+  state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+  await seed();
+  const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+  assert.equal(ids.length, 4);
+  state.besttime.set(ids[0], liveReading(30, 35));
+  state.besttime.set(ids[1], { ok: false, status: 429 });
+  state.besttime.set(ids[2], { ok: true, json: async () => { throw new SyntaxError('secret'); } });
+  state.logs.length = 0;
+  await seed();
+  assert.deepEqual(state.logs.find(args => String(args[0]).includes('BestTime fallback:')), [
+    '[PizzINT] BestTime fallback: 1/4 venues live; accepted=1 unavailable=1 invalid=0 http=1 transport=0 json=1',
+  ]);
+  assert.equal(state.cache.get(metaKey).data.recordCount, 1);
+  assert.equal(state.historyCalls.at(-1).locations.length, 2);
+  state.besttime.clear();
+  state.warnings.length = 0;
+  const previous = structuredClone(state.cache);
+  await seed();
+  assert.deepEqual(state.warnings.at(-1), [
+    '[PizzINT] BestTime fallback: no live readings (0/4 venues); accepted=0 unavailable=4 invalid=0 http=0 transport=0 json=0; preserving last good observation',
+  ]);
+  assert.deepEqual(state.cache, previous);
 });
