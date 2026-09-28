@@ -9,15 +9,19 @@ const MAX_REPORT_RECORDS = 4000 * (RETENTION_DAYS + 1) * PROVIDERS.length;
 const MAX_REPORT_BYTES = MAX_REPORT_RECORDS * 1024;
 
 function parseArgs(argv) {
-  const options = { input: null, asOf: new Date().toISOString(), days: RETENTION_DAYS };
+  const options = { input: null, asOf: new Date().toISOString(), days: RETENTION_DAYS, includeSuspectZeros: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--input') options.input = argv[++i];
     else if (arg === '--as-of') options.asOf = argv[++i];
     else if (arg === '--days') options.days = Number(argv[++i]);
+    // A zero reading that contradicts the provider's forecast is withheld from
+    // the baseline by default, matching the live index. Pass this to fold those
+    // readings in and see what the retained observations say on their own.
+    else if (arg === '--include-suspect-zeros') options.includeSuspectZeros = true;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (options.input === undefined || options.asOf === undefined || !Number.isInteger(options.days) || options.days < 1 || options.days > 90) throw new Error('usage: evaluate-pizzint-history [--input fixture.json] [--as-of ISO] [--days 1..90]');
+  if (options.input === undefined || options.asOf === undefined || !Number.isInteger(options.days) || options.days < 1 || options.days > 90) throw new Error('usage: evaluate-pizzint-history [--input fixture.json] [--as-of ISO] [--days 1..90] [--include-suspect-zeros]');
   if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf))) throw new Error('--as-of must be an ISO timestamp with an explicit timezone');
   return options;
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import history from '../scripts/shared/pizzint-history.cjs';
 
-const { buildPizzintHistoryWrite, decodePizzintHistoryRecord, evaluatePizzintHistory } = history;
+const { buildPizzintHistoryWrite, decodePizzintHistoryRecord, evaluatePizzintHistory, SUSPECT_ZERO_MIN_BASELINE } = history;
 
 function row(date, live, extra = {}) {
   return {
@@ -96,4 +96,117 @@ test('each date has equal weight despite uneven sampling', () => {
   const result = evaluatePizzintHistory(records, { asOf: '2026-07-20T14:30:00Z' });
   assert.equal(result.cohorts[0].baseline, 10);
   assert.equal(result.cohorts[0].dateCount, 6);
+});
+
+// The archive must not inherit the DEFCON scorer's dead-sensor inference.
+// scorePizzintLocations runs one line before recordPizzintHistory and stamps
+// noLiveSignal on any open venue reading 0 against a forecast >= 20, so reusing
+// that field destroyed exactly the genuine zeros an empirical baseline needs.
+test('archives a genuine zero even when the caller marked it noLiveSignal', () => {
+  const capturedAt = '2026-06-10T18:05:00.000Z';
+  const write = buildPizzintHistoryWrite({
+    provider: 'pizzint', capturedAt, locations: [{
+      placeId: 'venue-a', currentPopularity: 0, forecastPopularity: 40,
+      dataFreshness: 'DATA_FRESHNESS_FRESH', isClosedNow: false, recordedAt: capturedAt,
+      // Both fields are set by the relay's scorer. The archive must ignore them.
+      noLiveSignal: true, hasBaseline: true,
+    }],
+  });
+  const decoded = decodePizzintHistoryRecord(write.records[0].value);
+  assert.equal(decoded.quality, 'available', 'an empty venue is an observation, not a missing reading');
+  assert.equal(decoded.live, 0);
+  assert.equal(decoded.providerForecast, 40);
+  assert.equal(decoded.suspectZero, true, 'the doubt is recorded, not acted on');
+});
+
+test('classifies each zero-reading shape by what the provider returned', () => {
+  const capturedAt = '2026-06-10T18:05:00.000Z';
+  const at = (extra) => decodePizzintHistoryRecord(buildPizzintHistoryWrite({
+    provider: 'pizzint', capturedAt, locations: [{
+      placeId: 'venue-a', dataFreshness: 'DATA_FRESHNESS_FRESH', isClosedNow: false,
+      recordedAt: capturedAt, ...extra,
+    }],
+  }).records[0].value);
+
+  const quiet = at({ currentPopularity: 0, forecastPopularity: 5 });
+  assert.equal(quiet.quality, 'available');
+  assert.equal(quiet.suspectZero, false, 'a zero below the baseline floor is unremarkable');
+
+  // A 0/0 ratio is an absent baseline, not a baseline of zero. The reading is
+  // still usable: the archive is building its own baseline, not reusing theirs.
+  const noBaseline = at({ currentPopularity: 0, forecastPopularity: 0 });
+  assert.equal(noBaseline.quality, 'available');
+  assert.equal(noBaseline.live, 0);
+  assert.equal(noBaseline.providerForecast, null);
+  assert.equal(noBaseline.suspectZero, false);
+
+  // No number at all is the only genuine "missing".
+  assert.equal(at({ currentPopularity: null, forecastPopularity: 40 }).quality, 'missing');
+  assert.equal(at({ forecastPopularity: 40 }).quality, 'missing');
+  assert.equal(at({ currentPopularity: -1, forecastPopularity: 40 }).quality, 'missing');
+  assert.equal(at({ currentPopularity: 0, forecastPopularity: 40, isClosedNow: true }).quality, 'closed');
+});
+
+test('withholds suspect zeros by default but keeps them recoverable', () => {
+  // One venue-hour, 12 same-weekday dates, truly empty half the time.
+  const records = [];
+  for (let week = 0; week < 12; week++) {
+    const iso = new Date(Date.parse('2026-06-03T18:05:00.000Z') + week * 7 * 86400000).toISOString();
+    records.push(row(iso, week % 2 ? 40 : 0, { providerForecast: 40 }));
+  }
+  const options = { asOf: '2026-08-25T00:00:00.000Z', days: 90 };
+
+  const withheld = evaluatePizzintHistory(records, options);
+  const a = withheld.cohorts[0];
+  assert.equal(a.status, 'ready');
+  assert.equal(a.baseline, 40, 'default policy still matches the live index');
+  assert.equal(a.suspectZeroCount, 6, 'but the withholding is disclosed per cohort');
+  assert.equal(a.observationCount, 6);
+  assert.equal(withheld.exclusions.suspect_zero, 6, 'counted apart from outages');
+  assert.equal(withheld.exclusions.unavailable_quality, 0);
+  assert.equal(withheld.provenance.suspectZeroPolicy, 'withheld');
+  assert.equal(
+    withheld.counts.included + withheld.counts.excluded, withheld.counts.input,
+    'every input is still accounted for',
+  );
+
+  const included = evaluatePizzintHistory(records, { ...options, includeSuspectZeros: true });
+  const b = included.cohorts[0];
+  assert.equal(b.baseline, 20, 'the same stored records answer the other policy');
+  assert.equal(b.suspectZeroCount, 0);
+  assert.equal(b.observationCount, 12);
+  assert.equal(included.provenance.suspectZeroPolicy, 'included');
+});
+
+test('a venue-hour that is entirely suspect zeros still appears in the report', () => {
+  const records = [];
+  for (let week = 0; week < 8; week++) {
+    const iso = new Date(Date.parse('2026-06-03T18:05:00.000Z') + week * 7 * 86400000).toISOString();
+    records.push(row(iso, 0, { providerForecast: 40 }));
+  }
+  const report = evaluatePizzintHistory(records, { asOf: '2026-08-25T00:00:00.000Z', days: 90 });
+  assert.equal(report.cohorts.length, 1, 'suppressing every reading must not hide the venue-hour');
+  assert.equal(report.cohorts[0].observationCount, 0);
+  assert.equal(report.cohorts[0].suspectZeroCount, 8);
+  assert.equal(report.cohorts[0].baseline, null);
+  assert.equal(report.cohorts[0].status, 'insufficient_history');
+});
+
+test('the suspect-zero baseline floor is exact and published in the report', () => {
+  const capturedAt = '2026-06-10T18:05:00.000Z';
+  const suspectAt = (forecastPopularity) => decodePizzintHistoryRecord(buildPizzintHistoryWrite({
+    provider: 'pizzint', capturedAt, locations: [{
+      placeId: 'venue-a', currentPopularity: 0, forecastPopularity,
+      dataFreshness: 'DATA_FRESHNESS_FRESH', isClosedNow: false, recordedAt: capturedAt,
+    }],
+  }).records[0].value).suspectZero;
+
+  assert.equal(SUSPECT_ZERO_MIN_BASELINE, 20);
+  assert.equal(suspectAt(SUSPECT_ZERO_MIN_BASELINE - 1), false, 'just below the floor is a plain zero');
+  assert.equal(suspectAt(SUSPECT_ZERO_MIN_BASELINE), true, 'the floor itself is suspect');
+  assert.equal(
+    evaluatePizzintHistory([], { asOf: capturedAt }).provenance.suspectZeroMinBaseline,
+    SUSPECT_ZERO_MIN_BASELINE,
+    'the report states the threshold that produced it',
+  );
 });

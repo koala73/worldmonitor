@@ -8,6 +8,15 @@ const MAX_PLACE_ID_BYTES = 200;
 const MAX_RECORD_BYTES = 1024;
 const MAX_FIELDS = 4000;
 const RETENTION_DAYS = 90;
+// PizzINT publishes its own recorded_at; a source time outside this window of
+// the capture is a clock error, not an observation. Shared by the writer's
+// quality decision and the reader's inclusion filter so the two cannot drift.
+const PIZZINT_CLOCK_SKEW_MS = 15 * 60000;
+// A live reading of 0 at a venue whose provider forecast is at least this busy
+// contradicts the provider's own baseline. docs/algorithms.mdx treats that as a
+// dead sensor for the live DEFCON index. The archive records the reading AND
+// this doubt (suspectZero) instead of discarding it -- see qualityOf.
+const SUSPECT_ZERO_MIN_BASELINE = 20;
 
 const WRITE_LUA = `
 local missing = 0
@@ -64,6 +73,31 @@ function finiteOrNull(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+// The live value the provider actually returned, or null when it returned no
+// usable number. A negative value is not an observation.
+function liveOf(location) {
+  const live = finiteOrNull(location.currentPopularity);
+  return live === null || live < 0 ? null : live;
+}
+
+// The provider's hourly baseline, or null when it cannot identify one (a 0/0
+// ratio yields 0, which is an absence of a baseline rather than a baseline of
+// zero). Derived here rather than read from location.hasBaseline, which only
+// exists after the relay's DEFCON scorer has run.
+function baselineOf(location) {
+  const forecast = finiteOrNull(location.forecastPopularity);
+  return forecast !== null && forecast > 0 ? forecast : null;
+}
+
+// True when the reading is a zero that contradicts the provider's own baseline.
+// DERIVED from the two values every record already retains rather than stored:
+// that keeps the wire format unchanged, costs no bytes, and makes the exclusion
+// a reader policy over retained data instead of a fact burned into storage.
+function isSuspectZero(live, providerForecast) {
+  return live === 0 && providerForecast !== null && Number.isFinite(providerForecast)
+    && providerForecast >= SUSPECT_ZERO_MIN_BASELINE;
+}
+
 function compactRecord(record) {
   return JSON.stringify({
     v: 1, p: record.provider, i: record.placeId, c: isoMillis(record.capturedAt, 'capturedAt'),
@@ -87,16 +121,23 @@ function decodePizzintHistoryRecord(value) {
   return {
     version: 1, provider: raw.p, placeId: raw.i, capturedAt: new Date(raw.c).toISOString(),
     sourceRecordedAt: raw.s === null ? null : new Date(raw.s).toISOString(), live: raw.l,
-    providerForecast: raw.f, quality: raw.q, sourceClock: raw.b === 'p' ? 'provider' : 'collection',
+    providerForecast: raw.f, quality: raw.q, suspectZero: isSuspectZero(raw.l, raw.f),
+    sourceClock: raw.b === 'p' ? 'provider' : 'collection',
   };
 }
 
+// Quality describes what the provider returned, never what we inferred about it.
+// It deliberately ignores location.noLiveSignal: that field carries the DEFCON
+// scorer's dead-sensor inference (scripts/ais-relay.cjs), which is correct for
+// the live index -- where a false zero reports false calm -- and wrong for a
+// baseline archive, where a discarded zero inflates the baseline it is meant to
+// measure. An empty venue is an observation; see isSuspectZero for the doubt.
 function qualityOf(provider, location, capturedMs) {
   const sourceMs = Date.parse(location.recordedAt);
-  if (provider === 'pizzint' && (!Number.isFinite(sourceMs) || sourceMs > capturedMs || capturedMs - sourceMs > 15 * 60000)) return 'invalid_clock';
+  if (provider === 'pizzint' && (!Number.isFinite(sourceMs) || sourceMs > capturedMs || capturedMs - sourceMs > PIZZINT_CLOCK_SKEW_MS)) return 'invalid_clock';
   if (location.isClosedNow) return 'closed';
   if (location.dataFreshness !== 'DATA_FRESHNESS_FRESH') return 'stale';
-  if (location.noLiveSignal || !Number.isFinite(location.currentPopularity)) return 'missing';
+  if (liveOf(location) === null) return 'missing';
   return 'available';
 }
 
@@ -114,8 +155,9 @@ function buildPizzintHistoryWrite({ provider, locations, capturedAt }) {
     const record = {
       version: 1, provider, placeId, capturedAt: captureIso,
       sourceRecordedAt: provider === 'pizzint' && Number.isFinite(Date.parse(location.recordedAt)) ? location.recordedAt : null,
-      live: finiteOrNull(location.currentPopularity),
-      providerForecast: location.hasBaseline === false ? null : finiteOrNull(location.forecastPopularity), quality: qualityOf(provider, location, capturedMs),
+      live: liveOf(location),
+      providerForecast: baselineOf(location),
+      quality: qualityOf(provider, location, capturedMs),
       sourceClock: provider === 'pizzint' ? 'provider' : 'collection',
     };
     const value = compactRecord(record);
@@ -150,13 +192,13 @@ function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function evaluatePizzintHistory(records, { asOf = new Date().toISOString(), days = RETENTION_DAYS } = {}) {
+function evaluatePizzintHistory(records, { asOf = new Date().toISOString(), days = RETENTION_DAYS, includeSuspectZeros = false } = {}) {
   if (!Array.isArray(records)) throw new TypeError('records must be an array');
   if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) throw new RangeError('days must be an integer from 1 through 90');
   const asOfMs = isoMillis(asOf, 'asOf');
   const cutoff = asOfMs - days * 86400000;
   const currentLocalDate = localParts(asOfMs).date;
-  const exclusions = { invalid: 0, unavailable_quality: 0, future: 0, current_local_date: 0, outside_retention: 0, duplicate_source_time: 0 };
+  const exclusions = { invalid: 0, unavailable_quality: 0, suspect_zero: 0, future: 0, current_local_date: 0, outside_retention: 0, duplicate_source_time: 0 };
   const included = [];
   const seenSource = new Map();
   for (const candidate of records) {
@@ -179,7 +221,7 @@ function evaluatePizzintHistory(records, { asOf = new Date().toISOString(), days
     const cohortMs = record.sourceRecordedAt === null ? capturedMs : Date.parse(record.sourceRecordedAt);
     const sourceAge = capturedMs - cohortMs;
     if (record.quality !== 'available' || record.live === null || record.live < 0
-      || (record.provider === 'pizzint' && (sourceAge < 0 || sourceAge > 15 * 60000))) { exclusions.unavailable_quality++; continue; }
+      || (record.provider === 'pizzint' && (sourceAge < 0 || sourceAge > PIZZINT_CLOCK_SKEW_MS))) { exclusions.unavailable_quality++; continue; }
     if (cohortMs >= asOfMs || capturedMs >= asOfMs) { exclusions.future++; continue; }
     if (capturedMs < cutoff || cohortMs < cutoff) { exclusions.outside_retention++; continue; }
     const local = localParts(cohortMs);
@@ -207,9 +249,17 @@ function evaluatePizzintHistory(records, { asOf = new Date().toISOString(), days
     grouped.get(key).push(record);
   }
   const cohorts = [];
+  let suspectZeroWithheld = 0;
   for (const rows of grouped.values()) {
+    // A withheld suspect zero still belongs to this cohort. Counting it here --
+    // rather than dropping it during intake -- is what lets an operator see
+    // WHICH venue-hours the policy is suppressing. A cohort that is entirely
+    // suspect zeros still appears, with observationCount 0, instead of vanishing.
+    const baselineRows = includeSuspectZeros ? rows : rows.filter((row) => !row.suspectZero);
+    const suspectZeroCount = rows.length - baselineRows.length;
+    suspectZeroWithheld += suspectZeroCount;
     const byDate = new Map();
-    for (const row of rows) {
+    for (const row of baselineRows) {
       if (!byDate.has(row.date)) byDate.set(row.date, []);
       byDate.get(row.date).push(row.live);
     }
@@ -220,21 +270,29 @@ function evaluatePizzintHistory(records, { asOf = new Date().toISOString(), days
     const latest = rows.reduce((a, b) => a.cohortMs > b.cohortMs ? a : b);
     cohorts.push({
       provider: latest.provider, placeId: latest.placeId, weekday: latest.weekday, hour: latest.hour,
-      status: dateCount >= 6 ? 'ready' : 'insufficient_history', dateCount, observationCount: rows.length,
+      status: dateCount >= 6 ? 'ready' : 'insufficient_history', dateCount, observationCount: baselineRows.length,
+      suspectZeroCount,
       firstDate: daily[0]?.date || null, lastDate: daily.at(-1)?.date || null, baseline, mad,
       daily,
     });
   }
   cohorts.sort((a, b) => a.provider.localeCompare(b.provider) || a.placeId.localeCompare(b.placeId) || a.weekday - b.weekday || a.hour - b.hour);
+  exclusions.suspect_zero = suspectZeroWithheld;
   const excluded = Object.values(exclusions).reduce((sum, value) => sum + value, 0);
   return {
     schemaVersion: 1, asOf: new Date(asOfMs).toISOString(), days, timezone: 'America/New_York',
-    provenance: { storage: 'redis_daily_utc_hash', cohortClock: { pizzint: 'provider', besttime: 'collection' }, method: 'median_of_date_medians', minimumDates: 6 },
-    counts: { input: records.length, included: included.length, excluded }, exclusions, cohorts,
+    provenance: {
+      storage: 'redis_daily_utc_hash', cohortClock: { pizzint: 'provider', besttime: 'collection' },
+      method: 'median_of_date_medians', minimumDates: 6,
+      suspectZeroPolicy: includeSuspectZeros ? 'included' : 'withheld',
+      suspectZeroMinBaseline: SUSPECT_ZERO_MIN_BASELINE,
+    },
+    counts: { input: records.length, included: included.length - suspectZeroWithheld, excluded }, exclusions, cohorts,
   };
 }
 
 module.exports = {
   PREFIX, PROVIDERS: [...PROVIDERS], RETENTION_DAYS, WRITE_LUA,
+  SUSPECT_ZERO_MIN_BASELINE,
   buildPizzintHistoryWrite, decodePizzintHistoryRecord, recordPizzintHistory, evaluatePizzintHistory,
 };
