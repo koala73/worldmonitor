@@ -14,7 +14,8 @@
  * The component runs on a prototype instance so the constructor's
  * d3/topojson/network boot stays out of the test. The per-layer builders are
  * stubbed because they are not under test. `render()`, `renderWithSize()`,
- * `renderInitialDynamicPass()` and `renderDynamicLayers()` run for real.
+ * `renderInitialDynamicPass()`, `renderDynamicLayers()` and `destroy()` run
+ * for real.
  * The test controls the after-paint scheduler, `yieldToMain`, and the layout
  * batch queues.
  */
@@ -54,6 +55,8 @@ type Step = typeof LAYER_STEPS[number];
 
 type MapHarness = {
   render: () => void;
+  destroy: () => void;
+  applyTransform: ReturnType<typeof vi.fn>;
   scheduleRender: () => void;
   updateLabelVisibility: (zoom: number) => void;
   steps: Record<Step, ReturnType<typeof vi.fn>>;
@@ -119,6 +122,13 @@ function createMap(): MapHarness {
     getProjection: vi.fn(() => d3.geoEquirectangular()),
     applyTransform: vi.fn(),
     updateCountryFills: vi.fn(),
+    // Fields the real destroy() tears down.
+    listenerAbort: new AbortController(),
+    markerSettleTimer: null,
+    overlayBudgetReplanTimer: null,
+    activeFlashes: new Map(),
+    resizeObserver: null,
+    healthCheckLoop: null,
   });
   const steps = Object.fromEntries(LAYER_STEPS.map((step) => [step, vi.fn()])) as Record<Step, ReturnType<typeof vi.fn>>;
   Object.assign(map, steps, { steps });
@@ -175,6 +185,22 @@ describe('SVG map first-paint deferral (#4429/#4442)', () => {
 
     await releaseYield();
     expect(callOrder(map)).toEqual(['renderCables', ...LAYER_STEPS]);
+  });
+
+  it('builds no further layer once the map is destroyed while the chunked pass waits on a yield', async () => {
+    const map = createMap();
+    map.render();
+    drain(control.afterPaint);
+    expect(callOrder(map)).toEqual(['renderCables']);
+    expect(control.yields).toHaveLength(1);
+    const transformsBeforeDestroy = map.applyTransform.mock.calls.length;
+
+    map.destroy();
+    await releaseYield();
+
+    expect(callOrder(map)).toEqual(['renderCables']);
+    expect(control.yields).toHaveLength(0);
+    expect(map.applyTransform).toHaveBeenCalledTimes(transformsBeforeDestroy);
   });
 });
 

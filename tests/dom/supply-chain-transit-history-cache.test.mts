@@ -1,6 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { GetChokepointStatusResponse } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import type {
+  GetChokepointStatusResponse,
+  TransitDayCount,
+} from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
 const history = vi.hoisted(() => ({ fetchChokepointHistory: vi.fn() }));
 vi.mock('@/services/supply-chain', async (importOriginal) => ({
@@ -30,7 +33,28 @@ const status = {
   upstreamUnavailable: false,
 } as unknown as GetChokepointStatusResponse;
 
-const DAY = { date: '2026-09-01', tanker: 10, cargo: 20, other: 5, total: 35 };
+// Every TransitDayCount field, with distinct values so a legend that reads the
+// wrong key (or an absent one) shows the wrong number instead of passing.
+const DAY: TransitDayCount = {
+  date: '2026-09-01',
+  tanker: 10,
+  cargo: 20,
+  other: 5,
+  total: 35,
+  container: 11,
+  dryBulk: 12,
+  generalCargo: 13,
+  roro: 14,
+  capContainer: 1_100_000,
+  capDryBulk: 1_200_000,
+  capGeneralCargo: 13_000,
+  capRoro: 14_000,
+  capTanker: 1_500_000,
+};
+
+function legendText(panel: SupplyChainPanel): string {
+  return (chartSlot(panel)?.textContent ?? '').replace(/\s+/g, ' ');
+}
 
 function toggleSuez(panel: SupplyChainPanel): void {
   panel.getElement().querySelector<HTMLElement>('[data-cp-id="Suez Canal"] .trade-restriction-header')!.click();
@@ -78,6 +102,17 @@ describe('SupplyChainPanel transit history cache', () => {
     await vi.advanceTimersByTimeAsync(400);
     expect(history.fetchChokepointHistory).toHaveBeenCalledTimes(2);
     expect(chartSlot(panel)?.querySelector('canvas')).not.toBeNull();
+    const calls = legendText(panel);
+    for (const expected of ['Container 11', 'Dry Bulk 12', 'Gen. Cargo 13', 'RoRo 14', 'Tanker 10']) {
+      expect(calls).toContain(expected);
+    }
+    expect(calls).not.toMatch(/undefined|NaN/);
+    chartSlot(panel)!.querySelector<HTMLButtonElement>('[data-tab="dwt"]')!.click();
+    const volume = legendText(panel);
+    for (const expected of ['Container 1.10M', 'Dry Bulk 1.20M', 'Gen. Cargo 13.0K', 'RoRo 14.0K', 'Tanker 1.50M']) {
+      expect(volume).toContain(expected);
+    }
+    expect(volume).not.toMatch(/undefined|NaN/);
 
     // A non-empty history is cached for the session: re-expanding mounts without a fetch.
     toggleSuez(panel);

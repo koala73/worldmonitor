@@ -135,17 +135,24 @@ test('built welcome root hides no SSR content and links every primary reference 
   assert.deepEqual(hiddenContentNodes, [], 'the welcome root must not hide or translate SSR content before hydration');
   assert.match(rootContent, /ACLED/);
   assert.match(rootContent, /NASA FIRMS/);
+  // Exact href of a real anchor: a substring match would accept data-href=,
+  // non-anchor elements, or a longer path such as /countries/old.
+  const anchorHrefs = new Set(
+    [...rootContent.matchAll(/<a\b[^>]*>/gi)]
+      .map(([tag]) => /\shref="([^"]*)"/i.exec(tag)?.[1])
+      .filter((href) => href !== undefined),
+  );
   for (const href of [
     '/countries/',
     '/chokepoints/',
     '/crises/',
     '/tools/',
     '/blog/',
-    '/docs',
+    'https://www.worldmonitor.app/docs/documentation',
     '/pro#pricing',
     'https://github.com/koala73/worldmonitor',
   ]) {
-    assert.ok(rootContent.includes(`href="${href}`), `visible welcome content should link to ${href}`);
+    assert.ok(anchorHrefs.has(href), `visible welcome content should contain an <a href="${href}">`);
   }
 });
 
