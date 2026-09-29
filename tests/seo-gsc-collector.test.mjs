@@ -14,7 +14,10 @@ import {
   decodeServiceAccount,
   describeDisagreement,
   buildInventory,
+  BRAND_QUERY_PATTERN,
+  isBrandQuery,
   pickIndexStatus,
+  weeklyTotals,
   renderGscMarkdown,
   runCli,
   stratifiedSample,
@@ -610,6 +613,144 @@ describe('Search Console collector on live data', () => {
     assert.equal(window.indexedPages, 4);
     const countries = window.pageFamilyRows.find((row) => row.pageFamily === 'country_pages');
     assert.equal(countries.indexedPages, 2);
+  });
+});
+
+describe('Search Console site totals and brand split', () => {
+  it('reports the by-property total apart from the sum of page rows', async () => {
+    const { snapshot } = await collect();
+    const window = snapshot.performance.windows.find((entry) => entry.label === '28d');
+    assert.equal(window.totalsBasis, 'sum-of-page-rows');
+    assert.equal(window.totals.impressions, 2830, 'one search counts once per URL shown');
+    assert.equal(window.siteTotals.basis, 'by-property');
+    assert.equal(window.siteTotals.status, 'available');
+    assert.equal(window.siteTotals.all.impressions, 1500, 'the performance chart counts it once');
+    assert.equal(window.siteTotals.brand.impressions, 900);
+    assert.equal(window.siteTotals.nonBrand.impressions, 420);
+    assert.deepEqual(
+      window.siteTotals.anonymized,
+      { clicks: 12, impressions: 180 },
+      'a query filter drops anonymized queries, so the remainder is reported, not lost',
+    );
+    assert.equal(window.siteTotals.nonBrandShare.value, 0.28);
+    assert.equal(window.siteTotals.nonBrandShare.basis, 'by-property-impressions');
+    const { markdown } = await collect();
+    assert.match(markdown, /## Search totals[\s\S]*\| 28d \(2026-08-27 to 2026-09-23\) \| 1500 \| 50 \| 900 \| 420 \| 8 \| 180 \| 28\.0% \| 2830 \|/);
+    assert.match(markdown, /### Weekly trend/);
+    assert.match(markdown, /\| geopolitical risk dashboard \| no \| 260 \|/);
+  });
+
+  it('splits non-brand impressions by page family across paginated rows', async () => {
+    const { snapshot } = await collect();
+    const window = snapshot.performance.windows.find((entry) => entry.label === '28d');
+    assert.equal(window.byFamily.homepage.nonBrandImpressions, 150);
+    assert.equal(window.byFamily.chokepoints.nonBrandImpressions, 96, 'the second page of rows is read');
+    assert.equal(window.byFamily.country_pages.nonBrandImpressions, 44);
+    assert.equal(window.byFamily.homepage.nonBrandReason, null);
+  });
+
+  it('records a daily by-property series over the widest window, oldest first', async () => {
+    const { snapshot } = await collect();
+    const { daily } = snapshot.performance;
+    assert.equal(daily.status, 'available');
+    assert.equal(daily.basis, 'by-property');
+    assert.equal(daily.startDate, snapshot.performance.windows.find((w) => w.label === '90d').startDate);
+    assert.deepEqual(daily.rows.map((row) => row.date), ['2026-07-01', '2026-08-01', '2026-09-01']);
+    assert.deepEqual(daily.rows.map((row) => row.impressions), [60, 55, 50]);
+    assert.deepEqual(
+      daily.rows.map((row) => row.nonBrandImpressions),
+      [20, 0, 25],
+      'a date the non-brand view answered without is a real zero',
+    );
+  });
+
+  it('keeps every unrecorded view null with a reason rather than zero', async () => {
+    const { snapshot } = await collect(`${FIXTURES}quota/`);
+    const [window] = snapshot.performance.windows;
+    assert.equal(window.siteTotals.status, 'unavailable');
+    assert.equal(window.siteTotals.all, null);
+    assert.equal(window.siteTotals.anonymized, null);
+    assert.match(window.siteTotals.reason, /site view was not collected/);
+    assert.equal(snapshot.performance.daily.status, 'unavailable');
+    assert.deepEqual(snapshot.performance.daily.rows, []);
+    for (const metrics of Object.values(window.byFamily)) {
+      assert.equal(metrics.nonBrandImpressions, null);
+      assert.match(metrics.nonBrandReason, /not collected/);
+    }
+  });
+
+  it('buckets the daily series into calendar weeks even when Google omits a day', () => {
+    const day = (date, impressions) => ({
+      date, impressions, clicks: 1, nonBrandImpressions: 1, nonBrandClicks: 0,
+    });
+    const weeks = weeklyTotals([
+      day('2026-09-01', 10),
+      day('2026-09-09', 20),
+      day('2026-09-10', 30),
+      day('2026-09-16', 40),
+    ]);
+    assert.deepEqual(weeks.map((week) => [week.startDate, week.endDate, week.days, week.impressions]), [
+      ['2026-08-27', '2026-09-02', 1, 10],
+      ['2026-09-03', '2026-09-09', 1, 20],
+      ['2026-09-10', '2026-09-16', 2, 70],
+    ]);
+    assert.deepEqual(weeklyTotals([]), []);
+    const unmeasured = weeklyTotals([{ ...day('2026-09-16', 5), nonBrandImpressions: null }]);
+    assert.equal(unmeasured[0].nonBrandImpressions, null, 'an unmeasured day keeps its week unmeasured');
+  });
+
+  it('flags each top query as brand or non-brand', async () => {
+    const { snapshot } = await collect();
+    const window = snapshot.performance.windows.find((entry) => entry.label === '90d');
+    assert.deepEqual(
+      window.topQueries.map((row) => [row.query, row.brand]),
+      [['world monitor', true], ['suez canal traffic', false], ['acled alternative', false]],
+    );
+  });
+
+  it('classifies the brand spellings seen in Search Console and nothing generic', () => {
+    for (const query of ['world monitor', 'worldmonitor', 'World Monitor app', 'worldmonitor.ap',
+      'word monitor', 'world-monitor github', 'ワールドモニター']) {
+      assert.equal(isBrandQuery(query), true, query);
+    }
+    for (const query of ['war monitor', 'warmonitor', 'monitor the situation', 'ww3 monitor',
+      'pentagon pizza index', 'osint world map', 'world news']) {
+      assert.equal(isBrandQuery(query), false, query);
+    }
+  });
+
+  it('asks Google for by-property totals and filters on the same brand pattern', async () => {
+    const bodies = [];
+    const transport = createLiveTransport({
+      accessToken: 't',
+      property: 'sc-domain:example.com',
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return jsonResponse(200, { rows: [] });
+      },
+      sleep: async () => {},
+    });
+    const window = { startDate: '2026-08-27', endDate: '2026-09-23' };
+    for (const dimension of ['site', 'siteNonBrand', 'siteBrand', 'dailyNonBrand', 'pageNonBrand']) {
+      await transport.searchAnalytics({ dimension, page: 0, ...window });
+    }
+    const [site, siteNonBrand, siteBrand, dailyNonBrand, pageNonBrand] = bodies;
+    assert.deepEqual(site.dimensions, []);
+    assert.equal(site.dimensionFilterGroups, undefined);
+    const filterOf = (body) => body.dimensionFilterGroups[0].filters[0];
+    assert.deepEqual(filterOf(siteNonBrand), {
+      dimension: 'query',
+      operator: 'excludingRegex',
+      expression: `(?i)${BRAND_QUERY_PATTERN}`,
+    });
+    assert.equal(filterOf(siteBrand).operator, 'includingRegex');
+    assert.deepEqual(dailyNonBrand.dimensions, ['date']);
+    assert.deepEqual(pageNonBrand.dimensions, ['page']);
+    assert.equal(filterOf(pageNonBrand).operator, 'excludingRegex');
+    await assert.rejects(
+      () => transport.searchAnalytics({ dimension: 'nope', page: 0, ...window }),
+      /unknown Search Analytics view nope/,
+    );
   });
 });
 

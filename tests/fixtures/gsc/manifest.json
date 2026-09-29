@@ -21,6 +21,19 @@
       ],
       "query": [
         "sa-28d-query-0.json"
+      ],
+      "pageNonBrand": [
+        "sa-28d-page-nonbrand-0.json",
+        "sa-28d-page-nonbrand-1.json"
+      ],
+      "site": [
+        "sa-28d-site.json"
+      ],
+      "siteBrand": [
+        "sa-28d-site-brand.json"
+      ],
+      "siteNonBrand": [
+        "sa-28d-site-nonbrand.json"
       ]
     },
     "90d": {
@@ -30,6 +43,24 @@
       "query": [
         "sa-90d-query-0.json",
         "sa-90d-query-1.json"
+      ],
+      "pageNonBrand": [
+        "sa-90d-page-nonbrand-0.json"
+      ],
+      "site": [
+        "sa-90d-site.json"
+      ],
+      "siteBrand": [
+        "sa-90d-site-brand.json"
+      ],
+      "siteNonBrand": [
+        "sa-90d-site-nonbrand.json"
+      ],
+      "daily": [
+        "sa-90d-daily.json"
+      ],
+      "dailyNonBrand": [
+        "sa-90d-daily-nonbrand.json"
       ]
     }
   },

@@ -30,6 +30,11 @@
  *    in the Domain property, so per-family denominators that ignore the host
  *    are wrong.
  *
+ * Search totals come in two bases and are never mixed. Rows grouped by page
+ * count a search once per URL it shows; `siteTotals` and the daily series are
+ * requested by property and count it once, as the performance chart does.
+ * Both are split into brand and non-brand with `BRAND_QUERY_PATTERN`.
+ *
  * And one arithmetic rule: a sampled share is never multiplied up into a
  * reported total. Google caps its example URL exports at 1,000 rows with
  * unspecified ordering, so only an export whose row count equals its reported
@@ -99,6 +104,55 @@ const SNAPSHOT_SCHEMA_VERSION = 1;
 const PAGE_FAMILY_SCHEMA_VERSION = 2;
 
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
+
+/**
+ * Queries that name World Monitor itself, including the misspellings and the
+ * Japanese name that reach the top of the query report. Everything else is
+ * non-brand: the searches the corpus pages exist to win. "war monitor" and
+ * "monitor the situation" are generic and stay non-brand.
+ *
+ * One pattern serves both sides. Search Console evaluates it as RE2 with a
+ * `(?i)` prefix, and the snapshot classifies its own top queries with the same
+ * source compiled as a case-insensitive JavaScript RegExp, so the two can
+ * never drift. It uses only syntax the two engines share.
+ */
+export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold)[ ._-]*monitor|ワールドモニター';
+const BRAND_QUERY_REGEX = new RegExp(BRAND_QUERY_PATTERN, 'i');
+export const isBrandQuery = (query) => BRAND_QUERY_REGEX.test(String(query ?? ''));
+const BRAND_FILTER_EXPRESSION = `(?i)${BRAND_QUERY_PATTERN}`;
+const queryFilter = (operator) => ({
+  groupType: 'and',
+  filters: [{ dimension: 'query', operator, expression: BRAND_FILTER_EXPRESSION }],
+});
+
+/**
+ * The Search Analytics views collected for every window, besides the existing
+ * `page` and `query` rows.
+ *
+ * Google aggregates a page-grouped query by URL: one search that shows the
+ * homepage, three of its sitelinks and `/pro` counts five impressions, one per
+ * URL. The UI performance chart aggregates by property and counts it once. So
+ * the sum of page rows is not the site total, and on 2026-09-25 it came out
+ * about twice the chart. `site` asks for the by-property total directly.
+ *
+ * A query filter excludes anonymized queries, so `site` minus `siteBrand` minus
+ * `siteNonBrand` is the anonymized remainder rather than a rounding error, and
+ * `pageNonBrand` is non-brand traffic Google attributes to a query.
+ */
+const SITE_VIEWS = Object.freeze({
+  site: { dimensions: [], filter: null },
+  siteBrand: { dimensions: [], filter: 'includingRegex' },
+  siteNonBrand: { dimensions: [], filter: 'excludingRegex' },
+  daily: { dimensions: ['date'], filter: null },
+  dailyNonBrand: { dimensions: ['date'], filter: 'excludingRegex' },
+});
+const PAGE_NON_BRAND_VIEW = 'pageNonBrand';
+const VIEW_REQUESTS = Object.freeze({
+  page: { dimensions: ['page'], filter: null },
+  query: { dimensions: ['query'], filter: null },
+  [PAGE_NON_BRAND_VIEW]: { dimensions: ['page'], filter: 'excludingRegex' },
+  ...SITE_VIEWS,
+});
 
 /**
  * Coverage states Google reports for a URL it crawled and chose not to index,
@@ -341,8 +395,11 @@ export function createFixtureTransport(directory) {
       url: entry.url,
       xml: readFileSync(join(root, entry.file), 'utf8'),
     })),
+    // An unrecorded view answers null, which the collector reports as not
+    // measured. An empty recording is a real zero.
     async searchAnalytics({ windowLabel, dimension, page }) {
-      const pages = manifest.searchAnalytics?.[windowLabel]?.[dimension] ?? [];
+      const pages = manifest.searchAnalytics?.[windowLabel]?.[dimension];
+      if (pages === undefined) return null;
       if (page >= pages.length) return { rows: [] };
       return readRecorded(pages[page]);
     },
@@ -452,10 +509,13 @@ export function createLiveTransport({ accessToken, property, fetchImpl = fetch, 
     // one call shape across both.
     async searchAnalytics({ dimension, page, startDate, endDate }) {
       const endpoint = `${SEARCH_ANALYTICS_ENDPOINT}/${encodeURIComponent(property)}/searchAnalytics/query`;
+      const request = VIEW_REQUESTS[dimension];
+      invariant(request, `unknown Search Analytics view ${dimension}`);
       return post(endpoint, {
         startDate,
         endDate,
-        dimensions: [dimension],
+        dimensions: request.dimensions,
+        ...(request.filter ? { dimensionFilterGroups: [queryFilter(request.filter)] } : {}),
         rowLimit: SEARCH_ANALYTICS_ROW_LIMIT,
         startRow: page * SEARCH_ANALYTICS_ROW_LIMIT,
         dataState: 'final',
@@ -703,9 +763,10 @@ async function collectPerformance(transport, windows) {
   const results = [];
   for (const window of windows) {
     const dimensions = {};
-    for (const dimension of ['page', 'query']) {
+    for (const dimension of ['page', 'query', PAGE_NON_BRAND_VIEW]) {
       const rows = [];
       let truncationReason = null;
+      let recorded = true;
       for (let page = 0; page < MAX_PAGES_PER_WINDOW; page += 1) {
         let response;
         try {
@@ -723,6 +784,10 @@ async function collectPerformance(transport, windows) {
           }
           throw error;
         }
+        if (response === null && page === 0) {
+          recorded = false;
+          break;
+        }
         const returned = Array.isArray(response?.rows) ? response.rows : [];
         for (const row of returned) {
           const key = Array.isArray(row.keys) ? row.keys[0] : null;
@@ -739,9 +804,13 @@ async function collectPerformance(transport, windows) {
           truncationReason = `stopped after ${MAX_PAGES_PER_WINDOW} pages of ${dimension} rows`;
         }
       }
-      dimensions[dimension] = { rows, truncationReason };
+      dimensions[dimension] = { rows, truncationReason, recorded };
     }
-    results.push({ window, dimensions });
+    const site = {};
+    for (const view of ['site', 'siteBrand', 'siteNonBrand']) {
+      site[view] = await collectSiteView(transport, window, view);
+    }
+    results.push({ window, dimensions, site });
   }
   return results;
 }
@@ -749,6 +818,124 @@ async function collectPerformance(transport, windows) {
 // ---------------------------------------------------------------------------
 // Snapshot
 // ---------------------------------------------------------------------------
+
+/**
+ * One by-property view: a single request with no pagination. A view the
+ * transport could not answer is recorded as unavailable with its reason, never
+ * as zero. A view Google answered with no rows is a real zero.
+ */
+async function collectSiteView(transport, window, view) {
+  let response;
+  try {
+    response = await transport.searchAnalytics({
+      windowLabel: window.label,
+      dimension: view,
+      page: 0,
+      startDate: window.startDate,
+      endDate: window.endDate,
+    });
+  } catch (error) {
+    if (error instanceof QuotaExhaustedError) {
+      return { status: 'unavailable', reason: `searchanalytics quota was exhausted: ${error.message}`, rows: null };
+    }
+    throw error;
+  }
+  if (response === null) {
+    return { status: 'unavailable', reason: `the ${view} view was not collected`, rows: null };
+  }
+  const rows = (Array.isArray(response.rows) ? response.rows : []).map((row) => ({
+    key: Array.isArray(row.keys) ? (row.keys[0] ?? null) : null,
+    clicks: finite(row.clicks) ?? 0,
+    impressions: finite(row.impressions) ?? 0,
+    position: finite(row.position),
+  }));
+  return { status: 'available', reason: null, rows };
+}
+
+/** The daily by-property series, collected once over the widest window. */
+async function collectDaily(transport, windows) {
+  const widest = [...windows].sort((left, right) => (
+    Date.parse(left.startDate) - Date.parse(right.startDate)
+  ))[0];
+  if (!widest) return null;
+  return {
+    window: widest,
+    all: await collectSiteView(transport, widest, 'daily'),
+    nonBrand: await collectSiteView(transport, widest, 'dailyNonBrand'),
+  };
+}
+
+function siteMetrics(view) {
+  if (view.status !== 'available') return null;
+  const accumulator = newAccumulator();
+  for (const row of view.rows) addRow(accumulator, row);
+  const { clicks, impressions, ctr, averagePosition } = finalizeMetrics(accumulator);
+  return { clicks, impressions, ctr, averagePosition };
+}
+
+/**
+ * Totals counted once per search, as the Search Console performance chart
+ * counts them, split into brand, non-brand and the anonymized remainder.
+ */
+function buildSiteTotals(site) {
+  const all = siteMetrics(site.site);
+  const brand = siteMetrics(site.siteBrand);
+  const nonBrand = siteMetrics(site.siteNonBrand);
+  const unavailable = Object.entries(site)
+    .filter(([, view]) => view.status !== 'available')
+    .map(([, view]) => view.reason);
+  const remainder = (field) => (
+    all && brand && nonBrand ? Math.max(0, all[field] - brand[field] - nonBrand[field]) : null
+  );
+  return {
+    status: unavailable.length === 0 ? 'available' : (all ? 'partial' : 'unavailable'),
+    reason: unavailable.length === 0 ? null : unavailable.join('; '),
+    basis: 'by-property',
+    brandPattern: BRAND_QUERY_PATTERN,
+    all,
+    brand,
+    nonBrand,
+    anonymized: all && brand && nonBrand
+      ? { clicks: remainder('clicks'), impressions: remainder('impressions') }
+      : null,
+    nonBrandShare: share(nonBrand?.impressions ?? null, all?.impressions ?? null, 'by-property-impressions'),
+  };
+}
+
+function buildDaily(daily) {
+  if (!daily) return { status: 'unavailable', reason: 'no window was requested', rows: [] };
+  const { window, all, nonBrand } = daily;
+  if (all.status !== 'available') {
+    return { status: 'unavailable', reason: all.reason, startDate: window.startDate, endDate: window.endDate, rows: [] };
+  }
+  const nonBrandByDate = new Map(
+    (nonBrand.rows ?? []).map((row) => [row.key, row]),
+  );
+  const rows = all.rows
+    .filter((row) => typeof row.key === 'string')
+    .sort((left, right) => left.key.localeCompare(right.key))
+    .map((row) => {
+      const nb = nonBrand.status === 'available' ? (nonBrandByDate.get(row.key) ?? null) : null;
+      return {
+        date: row.key,
+        clicks: row.clicks,
+        impressions: row.impressions,
+        position: row.position === null ? null : roundTo(row.position, 2),
+        // A date with no non-brand row is a real zero when the view answered;
+        // null only when the non-brand view itself was not measured.
+        nonBrandClicks: nonBrand.status === 'available' ? (nb?.clicks ?? 0) : null,
+        nonBrandImpressions: nonBrand.status === 'available' ? (nb?.impressions ?? 0) : null,
+      };
+    });
+  return {
+    status: nonBrand.status === 'available' ? 'available' : 'partial',
+    reason: nonBrand.status === 'available' ? null : nonBrand.reason,
+    basis: 'by-property',
+    startDate: window.startDate,
+    endDate: window.endDate,
+    rows,
+  };
+}
 
 function countBy(entries, selector) {
   const counts = {};
@@ -802,10 +989,26 @@ function topCoverageReasons(records) {
     .map(([state, count]) => ({ state, count }));
 }
 
-function buildPerformance(performance, inventory, indexedByFamily) {
+function buildPerformance(performance, inventory, indexedByFamily, daily) {
   const routeFamily = new Map(inventory.urls.map((entry) => [entry.url, entry]));
-  const windows = performance.map(({ window, dimensions }) => {
+  const windows = performance.map(({ window, dimensions, site }) => {
     const totals = newAccumulator();
+    // Non-brand rows per family, measured only when the filtered view was
+    // collected. Rows outside every family are left out here; the unmapped
+    // list above already names them.
+    const nonBrandRecorded = dimensions[PAGE_NON_BRAND_VIEW].recorded;
+    const nonBrandByFamily = new Map(PAGE_FAMILIES.map((family) => [family, newAccumulator()]));
+    for (const row of dimensions[PAGE_NON_BRAND_VIEW].rows) {
+      let classified = routeFamily.get(row.key);
+      if (!classified) {
+        try {
+          classified = classifyUrl(row.key);
+        } catch {
+          continue;
+        }
+      }
+      addRow(nonBrandByFamily.get(classified.family), row);
+    }
     const families = new Map(PAGE_FAMILIES.map((family) => [family, newAccumulator()]));
     // Google reports URLs we never declared: legacy paths, other hosts in the
     // Domain property. They stay in the totals and are listed by name, so the
@@ -838,8 +1041,12 @@ function buildPerformance(performance, inventory, indexedByFamily) {
         .filter((row) => row.family === family)
         .sort((left, right) => right.impressions - left.impressions
           || left.key.localeCompare(right.key));
+      const nonBrand = finalizeMetrics(nonBrandByFamily.get(family));
       byFamily[family] = {
         ...metrics,
+        nonBrandImpressions: nonBrandRecorded ? nonBrand.impressions : null,
+        nonBrandClicks: nonBrandRecorded ? nonBrand.clicks : null,
+        nonBrandReason: nonBrandRecorded ? null : 'the non-brand page view was not collected',
         impressionsPerIndexedUrl: indexed !== null && indexed > 0
           ? roundTo(metrics.impressions / indexed, 2)
           : null,
@@ -857,19 +1064,27 @@ function buildPerformance(performance, inventory, indexedByFamily) {
       .slice(0, MAX_TOP_QUERIES)
       .map((row) => ({
         query: row.key,
+        brand: isBrandQuery(row.key),
         clicks: row.clicks,
         impressions: row.impressions,
         position: row.position,
       }));
-    const truncation = [dimensions.page.truncationReason, dimensions.query.truncationReason]
-      .filter(Boolean);
+    const truncation = [
+      dimensions.page.truncationReason,
+      dimensions.query.truncationReason,
+      dimensions[PAGE_NON_BRAND_VIEW].truncationReason,
+    ].filter(Boolean);
     return {
       label: window.label,
       startDate: window.startDate,
       endDate: window.endDate,
       status: truncation.length > 0 ? 'partial' : 'available',
       reason: truncation.length > 0 ? truncation.join('; ') : null,
+      // Counted once per URL shown, so one search can count several times.
+      // `siteTotals` is the by-property number the performance chart shows.
+      totalsBasis: 'sum-of-page-rows',
       totals: finalizeMetrics(totals),
+      siteTotals: buildSiteTotals(site),
       rowCounts: {
         page: dimensions.page.rows.length,
         query: dimensions.query.rows.length,
@@ -892,6 +1107,7 @@ function buildPerformance(performance, inventory, indexedByFamily) {
     status: windows.length === 0 ? 'unavailable' : (partial ? 'partial' : 'available'),
     reason: windows.length === 0 ? 'no window was requested' : null,
     windows,
+    daily: buildDaily(daily),
   };
 }
 
@@ -946,6 +1162,7 @@ export async function collectGscSnapshot({
   // Search Analytics first: it is cheap, and an auth or permission failure
   // there must stop the run before any of the daily inspection quota is spent.
   const performanceRaw = await collectPerformance(transport, windows);
+  const dailyRaw = await collectDaily(transport, windows);
   const { sample, records, quotaReason } = await collectIndexation(
     transport,
     inventory,
@@ -1009,7 +1226,7 @@ export async function collectGscSnapshot({
     );
   }
 
-  const performance = buildPerformance(performanceRaw, inventory, byFamily);
+  const performance = buildPerformance(performanceRaw, inventory, byFamily, dailyRaw);
   for (const window of performance.windows) {
     if (window.status !== 'available') samplingNotes.push(`${window.label}: ${window.reason}`);
     if (window.unmapped.urls > 0) {
@@ -1180,6 +1397,101 @@ export function assertNoSecrets(serialized, { property = null } = {}) {
   return serialized;
 }
 
+/**
+ * Sum a daily series into seven-day weeks ending on its last date, oldest
+ * first. Weeks are bucketed by calendar date rather than by row position,
+ * because Google omits a day with no data instead of returning a zero row.
+ */
+export function weeklyTotals(rows) {
+  if (rows.length === 0) return [];
+  const DAY_MS = 86_400_000;
+  const last = Date.parse(rows.at(-1).date);
+  const buckets = new Map();
+  for (const row of rows) {
+    const index = Math.floor((last - Date.parse(row.date)) / (7 * DAY_MS));
+    if (!buckets.has(index)) buckets.set(index, []);
+    buckets.get(index).push(row);
+  }
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  return [...buckets.entries()]
+    .sort(([left], [right]) => right - left)
+    .map(([index, slice]) => {
+      const sum = (field) => (slice.some((row) => row[field] === null)
+        ? null
+        : slice.reduce((total, row) => total + row[field], 0));
+      return {
+        startDate: iso(last - (index * 7 + 6) * DAY_MS),
+        endDate: iso(last - index * 7 * DAY_MS),
+        days: slice.length,
+        impressions: sum('impressions'),
+        clicks: sum('clicks'),
+        nonBrandImpressions: sum('nonBrandImpressions'),
+        nonBrandClicks: sum('nonBrandClicks'),
+      };
+    });
+}
+
+function renderSearchTotals(performance) {
+  const lines = ['## Search totals', ''];
+  lines.push('Counted by property: one search is one impression however many of our');
+  lines.push('URLs it shows, as in the Search Console performance chart. The page-row');
+  lines.push('sum counts the same search once per URL, so it runs higher.');
+  lines.push('');
+  lines.push('| Window | Impressions | Clicks | Brand impressions | Non-brand impressions | Non-brand clicks | Anonymized impressions | Non-brand share | Page-row sum impressions |');
+  lines.push('|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+  for (const window of performance.windows) {
+    const site = window.siteTotals;
+    lines.push([
+      `| ${window.label} (${window.startDate} to ${window.endDate})`,
+      number(site.all?.impressions ?? null),
+      number(site.all?.clicks ?? null),
+      number(site.brand?.impressions ?? null),
+      number(site.nonBrand?.impressions ?? null),
+      number(site.nonBrand?.clicks ?? null),
+      number(site.anonymized?.impressions ?? null),
+      percent(site.nonBrandShare.value),
+      `${window.totals.impressions} |`,
+    ].join(' | '));
+  }
+  lines.push('');
+  const unavailable = performance.windows.filter((window) => window.siteTotals.status !== 'available');
+  for (const window of unavailable) lines.push(`- ${window.label}: ${window.siteTotals.reason}`);
+  if (unavailable.length > 0) lines.push('');
+  const brandPattern = performance.windows[0]?.siteTotals.brandPattern ?? BRAND_QUERY_PATTERN;
+  lines.push(`Brand queries match \`${brandPattern}\`, case-insensitive. Google drops anonymized queries from any query-filtered view, so they are reported as the remainder.`);
+  lines.push('');
+
+  const { daily } = performance;
+  lines.push('### Weekly trend');
+  lines.push('');
+  if (daily.status === 'unavailable' || daily.rows.length === 0) {
+    lines.push(`Not measured: ${daily.reason ?? 'the daily series returned no rows'}.`);
+  } else {
+    lines.push(`By property, ${daily.startDate} to ${daily.endDate}, final data only. Days counts the dates Google returned; it omits a date with no data, and the oldest week can fall partly outside the window.`);
+    lines.push('');
+    lines.push('| Week | Days | Impressions | Clicks | Non-brand impressions | Non-brand clicks |');
+    lines.push('|---|---:|---:|---:|---:|---:|');
+    for (const week of weeklyTotals(daily.rows)) {
+      lines.push(`| ${week.startDate} to ${week.endDate} | ${week.days} | ${number(week.impressions)} | ${number(week.clicks)} | ${number(week.nonBrandImpressions)} | ${number(week.nonBrandClicks)} |`);
+    }
+  }
+  lines.push('');
+
+  const primary = performance.windows[0] ?? null;
+  if (primary && primary.topQueries.length > 0) {
+    lines.push(`### Top queries (${primary.label})`);
+    lines.push('');
+    lines.push('| Query | Brand | Impressions | Clicks | CTR | Position |');
+    lines.push('|---|---|---:|---:|---:|---:|');
+    for (const row of primary.topQueries) {
+      const ctr = row.impressions > 0 ? row.clicks / row.impressions : null;
+      lines.push(`| ${row.query.replace(/\|/g, '\\|')} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
+    }
+    lines.push('');
+  }
+  return lines;
+}
+
 const percent = (ratio) => (ratio === null ? 'n/a' : `${(ratio * 100).toFixed(1)}%`);
 const number = (value) => (value === null ? 'n/a' : String(value));
 const urlList = (entries) => (
@@ -1219,10 +1531,14 @@ export function renderGscMarkdown(snapshot) {
   lines.push('docs build renames a chunk rather than when a page changes.');
   lines.push('');
 
+  lines.push(...renderSearchTotals(snapshot.performance));
+
   lines.push('## By page family');
   lines.push('');
-  lines.push('| Family | Declared | Inspected | Indexed | Indexed share | Top declined reasons | Impressions | Clicks | CTR | Impressions per indexed URL |');
-  lines.push('|---|---:|---:|---:|---:|---|---:|---:|---:|---:|');
+  lines.push('Impressions and clicks here are summed over page rows, so one search counts once per URL it shows. Non-brand impressions exclude brand and anonymized queries.');
+  lines.push('');
+  lines.push('| Family | Declared | Inspected | Indexed | Indexed share | Top declined reasons | Impressions | Non-brand impressions | Clicks | CTR | Impressions per indexed URL |');
+  lines.push('|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|');
   // The union, not just the declared families: a family that earns impressions
   // without appearing in a sitemap is exactly the row worth seeing, and
   // iterating only the indexation keys would drop it.
@@ -1235,7 +1551,7 @@ export function renderGscMarkdown(snapshot) {
     const perf = primary?.byFamily?.[family] ?? null;
     if (!index) {
       lines.push(
-        `| ${family} | 0 | 0 | n/a | n/a | not declared in any sitemap | ${perf.impressions} | ${perf.clicks} | ${percent(perf.ctr)} | n/a |`,
+        `| ${family} | 0 | 0 | n/a | n/a | not declared in any sitemap | ${perf.impressions} | ${number(perf.nonBrandImpressions)} | ${perf.clicks} | ${percent(perf.ctr)} | n/a |`,
       );
       continue;
     }
@@ -1252,6 +1568,7 @@ export function renderGscMarkdown(snapshot) {
       percent(index.indexedShare.value),
       reasons,
       perf ? perf.impressions : 'n/a',
+      perf ? number(perf.nonBrandImpressions) : 'n/a',
       perf ? perf.clicks : 'n/a',
       perf ? percent(perf.ctr) : 'n/a',
       `${perf ? number(perf.impressionsPerIndexedUrl) : 'n/a'} |`,

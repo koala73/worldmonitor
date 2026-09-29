@@ -11,9 +11,8 @@ impressions per indexed page.
   flagged disagreements; sampling notes.
 - `<date>.md` — the deterministic human summary generated from that snapshot.
 
-No snapshot is committed yet. The owner prerequisites in issue #8606 were
-completed and verified against the live API on 2026-09-25, so the first file
-arrives through the weekly workflow's review PR.
+The first snapshot is `2026-09-25`. Later ones arrive through the weekly
+workflow's review PR.
 
 ## Running it
 
@@ -69,6 +68,28 @@ being silently resolved in either direction.
 **Every URL carries its host.** The apex and the variant dashboards share the
 Domain property with `www`, so a per-family denominator that ignores the host is
 wrong rather than merely coarse.
+
+**Site totals are counted by property; family rows are summed over pages.**
+Search Console counts a search once per URL it shows when rows are grouped by
+page: one brand search that shows the homepage, three sitelinks and `/pro`
+counts five impressions. The performance chart groups by property and counts
+it once. On 2026-09-25 the page-row sum was 800,092 impressions for 28 days,
+roughly twice what the chart shows. `siteTotals` therefore asks Google for the
+by-property number directly, and the window `totals` are labelled
+`totalsBasis: sum-of-page-rows`. Compare family rows with each other, and
+compare the site with the chart, never one with the other.
+
+**Brand and non-brand are split with one pattern.** `BRAND_QUERY_PATTERN` in
+the collector names World Monitor and its common misspellings. Google applies
+it as a query filter; the snapshot applies the same source to its own top
+queries. A query filter drops anonymized queries, so the site table reports
+them as the remainder (`anonymized`) instead of losing them, and per-family
+`nonBrandImpressions` counts only non-brand queries Google attributes. The
+non-brand numbers are the ones the corpus pages exist to move.
+
+**The daily series is by property.** `performance.daily` holds one row per date
+over the widest window, all queries and non-brand, and the summary sums it into
+calendar weeks. Google omits a date with no data rather than returning zero.
 
 **Search Analytics URLs outside every family are listed, not dropped.** A
 sitemap URL with no family stops the run, because the sitemaps are ours to fix.
