@@ -195,7 +195,7 @@ jobs:
           # is not its input, so it normally shows no diff — but staging it here
           # means a map that is stale for any other reason self-heals with the
           # pulse instead of waiting for the monthly snapshot PR (#8604).
-          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt pro-test/src/generated/teasers.json pro-test/welcome.html pro-test/index.html api/_country-corpus-slugs.generated.js
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt pro-test/src/generated/teasers.json pro-test/welcome.html pro-test/index.html public/home.md api/_country-corpus-slugs.generated.js
           git commit -m "chore(corpus): refresh crawlable live pulse ${snapshot_date}"
           # Route lastmod dates come from committed material sources.
           npm run build:sitemap

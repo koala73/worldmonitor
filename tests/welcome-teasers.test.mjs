@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import {
   TEASERS_OUTPUT_PATH,
   buildWelcomeTeasers,
+  renderHomeMarkdown,
   renderProHtml,
   renderWelcomeHtml,
   renderWelcomeTeasers,
@@ -301,6 +302,13 @@ describe('welcome teaser strip carries its snapshot stamp (#7654)', () => {
       assert.equal(asOf.match(/\{\{date\}\}/g)?.length, 1, `${file} asOf must carry one {{date}}`);
       assert.doesNotMatch(asOf, /20\d\d|[\u0660-\u0669\u06F0-\u06F9]/, `${file} asOf must not hardcode a date`);
     }
+  });
+
+  it('moves the agent-facing homepage as-of line with the next pulse', () => {
+    assert.match(read('public/home.md'), new RegExp(`^As of ${snapshot.capturedAt}\\.$`, 'm'));
+    const next = renderHomeMarkdown({ capturedAt: '2026-10-01' });
+    assert.match(next, /^As of 2026-10-01\.$/m);
+    assert.equal(next.match(/^As of \d{4}-\d{2}-\d{2}\.$/gm).length, 1);
   });
 
   it('formats the hero date the way each locale wrote it by hand', () => {

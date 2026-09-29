@@ -241,14 +241,17 @@ describe('GEO residue #7463', () => {
     assert.doesNotMatch(useCases[1], /livePulse/);
   });
 
-  it('homepage editorial copy retains its reviewed as-of date', () => {
+  it('homepage as-of date tracks the published pulse, not a hand-set stamp (#8701)', () => {
+    // The hero and home.md were pinned to 2026-09-08 to match #software
+    // dateModified. Once dateModified followed the pulse (#7654) the pin left
+    // the visible date trailing lastmod, so all three now read one freeze.
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
     const hero = read('pro-test/src/welcome/Hero.tsx');
-    const home = read('public/home.md');
     const en = readJson('pro-test/src/locales/en.json');
 
-    assert.match(hero, /dateTime="2026-09-08"/);
-    assert.match(home, /2026-09-08/);
-    assert.match(String(en.welcome?.hero?.asOf || ''), /2026-09-08|8 September 2026/);
+    assert.match(hero, /dateTime=\{PUBLISHED_PULSE_DATE\}/);
+    assert.equal(en.welcome?.hero?.asOf, 'As of {{date}}');
+    assert.match(read('public/home.md'), new RegExp(`^As of ${snapshot.capturedAt}\\.$`, 'm'));
   });
 
   it('homepage and Pro software dates track the teaser strip snapshot (#7654)', () => {
