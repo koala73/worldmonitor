@@ -13,7 +13,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   _uiResourceUri: NEWS_DASHBOARD_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 1048576,
-  _apiPaths: ['/api/news/v1/list-feed-digest'],
+  _apiPaths: ['GET /api/news/v1/list-feed-digest'],
   inputSchema: PLUGIN_NEWS_VIEW_INPUT_SCHEMA,
   outputSchema: {
     type: 'object',
@@ -44,7 +44,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   name: 'analyze_news_headlines',
   description: 'Run the existing WorldMonitor news summary or translation service on selected headlines. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
   _outputBudgetBytes: 32768,
-  _apiPaths: ['/api/news/v1/summarize-article'],
+  _apiPaths: ['POST /api/news/v1/summarize-article'],
   inputSchema: {
     type: 'object',
     properties: {
@@ -56,7 +56,20 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
     },
     required: ['headlines'],
   },
-  outputSchema: { type: 'object', properties: { summary: { type: 'string' }, provider: { type: 'string' }, model: { type: 'string' }, error: { type: 'string' }, status: { type: 'string' } } },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string' },
+      provider: { type: 'string' },
+      model: { type: 'string' },
+      tokens: { type: 'integer' },
+      fallback: { type: 'boolean' },
+      error: { type: 'string' },
+      errorType: { type: 'string' },
+      status: { type: 'string' },
+      statusDetail: { type: 'string' },
+    },
+  },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
     const url = `${base}/api/news/v1/summarize-article`;

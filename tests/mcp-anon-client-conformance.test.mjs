@@ -51,12 +51,19 @@ describe('api/mcp.ts — anonymous strict-client conformance (#4937)', () => {
     process.env.MCP_TELEMETRY = 'false';
 
     // Public-resource reads fetch upstream via globalThis.fetch (never via
-    // deps); answer any GET with a minimal cache envelope so the walk stays
-    // hermetic.
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    );
+    // deps); fixture the compiled HTML resource and cache responses so the
+    // walk stays hermetic.
+    globalThis.fetch = async (input) => {
+      if (String(input) === 'https://www.worldmonitor.app/plugin/plugin.html') {
+        return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main></body></html>', {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      return new Response(
+        JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
 
     const unreachable = (name) => async () => {
       throw new Error(`anonymous path must not touch deps.${name}`);
