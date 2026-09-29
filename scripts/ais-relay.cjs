@@ -13541,27 +13541,32 @@ function compactWidgetToolJson(text, symbols = []) {
 
   const wanted = symbols.map(s => String(s).trim().toUpperCase()).filter(Boolean);
   const found = new Set();
+  const filtered = [];
   let sampled = false;
-  const shrink = v => {
+  const shrink = (v, path) => {
     if (Array.isArray(v)) {
       if (v.length > points && v.every(x => typeof x === 'number')) {
         sampled = true;
         return Array.from({ length: points }, (_, i) => v[Math.round(i * (v.length - 1) / (points - 1))]);
       }
-      const items = wanted.length && v.some(x => typeof x?.symbol === 'string')
-        ? v.filter(x => wanted.includes(String(x?.symbol).toUpperCase()) && found.add(String(x.symbol).toUpperCase()))
-        : v;
-      return items.map(shrink);
+      // Filter only a list that holds a requested symbol; a multi-key bootstrap's
+      // other quote lists pass through whole.
+      const hit = x => wanted.includes(String(x?.symbol).toUpperCase());
+      if (wanted.length && v.some(hit)) {
+        filtered.push(path);
+        return v.filter(hit).map((x, i) => (found.add(String(x.symbol).toUpperCase()), shrink(x, `${path}.${i}`)));
+      }
+      return v.map((x, i) => shrink(x, `${path}.${i}`));
     }
-    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]));
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x, path ? `${path}.${k}` : k)]));
     return v;
   };
-  const body = shrink(value);
+  const body = shrink(value, '');
   if (!sampled && !wanted.length && text.length <= budget) return text;
 
   const note = {};
   if (sampled) note.sampledSeries = `numeric series longer than ${points} points were evenly sampled to ${points} points (first and last kept); they carry no dates`;
-  if (wanted.length) note.symbols = { requested: wanted, missing: wanted.filter(s => !found.has(s)) };
+  if (wanted.length) note.symbols = { requested: wanted, missing: wanted.filter(s => !found.has(s)), filtered };
   const serialize = () => JSON.stringify(Object.keys(note).length ? { _widget: note, ...body } : body);
 
   const totals = new Map();
@@ -13636,7 +13641,7 @@ You have 3 tool calls in total; the server rejects any beyond that. If 2 calls h
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
 PREFER this over live RPCs whenever a key matches the user's topic.
-Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of today's intraday prices with no dates — not daily history. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
+Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of recent prices with no dates; its interval varies by source (today's intraday ticks or the last few daily closes), so it is not a dated history. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
 
 Market & Crypto:
   marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
@@ -13693,7 +13698,7 @@ maritime: list-navigational-warnings
 news: list-feed-digest
 
 ## Time windows — never invent dates
-Label a time axis, dates, or a window ("30-day", "90-day change", "YTD") only when the fetched data carries those dates. Quote sparklines are today's intraday prices: label them "Today (intraday)", never as days or sessions. When the requested window is not in the data, build the widget from what exists, label it truthfully, and say so in the widget (for example "90-day history not available — showing today"). Never fill missing history from search_web snippets, interpolation or estimates. When data could not be fetched, still build the widget with that data marked unavailable; never substitute remembered, estimated or example values.
+Label a time axis, dates, or a window ("30-day", "90-day change", "YTD") only when the fetched data carries those dates. Label a quote sparkline only as a recent trend (for example "Recent trend"), never with dates, days, sessions or a window. When the requested window is not in the data, build the widget from what exists, label it truthfully, and say so in the widget (for example "90-day history not available — showing current price and recent trend"). Never fill missing history from search_web snippets, interpolation or estimates. When data could not be fetched, still build the widget with that data marked unavailable; never substitute remembered, estimated or example values.
 
 ### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
@@ -14435,7 +14440,7 @@ You have 3 tool calls in total; the server rejects any beyond that. If 2 calls h
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
 PREFER this over live RPCs whenever a key matches the user's topic.
-Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of today's intraday prices with no dates — not daily history. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
+Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of recent prices with no dates; its interval varies by source (today's intraday ticks or the last few daily closes), so it is not a dated history. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
 
 Market & Crypto:
   marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
@@ -14492,7 +14497,7 @@ maritime: list-navigational-warnings
 news: list-feed-digest
 
 ## Time windows — never invent dates
-Label a time axis, dates, or a window ("30-day", "90-day change", "YTD") only when the fetched data carries those dates. Quote sparklines are today's intraday prices: label them "Today (intraday)", never as days or sessions. When the requested window is not in the data, build the widget from what exists, label it truthfully, and say so in the widget (for example "90-day history not available — showing today"). Never fill missing history from search_web snippets, interpolation or estimates. When data could not be fetched, still build the widget with that data marked unavailable; never substitute remembered, estimated or example values.
+Label a time axis, dates, or a window ("30-day", "90-day change", "YTD") only when the fetched data carries those dates. Label a quote sparkline only as a recent trend (for example "Recent trend"), never with dates, days, sessions or a window. When the requested window is not in the data, build the widget from what exists, label it truthfully, and say so in the widget (for example "90-day history not available — showing current price and recent trend"). Never fill missing history from search_web snippets, interpolation or estimates. When data could not be fetched, still build the widget with that data marked unavailable; never substitute remembered, estimated or example values.
 
 ### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed as const DATA = [...] in your inline script.
