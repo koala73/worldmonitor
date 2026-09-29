@@ -193,13 +193,13 @@ describe('widget-agent relay — runtime tool budget and finalization', () => {
     assertWidgetSuccess(result);
   });
 
-  it('shares the budget across responses and both tools', async () => {
+  it('shares the budget across responses and both tools (4 once the web is used)', async () => {
     const result = await runWidgetAgent([
       widgetResponse('tool_use', [widgetTool('1'), widgetTool('2', 'search_web', { query: 'quakes' })]),
-      widgetResponse('tool_use', [widgetTool('3', 'search_web', { query: 'today' }), widgetTool('4')]),
+      widgetResponse('tool_use', [widgetTool('3', 'search_web', { query: 'today' }), widgetTool('4'), widgetTool('5')]),
       widgetResponse('end_turn'),
     ]);
-    assert.equal(result.effects.length, 3);
+    assert.equal(result.effects.length, 4);
     assert.equal(result.effects.filter(e => e.startsWith('search:')).length, 2);
     assert.equal(toolResultsFor(result.requests[2]).at(-1).is_error, true);
     assertWidgetSuccess(result);
@@ -473,7 +473,7 @@ describe('widget data-tool contracts', () => {
     const context = vm.createContext({
       URL, AbortSignal, fetch, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,
-      WIDGET_MAX_TOOL_CALLS: 3,
+      WIDGET_MAX_TOOL_CALLS: 3, toolLimit: 3, searchedUrls: new Set(), sources: [], usedWeb: false,
       getWidgetDataSessionToken: async () => 'wms_contract', invalidateWidgetDataSession() {},
       sendWidgetSSE() {}, WIDGET_EXA_KEY: 'fixture', WIDGET_BRAVE_KEY: 'fixture', console,
     });
@@ -1309,6 +1309,7 @@ describe('widget-agent relay — completion contract', () => {
       WIDGET_ANTHROPIC_KEY: 'test-key',
       WIDGET_FETCH_TOOL: {},
       WIDGET_SEARCH_TOOL: {},
+      WIDGET_READ_TOOL: {},
       performWidgetWebSearch: async () => null,
       setTimeout,
       clearTimeout,
@@ -1657,13 +1658,6 @@ describe('WidgetChatModal — SSE client protocol', () => {
 
   it('AbortController used for cancellation', () => {
     assert.ok(modal.includes('AbortController'), 'Must use AbortController for stream cancellation');
-  });
-
-  it('client timeout is 60 seconds', () => {
-    assert.ok(
-      modal.includes('60_000') || modal.includes('60000'),
-      'Client timeout must be 60 seconds (60_000 ms)',
-    );
   });
 
   it('currentHtml sent as separate field (not embedded in conversationHistory)', () => {

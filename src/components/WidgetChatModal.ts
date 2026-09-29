@@ -307,7 +307,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     });
 
     abortController = new AbortController();
-    const timeoutMs = isPro ? 120_000 : 60_000;
+    const timeoutMs = isPro ? 200_000 : 170_000;
     clientTimeout = setTimeout(() => {
       abortController?.abort();
       appendMessage(messagesEl, 'assistant', t('widgets.requestTimedOut'));
