@@ -441,10 +441,14 @@ function collectDockerfiles(): string[] {
     .sort();
 }
 
-function securityAuditMatrixLockfiles(): string[] {
-  return Array.from(securityAuditWorkflow.matchAll(/^\s+lockfile:\s+(.+)$/gm), ([, value]) =>
-    value.trim().replace(/^['"]|['"]$/g, ''),
-  ).sort();
+function securityAuditSteps() {
+  const job = YAML.parse(securityAuditWorkflow).jobs['audit-lockfile'];
+  assert.equal(job.strategy, undefined, 'lockfile audits must share one job without matrix fan-out');
+  return job.steps.filter((step: { run?: string }) => step.run?.includes('node .github/scripts/audit-production-dependencies.mjs'));
+}
+
+function securityAuditLockfiles(): string[] {
+  return securityAuditSteps().map((step: { run: string }) => step.run.match(/--lockfile "([^"]+)"/)?.[1]).sort();
 }
 
 describe('MCP live smoke — the production detection net', () => {
@@ -1796,12 +1800,7 @@ describe('CI workflow coverage', () => {
     assert.match(
       securityAuditWorkflow,
       /AUDIT_RESULT"\s*=\s*"cancelled"/,
-      'security-audit.yml must publish a failing aggregate check when the audit matrix is cancelled',
-    );
-    assert.match(
-      securityAuditWorkflow,
-      /--package-json "\$\{\{ matrix\.package_json \}\}"/,
-      'security-audit.yml must pass nonstandard package manifests to the audit gate',
+      'security-audit.yml must publish a failing aggregate check when the audit job is cancelled',
     );
     assert.match(
       securityAuditWorkflow,
@@ -1819,45 +1818,41 @@ describe('CI workflow coverage', () => {
       'the production dependency audit gate must fail on unbaselined high-severity production advisories',
     );
     assert.deepEqual(
-      securityAuditMatrixLockfiles(),
+      securityAuditLockfiles(),
       packageLockfiles,
       'security-audit.yml must cover exactly the repo package-lock.json files',
     );
 
-    for (const lockfile of packageLockfiles) {
-      assert.match(
-        securityAuditWorkflow,
-        new RegExp(`\\n\\s+lockfile:\\s+${escapeRegExp(lockfile)}\\n`),
-        `security-audit.yml must cover ${lockfile}`,
-      );
+    for (const step of securityAuditSteps()) {
+      assert.equal(step.if, '${{ !cancelled() }}', 'later audits must run after a blocking finding');
+      assert.notEqual(step['continue-on-error'], true, 'blocking audits must still fail the job');
+      const lockfile = step.run.match(/--lockfile "([^"]+)"/)?.[1];
+      assert.ok(lockfile, 'audit step must name its lockfile');
+      assert.ok(step.run.includes(`--workspace "${dirname(lockfile)}"`), `audit must use the workspace for ${lockfile}`);
+      const manifest = lockfile.replace('package-lock.json', 'package.json');
+      assert.ok(step.run.includes(`--package-json "${manifest}"`), `audit must use the manifest for ${lockfile}`);
     }
   });
 
-  it('keeps the aggregate verdict list in step with the audit matrix', () => {
-    // The aggregate decides pass/fail by looking for one verdict file per matrix
-    // entry. If the two lists drift, a lockfile that never ran silently stops
-    // being counted and the aggregate reports success — a fail-open. Pin them
-    // to each other.
-    const matrixNames = Array.from(
-      securityAuditWorkflow.matchAll(/^\s+- name: (\S+)\n\s+path:/gm),
-      ([, value]) => value.trim(),
+  it('keeps the aggregate verdict list in step with the audit steps', () => {
+    const names = securityAuditSteps().map((step: { env: { AUDIT_STATUS_FILE: string } }) =>
+      step.env.AUDIT_STATUS_FILE.match(/audit-status\/([^/]+)\.txt$/)?.[1],
     ).sort();
     const aggregateNames = (securityAuditWorkflow.match(/^\s+AUDIT_NAMES:\s*'([^']+)'/m)?.[1] ?? '')
-      .split(/\s+/)
-      .filter(Boolean)
-      .sort();
-
-    assert.ok(matrixNames.length > 0, 'security-audit.yml must define audit matrix entries');
-    assert.deepEqual(
-      aggregateNames,
-      matrixNames,
-      'the security-audit aggregate must require a verdict from exactly the audit-lockfile matrix entries',
+      .split(/\s+/).filter(Boolean).sort();
+    assert.equal(names.length, 7);
+    assert.deepEqual(names, aggregateNames, 'every lockfile must publish a distinct required verdict');
+    const upload = YAML.parse(securityAuditWorkflow).jobs['audit-lockfile'].steps.find(
+      (step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'),
     );
+    assert.equal(upload.if, 'always()');
+    assert.equal(upload.with.name, 'audit-status-lockfiles');
+    assert.equal(upload.with.path, '${{ runner.temp }}/audit-status/*.txt');
   });
 
   it('separates an unaudited lockfile from a real dependency finding', () => {
     // A GitHub Actions outage (2026-08-06: "Failed to resolve action download
-    // info") kills the matrix job before it audits anything. The aggregate must
+    // info") kills the audit job before it audits anything. The aggregate must
     // report that as an incomplete run, not as "audits failed".
     assert.match(
       securityAuditWorkflow,
