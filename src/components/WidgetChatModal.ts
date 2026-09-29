@@ -53,6 +53,9 @@ let focusTrap: FocusTrap | null = null;
 let abortController: AbortController | null = null;
 let clientTimeout: ReturnType<typeof setTimeout> | null = null;
 let onlineHandler: (() => void) | null = null;
+let preflightRetry: ReturnType<typeof setTimeout> | null = null;
+/** Clerk token recovery emits no browser event, so an online browser re-checks on a timer. */
+const PREFLIGHT_RETRY_MS = 15_000;
 
 interface BuiltAuthHeaders {
   headers: Record<string, string>;
@@ -172,6 +175,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   let currentSessionHtml: string | null = options.existingSpec?.html ?? null;
   let requestInFlight = false;
   let preflightReady = false;
+  let preflightGen = 0;
   let pendingSaveSpec: CustomWidgetSpec | null = null;
 
   if (options.initialMessage) inputEl.value = options.initialMessage;
@@ -222,19 +226,29 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   }
 
   async function runPreflight(): Promise<void> {
+    const gen = ++preflightGen;
+    // A newer check, or closing the modal, supersedes this one.
+    const isStale = () => gen !== preflightGen || !modal.isConnected;
+    if (preflightRetry) { clearTimeout(preflightRetry); preflightRetry = null; }
     const offline = connectivityProblem();
     if (offline) return showPreflightError(offline);
     setReadinessState(readinessEl, 'checking', t('widgets.checkingConnection'));
     try {
       const auth = await buildWidgetAuthHeaders(isPro);
+      if (isStale()) return;
       const unreachable = connectivityProblem(auth);
-      if (unreachable) return showPreflightError(unreachable);
+      if (unreachable) {
+        showPreflightError(unreachable);
+        if (navigator.onLine) preflightRetry = setTimeout(() => void runPreflight(), PREFLIGHT_RETRY_MS);
+        return;
+      }
       const requestAuthState = getAuthState();
       const requestUserId = requestAuthState.user?.id ?? null;
       const requestBelief = readClientEntitlementBelief(requestAuthState);
       const res = await fetch(widgetAgentHealthUrl(), { headers: auth.headers });
       let payload: WidgetAgentHealth | null = null;
       try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+      if (isStale()) return;
 
       if (!res.ok) {
         const message = resolvePreflightMessage(
@@ -258,6 +272,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       setFooterStatus(footerStatusEl, currentSessionHtml ? t('widgets.modifyHint') : t('widgets.readyToGenerate'));
       syncComposerState();
     } catch {
+      if (isStale()) return;
       showPreflightError(connectivityProblem() ?? t('widgets.preflightUnavailable'));
     }
   }
@@ -444,6 +459,7 @@ export function closeWidgetChatModal(): void {
   if (abortController) { abortController.abort(); abortController = null; }
   if (clientTimeout) { clearTimeout(clientTimeout); clientTimeout = null; }
   if (onlineHandler) { window.removeEventListener('online', onlineHandler); onlineHandler = null; }
+  if (preflightRetry) { clearTimeout(preflightRetry); preflightRetry = null; }
   if (overlay) {
     const o = overlay as HTMLElement & { _escHandler?: (e: KeyboardEvent) => void };
     if (o._escHandler) document.removeEventListener('keydown', o._escHandler);

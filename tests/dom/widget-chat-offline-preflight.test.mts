@@ -93,6 +93,67 @@ describe('Widget chat preflight without a network', () => {
     expect(document.querySelector<HTMLButtonElement>('.widget-chat-send')!.disabled).toBe(false);
   });
 
+  it('does not let a superseded preflight overwrite a newer result', async () => {
+    setOnline(true);
+    let releaseFirst!: (token: string | null) => void;
+    vi.mocked(getClerkToken)
+      .mockImplementationOnce(() => new Promise((resolve) => { releaseFirst = resolve; }))
+      .mockResolvedValue('jwt');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, proKeyConfigured: true }), { status: 200 })));
+
+    open();
+    await vi.waitFor(() => expect(releaseFirst).toBeTypeOf('function'));
+    window.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightConnected')));
+
+    releaseFirst(null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(readiness()).toBe(t('widgets.preflightConnected'));
+    expect(document.querySelector<HTMLButtonElement>('.widget-chat-send')!.disabled).toBe(false);
+  });
+
+  it('retries a missing token while the browser stays online', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      setOnline(true);
+      vi.mocked(getClerkToken).mockResolvedValueOnce(null).mockResolvedValue('jwt');
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, proKeyConfigured: true }), { status: 200 })));
+
+      open();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readiness()).toBe(t('widgets.preflightUnavailable'));
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(readiness()).toBe(t('widgets.preflightConnected'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops retrying once the modal is closed mid-check', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      setOnline(true);
+      let releaseToken!: (token: string | null) => void;
+      vi.mocked(getClerkToken)
+        .mockImplementationOnce(() => new Promise((resolve) => { releaseToken = resolve; }))
+        .mockResolvedValue(null);
+      vi.stubGlobal('fetch', vi.fn());
+
+      open();
+      await vi.advanceTimersByTimeAsync(0);
+      closeWidgetChatModal();
+      const callsAtClose = vi.mocked(getClerkToken).mock.calls.length;
+      releaseToken(null);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(vi.mocked(getClerkToken).mock.calls.length).toBe(callsAtClose);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the upgrade copy for a real entitlement 403', async () => {
     setOnline(true);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Pro subscription required' }), { status: 403 })));
