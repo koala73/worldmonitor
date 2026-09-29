@@ -660,6 +660,18 @@ describe('widget tool result compaction', () => {
     assert.deepEqual(out._widget.symbols.filtered, ['data.commodityQuotes.quotes']);
   });
 
+  it('filters quote lists only, leaving other symbol-bearing lists such as sectors whole', () => {
+    const text = JSON.stringify({ data: {
+      sectors: { sectors: [{ symbol: 'XLK' }, { symbol: 'XLE' }], valuationCoverage: { valuationDiagnostics: [{ symbol: 'XLK' }, { symbol: 'XLE' }] } },
+      marketQuotes: { quotes: [{ symbol: 'XLK' }, { symbol: 'NVDA' }] },
+    } });
+    const out = JSON.parse(compact(text, ['XLK']));
+    assert.equal(out.data.sectors.sectors.length, 2);
+    assert.equal(out.data.sectors.valuationCoverage.valuationDiagnostics.length, 2);
+    assert.deepEqual(out.data.marketQuotes.quotes.map(q => q.symbol), ['XLK']);
+    assert.deepEqual(out._widget.symbols.filtered, ['data.marketQuotes.quotes']);
+  });
+
   it('reports requested symbols the data does not have', () => {
     const out = JSON.parse(compact(JSON.stringify({ data: { q: { quotes: [{ symbol: 'GC=F' }] } } }), ['GC=F', 'XAU']));
     assert.deepEqual(out.data.q.quotes.map(q => q.symbol), ['GC=F']);
