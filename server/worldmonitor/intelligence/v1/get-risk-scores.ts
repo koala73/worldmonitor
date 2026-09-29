@@ -1528,11 +1528,16 @@ function ciiTrendSnapshotFromResponse(response: GetRiskScoresResponse): CiiTrend
   return { capturedAt: latestComputedAt, ciiScores: response.ciiScores };
 }
 
+// Not a readRiskInputs input: the prior only sets movement labels, and a
+// missing prior already degrades to "stable". getCachedJson logs an errored
+// bucket and treats it as absent.
 async function readCiiTrendPriorScores(nowMs: number): Promise<CiiScore[] | null> {
-  const values = await readRiskInputs(
-    getCiiTrendPriorCandidateBuckets(nowMs).map((bucket) => ({ key: ciiTrendHistoryCacheKey(bucket), raw: false })),
+  const snapshots = await Promise.all(
+    getCiiTrendPriorCandidateBuckets(nowMs).map(async (bucket) => {
+      const value = await getCachedJson(ciiTrendHistoryCacheKey(bucket));
+      return isCiiTrendSnapshot(value) ? value : null;
+    }),
   );
-  const snapshots = values.map((value) => (isCiiTrendSnapshot(value) ? value : null));
   return selectCiiTrendPriorSnapshot(snapshots, nowMs)?.ciiScores ?? null;
 }
 
