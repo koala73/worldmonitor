@@ -10741,6 +10741,9 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
           // in a SECOND TLS layer → EPROTO "wrong version number" (double-TLS),
           // which fails every OpenSky auth attempt. Mirrors proxyFetch(). See #5074.
           createConnection: () => tlsSocket,
+          // No agent means Node defaults to port 80 and sends `Host: <host>:80`
+          // over TLS; the tunnel is to :443. Mirrors proxyFetch().
+          defaultPort: 443,
           hostname: 'auth.opensky-network.org',
           path: '/auth/realms/opensky-network/protocol/openid-connect/token',
           method: 'POST',
@@ -10887,6 +10890,9 @@ function _openskyRawFetch(url, token) {
           // — passing an already-TLS socket as `socket:` double-wraps TLS and throws
           // EPROTO "wrong version number", failing every OpenSky states fetch. See #5074.
           createConnection: () => tlsSocket,
+          // No agent means Node defaults to port 80 and sends `Host: <host>:80`
+          // over TLS; the tunnel is to :443. Mirrors proxyFetch().
+          defaultPort: 443,
           hostname: parsed.hostname,
           path: parsed.pathname + parsed.search,
           headers: reqHeaders,
