@@ -66,7 +66,7 @@ describe('widget relay spend identity trust', () => {
 
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
-async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200 } = {}) {
+async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}' } = {}) {
   const relay = src('scripts/ais-relay.cjs');
   const extract = name => {
     const match = relay.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
@@ -105,7 +105,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
       fetchInits.push(init);
       if (expireDuringFetch) expire();
       if (failFetch) throw new Error('Fetch fixture failure');
-      return { status: fetchStatus, text: async () => '{"value":42}' };
+      return { status: fetchStatus, text: async () => fetchBody };
     },
     getWidgetDataSessionToken: async () => sessionToken,
     invalidateWidgetDataSession: token => invalidated.push(token),
@@ -506,6 +506,7 @@ describe('widget-agent relay — data fetch credentials', () => {
   it('authenticates data fetches with an anonymous WorldMonitor session', async () => {
     const result = await runWidgetAgent(oneFetch());
     assert.equal(result.fetchInits[0].headers['X-WorldMonitor-Key'], 'wms_fixture');
+    assert.equal(result.fetchInits[0].redirect, 'error');
     assert.deepEqual(result.invalidated, []);
     assertWidgetSuccess(result);
   });
@@ -516,9 +517,15 @@ describe('widget-agent relay — data fetch credentials', () => {
     assertWidgetSuccess(result);
   });
 
-  it('drops the session after a 401 so the next fetch mints a fresh one', async () => {
-    const result = await runWidgetAgent(oneFetch(), { fetchStatus: 401 });
+  it('drops the session when the API rejects it so the next fetch mints a fresh one', async () => {
+    const result = await runWidgetAgent(oneFetch(), { fetchStatus: 401, fetchBody: '{"error":"Invalid session token"}' });
     assert.deepEqual(result.invalidated, ['wms_fixture']);
+    assertWidgetSuccess(result);
+  });
+
+  it('keeps the session when a route needs more than anonymous authority', async () => {
+    const result = await runWidgetAgent(oneFetch(), { fetchStatus: 401, fetchBody: '{"error":"Pro authentication required"}' });
+    assert.deepEqual(result.invalidated, []);
     assertWidgetSuccess(result);
   });
 });
