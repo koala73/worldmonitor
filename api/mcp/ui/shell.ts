@@ -344,6 +344,7 @@ export interface AppShellSpec {
   // levelFor/collapseWs/paragraphs/httpUrl/countryName/probabilityBar. MUST
   // avoid backticks and `${`.
   renderBody: string;
+  setupBody?: string;
 }
 
 // Assemble a complete, self-contained MCP-Apps shell. Every widget goes through
@@ -353,7 +354,7 @@ export function buildAppHtml(spec: AppShellSpec): string {
   const bridge =
     SHARED_BRIDGE_HEAD +
     '\n  function renderData(data) {\n' + spec.renderBody + '\n  }\n' +
-    renderBridgeTail(spec.appName);
+    (spec.setupBody || '') + '\n' + renderBridgeTail(spec.appName);
 
   return `<!DOCTYPE html>
 <html lang="en">

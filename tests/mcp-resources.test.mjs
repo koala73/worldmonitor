@@ -99,6 +99,24 @@ function mountWidgetHtml(html) {
     setAttribute(name, value) {
       this.attributes[name] = String(value);
     }
+    getAttribute(name) { return this.attributes[name] ?? null; }
+    addEventListener() {}
+    get classList() {
+      return {
+        toggle: (name, enabled) => {
+          const names = new Set((this.attributes.class || this.className).split(' ').filter(Boolean));
+          if (enabled) names.add(name); else names.delete(name);
+          this.attributes.class = [...names].join(' ');
+        },
+        contains: (name) => (this.attributes.class || this.className).split(' ').includes(name),
+      };
+    }
+    querySelectorAll(tag) {
+      return this.childNodes.flatMap((child) => [
+        ...(child.tagName === tag.toUpperCase() ? [child] : []),
+        ...child.querySelectorAll(tag),
+      ]);
+    }
     getBoundingClientRect() {
       return { height: 240 };
     }
@@ -119,12 +137,13 @@ function mountWidgetHtml(html) {
       return node;
     },
   };
+  document.createElementNS = (_namespace, tag) => document.createElement(tag);
   const listeners = new Map();
   const posted = [];
   const parent = { postMessage: (message) => posted.push(message) };
   const window = {
     parent,
-    addEventListener: (type, listener) => listeners.set(type, listener),
+    addEventListener: (type, listener) => { const previous = listeners.get(type); listeners.set(type, previous ? (event) => { previous(event); listener(event); } : listener); },
     matchMedia: () => ({ matches: false }),
   };
   const context = {

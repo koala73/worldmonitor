@@ -1019,7 +1019,9 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_news_intelligence',
+    title: 'WorldMonitor news and maps',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
+    _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
     _outputBudgetBytes: 131072,
     description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, credibilityScore (0-100 source reliability, distinct from importance), corroboration, and the publishers roster with each publisher\'s declared tier; corroboration.state (single-publisher, tier4-only, corroborated, unknown) describes coverage, not accuracy.',
     inputSchema: {
@@ -1033,6 +1035,11 @@ export const CACHE_TOOLS: ToolDef[] = [
         category: { type: 'string', description: 'Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general").' },
         country: { type: 'string', description: 'Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params.' },
         alerts_only: { type: 'boolean', description: 'Keep only top stories flagged as alerts.' },
+        source: { type: 'string', maxLength: 200, description: 'Filter by primary outlet name, case-insensitive exact match.' },
+        published_since: { type: 'number', minimum: 0, description: 'Keep stories published at or after this Unix timestamp in milliseconds. Stories without a valid publication date are excluded.' },
+        map_latitude: { type: 'number', minimum: -90, maximum: 90, description: 'Requested news-map center latitude. The app reports whether it applied this view.' },
+        map_longitude: { type: 'number', minimum: -180, maximum: 180, description: 'Requested news-map center longitude.' },
+        map_zoom: { type: 'number', minimum: 1, maximum: 8, description: 'Requested zoom for the news map. Rendering is applied by the mounted app, not by the server.' },
         query: { type: 'string', description: 'Keep only top stories whose headline, primary source, or any clustered member headline contains this text (case-insensitive substring). This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that.' },
         min_importance: { type: 'number', description: 'Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero.' },
         limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches.' },
@@ -1156,6 +1163,14 @@ export const CACHE_TOOLS: ToolDef[] = [
           return score !== null && score >= minImportance;
         });
       }
+      const source = argStr(params.source);
+      const publishedSince = argNum(params.published_since);
+      if (source) narrowNested(data, 'insights', 'topStories', (story) =>
+        argStr(story.primarySource).toLowerCase() === source.toLowerCase());
+      if (publishedSince !== null) narrowNested(data, 'insights', 'topStories', (story) => {
+        const date = typeof story.pubDate === 'number' ? story.pubDate : Date.parse(argStr(story.pubDate));
+        return Number.isFinite(date) && date >= publishedSince;
+      });
       capNested(data, 'insights', 'topStories', limit);
       capNested(data, 'cross-source-signals', 'signals', limit);
       capNested(data, 'advisories-bootstrap', 'advisories', limit);

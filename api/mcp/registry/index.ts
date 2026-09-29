@@ -135,6 +135,7 @@ export function buildPublicTool(
 
   const publicTool: PublicToolShape = {
     name: tool.name,
+    ...(tool.title ? { title: tool.title } : {}),
     description,
     inputSchema: {
       type: tool.inputSchema.type,
@@ -167,6 +168,9 @@ export function buildPublicTool(
   if (tool._uiResourceUri) {
     publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
     publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
+    if (tool._openaiEntrypoints) {
+      publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
+    }
   }
 
   return publicTool;
