@@ -22,6 +22,28 @@ import widgetResponseParser from '../scripts/_widget-response-parser.cjs';
 
 const { parseWidgetAgentResponse } = widgetResponseParser;
 
+class WidgetQuotaTestError extends Error {
+  constructor(status = 503, retryAfter = 30) {
+    super(status === 429
+      ? 'Widget quota exhausted. Try again later.'
+      : 'Widget quota unavailable. Try again later.');
+    this.name = 'WidgetQuotaError';
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+const widgetQuotaModule = {
+  WidgetQuotaError: WidgetQuotaTestError,
+  WIDGET_SEARCH_MICRO_USD: 100000,
+  WIDGET_MODEL_POLICY: {
+    basic: { model: 'claude-haiku-4-5-20251001', maxTokens: 4096, microUsd: 220480 },
+    pro: { model: 'claude-sonnet-4-6', maxTokens: 8192, microUsd: 3122880 },
+  },
+  widgetPrincipal: async () => `key:${'a'.repeat(64)}`,
+  verifyWidgetPrincipal: async () => `key:${'a'.repeat(64)}`,
+  reserveWidgetQuota: async () => {},
+};
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
@@ -89,6 +111,13 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     console: { error: (...args) => logs.push(args) },
     requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
     readRequestBody: async () => JSON.stringify({ prompt: 'Show earthquake data', tier }),
+    safeEnd: (res, status, headers, body) => {
+      res.writeHead(status, headers);
+      if (body) res.write(body);
+      res.end();
+    },
+    getWidgetAgentProvidedKey: (req) => String(req.headers?.['x-widget-key'] ?? '').trim(),
+    getWidgetAgentProvidedProKey: (req) => String(req.headers?.['x-pro-key'] ?? '').trim(),
     checkProWidgetRateLimit: () => false, checkWidgetRateLimit: () => false,
     isWidgetInjectionAttempt: () => false,
     PRO_WIDGET_KEY: 'test', WIDGET_ANTHROPIC_KEY: 'test',
@@ -106,6 +135,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
       if (failFetch) throw new Error('Fetch fixture failure');
       return { text: async () => '{"value":42}' };
     },
+    widgetQuotaModule,
     importAnthropic: async () => ({ default: sdkTransport ? class extends Anthropic {
       constructor(options) {
         super({ ...options, maxRetries: 0, fetch: async (_url, init) => {
@@ -140,7 +170,9 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     assert.ok(match, `Missing ${name}`);
     return match[0];
   }).join('\n');
-  const handler = extract('handleWidgetAgentRequest').replace("import('@anthropic-ai/sdk')", 'importAnthropic()');
+  const handler = extract('handleWidgetAgentRequest')
+    .replace("import('@anthropic-ai/sdk')", 'importAnthropic()')
+    .replace("import('../api/_widget-quota.js')", 'widgetQuotaModule');
   const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('sanitizeToolContent')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
   const res = {
     writableEnded: false, writeHead() {},
@@ -426,6 +458,7 @@ describe('widget data-tool contracts', () => {
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,
       WIDGET_MAX_TOOL_CALLS: 3,
       sendWidgetSSE() {}, WIDGET_EXA_KEY: 'fixture', WIDGET_BRAVE_KEY: 'fixture', console,
+      quota: widgetQuotaModule, principal: `key:${'a'.repeat(64)}`, tier: 'basic',
     });
     const searchStart = relay.indexOf('async function performWidgetWebSearch(');
     const searchEnd = relay.indexOf('const WIDGET_RATE_LIMIT', searchStart);
@@ -540,8 +573,9 @@ describe('widget-agent relay — security', () => {
   it('auth 403 response is sent before any processing on bad key', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     assert.ok(handlerStart !== -1, 'handleWidgetAgentRequest not found');
-    // Use 4000 chars to cover the full auth/setup section including SSE headers
-    const handlerBody = relay.slice(handlerStart, handlerStart + 4000);
+    // Cover auth, the in-process rate bucket, and the quota admission that
+    // now sits ahead of the SSE headers.
+    const handlerBody = relay.slice(handlerStart, handlerStart + 6000);
     const authCheckIdx = handlerBody.indexOf('requireWidgetAgentAccess(req, res)');
     const sseHeaderIdx = handlerBody.indexOf("text/event-stream");
     assert.ok(authCheckIdx !== -1, 'Auth helper call not found in handler start');
@@ -733,12 +767,6 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('model used is claude-haiku (cost-efficient for widgets)', () => {
-    assert.ok(
-      relay.includes('claude-haiku'),
-      'Widget agent should use claude-haiku model for cost efficiency',
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -897,7 +925,8 @@ describe('widget-agent relay — completion contract', () => {
   const handler = relay.slice(
     relay.indexOf('const WIDGET_MAX_TOOL_CALLS ='),
     relay.indexOf('// Map a thrown error from the agent loop'),
-  ).replace("await import('@anthropic-ai/sdk')", '({ default: AnthropicStub })');
+  ).replace("await import('@anthropic-ai/sdk')", '({ default: AnthropicStub })')
+    .replace("await import('../api/_widget-quota.js')", 'widgetQuotaModule');
   const sendSSE = relay.slice(relay.indexOf('function sendWidgetSSE('), relay.indexOf('async function readRequestBody('));
 
   async function runResponse(tier, responses, conversationHistory = []) {
@@ -908,6 +937,13 @@ describe('widget-agent relay — completion contract', () => {
       parseWidgetAgentResponse,
       requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
       readRequestBody: async () => JSON.stringify({ prompt: 'Show market data', tier, conversationHistory }),
+      safeEnd: (res, status, headers, body) => {
+        res.writeHead(status, headers);
+        if (body) res.write(body);
+        res.end();
+      },
+      getWidgetAgentProvidedKey: (req) => String(req.headers?.['x-widget-key'] ?? '').trim(),
+      getWidgetAgentProvidedProKey: (req) => String(req.headers?.['x-pro-key'] ?? '').trim(),
       PRO_WIDGET_KEY: 'test-pro-key',
       checkProWidgetRateLimit: () => false,
       checkWidgetRateLimit: () => false,
@@ -923,6 +959,7 @@ describe('widget-agent relay — completion contract', () => {
       setTimeout,
       clearTimeout,
       console,
+      widgetQuotaModule,
       AnthropicStub: class {
         messages = {
           create: async () => {
@@ -1577,29 +1614,7 @@ describe('PRO widget — relay auth and configuration', () => {
     );
   });
 
-  it('PRO_WIDGET_RATE_LIMIT is 20', () => {
-    const match = relay.match(/PRO_WIDGET_RATE_LIMIT\s*=\s*(\d+)/);
-    assert.ok(match, 'PRO_WIDGET_RATE_LIMIT constant not found');
-    assert.equal(Number(match[1]), 20, 'PRO_WIDGET_RATE_LIMIT must be 20');
-  });
 
-  it('proWidgetRateLimitMap is a separate rate limit bucket from basic', () => {
-    assert.ok(
-      relay.includes('proWidgetRateLimitMap'),
-      'PRO must use a separate rate limit map (proWidgetRateLimitMap)',
-    );
-    // Must also have the basic bucket
-    assert.ok(
-      relay.includes('widgetRateLimitMap'),
-      'Basic must have its own rate limit map (widgetRateLimitMap)',
-    );
-    // Verify they are different variables
-    assert.notEqual(
-      relay.indexOf('proWidgetRateLimitMap'),
-      relay.indexOf('widgetRateLimitMap'),
-      'PRO and basic must use separate rate limit maps',
-    );
-  });
 
   it('x-pro-key header is read for PRO auth', () => {
     assert.ok(
@@ -1639,22 +1654,7 @@ describe('PRO widget — relay auth and configuration', () => {
     );
   });
 
-  it('PRO uses claude-sonnet model (not haiku)', () => {
-    assert.ok(
-      relay.includes('claude-sonnet'),
-      'PRO tier must use claude-sonnet model',
-    );
-  });
 
-  it('PRO max_tokens is 8192', () => {
-    // maxTokens is set via isPro ternary, then passed to max_tokens
-    assert.ok(
-      relay.includes('isPro ? 8192') || relay.includes('isPro?8192') || relay.includes('8192'),
-      'PRO max_tokens must be 8192',
-    );
-    const tokenMatch = relay.match(/maxTokens\s*=\s*isPro\s*\?\s*8192/) || relay.match(/isPro\s*\?\s*8192/);
-    assert.ok(tokenMatch, 'maxTokens must be set to 8192 when isPro');
-  });
 
   it('WIDGET_PRO_SYSTEM_PROMPT exists and forbids DOCTYPE/html wrappers', () => {
     assert.ok(

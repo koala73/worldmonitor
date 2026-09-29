@@ -11,6 +11,7 @@
     "watchPatterns": [
       ".dockerignore",
       "Dockerfile.relay",
+      "api/_widget-quota.js",
       "data/israeli-localities-he-en.json",
       "data/oref-threat-translations-he-en.json",
       "data/telegram-channels.json",

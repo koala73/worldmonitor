@@ -39,6 +39,8 @@ import {
   reserveDirectLlmQuota,
   resolveActiveDirectLlmLimit,
 } from '../server/_shared/direct-llm-quota';
+// @ts-expect-error — JS module, no declaration file
+import { reserveWidgetQuota, signWidgetPrincipal, widgetPrincipal, WidgetQuotaError } from './_widget-quota.js';
 
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
@@ -264,6 +266,10 @@ export default async function handler(
   try {
     return await proxyWidgetAgent(req, corsHeaders, ctx);
   } catch (err) {
+    if (err instanceof WidgetQuotaError) {
+      const denial = err as unknown as { status: number; retryAfter: number; message: string };
+      return json({ error: denial.message }, denial.status, { ...corsHeaders, 'Retry-After': String(denial.retryAfter) });
+    }
     // `name` + `message` are the phase discriminator on-call needs: an
     // unreachable relay reads `TypeError: … ENOTFOUND proxy.worldmonitor.app`,
     // a health check that outran its budget reads `TimeoutError` (the
@@ -293,6 +299,7 @@ async function proxyWidgetAgent(
   let isPro = false;
   let spendId = '';
   let quotaUserId = '';
+  let principal = '';
   let directLlmDailyLimit: number | null = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
 
   const headerWorldMonitorKey =
@@ -319,6 +326,7 @@ async function proxyWidgetAgent(
     isPro = true;
     spendId = `wm:${await spendToken(enterpriseKey)}`;
     quotaUserId = spendId;
+    principal = await widgetPrincipal('key', enterpriseKey);
     directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
   } else {
     const authHeader = req.headers.get('Authorization');
@@ -401,6 +409,7 @@ async function proxyWidgetAgent(
       isPro = true;
       spendId = `user:${session.userId}`;
       quotaUserId = session.userId;
+      principal = await widgetPrincipal('user', session.userId);
       directLlmDailyLimit = entitlementChecked
         ? resolveActiveDirectLlmLimit(ent)
         : DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
@@ -416,6 +425,7 @@ async function proxyWidgetAgent(
       isPro = hasProKey;
       spendId = hasProKey ? 'legacy-pro-key' : 'legacy-widget-key';
       quotaUserId = spendId;
+      principal = await widgetPrincipal('key', hasProKey ? proKey : widgetKey);
       directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
     }
   }
@@ -455,7 +465,7 @@ async function proxyWidgetAgent(
     return json({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
-  if (!spendId || !quotaUserId) {
+  if (!spendId || !quotaUserId || !principal) {
     return json({ error: 'service_unavailable', ok: false }, 503, corsHeaders);
   }
 
@@ -524,6 +534,17 @@ async function proxyWidgetAgent(
     if (rollback) await rollback();
   };
 
+  const tier = isPro ? 'pro' : 'basic';
+  let proof: Record<string, string>;
+  try {
+    proof = await signWidgetPrincipal(principal, tier, rawBody);
+    await reserveWidgetQuota(principal, tier, 'edge');
+  } catch (err) {
+    await releaseUnservedQuota();
+    throw err;
+  }
+  Object.assign(relayHeaders, proof);
+
   relayHeaders[WIDGET_AGENT_SPEND_HEADER] = spendId;
   const connectAbort = new AbortController();
   const connectTimer = setTimeout(() => connectAbort.abort(), WIDGET_AGENT_CONNECT_TIMEOUT_MS);
@@ -536,12 +557,14 @@ async function proxyWidgetAgent(
     });
     clearTimeout(connectTimer);
     if (!relayRes.ok) await releaseUnservedQuota();
+    const retryAfter = relayRes.headers.get('Retry-After');
     return new Response(relayRes.body, {
       status: relayRes.status,
       headers: {
         'Content-Type': relayRes.headers.get('Content-Type') ?? 'text/event-stream',
         'Cache-Control': 'no-cache, no-store',
         'X-Accel-Buffering': 'no',
+        ...(retryAfter ? { 'Retry-After': retryAfter } : {}),
         ...corsHeaders,
       },
     });

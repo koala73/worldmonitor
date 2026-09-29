@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it, mock } from 'node:test';
 
+process.env.WIDGET_QUOTA_SIGNING_KEY = 'synthetic-widget-signing-key-32-characters';
+process.env.UPSTASH_REDIS_REST_URL = 'https://quota.test';
+process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
+
 const originalWidgetKey = process.env.WIDGET_AGENT_KEY;
 const originalProKey = process.env.PRO_WIDGET_KEY;
 const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+
+function quotaAwareFetch(url: unknown): Promise<Response> {
+  return Promise.resolve(String(url) === 'https://quota.test'
+    ? Response.json({ result: [200, 0] })
+    : fakeRelayResponse());
+}
 
 function fakeRelayResponse(
   body = 'data: {"type":"done"}\n\n',
@@ -25,7 +35,7 @@ describe('widget-agent unified tester key auth', () => {
     process.env.PRO_WIDGET_KEY = 'server-pro-key';
     process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key';
 
-    fetchMock = mock.method(globalThis, 'fetch', () => Promise.resolve(fakeRelayResponse()));
+    fetchMock = mock.method(globalThis, 'fetch', (url) => quotaAwareFetch(url));
     const mod = await import('../api/widget-agent.ts');
     handler = mod.default;
     mod.__setWidgetAgentSpendDepsForTests({
@@ -40,7 +50,7 @@ describe('widget-agent unified tester key auth', () => {
 
   beforeEach(() => {
     fetchMock.mock.resetCalls();
-    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRelayResponse()));
+    fetchMock.mock.mockImplementation((url) => quotaAwareFetch(url));
   });
 
   after(() => {
@@ -68,9 +78,9 @@ describe('widget-agent unified tester key auth', () => {
     }));
 
     assert.equal(res.status, 200);
-    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(fetchMock.mock.calls.length, 2);
 
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[1];
     assert.equal(call.arguments[0], 'https://proxy.worldmonitor.app/widget-agent');
 
     const init = call.arguments[1] as RequestInit;
@@ -99,9 +109,9 @@ describe('widget-agent unified tester key auth', () => {
     }));
 
     assert.equal(res.status, 200);
-    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(fetchMock.mock.calls.length, 2);
 
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[1];
     const init = call.arguments[1] as RequestInit;
     const headers = new Headers(init.headers);
     assert.equal(headers.get('X-Widget-Key'), 'server-widget-key');
@@ -134,8 +144,8 @@ describe('widget-agent unified tester key auth', () => {
           body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
         }));
         assert.equal(res.status, 200, `${pro}/${widget}/${sessionHeader}`);
-        assert.equal(fetchMock.mock.calls.length, 1);
-        const init = fetchMock.mock.calls[0].arguments[1] as RequestInit;
+        assert.equal(fetchMock.mock.calls.length, 2);
+        const init = fetchMock.mock.calls[1].arguments[1] as RequestInit;
         assert.equal(JSON.parse(String(init.body)).tier, tier);
       }
     }
@@ -184,9 +194,9 @@ describe('widget-agent unified tester key auth', () => {
     }));
 
     assert.equal(res.status, 200);
-    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(fetchMock.mock.calls.length, 2);
 
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls[1];
     const init = call.arguments[1] as RequestInit;
     const headers = new Headers(init.headers);
     assert.equal(headers.get('X-Widget-Key'), 'server-widget-key');
@@ -211,9 +221,9 @@ describe('widget-agent unified tester key auth', () => {
     }));
 
     assert.equal(res.status, 200);
-    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(fetchMock.mock.calls.length, 2);
 
-    const init = fetchMock.mock.calls[0].arguments[1] as RequestInit;
+    const init = fetchMock.mock.calls[1].arguments[1] as RequestInit;
     const headers = new Headers(init.headers);
     assert.equal(headers.get('X-Pro-Key'), 'server-pro-key');
     assert.deepEqual(JSON.parse(String(init.body)), {

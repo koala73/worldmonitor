@@ -5,6 +5,9 @@ process.env.WIDGET_AGENT_KEY = 'server-widget-key';
 process.env.PRO_WIDGET_KEY = 'server-pro-key';
 process.env.WORLDMONITOR_VALID_KEYS = 'browser-test-key,second-enterprise-key';
 process.env.RELAY_SHARED_SECRET = 'server-only-relay-secret';
+process.env.WIDGET_QUOTA_SIGNING_KEY = 'synthetic-widget-signing-key-32-characters';
+process.env.UPSTASH_REDIS_REST_URL = 'https://quota.test';
+process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-redis-token';
 
 const { default: handler, __setWidgetAgentSpendDepsForTests } = await import('../api/widget-agent.ts');
 
@@ -19,6 +22,7 @@ function allowRelay(): void {
     if (url === 'https://proxy.worldmonitor.app/widget-agent/health') {
       return Response.json({ ok: true });
     }
+    if (url === 'https://quota.test') return Response.json({ result: [200, 0] });
     assert.equal(url, 'https://proxy.worldmonitor.app/widget-agent');
     relayFetches += 1;
     assert.equal(new Headers(init?.headers).get('x-relay-key'), 'server-only-relay-secret');
@@ -161,7 +165,9 @@ describe('widget-agent spend guard', () => {
       checkRateLimit: async () => null,
       runRedisPipeline: async () => [{ result: 1 }, { result: 1 }],
     });
-    globalThis.fetch = async (_input, init) => {
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === 'https://quota.test') return Response.json({ result: [200, 0] });
       assert.equal(JSON.parse(String(init?.body)).prompt, JSON.parse(raw).prompt);
       return new Response('done');
     };

@@ -67,7 +67,14 @@
       "sortableTable": "Sortabilna tablica cijena kriptovaluta s filterom pretrage",
       "animatedCounters": "Animirani brojači za ključne ekonomske pokazatelje",
       "tabbedComparison": "Usporedba konfliktnih događaja po regijama u karticama"
-    }
+    },
+    "quotaExhausted": "Kvota za widget je potrošena.",
+    "quotaUnavailable": "Kvota za widget privremeno nije dostupna.",
+    "quotaRetryLater": "Pokušajte ponovno kasnije.",
+    "quotaRetryAfter": "Pokušajte ponovno za {{count}} minuta.",
+    "quotaRetryAfter_one": "Pokušajte ponovno za {{count}} minutu.",
+    "quotaRetryAfter_few": "Pokušajte ponovno za {{count}} minute.",
+    "quotaRetryAfter_other": "Pokušajte ponovno za {{count}} minuta."
   },
   "countryBrief": {
     "identifying": "Identificiram zemlju...",

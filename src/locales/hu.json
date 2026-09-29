@@ -66,7 +66,13 @@
       "sortableTable": "Rendezható kriptóár-táblázat keresési szűrővel",
       "animatedCounters": "Animált számlálók a legfontosabb gazdasági mutatókhoz",
       "tabbedComparison": "Tabulos összehasonlítás a konfliktusesemények régió szerinti csoportosításával"
-    }
+    },
+    "quotaExhausted": "A widget kvótája kimerült.",
+    "quotaUnavailable": "A widget kvótája átmenetileg nem érhető el.",
+    "quotaRetryLater": "Próbálja újra később.",
+    "quotaRetryAfter": "Próbálja újra {{count}} perc múlva.",
+    "quotaRetryAfter_one": "Próbálja újra {{count}} perc múlva.",
+    "quotaRetryAfter_other": "Próbálja újra {{count}} perc múlva."
   },
   "countryBrief": {
     "identifying": "Ország azonosítása...",
