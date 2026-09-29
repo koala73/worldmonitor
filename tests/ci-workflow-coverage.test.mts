@@ -1823,7 +1823,14 @@ describe('CI workflow coverage', () => {
       'security-audit.yml must cover exactly the repo package-lock.json files',
     );
 
-    for (const step of securityAuditSteps()) {
+    const auditSteps = securityAuditSteps();
+    const auditJob = YAML.parse(securityAuditWorkflow).jobs['audit-lockfile'];
+    assert.ok(
+      auditJob['timeout-minutes'] >= auditSteps.length * 10 + 5,
+      'the job must allow every audit its former budget plus setup and upload time',
+    );
+    for (const step of auditSteps) {
+      assert.equal(step['timeout-minutes'], 10, 'a stalled audit must not consume later audits budgets');
       assert.equal(step.if, '${{ !cancelled() }}', 'later audits must run after a blocking finding');
       assert.notEqual(step['continue-on-error'], true, 'blocking audits must still fail the job');
       const lockfile = step.run.match(/--lockfile "([^"]+)"/)?.[1];
@@ -1840,7 +1847,6 @@ describe('CI workflow coverage', () => {
     ).sort();
     const aggregateNames = (securityAuditWorkflow.match(/^\s+AUDIT_NAMES:\s*'([^']+)'/m)?.[1] ?? '')
       .split(/\s+/).filter(Boolean).sort();
-    assert.equal(names.length, 7);
     assert.deepEqual(names, aggregateNames, 'every lockfile must publish a distinct required verdict');
     const upload = YAML.parse(securityAuditWorkflow).jobs['audit-lockfile'].steps.find(
       (step: { uses?: string }) => step.uses?.startsWith('actions/upload-artifact@'),

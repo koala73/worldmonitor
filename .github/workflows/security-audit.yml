@@ -22,7 +22,8 @@ jobs:
   audit-lockfile:
     name: audit-lockfile
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Seven bounded audits plus setup and verdict upload.
+    timeout-minutes: 75
     env:
       # Authenticate advisory lookups used to date findings for the grace clock.
       GITHUB_TOKEN: ${{ github.token }}
@@ -41,6 +42,7 @@ jobs:
           node-version: '24'
       - name: Audit package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/root.txt
         run: |
@@ -51,6 +53,7 @@ jobs:
             --lockfile "package-lock.json"
       - name: Audit scripts/package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/scripts.txt
         run: |
@@ -61,6 +64,7 @@ jobs:
             --lockfile "scripts/package-lock.json"
       - name: Audit consumer-prices-core/package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/consumer-prices-core.txt
         run: |
@@ -71,6 +75,7 @@ jobs:
             --lockfile "consumer-prices-core/package-lock.json"
       - name: Audit blog-site/package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/blog-site.txt
         run: |
@@ -81,6 +86,7 @@ jobs:
             --lockfile "blog-site/package-lock.json"
       - name: Audit pro-test/package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/pro-test.txt
         run: |
@@ -91,6 +97,7 @@ jobs:
             --lockfile "pro-test/package-lock.json"
       - name: Audit docker/runtime-package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/docker-runtime.txt
         run: |
@@ -101,6 +108,7 @@ jobs:
             --lockfile "docker/runtime-package-lock.json"
       - name: Audit workers/railway-reconcile-control/package-lock.json
         if: ${{ !cancelled() }}
+        timeout-minutes: 10
         env:
           AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/railway-reconcile-control.txt
         run: |
@@ -207,7 +215,7 @@ jobs:
 
           # A real verdict always wins over an incomplete matrix.
           if [ -n "$failed" ]; then
-            echo "::error::Production dependency audit reported blocking advisories for:${failed}. Open the matrix job for the specific advisory and why it blocks."
+            echo "::error::Production dependency audit reported blocking advisories for:${failed}. Open the audit-lockfile job for the specific advisory and why it blocks."
             exit 1
           fi
 
@@ -221,6 +229,6 @@ jobs:
           fi
 
           if [ "$AUDIT_RESULT" != "success" ]; then
-            echo "::warning::The audit matrix reported '${AUDIT_RESULT}', but every lockfile published a passing verdict; the failure was outside the audit step."
+            echo "::warning::The audit job reported '${AUDIT_RESULT}', but every lockfile published a passing verdict; the failure was outside the audit step."
           fi
           echo "Every npm production lockfile was audited with no blocking advisories; Rust status: $rust_status."
