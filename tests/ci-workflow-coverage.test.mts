@@ -1349,6 +1349,57 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('coalesces completion events before any writer starts without evicting recovery runs (#8726)', () => {
+    const workflow = YAML.parse(deployGateWorkflow);
+    const admission = workflow.concurrency;
+    assert.ok(admission, 'completion bursts need workflow-level admission control');
+    assert.equal(admission.queue, 'single');
+    assert.equal(admission['cancel-in-progress'], false, 'never interrupt an active workflow');
+    assert.equal(admission.group, 'deploy-gate-events-${{ github.event_name == \'workflow_run\' && github.event.workflow_run.head_sha || github.run_id }}');
+
+    const group = (event: string, id: number, sha?: string) => admission.group.replace(
+      /\$\{\{(.*?)\}\}/g,
+      (_: string, expression: string) => String(runInNewContext(expression, {
+        github: { event_name: event, run_id: id, event: sha ? { workflow_run: { head_sha: sha } } : {} },
+      }, { timeout: 1000 })),
+    );
+    const sha = 'a'.repeat(40);
+    assert.equal(group('workflow_run', 1, sha), group('workflow_run', 2, sha));
+    assert.notEqual(group('workflow_run', 1, sha), group('workflow_run', 2, 'b'.repeat(40)));
+    assert.notEqual(group('workflow_run', 1, sha), `deploy-gate-${sha}`, 'admission must not acquire its own writer lock');
+    for (const event of ['schedule', 'workflow_dispatch']) {
+      assert.notEqual(group(event, 1), group(event, 2), `${event} runs must not replace each other`);
+      assert.notEqual(group(event, 1), group('workflow_run', 1, sha));
+    }
+  });
+
+  it('routes completion events through one writer job and retains recovery phases (#8726)', () => {
+    const { jobs } = YAML.parse(deployGateWorkflow);
+    const direct = jobs['evaluate-direct'];
+    assert.ok(direct, 'completion events must not run planner and aggregate jobs');
+    assert.equal(direct.needs, undefined);
+    assert.deepEqual(direct.strategy.matrix, { sha: ['${{ github.event.workflow_run.head_sha }}'] });
+    const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
+    assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
+    assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
+    const checkout = direct.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+    assert.equal(checkout.with['fetch-depth'], 0, 'base drift requires the full commit graph');
+    assert.equal(checkout.with.filter, 'blob:none');
+
+    for (const event of ['workflow_run', 'schedule', 'workflow_dispatch']) {
+      const completion = event === 'workflow_run';
+      const needs = {
+        discover: { result: completion ? 'skipped' : 'success', outputs: { count: '0' } },
+        recover: { result: completion ? 'skipped' : 'success', outputs: { count: '1' } },
+      };
+      const admitted = Object.entries(jobs).filter(([, job]) => {
+        const expression = (job as { if: string }).if.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
+        return runInNewContext(expression, { github: { event_name: event }, needs, always: () => true });
+      }).map(([name]) => name);
+      assert.deepEqual(admitted, completion ? ['evaluate-direct'] : ['discover', 'recover', 'evaluate', 'gate'], event);
+    }
+  });
+
   it('serializes every deploy-gate writer by SHA behind the sweep phase barriers', () => {
     const workflow = YAML.parse(deployGateWorkflow) as {
       concurrency?: unknown;
@@ -1362,23 +1413,27 @@ describe('CI workflow coverage', () => {
     };
     const jobs = workflow.jobs ?? {};
 
-    assert.equal(workflow.concurrency, undefined, 'the controller must not hold a writer lock');
+    assert.match(
+      (workflow.concurrency as { group: string }).group,
+      /^deploy-gate-events-/,
+      'workflow admission must use a separate namespace from the SHA writer lock',
+    );
     assert.deepEqual(jobs.recover?.needs, ['discover', 'invalidate']);
     assert.equal(jobs.evaluate?.needs, 'recover');
     assert.deepEqual(jobs.gate?.needs, ['discover', 'invalidate', 'recover', 'evaluate']);
     assert.match(jobs.recover?.if ?? '', /always\(\).*needs\.discover\.result == 'success'/);
     assert.match(jobs.evaluate?.if ?? '', /always\(\).*needs\.recover\.result == 'success'.*outputs\.count != '0'/);
     assert.match(jobs.invalidate?.if ?? '', /needs\.discover\.result == 'success'.*outputs\.count != '0'/);
-    assert.equal(jobs.gate?.if, '${{ always() }}');
+    assert.equal(jobs.gate?.if, "${{ always() && github.event_name != 'workflow_run' }}");
 
-    for (const name of ['invalidate', 'evaluate']) {
+    for (const name of ['invalidate', 'evaluate', 'evaluate-direct']) {
       assert.equal(jobs[name]?.concurrency?.group, 'deploy-gate-${{ matrix.sha }}', `${name} must own the SHA lock`);
       assert.equal(jobs[name]?.concurrency?.queue, 'max', `${name} must not replace older pending writers`);
       assert.equal(jobs[name]?.concurrency?.['cancel-in-progress'], false, `${name} must not interrupt an active writer`);
       assert.equal(jobs[name]?.strategy?.['fail-fast'], false, `${name} must finish unrelated SHA work`);
     }
 
-    for (const name of ['discover', 'invalidate', 'recover', 'evaluate']) {
+    for (const name of ['discover', 'invalidate', 'recover', 'evaluate', 'evaluate-direct']) {
       const checkout = jobs[name]?.steps?.find((step) => step.uses?.startsWith('actions/checkout@'));
       assert.equal(checkout?.with?.ref, '${{ github.workflow_sha }}', `${name} must execute trusted workflow code`);
       assert.equal(checkout?.with?.['persist-credentials'], false);

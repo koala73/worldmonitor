@@ -27,6 +27,13 @@ on:
         required: false
         type: string
 
+# Replace only requests that have not started. Active workflows still own their
+# SHA writer lock; scheduled invalidation and manual recovery must never be evicted.
+concurrency:
+  group: deploy-gate-events-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.run_id }}
+  queue: single
+  cancel-in-progress: false
+
 permissions:
   contents: read
   actions: read
@@ -39,7 +46,32 @@ env:
   REPO: ${{ github.repository }}
 
 jobs:
+  evaluate-direct:
+    if: ${{ github.event_name == 'workflow_run' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sha: ['${{ github.event.workflow_run.head_sha }}']
+    concurrency:
+      group: deploy-gate-${{ matrix.sha }}
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Check required PR gates passed for this SHA
+        env:
+          SHA: ${{ matrix.sha }}
+          CHECK_ATTEMPTS: 2
+        run: bash -e .github/scripts/deploy-gate.sh evaluate
+
   discover:
+    if: ${{ github.event_name != 'workflow_run' }}
     runs-on: ubuntu-latest
     outputs:
       discovery: ${{ steps.plan.outputs.discovery }}
@@ -140,7 +172,7 @@ jobs:
 
   gate:
     needs: [discover, invalidate, recover, evaluate]
-    if: ${{ always() }}
+    if: ${{ always() && github.event_name != 'workflow_run' }}
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate deploy gate execution
