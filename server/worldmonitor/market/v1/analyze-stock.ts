@@ -938,7 +938,12 @@ export type YahooHistoryOutcome =
   | { status: 'request-failed' };
 
 /** Thrown inside a cache fetcher so `cachedFetchJson` applies its short fetcher-error TTL. */
-class YahooHistoryRequestFailedError extends Error {}
+class YahooHistoryRequestFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'YahooHistoryRequestFailedError';
+  }
+}
 
 function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse | null): boolean {
   if (status === 404) return true;
