@@ -64,8 +64,12 @@ To roll back, do both of these, in this order. Re-enabling default setup alone l
 
 ```bash
 gh api -X PATCH repos/OWNER/REPO/code-scanning/default-setup -f state=configured
-gh api repos/OWNER/REPO/code-scanning/default-setup -q .state   # expect configured
-gh workflow disable codeql.yml -R OWNER/REPO
+state=$(gh api repos/OWNER/REPO/code-scanning/default-setup -q .state)
+if [ "$state" = configured ]; then
+  gh workflow disable codeql.yml -R OWNER/REPO
+else
+  echo "Default setup is '$state', not configured; leaving codeql.yml enabled." >&2
+fi
 ```
 
 **3. Check parity from the analyses API, not from green jobs.** List the analyses for the merge commit only, then do the same for default setup's last scan (the commit just before it), and compare them category by category:
