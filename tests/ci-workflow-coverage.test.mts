@@ -27,35 +27,55 @@ const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
 const protoCheckWorkflow = read(resolve(workflowsDir, 'proto-check.yml'));
 const playwrightConfig = read(resolve(root, 'playwright.config.ts'));
 
-describe('sidecar dependency cache pilot (#8710)', () => {
-  it('uses an exact lockfile, platform and Node key with npm cache fallback', () => {
-    const steps = YAML.parse(testWorkflow).jobs.sidecar.steps;
-    const setup = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
-    const cache = steps.find((step) => step.id === 'node-modules');
-    assert.ok(cache, 'sidecar must cache the installed dependency tree');
+describe('root dependency cache (#8710)', () => {
+  const actionPath = resolve(root, '.github/actions/install-root-deps/action.yml');
+  const readAction = () => {
+    assert.ok(existsSync(actionPath), 'root installs must share the dependency cache action');
+    return YAML.parse(read(actionPath));
+  };
+
+  it('uses an exact install-input, platform and Node key without partial restores', () => {
+    const action = readAction();
+    assert.equal(action.runs.using, 'composite');
+    const cache = action.runs.steps.find((step) => step.id === 'node-modules');
     assert.match(cache.uses, /^actions\/cache@[a-f0-9]{40}$/);
     assert.equal(cache.with.path, 'node_modules');
-    assert.equal(cache.with.key, "node-modules-${{ runner.os }}-${{ runner.arch }}-node"
-      + setup.with['node-version'] + "-${{ hashFiles('package-lock.json') }}");
+    assert.equal(cache.with.key, "node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}");
     assert.equal(cache.with['restore-keys'], undefined);
-    assert.equal(setup.with.cache, 'npm');
-    assert.ok(steps.indexOf(setup) < steps.indexOf(cache));
   });
 
   it('installs on a miss and regenerates repository inventory on an exact hit', () => {
-    const steps = YAML.parse(testWorkflow).jobs.sidecar.steps;
+    const steps = readAction().runs.steps;
     const cacheIndex = steps.findIndex((step) => step.id === 'node-modules');
     const install = steps.find((step) => step.run === 'npm ci');
     const inventory = steps.find((step) => step.run === 'npm run inventory:facts');
-    const testIndex = steps.findIndex((step) => step.run === 'npm run test:sidecar');
     assert.equal(install?.if, "steps.node-modules.outputs.cache-hit != 'true'");
     assert.equal(inventory?.if, "steps.node-modules.outputs.cache-hit == 'true'");
     assert.equal(packageScripts.postinstall, inventory.run);
     for (const step of [install, inventory]) {
+      assert.equal(step.shell, 'bash');
       assert.ok(steps.indexOf(step) > cacheIndex);
-      assert.ok(steps.indexOf(step) < testIndex);
     }
   });
+
+  for (const [workflowText, jobIds] of [
+    [testWorkflow, ['unit-shards', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [lintCodeWorkflow, ['biome', 'markdown']],
+    [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck']],
+  ] as const) {
+    for (const jobId of jobIds) {
+      it(`${jobId} uses the shared action after Node 24 setup with npm fallback`, () => {
+        const steps = YAML.parse(workflowText).jobs[jobId].steps;
+        const setup = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
+        const install = steps.find((step) => step.uses === './.github/actions/install-root-deps');
+        assert.ok(install, `${jobId} must use the shared root dependency action`);
+        assert.equal(setup.with['node-version'], '24');
+        assert.equal(setup.with.cache, 'npm');
+        assert.ok(steps.indexOf(setup) < steps.indexOf(install));
+        assert.equal(steps.some((step) => step.run === 'npm ci'), false);
+      });
+    }
+  }
 });
 
 describe('browser-loss artifact capture (#6501, #7880)', () => {

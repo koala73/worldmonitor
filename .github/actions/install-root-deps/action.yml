@@ -1,0 +1,19 @@
+name: Install root dependencies
+description: Restore the exact Node 24 dependency tree or install it, then prepare repository inventory.
+runs:
+  using: composite
+  steps:
+    - name: Restore root dependencies
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      id: node-modules
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}
+    - name: Install root dependencies on cache miss
+      if: steps.node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+    - name: Regenerate inventory on cache hit
+      if: steps.node-modules.outputs.cache-hit == 'true'
+      shell: bash
+      run: npm run inventory:facts

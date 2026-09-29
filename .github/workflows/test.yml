@@ -336,7 +336,7 @@ jobs:
             package-lock.json
             pro-test/package-lock.json
             blog-site/package-lock.json
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - name: Install blog-site deps for SEO contract tests
         # Unit-only nested install; keeps postinstall free of blog-site.
         # Needed so blog-seo-contract can load astro.config.mjs.
@@ -587,18 +587,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - name: Restore sidecar dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        id: node-modules
-        with:
-          path: node_modules
-          key: node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json') }}
-      - name: Install sidecar dependencies on cache miss
-        if: steps.node-modules.outputs.cache-hit != 'true'
-        run: npm ci
-      - name: Regenerate inventory on cache hit
-        if: steps.node-modules.outputs.cache-hit == 'true'
-        run: npm run inventory:facts
+      - uses: ./.github/actions/install-root-deps
       - run: npm run test:sidecar
 
   # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
@@ -719,7 +708,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - run: npm run test:convex
 
   # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
@@ -737,7 +726,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       # `npm run typecheck` only covers src/, so these files would otherwise
       # never be type-checked — the first run of this config caught four real
       # type errors in them.
@@ -763,7 +752,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -902,7 +891,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - name: Resolve Playwright version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -1073,7 +1062,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
       - run: npm run test:resilience-validation-smoke
 
   digest-image:
