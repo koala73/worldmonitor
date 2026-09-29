@@ -1,5 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const originalFetch = globalThis.fetch;
 const originalAbortSignalTimeout = AbortSignal.timeout;
@@ -64,6 +65,41 @@ function makeFeatureCollection(maxCoord: number) {
 
 afterEach(() => {
   restoreGlobals();
+});
+
+describe('bundled Crimea attribution', () => {
+  it('selects Ukraine throughout inland Crimea and preserves mainland attribution', async () => {
+    const bundled = JSON.parse(readFileSync(new URL('../public/data/countries.geojson', import.meta.url), 'utf8'));
+    globalThis.fetch = (async (input) => {
+      if (String(input) === '/data/countries.geojson') return jsonResponse(bundled);
+      return jsonResponse({ type: 'FeatureCollection', features: [] });
+    }) as typeof fetch;
+    const geometry = await loadFreshCountryGeometryModule();
+    await geometry.preloadCountryGeometry();
+    const crimeaLocations = [
+      ['Simferopol', 44.9521, 34.1024, 'UA'],
+      ['Bakhchysarai', 44.752, 33.861, 'UA'],
+      ['Bilohirsk', 45.054, 34.602, 'UA'],
+      ['Dzhankoi', 45.708, 34.393, 'UA'],
+    ] as const;
+    for (const [name, lat, lon, code] of [
+      ...crimeaLocations,
+      ['Kyiv', 50.4501, 30.5234, 'UA'],
+      ['Donetsk', 48.0159, 37.8028, 'UA'],
+      ['Moscow', 55.7558, 37.6173, 'RU'],
+      ['Krasnodar', 45.0355, 38.9753, 'RU'],
+      ['Vladivostok', 43.1155, 131.8855, 'RU'],
+    ] as const) {
+      assert.equal(geometry.getCountryAtCoordinates(lat, lon)?.code, code, name);
+    }
+    bundled.features = bundled.features.filter((feature: { properties: Record<string, string> }) =>
+      feature.properties['ISO3166-1-Alpha-2'] === 'RU');
+    const russiaOnly = await loadFreshCountryGeometryModule();
+    await russiaOnly.preloadCountryGeometry();
+    for (const [name, lat, lon] of crimeaLocations) {
+      assert.equal(russiaOnly.getCountryAtCoordinates(lat, lon), null, `${name} must not overlap Russia`);
+    }
+  });
 });
 
 describe('country geometry political overrides', () => {
