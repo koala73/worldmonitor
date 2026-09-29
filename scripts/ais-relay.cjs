@@ -14003,18 +14003,25 @@ async function performWidgetPageRead(url, { signal } = {}) {
 // "2025-26 season" in September 2026 and built last season's table 3 times out
 // of 3, while an independent check given today's date caught every one. Returns
 // null when the check itself fails, so the caller serves the draft unverified.
-async function verifyWidgetAgainstSources(client, { request, today, html, sources }, { signal } = {}) {
+async function verifyWidgetAgainstSources(client, { request, today, html, sources, priorHtml = '' }, { signal } = {}) {
   const instructions = 'You check a generated dashboard widget against the source material its builder read. First state the period the widget\'s data covers and the period the request needs as of today\'s date. A finished season, table, week or release is the wrong dataset when a newer one is in progress as of today, unless the request names the earlier period. Then decide whether the sources are the right dataset: the requested entity and that needed period, not a stale or different one. Then list every concrete data value the widget displays (numbers, dates, names in tables, percentages, prices) that the source material does not support, exactly or by trivial arithmetic such as rounding or a difference. Ignore CSS, layout and chart configuration. Reply with JSON only: {"data_period": "...", "needed_period": "...", "right_dataset": true|false, "dataset_why": "...", "unsupported": [{"value": "...", "why": "..."}]}';
-  const material = sources
-    .map((source, i) => `--- source ${i + 1} (${source.kind}${source.label ? ` ${source.label}` : ''}) ---\n${String(source.text).slice(0, 20_000)}`)
-    .join('\n\n')
-    .slice(0, 60_000);
+  // Keep the newest sources when over budget: a repair's own search comes last.
+  const parts = [];
+  let budget = 60_000;
+  for (let i = sources.length - 1; i >= 0 && budget > 0; i--) {
+    const source = sources[i];
+    const part = `--- source ${i + 1} (${source.kind}${source.label ? ` ${source.label}` : ''}) ---\n${String(source.text).slice(0, 20_000)}`.slice(0, budget);
+    parts.unshift(part);
+    budget -= part.length + 2;
+  }
+  const material = parts.join('\n\n');
+  const prior = priorHtml ? `\n\nPRIOR WIDGET (the widget being modified; values carried over from it unchanged count as supported):\n${String(priorHtml)}` : '';
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: instructions,
-      messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}\n\nWIDGET HTML:\n${String(html)}` }],
+      messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}${prior}\n\nWIDGET HTML:\n${String(html)}` }],
     }, { signal });
     const text = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const verdict = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
@@ -14298,7 +14305,8 @@ async function handleWidgetAgentRequest(req, res) {
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
 
-      // Finalization is irreversible, including after an incomplete response.
+      // Truncation and pause_turn force final output for good; the tool budget
+      // and turn limit reopen only through the source check's one repair grant.
       finalizing = forceFinal || toolCallCount >= toolLimit || turn >= maxTurns - 2;
       const turnMessages = finalizing
         ? [...messages, { role: 'user', content: 'Tools are now disabled. Output the complete widget inside <!-- widget-html --> markers, using the data you already have.' }]
@@ -14324,26 +14332,28 @@ async function handleWidgetAgentRequest(req, res) {
           incompleteMessage = 'Widget generation incomplete: expected nonempty HTML inside complete widget-html markers.';
           break;
         }
-        // A web-sourced draft is served only after it passes the source check or
-        // the check is unavailable. A rejected draft gets one repair, which is
-        // checked again; neither a rejected draft nor a rejected repair is served.
-        const checkMs = deadlineAt - Date.now() - WIDGET_DRAFT_DELIVERY_RESERVE_MS;
-        if (usedWeb && sourceChecks < 2 && checkMs > 0) {
-          sourceChecks++;
-          sendWidgetSSE(res, 'tool_call', { endpoint: 'verify:sources' });
-          const verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources }, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(checkMs)]) });
-          if (cancelled) break;
-          if (verdict && (!verdict.rightDataset || verdict.unsupported.length > 0)) {
-            if (sourceChecks > 1) {
-              incompleteMessage = 'Widget generation incomplete: its sources could not be verified for this request.';
-              break;
-            }
+        // A web-sourced first draft is served when it passes the source check or
+        // the check is unavailable. Once a draft has been rejected, only a repair
+        // that passes a second check is served: a failed, skipped or rejected
+        // recheck ends the request.
+        if (usedWeb) {
+          const repairing = sourceChecks > 0;
+          const checkMs = deadlineAt - Date.now() - WIDGET_DRAFT_DELIVERY_RESERVE_MS;
+          let verdict = null;
+          if (checkMs > 0) {
+            sourceChecks++;
+            sendWidgetSSE(res, 'tool_call', { endpoint: 'verify:sources' });
+            verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources, priorHtml: mode === 'modify' && currentHtml ? String(currentHtml).slice(0, maxHtml) : '' }, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(checkMs)]) });
+            if (cancelled) break;
+          }
+          const rejected = verdict && (!verdict.rightDataset || verdict.unsupported.length > 0);
+          if (repairing && (!verdict || rejected)) break;
+          if (rejected) {
+            incompleteMessage = 'Widget generation incomplete: its sources could not be verified for this request.';
             messages.push({ role: 'assistant', content: response.content });
             messages.push({ role: 'user', content: `An independent check of this widget against its sources, as of today (${today}), found:\n${formatWidgetVerifierFindings(verdict)}\n\nFix the widget. If the dataset is wrong and tools are still available, you may make one more tool call to find the right one; otherwise label the widget with the period the data covers and say the requested one was not found. Remove unsupported values or show "—". Then output the complete widget.` });
-            if (!forceFinal) {
-              toolLimit = toolCallCount + 1;
-              maxTurns = Math.max(maxTurns, turn + 4);
-            }
+            if (!forceFinal) toolLimit = toolCallCount + 1;
+            maxTurns = Math.max(maxTurns, turn + 4);
             continue;
           }
         }
@@ -14383,12 +14393,12 @@ async function handleWidgetAgentRequest(req, res) {
               continue;
             }
             sendWidgetSSE(res, 'tool_call', { endpoint: `search:${String(query).slice(0, 80)}` });
-            usedWeb = true;
             toolLimit = Math.max(toolLimit, WIDGET_MAX_TOOL_CALLS + 1);
             try {
               toolExecutionCount++;
               const searchResult = await performWidgetWebSearch(String(query));
               if (searchResult) {
+                usedWeb = true;
                 for (const r of searchResult.results) if (r?.url) searchedUrls.add(r.url);
                 const content = sanitizeToolContent(JSON.stringify(searchResult.results));
                 sources.push({ kind: 'search', label: String(query).slice(0, 200), text: content });
@@ -14506,10 +14516,10 @@ async function handleWidgetAgentRequest(req, res) {
       }
     }
     if (!completed && !cancelled) {
-      // Recover the newest complete tool-turn output from this request only,
-      // unless the source check has rejected a draft: that output is unchecked.
+      // Recover the newest complete tool-turn output from this request only.
+      // Never for a web-sourced widget: that output has not been through the check.
       let recovered = false;
-      for (let i = sourceChecks > 0 ? -1 : recoveryCandidates.length - 1; i >= 0; i--) {
+      for (let i = usedWeb ? -1 : recoveryCandidates.length - 1; i >= 0; i--) {
         const text = recoveryCandidates[i].filter(b => b.type === 'text').map(b => b.text).join('');
         const parsed = parseWidgetAgentResponse(text, maxHtml);
         if (parsed.isComplete) {
