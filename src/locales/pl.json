@@ -2944,6 +2944,7 @@
     "protest": {
       "acledVerified": "ACLED (zweryfikowany)",
       "gdelt": "GDELT",
+      "records": "wpisów",
       "mediaSignal": "Niezweryfikowany sygnał medialny",
       "relatedArticle": "Powiązany artykuł",
       "mediaSignalDetail": "To miejsce jest wymieniane w artykułach o niepokojach. Lokalne zdarzenie nie zostało potwierdzone.",

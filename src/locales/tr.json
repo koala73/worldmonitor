@@ -2905,6 +2905,7 @@
     "protest": {
       "acledVerified": "ACLED (dogrulanmis)",
       "gdelt": "GDELT",
+      "records": "kayıt",
       "mediaSignal": "Doğrulanmamış medya sinyali",
       "relatedArticle": "İlgili makale",
       "mediaSignalDetail": "Bu konum, huzursuzlukla ilgili makalelerde geçiyor. Yerel bir olay doğrulanmamıştır.",

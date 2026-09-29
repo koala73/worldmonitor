@@ -2885,6 +2885,7 @@
     "protest": {
       "acledVerified": "ACLED（已验证）",
       "gdelt": "GDELT",
+      "records": "条记录",
       "mediaSignal": "未经核实的媒体信号",
       "relatedArticle": "相关文章",
       "mediaSignalDetail": "此地点在有关动乱的文章中被提及。当地事件尚未得到核实。",

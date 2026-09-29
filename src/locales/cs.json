@@ -2945,6 +2945,7 @@
     "protest": {
       "acledVerified": "ACLED (ověřeno)",
       "gdelt": "GDELT",
+      "records": "záznamů",
       "mediaSignal": "Neověřený mediální signál",
       "relatedArticle": "Související článek",
       "mediaSignalDetail": "Toto místo je zmíněno v článcích o nepokojích. Místní událost není ověřena.",

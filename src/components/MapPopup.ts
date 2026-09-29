@@ -1715,13 +1715,13 @@ export class MapPopup {
 
     const renderedCount = Math.min(10, data.items.length);
     const remainingCount = Math.max(0, totalCount - renderedCount);
-    const moreCount = remainingCount > 0 ? `<li class="cluster-more">+${remainingCount} ${t('popups.moreEvents')}</li>` : '';
+    const moreCount = remainingCount > 0 ? `<li class="cluster-more">+${remainingCount} ${t('popups.protest.records')}</li>` : '';
     const headerClass = highSeverity > 0 ? 'high' : riots > 0 ? 'medium' : 'low';
 
     return `
       <div class="popup-header protest ${headerClass} cluster">
         <span class="popup-title">📢 ${escapeHtml(data.country)}</span>
-        <span class="popup-badge">${totalCount} ${t('popups.events').toUpperCase()}</span>
+        <span class="popup-badge">${totalCount} ${t('popups.protest.records').toUpperCase()}</span>
         <button class="popup-close" aria-label="Close">×</button>
       </div>
       <div class="popup-body cluster-popup">

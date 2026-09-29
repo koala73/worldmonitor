@@ -2885,6 +2885,7 @@
     "protest": {
       "acledVerified": "ACLED（検証済）",
       "gdelt": "GDELT",
+      "records": "件の記録",
       "mediaSignal": "未確認のメディア情報",
       "relatedArticle": "関連記事",
       "mediaSignalDetail": "この場所は騒乱に関する記事で言及されています。現地での出来事は確認されていません。",

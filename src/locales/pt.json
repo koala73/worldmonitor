@@ -2541,6 +2541,7 @@
     "protest": {
       "acledVerified": "ACLED (verificado)",
       "gdelt": "GDELT",
+      "records": "registros",
       "mediaSignal": "Sinal de mídia não verificado",
       "relatedArticle": "Artigo relacionado",
       "mediaSignalDetail": "Este local é mencionado em artigos sobre distúrbios. Um evento local não foi verificado.",

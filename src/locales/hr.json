@@ -3003,6 +3003,7 @@
     "protest": {
       "acledVerified": "ACLED (potvrđeno)",
       "gdelt": "GDELT",
+      "records": "zapisa",
       "mediaSignal": "Nepotvrđeni medijski signal",
       "relatedArticle": "Povezani članak",
       "mediaSignalDetail": "Ovo se mjesto spominje u člancima o nemirima. Lokalni događaj nije potvrđen.",

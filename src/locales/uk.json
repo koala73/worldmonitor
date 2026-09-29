@@ -3014,6 +3014,7 @@
     "protest": {
       "acledVerified": "ACLED (verified)",
       "gdelt": "GDELT",
+      "records": "записів",
       "mediaSignal": "Неперевірений медіасигнал",
       "relatedArticle": "Пов’язана стаття",
       "mediaSignalDetail": "Це місце згадується у статтях про заворушення. Місцеву подію не підтверджено.",

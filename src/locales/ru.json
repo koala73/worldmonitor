@@ -2945,6 +2945,7 @@
     "protest": {
       "acledVerified": "ACLED (подтверждено)",
       "gdelt": "GDELT",
+      "records": "записей",
       "mediaSignal": "Непроверенный медиасигнал",
       "relatedArticle": "Связанная статья",
       "mediaSignalDetail": "Это место упоминается в статьях о беспорядках. Местное событие не подтверждено.",
