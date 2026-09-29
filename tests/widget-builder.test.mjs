@@ -426,6 +426,9 @@ describe('widget data-tool contracts', () => {
       assert.match(prompt, /sparkline.*today's intraday prices.*no dates/i);
       assert.match(prompt, /not in the data.*say so in the widget/i);
       assert.match(prompt, /Never fill missing history from search_web/);
+      assert.match(prompt, /could not be fetched.*never substitute remembered, estimated or example values/i);
+      assert.match(prompt, /data widget is never refused, even when its data turns out to be unavailable/);
+      assert.ok(prompt.indexOf('never refused') < prompt.indexOf('When refusing, output ONLY this'), 'the carve-out must sit beside the refusal template');
       assert.match(prompt, /params\.symbols/);
       assert.match(prompt, /get-gold-intelligence/);
     }
