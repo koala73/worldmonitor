@@ -329,14 +329,23 @@ export function failureExitCode(err) {
 
 /**
  * The cron retries later the same UTC day; once that day's snapshot is
- * published a later tick has nothing to add. A failed read returns false so
- * the run still fetches.
+ * published a later tick has nothing to add. Keyed on the snapshot's own date,
+ * not its publication time, which can fall after midnight. Every snapshot key
+ * must still exist, or the run republishes. A failed read returns false so the
+ * run still fetches.
  */
 async function publishedToday(dateStr) {
+  const snapshotKeys = [
+    ELECTRICITY_INDEX_KEY,
+    ...[...ENTSO_E_REGIONS, ...EIA_REGIONS].map((r) => `${ELECTRICITY_KEY_PREFIX}${r.region}`),
+  ];
   try {
-    const [meta] = await redisPipeline([['GET', ELECTRICITY_META_KEY]]);
-    const fetchedAt = JSON.parse(meta?.result ?? 'null')?.fetchedAt;
-    return Number.isFinite(fetchedAt) && isoDate(new Date(fetchedAt)) === dateStr;
+    const [meta, present] = await redisPipeline([
+      ['GET', ELECTRICITY_META_KEY],
+      ['EXISTS', ...snapshotKeys],
+    ]);
+    const snapshotDate = JSON.parse(meta?.result ?? 'null')?.snapshotDate;
+    return snapshotDate === dateStr && present?.result === snapshotKeys.length;
   } catch {
     return false;
   }
@@ -405,6 +414,7 @@ export async function main() {
     const index = buildElectricityIndex(entsoResults, dateStr);
     const metaPayload = {
       fetchedAt: Date.now(),
+      snapshotDate: dateStr,
       recordCount: allRegions.length,
       sourceVersion: 'electricity-prices-v1',
     };

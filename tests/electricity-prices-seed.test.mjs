@@ -359,6 +359,8 @@ describe('main() publication gate', () => {
         cache.set(cmd[1], cmd[2]);
         return { result: 'OK' };
       case 'GET': return { result: cache.get(cmd[1]) ?? null };
+      // Redis EXISTS counts how many of the given keys exist.
+      case 'EXISTS': return { result: cmd.slice(1).filter((key) => cache.has(key)).length };
       // Redis EXPIRE answers 0 for a key that does not exist.
       case 'EXPIRE': return { result: cache.has(cmd[1]) ? 1 : 0 };
       case 'EVAL': return { result: 1 };
@@ -483,6 +485,7 @@ describe('main() publication gate', () => {
     const snapshot = new Map(cache);
     const oldMeta = JSON.parse(cache.get(ELECTRICITY_META_KEY));
     oldMeta.fetchedAt -= 30 * 60 * 60 * 1000;
+    oldMeta.snapshotDate = new Date(oldMeta.fetchedAt).toISOString().slice(0, 10);
     cache.set(ELECTRICITY_META_KEY, JSON.stringify(oldMeta));
     snapshot.set(ELECTRICITY_META_KEY, JSON.stringify(oldMeta));
     const classify = now => health.classifyKey('electricityPrices', ELECTRICITY_INDEX_KEY, { allowOnDemand: false }, {
@@ -531,29 +534,63 @@ describe('main() publication gate', () => {
 
   // The cron retries later the same UTC day, so a later tick must not refetch or
   // republish once the day's snapshot is in.
+  function dataWrites() {
+    return redisCommands.filter((c) => c[0] === 'SET'
+      && (c[1].startsWith(ELECTRICITY_KEY_PREFIX) || c[1] === ELECTRICITY_META_KEY));
+  }
+
+  // Rewrites a field of the published seed meta, as a stored snapshot would carry it.
+  function patchMeta(patch) {
+    cache.set(ELECTRICITY_META_KEY, JSON.stringify({ ...JSON.parse(cache.get(ELECTRICITY_META_KEY)), ...patch }));
+  }
+
+  function previousUtcDate() {
+    return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
   it('skips a later tick once today\'s snapshot is published', async () => {
     process.env.ENTSO_E_TOKEN = 'entso-token';
-    cache.set(ELECTRICITY_META_KEY, JSON.stringify({ fetchedAt: Date.now() - 60_000, recordCount: 17 }));
+    assert.equal(await main(), true);
+    redisCommands = [];
+    entsoCalls = 0;
 
     assert.equal(await main(), 'already-fresh');
 
     assert.equal(entsoCalls, 0, 'no ENTSO-E request once today is published');
-    const dataWrites = redisCommands.filter((c) => c[0] === 'SET'
-      && (c[1].startsWith(ELECTRICITY_KEY_PREFIX) || c[1] === ELECTRICITY_META_KEY));
-    assert.equal(dataWrites.length, 0, 'nothing republished');
+    assert.equal(dataWrites().length, 0, 'nothing republished');
     assert.equal(expiredKeys().length, 0, 'a skip is not a failure');
   });
 
   it('fetches again when the published snapshot is from an earlier UTC day', async () => {
     process.env.ENTSO_E_TOKEN = 'entso-token';
-    const now = new Date();
-    const previousDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 60_000;
-    cache.set(ELECTRICITY_META_KEY, JSON.stringify({ fetchedAt: previousDay, recordCount: 17 }));
+    assert.equal(await main(), true);
+    patchMeta({ snapshotDate: previousUtcDate() });
+    entsoCalls = 0;
 
     assert.equal(await main(), true);
-
     assert.equal(entsoCalls, 10);
-    assert.equal(setsFor(ELECTRICITY_META_KEY).length, 1);
+  });
+
+  // A run near midnight can publish after 00:00 UTC; the snapshot's own date,
+  // not the publication time, decides whether today is covered.
+  it('skips on the snapshot date, not on when it was published', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    patchMeta({ snapshotDate: previousUtcDate(), fetchedAt: Date.now() });
+    entsoCalls = 0;
+
+    assert.equal(await main(), true, 'a previous-day snapshot published today must not block today');
+    assert.equal(entsoCalls, 10);
+  });
+
+  it('fetches when today\'s metadata exists but part of the snapshot is gone', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    cache.delete(`${ELECTRICITY_KEY_PREFIX}DE`);
+    entsoCalls = 0;
+
+    assert.equal(await main(), true);
+    assert.equal(entsoCalls, 10);
   });
 
   // Publish a full snapshot, then date it to an earlier UTC day so the next
@@ -561,8 +598,7 @@ describe('main() publication gate', () => {
   async function publishPreviousDaySnapshot() {
     assert.equal(await main(), true);
     const meta = JSON.parse(cache.get(ELECTRICITY_META_KEY));
-    meta.fetchedAt -= 30 * 60 * 60 * 1000;
-    cache.set(ELECTRICITY_META_KEY, JSON.stringify(meta));
+    patchMeta({ fetchedAt: meta.fetchedAt - 30 * 60 * 60 * 1000, snapshotDate: previousUtcDate() });
   }
 
   it('marks a failure as retained only when every last-good key was extended', async () => {
