@@ -320,6 +320,10 @@ by PR activity. Pushes to `main` scan all six only when the CodeQL workflow itse
 changes, so default-branch findings can lag by one day for JS/TS and one week for
 the other languages, plus runner delays.
 
+After each default-branch scan, the `prune-overlay-bases` job deletes every CodeQL
+overlay-base cache except the newest per workflow/job/language group, because
+CodeQL saves a new base under a unique key on every run and never removes old ones.
+
 The repository owner must coordinate activation with the approved merge:
 
 1. Keep default setup enabled while reviewing this workflow. Advanced analysis

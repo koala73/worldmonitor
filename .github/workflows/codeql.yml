@@ -103,3 +103,26 @@ jobs:
       - uses: github/codeql-action/analyze@7999b86c43a865dc79d8923397f35af22de63401 # v4
         with:
           category: /language:${{ matrix.language }}
+
+  # codeql-action saves an overlay-base database (~1.3 GB for JS) under a new key on every
+  # default-branch run and never deletes old ones. PRs restore only the newest per group,
+  # and cache eviction is least-recently-accessed, so stale bases push out hot caches.
+  prune-overlay-bases:
+    needs: analyze
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '24'
+      - run: node .github/scripts/prune-codeql-overlay-bases.mjs --ref "$GITHUB_REF"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

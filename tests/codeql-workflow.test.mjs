@@ -89,3 +89,25 @@ test('scan jobs use selected languages, least privilege, and stable categories',
     if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
   }
 });
+
+test('default-branch runs prune stale overlay-base caches with the only actions: write grant', () => {
+  const prune = workflow.jobs['prune-overlay-bases'];
+  assert.ok(prune, 'prune-overlay-bases job exists');
+  assert.equal(prune.needs, 'analyze');
+  assert.match(prune.if, /!cancelled\(\)/);
+  assert.match(prune.if, /github\.event_name != 'pull_request'/);
+  assert.match(prune.if, /github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\)/);
+  assert.deepEqual(prune.permissions, { contents: 'read', actions: 'write' });
+  for (const [name, job] of Object.entries(workflow.jobs)) {
+    if (name !== 'prune-overlay-bases') assert.notEqual(job.permissions?.actions, 'write', name);
+  }
+  assert.equal(workflow.permissions.actions, undefined);
+  const checkout = prune.steps.find(step => step.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkout.with['persist-credentials'], false);
+  const run = prune.steps.find(step => step.run);
+  assert.match(run.run, /node \.github\/scripts\/prune-codeql-overlay-bases\.mjs --ref "\$GITHUB_REF"/);
+  assert.doesNotMatch(run.run, /--dry-run/);
+  assert.equal(run.env.GH_TOKEN, '${{ github.token }}');
+  assert.equal(run.env.GH_REPO, '${{ github.repository }}');
+  for (const step of prune.steps) if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
+});
