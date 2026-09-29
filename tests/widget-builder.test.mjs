@@ -66,16 +66,22 @@ describe('widget relay spend identity trust', () => {
 
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
-async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [] } = {}) {
+async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [], hangOn = null } = {}) {
   const relay = src('scripts/ais-relay.cjs');
   const extract = name => {
     const match = relay.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(match, `Missing relay function ${name}`);
     return match[0];
   };
-  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [], verifyCalls = [];
+  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [], verifyCalls = [], modelSignals = [];
   let ended = 0;
-  let expire;
+  let expire, disconnect;
+  // A hung call settles only through its abort signal; the guard fails a missing abort.
+  const hang = signal => new Promise((_, reject) => {
+    const guard = setTimeout(() => reject(new Error('model call was never aborted')), 300);
+    signal?.addEventListener('abort', () => { clearTimeout(guard); reject(signal.reason); });
+    if (hangOn === 'deadline') expire(); else disconnect();
+  });
   const nextResponse = request => {
     requests.push(structuredClone(request));
     const response = responses[requests.length - 1];
@@ -84,7 +90,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     return structuredClone(response);
   };
   const context = {
-    URL, AbortSignal, clearTimeout, parseWidgetAgentResponse,
+    URL, AbortSignal, AbortController, clearTimeout, parseWidgetAgentResponse,
     setTimeout: (callback, ms) => { expire = callback; return setTimeout(callback, ms); },
     console: { error: (...args) => logs.push(args) },
     requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
@@ -104,8 +110,8 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
       effects.push(`read:${url}`);
       return pageText === null ? null : { source: 'exa', text: pageText };
     },
-    verifyWidgetAgainstSources: async (_client, input) => {
-      verifyCalls.push(input);
+    verifyWidgetAgainstSources: async (_client, input, options) => {
+      verifyCalls.push({ ...input, signal: options?.signal });
       return verdicts.length ? verdicts.shift() : { rightDataset: true, datasetWhy: '', unsupported: [] };
     },
     fetch: async (url, init) => {
@@ -139,7 +145,9 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
         } });
       }
     } : class {
-      messages = { create: async request => {
+      messages = { create: async (request, options) => {
+        modelSignals.push(options?.signal);
+        if (hangOn && requests.length === responses.length) { requests.push(request); return hang(options?.signal); }
         return nextResponse(request);
       } };
     } }),
@@ -158,9 +166,9 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     write(frame) { frames.push(frame); },
     end() { ended++; this.writableEnded = true; },
   };
-  await run({ headers: {}, on() {}, socket: {} }, res);
+  await run({ headers: {}, on(event, cb) { if (event === 'close') disconnect = cb; }, socket: {} }, res);
   const events = frames.map(frame => JSON.parse(frame.match(/data: (.*)/)[1]));
-  return { requests, effects, fetchInits, invalidated, verifyCalls, logs, events, ended };
+  return { requests, effects, fetchInits, invalidated, verifyCalls, modelSignals, logs, events, ended };
 }
 
 const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- /widget-html -->';
@@ -318,6 +326,27 @@ describe('widget-agent relay — runtime tool budget and finalization', () => {
     assert.equal(result.effects.length, 1);
     assert.equal(result.requests.length, 1);
     assertWidgetError(result, /timeout/i);
+  });
+
+  it('aborts the in-flight model call at the deadline so it stops billing', async () => {
+    const result = await runWidgetAgent([], { hangOn: 'deadline' });
+    assert.equal(result.modelSignals[0]?.aborted, true);
+    assertWidgetError(result, /timeout/i);
+  });
+
+  it('aborts the in-flight model call when the client disconnects', async () => {
+    const result = await runWidgetAgent([], { hangOn: 'disconnect' });
+    assert.equal(result.modelSignals[0]?.aborted, true);
+    assert.equal(result.events.some(e => e.type === 'html_complete'), false);
+  });
+
+  it('gives the source verifier the same abort signal as the model loop', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]), widgetResponse('end_turn'),
+    ]);
+    assertWidgetSuccess(result);
+    assert.ok(result.verifyCalls[0].signal);
+    assert.equal(result.verifyCalls[0].signal, result.modelSignals[0]);
   });
 
   it('serializes the capped tool exchange and finalization through the installed SDK', async () => {
@@ -817,6 +846,14 @@ describe('widget source verifier', () => {
     assert.match(sent, /Arsenal 15/);
   });
 
+  it('makes the check name both periods before judging, so a finished season reads as stale', async () => {
+    const seen = [];
+    const verdict = await load()(clientReturning('{"data_period": "2025-26 final table", "needed_period": "2026-27 in progress", "right_dataset": false, "dataset_why": "finished season", "unsupported": []}', seen), input);
+    assert.match(seen[0].system, /data_period[\s\S]*needed_period[\s\S]*right_dataset/);
+    assert.match(seen[0].system, /finished[^.]*newer one is in progress/);
+    assert.equal(verdict.datasetWhy, 'finished season (data: 2025-26 final table; needed: 2026-27 in progress)');
+  });
+
   it('returns null when the check errors or its reply is not a verdict', async () => {
     const verify = load();
     assert.equal(await verify({ messages: { create: async () => { throw new Error('overloaded'); } } }, input), null);
@@ -1311,7 +1348,7 @@ describe('widget-agent relay — completion contract', () => {
       WIDGET_SEARCH_TOOL: {},
       WIDGET_READ_TOOL: {},
       performWidgetWebSearch: async () => null,
-      setTimeout,
+      setTimeout, AbortController,
       clearTimeout,
       console,
       AnthropicStub: class {

@@ -13999,8 +13999,8 @@ async function performWidgetPageRead(url) {
 // "2025-26 season" in September 2026 and built last season's table 3 times out
 // of 3, while an independent check given today's date caught every one. Returns
 // null when the check itself fails, so the caller serves the draft unverified.
-async function verifyWidgetAgainstSources(client, { request, today, html, sources }) {
-  const instructions = 'You check a generated dashboard widget against the source material its builder read. Decide whether the sources are the right dataset for the user request as of today\'s date: the requested entity and the current or requested period, not a stale or different one. Then list every concrete data value the widget displays (numbers, dates, names in tables, percentages, prices) that the source material does not support, exactly or by trivial arithmetic such as rounding or a difference. Ignore CSS, layout and chart configuration. Reply with JSON only: {"right_dataset": true|false, "dataset_why": "...", "unsupported": [{"value": "...", "why": "..."}]}';
+async function verifyWidgetAgainstSources(client, { request, today, html, sources }, { signal } = {}) {
+  const instructions = 'You check a generated dashboard widget against the source material its builder read. First state the period the widget\'s data covers and the period the request needs as of today\'s date. A finished season, table, week or release is the wrong dataset when a newer one is in progress as of today, unless the request names the earlier period. Then decide whether the sources are the right dataset: the requested entity and that needed period, not a stale or different one. Then list every concrete data value the widget displays (numbers, dates, names in tables, percentages, prices) that the source material does not support, exactly or by trivial arithmetic such as rounding or a difference. Ignore CSS, layout and chart configuration. Reply with JSON only: {"data_period": "...", "needed_period": "...", "right_dataset": true|false, "dataset_why": "...", "unsupported": [{"value": "...", "why": "..."}]}';
   const material = sources
     .map((source, i) => `--- source ${i + 1} (${source.kind}${source.label ? ` ${source.label}` : ''}) ---\n${String(source.text).slice(0, 20_000)}`)
     .join('\n\n')
@@ -14011,13 +14011,15 @@ async function verifyWidgetAgainstSources(client, { request, today, html, source
       max_tokens: 4096,
       system: instructions,
       messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}\n\nWIDGET HTML:\n${String(html).slice(0, 40_000)}` }],
-    });
+    }, { signal });
     const text = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const verdict = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
     if (typeof verdict.right_dataset !== 'boolean' || !Array.isArray(verdict.unsupported)) return null;
     return {
       rightDataset: verdict.right_dataset,
-      datasetWhy: String(verdict.dataset_why || ''),
+      datasetWhy: verdict.data_period || verdict.needed_period
+        ? `${String(verdict.dataset_why || '')} (data: ${String(verdict.data_period || '?')}; needed: ${String(verdict.needed_period || '?')})`
+        : String(verdict.dataset_why || ''),
       unsupported: verdict.unsupported.map(u => ({ value: String(u?.value ?? ''), why: String(u?.why ?? '') })),
     };
   } catch (err) {
@@ -14226,11 +14228,15 @@ async function handleWidgetAgentRequest(req, res) {
   // write, which only happens after client.messages.create returns.
   if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
+  // Abort in-flight model calls too: a flag alone lets a call the user no
+  // longer waits for run to completion and bill.
   let cancelled = false;
-  req.on('close', () => { cancelled = true; });
+  const abort = new AbortController();
+  req.on('close', () => { cancelled = true; abort.abort(); });
 
   const timeout = setTimeout(() => {
     cancelled = true;
+    abort.abort();
     sendWidgetSSE(res, 'error', { message: 'Request timeout' });
     if (!res.writableEnded) res.end();
   }, timeoutMs);
@@ -14292,7 +14298,7 @@ async function handleWidgetAgentRequest(req, res) {
         tools: [WIDGET_FETCH_TOOL, WIDGET_SEARCH_TOOL, WIDGET_READ_TOOL],
         tool_choice: { type: finalizing ? 'none' : 'auto' },
         messages: turnMessages,
-      });
+      }, { signal: abort.signal });
       if (cancelled) break;
 
       const hasToolRequests = response.content.some(b => b.type === 'tool_use');
@@ -14307,7 +14313,7 @@ async function handleWidgetAgentRequest(req, res) {
         if (usedWeb && !verifiedDraft) {
           verifiedDraft = { html, title };
           sendWidgetSSE(res, 'tool_call', { endpoint: 'verify:sources' });
-          const verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources });
+          const verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources }, { signal: abort.signal });
           if (cancelled) break;
           if (verdict && (!verdict.rightDataset || verdict.unsupported.length > 0)) {
             messages.push({ role: 'assistant', content: response.content });
