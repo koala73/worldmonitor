@@ -35,6 +35,7 @@ const APP_OWNED_KEYS = Object.freeze([
   'seed-meta:temporal:anomalies',
   'risk:scores:sebuf:v8', // intelligence/v1/get-risk-scores (live + stale fallback + meta)
   'risk:scores:sebuf:stale:v8',
+  'risk:scores:sebuf:rejected:v8',
   'seed-meta:intelligence:risk-scores',
   'supply_chain:chokepoints:v4', // supply-chain/v1/get-chokepoint-status (+ meta)
   'seed-meta:supply_chain:chokepoints',
