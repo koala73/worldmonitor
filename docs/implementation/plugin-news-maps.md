@@ -48,8 +48,27 @@ The browser regression builds the production artifact and renders it in a script
 
 Focused API/resource tests check metadata, fixed-origin asset loading, size/error handling, authenticated endpoint use, and denial propagation. Website converter, panel, map, type, and import-boundary checks remain regression gates.
 
-Actual OpenAI host installation, OAuth, negotiated CSP, app-local tool support, and live renderer/provider acceptance still require a configured development connection and a deployed commit. The local fixture does not close those criteria. Full variant parity, live video news, account/settings workflows, and other domains remain epic work. Do not close #8741 or #5198 on local evidence alone.
+Actual OpenAI host installation, OAuth, negotiated CSP, app-local tool support, and live renderer/provider acceptance still require a configured development connection. The local fixture does not close those criteria. Full variant parity, live video news, account/settings workflows, and other domains remain epic work. Do not close #8741 or #5198 on local evidence alone.
 
-## After deployment
+## Test in ChatGPT
 
-With deployment separately authorized, connect the development plugin to the exact deployment and record host/version, commit, user tier, renderer, and source coverage. Exercise initial load, search, article focus/source opening, summary denial/success, refresh expiry, and both available renderer modes. Check browser errors and MCP responses before marking the issue's host acceptance complete.
+Follow [Build plugins](https://learn.chatgpt.com/docs/build-plugins) and the developer [connection and testing guide](https://developers.openai.com/plugins/deploy/connect-chatgpt). A production deployment is not required: a development HTTPS endpoint or Secure MCP Tunnel can expose the tested MCP server. UI assets must also be reachable by the host sandbox.
+
+1. Inspect the development server's tools, schemas, authentication errors, and results with MCP Inspector.
+2. Enable developer mode in ChatGPT's Security and login settings, subject to workspace policy. Add the endpoint or tunnel from Plugins and check discovery.
+3. Start a fresh conversation with the connection enabled. Test the prompts below and record tool arguments, results, UI state, errors, host/version, commit, tier, renderer, and source coverage.
+4. After changing metadata or UI resources, restart the server, refresh the connection, and use a fresh conversation.
+5. Package and install the complete plugin through a local marketplace. Retest its skills and MCP tools together. Test Chat and Work separately when supported; record unavailable extension surfaces explicitly.
+
+| Prompt or interaction | WorldMonitor acceptance |
+|---|---|
+| Open WorldMonitor news and maps | Actual news panels and map render; initial digest is not fetched twice |
+| Show Reuters news from the last hour | Assistant filters and visible controls agree |
+| Focus Germany; select another time range while it loads | Country focus completes without losing the later time selection |
+| Search for energy, then select a returned article | Existing search opens; article and supplied location agree |
+| Summarize this panel; open the article source | Analysis honors authentication; source opens through the host |
+| Refresh after access expires | Useful denial; last loaded news stays visible |
+| Select 2D and 3D | Effective renderer matches the receipt, including fallback |
+| Show live aircraft in this news view | No claim that an excluded map layer was applied |
+
+Record these as pending until exercised in the actual host. Screenshots from the fixture and green CI cannot substitute for host acceptance.

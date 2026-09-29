@@ -27,6 +27,7 @@ let news: NewsItem[] = [];
 let digest: ListFeedDigestResponse | undefined;
 let view: PluginNewsView = { time_range: 'all' };
 let viewQueue: Promise<unknown> = Promise.resolve();
+let applyingTimeRange = false;
 let modelContext = false;
 let sourceSelect: HTMLSelectElement;
 let categorySelect: HTMLSelectElement;
@@ -142,7 +143,11 @@ async function updateView(next: PluginNewsView, reset: boolean): Promise<object>
       control.classList.toggle('active', control.dataset.mode === result.mode);
     }
   }
-  if (next.time_range) map.setTimeRange(next.time_range);
+  if (next.time_range) {
+    applyingTimeRange = true;
+    try { map.setTimeRange(next.time_range); }
+    finally { applyingTimeRange = false; }
+  }
   if (next.country) {
     await preloadCountryGeometry();
     const country = getCountryMapFocus(next.country);
@@ -196,7 +201,10 @@ async function start(): Promise<void> {
     } catch { status.textContent = 'The requested map renderer is unavailable.'; }
   });
   map.onCountryClicked(country => { if (country.code) void applyView({ country: country.code }).catch(() => { status.textContent = 'Country view could not be applied.'; }); });
-  map.onTimeRangeChanged(time_range => { view = { ...view, time_range }; renderDigest(); });
+  map.onTimeRangeChanged(time_range => {
+    if (applyingTimeRange) return;
+    void applyView({ time_range }).catch(() => { status.textContent = 'Time range could not be applied.'; });
+  });
   search = new SearchModal(document.body);
   search.setCommandVisibleFn(() => false);
   search.setResultVisibleFn(result => result.type === 'news');

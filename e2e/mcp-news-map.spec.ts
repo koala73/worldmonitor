@@ -24,11 +24,18 @@ test.afterAll(async () => { if (dist) await rm(dist, { recursive: true, force: t
 
 test('real WorldMonitor panels, search, map and host refresh in an opaque sandbox', async ({ page }, testInfo) => {
   const errors: string[] = [];
+  let releaseGeometry!: () => void;
+  const geometryGate = new Promise<void>(resolve => { releaseGeometry = resolve; });
+  let geometryRequested = false;
   page.on('pageerror', error => errors.push(error.message));
   await page.context().route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) return route.abort();
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' });
+    if (url.pathname === '/data/countries.geojson') {
+      geometryRequested = true;
+      await geometryGate;
+    }
     const path = url.pathname.startsWith('/plugin/') ? resolve(dist, url.pathname.slice('/plugin/'.length)) : resolve('public', url.pathname.slice(1));
     if (!path.startsWith(dist + '/') && !path.startsWith(resolve('public') + '/')) return route.abort();
     const types: Record<string, string> = { js: 'text/javascript', css: 'text/css', json: 'application/json', svg: 'image/svg+xml', woff2: 'font/woff2' };
@@ -84,6 +91,16 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   const mapReceipt = await page.evaluate(() => (window as any).calls.find((call: any) => call.id === 'fixture-map')?.result?.structuredContent);
   expect(mapReceipt.center.lat).toBeCloseTo(52.5, 1);
   expect(mapReceipt.center.lon).toBeCloseTo(13.4, 1);
+  await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'fixture-country', method: 'tools/call', params: { name: 'apply_news_view', arguments: { country: 'DE' } } }, '*'));
+  await expect.poll(() => geometryRequested).toBe(true);
+  expect(await page.evaluate(() => (window as any).calls.some((call: any) => call.id === 'fixture-country'))).toBe(false);
+  await app.locator('.time-btn[data-range="1h"]').click();
+  releaseGeometry();
+  await expect.poll(() => page.evaluate(() => (window as any).calls.find((call: any) => call.id === 'fixture-country')?.result?.structuredContent?.applied)).toBe(true);
+  await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'fixture-after-time', method: 'tools/call', params: { name: 'apply_news_view', arguments: {} } }, '*'));
+  await expect.poll(() => page.evaluate(() => (window as any).calls.find((call: any) => call.id === 'fixture-after-time')?.result?.structuredContent?.view?.time_range)).toBe('1h');
+  await expect(app.locator('.time-btn[data-range="1h"]')).toHaveClass(/active/);
+  await app.getByRole('button', { name: 'Clear filters' }).click();
   await app.getByRole('button', { name: 'Refresh news' }).click();
   await expect(app.getByRole('status')).toContainText('refresh failed');
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
