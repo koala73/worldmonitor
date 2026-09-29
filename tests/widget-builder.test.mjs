@@ -450,7 +450,7 @@ describe('widget data-tool contracts', () => {
     const resultStart = relay.indexOf(resultInsertion, start);
     assert.ok(start > 0 && resultStart > start);
     const end = resultStart + resultInsertion.length;
-    const helpers = relay.slice(relay.indexOf('function sanitizeToolContent('), relay.indexOf('const WIDGET_FETCH_TOOL'));
+    const helpers = relay.slice(relay.indexOf('function filterWidgetToolInjection('), relay.indexOf('const WIDGET_FETCH_TOOL'));
     const context = vm.createContext({
       URL, AbortSignal, fetch, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,

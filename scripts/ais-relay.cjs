@@ -13521,12 +13521,15 @@ function isWidgetInjectionAttempt(text) {
  * Strip injection-like content from tool results (web search snippets, API data)
  * before inserting into the conversation context.
  */
-function sanitizeToolContent(content) {
+function filterWidgetToolInjection(content) {
   return content
     .replace(/ignore\s+(all\s+)?(previous|prior)\s+instructions?/gi, '[filtered]')
     .replace(/\[\s*system\s*\]/gi, '[filtered]')
-    .replace(/<\s*system\s*>/gi, '[filtered]')
-    .slice(0, 20_000);
+    .replace(/<\s*system\s*>/gi, '[filtered]');
+}
+
+function sanitizeToolContent(content) {
+  return filterWidgetToolInjection(content).slice(0, 20_000);
 }
 
 // A raw 20,000-char slice cut JSON mid-record and hid the cut: the model saw
@@ -13589,6 +13592,9 @@ function compactWidgetToolJson(text, symbols = []) {
     target.parent[target.key] = list.slice(0, Math.max(1, Math.floor(list.length * (budget / out.length) * 0.9)));
     note.truncated = [...totals].map(([path, total]) => ({ path, kept: path.split('.').reduce((o, k) => o[k], body).length, total }));
     out = serialize();
+  }
+  if (out.length > budget) {
+    return JSON.stringify({ _widget: { ...note, error: `response exceeds ${budget} characters after compaction; data omitted` } });
   }
   return out;
 }
@@ -14275,7 +14281,7 @@ async function handleWidgetAgentRequest(req, res) {
             if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
               rejectTool('Error: endpoint returned HTML instead of JSON. No data available.');
             } else {
-              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: sanitizeToolContent(compactWidgetToolJson(data, symbols)) });
+              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: sanitizeToolContent(compactWidgetToolJson(filterWidgetToolInjection(data), symbols)) });
             }
           } catch (err) {
             rejectTool(`Fetch failed: ${err.message}`);
