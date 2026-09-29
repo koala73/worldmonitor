@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { describe, it } from 'node:test';
 
 import {
@@ -30,6 +31,69 @@ const healthyLiveness = (probe) => {
 const probeByName = (name) => COLLECTOR_PROBES.find((probe) => probe.name === name);
 
 describe('scheduled analytics collector monitor', () => {
+  it('retains nested transport codes and attempt context without logging error payloads', async (t) => {
+    const reset = Object.assign(new Error('secret connection details'), { code: 'ECONNRESET' });
+    const dns = Object.assign(new Error('secret hostname'), { code: 'EAI_AGAIN' });
+    const aggregate = new AggregateError([reset, dns], 'secret aggregate');
+    aggregate.cause = aggregate;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      if (options.method === 'POST') throw new TypeError('fetch failed', { cause: aggregate });
+      return new Response("'/api/send'", { status: String(_url).endsWith('/api/send') ? 405 : 200 });
+    });
+
+    const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.equal(report.alerting, true);
+    assert.equal(report.writeSummary.failed, 12);
+    assert.deepEqual(report.writeSummary.failures.map(({ burst }) => burst), [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]);
+    for (const failure of report.writeSummary.failures) {
+      assert.match(failure.reason, /ECONNRESET/);
+      assert.match(failure.reason, /EAI_AGAIN/);
+      assert.match(failure.reason, /phase=request/);
+      assert.match(failure.startedAt, /^\d{4}-\d{2}-\d{2}T/);
+      assert.ok(Number.isFinite(failure.elapsedMs) && failure.elapsedMs >= 0);
+      assert.doesNotMatch(failure.reason, /secret/);
+    }
+  });
+
+  it('distinguishes a failed response body from a connection failure', async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => ({
+      status: 200,
+      text: async () => { throw new TypeError('terminated', {
+        cause: Object.assign(new Error('secret socket details'), { code: 'UND_ERR_SOCKET' }),
+      }); },
+    }));
+    const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.match(report.writeSummary.failures[0].reason, /phase=body/);
+    assert.match(report.writeSummary.failures[0].reason, /HTTP 200/);
+    assert.match(report.writeSummary.failures[0].reason, /UND_ERR_SOCKET/);
+    assert.doesNotMatch(report.writeSummary.failures[0].reason, /secret/);
+  });
+
+  it('omits arbitrary exception messages and invalid codes from public logs', async (t) => {
+    t.mock.method(globalThis, 'fetch', async () => {
+      throw Object.assign(new Error('https://user:secret@example.com'), {
+        code: 'ECONNRESET\nsecret',
+        cause: new Error('secret cause'),
+      });
+    });
+    const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.equal(report.alerting, true);
+    assert.doesNotMatch(JSON.stringify(report), /secret|user:/);
+  });
+
+  it('reports the real socket error when the collector closes a connection', async (t) => {
+    const server = createServer((request) => request.socket.destroy());
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise((resolve) => server.close(resolve)));
+    const report = await runCollectorChecks({
+      origin: `http://127.0.0.1:${server.address().port}`,
+      sleep: async () => {},
+    });
+    assert.equal(report.writeSummary.failed, 12);
+    assert.equal(report.alerting, true);
+    assert.match(report.writeSummary.failures[0].reason, /UND_ERR_SOCKET|ECONNRESET/);
+  });
+
   it('accepts the live shape of a healthy collector', () => {
     // Verified against production 2026-07-24 after the #5565 restore.
     assert.equal(evaluateProbeResult(probeByName('heartbeat'), { status: 200 }), null);
