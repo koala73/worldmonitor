@@ -511,7 +511,9 @@ The repository owner's push must create a `pull_request` `synchronize` event. CI
 
 If `make generate` produces no diff, create an owner-pushed empty commit on the original fork branch. The empty commit creates the required `synchronize` event.
 
-If maintainer edits are disabled, move the commit to a trusted internal branch. Dependabot codegen changes remain blocked and use the internal branch process.
+If maintainer edits are disabled, move the commit to a trusted internal branch.
+
+For Dependabot pull requests from this repository, use the same owner-review and generation procedure on the existing branch. An owner push creates the required `synchronize` event and permits read-only validation of the exact head and merge result. CI does not publish generated patches or write to the Dependabot branch. A later Dependabot push revokes trust; an owner rerun or reopen does not restore it. Commit any required generated artifacts locally before the owner push.
 
 ### OpenAPI Output
 
