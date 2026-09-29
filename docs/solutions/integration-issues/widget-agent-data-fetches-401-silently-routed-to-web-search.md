@@ -1,6 +1,7 @@
 ---
 title: "Widget agent data fetches 401'd for months, and the model quietly fell back to web search"
 date: 2026-09-29
+last_updated: 2026-09-29
 category: integration-issues
 module: widget-builder
 problem_type: integration_issue
@@ -65,9 +66,10 @@ Verified in production on 2026-09-29, after `ais-relay` deployed the merge commi
 - #8720, the fix. #3541 removed Origin trust.
 - #8080 (open as of this writing) replaces the substring blocklist in `isWidgetEndpointAllowed` with an executable route allowlist. That is the remaining scope control for model-chosen paths.
 - [credential-less-request-403-read-as-missing-subscription](../logic-errors/credential-less-request-403-read-as-missing-subscription.md), a similar misreading in the same builder, on the client side.
-- Follow-ups found during production validation, not fixed here:
-  - The model invents FRED series IDs outside `ALLOWED_FRED_SERIES`.
-  - Tool results are cut at 20,000 characters in `sanitizeToolContent`.
-  - The system prompt has no date.
-  - A "30 day" gold/silver chart was drawn from intraday sparklines, because there is no daily commodity history.
-  - One of three production runs hit the 120 s PRO timeout.
+- Follow-ups found during production validation, fixed in #8736 and verified in production on 2026-09-29:
+  - The prompts list the `ALLOWED_FRED_SERIES`, so the model stops inventing IDs.
+  - `compactWidgetToolJson` replaces the raw 20,000-character slice. The result stays valid JSON, and a `_widget` note says what was sampled, filtered or dropped.
+  - The system prompt carries today's date.
+  - A "never invent dates" rule: quote sparklines are an undated recent trend, because Alpha Vantage writes daily closes and Yahoo writes intraday ticks. A missing window is stated in the widget, not drawn.
+  - Production runs take 22–56 s, down from 61–123 s.
+- Still open: there is no dated daily history for commodities or stocks, so "last 90 days" is answered from gold returns and the 52-week range rather than a dated chart.
