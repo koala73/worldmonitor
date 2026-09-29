@@ -587,7 +587,18 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - name: Restore sidecar dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        id: node-modules
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json') }}
+      - name: Install sidecar dependencies on cache miss
+        if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Regenerate inventory on cache hit
+        if: steps.node-modules.outputs.cache-hit == 'true'
+        run: npm run inventory:facts
       - run: npm run test:sidecar
 
   # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them

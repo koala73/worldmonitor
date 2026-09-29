@@ -27,6 +27,37 @@ const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
 const protoCheckWorkflow = read(resolve(workflowsDir, 'proto-check.yml'));
 const playwrightConfig = read(resolve(root, 'playwright.config.ts'));
 
+describe('sidecar dependency cache pilot (#8710)', () => {
+  it('uses an exact lockfile, platform and Node key with npm cache fallback', () => {
+    const steps = YAML.parse(testWorkflow).jobs.sidecar.steps;
+    const setup = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
+    const cache = steps.find((step) => step.id === 'node-modules');
+    assert.ok(cache, 'sidecar must cache the installed dependency tree');
+    assert.match(cache.uses, /^actions\/cache@[a-f0-9]{40}$/);
+    assert.equal(cache.with.path, 'node_modules');
+    assert.equal(cache.with.key, "node-modules-${{ runner.os }}-${{ runner.arch }}-node"
+      + setup.with['node-version'] + "-${{ hashFiles('package-lock.json') }}");
+    assert.equal(cache.with['restore-keys'], undefined);
+    assert.equal(setup.with.cache, 'npm');
+    assert.ok(steps.indexOf(setup) < steps.indexOf(cache));
+  });
+
+  it('installs on a miss and regenerates repository inventory on an exact hit', () => {
+    const steps = YAML.parse(testWorkflow).jobs.sidecar.steps;
+    const cacheIndex = steps.findIndex((step) => step.id === 'node-modules');
+    const install = steps.find((step) => step.run === 'npm ci');
+    const inventory = steps.find((step) => step.run === 'npm run inventory:facts');
+    const testIndex = steps.findIndex((step) => step.run === 'npm run test:sidecar');
+    assert.equal(install?.if, "steps.node-modules.outputs.cache-hit != 'true'");
+    assert.equal(inventory?.if, "steps.node-modules.outputs.cache-hit == 'true'");
+    assert.equal(packageScripts.postinstall, inventory.run);
+    for (const step of [install, inventory]) {
+      assert.ok(steps.indexOf(step) > cacheIndex);
+      assert.ok(steps.indexOf(step) < testIndex);
+    }
+  });
+});
+
 describe('browser-loss artifact capture (#6501, #7880)', () => {
   for (const exitCode of [0, 17]) {
     it(`retains logs after output cleanup and preserves smoke exit ${exitCode}`, () => {
