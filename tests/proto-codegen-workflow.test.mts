@@ -651,6 +651,37 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     }
   });
 
+  it('allows an owner-reviewed Dependabot head only after an owner synchronization', () => {
+    const options = {
+      action: 'synchronize',
+      actor: 'koala73',
+      headRepository: 'koala73/worldmonitor',
+      pullRequestAuthor: 'dependabot[bot]',
+    };
+    const files = ['package.json', 'package-lock.json', 'scripts/package.json', 'scripts/package-lock.json'];
+    const trusted = runChangeClassifier(files, options);
+    assert.equal(trusted.status, 0, trusted.stderr);
+    assert.match(trusted.output, /^trusted_fork=true$/m);
+
+    for (const override of [
+      { actor: 'dependabot[bot]' },
+      { actor: 'contributor' },
+      { action: 'opened' },
+      { action: 'reopened' },
+      { actor: '' },
+      { repositoryOwner: '' },
+      { headRepository: 'contributor/worldmonitor' },
+    ]) {
+      const result = runChangeClassifier(files, { ...options, ...override });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.output, /^trusted_fork=false$/m, JSON.stringify(override));
+    }
+
+    const moved = runChangeClassifier(files, { ...options, headSha: '3333333333333333333333333333333333333333' });
+    assert.notEqual(moved.status, 0);
+    assert.equal(moved.output, '');
+  });
+
   it('wires original event identity into the executable trusted-fork classifier', () => {
     const classifier = stepByName('changes', 'Classify proto codegen paths');
     assert.equal(classifier.env?.EVENT_ACTION, '${{ github.event.action }}');
