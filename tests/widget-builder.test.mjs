@@ -66,14 +66,14 @@ describe('widget relay spend identity trust', () => {
 
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
-async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}' } = {}) {
+async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [] } = {}) {
   const relay = src('scripts/ais-relay.cjs');
   const extract = name => {
     const match = relay.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(match, `Missing relay function ${name}`);
     return match[0];
   };
-  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [];
+  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [], verifyCalls = [];
   let ended = 0;
   let expire;
   const nextResponse = request => {
@@ -98,7 +98,15 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     performWidgetWebSearch: async query => {
       effects.push(`search:${query}`);
       if (failSearch) throw new Error('Search fixture failure');
-      return { results: [{ title: 'Fixture' }] };
+      return { results: searchResults };
+    },
+    performWidgetPageRead: async url => {
+      effects.push(`read:${url}`);
+      return pageText === null ? null : { source: 'exa', text: pageText };
+    },
+    verifyWidgetAgainstSources: async (_client, input) => {
+      verifyCalls.push(input);
+      return verdicts.length ? verdicts.shift() : { rightDataset: true, datasetWhy: '', unsupported: [] };
     },
     fetch: async (url, init) => {
       effects.push(url);
@@ -138,13 +146,13 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
   };
   // Include production constants when present, so tests also run against the old loop.
   const limit = relay.match(/const WIDGET_MAX_TOOL_CALLS = \d+;/)?.[0] ?? '';
-  const toolDefinitions = ['WIDGET_FETCH_TOOL', 'WIDGET_SEARCH_TOOL'].map(name => {
+  const toolDefinitions = ['WIDGET_FETCH_TOOL', 'WIDGET_SEARCH_TOOL', 'WIDGET_READ_TOOL'].map(name => {
     const match = relay.match(new RegExp(`const ${name} = \\{[^]*?\\n\\};`));
     assert.ok(match, `Missing ${name}`);
     return match[0];
   }).join('\n');
   const handler = extract('handleWidgetAgentRequest').replace("import('@anthropic-ai/sdk')", 'importAnthropic()');
-  const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
+  const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('formatWidgetVerifierFindings')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
   const res = {
     writableEnded: false, writeHead() {},
     write(frame) { frames.push(frame); },
@@ -152,7 +160,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
   };
   await run({ headers: {}, on() {}, socket: {} }, res);
   const events = frames.map(frame => JSON.parse(frame.match(/data: (.*)/)[1]));
-  return { requests, effects, fetchInits, invalidated, logs, events, ended };
+  return { requests, effects, fetchInits, invalidated, verifyCalls, logs, events, ended };
 }
 
 const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- /widget-html -->';
@@ -436,6 +444,17 @@ describe('widget data-tool contracts', () => {
     assert.match(fetchTool.description, /_widget/);
   });
 
+  it('describes read_page and the web provenance rules in both tiers', () => {
+    for (const prompt of prompts) {
+      assert.match(prompt, /### read_page — read a page that search_web returned/);
+      assert.match(prompt, /source domain and as-of date/);
+      assert.match(prompt, /Never label web values "Source: WorldMonitor"/);
+      assert.match(prompt, /identify the period it covers/);
+      assert.match(prompt, /Never infer, extrapolate, estimate or fill from memory/);
+      assert.match(prompt, /4 tool calls once you have used search_web/);
+    }
+  });
+
   it('keeps the basic and Pro data-embedding contracts distinct', () => {
     assert.match(prompts[0], /Embed this data directly into the widget HTML/);
     assert.match(prompts[0], /display-only HTML\. No <script>/);
@@ -679,6 +698,133 @@ describe('widget tool result compaction', () => {
   });
 });
 
+describe('widget-agent relay — web pages and source verification', () => {
+  const searchResults = [{ title: 'Table', url: 'https://example.com/table', snippet: 's', publishedDate: '' }];
+  const html = body => `<!-- title: T --><!-- widget-html --><div>${body}</div><!-- /widget-html -->`;
+  const draft = body => widgetResponse('end_turn', [{ type: 'text', text: html(body) }]);
+  const finalHtml = result => result.events.find(e => e.type === 'html_complete')?.html;
+  const endpoints = result => result.events.filter(e => e.type === 'tool_call').map(e => e.endpoint);
+
+  it('reads only urls that search_web returned in this request', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'read_page', { url: 'https://evil.example/x' })]),
+      widgetResponse('end_turn'),
+    ], { searchResults });
+    assert.equal(result.effects.some(e => String(e).startsWith('read:')), false);
+    const [toolResult] = toolResultsFor(result.requests[1]);
+    assert.equal(toolResult.is_error, true);
+    assert.match(toolResult.content, /Only urls returned by search_web/);
+  });
+
+  it('reads a searched page and reports its host as progress', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'table' })]),
+      widgetResponse('tool_use', [widgetTool('2', 'read_page', { url: 'https://example.com/table' })]),
+      draft('ok'),
+    ], { searchResults, pageText: '| Team | Pts |' });
+    assert.ok(result.effects.includes('read:https://example.com/table'));
+    assert.ok(endpoints(result).includes('read:example.com'));
+    assert.match(toolResultsFor(result.requests[2]).at(-1).content, /\| Team \| Pts \|/);
+  });
+
+  it('allows a fourth tool call once the widget has searched the web', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' }), widgetTool('2'), widgetTool('3'), widgetTool('4')]),
+      draft('ok'),
+    ], { searchResults });
+    assert.equal(result.effects.filter(e => !String(e).startsWith('search:')).length, 3);
+    assert.equal(toolResultsFor(result.requests[1]).some(r => r.is_error), false);
+  });
+
+  it('does not verify a widget built only from WorldMonitor data', async () => {
+    const result = await runWidgetAgent([widgetResponse('tool_use', [widgetTool('1')]), draft('ok')]);
+    assert.equal(result.verifyCalls.length, 0);
+    assert.equal(endpoints(result).includes('verify:sources'), false);
+    assertWidgetSuccess(result);
+  });
+
+  it('verifies a web-sourced widget against what the model read, then serves it', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+    ], { searchResults });
+    assert.equal(result.verifyCalls.length, 1);
+    const [call] = result.verifyCalls;
+    assert.equal(call.request, 'Show earthquake data');
+    assert.match(call.html, /first/);
+    assert.ok(call.sources.some(source => source.kind === 'search'));
+    assert.match(call.today, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(endpoints(result).includes('verify:sources'));
+    assert.equal(finalHtml(result), '<div>first</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('feeds a failed check back once, grants one more tool call, and serves the fix', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'table 2025-26' })]),
+      draft('last season'),
+      widgetResponse('tool_use', [widgetTool('2', 'search_web', { query: 'table 2026-27' })]),
+      draft('this season'),
+    ], { searchResults, tier: 'pro', verdicts: [{ rightDataset: false, datasetWhy: 'shows the finished 2025-26 table', unsupported: [{ value: 'W W W', why: 'form not in source' }] }] });
+    assert.equal(result.verifyCalls.length, 1);
+    const feedback = result.requests[2].messages.at(-1).content;
+    assert.match(feedback, /finished 2025-26 table/);
+    assert.match(feedback, /W W W/);
+    assert.equal(result.requests[2].tool_choice.type, 'auto');
+    assert.deepEqual(result.effects.filter(e => String(e).startsWith('search:')), ['search:table 2025-26', 'search:table 2026-27']);
+    assert.equal(finalHtml(result), '<div>this season</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('serves the first draft when the check itself fails', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+    ], { searchResults, verdicts: [null] });
+    assert.equal(finalHtml(result), '<div>first</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('serves the first complete draft when the retry comes back incomplete', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+      widgetResponse('end_turn', [{ type: 'text', text: 'no markers here' }]),
+    ], { searchResults, verdicts: [{ rightDataset: true, datasetWhy: '', unsupported: [{ value: '42', why: 'not in source' }] }] });
+    assert.equal(finalHtml(result), '<div>first</div>');
+    assertWidgetSuccess(result);
+  });
+});
+
+describe('widget source verifier', () => {
+  const relay = src('scripts/ais-relay.cjs');
+  const load = () => {
+    const match = relay.match(/async function verifyWidgetAgainstSources\([\s\S]*?\n\}/);
+    assert.ok(match, 'Missing verifyWidgetAgainstSources');
+    return vm.runInNewContext(`${match[0]}\nverifyWidgetAgainstSources`, { JSON, console: { warn() {} } });
+  };
+  const clientReturning = (text, seen = []) => ({ messages: { create: async req => { seen.push(req); return { content: [{ type: 'text', text }] }; } } });
+  const input = { request: 'Premier League table', today: '2026-09-29', html: '<div>Arsenal 15</div>', sources: [{ kind: 'page', label: 'https://example.com/t', text: '| Arsenal | 15 |' }] };
+
+  it('parses a fenced JSON verdict into the relay shape', async () => {
+    const seen = [];
+    const verdict = await load()(clientReturning('```json\n{"right_dataset": false, "dataset_why": "last season", "unsupported": [{"value": "W", "why": "x"}]}\n```', seen), input);
+    assert.deepEqual(JSON.parse(JSON.stringify(verdict)), { rightDataset: false, datasetWhy: 'last season', unsupported: [{ value: 'W', why: 'x' }] });
+    const sent = seen[0].messages[0].content;
+    assert.match(sent, /Premier League table/);
+    assert.match(sent, /2026-09-29/);
+    assert.match(sent, /\| Arsenal \| 15 \|/);
+    assert.match(sent, /Arsenal 15/);
+  });
+
+  it('returns null when the check errors or its reply is not a verdict', async () => {
+    const verify = load();
+    assert.equal(await verify({ messages: { create: async () => { throw new Error('overloaded'); } } }, input), null);
+    assert.equal(await verify(clientReturning('{"right_dataset": tr'), input), null);
+    assert.equal(await verify(clientReturning('{"unsupported": []}'), input), null);
+  });
+});
+
 describe('widget-agent relay — anonymous data session', () => {
   const relay = src('scripts/ais-relay.cjs');
   const start = relay.indexOf('let widgetDataSession = null;');
@@ -918,11 +1064,8 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('server timeout is 90 seconds', () => {
-    assert.ok(
-      relay.includes('90_000') || relay.includes('90000'),
-      'Server timeout must be 90 seconds (90_000 ms)',
-    );
+  it('server timeout leaves room for a verified web widget: 180 s PRO, 150 s basic', () => {
+    assert.ok(relay.includes('const timeoutMs = isPro ? 180_000 : 150_000;'));
   });
 
   it('CORS for /widget-agent: POST in Allow-Methods, X-Widget-Key and X-Pro-Key in Allow-Headers', () => {
@@ -2656,15 +2799,8 @@ describe('PRO widget — modal and layout integration', () => {
     );
   });
 
-  it('modal uses 120s timeout for PRO (vs 60s basic)', () => {
-    assert.ok(
-      modal.includes('120_000') || modal.includes('120000'),
-      'PRO modal timeout must be 120 seconds',
-    );
-    assert.ok(
-      modal.includes('60_000') || modal.includes('60000'),
-      'Basic modal timeout must still be 60 seconds',
-    );
+  it('modal timeout outlasts the relay timeout: 200 s PRO, 170 s basic', () => {
+    assert.ok(modal.includes('const timeoutMs = isPro ? 200_000 : 170_000;'));
   });
 
   it('modal shows preflightProUnavailable when proKeyConfigured is false', () => {
