@@ -2974,6 +2974,9 @@
     "protest": {
       "acledVerified": "ACLED (ellenőrzött)",
       "gdelt": "GDELT",
+      "mediaSignal": "Nem ellenőrzött médiajelzés",
+      "relatedArticle": "Kapcsolódó cikk",
+      "mediaSignalDetail": "Ezt a helyet zavargásokról szóló cikkek említik. Helyi esemény nincs igazolva.",
       "riots": "Zavargások",
       "highSeverity": "Magas súlyosság"
     },

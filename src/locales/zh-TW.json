@@ -2885,6 +2885,9 @@
     "protest": {
       "acledVerified": "ACLED（已驗證）",
       "gdelt": "GDELT",
+      "mediaSignal": "未經核實的媒體訊號",
+      "relatedArticle": "相關文章",
+      "mediaSignalDetail": "此地點在有關動亂的文章中被提及。當地事件尚未得到核實。",
       "riots": "騷亂",
       "highSeverity": "高嚴重性"
     },

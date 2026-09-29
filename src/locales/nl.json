@@ -2523,6 +2523,9 @@
     "protest": {
       "acledVerified": "ACLED (geverifieerd)",
       "gdelt": "GDELT",
+      "mediaSignal": "Onbevestigd mediasignaal",
+      "relatedArticle": "Gerelateerd artikel",
+      "mediaSignalDetail": "Deze locatie wordt genoemd in artikelen over onrust. Een lokale gebeurtenis is niet bevestigd.",
       "riots": "Rellen",
       "highSeverity": "Hoge ernst"
     },

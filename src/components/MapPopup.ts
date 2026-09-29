@@ -1631,19 +1631,20 @@ export class MapPopup {
   }
 
   private renderProtestPopup(event: SocialUnrestEvent): string {
+    const mediaSignal = event.sourceType === 'gdelt';
     const severityClass = escapeHtml(event.severity);
     const severityLabel = escapeHtml(event.severity.toUpperCase());
-    const eventTypeLabel = escapeHtml(event.eventType.replace('_', ' ').toUpperCase());
+    const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(event.eventType.replace('_', ' ').toUpperCase());
     const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
     const sourceLabel = event.sourceType === 'acled' ? t('popups.protest.acledVerified') : t('popups.protest.gdelt');
-    const validatedBadge = event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
+    const validatedBadge = !mediaSignal && event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
     const fatalitiesSection = event.fatalities
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.fatalities')}</span><span class="stat-value alert">${event.fatalities}</span></div>`
       : '';
     const actorsSection = event.actors?.length
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.actors')}</span><span class="stat-value">${event.actors.map(a => escapeHtml(a)).join(', ')}</span></div>`
       : '';
-    const sourceLinks = renderPopupSourceLinks(event.sourceUrls, { label: t('popups.source') });
+    const sourceLinks = renderPopupSourceLinks(event.sourceUrls, { label: t(mediaSignal ? 'popups.protest.relatedArticle' : 'popups.source') });
     const tagsSection = event.tags?.length
       ? `<div class="popup-tags">${event.tags.map(t => `<span class="popup-tag">${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
@@ -1655,7 +1656,7 @@ export class MapPopup {
       <div class="popup-header protest ${severityClass}">
         <span class="popup-icon">${icon}</span>
         <span class="popup-title">${eventTypeLabel}</span>
-        <span class="popup-badge ${severityClass}">${severityLabel}</span>
+        ${mediaSignal ? '' : `<span class="popup-badge ${severityClass}">${severityLabel}</span>`}
         ${validatedBadge}
         <button class="popup-close" aria-label="Close">×</button>
       </div>
@@ -1674,6 +1675,8 @@ export class MapPopup {
           ${actorsSection}
         </div>
         ${event.title ? `<p class="popup-description">${escapeHtml(event.title)}</p>` : ''}
+        ${mediaSignal ? `<p class="popup-description">${t('popups.protest.mediaSignalDetail')}</p>` : ''}
+        ${mediaSignal && sourceLinks ? `<div class="popup-source-label">${t('popups.protest.relatedArticle')}</div>` : ''}
         ${sourceLinks}
         ${tagsSection}
         ${relatedHotspots}
@@ -1697,6 +1700,7 @@ export class MapPopup {
     });
 
     const listItems = sortedItems.slice(0, 10).map(event => {
+      const mediaSignal = event.sourceType === 'gdelt';
       const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
       const sevClass = event.severity;
       const dateStr = event.time.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -1704,9 +1708,9 @@ export class MapPopup {
       const title = event.title ? `: ${escapeHtml(event.title.slice(0, 40))}${event.title.length > 40 ? '...' : ''}` : '';
       const sourceUrl = event.sourceUrls?.find(url => sanitizeUrl(url));
       const sourceLink = sourceUrl
-        ? ` <a class="popup-link cluster-source-link" href="${sanitizeUrl(sourceUrl)}" target="_blank" rel="noopener noreferrer nofollow">${t('popups.source')} →</a>`
+        ? ` <a class="popup-link cluster-source-link" href="${sanitizeUrl(sourceUrl)}" target="_blank" rel="noopener noreferrer nofollow">${t(mediaSignal ? 'popups.protest.relatedArticle' : 'popups.source')} →</a>`
         : '';
-      return `<li class="cluster-item ${sevClass}">${icon} ${dateStr}${city ? ` • ${city}` : ''}${title}${sourceLink}</li>`;
+      return `<li class="cluster-item ${sevClass}">${icon} ${dateStr}${city ? ` • ${city}` : ''}${title}${mediaSignal ? ` • ${t('popups.protest.mediaSignal')}` : ''}${sourceLink}</li>`;
     }).join('');
 
     const renderedCount = Math.min(10, data.items.length);

@@ -2885,6 +2885,9 @@
     "protest": {
       "acledVerified": "ACLED (đã xác minh)",
       "gdelt": "GDELT",
+      "mediaSignal": "Tín hiệu truyền thông chưa xác minh",
+      "relatedArticle": "Bài viết liên quan",
+      "mediaSignalDetail": "Địa điểm này được nhắc đến trong các bài viết về bất ổn. Sự kiện tại địa phương chưa được xác minh.",
       "riots": "Bạo loạn",
       "highSeverity": "Mức nghiêm trọng Cao"
     },

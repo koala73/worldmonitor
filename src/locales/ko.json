@@ -2885,6 +2885,9 @@
     "protest": {
       "acledVerified": "ACLED (검증됨)",
       "gdelt": "GDELT",
+      "mediaSignal": "미확인 미디어 신호",
+      "relatedArticle": "관련 기사",
+      "mediaSignalDetail": "이 장소는 소요 관련 기사에 언급되었습니다. 현지 사건은 확인되지 않았습니다.",
       "riots": "폭동",
       "highSeverity": "고위험"
     },

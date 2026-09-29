@@ -2974,6 +2974,9 @@
     "protest": {
       "acledVerified": "ACLED (imethibitishwa)",
       "gdelt": "GDELT",
+      "mediaSignal": "Ishara ya habari ambayo haijathibitishwa",
+      "relatedArticle": "Makala inayohusiana",
+      "mediaSignalDetail": "Eneo hili limetajwa katika makala kuhusu machafuko. Tukio la eneo hili halijathibitishwa.",
       "riots": "Machafuko",
       "highSeverity": "Ukali wa Juu"
     },

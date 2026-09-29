@@ -2523,6 +2523,9 @@
     "protest": {
       "acledVerified": "ACLED (verifierad)",
       "gdelt": "GDELT",
+      "mediaSignal": "Obekräftad mediesignal",
+      "relatedArticle": "Relaterad artikel",
+      "mediaSignalDetail": "Denna plats nämns i artiklar om oroligheter. En lokal händelse har inte verifierats.",
       "riots": "Upplopp",
       "highSeverity": "Hög allvarlighet"
     },

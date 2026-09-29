@@ -3003,6 +3003,9 @@
     "protest": {
       "acledVerified": "ACLED (potvrđeno)",
       "gdelt": "GDELT",
+      "mediaSignal": "Nepotvrđeni medijski signal",
+      "relatedArticle": "Povezani članak",
+      "mediaSignalDetail": "Ovo se mjesto spominje u člancima o nemirima. Lokalni događaj nije potvrđen.",
       "riots": "Neredi",
       "highSeverity": "Visoka Težina"
     },

@@ -2985,6 +2985,9 @@
     "protest": {
       "acledVerified": "ACLED (موثّق)",
       "gdelt": "GDELT",
+      "mediaSignal": "إشارة إعلامية غير مؤكدة",
+      "relatedArticle": "مقال ذو صلة",
+      "mediaSignalDetail": "ورد ذكر هذا الموقع في مقالات عن اضطرابات. لم يتم التحقق من وقوع حدث محلي.",
       "riots": "أعمال شغب",
       "highSeverity": "شدة عالية"
     },

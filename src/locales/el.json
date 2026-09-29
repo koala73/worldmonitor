@@ -2905,6 +2905,9 @@
     "protest": {
       "acledVerified": "ACLED (επαληθευμένο)",
       "gdelt": "GDELT",
+      "mediaSignal": "Μη επαληθευμένη αναφορά μέσων",
+      "relatedArticle": "Σχετικό άρθρο",
+      "mediaSignalDetail": "Αυτή η τοποθεσία αναφέρεται σε άρθρα για αναταραχές. Δεν έχει επαληθευτεί τοπικό συμβάν.",
       "riots": "Ταραχές",
       "highSeverity": "Υψηλή Σοβαρότητα"
     },

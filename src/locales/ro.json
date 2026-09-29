@@ -2925,6 +2925,9 @@
     "protest": {
       "acledVerified": "ACLED (verificat)",
       "gdelt": "GDELT",
+      "mediaSignal": "Semnal media neverificat",
+      "relatedArticle": "Articol asociat",
+      "mediaSignalDetail": "Acest loc este menționat în articole despre tulburări. Un eveniment local nu este verificat.",
       "riots": "Revolte",
       "highSeverity": "Severitate ridicată"
     },

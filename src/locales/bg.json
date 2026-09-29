@@ -2905,6 +2905,9 @@
     "protest": {
       "acledVerified": "ACLED (проверено)",
       "gdelt": "GDELT",
+      "mediaSignal": "Непотвърден медиен сигнал",
+      "relatedArticle": "Свързана статия",
+      "mediaSignalDetail": "Това място се споменава в статии за безредици. Местно събитие не е потвърдено.",
       "riots": "Разпри",
       "highSeverity": "Висока тежест"
     },

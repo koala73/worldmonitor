@@ -2924,6 +2924,9 @@
     "protest": {
       "acledVerified": "ACLED (vérifié)",
       "gdelt": "GDELT",
+      "mediaSignal": "Signal médiatique non vérifié",
+      "relatedArticle": "Article associé",
+      "mediaSignalDetail": "Ce lieu est mentionné dans des articles sur des troubles. Aucun événement local n’est vérifié.",
       "riots": "Émeutes",
       "highSeverity": "Sévérité Élevée"
     },
