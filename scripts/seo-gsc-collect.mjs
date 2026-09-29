@@ -780,6 +780,8 @@ async function collectPerformance(transport, windows) {
         } catch (error) {
           if (error instanceof QuotaExhaustedError) {
             truncationReason = `searchanalytics quota was exhausted after ${rows.length} ${dimension} rows: ${error.message}`;
+            // Nothing was measured, so the view is absent rather than empty.
+            if (page === 0) recorded = false;
             break;
           }
           throw error;
@@ -996,7 +998,12 @@ function buildPerformance(performance, inventory, indexedByFamily, daily) {
     // Non-brand rows per family, measured only when the filtered view was
     // collected. Rows outside every family are left out here; the unmapped
     // list above already names them.
-    const nonBrandRecorded = dimensions[PAGE_NON_BRAND_VIEW].recorded;
+    // A truncated view is an undercount, which is reported as unmeasured with
+    // the truncation reason rather than published as a smaller number.
+    const nonBrandView = dimensions[PAGE_NON_BRAND_VIEW];
+    const nonBrandRecorded = nonBrandView.recorded && nonBrandView.truncationReason === null;
+    const nonBrandUnmeasuredReason = nonBrandView.truncationReason
+      ?? 'the non-brand page view was not collected';
     const nonBrandByFamily = new Map(PAGE_FAMILIES.map((family) => [family, newAccumulator()]));
     for (const row of dimensions[PAGE_NON_BRAND_VIEW].rows) {
       let classified = routeFamily.get(row.key);
@@ -1046,7 +1053,7 @@ function buildPerformance(performance, inventory, indexedByFamily, daily) {
         ...metrics,
         nonBrandImpressions: nonBrandRecorded ? nonBrand.impressions : null,
         nonBrandClicks: nonBrandRecorded ? nonBrand.clicks : null,
-        nonBrandReason: nonBrandRecorded ? null : 'the non-brand page view was not collected',
+        nonBrandReason: nonBrandRecorded ? null : nonBrandUnmeasuredReason,
         impressionsPerIndexedUrl: indexed !== null && indexed > 0
           ? roundTo(metrics.impressions / indexed, 2)
           : null,
@@ -1398,9 +1405,11 @@ export function assertNoSecrets(serialized, { property = null } = {}) {
 }
 
 /**
- * Sum a daily series into seven-day weeks ending on its last date, oldest
- * first. Weeks are bucketed by calendar date rather than by row position,
- * because Google omits a day with no data instead of returning a zero row.
+ * Sum a daily series into seven-day periods ending on its latest date, oldest
+ * first, so the newest period is always a full seven days. These are rolling
+ * periods, not Monday-to-Sunday weeks. Rows are bucketed by date rather than
+ * by position, because Google omits a day with no data instead of returning a
+ * zero row.
  */
 export function weeklyTotals(rows) {
   if (rows.length === 0) return [];
@@ -1462,14 +1471,14 @@ function renderSearchTotals(performance) {
   lines.push('');
 
   const { daily } = performance;
-  lines.push('### Weekly trend');
+  lines.push('### Seven-day trend');
   lines.push('');
   if (daily.status === 'unavailable' || daily.rows.length === 0) {
     lines.push(`Not measured: ${daily.reason ?? 'the daily series returned no rows'}.`);
   } else {
-    lines.push(`By property, ${daily.startDate} to ${daily.endDate}, final data only. Days counts the dates Google returned; it omits a date with no data, and the oldest week can fall partly outside the window.`);
+    lines.push(`By property, ${daily.startDate} to ${daily.endDate}, final data only. Each row is a seven-day period ending on the latest date, not a Monday-to-Sunday week. Days counts the dates Google returned; it omits a date with no data, and the oldest period can fall partly outside the window.`);
     lines.push('');
-    lines.push('| Week | Days | Impressions | Clicks | Non-brand impressions | Non-brand clicks |');
+    lines.push('| Period | Days | Impressions | Clicks | Non-brand impressions | Non-brand clicks |');
     lines.push('|---|---:|---:|---:|---:|---:|');
     for (const week of weeklyTotals(daily.rows)) {
       lines.push(`| ${week.startDate} to ${week.endDate} | ${week.days} | ${number(week.impressions)} | ${number(week.clicks)} | ${number(week.nonBrandImpressions)} | ${number(week.nonBrandClicks)} |`);
@@ -1485,12 +1494,19 @@ function renderSearchTotals(performance) {
     lines.push('|---|---|---:|---:|---:|---:|');
     for (const row of primary.topQueries) {
       const ctr = row.impressions > 0 ? row.clicks / row.impressions : null;
-      lines.push(`| ${row.query.replace(/\|/g, '\\|')} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
+      lines.push(`| ${markdownCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
     }
     lines.push('');
   }
   return lines;
 }
+
+// A query is user text: escape the backslash first, then the pipe that would
+// end the table cell, and flatten line breaks.
+const markdownCell = (value) => String(value)
+  .replace(/\\/g, '\\\\')
+  .replace(/\|/g, '\\|')
+  .replace(/[\r\n]+/g, ' ');
 
 const percent = (ratio) => (ratio === null ? 'n/a' : `${(ratio * 100).toFixed(1)}%`);
 const number = (value) => (value === null ? 'n/a' : String(value));

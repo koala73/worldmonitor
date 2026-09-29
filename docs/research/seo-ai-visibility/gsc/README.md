@@ -84,12 +84,15 @@ the collector names World Monitor and its common misspellings. Google applies
 it as a query filter; the snapshot applies the same source to its own top
 queries. A query filter drops anonymized queries, so the site table reports
 them as the remainder (`anonymized`) instead of losing them, and per-family
-`nonBrandImpressions` counts only non-brand queries Google attributes. The
+`nonBrandImpressions` counts only non-brand queries Google attributes. If the
+quota cuts that view short, the family values are `null` with the truncation
+as `nonBrandReason`, never a smaller number. The
 non-brand numbers are the ones the corpus pages exist to move.
 
 **The daily series is by property.** `performance.daily` holds one row per date
-over the widest window, all queries and non-brand, and the summary sums it into
-calendar weeks. Google omits a date with no data rather than returning zero.
+over the widest window, all queries and non-brand. The summary sums it into
+seven-day periods ending on the latest date (rolling, not Monday-to-Sunday
+weeks). Google omits a date with no data rather than returning zero.
 
 **Search Analytics URLs outside every family are listed, not dropped.** A
 sitemap URL with no family stops the run, because the sitemaps are ours to fix.

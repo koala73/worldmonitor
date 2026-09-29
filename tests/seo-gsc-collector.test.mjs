@@ -17,6 +17,7 @@ import {
   BRAND_QUERY_PATTERN,
   isBrandQuery,
   pickIndexStatus,
+  QuotaExhaustedError,
   weeklyTotals,
   renderGscMarkdown,
   runCli,
@@ -636,7 +637,7 @@ describe('Search Console site totals and brand split', () => {
     assert.equal(window.siteTotals.nonBrandShare.basis, 'by-property-impressions');
     const { markdown } = await collect();
     assert.match(markdown, /## Search totals[\s\S]*\| 28d \(2026-08-27 to 2026-09-23\) \| 1500 \| 50 \| 900 \| 420 \| 8 \| 180 \| 28\.0% \| 2830 \|/);
-    assert.match(markdown, /### Weekly trend/);
+    assert.match(markdown, /### Seven-day trend/);
     assert.match(markdown, /\| geopolitical risk dashboard \| no \| 260 \|/);
   });
 
@@ -679,7 +680,7 @@ describe('Search Console site totals and brand split', () => {
     }
   });
 
-  it('buckets the daily series into calendar weeks even when Google omits a day', () => {
+  it('buckets the daily series into seven-day periods even when Google omits a day', () => {
     const day = (date, impressions) => ({
       date, impressions, clicks: 1, nonBrandImpressions: 1, nonBrandClicks: 0,
     });
@@ -697,6 +698,39 @@ describe('Search Console site totals and brand split', () => {
     assert.deepEqual(weeklyTotals([]), []);
     const unmeasured = weeklyTotals([{ ...day('2026-09-16', 5), nonBrandImpressions: null }]);
     assert.equal(unmeasured[0].nonBrandImpressions, null, 'an unmeasured day keeps its week unmeasured');
+  });
+
+  it('reports non-brand family numbers as unmeasured when the quota cuts the view', async () => {
+    const quotaOn = (failPage) => memoryTransport({
+      pageRows: [pageRow('https://www.worldmonitor.app/countries/iran/', 10)],
+      searchAnalytics: async ({ dimension, page }) => {
+        if (dimension === 'pageNonBrand' && page === failPage) {
+          throw new QuotaExhaustedError('Search Console daily quota is exhausted (HTTP 429)');
+        }
+        if (dimension === 'pageNonBrand') {
+          return { rows: Array.from({ length: 1000 }, (_, index) => pageRow(`https://www.worldmonitor.app/countries/iran/?p=${index}`, 1)) };
+        }
+        return { rows: dimension === 'page' && page === 0 ? [pageRow('https://www.worldmonitor.app/countries/iran/', 10)] : [] };
+      },
+    });
+    for (const failPage of [0, 1]) {
+      const snapshot = await collectFrom(quotaOn(failPage));
+      const [window] = snapshot.performance.windows;
+      assert.equal(window.status, 'partial');
+      const family = window.byFamily.country_pages;
+      assert.equal(family.nonBrandImpressions, null, `quota on page ${failPage} must not publish a number`);
+      assert.equal(family.nonBrandClicks, null);
+      assert.match(family.nonBrandReason, /quota was exhausted after \d+ pageNonBrand rows/);
+    }
+  });
+
+  it('escapes backslashes and pipes in a query cell', async () => {
+    const { snapshot } = await collect();
+    const copy = structuredClone(snapshot);
+    copy.performance.windows[0].topQueries = [
+      { query: 'a|b\\|c\nd', brand: false, clicks: 1, impressions: 2, position: 3 },
+    ];
+    assert.match(renderGscMarkdown(copy), /^\| a\\\|b\\\\\\\|c d \| no \| 2 \| 1 \|/m);
   });
 
   it('flags each top query as brand or non-brand', async () => {
