@@ -1,3 +1,7 @@
+---
+noindex: true
+---
+
 # News and maps plugin delivery
 
 This is the first implementation increment for #8741 under epic #5198. It extends `get_news_intelligence` and its existing MCP Apps resource. It does not close either issue.
