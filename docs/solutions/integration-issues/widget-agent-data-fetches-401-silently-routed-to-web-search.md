@@ -68,7 +68,7 @@ Verified in production on 2026-09-29, after `ais-relay` deployed the merge commi
 - [credential-less-request-403-read-as-missing-subscription](../logic-errors/credential-less-request-403-read-as-missing-subscription.md), a similar misreading in the same builder, on the client side.
 - Follow-ups found during production validation, fixed in #8736 and verified in production on 2026-09-29:
   - The prompts list the `ALLOWED_FRED_SERIES`, so the model stops inventing IDs.
-  - `compactWidgetToolJson` replaces the raw 20,000-character slice. The result stays valid JSON, and a `_widget` note says what was sampled, filtered or dropped.
+  - For `fetch_worldmonitor_data`, `compactWidgetToolJson` replaces the raw 20,000-character slice. The result stays valid JSON, and a `_widget` note says what was sampled, filtered or dropped. Web-search results still go through the raw slice.
   - The system prompt carries today's date.
   - A "never invent dates" rule: quote sparklines are an undated recent trend, because Alpha Vantage writes daily closes and Yahoo writes intraday ticks. A missing window is stated in the widget, not drawn.
   - Production runs take 22–56 s, down from 61–123 s.
