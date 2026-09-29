@@ -23,12 +23,16 @@ vi.mock('../../pro-test/src/i18n', () => ({
   effectiveWelcomeContentLanguage: () => 'en',
   // Expose the promise the entry chains its mount onto, so a throw inside the
   // mount callback surfaces here as a rejection instead of an unhandled one.
-  initI18n: () => ({
-    then(onReady: () => void) {
-      i18n.settled = Promise.resolve().then(onReady);
-      return i18n.settled;
-    },
-  }),
+  initI18n: () => {
+    const ready = Promise.resolve();
+    const chain = vi.spyOn(ready, 'then');
+    chain.mockImplementation((...args) => {
+      chain.mockRestore();
+      i18n.settled = ready.then(...args);
+      return i18n.settled as never;
+    });
+    return ready;
+  },
 }));
 
 // A variable specifier keeps tsconfig.dom-tests.json (no `jsx` setting) from
