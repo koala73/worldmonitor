@@ -210,8 +210,24 @@ describe('analyzeStock handler', () => {
 
     // No `now` option, so both calls go through the production cache path.
     const request = { symbol: 'TMOUT', name: 'TMOUT', includeNews: false };
-    const first = await analyzeStock({} as never, request);
-    const second = await analyzeStock({} as never, request);
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    let first;
+    let second;
+    try {
+      first = await analyzeStock({} as never, request);
+      second = await analyzeStock({} as never, request);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    // The fetcher rejected rather than returning null, so cachedFetchJson took
+    // its short fetcher-error path instead of the 120s negative cache.
+    assert.ok(
+      warnings.some((w) => w.includes('fetcher failed') && w.includes('market:analyze-stock:v8:TMOUT')),
+      `expected cachedFetchJson's fetcher-error warning, got: ${JSON.stringify(warnings)}`,
+    );
 
     assert.equal(first.available, false);
     assert.equal(first.symbol, 'TMOUT');
@@ -221,12 +237,12 @@ describe('analyzeStock handler', () => {
 });
 
 describe('fetchYahooHistoryOutcome', () => {
-  it('classifies a rejected request as unavailable, not an invalid symbol', async () => {
+  it('classifies a rejected request as a failed request, not an invalid symbol', async () => {
     globalThis.fetch = (async () => {
       throw new TypeError('fetch failed');
     }) as typeof fetch;
 
-    assert.deepEqual(await fetchYahooHistoryOutcome('AAPL'), { status: 'unavailable' });
+    assert.deepEqual(await fetchYahooHistoryOutcome('AAPL'), { status: 'request-failed' });
   });
 });
 

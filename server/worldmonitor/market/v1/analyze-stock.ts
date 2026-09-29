@@ -933,7 +933,12 @@ export async function fetchExtendedHoursQuote(
 export type YahooHistoryOutcome =
   | { status: 'success'; history: { candles: Candle[]; currency: string } }
   | { status: 'invalid-symbol' }
-  | { status: 'unavailable' };
+  | { status: 'unavailable' }
+  /** The request itself rejected (timeout, network). Transient, so never negatively cached as absence. */
+  | { status: 'request-failed' };
+
+/** Thrown inside a cache fetcher so `cachedFetchJson` applies its short fetcher-error TTL. */
+class YahooHistoryRequestFailedError extends Error {}
 
 function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse | null): boolean {
   if (status === 404) return true;
@@ -947,19 +952,14 @@ function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse
 export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHistoryOutcome> {
   await yahooGate();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
-  // A timeout or network failure is a transient outage like a Yahoo 5xx, not an
-  // uncaught throw that fails analyze-stock with a 500 (WORLDMONITOR-ZQ).
   let response: Response;
   try {
     response = await fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-  } catch (err) {
-    // sentry-coverage-ok: a Yahoo timeout is an expected provider blip that
-    // degrades to `unavailable`; the warning keeps it in function logs.
-    console.warn(`[analyze-stock] Yahoo history fetch failed for ${symbol}:`, err instanceof Error ? err.name : typeof err);
-    return { status: 'unavailable' };
+  } catch {
+    return { status: 'request-failed' };
   }
   const data = await response.json().catch(() => null) as YahooChartResponse | null;
   if (isDefinitiveYahooInvalidSymbol(response.status, data)) return { status: 'invalid-symbol' };
@@ -1998,11 +1998,17 @@ export async function analyzeStock(
   const cacheKey = `market:analyze-stock:v8:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
-    const [history, analystData] = await Promise.all([
-      fetchYahooHistory(symbol),
+    const [historyOutcome, analystData] = await Promise.all([
+      fetchYahooHistoryOutcome(symbol),
       fetchYahooAnalystData(symbol),
     ]);
-    if (!history) return null;
+    // Throwing, not returning null, keeps a timeout on cachedFetchJson's 30s
+    // fetcher-error TTL (and its warning) rather than a 120s negative cache.
+    if (historyOutcome.status === 'request-failed') {
+      throw new YahooHistoryRequestFailedError(`Yahoo history request failed for ${symbol}`);
+    }
+    if (historyOutcome.status !== 'success') return null;
+    const history = historyOutcome.history;
 
     const technical = buildTechnicalSnapshot(history.candles);
     technical.currency = history.currency || 'USD';
@@ -2065,15 +2071,22 @@ export async function analyzeStock(
     return response;
   };
 
-  const cached = options.now
-    ? await fetchFreshAnalysis()
-    : await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, fetchFreshAnalysis, undefined, {
-        // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
-        // history/analyst then headlines/dividend) + 20s LLM overlay + small
-        // overhead. 60s safely sits above this so the cache safety net (#3539)
-        // doesn't pre-empt the caller's own per-stage timeouts.
-        timeoutMs: 60_000,
-      });
+  let cached: AnalyzeStockResponse | null;
+  try {
+    cached = options.now
+      ? await fetchFreshAnalysis()
+      : await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, fetchFreshAnalysis, undefined, {
+          // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
+          // history/analyst then headlines/dividend) + 20s LLM overlay + small
+          // overhead. 60s safely sits above this so the cache safety net (#3539)
+          // doesn't pre-empt the caller's own per-stage timeouts.
+          timeoutMs: 60_000,
+        });
+  } catch (err) {
+    // A Yahoo timeout is an unavailable analysis, not a 500 (WORLDMONITOR-ZQ).
+    if (!(err instanceof YahooHistoryRequestFailedError)) throw err;
+    cached = null;
+  }
 
   if (cached) return cached;
 
