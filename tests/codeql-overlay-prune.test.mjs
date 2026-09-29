@@ -49,6 +49,16 @@ test('an older-CLI base is stale once a newer-CLI base exists in the same group'
   assert.deepEqual(ids(result.stale), [oldCli.id]);
 });
 
+test('the newest CLI wins even when an older-CLI base was saved later', () => {
+  const newCli = base({ cli: '2.28.0', createdAt: '2026-09-28T03:40:00Z', runId: 200 });
+  const lateOldCli = base({ cli: '2.27.1', createdAt: '2026-09-28T04:10:00Z', runId: 150 });
+  const patchOrder = base({ cli: '2.27.10', createdAt: '2026-09-27T03:40:00Z', runId: 90, hash: RUBY_HASH, langs: 'ruby' });
+  const patchOrderOlder = base({ cli: '2.27.9', createdAt: '2026-09-28T03:40:00Z', runId: 91, hash: RUBY_HASH, langs: 'ruby' });
+  const result = selectStaleOverlayBases([newCli, lateOldCli, patchOrder, patchOrderOlder], REF);
+  assert.deepEqual(ids(result.keep), ids([newCli, patchOrder]));
+  assert.deepEqual(ids(result.stale), ids([lateOldCli, patchOrderOlder]));
+});
+
 test('createdAt ties break on numeric runId, then on attempt', () => {
   const at = '2026-09-28T03:40:00Z';
   const lowRun = base({ createdAt: at, runId: 99999999999 });

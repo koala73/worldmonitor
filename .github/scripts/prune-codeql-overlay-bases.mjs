@@ -13,7 +13,16 @@ function parseKey(key) {
   return { cacheVersion, hash, langs, codeqlVersion, sha, runId: BigInt(runId), runAttempt: BigInt(runAttempt) };
 }
 
+function compareVersions(a, b) {
+  const [x, y] = [a.split('.').map(Number), b.split('.').map(Number)];
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return y[i] - x[i];
+  return 0;
+}
+
+// CLI version ranks before time: a run still on the old pin can save after a newer-CLI run.
 function compareNewest(a, b) {
+  const byVersion = compareVersions(a.parsed.codeqlVersion, b.parsed.codeqlVersion);
+  if (byVersion) return byVersion;
   const byTime = Date.parse(b.entry.createdAt) - Date.parse(a.entry.createdAt);
   if (byTime) return byTime;
   if (a.parsed.runId !== b.parsed.runId) return a.parsed.runId > b.parsed.runId ? -1 : 1;
