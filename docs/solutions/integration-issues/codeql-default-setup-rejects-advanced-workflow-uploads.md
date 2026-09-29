@@ -60,16 +60,24 @@ gh api repos/OWNER/REPO/code-scanning/default-setup -q .state   # expect not-con
 gh pr merge <N> --squash --match-head-commit <reviewed-sha>
 ```
 
-The rollback is the same PATCH with `state=configured`.
-
-**3. Prove parity from the analyses API, not from green jobs.** Read back the new analyses for the merge commit and compare them with default setup's last scan:
+To roll back, do both of these. Re-enabling default setup alone leaves the advanced workflow running, and its uploads are then rejected again:
 
 ```bash
-gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=30" \
-  -q '.[] | "\(.commit_sha[0:9]) \(.category) results=\(.results_count) error=\(.error)"'
+gh workflow disable codeql.yml -R OWNER/REPO
+gh api -X PATCH repos/OWNER/REPO/code-scanning/default-setup -f state=configured
 ```
 
-On 2026-09-29 the merge commit of #8711 produced all six categories (`/language:javascript-typescript`, `rust`, `go`, `actions`, `python`, `ruby`) with empty `error`. The JS/TS scan reported 583 results and the other five reported 0, identical to default setup's final run on the commit just before. Default setup's last upload was at 08:30:56 UTC and the advanced run started at 08:32:16 UTC, so there was no gap in coverage.
+**3. Check parity from the analyses API, not from green jobs.** List the analyses for the merge commit only, then do the same for default setup's last scan (the commit just before it), and compare them category by category:
+
+```bash
+SHA=<merge-commit-sha>
+gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=100" \
+  -q ".[] | select(.commit_sha == \"$SHA\") | \"\(.category) results=\(.results_count) error=\(.error)\""
+```
+
+The same category list, with every `error` empty, shows every language uploaded. Matching `results_count` values are a count check, not proof that the same alerts were found. For a real comparison, fetch each analysis as SARIF (`gh api -H 'Accept: application/sarif+json' repos/OWNER/REPO/code-scanning/analyses/<id>`) and compare the rule IDs and locations.
+
+On 2026-09-29 the merge commit of #8711 produced all six categories (`/language:javascript-typescript`, `rust`, `go`, `actions`, `python`, `ruby`) with empty `error`. The JS/TS scan reported 583 results and the other five reported 0, the same counts as default setup's final run on the commit just before. The SARIF was not diffed. Default setup's last upload was at 08:30:56 UTC and the advanced run started at 08:32:16 UTC, so there was no gap in coverage.
 
 ## Why this works
 
@@ -81,7 +89,7 @@ The on.push warning is codeql-action's lint for a workflow that cannot populate 
 
 - **Plan the migration as a settings handover.** Expect the PR's `Analyze` jobs to stay red until the merge. Keep them out of the required checks. Write the handover steps (turn off, merge, verify, rollback) into the PR description before asking for review. `CONTRIBUTING.md` has a "CodeQL scan schedule and setup handover" section.
 - **Measure default setup before estimating savings.** Default setup names each PR-triggered run `PR #<number>`, with event `dynamic`. The merge scans appear as one workflow, `Push on main`. Grouping Actions runs by workflow name therefore splits the PR scans into hundreds of small groups, and the first estimate in #8706 missed them. Filter by path instead: `path == "dynamic/github-code-scanning/codeql"` catches both. Measured over 7 days before the switch: about 3,200 runner-min on PR scans plus 2,972 on merge scans.
-- **Keep the query suite the same.** The default-setup state reported `query_suite: default`, and the advanced workflow sets no `queries:`, so it also runs the default suite. Compare `results_count` per category after the switch. A drop means lost coverage, not a quieter codebase.
+- **Keep the query suite the same.** The default-setup state reported `query_suite: default`, and the advanced workflow sets no `queries:`, so it also runs the default suite. Compare `results_count` per category after the switch. A drop is a signal to diff the two analyses' SARIF, not proof of lost coverage on its own.
 - **Budget the overlay-base caches.** Both setups save a CodeQL overlay-base database to the Actions cache on every default-branch run: about 1.37 GB for JavaScript, under a key that includes the commit SHA, run ID and attempt. The action never deletes them (codeql-action `src/trap-caching.ts:228` is its only cache deletion, and it handles TRAP caches).
   - The key's hash comes from the workflow path, job and matrix values. So after the switch, default setup's bases can never be restored again. #8717 deleted 12 of them, about 4.2 GB.
   - The `prune-overlay-bases` job (#8718) now keeps only the newest base per group after each default-branch scan. On its first run, on the #8718 merge, it logged `kept 4, deleted 4, freed 1392298522 bytes`.
