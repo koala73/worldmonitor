@@ -14180,12 +14180,18 @@ async function handleWidgetAgentRequest(req, res) {
             const sessionToken = await getWidgetDataSessionToken();
             const dataHeaders = { 'User-Agent': 'WorldMonitor-WidgetAgent/1.0' };
             if (sessionToken) dataHeaders['X-WorldMonitor-Key'] = sessionToken;
+            // A redirect (e.g. /api/download → GitHub) would carry the session header off-origin.
             const dataRes = await fetch(url.toString(), {
               headers: dataHeaders,
+              redirect: 'error',
               signal: AbortSignal.timeout(15_000),
             });
-            if (dataRes.status === 401 && sessionToken) invalidateWidgetDataSession(sessionToken);
             const data = await dataRes.text();
+            // Pro-only routes also 401 ("Pro authentication required"); re-minting
+            // for those would spend the fail-closed per-IP issuance budget.
+            if (dataRes.status === 401 && sessionToken && data.includes('Invalid session token')) {
+              invalidateWidgetDataSession(sessionToken);
+            }
             const trimmed = data.trimStart();
             if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
               rejectTool('Error: endpoint returned HTML instead of JSON. No data available.');
