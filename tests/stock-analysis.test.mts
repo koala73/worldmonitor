@@ -200,9 +200,32 @@ describe('analyzeStock handler', () => {
   });
 
   it('reports the analysis unavailable to the first and later requesters when Yahoo history times out', async () => {
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    // A minimal Upstash REST fake, so the negative-cache write is observable.
+    const store = new Map<string, string>();
+    const writes: Array<{ key: string; payload: string; ttlSeconds: number }> = [];
+    const recordSet = ([verb, key, payload, ex, ttl]: string[]) => {
+      if (verb !== 'SET') return;
+      store.set(key, payload);
+      if (ex === 'EX') writes.push({ key, payload, ttlSeconds: Number(ttl) });
+    };
+    let historyRequests = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith('https://redis.test/get/')) {
+        const key = decodeURIComponent(url.slice('https://redis.test/get/'.length));
+        return new Response(JSON.stringify({ result: store.get(key) ?? null }), { status: 200 });
+      }
+      if (url === 'https://redis.test/pipeline') {
+        const commands = JSON.parse(String(init?.body ?? '[]')) as string[][];
+        commands.forEach(recordSet);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), { status: 200 });
+      }
+      if (url === 'https://redis.test/') {
+        recordSet(JSON.parse(String(init?.body ?? '[]')) as string[]);
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
       if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        historyRequests += 1;
         throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
       }
       return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
@@ -210,9 +233,10 @@ describe('analyzeStock handler', () => {
 
     // No `now` option, so both calls go through the production cache path.
     const request = { symbol: 'TMOUT', name: 'TMOUT', includeNews: false };
-    const warnings: string[] = [];
     const originalWarn = console.warn;
-    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    console.warn = () => {};
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
     let first;
     let second;
     try {
@@ -220,14 +244,14 @@ describe('analyzeStock handler', () => {
       second = await analyzeStock({} as never, request);
     } finally {
       console.warn = originalWarn;
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
     }
 
-    // The fetcher rejected rather than returning null, so cachedFetchJson took
-    // its short fetcher-error path instead of the 120s negative cache.
-    assert.ok(
-      warnings.some((w) => w.includes('fetcher failed') && w.includes('market:analyze-stock:v8:TMOUT')),
-      `expected cachedFetchJson's fetcher-error warning, got: ${JSON.stringify(warnings)}`,
-    );
+    const negativeWrites = writes.filter((w) => w.key.includes('market:analyze-stock:v8:TMOUT') && w.payload.includes('__WM_NEG__'));
+    // The fetcher-error TTL, not the 120s negative TTL a null result gets.
+    assert.deepEqual(negativeWrites.map((w) => w.ttlSeconds), [30]);
+    assert.equal(historyRequests, 1, 'the second request is served from the negative cache');
 
     assert.equal(first.available, false);
     assert.equal(first.symbol, 'TMOUT');
