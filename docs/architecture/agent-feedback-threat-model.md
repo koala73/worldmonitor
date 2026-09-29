@@ -101,9 +101,10 @@ accounts, and lapsed keys. Signing up for free accounts therefore buys nothing.
 
 A security report is charged to its per-IP or per-principal bucket and to the
 global security bucket, not to the global anonymous or keyed bucket. A flood of
-bug reports cannot lock out a security reporter. A 429 on any bucket still
-returns the advisory URL (Decision 13), so a limited security reporter keeps a
-private path.
+other kinds from other callers cannot lock out a security reporter. A caller
+who exhausts their own per-IP or per-principal bucket does block their own
+later security reports. That is accepted, because the advisory URL is always
+reachable without this channel (Decision 13).
 
 **The global anonymous bucket is a known lever.** About 20 IPs at 5 per hour
 drain it, and that silences every anonymous non-security reporter for the rest
@@ -123,11 +124,14 @@ merges into junk and never pages anyone. So:
   `other:` plus the label), and `summary` after NFKC normalization,
   lowercasing, whitespace collapse, and trimming. It is indexed for triage
   grouping only. It never suppresses a write.
-- **Retry idempotency is separate.** A report whose `(reporter key, fingerprint,
-  requestId)` matches a row created in the last 10 minutes returns that row's
-  `reportId` and `status` unchanged. No new row, no counter, no budget charged.
-  That makes `idempotentHint: true` accurate in the MCP sense: repeating
-  identical arguments has no additional effect.
+- **Retries are absorbed separately.** `retryKey` = SHA-256 of the reporter key
+  and every submitted field after ingest sanitization (Decision 7), with absent
+  fields encoded explicitly. A report whose `retryKey` matches a row created in
+  the last 10 minutes returns that row's `reportId` and `status` unchanged. No
+  new row, no counter, no budget charged. Two reports that differ in any field,
+  including `expected` or `actual`, never collide. Outside the window an
+  identical report inserts a new row, so the tool is not idempotent in the MCP
+  sense (see the tool contract).
 
 **Decision 4. Size is capped in bytes at each door.** REST reads the body with
 a bounded reader that aborts at 24 KB (413), whether or not `Content-Length`
@@ -240,8 +244,7 @@ extend them.
 | `received`, `triaged` | Deleted 30 days after `receivedAt`. Untriaged reports expire. The phase 8 runbook reviews the queue weekly. |
 | `duplicate`, `dismissed` | Deleted 30 days after `receivedAt`. |
 | `filed` | Text fields are deleted once the issue number is recorded. The id, kind, surface, fingerprint, and issue number are kept for 1 year. |
-| `private` (security), open | Kept while open. The global security bucket bounds how many can exist. |
-| `private`, closed | Deleted 90 days after closing. |
+| `private` (security) | Deleted 180 days after `receivedAt`, whether open or closed. The owner copies anything worth keeping into the GitHub advisory, which is the system of record for a real vulnerability. |
 
 Phase 2 adds a daily prune job to `convex/crons.ts`, using the bounded-batch
 pattern of `api-plan-limit-prune`.
@@ -258,22 +261,38 @@ without limit.
 `received → private`, and never `filed`. The owner closes a private row
 explicitly (`private → closed`). One Convex mutation inserts the row, checks
 and increments the daily email counter, and, if a slot is free, sets
-`notifiedAt` and schedules one email. Doing this in one mutation, as
+`notifyScheduledAt` and schedules one email. Doing this in one mutation, as
 `recordUnattributedEvent` does, means a retry cannot send a second email and
-two concurrent reports cannot both take the last slot. Only security rows send
-email. No other kind notifies anyone.
+two concurrent reports cannot both take the last slot. The email action sets
+`notifiedAt` only after Resend accepts the message. Scheduling and delivery are
+separate fields, so a failed send is visible. Only security rows send email.
+No other kind notifies anyone.
 
-**Decision 12. Emails are capped at 20 per UTC day, and held-back reports are
-always announced.** Past the cap, the row is still stored with `notifiedAt`
-unset. A daily cron sends one digest ("N security reports were held back", with
-their ids) whenever that count is above zero. It does not wait for a new report
-to arrive. A failed send leaves `notifiedAt` unset, so the digest picks it up.
+**Decision 12. Emails are capped at 20 per UTC day, and every security report
+is eventually announced.** Past the cap, the row is stored with
+`notifyScheduledAt` unset. A daily cron sends one digest listing the ids of
+every security row with `notifiedAt` unset that is either held back or was
+scheduled more than an hour earlier. That covers both the cap and failed
+sends. The digest does not wait for a new report to arrive. The digest's own
+send sets `notifiedAt` on the rows it lists only after Resend accepts it.
 
-**Decision 13. The response points to private disclosure.** A security report,
-including one rejected with 429, returns the advisory URL
-(`https://github.com/koala73/worldmonitor/security/advisories/new`) and asks the
-caller not to include exploit details. This channel collects the signal. The
-advisory form is where the details belong.
+**Decision 13. The private disclosure path never depends on this channel
+admitting the report.** The advisory URL
+(`https://github.com/koala73/worldmonitor/security/advisories/new`) appears in
+four places:
+
+- The `report_issue` tool description, so an agent has it before calling.
+- Every response from `admitFeedbackReport` to a security report, whether
+  accepted or rejected with 429 or 503.
+- `/.well-known/security.txt`, which phase 0 fixed.
+- The MCP server instructions.
+
+Rejections that happen before the tool runs do not carry it. That covers the
+REST outer guard and the MCP free-tier limiter, both of which return generic
+429s shared with other routes and tools. This record does not change them. The
+description and `security.txt` cover that case. Every response that does carry
+the URL also asks the caller not to include exploit details. This channel
+collects the signal. The advisory form is where the details belong.
 
 ---
 
@@ -285,7 +304,7 @@ are far smaller.
 | Resource | Daily ceiling | Derivation |
 |---|---|---|
 | Convex writes | 2,930 rows | 100 × 24 anonymous + 500 keyed + 30 security |
-| Convex storage | about 56 MB per day at the ceiling, bounded to about 1.7 GB | 2,930 rows at up to about 19 KB each (18 KB of text plus row overhead). The 30-day retention (Decision 10) caps what can accumulate. |
+| Convex storage | about 56 MB per day at the ceiling, bounded to about 1.8 GB | 2,900 non-security rows at up to about 19 KB each (18 KB of text plus row overhead), kept 30 days, is about 1.65 GB. Security rows add 30 × 19 KB × 180 days, about 0.1 GB. Decision 10 makes both bounds absolute. |
 | Resend emails | 21 | 20 notifications plus 1 digest (Decision 12) |
 | LLM spend | 0 | Decision 5 |
 | Upstream fetches | 0 | The tool reads nothing external |
@@ -301,7 +320,7 @@ Each call does at most five Redis bucket checks and one Convex mutation.
 | Access | `free` (`_freeTier: true`) | Decision 1. |
 | `readOnlyHint` | `false` | It writes a row. It is the first tool in the registry that does. |
 | `destructiveHint` | `false` | It only inserts rows. It never changes or deletes existing data. |
-| `idempotentHint` | `true` | The 10-minute retry window in Decision 3 returns the original result without a new effect. |
+| `idempotentHint` | `false` | An identical report outside the 10-minute retry window inserts a new row (Decision 3). The retry window is an implementation safeguard, not an idempotency guarantee a client may rely on. |
 | `openWorldHint` | `false` | It makes no synchronous external call. The email is scheduled later by Convex, outside the call. |
 | Downstream path | Edge to Convex through a shared-secret internal HTTP action | See the free-tier amendment below. |
 
