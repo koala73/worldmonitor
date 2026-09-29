@@ -731,9 +731,9 @@ interface RiskInputReadFailure {
  * computed from a failed read. getRiskScores' catch serves the stale payload.
  */
 export class RiskInputsUnavailableError extends Error {
-  override readonly name = 'RiskInputsUnavailableError';
   constructor(readonly failures: readonly RiskInputReadFailure[]) {
     super(`risk-scores build rejected: ${failures.map((f) => `${f.key}(${f.failure})`).join(', ')}`);
+    this.name = 'RiskInputsUnavailableError';
   }
 }
 
