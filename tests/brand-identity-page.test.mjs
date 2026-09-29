@@ -128,6 +128,33 @@ describe('Organization JSON-LD NAP alignment', () => {
     );
   });
 
+  it('names each Wikidata item only on the node it identifies (#8699)', () => {
+    // Two items, two entities: Q141437464 is the company, Q141237754 the web
+    // application. A single page carries both, so the check is per node, not
+    // "every ID on the page is the same".
+    const COMPANY = 'Q141437464';
+    const APPLICATION = 'Q141237754';
+    const blocks = [...read('pro-test/welcome.html').matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((match) => JSON.parse(match[1]));
+    const [org] = blocks.filter((block) => block['@type'] === 'Organization');
+    const [app] = blocks.filter((block) => block['@type'] === 'SoftwareApplication');
+    const itemsIn = (value) => new Set(JSON.stringify(value ?? null).match(/Q\d+/g) ?? []);
+    const wikidataSameAs = (node) => node.sameAs.filter((url) => url.startsWith('https://www.wikidata.org/'));
+
+    assert.deepEqual(wikidataSameAs(org), [`https://www.wikidata.org/wiki/${COMPANY}`]);
+    assert.deepEqual(wikidataSameAs(app), [`https://www.wikidata.org/wiki/${APPLICATION}`]);
+    assert.ok(
+      itemsIn(org.disambiguatingDescription).has(COMPANY),
+      'the Organization description must name the company item it is the sameAs of',
+    );
+    assert.match(
+      org.disambiguatingDescription,
+      new RegExp(`the company ${COMPANY} and the web application ${APPLICATION}`),
+      'a second item in the Organization text must say which entity it is',
+    );
+    assert.ok(!itemsIn(app).has(COMPANY), 'the application node must not carry the company item');
+  });
+
   it('keeps star counts out of the source template for build-time injection', () => {
     const source = read('pro-test/welcome.html');
     assert.doesNotMatch(source, /"userInteractionCount":\s*\d+/, 'star counts must not be hardcoded in the source template');
