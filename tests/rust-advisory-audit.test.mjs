@@ -16,7 +16,7 @@ test('workflow caches only the pinned audit binary and installs on a miss', () =
   assert.ok(cache, 'restore the binary before installing');
   assert.match(cache.uses, /^actions\/cache@[a-f0-9]{40}$/);
   assert.equal(cache.with.path, '~/.cargo/bin/cargo-audit');
-  assert.equal(cache.with.key, 'cargo-audit-0.22.2-${{ runner.os }}');
+  assert.equal(cache.with.key, 'cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}');
   assert.equal(cache.with['restore-keys'], undefined);
   assert.equal(install.if, "steps.cargo-audit-cache.outputs.cache-hit != 'true'");
   assert.equal(install.run, 'cargo install cargo-audit --version 0.22.2 --locked');
