@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import {
   ANALYTICS_CANARY_WEBSITE_ID,
@@ -81,17 +84,27 @@ describe('scheduled analytics collector monitor', () => {
     assert.doesNotMatch(JSON.stringify(report), /secret|user:/);
   });
 
-  it('reports the real socket error when the collector closes a connection', async (t) => {
+  it('prints socket diagnostics for every failed attempt and exits nonzero', async (t) => {
     const server = createServer((request) => request.socket.destroy());
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     t.after(() => new Promise((resolve) => server.close(resolve)));
-    const report = await runCollectorChecks({
-      origin: `http://127.0.0.1:${server.address().port}`,
-      sleep: async () => {},
+    await assert.rejects(promisify(execFile)(process.execPath, [
+      fileURLToPath(new URL('../scripts/check-analytics-collector.mjs', import.meta.url)),
+    ], {
+      env: { ...process.env, ANALYTICS_COLLECTOR_ORIGIN: `http://127.0.0.1:${server.address().port}` },
+      timeout: 15_000,
+    }), (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /12\/12 attempts failed/);
+      const failures = error.stderr.split('\n').filter((line) => line.includes('write-canary-'));
+      assert.equal(failures.length, 12);
+      for (const line of failures) {
+        assert.match(line, /burst=[123] startedAt=\d{4}-\d{2}-\d{2}T\S+ elapsedMs=\d+/);
+        assert.match(line, /UND_ERR_SOCKET|ECONNRESET/);
+        assert.match(line, /phase=request/);
+      }
+      return true;
     });
-    assert.equal(report.writeSummary.failed, 12);
-    assert.equal(report.alerting, true);
-    assert.match(report.writeSummary.failures[0].reason, /UND_ERR_SOCKET|ECONNRESET/);
   });
 
   it('accepts the live shape of a healthy collector', () => {
