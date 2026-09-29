@@ -13529,6 +13529,65 @@ function sanitizeToolContent(content) {
     .slice(0, 20_000);
 }
 
+// A raw 20,000-char slice cut JSON mid-record and hid the cut: the model saw
+// the first ~8 of 33 commodity quotes and ~580-point intraday sparklines it
+// then drew as "30 days". Keep the result parseable and say what was lost.
+function compactWidgetToolJson(text, symbols = []) {
+  const budget = 20_000;
+  const points = 48;
+  let value;
+  try { value = JSON.parse(text); } catch { return text; }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return text;
+
+  const wanted = symbols.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+  const found = new Set();
+  let sampled = false;
+  const shrink = v => {
+    if (Array.isArray(v)) {
+      if (v.length > points && v.every(x => typeof x === 'number')) {
+        sampled = true;
+        return Array.from({ length: points }, (_, i) => v[Math.round(i * (v.length - 1) / (points - 1))]);
+      }
+      const items = wanted.length && v.some(x => typeof x?.symbol === 'string')
+        ? v.filter(x => wanted.includes(String(x?.symbol).toUpperCase()) && found.add(String(x.symbol).toUpperCase()))
+        : v;
+      return items.map(shrink);
+    }
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]));
+    return v;
+  };
+  const body = shrink(value);
+  if (!sampled && !wanted.length && text.length <= budget) return text;
+
+  const note = {};
+  if (sampled) note.sampledSeries = `numeric series longer than ${points} points were evenly sampled to ${points} points (first and last kept); they carry no dates`;
+  if (wanted.length) note.symbols = { requested: wanted, missing: wanted.filter(s => !found.has(s)) };
+  const serialize = () => JSON.stringify(Object.keys(note).length ? { _widget: note, ...body } : body);
+
+  const totals = new Map();
+  const largestRecordList = (v, path, parent, key, best) => {
+    if (Array.isArray(v) && v.length > 1 && v.every(x => x && typeof x === 'object')) {
+      const size = JSON.stringify(v).length;
+      if (!best || size > best.size) best = { path, parent, key, size };
+    }
+    if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) best = largestRecordList(x, path ? `${path}.${k}` : k, v, k, best);
+    }
+    return best;
+  };
+  let out = serialize();
+  while (out.length > budget) {
+    const target = largestRecordList(body, '', null, null, null);
+    if (!target) break;
+    const list = target.parent[target.key];
+    if (!totals.has(target.path)) totals.set(target.path, list.length);
+    target.parent[target.key] = list.slice(0, Math.max(1, Math.floor(list.length * (budget / out.length) * 0.9)));
+    note.truncated = [...totals].map(([path, total]) => ({ path, kept: path.split('.').reduce((o, k) => o[k], body).length, total }));
+    out = serialize();
+  }
+  return out;
+}
+
 function isWidgetEndpointAllowed(endpoint) {
   // Allow any /api/ path — the allowlist is enforced by the system prompt.
   // Exclude write/inference/streaming paths that are not data endpoints.
@@ -13543,7 +13602,7 @@ function isWidgetEndpointAllowed(endpoint) {
 
 const WIDGET_FETCH_TOOL = {
   name: 'fetch_worldmonitor_data',
-  description: 'Fetch structured WorldMonitor data from the catalog in the system prompt. Prefer a matching bootstrap key, then a matching RPC; use search_web only for a data gap. Send a GET to /api/bootstrap with params.keys (comma-separated catalog keys), or /api/<service>/v1/<method> with the cataloged RPC params. Supply a path, not a full URL; params are string query parameters appended to the URL. Some cataloged routes require credentials this tool does not send; their authorization error body is returned as text, not data. Successful bootstrap JSON has { data: { <key>: <array or object> }, missing: [<key>] }; RPC JSON has method-specific fields and can include historical series, such as seeded FRED observations. The model receives sanitized response text, normally JSON, truncated to 20,000 characters; it may be incomplete JSON or an API error body. Local policy rejection returns "Endpoint not allowed."; leading <!DOCTYPE or <html pages return an HTML error message with no data; fetch failures return "Fetch failed: <message>". Treat errors or missing data as unavailable, never as zero.',
+  description: 'Fetch structured WorldMonitor data from the catalog in the system prompt. Prefer a matching bootstrap key, then a matching RPC; use search_web only for a data gap. Send a GET to /api/bootstrap with params.keys (comma-separated catalog keys), or /api/<service>/v1/<method> with the cataloged RPC params. Supply a path, not a full URL; params are string query parameters appended to the URL. Some cataloged routes require credentials this tool does not send; their authorization error body is returned as text, not data. Successful bootstrap JSON has { data: { <key>: <array or object> }, missing: [<key>] }; RPC JSON has method-specific fields and can include historical series, such as seeded FRED observations. The model receives sanitized response text, normally JSON, compacted to about 20,000 characters: numeric series longer than 48 points are evenly sampled to 48, oversized record lists keep their first records, and a top-level _widget note reports what was sampled, filtered or dropped. It may also be an API error body. Local policy rejection returns "Endpoint not allowed."; leading <!DOCTYPE or <html pages return an HTML error message with no data; fetch failures return "Fetch failed: <message>". Treat errors or missing data as unavailable, never as zero.',
   input_schema: {
     type: 'object',
     properties: {
@@ -13576,6 +13635,7 @@ You have 3 tool calls in total; the server rejects any beyond that. If 2 calls h
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
 PREFER this over live RPCs whenever a key matches the user's topic.
+Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of today's intraday prices with no dates — not daily history. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
 
 Market & Crypto:
   marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
@@ -13614,7 +13674,7 @@ Other:
 ## Option 2 — Live RPCs (use only when no bootstrap key matches; supports custom params)
 URL pattern: /api/<service>/v1/<method> (kebab-case)
 economic: list-world-bank-indicators (params: indicator, country_code),
-  get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
+  get-fred-series (params: series_id — ONLY one of: WALCL, FEDFUNDS, T10Y2Y, UNRATE, CPIAUCSL, DGS10, VIXCLS, GDP, M2SL, DCOILWTICO, BAMLH0A0HYM2, ICSA, MORTGAGE30US, GSCPI, T10Y3M, STLFSI4, DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, DGS5, DGS30, BAMLC0A0CM, SOFR, ESTR, EURIBOR3M, EURIBOR6M, EURIBOR1Y; any other ID is rejected), get-eurostat-country-data
 trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
 aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
 intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
@@ -13625,10 +13685,14 @@ supply-chain: get-shipping-stress,
   get-bypass-options (params: chokepointId required, cargoType default 'container', closurePct default 100; PRO-gated — returns options[] sorted by liveScore asc, each with addedTransitDays/addedCostMultiplier/bypassWarRiskTier; also primaryChokepointWarRiskTier),
   get-country-cost-shock (params: iso2 required, chokepointId required, hs2 default '27'; PRO-gated — returns supplyDeficitPct 0-100%, coverageDays, warRiskPremiumBps, warRiskTier; hasEnergyModel=true only for HS 27 + Hormuz/Suez/Malacca/BEM)
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
-market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
+market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning,
+  get-gold-intelligence (gold, silver, platinum and palladium prices, gold/silver ratio, gold returns over 1 week, 1 month, YTD and 1 year, 52-week range)
 consumer-prices: list-retailer-price-spreads
 maritime: list-navigational-warnings
 news: list-feed-digest
+
+## Time windows — never invent dates
+Label a time axis, dates, or a window ("30-day", "90-day change", "YTD") only when the fetched data carries those dates. Quote sparklines are today's intraday prices: label them "Today (intraday)", never as days or sessions. When the requested window is not in the data, build the widget from what exists, label it truthfully, and say so in the widget (for example "90-day history not available — showing today"). Never fill missing history from search_web snippets, interpolation or estimates.
 
 ### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
@@ -14031,7 +14095,7 @@ async function handleWidgetAgentRequest(req, res) {
   const maxTokens = isPro ? 8192 : 4096;
   const maxTurns = isPro ? 10 : 6;
   const maxHtml = isPro ? WIDGET_PRO_MAX_HTML : WIDGET_MAX_HTML;
-  const systemPrompt = isPro ? WIDGET_PRO_SYSTEM_PROMPT : WIDGET_SYSTEM_PROMPT;
+  const systemPrompt = `${isPro ? WIDGET_PRO_SYSTEM_PROMPT : WIDGET_SYSTEM_PROMPT}\n\nToday's date (UTC): ${new Date().toISOString().slice(0, 10)}.`;
   const timeoutMs = isPro ? 120_000 : 90_000;
 
   res.writeHead(200, {
@@ -14179,7 +14243,10 @@ async function handleWidgetAgentRequest(req, res) {
 
           try {
             const url = new URL(endpoint, 'https://api.worldmonitor.app');
-            for (const [k, v] of Object.entries(params)) {
+            const query = { ...params };
+            const symbols = endpoint === '/api/bootstrap' && typeof query.symbols === 'string' ? query.symbols.split(',') : [];
+            if (endpoint === '/api/bootstrap') delete query.symbols;
+            for (const [k, v] of Object.entries(query)) {
               url.searchParams.set(k, String(v));
             }
             toolExecutionCount++;
@@ -14202,7 +14269,7 @@ async function handleWidgetAgentRequest(req, res) {
             if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
               rejectTool('Error: endpoint returned HTML instead of JSON. No data available.');
             } else {
-              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: sanitizeToolContent(data) });
+              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: sanitizeToolContent(compactWidgetToolJson(data, symbols)) });
             }
           } catch (err) {
             rejectTool(`Fetch failed: ${err.message}`);
@@ -14366,6 +14433,7 @@ You have 3 tool calls in total; the server rejects any beyond that. If 2 calls h
 ## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
 PREFER this over live RPCs whenever a key matches the user's topic.
+Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of today's intraday prices with no dates — not daily history. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
 
 Market & Crypto:
   marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
@@ -14404,7 +14472,7 @@ Other:
 ## Option 2 — Live RPCs (use only when no bootstrap key matches; supports custom params)
 URL pattern: /api/<service>/v1/<method> (kebab-case)
 economic: list-world-bank-indicators (params: indicator, country_code),
-  get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
+  get-fred-series (params: series_id — ONLY one of: WALCL, FEDFUNDS, T10Y2Y, UNRATE, CPIAUCSL, DGS10, VIXCLS, GDP, M2SL, DCOILWTICO, BAMLH0A0HYM2, ICSA, MORTGAGE30US, GSCPI, T10Y3M, STLFSI4, DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, DGS5, DGS30, BAMLC0A0CM, SOFR, ESTR, EURIBOR3M, EURIBOR6M, EURIBOR1Y; any other ID is rejected), get-eurostat-country-data
 trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
 aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
 intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
@@ -14415,10 +14483,14 @@ supply-chain: get-shipping-stress,
   get-bypass-options (params: chokepointId required, cargoType default 'container', closurePct default 100; PRO-gated — returns options[] sorted by liveScore asc, each with addedTransitDays/addedCostMultiplier/bypassWarRiskTier; also primaryChokepointWarRiskTier),
   get-country-cost-shock (params: iso2 required, chokepointId required, hs2 default '27'; PRO-gated — returns supplyDeficitPct 0-100%, coverageDays, warRiskPremiumBps, warRiskTier; hasEnergyModel=true only for HS 27 + Hormuz/Suez/Malacca/BEM)
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
-market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
+market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning,
+  get-gold-intelligence (gold, silver, platinum and palladium prices, gold/silver ratio, gold returns over 1 week, 1 month, YTD and 1 year, 52-week range)
 consumer-prices: list-retailer-price-spreads
 maritime: list-navigational-warnings
 news: list-feed-digest
+
+## Time windows — never invent dates
+Label a time axis, dates, or a window ("30-day", "90-day change", "YTD") only when the fetched data carries those dates. Quote sparklines are today's intraday prices: label them "Today (intraday)", never as days or sessions. When the requested window is not in the data, build the widget from what exists, label it truthfully, and say so in the widget (for example "90-day history not available — showing today"). Never fill missing history from search_web snippets, interpolation or estimates.
 
 ### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed as const DATA = [...] in your inline script.
