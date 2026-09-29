@@ -2995,6 +2995,20 @@ describe('security header guardrails', () => {
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
     assert.match(secTxt, /^Expires:/m, 'security.txt must have an Expires field');
   });
+
+  it('security.txt points GitHub disclosures at the repository SECURITY.md names', () => {
+    const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
+    const securityMd = readFileSync(resolve(__dirname, '../SECURITY.md'), 'utf-8');
+    const policyRepo = securityMd.match(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/security\/advisories\/new/)?.[1];
+    assert.ok(policyRepo, 'SECURITY.md must link the private vulnerability reporting form');
+
+    const githubUrls = [...secTxt.matchAll(/https:\/\/github\.com\/[^\s]+/g)].map(([url]) => url);
+    assert.ok(githubUrls.length > 0, 'security.txt must offer a GitHub disclosure channel');
+    for (const url of githubUrls) {
+      assert.ok(url.startsWith(`https://github.com/${policyRepo}/`), `${url} must name ${policyRepo}`);
+    }
+    assert.match(secTxt, new RegExp(`^Contact: https://github\\.com/${policyRepo}/security/advisories/new$`, 'm'));
+  });
 });
 
 describe('embeddable map route guardrails', () => {
