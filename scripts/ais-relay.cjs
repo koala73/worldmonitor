@@ -13750,6 +13750,43 @@ const WIDGET_ANTHROPIC_KEY = (process.env.ANTHROPIC_API_KEY || '').trim();
 const WIDGET_EXA_KEY = (process.env.EXA_API_KEYS || '').split(/[\n,]+/).map(k => k.trim()).filter(Boolean)[0] || '';
 const WIDGET_BRAVE_KEY = (process.env.BRAVE_API_KEYS || '').split(/[\n,]+/).map(k => k.trim()).filter(Boolean)[0] || '';
 
+// Widget data reads need a credential since #3541 removed Origin trust. The
+// agent's endpoints are model-chosen, so it gets exactly a browser visitor's
+// authority: an anonymous wms_ session, which forceKey routes reject. Never
+// WORLDMONITOR_RELAY_KEY — in production that is an enterprise key.
+let widgetDataSession = null;
+let widgetDataSessionPending = null;
+
+async function getWidgetDataSessionToken() {
+  if (widgetDataSession && widgetDataSession.exp - Date.now() > 5 * 60_000) return widgetDataSession.token;
+  widgetDataSessionPending ??= (async () => {
+    try {
+      const res = await fetch('https://api.worldmonitor.app/api/wm-session', {
+        method: 'POST',
+        headers: { 'User-Agent': 'WorldMonitor-WidgetAgent/1.0' },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const body = res.ok ? await res.json() : null;
+      if (typeof body?.token !== 'string' || !body.token.startsWith('wms_') || !Number.isFinite(body.exp)) {
+        console.warn(`[widget-agent] Data session mint failed: HTTP ${res.status}`);
+        return '';
+      }
+      widgetDataSession = { token: body.token, exp: body.exp };
+      return body.token;
+    } catch (err) {
+      console.warn(`[widget-agent] Data session mint failed: ${err?.name || 'Error'}`);
+      return '';
+    } finally {
+      widgetDataSessionPending = null;
+    }
+  })();
+  return widgetDataSessionPending;
+}
+
+function invalidateWidgetDataSession(token) {
+  if (widgetDataSession?.token === token) widgetDataSession = null;
+}
+
 async function performWidgetWebSearch(query) {
   if (WIDGET_EXA_KEY) {
     try {
@@ -14140,10 +14177,14 @@ async function handleWidgetAgentRequest(req, res) {
               url.searchParams.set(k, String(v));
             }
             toolExecutionCount++;
+            const sessionToken = await getWidgetDataSessionToken();
+            const dataHeaders = { 'User-Agent': 'WorldMonitor-WidgetAgent/1.0' };
+            if (sessionToken) dataHeaders['X-WorldMonitor-Key'] = sessionToken;
             const dataRes = await fetch(url.toString(), {
-              headers: { 'User-Agent': 'WorldMonitor-WidgetAgent/1.0' },
+              headers: dataHeaders,
               signal: AbortSignal.timeout(15_000),
             });
+            if (dataRes.status === 401 && sessionToken) invalidateWidgetDataSession(sessionToken);
             const data = await dataRes.text();
             const trimmed = data.trimStart();
             if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
