@@ -1,3 +1,8 @@
+---
+title: Unrest evidence contract
+noindex: true
+---
+
 # Unrest evidence contract
 
 GDELT GKG records describe articles and the places those articles mention. An
