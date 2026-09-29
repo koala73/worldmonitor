@@ -13552,10 +13552,10 @@ function compactWidgetToolJson(text, symbols = []) {
         sampled = true;
         return Array.from({ length: points }, (_, i) => v[Math.round(i * (v.length - 1) / (points - 1))]);
       }
-      // Filter only a list that holds a requested symbol; a multi-key bootstrap's
-      // other quote lists pass through whole.
+      // params.symbols is a quote filter: only a `quotes` list holding a requested
+      // symbol is cut; other quote lists and symbol-bearing lists (sectors) pass whole.
       const hit = x => wanted.includes(String(x?.symbol).toUpperCase());
-      if (wanted.length && v.some(hit)) {
+      if (wanted.length && path.endsWith('.quotes') && v.some(hit)) {
         filtered.push(path);
         return v.filter(hit).map((x, i) => (found.add(String(x.symbol).toUpperCase()), shrink(x, `${path}.${i}`)));
       }
