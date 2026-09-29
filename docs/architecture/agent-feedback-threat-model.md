@@ -125,11 +125,14 @@ merges into junk and never pages anyone. So:
   lowercasing, whitespace collapse, and trimming. It is indexed for triage
   grouping only. It never suppresses a write.
 - **Retries are absorbed separately.** `retryKey` = SHA-256 of the reporter key
-  and every submitted field after ingest sanitization (Decision 7), with absent
-  fields encoded explicitly. A report whose `retryKey` matches a row created in
-  the last 10 minutes returns that row's `reportId` and `status` unchanged. No
-  new row, no counter, no budget charged. Two reports that differ in any field,
-  including `expected` or `actual`, never collide. Outside the window an
+  and every field exactly as it will be stored, that is after sanitization
+  (Decision 7) and redaction (Decision 9), with absent fields encoded
+  explicitly. A report whose `retryKey` matches a row created in the last 10
+  minutes returns that row's `reportId` and `status` unchanged. No new row, no
+  counter, no budget charged. Two reports whose stored fields differ, including
+  `expected` or `actual`, never collide. Two reports that differ only in a
+  redacted value (an email address or a credential) do collide. That loses
+  nothing, because both would be stored as the same text. Outside the window an
   identical report inserts a new row, so the tool is not idempotent in the MCP
   sense (see the tool contract).
 
