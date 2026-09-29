@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import {
   assertNoSecrets,
   collectGscSnapshot,
+  parseCoverageLedger,
   createFixtureTransport,
   createLiveTransport,
   createServiceAccountAssertion,
@@ -867,5 +868,117 @@ describe('Search Console live transport resilience', () => {
       () => assertNoSecrets(JSON.stringify({ property: 'sc-domain:worldmonitor.app' }), { property: 'sc-domain:worldmonitor.app' }),
       /refusing to write/,
     );
+  });
+});
+
+describe('Search Console coverage totals recorded by hand', () => {
+  const reading = (exportedOn, extra = {}) => ({
+    exportedOn,
+    declaredUrls: 888,
+    pageWithRedirect: 1685,
+    notFound404: 666,
+    crawledNotIndexed: 1486,
+    source: 'https://github.com/koala73/worldmonitor/issues/8602',
+    ...extra,
+  });
+  const ledger = (...readings) => JSON.stringify({ readings });
+
+  it('accepts the committed ledger', () => {
+    const readings = parseCoverageLedger(
+      readFileSync(repoPath('docs/research/seo-ai-visibility/gsc/coverage-totals.json'), 'utf8'),
+    );
+    assert.ok(readings.length >= 2);
+    assert.deepEqual(readings.slice(0, 2).map((row) => row.exportedOn), ['2026-09-04', '2026-09-24']);
+  });
+
+  it('rejects a reading that would corrupt the trend', () => {
+    const cases = [
+      [ledger(reading('2026-09-24'), reading('2026-09-04')), /ascending/],
+      [ledger(reading('2026-09-24'), reading('2026-09-24')), /ascending/],
+      [ledger(reading('2026-9-24')), /exportedOn/],
+      [ledger(reading('2026-02-30')), /exportedOn/],
+      [ledger(reading('2026-09-24', { notFound404: '666' })), /notFound404/],
+      [ledger(reading('2026-09-24', { pageWithRedirect: -1 })), /pageWithRedirect/],
+      [ledger(reading('2026-09-24', { crawledNotIndexed: undefined })), /crawledNotIndexed/],
+      [ledger(reading('2026-09-24', { source: 'see issue' })), /source/],
+      [ledger(null), /reading 0: must be an object/],
+      [JSON.stringify({ readings: 'none' }), /readings/],
+      [JSON.stringify({}), /readings/],
+      ['{"readings": [', /not valid JSON/],
+    ];
+    for (const [text, expected] of cases) {
+      assert.throws(() => parseCoverageLedger(text), expected, text);
+    }
+  });
+
+  it('loads the ledger from the fixture set into the snapshot and the summary, oldest first', async () => {
+    const { snapshot, markdown } = await collect();
+    assert.deepEqual(snapshot.coverageTotals.readings.map((row) => row.exportedOn), ['2026-08-01', '2026-09-04']);
+    assert.equal(snapshot.coverageTotals.overdue, false);
+    assert.match(markdown, /## Coverage totals \(recorded by hand\)/);
+    assert.match(markdown, /\| 2026-08-01 \| 800 \| 900 \| 400 \| 1100 \|/);
+    assert.match(markdown, /\| 2026-09-04 \| 845 \| 1271 \| 512 \| 1245 \|/);
+    assert.doesNotMatch(markdown, /Overdue/);
+  });
+
+  it('treats a fixture set without a ledger as having no reading', async () => {
+    const { snapshot, markdown } = await collect(`${FIXTURES}quota/`);
+    assert.deepEqual(snapshot.coverageTotals.readings, []);
+    assert.equal(snapshot.coverageTotals.overdue, true);
+    assert.match(markdown, /Overdue: no reading is recorded/);
+  });
+
+  it('fails the run on a malformed ledger instead of dropping it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wm-gsc-ledger-'));
+    try {
+      cpSync(repoPath(FIXTURES), dir, { recursive: true });
+      writeFileSync(join(dir, 'coverage-totals.json'), ledger(reading('2026-09-04', { notFound404: 'n/a' })));
+      await assert.rejects(() => collect(`${dir}/`), /notFound404 must be a non-negative integer/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('flags the monthly reading as overdue once the latest one is too old', async () => {
+    const fresh = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-09-04')],
+    });
+    assert.equal(fresh.coverageTotals.latestAgeDays, 20);
+    assert.equal(fresh.coverageTotals.overdue, false);
+    assert.doesNotMatch(renderGscMarkdown(fresh), /Overdue/);
+
+    const limit = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-08-20')],
+    });
+    assert.equal(limit.coverageTotals.latestAgeDays, 35);
+    assert.equal(limit.coverageTotals.overdue, false);
+
+    const stale = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-08-19')],
+    });
+    assert.equal(stale.coverageTotals.latestAgeDays, 36);
+    assert.equal(stale.coverageTotals.overdue, true);
+    assert.match(renderGscMarkdown(stale), /Overdue: the latest reading is 36 days old/);
+
+    let calls = 0;
+    const counting = memoryTransport({
+      searchAnalytics: async () => { calls += 1; return { rows: [] }; },
+      inspect: async () => { calls += 1; return indexedResponse; },
+    });
+    await assert.rejects(
+      () => collectFrom(counting, { coverageReadings: [reading('2026-09-25')] }),
+      /later than the snapshot date/,
+    );
+    assert.equal(calls, 0, 'a bad ledger must stop the run before any API quota is spent');
+
+    const piped = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-09-04', { source: 'https://example.com/a|b' })],
+    });
+    assert.match(renderGscMarkdown(piped), /\| https:\/\/example\.com\/a\\\|b \|$/m);
+
+    const none = await collectFrom(memoryTransport());
+    assert.equal(none.coverageTotals.latestAgeDays, null);
+    assert.equal(none.coverageTotals.overdue, true);
+    assert.match(renderGscMarkdown(none), /Overdue: no reading is recorded/);
   });
 });

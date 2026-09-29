@@ -58,7 +58,7 @@
 
 import { createSign } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1136,6 +1136,84 @@ export function deriveWindows(observedAt) {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Coverage totals recorded by hand
+// ---------------------------------------------------------------------------
+
+/**
+ * The Page indexing report totals have no API, so an operator copies them from
+ * the Search Console UI into `coverage-totals.json` once a month (#8700). The
+ * weekly summary carries the whole series and says when the next reading is
+ * due, so a skipped month shows up in the review PR instead of in a gap
+ * nobody notices. This is a time series, unlike `reportedTotals`, which checks
+ * one export's row cap.
+ */
+const COVERAGE_LEDGER_FILE = 'coverage-totals.json';
+const COVERAGE_LEDGER_DIR = 'docs/research/seo-ai-visibility/gsc';
+const COVERAGE_READING_MAX_AGE_DAYS = 35;
+const COVERAGE_COUNT_FIELDS = Object.freeze([
+  'declaredUrls',
+  'pageWithRedirect',
+  'notFound404',
+  'crawledNotIndexed',
+]);
+
+export function parseCoverageLedger(text) {
+  let ledger;
+  try {
+    ledger = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`[seo-gsc] coverage ledger is not valid JSON: ${error.message}`);
+  }
+  const readings = ledger?.readings;
+  invariant(Array.isArray(readings), 'coverage ledger: readings must be an array');
+  let previous = '';
+  return readings.map((raw, index) => {
+    const where = `coverage ledger reading ${index}`;
+    invariant(raw !== null && typeof raw === 'object', `${where}: must be an object`);
+    const { exportedOn, source } = raw;
+    invariant(
+      typeof exportedOn === 'string'
+        && /^\d{4}-\d{2}-\d{2}$/.test(exportedOn)
+        && new Date(`${exportedOn}T00:00:00Z`).toISOString().startsWith(exportedOn),
+      `${where}: exportedOn must be a real YYYY-MM-DD date`,
+    );
+    invariant(exportedOn > previous, `${where}: exportedOn must be strictly ascending`);
+    previous = exportedOn;
+    const reading = { exportedOn };
+    for (const field of COVERAGE_COUNT_FIELDS) {
+      invariant(
+        Number.isInteger(raw[field]) && raw[field] >= 0,
+        `${where}: ${field} must be a non-negative integer`,
+      );
+      reading[field] = raw[field];
+    }
+    invariant(
+      typeof source === 'string' && source.startsWith('https://'),
+      `${where}: source must be an https URL to where the reading was published`,
+    );
+    reading.source = source;
+    return reading;
+  });
+}
+
+function summarizeCoverageTotals(readings, observedAt) {
+  const latest = readings.at(-1) ?? null;
+  const latestAgeDays = latest
+    ? Math.floor((Date.parse(observedAt) - Date.parse(`${latest.exportedOn}T00:00:00Z`)) / 86_400_000)
+    : null;
+  invariant(
+    latestAgeDays === null || latestAgeDays >= 0,
+    `coverage ledger: reading ${latest?.exportedOn} is later than the snapshot date`,
+  );
+  return {
+    readings,
+    maxAgeDays: COVERAGE_READING_MAX_AGE_DAYS,
+    latestAgeDays,
+    overdue: latestAgeDays === null || latestAgeDays > COVERAGE_READING_MAX_AGE_DAYS,
+  };
+}
+
 function repositoryRevision() {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
@@ -1161,10 +1239,14 @@ export async function collectGscSnapshot({
   concurrency = DEFAULT_CONCURRENCY,
   propertyKind = null,
   reportedTotals = {},
+  coverageReadings = [],
   revision = repositoryRevision(),
 }) {
   const inventory = buildInventory(documents);
   invariant(inventory.urls.length > 0, 'the sitemap inventory is empty');
+  // Before any API call: a bad ledger found after inspection would burn the
+  // day's quota and leave no snapshot to show for it.
+  const coverageTotals = summarizeCoverageTotals(coverageReadings, observedAt);
 
   // Search Analytics first: it is cheap, and an auth or permission failure
   // there must stop the run before any of the daily inspection quota is spent.
@@ -1366,6 +1448,7 @@ export async function collectGscSnapshot({
       ),
     },
     performance,
+    coverageTotals,
     samplingNotes,
     guardrails: [
       'Shares are measured over inspected rows. No sampled share is projected onto a reported total.',
@@ -1673,6 +1756,26 @@ export function renderGscMarkdown(snapshot) {
     lines.push('');
   }
 
+  const coverage = snapshot.coverageTotals;
+  lines.push('## Coverage totals (recorded by hand)');
+  lines.push('');
+  lines.push(`The Search Console Page indexing report has no API, so its totals are copied into \`${COVERAGE_LEDGER_FILE}\` by hand each month.`);
+  lines.push('');
+  if (coverage.overdue) {
+    lines.push(coverage.latestAgeDays === null
+      ? '**Overdue: no reading is recorded.** Add one before the next weekly run.'
+      : `**Overdue: the latest reading is ${coverage.latestAgeDays} days old** (limit ${coverage.maxAgeDays}). Add this month's reading.`);
+    lines.push('');
+  }
+  if (coverage.readings.length > 0) {
+    lines.push('| Exported | Declared URLs | Page with redirect | Not found (404) | Crawled, currently not indexed | Source |');
+    lines.push('|---|---:|---:|---:|---:|---|');
+    for (const row of coverage.readings) {
+      lines.push(`| ${row.exportedOn} | ${row.declaredUrls} | ${row.pageWithRedirect} | ${row.notFound404} | ${row.crawledNotIndexed} | ${markdownCell(row.source)} |`);
+    }
+    lines.push('');
+  }
+
   lines.push('## Sampling');
   lines.push('');
   if (snapshot.samplingNotes.length === 0) {
@@ -1831,6 +1934,12 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     observedAt = new Date(now()).toISOString();
   }
 
+  // A live run must find the committed ledger; a fixture set may omit it.
+  const ledgerPath = resolve(REPO_ROOT, options.fixtures ?? COVERAGE_LEDGER_DIR, COVERAGE_LEDGER_FILE);
+  const coverageReadings = options.fixtures && !existsSync(ledgerPath)
+    ? []
+    : parseCoverageLedger(readFileSync(ledgerPath, 'utf8'));
+
   const windows = deriveWindows(observedAt);
   const snapshot = await collectGscSnapshot({
     transport,
@@ -1841,6 +1950,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     concurrency: options.concurrency,
     propertyKind,
     reportedTotals,
+    coverageReadings,
   });
 
   const date = options.date ?? observedAt.slice(0, 10);

@@ -141,10 +141,8 @@ trap post_pending_on_exit EXIT
 # while this gate still posts success — CI theatre, not a gate (#5402).
 # tests/ci-workflow-coverage.test.mts fails when this list and those
 # workflows drift apart in either direction. `audit-lockfile` is
-# deliberately absent: it is a matrix job whose check runs are named
-# `audit-lockfile (root)`, `audit-lockfile (scripts)`, … so a bare
-# entry would wait on a check run that is never published; the
-# always()-running `security-audit` aggregate blocks for it instead.
+# deliberately absent: the always()-running `security-audit`
+# aggregate evaluates its per-lockfile verdicts and covers it instead.
 #
 # Entries are check-run NAMES, and the lookup below keeps only the
 # last-completed run per name. Test, Typecheck and Lint Code each

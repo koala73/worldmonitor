@@ -305,6 +305,45 @@ path, commands and results, evidence location, and unverified parts. A timeout,
 interruption, skipped job, or unmet prerequisite is not a pass. Keep local proof,
 PR readiness, merge, deployment, production observation, and acceptance separate.
 
+### CodeQL scan schedule and setup handover
+
+`.github/workflows/codeql.yml` scans languages affected by a PR, including both
+sides of renames and relevant dependency manifests. An incomplete or failed PR
+file lookup runs all six languages. Changes to the CodeQL workflow or configuration
+also run all six. These filters select jobs; each selected job scans the repository,
+not only the changed files.
+
+JavaScript/TypeScript runs daily at 03:23 UTC. Sunday's run also scans Actions, Go,
+Python, Ruby and Rust. Manual dispatch scans all six for recovery. New commits
+cancel older scans of the same PR; scheduled and manual scans are never cancelled
+by PR activity. Pushes to `main` scan all six only when the CodeQL workflow itself
+changes, so default-branch findings can lag by one day for JS/TS and one week for
+the other languages, plus runner delays.
+
+The repository owner must coordinate activation with the approved merge:
+
+1. Keep default setup enabled while reviewing this workflow. Advanced analysis
+   uploads can be rejected while default setup is enabled; this is not a passing
+   CodeQL validation result.
+2. At the approved handover, disable default setup in **Settings > Code security >
+   CodeQL analysis**, then merge the workflow. The merge changes
+   `.github/workflows/codeql.yml`, so its push to `main` scans all six languages;
+   dispatch **CodeQL** on `main` only if that run did not start. GitHub documents the [switch to advanced setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configuring-advanced-setup-for-code-scanning).
+3. Confirm all six `Analyze (<language>)` jobs succeed and publish fresh results
+   for the merged commit in **Security > Code scanning**. Check any required
+   code-scanning rules still accept the new workflow; do not treat skipped jobs
+   as proof of analysis. Confirm the next daily and Sunday runs, and compare
+   runner-minutes after seven days before claiming savings.
+4. If analysis or uploads fail, restore default setup and disable the advanced
+   workflow until repaired. Avoid leaving both disabled or allowing both to run
+   as the steady state.
+   If the merge or manual dispatch cannot proceed after default setup is
+   disabled, restore default setup immediately. An interrupted handover is not
+   complete; do not leave main without an active scan configuration.
+
+Run `node --test tests/codeql-workflow.test.mjs` for local selection and workflow
+contract checks. These tests do not execute CodeQL or prove SARIF upload access.
+
 ## How to Contribute
 
 ### Types of Contributions We Welcome

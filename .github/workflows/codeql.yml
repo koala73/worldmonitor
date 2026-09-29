@@ -1,0 +1,105 @@
+name: CodeQL
+
+on:
+  pull_request:
+  # CodeQL annotates every run that has no on.push hook. Scoped to this file, it
+  # also scans all six languages on main when the scan configuration changes.
+  push:
+    branches: [main]
+    paths: ['.github/workflows/codeql.yml']
+  schedule:
+    # JS/TS every day; Sunday includes the other five languages.
+    - cron: '23 3 * * 1-6'
+    - cron: '23 3 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: codeql-changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      languages: ${{ steps.select.outputs.languages }}
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        id: select
+        with:
+          script: |
+            const all = ['actions', 'go', 'javascript-typescript', 'python', 'ruby', 'rust'];
+            const emit = languages => core.setOutput('languages', JSON.stringify(languages));
+            if (context.eventName !== 'pull_request') {
+              emit(context.eventName === 'schedule' && context.payload.schedule === '23 3 * * 1-6'
+                ? ['javascript-typescript'] : all);
+              return;
+            }
+            try {
+              const pr = context.payload.pull_request;
+              const params = { ...context.repo, pull_number: pr.number };
+              const files = await github.paginate(github.rest.pulls.listFiles, { ...params, per_page: 100 });
+              const { data: current } = await github.rest.pulls.get(params);
+              // Same conservative fallback as lint-code: never trust a capped or moved diff.
+              if (current.head.sha !== pr.head.sha || current.base.sha !== pr.base.sha ||
+                  current.changed_files !== files.length || files.length >= 3000 || !files.length) {
+                throw new Error('PR diff moved or is incomplete');
+              }
+              const paths = files.flatMap(file => [file.filename, ...(file.previous_filename ? [file.previous_filename] : [])]);
+              if (paths.some(path => typeof path !== 'string' || !path.length)) {
+                throw new Error('Invalid PR file paths');
+              }
+              if (paths.some(path => /^\.github\/(workflows\/codeql\.yml$|codeql[/.])/.test(path))) {
+                emit(all);
+                return;
+              }
+              const patterns = {
+                actions: /(^\.github\/workflows\/.*\.ya?ml$|(^|\/)action\.ya?ml$)/,
+                go: /(\.go$|(^|\/)go\.(mod|sum|work)(\.sum)?$)/,
+                'javascript-typescript': /(\.[cm]?[jt]sx?$|\.vue$|\.html?$|(^|\/)(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|tsconfig[^/]*\.json)$)/,
+                python: /(\.pyi?$|(^|\/)(pyproject\.toml|requirements[^/]*\.txt|Pipfile(\.lock)?|poetry\.lock|uv\.lock)$)/,
+                ruby: /(\.(rb|erb|gemspec)$|(^|\/)(Gemfile(\.lock)?|Rakefile)$)/,
+                rust: /(\.rs$|(^|\/)(Cargo\.(toml|lock)|rust-toolchain(\.toml)?)$|(^|\/)\.cargo\/)/,
+              };
+              emit(all.filter(language => paths.some(path => patterns[language].test(path))));
+            } catch (error) {
+              core.warning(`Scanning all languages: ${error.message}`);
+              emit(all);
+            }
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: changes
+    if: needs.changes.outputs.languages != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.changes.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        if: matrix.language == 'go'
+        with:
+          go-version-file: sdk/go/go.mod
+          cache: false
+      - uses: github/codeql-action/init@7999b86c43a865dc79d8923397f35af22de63401 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+      - uses: github/codeql-action/analyze@7999b86c43a865dc79d8923397f35af22de63401 # v4
+        with:
+          category: /language:${{ matrix.language }}

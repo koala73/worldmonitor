@@ -10,6 +10,8 @@ impressions per indexed page.
   inspected sample and its index states; performance per window and family;
   flagged disagreements; sampling notes.
 - `<date>.md` — the deterministic human summary generated from that snapshot.
+- `coverage-totals.json` — the Page indexing report totals, recorded by hand
+  each month. See [Monthly coverage totals](#monthly-coverage-totals).
 
 The first snapshot is `2026-09-25`. Later ones arrive through the weekly
 workflow's review PR.
@@ -101,6 +103,58 @@ Search Analytics also reports URLs we never declared: legacy paths such as
 `status.`. On 2026-09-25 that was 30 of 1,056 page rows in the 28-day window.
 They stay in the window totals and appear by name under `unmapped`, so each
 recurring one can be given a family.
+
+**A brand-only unmapped URL at position 1 is likely a sitelink, not a page
+that ranks.** The snapshot cannot show this on its own. Its `topQueries` cover
+the whole window, not one URL, and it holds no inspection result for an
+undeclared URL. The 2026-09-25 snapshot recorded `/zh/map-engine` with 9,486
+impressions at position 1.18. A separate check on 2026-09-29 ran URL
+Inspection and Search Analytics filtered to that page, by query and by week
+([results on #8700](https://github.com/koala73/worldmonitor/issues/8700#issuecomment-5886812477)).
+It found the following:
+
+- Every impression came from a brand query such as "world monitor", at
+  position 1.0 to 1.2. That is the same slot as the homepage and its other
+  sitelinks.
+- Google's canonical for the URL is its 308 destination,
+  `/docs/zh/map-engine`.
+- The row began the week of 2026-09-06 and fell to 153 impressions by the
+  week of 2026-09-20.
+- `/'to` followed the same pattern.
+
+The unprefixed path comes from Mintlify's server-rendered navigation data. Our
+`<a href>` and `hreflang` links carry `/docs`. Before chasing a row like this,
+rerun that page-filtered split.
+
+## Monthly coverage totals
+
+The Page indexing report totals ("Page with redirect", "Not found (404)",
+"Crawled, currently not indexed") have no API. Once a month, open Search
+Console, Indexing, Pages, and append a reading to `coverage-totals.json`:
+
+```json
+{
+  "exportedOn": "YYYY-MM-DD",
+  "declaredUrls": 0,
+  "pageWithRedirect": 0,
+  "notFound404": 0,
+  "crawledNotIndexed": 0,
+  "source": "https://github.com/koala73/worldmonitor/issues/..."
+}
+```
+
+- `exportedOn` is the date Search Console shows the report as updated. It must
+  be later than the previous reading.
+- `declaredUrls` is the sitemap inventory that day. The latest weekly
+  snapshot's `inventory.declared` is close enough.
+- `source` links to the issue comment where the reading is recorded, with a
+  screenshot of the report.
+
+Every weekly summary renders the whole series under "Coverage totals (recorded
+by hand)". Once the latest reading is more than 35 days old, the summary marks
+it as overdue, so a missed month shows up in the weekly review PR. The
+collector refuses a malformed ledger, and `tests/seo-gsc-collector.test.mjs`
+checks the committed file.
 
 ## Run time and failures
 
