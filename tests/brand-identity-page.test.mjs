@@ -61,7 +61,7 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /https:\/\/www\.wikidata\.org\/wiki\/Q141237754/, 'brand page must cite the World Monitor Wikidata item');
   });
 
-  it('is advertised on catalog, llms, agents, and sitemap discovery surfaces', () => {
+  it('is advertised on catalog, llms, agents, and IndexNow discovery surfaces', () => {
     const catalog = JSON.parse(read('public/.well-known/api-catalog'));
     const hrefs = catalog.linkset.flatMap((ctx) =>
       Object.values(ctx).flatMap((value) => (Array.isArray(value) ? value.map((entry) => entry.href) : [])),
@@ -72,8 +72,11 @@ describe('World Monitor brand-identity page', () => {
       assert.ok(read(path).includes('/world-monitor.md'), `${path} must link world-monitor.md`);
     }
 
+    // A file, not a page: it left the sitemap (#8608) and is announced through
+    // IndexNow and llms.txt instead, still on the www host.
     const sitemap = read('public/sitemap-main.xml');
-    assert.ok(sitemap.includes(`<loc>${BRAND_URL}</loc>`), 'sitemap-main.xml must register the www brand page');
+    assert.ok(!sitemap.includes(`<loc>${BRAND_URL}</loc>`), 'sitemap-main.xml must not declare the brand markdown');
+    assert.match(read('scripts/build-sitemap.mjs'), /`\$\{SITE_ORIGIN\}\/world-monitor\.md`/);
   });
 });
 

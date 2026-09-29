@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
 import { dirname, join, relative, resolve } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
@@ -5043,12 +5044,16 @@ describe('markdown canonical Link headers (#4999)', () => {
     });
   }
 
-  it('every sitemap-listed .md URL has the canonical Link header rule', () => {
-    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
-    const mdUrls = [...sitemap.matchAll(/<loc>https:\/\/www\.worldmonitor\.app(\/[^<]+\.md)<\/loc>/g)].map((m) => m[1]);
-    assert.ok(mdUrls.length > 0, 'expected .md entries in sitemap-main.xml');
+  it('every announced .md URL has the canonical Link header rule', () => {
+    // The markdown twins left the sitemap (#8608); MACHINE_READABLE_URLS is
+    // now the list IndexNow announces, so the canonical-header sweep reads it.
+    const mdUrls = MACHINE_READABLE_URLS
+      .map((url) => new URL(url))
+      .filter((url) => url.hostname === 'www.worldmonitor.app' && url.pathname.endsWith('.md'))
+      .map((url) => url.pathname);
+    assert.ok(mdUrls.length > 0, 'expected .md entries in MACHINE_READABLE_URLS');
     for (const path of mdUrls) {
-      assert.ok(MD_PAGES.includes(path), `${path} is in sitemap-main.xml but has no canonical Link header rule — add it to vercel.json and this test`);
+      assert.ok(MD_PAGES.includes(path), `${path} is announced but has no canonical Link header rule — add it to vercel.json and this test`);
     }
   });
 });
@@ -5102,10 +5107,10 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       f,
       readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
     ]);
-    // The sitemap and the indexed "Build on World Monitor" blog post are the two
-    // web-search discovery surfaces (candidate fixes #1/#3 of the issue) — assert
-    // them directly so a dropped sitemap entry or blog cross-link is caught here,
-    // not only via the reverse #4999 sitemap->MD_PAGES sweep.
+    // IndexNow and the indexed "Build on World Monitor" blog post are the two
+    // web-search discovery surfaces (candidate fixes #1/#3 of the issue). The
+    // pages left the sitemap in #8608 because they are files, not pages; the
+    // IndexNow list replaced it here.
     const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
     const blogPost = readFileSync(
       resolve(__dirname, '../blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md'),
@@ -5118,10 +5123,8 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       for (const [name, content] of surfaces) {
         assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
       }
-      assert.ok(
-        sitemap.includes(`https://www.worldmonitor.app${page.path}`),
-        `sitemap-main.xml must register ${page.path} on the www host`
-      );
+      assert.ok(MACHINE_READABLE_URLS.includes(url), `IndexNow must announce ${url}`);
+      assert.ok(!sitemap.includes(`<loc>${url}</loc>`), `sitemap-main.xml must not declare the file ${page.path}`);
       assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
   });
