@@ -411,7 +411,7 @@ describe('widget data-tool contracts', () => {
 
   it('lists exactly the FRED series the RPC accepts', () => {
     const shared = src('server/worldmonitor/economic/v1/_fred-shared.ts');
-    const allowed = [...shared.match(/ALLOWED_FRED_SERIES = new Set<string>\(\[([^]*?)\]\)/)[1].matchAll(/'([A-Z0-9]+)'/g)].map(m => m[1]).sort();
+    const allowed = [...shared.match(/ALLOWED_FRED_SERIES = new Set<string>\(\[([\s\S]*?)\]\)/)[1].matchAll(/'([A-Z0-9]+)'/g)].map(m => m[1]).sort();
     assert.ok(allowed.length > 10);
     for (const prompt of prompts) {
       const line = prompt.match(/get-fred-series \(params: series_id — ONLY one of: ([^;]+);/);
@@ -420,10 +420,11 @@ describe('widget data-tool contracts', () => {
     }
   });
 
-  it('forbids inventing time windows and says quote sparklines are intraday', () => {
+  it('forbids inventing time windows and says quote sparklines are undated', () => {
     for (const prompt of prompts) {
       assert.match(prompt, /## Time windows — never invent dates/);
-      assert.match(prompt, /sparkline.*today's intraday prices.*no dates/i);
+      assert.match(prompt, /sparkline of recent prices with no dates.*interval varies by source/i);
+      assert.doesNotMatch(prompt, /Today \(intraday\)/, 'a sparkline may be seven daily closes, not intraday');
       assert.match(prompt, /not in the data.*say so in the widget/i);
       assert.match(prompt, /Never fill missing history from search_web/);
       assert.match(prompt, /could not be fetched.*never substitute remembered, estimated or example values/i);
@@ -579,14 +580,14 @@ describe('widget-agent relay — dated, compact tool results', () => {
     assert.equal(new URL(bootstrap.effects[0]).searchParams.has('symbols'), false);
     const content = JSON.parse(toolResultsFor(bootstrap.requests[1])[0].content);
     assert.deepEqual(content.data.commodityQuotes.quotes.map(q => q.symbol), ['GC=F', 'SI=F']);
-    assert.deepEqual(content._widget.symbols, { requested: ['GC=F', 'SI=F'], missing: [] });
+    assert.deepEqual(content._widget.symbols, { requested: ['GC=F', 'SI=F'], missing: [], filtered: ['data.commodityQuotes.quotes'] });
     assert.equal(result.requests.length, 2);
   });
 });
 
 describe('widget tool result compaction', () => {
   const relay = src('scripts/ais-relay.cjs');
-  const match = relay.match(/function compactWidgetToolJson\([^]*?\n\}/);
+  const match = relay.match(/function compactWidgetToolJson\([\s\S]*?\n\}/);
   const compact = (text, symbols) => {
     assert.ok(match, 'Missing compactWidgetToolJson');
     return vm.runInNewContext(`${match[0]}\ncompactWidgetToolJson`)(text, symbols);
@@ -624,10 +625,21 @@ describe('widget tool result compaction', () => {
     assert.equal(parsed.data.earthquakes.fetchedAt, 1);
   });
 
+  it('filters only the lists that contain a requested symbol and names them', () => {
+    const text = JSON.stringify({ data: {
+      commodityQuotes: { quotes: [{ symbol: 'GC=F' }, { symbol: 'CL=F' }] },
+      marketQuotes: { quotes: [{ symbol: 'NVDA' }, { symbol: 'AAPL' }] },
+    } });
+    const out = JSON.parse(compact(text, ['GC=F']));
+    assert.deepEqual(out.data.commodityQuotes.quotes.map(q => q.symbol), ['GC=F']);
+    assert.deepEqual(out.data.marketQuotes.quotes.map(q => q.symbol), ['NVDA', 'AAPL']);
+    assert.deepEqual(out._widget.symbols.filtered, ['data.commodityQuotes.quotes']);
+  });
+
   it('reports requested symbols the data does not have', () => {
     const out = JSON.parse(compact(JSON.stringify({ data: { q: { quotes: [{ symbol: 'GC=F' }] } } }), ['GC=F', 'XAU']));
     assert.deepEqual(out.data.q.quotes.map(q => q.symbol), ['GC=F']);
-    assert.deepEqual(out._widget.symbols, { requested: ['GC=F', 'XAU'], missing: ['XAU'] });
+    assert.deepEqual(out._widget.symbols, { requested: ['GC=F', 'XAU'], missing: ['XAU'], filtered: ['data.q.quotes'] });
   });
 });
 
