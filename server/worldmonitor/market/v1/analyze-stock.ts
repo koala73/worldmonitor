@@ -947,10 +947,17 @@ function isDefinitiveYahooInvalidSymbol(status: number, data: YahooChartResponse
 export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHistoryOutcome> {
   await yahooGate();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
-  const response = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
+  // A timeout or network failure is a transient outage like a Yahoo 5xx, not an
+  // uncaught throw that fails analyze-stock with a 500 (WORLDMONITOR-ZQ).
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+  } catch {
+    return { status: 'unavailable' };
+  }
   const data = await response.json().catch(() => null) as YahooChartResponse | null;
   if (isDefinitiveYahooInvalidSymbol(response.status, data)) return { status: 'invalid-symbol' };
   if (!response.ok || !data) return { status: 'unavailable' };

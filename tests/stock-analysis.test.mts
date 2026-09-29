@@ -14,6 +14,7 @@ import {
   deriveSignal,
   fetchYahooAnalystData,
   fetchYahooHistory,
+  fetchYahooHistoryOutcome,
   getFallbackOverlay,
   normalizeNewsSentiment,
   selectEarningsForSymbol,
@@ -196,6 +197,31 @@ describe('analyzeStock handler', () => {
     assert.equal(response.recentUpgrades[0].action, 'up');
     assert.equal(response.recentUpgrades[0].toGrade, 'Overweight');
     assert.equal(response.recentUpgrades[0].fromGrade, 'Equal-Weight');
+  });
+
+  it('reports the analysis unavailable when the Yahoo history request times out', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      }
+      return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+    }) as typeof fetch;
+
+    const response = await analyzeStock({} as never, { symbol: 'AAPL', name: 'Apple', includeNews: false }, { now: new Date('2026-09-29T11:09:50Z') });
+
+    assert.equal(response.available, false);
+    assert.equal(response.symbol, 'AAPL');
+  });
+});
+
+describe('fetchYahooHistoryOutcome', () => {
+  it('classifies a rejected request as unavailable, not an invalid symbol', async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError('fetch failed');
+    }) as typeof fetch;
+
+    assert.deepEqual(await fetchYahooHistoryOutcome('AAPL'), { status: 'unavailable' });
   });
 });
 
