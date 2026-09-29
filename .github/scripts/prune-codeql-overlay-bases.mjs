@@ -82,9 +82,9 @@ export function pruneOverlayBases({ ref, dryRun = false, run = spawnSync, log = 
       freed += entry.sizeInBytes;
       continue;
     }
-    const result = gh(run, ['cache', 'delete', String(entry.id)]);
-    const output = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim();
-    if (result.status === 0 || /Could not find a cache matching/i.test(output)) {
+    const result = run('gh', ['cache', 'delete', String(entry.id)], { encoding: 'utf8' });
+    const output = result.error ? result.error.message : `${result.stderr ?? ''}${result.stdout ?? ''}`.trim();
+    if (!result.error && (result.status === 0 || /Could not find a cache matching/i.test(output))) {
       log(`deleted ${entry.id} ${entry.key} (${entry.sizeInBytes} bytes)`);
       deleted++;
       freed += entry.sizeInBytes;

@@ -147,6 +147,22 @@ test('runner succeeds when every stale delete lands, and dry-run deletes nothing
   assert.match(lines.at(-1), /dry run/);
 });
 
+test('a delete that fails to spawn counts as that entry failing, and later deletes still run', () => {
+  const keep = base({ createdAt: '2026-09-29T03:40:00Z', runId: 400 });
+  const unspawnable = base({ createdAt: '2026-09-27T03:40:00Z', runId: 200, size: 5 });
+  const later = base({ createdAt: '2026-09-28T03:40:00Z', runId: 300, size: 7 });
+  const { run, calls } = fakeGh([keep, unspawnable, later], {
+    [unspawnable.id]: { error: Object.assign(new Error('spawnSync gh EAGAIN'), { code: 'EAGAIN' }) },
+  });
+  const lines = [];
+  const result = pruneOverlayBases({ ref: REF, run, log: line => lines.push(line) });
+  assert.deepEqual(ids(calls.filter(call => call[2] === 'delete').map(call => ({ id: Number(call[3]) }))), ids([unspawnable, later]));
+  assert.equal(result.deleted, 1);
+  assert.equal(result.failed, 1);
+  assert.equal(result.exitCode, 1);
+  assert.ok(lines.some(line => line.includes(String(unspawnable.id)) && /EAGAIN/.test(line)), lines.join('\n'));
+});
+
 test('runner annotates keys it cannot parse, so a key-format change cannot silently stop pruning', () => {
   const unparsed = { id: nextId++, key: 'codeql-overlay-base-database-2-673738e94a8102ad-javascript-2.28.0-rc1-x-1-1', ref: REF, createdAt: '2026-09-29T00:00:00Z', sizeInBytes: 1 };
   const { run } = fakeGh([unparsed], {});
