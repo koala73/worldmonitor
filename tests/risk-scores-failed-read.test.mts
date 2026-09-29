@@ -166,11 +166,14 @@ describe('risk-scores build with failed Redis reads', () => {
     assert.ok(!errorLogs[0]!.includes(marker), 'the log must not carry stored payload bytes');
   });
 
-  it('rejects the build when a trend-prior bucket read errors', async () => {
+  // The prior only sets movement labels; a missing one already reads "stable".
+  it('publishes fresh scores when a trend-prior bucket read errors', async () => {
     const [targetBucket] = getCiiTrendPriorCandidateBuckets(Date.now());
     stubRedis({ failing: [`risk:scores:sebuf:trend-history:${CII_FORMULA_VERSION}:${targetBucket}`] });
-    await getRiskScores({} as never, {} as never);
-    assert.deepEqual(published(), [], 'the trend prior is a build input like any other');
+    const response = await getRiskScores({} as never, {} as never);
+    assert.equal(response.degraded, false, 'a trend-prior read error must not reject current scores');
+    assert.ok(published().includes(SEED_META_KEY), 'the build still publishes');
+    assert.equal(rejectionRecord().length, 0, 'no rejection is recorded');
   });
 
   it('does not fall back to the previous displacement year when the current year read errors', async () => {
