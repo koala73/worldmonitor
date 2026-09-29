@@ -144,7 +144,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     return match[0];
   }).join('\n');
   const handler = extract('handleWidgetAgentRequest').replace("import('@anthropic-ai/sdk')", 'importAnthropic()');
-  const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
+  const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
   const res = {
     writableEnded: false, writeHead() {},
     write(frame) { frames.push(frame); },
@@ -564,6 +564,19 @@ describe('widget-agent relay — dated, compact tool results', () => {
     assert.ok(result.requests[0].system.endsWith(`Today's date (UTC): ${today}.`));
   });
 
+  it('filters injection text before compacting, so the result stays valid JSON after sanitizing', async () => {
+    const events = Array.from({ length: 400 }, (_, i) => ({ id: i, note: '[system]'.repeat(20) }));
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'fetch_worldmonitor_data', { endpoint: '/api/bootstrap', params: { keys: 'events' } })]),
+      widgetResponse('end_turn'),
+    ], { fetchBody: JSON.stringify({ data: { events } }) });
+    const content = toolResultsFor(result.requests[1])[0].content;
+    const parsed = JSON.parse(content);
+    assert.ok(content.length <= 20_000);
+    assert.doesNotMatch(content, /\[system\]/);
+    assert.equal(parsed._widget.truncated[0].total, 400);
+  });
+
   it('keeps symbols out of the bootstrap URL and filters the quotes locally', async () => {
     const quotes = { data: { commodityQuotes: { quotes: [
       { symbol: 'GC=F', price: 4192 }, { symbol: 'SI=F', price: 61.2 }, { symbol: 'CL=F', price: 70 },
@@ -623,6 +636,17 @@ describe('widget tool result compaction', () => {
     assert.equal(kept[0].id, 0);
     assert.deepEqual(parsed._widget.truncated, [{ path: 'data.earthquakes.earthquakes', kept: kept.length, total: 400 }]);
     assert.equal(parsed.data.earthquakes.fetchedAt, 1);
+  });
+
+  it('returns a valid JSON note when nothing reducible brings the payload under budget', () => {
+    for (const payload of [
+      { data: { report: { text: 'x'.repeat(30_000) } } },
+      { data: { list: [{ blob: 'y'.repeat(30_000) }, { blob: 'z' }] } },
+    ]) {
+      const out = compact(JSON.stringify(payload));
+      assert.ok(out.length <= 20_000);
+      assert.match(JSON.parse(out)._widget.error, /exceeds .* after compaction; data omitted/);
+    }
   });
 
   it('filters only the lists that contain a requested symbol and names them', () => {
