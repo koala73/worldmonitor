@@ -346,7 +346,6 @@ describe('main() publication gate', () => {
   let eiaBody;
   let cache;
   let publicationFailure;
-  let expireResult;
 
   function respond(body) {
     return new Response(JSON.stringify(body), { status: 200 });
@@ -360,7 +359,8 @@ describe('main() publication gate', () => {
         cache.set(cmd[1], cmd[2]);
         return { result: 'OK' };
       case 'GET': return { result: cache.get(cmd[1]) ?? null };
-      case 'EXPIRE': return { result: expireResult };
+      // Redis EXPIRE answers 0 for a key that does not exist.
+      case 'EXPIRE': return { result: cache.has(cmd[1]) ? 1 : 0 };
       case 'EVAL': return { result: 1 };
       default: return { result: null };
     }
@@ -378,7 +378,6 @@ describe('main() publication gate', () => {
     redisCommands = [];
     cache = new Map();
     publicationFailure = null;
-    expireResult = 1;
     errors = [];
     entsoCalls = 0;
     entsoStatus = 200;
@@ -557,13 +556,33 @@ describe('main() publication gate', () => {
     assert.equal(setsFor(ELECTRICITY_META_KEY).length, 1);
   });
 
+  // Publish a full snapshot, then date it to an earlier UTC day so the next
+  // run fetches instead of skipping.
+  async function publishPreviousDaySnapshot() {
+    assert.equal(await main(), true);
+    const meta = JSON.parse(cache.get(ELECTRICITY_META_KEY));
+    meta.fetchedAt -= 30 * 60 * 60 * 1000;
+    cache.set(ELECTRICITY_META_KEY, JSON.stringify(meta));
+  }
+
   it('marks a failure as retained only when every last-good key was extended', async () => {
     process.env.ENTSO_E_TOKEN = 'entso-token';
+    await publishPreviousDaySnapshot();
     failedDomain = ENTSO_REGION.eic;
     await assert.rejects(main(), (err) => err.retained === true);
 
-    expireResult = 0; // the previous snapshot has already expired
+    cache.clear(); // the previous snapshot has already expired
     await assert.rejects(main(), (err) => err.retained === false);
+  });
+
+  // A write that lands before a later one fails leaves a mixed snapshot, so
+  // extending every TTL does not mean the previous snapshot survived.
+  it('does not treat a partly written publication as retained', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    await publishPreviousDaySnapshot();
+    publicationFailure = ELECTRICITY_INDEX_KEY;
+
+    await assert.rejects(main(), (err) => /publication not confirmed/.test(err.message) && err.retained === false);
   });
 });
 

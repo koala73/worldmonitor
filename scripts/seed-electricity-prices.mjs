@@ -363,6 +363,9 @@ export async function main() {
 
   let entsoResults = [];
   let eiaResults = [];
+  // Once any write is attempted the previous snapshot may be partly replaced,
+  // so a later failure can no longer claim to have retained it.
+  let publicationStarted = false;
 
   try {
     if (await publishedToday(dateStr)) {
@@ -423,6 +426,7 @@ export async function main() {
       'EX',
       ELECTRICITY_TTL_SECONDS,
     ]);
+    publicationStarted = true;
     const results = await redisPipeline(commands);
     if (!Array.isArray(results) || results.length !== commands.length || results.some((r) => r?.result !== 'OK')) {
       throw new Error('Redis pipeline: electricity data publication not confirmed');
@@ -454,7 +458,7 @@ export async function main() {
       console.error('[electricity] Failed to preserve snapshot:', e);
       return false;
     });
-    err.retained = retained === true;
+    err.retained = !publicationStarted && retained === true;
     throw err;
   } finally {
     await releaseLock(LOCK_DOMAIN, runId);
