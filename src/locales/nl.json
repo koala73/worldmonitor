@@ -3622,7 +3622,9 @@
       "sortableTable": "Sorteerbare cryptoprijstabel met zoekfilter",
       "animatedCounters": "Geanimeerde tellers voor belangrijkste economische indicatoren",
       "tabbedComparison": "Tabblad-vergelijking van conflictgebeurtenissen per regio"
-    }
+    },
+    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
+    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
   },
   "connectivity": {
     "offlineCached": "Offline — gegevens uit cache van {{freshness}} worden weergegeven.",

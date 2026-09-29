@@ -3622,7 +3622,9 @@
       "sortableTable": "Sortowalna tabela cen kryptowalut z filtrem wyszukiwania",
       "animatedCounters": "Animowane liczniki dla kluczowych wskaźników ekonomicznych",
       "tabbedComparison": "Tabbowe porównanie zdarzeń konfliktowych według regionów"
-    }
+    },
+    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
+    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
   },
   "connectivity": {
     "offlineCached": "Офлайн — показани кеширани данни от {{freshness}}.",

@@ -3622,7 +3622,9 @@
       "sortableTable": "Sortbar kryptopristabll med sökfilter",
       "animatedCounters": "Animerade räknare för viktiga ekonomiska indikatorer",
       "tabbedComparison": "Tabbad jämförelse av konflikthändelser efter region"
-    }
+    },
+    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
+    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
   },
   "connectivity": {
     "offlineCached": "Offline — visar cachad data från {{freshness}}.",

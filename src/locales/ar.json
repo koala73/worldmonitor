@@ -3702,7 +3702,9 @@
       "sortableTable": "جدول أسعار العملات المشفرة القابل للفرز مع مرشح البحث",
       "animatedCounters": "عدادات متحركة للمؤشرات الاقتصادية الرئيسية",
       "tabbedComparison": "مقارنة بتبويبات لأحداث النزاع حسب المنطقة"
-    }
+    },
+    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
+    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
   },
   "connectivity": {
     "offlineCached": "بلا اتصال — يتم عرض البيانات المخزنة مؤقتاً من {{freshness}}.",

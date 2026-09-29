@@ -67,7 +67,9 @@
       "sortableTable": "Sortabilna tablica cijena kriptovaluta s filterom pretrage",
       "animatedCounters": "Animirani brojači za ključne ekonomske pokazatelje",
       "tabbedComparison": "Usporedba konfliktnih događaja po regijama u karticama"
-    }
+    },
+    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
+    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
   },
   "countryBrief": {
     "identifying": "Identificiram zemlju...",
