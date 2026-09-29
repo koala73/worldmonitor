@@ -82,8 +82,13 @@ The on.push warning is codeql-action's lint for a workflow that cannot populate 
 - **Plan the migration as a settings handover.** Expect the PR's `Analyze` jobs to stay red until the merge. Keep them out of the required checks. Write the handover steps (turn off, merge, verify, rollback) into the PR description before asking for review. `CONTRIBUTING.md` has a "CodeQL scan schedule and setup handover" section.
 - **Measure default setup before estimating savings.** Default setup names each PR-triggered run `PR #<number>`, with event `dynamic`. The merge scans appear as one workflow, `Push on main`. Grouping Actions runs by workflow name therefore splits the PR scans into hundreds of small groups, and the first estimate in #8706 missed them. Filter by path instead: `path == "dynamic/github-code-scanning/codeql"` catches both. Measured over 7 days before the switch: about 3,200 runner-min on PR scans plus 2,972 on merge scans.
 - **Keep the query suite the same.** The default-setup state reported `query_suite: default`, and the advanced workflow sets no `queries:`, so it also runs the default suite. Compare `results_count` per category after the switch. A drop means lost coverage, not a quieter codebase.
+- **Budget the overlay-base caches.** Both setups save a CodeQL overlay-base database to the Actions cache on every default-branch run: about 1.37 GB for JavaScript, under a key that includes the commit SHA, run ID and attempt. The action never deletes them (codeql-action `src/trap-caching.ts:228` is its only cache deletion, and it handles TRAP caches).
+  - The key's hash comes from the workflow path, job and matrix values. So after the switch, default setup's bases can never be restored again. #8717 deleted 12 of them, about 4.2 GB.
+  - The `prune-overlay-bases` job (#8718) now keeps only the newest base per group after each default-branch scan. On its first run, on the #8718 merge, it logged `kept 4, deleted 4, freed 1392298522 bytes`.
+  - Without it, eviction by last access lets each fresh base push out idle dependency caches first.
 
 ## Related
 
-- `docs/solutions/performance-issues/superseded-ci-runs-burn-runner-capacity.md`: it says CodeQL "cannot be path-filtered without converting to advanced setup". That conversion has now happened.
-- #8706 (issue), #8711 (the PR that made the switch).
+- `docs/solutions/performance-issues/superseded-ci-runs-burn-runner-capacity.md`, whose CodeQL and `npm ci` items are now resolved.
+- #8706 (issue) and #8711 (the PR that made the switch).
+- #8717 (issue) and #8718 (the PR that prunes the overlay-base caches).
