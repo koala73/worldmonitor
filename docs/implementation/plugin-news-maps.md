@@ -2,43 +2,54 @@
 noindex: true
 ---
 
-# News and maps plugin delivery
+# WorldMonitor news and maps in an MCP App
 
-This is the first implementation increment for #8741 under epic #5198. It extends `get_news_intelligence` and its existing MCP Apps resource. It does not close either issue.
+Issue #8741 is the news/map slice of epic #5198. The plugin mounts WorldMonitor's `NewsPanel`, `SearchModal`, and `MapContainer` with the dashboard styles. It does not implement a separate story-card design or generate another base map.
 
-## Implemented contract
+## Entry and data
 
-The tool advertises global and thread entrypoints under `openai/ui`, following the pinned [OpenAI extension specification](https://github.com/openai/mcp-extensions/blob/93a30a92c1e520da18c4b05a29186ee7c48bc046/docs/spec.md). Empty arguments remain valid. The resource uses the existing standard MCP Apps MIME type and shared bridge. It does not install the McpServer-specific SDK wrapper over the custom server.
+`open_news_dashboard` advertises global and thread entrypoints using the pinned [OpenAI extension specification](https://github.com/openai/mcp-extensions/blob/93a30a92c1e520da18c4b05a29186ee7c48bc046/docs/spec.md). Empty arguments open the view. Initial feed data comes from that tool result; the view does not fetch the digest again on startup.
 
-| Action | Tool argument or host method | View behavior |
+The tool uses the existing authenticated `list-feed-digest` endpoint for the full variant in English. All returned categories use the same item conversion as the website. The endpoint owns its existing 20-item category limit and coverage policy. The existing MCP dispatcher still owns authentication, entitlements, quota, and output budgets. Summary and translation use the existing `summarize-article` endpoint through `analyze_news_headlines`; credentials stay on the server.
+
+The older `get_news_intelligence` tool and its summary widget remain available without changing their original contract.
+
+## Slice inventory
+
+| Action | Existing implementation | Plugin/assistant path |
 |---|---|---|
-| Open news | `get_news_intelligence({})` | Consumes the initial result without another data request |
-| Search | `query` | Existing headline, source and clustered-headline search |
-| Filter category or country | `category`, `country` | Existing server filters, followed by the result cap |
-| Filter source | `source` | Exact, case-insensitive primary outlet match |
-| Filter publication time | `published_since` | Inclusive Unix millisecond boundary; excludes unknown dates |
-| Focus and zoom map | `country`, `map_latitude`, `map_longitude`, `map_zoom` | Applies requested view when the mounted app receives the result |
-| Pan or zoom directly | Pointer, arrow keys and zoom buttons | Changes view-local state without a paid data request |
-| Open detail | Details button | Shows clustered titles and source provenance |
-| Open source | `ui/open-link` | Uses the host browser capability with an HTTP(S) URL |
-| Report applied view | `ui/update-model-context` | Sends current filters, map state and country precision when the host supports text context |
+| Browse news, source provenance, cluster details, sorting | `NewsPanel` | Actual component, fed by `open_news_dashboard` |
+| Source and category selection | Existing feed categories and panel names | UI selectors and `apply_news_view` |
+| Search and select an article | `SearchModal`, existing search index, `NewsPanel.scrollToNewsItem` | Search button or `apply_news_view.query`; `focus_news_article` selects the same snapshot item |
+| Country context | Existing country geometry and country-mention matcher | Map country selection or `apply_news_view.country` |
+| Time selection | Existing map time controls | UI or `apply_news_view.time_range` |
+| Pan, zoom, country focus | `MapContainer` and its renderers | Map gestures or `apply_news_view` |
+| Renderer selection | Existing 2D/3D controls and fallback policy | UI or `apply_news_view.renderer`; receipt includes the effective renderer |
+| News locations | `MapContainer.setNewsLocations` | Uses only coordinates supplied by the digest; selecting an unlocated article reports `mapFocused: false` |
+| Summary and translation | `NewsPanel`, existing news RPC | Authenticated MCP analysis call |
+| Open article source | Existing attributed article link | `ui/open-link`; no credential-bearing navigation |
+| Refresh | Existing digest endpoint | Host `tools/call`, with last rendered news retained on failure |
 
-The data source is the existing intelligence snapshot, not a historical article archive. Source policy, freshness, access and quota remain in the existing dispatcher. No new account write scope, credential transport, direct browser data fetch, or persistent view record is introduced.
+`apply_news_view` and `focus_news_article` are app-local tools advertised to capable hosts. View changes share the UI's implementation. Map operations wait for the existing viewport-settled contract before returning an applied receipt. Server entry results carry requested state, not a claim that a view was applied. Optional model-context updates contain the effective view.
 
-The SVG base map comes from `public/data/countries.geojson`. `scripts/generate-plugin-news-map.mjs` projects it deterministically and normalizes polygon winding. `--check` verifies the committed generated asset. Highlighting means country-level reporting context. It does not mean an event occurred at a country's center.
+The map uses the existing base maps and news locations only. Other domain-layer controls are hidden in this slice. Military, aviation, maritime, markets, infrastructure, climate, and all other domain layers remain under #5198. The existing SVG renderer intentionally omits news-location markers; it still supports map navigation and geographic focus. WebGL and globe retain their existing renderer and entitlement behavior.
 
-## Proof and limits
+## Packaging and sandbox
 
-The focused tests exercise emitted HTML, initial results, tool metadata, foreign-message rejection, hostile text, filter ordering, empty/unavailable/stale states, and denial recovery. The existing resource/protocol/auth tests remain regression gates.
+`npm run build:plugin` builds `plugin.html` independently into `dist/plugin`. Production `build:full` includes this step. A separate build prevents the dashboard's shared chunks from executing the full application bootstrap in the frame. It reuses source components rather than maintaining a UI copy.
 
-The Playwright proof uses a sandboxed fixture host with no form permission. It checks actual SVG rendering, country focus, source-link messages, absence of duplicate initial data calls, denial recovery, and responsive screenshots. Fixture results are labelled and do not demonstrate live provider data or production OpenAI host compatibility.
+`ui://worldmonitor/news-dashboard.html` reads the static build from the canonical origin, or the trusted Vercel deployment hostname for previews. Reads reject redirects, non-HTML/error pages, oversized documents, and missing plugin roots. Resource metadata declares the asset/base-map origins and base URI. Static plugin assets and public map data allow cross-origin reads. No nested website iframe or arbitrary request proxy is used.
 
-## Remaining issue acceptance
+MapLibre receives a plugin-only module-worker URL. A small data-URL bootstrap imports its bundled worker because Chromium blocks module workers created from opaque-origin blob URLs. The CSP declaration includes this requirement. News clustering reuses the existing synchronous algorithm over the endpoint's bounded category buckets; the website keeps its worker path.
 
-- Actual OpenAI host installation, OAuth and entrypoint verification against a deployed commit.
-- Broader feed/digest and news-analysis interaction coverage, including a complete source/variant inventory.
-- The dashboard's additional map renderers and news overlays. Only the country-context SVG view is delivered here.
-- Assistant/UI parity for selecting a particular story and every inventoried news action.
-- Host cancellation, request races and lifecycle behavior beyond the tested bounded UI request.
+## Verification and remaining acceptance
 
-All other domain layers remain epic work. No marketplace listing, deployment or full-feature parity is claimed.
+The browser regression builds the production artifact and renders it in a script-only, opaque sandbox with fixture data. It checks the actual panels, base map, MapLibre worker startup, search, source links, no duplicate initial data call, assistant/UI filter equivalence, denied-refresh retention, clearing filters, valid-empty data, and compact-screen overflow. Screenshots are fixture evidence, not evidence of a connected OpenAI host or live providers.
+
+Focused API/resource tests check metadata, fixed-origin asset loading, size/error handling, authenticated endpoint use, and denial propagation. Website converter, panel, map, type, and import-boundary checks remain regression gates.
+
+Actual OpenAI host installation, OAuth, negotiated CSP, app-local tool support, and live renderer/provider acceptance still require a configured development connection and a deployed commit. The local fixture does not close those criteria. Full variant parity, live video news, account/settings workflows, and other domains remain epic work. Do not close #8741 or #5198 on local evidence alone.
+
+## After deployment
+
+With deployment separately authorized, connect the development plugin to the exact deployment and record host/version, commit, user tier, renderer, and source coverage. Exercise initial load, search, article focus/source opening, summary denial/success, refresh expiry, and both available renderer modes. Check browser errors and MCP responses before marking the issue's host acceptance complete.
