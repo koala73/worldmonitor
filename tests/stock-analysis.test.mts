@@ -199,7 +199,7 @@ describe('analyzeStock handler', () => {
     assert.equal(response.recentUpgrades[0].fromGrade, 'Equal-Weight');
   });
 
-  it('reports the analysis unavailable when the Yahoo history request times out', async () => {
+  it('reports the analysis unavailable to the first and later requesters when Yahoo history times out', async () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
@@ -208,10 +208,15 @@ describe('analyzeStock handler', () => {
       return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
     }) as typeof fetch;
 
-    const response = await analyzeStock({} as never, { symbol: 'AAPL', name: 'Apple', includeNews: false }, { now: new Date('2026-09-29T11:09:50Z') });
+    // No `now` option, so both calls go through the production cache path.
+    const request = { symbol: 'TMOUT', name: 'TMOUT', includeNews: false };
+    const first = await analyzeStock({} as never, request);
+    const second = await analyzeStock({} as never, request);
 
-    assert.equal(response.available, false);
-    assert.equal(response.symbol, 'AAPL');
+    assert.equal(first.available, false);
+    assert.equal(first.symbol, 'TMOUT');
+    assert.equal(second.available, false);
+    assert.equal(second.symbol, 'TMOUT');
   });
 });
 
