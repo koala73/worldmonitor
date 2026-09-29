@@ -60,22 +60,23 @@ gh api repos/OWNER/REPO/code-scanning/default-setup -q .state   # expect not-con
 gh pr merge <N> --squash --match-head-commit <reviewed-sha>
 ```
 
-To roll back, do both of these. Re-enabling default setup alone leaves the advanced workflow running, and its uploads are then rejected again:
+To roll back, do both of these, in this order. Re-enabling default setup alone leaves the advanced workflow running, and its uploads are then rejected again. Re-enable default setup first, and disable the workflow only once that has succeeded. A failure between the two steps then still leaves one configuration scanning.
 
 ```bash
-gh workflow disable codeql.yml -R OWNER/REPO
 gh api -X PATCH repos/OWNER/REPO/code-scanning/default-setup -f state=configured
+gh api repos/OWNER/REPO/code-scanning/default-setup -q .state   # expect configured
+gh workflow disable codeql.yml -R OWNER/REPO
 ```
 
 **3. Check parity from the analyses API, not from green jobs.** List the analyses for the merge commit only, then do the same for default setup's last scan (the commit just before it), and compare them category by category:
 
 ```bash
 SHA=<merge-commit-sha>
-gh api "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=100" \
-  -q ".[] | select(.commit_sha == \"$SHA\") | \"\(.category) results=\(.results_count) error=\(.error)\""
+gh api --paginate "repos/OWNER/REPO/code-scanning/analyses?ref=refs/heads/main&per_page=100" \
+  -q ".[] | select(.commit_sha == \"$SHA\") | \"\(.id) \(.category) results=\(.results_count) error=\(.error)\""
 ```
 
-The same category list, with every `error` empty, shows every language uploaded. Matching `results_count` values are a count check, not proof that the same alerts were found. For a real comparison, fetch each analysis as SARIF (`gh api -H 'Accept: application/sarif+json' repos/OWNER/REPO/code-scanning/analyses/<id>`) and compare the rule IDs and locations.
+`--paginate` matters: without it, a commit older than the newest 100 analyses silently prints nothing. The same category list, with every `error` empty, shows every language uploaded. Matching `results_count` values are a count check, not proof that the same alerts were found. For a real comparison, fetch each analysis as SARIF (`gh api -H 'Accept: application/sarif+json' repos/OWNER/REPO/code-scanning/analyses/<id>`) and compare the rule IDs and locations.
 
 On 2026-09-29 the merge commit of #8711 produced all six categories (`/language:javascript-typescript`, `rust`, `go`, `actions`, `python`, `ruby`) with empty `error`. The JS/TS scan reported 583 results and the other five reported 0, the same counts as default setup's final run on the commit just before. The SARIF was not diffed. Default setup's last upload was at 08:30:56 UTC and the advanced run started at 08:32:16 UTC, so there was no gap in coverage.
 
