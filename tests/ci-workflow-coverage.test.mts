@@ -38,10 +38,24 @@ describe('root dependency cache (#8710)', () => {
     const action = readAction();
     assert.equal(action.runs.using, 'composite');
     const cache = action.runs.steps.find((step) => step.id === 'node-modules');
-    assert.match(cache.uses, /^actions\/cache@[a-f0-9]{40}$/);
+    assert.match(cache.uses, /^actions\/cache\/restore@[a-f0-9]{40}$/);
     assert.equal(cache.with.path, 'node_modules');
-    assert.equal(cache.with.key, "node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}");
+    assert.equal(cache.with.key, "node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('package-lock.json', 'package.json', '.npmrc') }}");
     assert.equal(cache.with['restore-keys'], undefined);
+  });
+
+  it('saves the clean install immediately on a successful miss, before consumers run', () => {
+    const steps = readAction().runs.steps;
+    const restore = steps.find((step) => step.id === 'node-modules');
+    const installIndex = steps.findIndex((step) => step.run === 'npm ci');
+    const save = steps[installIndex + 1];
+    assert.equal(save?.uses, restore.uses.replace('/restore@', '/save@'));
+    assert.match(save.uses, /^actions\/cache\/save@[a-f0-9]{40}$/);
+    assert.equal(save.if, "steps.node-modules.outputs.cache-hit != 'true'");
+    assert.equal(save.with.path, restore.with.path);
+    assert.equal(save.with.key, '${{ steps.node-modules.outputs.cache-primary-key }}');
+    assert.equal(steps[installIndex]['continue-on-error'], undefined);
+    assert.equal(steps.some((step) => step.uses?.startsWith('actions/cache@')), false);
   });
 
   it('installs on a miss and regenerates repository inventory on an exact hit', () => {
