@@ -120,15 +120,23 @@ merges into junk and never pages anyone. So:
 
 - Each admitted report inserts a new row, and each security row goes through
   Decision 11 on its own.
-- `fingerprint` = SHA-256 of `kind`, the surface key (tool name, RPC path, or
-  `other:` plus the label), and `summary` after NFKC normalization,
-  lowercasing, whitespace collapse, and trimming. It is indexed for triage
-  grouping only. It never suppresses a write.
-- **Retries are absorbed separately.** `retryKey` = SHA-256 of the reporter key
-  and every field exactly as it will be stored, that is after sanitization
-  (Decision 7) and redaction (Decision 9), with absent fields encoded
-  explicitly. A report whose `retryKey` matches a row created in the last 10
-  minutes returns that row's `reportId` and `status` unchanged. No new row, no
+- Both hashes below are SHA-256 over one canonical encoding: `JSON.stringify`
+  of an array whose positions are fixed by this record, with an absent field
+  written as `null`. JSON string escaping marks every boundary, so distinct
+  tuples such as `["ab","c"]` and `["a","bc"]` never share an input.
+- `fingerprint` = the hash of `[kind, surfaceKey, summary]`. `surfaceKey` is the
+  tool name, the RPC path, or `other:` plus the label. `summary` here is
+  normalized with NFKC, lowercasing, whitespace collapse, and trimming. The
+  fingerprint is indexed for triage grouping only. It never suppresses a
+  write.
+- **Retries are absorbed separately.** `retryKey` = the hash of
+  `[reporterKey, kind, surfaceKey, summary, expected, actual, requestId,
+  clientName]`, using every field exactly as it will be stored, that is after
+  sanitization (Decision 7) and redaction (Decision 9). `reporterKey` is
+  `principal:` plus the principal id for a keyed caller, and `ip:` plus
+  `ipHash` otherwise (Decision 8). A report whose `retryKey` matches a row
+  created in the last 10 minutes returns that row's `reportId` and `status`
+  unchanged. No new row, no
   counter, no budget charged. Two reports whose stored fields differ, including
   `expected` or `actual`, never collide. Two reports that differ only in a
   redacted value (an email address or a credential) do collide. That loses
