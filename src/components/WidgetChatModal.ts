@@ -526,7 +526,9 @@ function setFooterStatus(container: HTMLElement, text: string, tone: 'muted' | '
 }
 
 function renderPreviewState(container: HTMLElement, phase: PreviewPhase, detail = ''): void {
-  const heading = getPreviewHeading(phase);
+  // Web search, page reads and the source check are not WorldMonitor data.
+  const webStep = phase === 'fetching' && /^(search|read|verify):/.test(detail);
+  const heading = webStep ? t('widgets.phaseFetching') : getPreviewHeading(phase);
   const copy = detail || getPreviewCopy(phase);
   const isError = phase === 'error';
 
