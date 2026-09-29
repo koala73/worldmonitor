@@ -955,7 +955,10 @@ export async function fetchYahooHistoryOutcome(symbol: string): Promise<YahooHis
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-  } catch {
+  } catch (err) {
+    // sentry-coverage-ok: a Yahoo timeout is an expected provider blip that
+    // degrades to `unavailable`; the warning keeps it in function logs.
+    console.warn(`[analyze-stock] Yahoo history fetch failed for ${symbol}:`, err instanceof Error ? err.name : typeof err);
     return { status: 'unavailable' };
   }
   const data = await response.json().catch(() => null) as YahooChartResponse | null;
