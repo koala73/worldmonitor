@@ -3662,9 +3662,7 @@
       "sortableTable": "Seřaditelná tabulka cen kryptoměn s filtrem vyhledávání",
       "animatedCounters": "Animované čítače pro klíčové ekonomické ukazatele",
       "tabbedComparison": "Tabelované porovnání konfliktních událostí podle regionu"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "Offline — zobrazuji data z mezipaměti z {{freshness}}.",

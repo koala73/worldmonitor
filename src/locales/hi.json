@@ -66,9 +66,7 @@
       "sortableTable": "खोज फ़िल्टर के साथ सॉर्ट करने वाली क्रिप्टो कीमतों की तालिका",
       "animatedCounters": "मुख्य आर्थिक संकेतकों के लिए एनिमेटेड काउंटर",
       "tabbedComparison": "क्षेत्र अनुसार संघर्ष घटनाओं की टैब्ड तुलना"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "countryBrief": {
     "identifying": "देश पहचान रहे हैं...",

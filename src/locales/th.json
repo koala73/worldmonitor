@@ -3602,9 +3602,7 @@
       "sortableTable": "ตารางราคา crypto ที่จัดเรียงได้พร้อมตัวกรองค้นหา",
       "animatedCounters": "ตัวนับแบบเคลื่อนไหวสำหรับตัวชี้วัดเศรษฐกิจหลัก",
       "tabbedComparison": "การเปรียบเทียบแบบแท็บของเหตุการณ์ความขัดแย้งตามภูมิภาค"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "ออฟไลน์ — แสดงข้อมูลที่บันทึกไว้จาก {{freshness}}",

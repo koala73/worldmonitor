@@ -3602,9 +3602,7 @@
       "sortableTable": "검색 필터가 있는 정렬 가능한 암호화폐 가격 테이블",
       "animatedCounters": "주요 경제 지표를 위한 애니메이션 카운터",
       "tabbedComparison": "지역별 분쟁 이벤트 탭 비교"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "오프라인 — {{freshness}}의 캐시된 데이터를 표시 중입니다.",

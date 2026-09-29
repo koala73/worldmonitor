@@ -66,9 +66,7 @@
       "sortableTable": "Rendezható kriptóár-táblázat keresési szűrővel",
       "animatedCounters": "Animált számlálók a legfontosabb gazdasági mutatókhoz",
       "tabbedComparison": "Tabulos összehasonlítás a konfliktusesemények régió szerinti csoportosításával"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "countryBrief": {
     "identifying": "Ország azonosítása...",

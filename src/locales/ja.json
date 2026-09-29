@@ -3602,9 +3602,7 @@
       "sortableTable": "検索フィルター付きの並び替え可能な暗号資産価格テーブル",
       "animatedCounters": "主要経済指標のアニメーション カウンター",
       "tabbedComparison": "地域別紛争イベントのタブ付き比較"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "オフライン — {{freshness}}からのキャッシュデータを表示しています。",

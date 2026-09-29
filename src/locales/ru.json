@@ -3662,9 +3662,7 @@
       "sortableTable": "Сортируемая таблица цен крипто с фильтром поиска",
       "animatedCounters": "Анимированные счетчики ключевых экономических показателей",
       "tabbedComparison": "Табличное сравнение событий конфликтов по регионам"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "Офлайн — отображаются кэшированные данные от {{freshness}}.",

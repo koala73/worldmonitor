@@ -3602,9 +3602,7 @@
       "sortableTable": "Bảng giá tiền điện tử có thể sắp xếp với bộ lọc tìm kiếm",
       "animatedCounters": "Bộ đếm động cho các chỉ số kinh tế chính",
       "tabbedComparison": "So sánh theo tab các sự kiện xung đột theo khu vực"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "Ngoại tuyến — hiển thị dữ liệu đã lưu từ {{freshness}}.",

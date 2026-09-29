@@ -3622,9 +3622,7 @@
       "sortableTable": "Arama filtresine sahip sıralanabilir kripto fiyat tablosu",
       "animatedCounters": "Kilit ekonomik göstergeler için animasyonlu sayaçlar",
       "tabbedComparison": "Çatışma olaylarının bölgeye göre sekmeli karşılaştırması"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "Çevrimdışı — {{freshness}} tarihli önbelleğe alınan veriler gösteriliyor.",

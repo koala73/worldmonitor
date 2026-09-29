@@ -3622,9 +3622,7 @@
       "sortableTable": "Sortierbare Krypto-Preistabelle mit Suchfilter",
       "animatedCounters": "Animierte Zähler für Schlüsselindikatoren der Wirtschaft",
       "tabbedComparison": "Tabbasierte Vergleich von Konfliktereignissen nach Region"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "Offline – gecacherte Daten von {{freshness}} werden angezeigt.",

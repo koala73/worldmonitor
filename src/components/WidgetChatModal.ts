@@ -101,8 +101,8 @@ async function buildWidgetAuthHeaders(isPro: boolean): Promise<BuiltAuthHeaders>
 
 /** Copy for a request that cannot reach an entitlement verdict, or null. */
 function connectivityProblem(auth?: BuiltAuthHeaders): string | null {
-  if (!navigator.onLine) return t('widgets.preflightOffline');
-  if (auth?.sessionUnavailable) return t('widgets.preflightSessionUnavailable');
+  if (!navigator.onLine) return t('connectivity.offlineUnavailable');
+  if (auth?.sessionUnavailable) return t('widgets.preflightUnavailable');
   return null;
 }
 

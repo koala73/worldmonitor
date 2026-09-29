@@ -3642,9 +3642,7 @@
       "sortableTable": "Tabella prezzi criptovalute ordinabile con filtro di ricerca",
       "animatedCounters": "Contatori animati per i principali indicatori economici",
       "tabbedComparison": "Confronto a schede degli eventi di conflitto per regione"
-    },
-    "preflightOffline": "You're offline. The Widget Builder will reconnect when your connection returns.",
-    "preflightSessionUnavailable": "Couldn't verify your account. Check your connection and try again."
+    }
   },
   "connectivity": {
     "offlineCached": "Offline — visualizzazione dati in cache da {{freshness}}.",

@@ -47,7 +47,7 @@ describe('Widget chat preflight without a network', () => {
 
     open();
 
-    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightOffline')));
+    await vi.waitFor(() => expect(readiness()).toBe(t('connectivity.offlineUnavailable')));
     expect(readiness()).not.toBe(t('widgets.preflightProSubscriptionRequired'));
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -60,7 +60,7 @@ describe('Widget chat preflight without a network', () => {
 
     open();
 
-    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightSessionUnavailable')));
+    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightUnavailable')));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -74,7 +74,7 @@ describe('Widget chat preflight without a network', () => {
 
     open();
 
-    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightOffline')));
+    await vi.waitFor(() => expect(readiness()).toBe(t('connectivity.offlineUnavailable')));
   });
 
   it('re-runs the check when the connection returns', async () => {
@@ -84,7 +84,7 @@ describe('Widget chat preflight without a network', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     open();
-    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightOffline')));
+    await vi.waitFor(() => expect(readiness()).toBe(t('connectivity.offlineUnavailable')));
 
     online = true;
     window.dispatchEvent(new Event('online'));
