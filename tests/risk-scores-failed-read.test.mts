@@ -57,22 +57,20 @@ function stubRedis({ failing = [], stored = {} }: RedisStub = {}): void {
   writes = [];
   gets = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
-    const url = String(input instanceof Request ? input.url : input);
-    if (url.startsWith(`${UPSTASH}/get/`)) {
-      const key = decodeURIComponent(url.slice(`${UPSTASH}/get/`.length));
+    const url = new URL(String(input instanceof Request ? input.url : input));
+    if (url.origin !== UPSTASH) throw new Error(`unexpected fetch: ${url}`);
+    if (url.pathname.startsWith('/get/')) {
+      const key = decodeURIComponent(url.pathname.slice('/get/'.length));
       gets.push(key);
       if (failingKeys.has(key)) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
       return Response.json({ result: stored[key] ?? null });
     }
-    if (url.startsWith(UPSTASH)) {
-      const body = JSON.parse(String(init.body ?? '[]'));
-      const commands: unknown[][] = Array.isArray(body[0]) ? body : [body];
-      for (const command of commands) {
-        if (command[0] === 'SET') writes.push({ key: String(command[1]), value: String(command[2]) });
-      }
-      return Response.json(Array.isArray(body[0]) ? commands.map(() => ({ result: 'OK' })) : { result: 'OK' });
+    const body = JSON.parse(String(init.body ?? '[]'));
+    const commands: unknown[][] = Array.isArray(body[0]) ? body : [body];
+    for (const command of commands) {
+      if (command[0] === 'SET') writes.push({ key: String(command[1]), value: String(command[2]) });
     }
-    throw new Error(`unexpected fetch: ${url}`);
+    return Response.json(Array.isArray(body[0]) ? commands.map(() => ({ result: 'OK' })) : { result: 'OK' });
   }) as typeof fetch;
 }
 
