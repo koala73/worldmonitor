@@ -24,7 +24,12 @@ export const ELECTRICITY_META_KEY = 'seed-meta:energy:electricity-prices';
 export const ELECTRICITY_TTL_SECONDS = 3 * 24 * 3600; // 3 days = 259200s
 
 const LOCK_DOMAIN = 'energy:electricity-prices';
-const LOCK_TTL_MS = 10 * 60 * 1000;
+
+// ENTSO-E took 23-45s per region on 2026-09-29 while its route was degraded,
+// so a 20s attempt timed out on responses that were still coming.
+export const ENTSO_E_ATTEMPT_TIMEOUT_MS = 30_000;
+// Worst case: 3 direct + 2 proxy attempts per region, three regions at a time.
+export const LOCK_TTL_MS = 20 * 60 * 1000;
 
 const ENTSO_E_REGIONS = [
   { region: 'DE', eic: '10Y1001A1001A82H', name: 'Germany' },       // DE-LU bidding zone (post-split)
@@ -38,6 +43,7 @@ const ENTSO_E_REGIONS = [
   { region: 'NO', eic: '10YNO-1--------2', name: 'Norway (Oslo)' }, // NO1 bidding zone
   { region: 'SE', eic: '10Y1001A1001A46L', name: 'Sweden (Stockholm)' }, // SE3 bidding zone
 ];
+export const ENTSO_E_REGION_COUNT = ENTSO_E_REGIONS.length;
 
 export const EIA_REGIONS = [
   { region: 'CISO',  respondent: 'CISO',  name: 'California' },
@@ -162,7 +168,7 @@ export async function fetchEntsoERegion(region, token, today, yesterday, {
         () =>
           fetchFn(url, {
             headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' },
-            signal: AbortSignal.timeout(20_000),
+            signal: AbortSignal.timeout(ENTSO_E_ATTEMPT_TIMEOUT_MS),
           }).then((r) => {
             if (!r.ok) throw providerHttpError(r, `ENTSO-E ${region.region}`);
             return r.text();
@@ -181,8 +187,8 @@ export async function fetchEntsoERegion(region, token, today, yesterday, {
       try {
         const { buffer } = await retryProviderRequest(() => proxyFetcher(url, proxyAuth, {
           accept: 'application/xml',
-          timeoutMs: 20_000,
-          signal: AbortSignal.timeout(20_000),
+          timeoutMs: ENTSO_E_ATTEMPT_TIMEOUT_MS,
+          signal: AbortSignal.timeout(ENTSO_E_ATTEMPT_TIMEOUT_MS),
         }), 1);
         xml = buffer.toString('utf8');
       } catch (proxyErr) {
@@ -303,10 +309,37 @@ async function fetchAllEia(apiKey, today) {
 
 // ── Failure preservation ──────────────────────────────────────────────────────
 
+/** Resolves true only when every last-good key still existed and was extended. */
 async function preservePreviousSnapshot(errorMsg, regionKeys) {
   console.error('[electricity] Preserving previous snapshot:', errorMsg);
   const keys = [...regionKeys.map((k) => `${ELECTRICITY_KEY_PREFIX}${k}`), ELECTRICITY_INDEX_KEY, ELECTRICITY_META_KEY];
-  await extendExistingTtl(keys, ELECTRICITY_TTL_SECONDS);
+  return extendExistingTtl(keys, ELECTRICITY_TTL_SECONDS);
+}
+
+/**
+ * Exit 0 when a failed run still left the previous snapshot in place: Railway
+ * reports any non-zero exit as a crash, and a provider outage the run absorbed
+ * is not one. The next cron tick retries, and health goes stale if the outage
+ * outlasts the budget. Exit 1 when nothing was retained: the data is gone and a
+ * human has to act. Mirrors runSeed's `=== Done (…, RETRY) ===` exit-0 path.
+ */
+export function failureExitCode(err) {
+  return err?.retained === true ? 0 : 1;
+}
+
+/**
+ * The cron retries later the same UTC day; once that day's snapshot is
+ * published a later tick has nothing to add. A failed read returns false so
+ * the run still fetches.
+ */
+async function publishedToday(dateStr) {
+  try {
+    const [meta] = await redisPipeline([['GET', ELECTRICITY_META_KEY]]);
+    const fetchedAt = JSON.parse(meta?.result ?? 'null')?.fetchedAt;
+    return Number.isFinite(fetchedAt) && isoDate(new Date(fetchedAt)) === dateStr;
+  } catch {
+    return false;
+  }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -332,6 +365,11 @@ export async function main() {
   let eiaResults = [];
 
   try {
+    if (await publishedToday(dateStr)) {
+      console.log(`[electricity] Snapshot for ${dateStr} already published; skipping`);
+      return 'already-fresh';
+    }
+
     // ENTSO-E (EU day-ahead prices)
     if (!entsoToken) {
       console.warn('[electricity] ENTSO_E_TOKEN not set — skipping ENTSO-E');
@@ -412,9 +450,11 @@ export async function main() {
       ...ENTSO_E_REGIONS.map((r) => r.region),
       ...EIA_REGIONS.map((r) => r.region),
     ];
-    await preservePreviousSnapshot(String(err), allKnownRegions).catch((e) =>
-      console.error('[electricity] Failed to preserve snapshot:', e),
-    );
+    const retained = await preservePreviousSnapshot(String(err), allKnownRegions).catch((e) => {
+      console.error('[electricity] Failed to preserve snapshot:', e);
+      return false;
+    });
+    err.retained = retained === true;
     throw err;
   } finally {
     await releaseLock(LOCK_DOMAIN, runId);
@@ -430,10 +470,15 @@ if (process.argv[1]?.endsWith('seed-electricity-prices.mjs')) {
   const __runStartedAt = Date.now();
   main()
     .then((published) => {
-      if (published) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+      if (published === 'already-fresh') console.log(`\n=== Done (${Date.now() - __runStartedAt}ms, already fresh) ===`);
+      else if (published) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
     })
     .catch((err) => {
       console.error(err);
-      process.exit(1);
+      if (failureExitCode(err) === 0) {
+        console.log('[electricity] Retained previous snapshot; the next cron tick retries');
+        console.log(`\n=== Done (${Date.now() - __runStartedAt}ms, RETRY) ===`);
+      }
+      process.exit(failureExitCode(err));
     });
 }

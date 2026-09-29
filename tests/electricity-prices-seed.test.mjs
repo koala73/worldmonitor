@@ -11,6 +11,10 @@ import {
   ELECTRICITY_KEY_PREFIX,
   ELECTRICITY_META_KEY,
   ELECTRICITY_TTL_SECONDS,
+  ENTSO_E_ATTEMPT_TIMEOUT_MS,
+  ENTSO_E_REGION_COUNT,
+  LOCK_TTL_MS,
+  failureExitCode,
   fetchEiaRegion,
   fetchEntsoERegion,
   main,
@@ -144,7 +148,7 @@ describe('fetchEntsoERegion transport recovery', () => {
     assert.equal(new URL(url).searchParams.get('securityToken'), 'test-token');
     assert.equal(auth, 'proxy-auth', 'proxy leg must use the resolved CONNECT auth string');
     assert.equal(opts.accept, 'application/xml');
-    assert.equal(opts.timeoutMs, 20_000);
+    assert.equal(opts.timeoutMs, ENTSO_E_ATTEMPT_TIMEOUT_MS);
     assert.ok(opts.signal instanceof AbortSignal, 'one deadline covers CONNECT and response');
     assert.equal(result.priceMwhEur, 91.2);
   });
@@ -342,6 +346,7 @@ describe('main() publication gate', () => {
   let eiaBody;
   let cache;
   let publicationFailure;
+  let expireResult;
 
   function respond(body) {
     return new Response(JSON.stringify(body), { status: 200 });
@@ -354,7 +359,8 @@ describe('main() publication gate', () => {
         if (cmd[1] === publicationFailure) return { error: 'ERR simulated write failure' };
         cache.set(cmd[1], cmd[2]);
         return { result: 'OK' };
-      case 'EXPIRE': return { result: 1 };
+      case 'GET': return { result: cache.get(cmd[1]) ?? null };
+      case 'EXPIRE': return { result: expireResult };
       case 'EVAL': return { result: 1 };
       default: return { result: null };
     }
@@ -372,6 +378,7 @@ describe('main() publication gate', () => {
     redisCommands = [];
     cache = new Map();
     publicationFailure = null;
+    expireResult = 1;
     errors = [];
     entsoCalls = 0;
     entsoStatus = 200;
@@ -521,6 +528,76 @@ describe('main() publication gate', () => {
     assert.equal(JSON.parse(meta[0][2]).recordCount, 17, '10 ENTSO-E + 7 EIA regions');
     assert.equal(expiredKeys().length, 0, 'a full publish does not fall back to TTL extension');
     assert.equal(errors.length, 0, `no preserve path expected, got: ${errors.join('\n')}`);
+  });
+
+  // The cron retries later the same UTC day, so a later tick must not refetch or
+  // republish once the day's snapshot is in.
+  it('skips a later tick once today\'s snapshot is published', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    cache.set(ELECTRICITY_META_KEY, JSON.stringify({ fetchedAt: Date.now() - 60_000, recordCount: 17 }));
+
+    assert.equal(await main(), 'already-fresh');
+
+    assert.equal(entsoCalls, 0, 'no ENTSO-E request once today is published');
+    const dataWrites = redisCommands.filter((c) => c[0] === 'SET'
+      && (c[1].startsWith(ELECTRICITY_KEY_PREFIX) || c[1] === ELECTRICITY_META_KEY));
+    assert.equal(dataWrites.length, 0, 'nothing republished');
+    assert.equal(expiredKeys().length, 0, 'a skip is not a failure');
+  });
+
+  it('fetches again when the published snapshot is from an earlier UTC day', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    const now = new Date();
+    const previousDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 60_000;
+    cache.set(ELECTRICITY_META_KEY, JSON.stringify({ fetchedAt: previousDay, recordCount: 17 }));
+
+    assert.equal(await main(), true);
+
+    assert.equal(entsoCalls, 10);
+    assert.equal(setsFor(ELECTRICITY_META_KEY).length, 1);
+  });
+
+  it('marks a failure as retained only when every last-good key was extended', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    failedDomain = ENTSO_REGION.eic;
+    await assert.rejects(main(), (err) => err.retained === true);
+
+    expireResult = 0; // the previous snapshot has already expired
+    await assert.rejects(main(), (err) => err.retained === false);
+  });
+});
+
+describe('electricity failure exit code', () => {
+  // Railway reports any non-zero exit as a crash, so an outage the run absorbed
+  // exits 0; only a run that lost the data exits 1.
+  it('exits 0 only when the previous snapshot was retained', () => {
+    assert.equal(failureExitCode(Object.assign(new Error('x'), { retained: true })), 0);
+    assert.equal(failureExitCode(Object.assign(new Error('x'), { retained: false })), 1);
+    assert.equal(failureExitCode(new Error('Redis down before any fetch')), 1);
+    assert.equal(failureExitCode(undefined), 1);
+  });
+
+  // The crash diagnostic needs a terminal line to vouch for an exit-0 run; the
+  // RETRY suffix is runSeed's marker for "kept the last-good data".
+  it('the entry point exits through failureExitCode and prints a terminal marker for each outcome', () => {
+    const src = readFileSync(new URL('../scripts/seed-electricity-prices.mjs', import.meta.url), 'utf8');
+    const entry = src.slice(src.indexOf("process.argv[1]?.endsWith('seed-electricity-prices.mjs')"));
+    assert.match(entry, /process\.exit\(failureExitCode\(err\)\)/);
+    assert.match(entry, /=== Done \([^\n]*, RETRY\) ===/);
+    assert.match(entry, /=== Done \([^\n]*already fresh\) ===/);
+  });
+});
+
+describe('ENTSO-E request budget', () => {
+  it('gives each attempt at least 30s, the latency ENTSO-E showed on 2026-09-29', () => {
+    assert.ok(ENTSO_E_ATTEMPT_TIMEOUT_MS >= 30_000);
+  });
+
+  it('holds the run lock past the worst case of every region exhausting both routes', () => {
+    // 3 direct + 2 proxy attempts per region, regions fetched three at a time.
+    const batches = Math.ceil(ENTSO_E_REGION_COUNT / 3);
+    const worstCaseMs = batches * (5 * ENTSO_E_ATTEMPT_TIMEOUT_MS + 5_000);
+    assert.ok(LOCK_TTL_MS > worstCaseMs, `lock ${LOCK_TTL_MS}ms must exceed ${worstCaseMs}ms`);
   });
 });
 
