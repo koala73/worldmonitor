@@ -253,7 +253,7 @@
     "opencc-js": "^1.4.1",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
-    "undici": "7.29.0",
+    "undici": "7.29.1",
     "vite": "^6.0.7",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.0",
