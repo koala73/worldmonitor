@@ -13951,15 +13951,19 @@ async function performWidgetWebSearch(query) {
 // Search snippets are 400 characters, too little for a table or a forecast, so
 // the model paraphrased or invented values. Exa returns clean page text (0.9 s
 // median in the 2026-09-29 prototype); Firecrawl covers pages Exa returns empty.
-async function performWidgetPageRead(url) {
+async function performWidgetPageRead(url, { signal } = {}) {
   const limit = 12_000;
+  let protocol = '';
+  try { protocol = new URL(url).protocol; } catch { return null; }
+  if (protocol !== 'https:' && protocol !== 'http:') return null;
+  const within = ms => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
   if (WIDGET_EXA_KEY) {
     try {
       const res = await fetch('https://api.exa.ai/contents', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': WIDGET_EXA_KEY },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-WidgetAgent/1.0', 'x-api-key': WIDGET_EXA_KEY },
         body: JSON.stringify({ urls: [url], text: { maxCharacters: limit }, livecrawl: 'preferred' }),
-        signal: AbortSignal.timeout(20_000),
+        signal: within(20_000),
       });
       if (res.ok) {
         const payload = await res.json();
@@ -13971,13 +13975,13 @@ async function performWidgetPageRead(url) {
     }
   }
 
-  if (WIDGET_FIRECRAWL_KEY) {
+  if (WIDGET_FIRECRAWL_KEY && !signal?.aborted) {
     try {
       const res = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WIDGET_FIRECRAWL_KEY}` },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-WidgetAgent/1.0', Authorization: `Bearer ${WIDGET_FIRECRAWL_KEY}` },
         body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true, timeout: 20_000 }),
-        signal: AbortSignal.timeout(25_000),
+        signal: within(25_000),
       });
       if (res.ok) {
         const payload = await res.json();
@@ -14010,7 +14014,7 @@ async function verifyWidgetAgainstSources(client, { request, today, html, source
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: instructions,
-      messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}\n\nWIDGET HTML:\n${String(html).slice(0, 40_000)}` }],
+      messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}\n\nWIDGET HTML:\n${String(html)}` }],
     }, { signal });
     const text = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const verdict = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
@@ -14034,6 +14038,9 @@ function formatWidgetVerifierFindings(verdict) {
     ...verdict.unsupported.slice(0, 12).map(u => `Unsupported value "${u.value}": ${u.why}`),
   ].filter(Boolean).join('\n');
 }
+
+// Time kept back from the source check so a draft can still be delivered.
+const WIDGET_DRAFT_DELIVERY_RESERVE_MS = 5_000;
 
 const WIDGET_RATE_LIMIT = 10;
 const PRO_WIDGET_RATE_LIMIT = 20;
@@ -14212,10 +14219,11 @@ async function handleWidgetAgentRequest(req, res) {
   // Tier-specific settings
   const model = isPro ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
   const maxTokens = isPro ? 8192 : 4096;
-  const maxTurns = isPro ? 10 : 6;
+  let maxTurns = isPro ? 10 : 6;
   const maxHtml = isPro ? WIDGET_PRO_MAX_HTML : WIDGET_MAX_HTML;
   const systemPrompt = `${isPro ? WIDGET_PRO_SYSTEM_PROMPT : WIDGET_SYSTEM_PROMPT}\n\nToday's date (UTC): ${new Date().toISOString().slice(0, 10)}.`;
   const timeoutMs = isPro ? 180_000 : 150_000;
+  const deadlineAt = Date.now() + timeoutMs;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -14232,7 +14240,12 @@ async function handleWidgetAgentRequest(req, res) {
   // longer waits for run to completion and bill.
   let cancelled = false;
   const abort = new AbortController();
-  req.on('close', () => { cancelled = true; abort.abort(); });
+  // The request closed when its body was read; a disconnect shows on the response.
+  res.on('close', () => {
+    if (res.writableEnded) return;
+    cancelled = true;
+    abort.abort();
+  });
 
   const timeout = setTimeout(() => {
     cancelled = true;
@@ -14277,15 +14290,16 @@ async function handleWidgetAgentRequest(req, res) {
     const searchedUrls = new Set();
     const sources = [];
     let usedWeb = false;
-    let verifiedDraft = null;
+    let sourceChecks = 0;
     let incompleteMessage = `Widget generation incomplete: tool loop exhausted (${maxTurns} turns)`;
     let finalizing = false;
+    let forceFinal = false;
     let truncatedResponses = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
 
       // Finalization is irreversible, including after an incomplete response.
-      finalizing ||= toolCallCount >= toolLimit || turn >= maxTurns - 2;
+      finalizing = forceFinal || toolCallCount >= toolLimit || turn >= maxTurns - 2;
       const turnMessages = finalizing
         ? [...messages, { role: 'user', content: 'Tools are now disabled. Output the complete widget inside <!-- widget-html --> markers, using the data you already have.' }]
         : messages;
@@ -14310,15 +14324,26 @@ async function handleWidgetAgentRequest(req, res) {
           incompleteMessage = 'Widget generation incomplete: expected nonempty HTML inside complete widget-html markers.';
           break;
         }
-        if (usedWeb && !verifiedDraft) {
-          verifiedDraft = { html, title };
+        // A web-sourced draft is served only after it passes the source check or
+        // the check is unavailable. A rejected draft gets one repair, which is
+        // checked again; neither a rejected draft nor a rejected repair is served.
+        const checkMs = deadlineAt - Date.now() - WIDGET_DRAFT_DELIVERY_RESERVE_MS;
+        if (usedWeb && sourceChecks < 2 && checkMs > 0) {
+          sourceChecks++;
           sendWidgetSSE(res, 'tool_call', { endpoint: 'verify:sources' });
-          const verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources }, { signal: abort.signal });
+          const verdict = await verifyWidgetAgainstSources(client, { request: String(prompt).slice(0, 2000), today, html, sources }, { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(checkMs)]) });
           if (cancelled) break;
           if (verdict && (!verdict.rightDataset || verdict.unsupported.length > 0)) {
+            if (sourceChecks > 1) {
+              incompleteMessage = 'Widget generation incomplete: its sources could not be verified for this request.';
+              break;
+            }
             messages.push({ role: 'assistant', content: response.content });
             messages.push({ role: 'user', content: `An independent check of this widget against its sources, as of today (${today}), found:\n${formatWidgetVerifierFindings(verdict)}\n\nFix the widget. If the dataset is wrong and tools are still available, you may make one more tool call to find the right one; otherwise label the widget with the period the data covers and say the requested one was not found. Remove unsupported values or show "—". Then output the complete widget.` });
-            if (!finalizing) toolLimit = toolCallCount + 1;
+            if (!forceFinal) {
+              toolLimit = toolCallCount + 1;
+              maxTurns = Math.max(maxTurns, turn + 4);
+            }
             continue;
           }
         }
@@ -14388,7 +14413,7 @@ async function handleWidgetAgentRequest(req, res) {
             sendWidgetSSE(res, 'tool_call', { endpoint: `read:${host}` });
             try {
               toolExecutionCount++;
-              const page = await performWidgetPageRead(url);
+              const page = await performWidgetPageRead(url, { signal: abort.signal });
               if (page) {
                 const content = sanitizeToolContent(filterWidgetToolInjection(page.text));
                 sources.push({ kind: 'page', label: url, text: content });
@@ -14465,12 +14490,12 @@ async function handleWidgetAgentRequest(req, res) {
           if (!hasToolRequests) throw new Error('Widget generation incomplete: tool stop without tool requests');
           break;
         case 'max_tokens':
-          finalizing = true;
+          forceFinal = true;
           if (++truncatedResponses > 1) throw new Error('Widget generation incomplete: response truncated twice at the token limit');
           messages.push({ role: 'user', content: 'The previous response was truncated. Generate the entire completed widget again, more concisely, using existing data. Do not continue the partial HTML.' });
           break;
         case 'pause_turn':
-          finalizing = true;
+          forceFinal = true;
           break;
         case 'refusal':
           throw new Error('Widget generation refused by the AI backend');
@@ -14480,15 +14505,11 @@ async function handleWidgetAgentRequest(req, res) {
           throw new Error('Widget generation incomplete: unexpected stop reason');
       }
     }
-    if (!completed && !cancelled && verifiedDraft) {
-      sendWidgetSSE(res, 'html_complete', { html: verifiedDraft.html });
-      sendWidgetSSE(res, 'done', { title: verifiedDraft.title });
-      completed = true;
-    }
     if (!completed && !cancelled) {
-      // Recover the newest complete tool-turn output from this request only.
+      // Recover the newest complete tool-turn output from this request only,
+      // unless the source check has rejected a draft: that output is unchecked.
       let recovered = false;
-      for (let i = recoveryCandidates.length - 1; i >= 0; i--) {
+      for (let i = sourceChecks > 0 ? -1 : recoveryCandidates.length - 1; i >= 0; i--) {
         const text = recoveryCandidates[i].filter(b => b.type === 'text').map(b => b.text).join('');
         const parsed = parseWidgetAgentResponse(text, maxHtml);
         if (parsed.isComplete) {
