@@ -3099,7 +3099,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // dispatch tests measure ~321 KiB, so 512 KiB preserves the evidence with
     // useful growth headroom instead of charging quota for a budget envelope.
     _outputBudgetBytes: 524288,
-    description: 'An absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.',
+    description: 'Return country commodity supply risks, where an absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3150,7 +3150,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // Same redaction path and same empty licence surface as
     // get_supply_vulnerabilities above — no rider to attach.
     _outputBudgetBytes: 131072,
-    description: 'An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
+    description: 'Return country commodity dependencies by chokepoint, where an absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.',
     inputSchema: {
       type: 'object',
       properties: {
