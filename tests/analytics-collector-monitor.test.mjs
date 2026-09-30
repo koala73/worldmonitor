@@ -37,7 +37,8 @@ describe('scheduled analytics collector monitor', () => {
   it('retains nested transport codes and attempt context without logging error payloads', async (t) => {
     const reset = Object.assign(new Error('secret connection details'), { code: 'ECONNRESET' });
     const dns = Object.assign(new Error('secret hostname'), { code: 'EAI_AGAIN' });
-    const aggregate = new AggregateError([reset, dns], 'secret aggregate');
+    const pipe = Object.assign(new Error('secret write details'), { code: 'EPIPE' });
+    const aggregate = new AggregateError([reset, dns, pipe], 'secret aggregate');
     aggregate.cause = aggregate;
     t.mock.method(globalThis, 'fetch', async (_url, options) => {
       if (options.method === 'POST') throw new TypeError('fetch failed', { cause: aggregate });
@@ -51,6 +52,8 @@ describe('scheduled analytics collector monitor', () => {
     for (const failure of report.writeSummary.failures) {
       assert.match(failure.reason, /ECONNRESET/);
       assert.match(failure.reason, /EAI_AGAIN/);
+      assert.match(failure.reason, /EPIPE/);
+      assert.match(failure.reason, /^request failed:/);
       assert.match(failure.reason, /phase=request/);
       assert.match(failure.startedAt, /^\d{4}-\d{2}-\d{2}T/);
       assert.ok(Number.isFinite(failure.elapsedMs) && failure.elapsedMs >= 0);
@@ -66,6 +69,7 @@ describe('scheduled analytics collector monitor', () => {
       }); },
     }));
     const report = await runCollectorChecks({ sleep: async () => {} });
+    assert.match(report.writeSummary.failures[0].reason, /^response body read failed:/);
     assert.match(report.writeSummary.failures[0].reason, /phase=body/);
     assert.match(report.writeSummary.failures[0].reason, /HTTP 200/);
     assert.match(report.writeSummary.failures[0].reason, /UND_ERR_SOCKET/);
@@ -100,7 +104,7 @@ describe('scheduled analytics collector monitor', () => {
       assert.equal(failures.length, 12);
       for (const line of failures) {
         assert.match(line, /burst=[123] startedAt=\d{4}-\d{2}-\d{2}T\S+ elapsedMs=\d+/);
-        assert.match(line, /UND_ERR_SOCKET|ECONNRESET/);
+        assert.match(line, /\[[A-Z][A-Z0-9_]{1,63}(?:, [A-Z][A-Z0-9_]{1,63})*\]/);
         assert.match(line, /phase=request/);
       }
       return true;

@@ -195,7 +195,10 @@ export function evaluateProbeResult(probe, result) {
     throw new TypeError('result must be an object');
   }
 
-  if (result.error) return `request failed: ${result.error}`;
+  if (result.error) {
+    const operation = result.phase === 'body' ? 'response body read' : 'request';
+    return `${operation} failed: ${result.error}`;
+  }
 
   if (!probe.okStatuses.includes(result.status)) {
     // 403 is the WAF rejecting the probe itself, not the collector being down.
@@ -312,7 +315,7 @@ async function runProbe(origin, probe) {
   } catch (error) {
     const elapsedMs = Math.round(performance.now() - started);
     const context = `phase=${phase}${status === undefined ? '' : ` HTTP ${status}`}`;
-    return { error: `${describeTransportError(error)} (${context})`, startedAt, elapsedMs };
+    return { error: `${describeTransportError(error)} (${context})`, phase, startedAt, elapsedMs };
   }
 }
 
