@@ -191,8 +191,7 @@ async function start(): Promise<void> {
   const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
   for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;
   const workerModuleUrl = new URL(mapLibreWorkerAsset, import.meta.url).href;
-  const workerUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(`import ${JSON.stringify(workerModuleUrl)};`)}`;
-  map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerUrl });
+  map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerModuleUrl });
   document.getElementById('mapDimensionToggle')!.addEventListener('click', async event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-mode]') : null;
     if (!button) return;
