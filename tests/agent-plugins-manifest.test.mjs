@@ -102,6 +102,11 @@ describe('agent readiness: Agent Plugins manifest', () => {
 
   it('OpenAI listing metadata references packaged assets and respects submission text limits', () => {
     const listing = plugin.extensions['com.openai'].interface;
+    assert.ok([
+      'Productivity', 'Creativity', 'Developer Tools', 'Business & Operations',
+      'Data & Analytics', 'Communication', 'Education & Research', 'Security',
+      'Finance', 'Healthcare', 'Travel', 'Entertainment', 'Other',
+    ].includes(listing.category), 'category must be supported by the ChatGPT directory');
     for (const [field, limit] of Object.entries({ displayName: 30, shortDescription: 30, longDescription: 4000, developerName: 80 })) {
       assert.ok(typeof listing[field] === 'string' && listing[field].length > 0 && listing[field].length <= limit, field);
     }
