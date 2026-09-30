@@ -14023,7 +14023,7 @@ async function verifyWidgetAgainstSources(client, { request, today, html, source
       system: instructions,
       messages: [{ role: 'user', content: `USER REQUEST: ${request}\nTODAY (UTC): ${today}\n\nSOURCE MATERIAL:\n${material}${prior}\n\nWIDGET HTML:\n${String(html)}` }],
     }, { signal, headers: WIDGET_SONNET_HEADERS });
-    onUsage?.(response.usage);
+    onUsage?.(response.usage, response.model);
     const text = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const verdict = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
     if (typeof verdict.right_dataset !== 'boolean' || !Array.isArray(verdict.unsupported)) return null;
@@ -14261,6 +14261,7 @@ async function handleWidgetAgentRequest(req, res) {
   // Abort in-flight model calls too: a flag alone lets a call the user no
   // longer waits for run to completion and bill.
   let cancelled = false;
+  let timedOut = false;
   const abort = new AbortController();
   // The request closed when its body was read; a disconnect shows on the response.
   res.on('close', () => {
@@ -14270,6 +14271,7 @@ async function handleWidgetAgentRequest(req, res) {
   });
 
   const timeout = setTimeout(() => {
+    timedOut = true;
     cancelled = true;
     abort.abort();
     sendWidgetSSE(res, 'error', { message: 'Request timeout' });
@@ -14285,8 +14287,11 @@ async function handleWidgetAgentRequest(req, res) {
   let toolCallCount = 0;
   let toolExecutionCount = 0;
   let delivered = false;
+  // A refusal fallback serves the call on another model; log what actually ran.
+  const servedBy = new Set();
   const usage = { calls: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
-  const addUsage = u => {
+  const addUsage = (u, servedModel) => {
+    if (servedModel) servedBy.add(servedModel);
     usage.calls++;
     usage.input += u?.input_tokens || 0;
     usage.cacheWrite += u?.cache_creation_input_tokens || 0;
@@ -14350,7 +14355,7 @@ async function handleWidgetAgentRequest(req, res) {
         cache_control: { type: 'ephemeral' },
         messages,
       }, { signal: abort.signal, headers: isPro ? WIDGET_SONNET_HEADERS : undefined });
-      addUsage(response.usage);
+      addUsage(response.usage, response.model);
       if (cancelled) break;
 
       const hasToolRequests = response.content.some(b => b.type === 'tool_use');
@@ -14595,8 +14600,8 @@ async function handleWidgetAgentRequest(req, res) {
     clearTimeout(timeout);
     if (!cancelled && !res.writableEnded) res.end();
     console.log('[widget-agent] usage', JSON.stringify({
-      model, ...usage, toolCalls: toolCallCount,
-      outcome: delivered ? 'complete' : cancelled ? 'cancelled' : 'error',
+      model, servedBy: [...servedBy], ...usage, toolCalls: toolCallCount,
+      outcome: delivered ? 'complete' : timedOut ? 'timeout' : cancelled ? 'cancelled' : 'error',
     }));
   }
 }
