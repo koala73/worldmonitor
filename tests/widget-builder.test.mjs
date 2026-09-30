@@ -122,7 +122,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     },
     verifyWidgetAgainstSources: async (_client, input, options) => {
       verifyCalls.push({ ...input, signal: options?.signal });
-      options?.onUsage?.({ input_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 50 });
+      options?.onUsage?.({ input_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 50 }, 'claude-sonnet-5-5');
       return verdicts.length ? verdicts.shift() : { rightDataset: true, datasetWhy: '', unsupported: [] };
     },
     fetch: async (url, init) => {
@@ -185,6 +185,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
   return { requests, effects, fetchInits, invalidated, verifyCalls, modelSignals, modelOptions, logs, events, ended };
 }
 
+const usageLine = result => JSON.parse(result.logs.find(args => args[0] === '[widget-agent] usage')[1]);
 const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- /widget-html -->';
 const widgetResponse = (stop_reason, content = [{ type: 'text', text: widgetText }]) => ({ stop_reason, content });
 const widgetTool = (id, name = 'fetch_worldmonitor_data', input = { endpoint: '/api/test' }) => ({ type: 'tool_use', id, name, input });
@@ -241,14 +242,14 @@ describe('widget-agent relay — model, caching and usage', () => {
   it('logs one usage line per request with the builder and source-check tokens summed', async () => {
     const usage = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
     const result = await runWidgetAgent([
-      { ...widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]), usage: usage(10, 5000, 0, 100) },
-      { ...widgetResponse('end_turn'), usage: usage(20, 800, 5000, 3000) },
+      { ...widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]), model: 'claude-sonnet-5-5', usage: usage(10, 5000, 0, 100) },
+      { ...widgetResponse('end_turn'), model: 'claude-sonnet-5', usage: usage(20, 800, 5000, 3000) },
     ], { tier: 'pro', searchResults: [{ title: 'T', url: 'https://example.com/t' }] });
     assertWidgetSuccess(result);
     const lines = result.logs.filter(args => args[0] === '[widget-agent] usage');
     assert.equal(lines.length, 1);
     assert.deepEqual(JSON.parse(lines[0][1]), {
-      model: 'claude-sonnet-5-5', calls: 3, input: 1030, cacheWrite: 5800, cacheRead: 5000, output: 3150, toolCalls: 1, outcome: 'complete',
+      model: 'claude-sonnet-5-5', servedBy: ['claude-sonnet-5-5', 'claude-sonnet-5'], calls: 3, input: 1030, cacheWrite: 5800, cacheRead: 5000, output: 3150, toolCalls: 1, outcome: 'complete',
     });
   });
 });
@@ -398,12 +399,14 @@ describe('widget-agent relay — runtime tool budget and finalization', () => {
     const result = await runWidgetAgent([], { hangOn: 'deadline' });
     assert.equal(result.modelSignals[0]?.aborted, true);
     assertWidgetError(result, /timeout/i);
+    assert.equal(usageLine(result).outcome, 'timeout');
   });
 
   it('aborts the in-flight model call when the client disconnects', async () => {
     const result = await runWidgetAgent([], { hangOn: 'disconnect' });
     assert.equal(result.modelSignals[0]?.aborted, true);
     assert.equal(result.events.some(e => e.type === 'html_complete'), false);
+    assert.equal(usageLine(result).outcome, 'cancelled');
   });
 
   it('gives the source verifier a signal bounded by the deadline as well as cancellation', async () => {
