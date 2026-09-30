@@ -74,7 +74,7 @@ function parseArxivEntries(xml) {
 // every attempt failed (the caller isolates that per-category). `fetchFn`/`sleepFn` injectable
 // for tests.
 export async function fetchArxivCategory(cat, { fetchFn = fetch, retries = 1, sleepFn = sleep } = {}) {
-  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&start=0&max_results=50`;
+  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=50`;
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
