@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
 import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
+import Ajv2020 from 'ajv/dist/2020.js';
+
+test('public headline schema advertises one translation headline and up to eight brief headlines', () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  const validate = new Ajv2020({ strict: false }).compile(buildPublicTool(tool).inputSchema);
+  assert.equal(validate({ headlines: ['First'], mode: 'translate', lang: 'ar' }), true);
+  assert.equal(validate({ headlines: ['First', 'Second'], mode: 'translate', lang: 'ar' }), false);
+  assert.equal(validate({ headlines: Array(8).fill('Headline'), mode: 'brief' }), true);
+  assert.equal(validate({ headlines: ['First', 'Second'] }), true);
+});
 
 test('dashboard CSP permits the tile, sprite and boundary dependencies requested by its basemap', () => {
   const csp = NEWS_DASHBOARD_META.ui.csp;
