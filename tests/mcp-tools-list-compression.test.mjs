@@ -372,6 +372,21 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       }
     });
 
+    it('discovery descriptions identify supply and economic data without unsupported capabilities', async () => {
+      const tools = await getToolsList();
+      const supply = tools.find(t => t.name === 'get_supply_vulnerabilities');
+      const chokepoint = tools.find(t => t.name === 'get_chokepoint_dependencies');
+      const economic = tools.find(t => t.name === 'get_economic_data');
+      assert.match(supply.description, /country.*commodity.*supply/i);
+      assert.match(chokepoint.description, /country.*commodity.*chokepoint/i);
+      for (const tool of [supply, chokepoint]) {
+        assert.match(tool.description, /absent score means insufficient.*never zero risk/i);
+      }
+      assert.match(economic.description, /rates.*calendars.*fuel prices/i);
+      const full = await callDescribeTool('get_economic_data');
+      assert.doesNotMatch(full.description, /energy storage/i);
+    });
+
     it('describe_tool({tool_name: "get_market_data"}) returns the FULL uncompressed description', async () => {
       const tools = await getToolsList();
       const compressed = tools.find(t => t.name === 'get_market_data');
