@@ -63,3 +63,22 @@ test('invalid map-center intent fails validation before any downstream request',
   globalThis.fetch = async () => { throw new Error('Must not fetch'); };
   await assert.rejects(tool._execute({ map_latitude: 30 }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined), { name: 'RpcValidationError' });
 });
+
+test('headline translation sends the target language through the existing RPC contract', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.mode, 'translate');
+    assert.equal(request.variant, 'ar');
+    assert.equal(request.lang, '');
+    return Response.json({ summary: 'ارتفعت البطالة في ألمانيا', status: 'success' });
+  };
+  const result = await tool._execute!({ headlines: ['Germany unemployment rises'], mode: 'translate', lang: 'ar' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined) as Record<string, unknown>;
+  assert.equal(result.status, 'success');
+});
+
+test('translation rejects multiple headlines instead of silently dropping all but the first', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  globalThis.fetch = async () => { throw new Error('Must not fetch'); };
+  await assert.rejects(tool._execute!({ headlines: ['First', 'Second'], mode: 'translate', lang: 'ar' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined), { name: 'RpcValidationError' });
+});
