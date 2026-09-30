@@ -38,7 +38,8 @@ const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buf
 // declared expected interval, not this seeder's real write cadence. See
 // incident 2026-09-23.
 export const TECH_EVENTS_SEED_META_KEY = 'seed-meta:research:tech-events:seeder';
-const TRENDING_TTL = 3600;
+// ≈3× the hourly cron, like ARXIV_TTL and HN_TTL.
+export const TRENDING_TTL = 10800;
 
 // ─── arXiv Papers ───
 
@@ -304,14 +305,14 @@ async function fetchTrendingFromGitHubSearch(lang) {
   }));
 }
 
-async function fetchTrendingRepos() {
+export async function fetchTrendingRepos() {
   const languages = ['python', 'javascript', 'typescript'];
   const results = {};
 
   for (const lang of languages) {
     try {
       let repos = await fetchTrendingFromOSSInsight(lang);
-      if (!repos) repos = await fetchTrendingFromGitHubSearch(lang);
+      if (!repos?.length) repos = await fetchTrendingFromGitHubSearch(lang);
       if (!repos || repos.length === 0) { console.warn(`  Trending ${lang}: no data from any source`); continue; }
 
       const cacheKey = `research:trending:v1:${lang}:daily:50`;
