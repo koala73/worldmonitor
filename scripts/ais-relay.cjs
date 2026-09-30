@@ -14293,10 +14293,14 @@ async function handleWidgetAgentRequest(req, res) {
   const addUsage = (u, servedModel) => {
     if (servedModel) servedBy.add(servedModel);
     usage.calls++;
-    usage.input += u?.input_tokens || 0;
-    usage.cacheWrite += u?.cache_creation_input_tokens || 0;
-    usage.cacheRead += u?.cache_read_input_tokens || 0;
-    usage.output += u?.output_tokens || 0;
+    // With a fallback, top-level usage covers only the attempt that answered;
+    // every billed attempt, the refused one included, is in iterations.
+    for (const part of u?.iterations?.length ? u.iterations : [u]) {
+      usage.input += part?.input_tokens || 0;
+      usage.cacheWrite += part?.cache_creation_input_tokens || 0;
+      usage.cacheRead += part?.cache_read_input_tokens || 0;
+      usage.output += part?.output_tokens || 0;
+    }
   };
 
   try {
