@@ -53,6 +53,10 @@ it('shows World Monitor tensions and missing-data states when pizza is unavailab
   expect(element.querySelector('.pizzint-defcon')?.textContent).toBe('--');
   expect(element.querySelectorAll('.pizzint-tension-row')).toHaveLength(4);
   expect(element.querySelector('.pizzint-tension-value')?.textContent).toBe('50.0');
+  expect(element.textContent).toContain('components.pizzint.tensionsTitle');
   expect(element.textContent).toContain('components.pizzint.insufficientData');
-  expect(element.textContent).toContain('components.pizzint.tensionsSource');
+  expect(element.querySelector('.pizzint-source')?.textContent).toContain('components.pizzint.indexSource');
+  expect(element.querySelector('.pizzint-source a')?.textContent).toBe('PizzINT');
+  expect(element.querySelector('.pizzint-tensions-source')).toBeNull();
+  expect(element.textContent).not.toContain('components.pizzint.tensionsSource');
 });
