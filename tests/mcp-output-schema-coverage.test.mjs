@@ -626,6 +626,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `generate_forecasts` is verbatim too but declares `_apiPaths: []`, so it
   // has no OpenAPI operation to check against and cannot be listed here.
   const VERBATIM_PASSTHROUGH_TOOLS = [
+    'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',
     'get_country_coverage',
@@ -905,6 +906,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // `adds` lists the keys `_execute` layers on top; they are legitimately
   // absent from the wire, so they are subtracted before comparing.
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
+    ['open_news_dashboard', { adds: ['requestedView'] }],
     ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
   ]);
 

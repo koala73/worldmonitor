@@ -307,7 +307,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     });
 
     abortController = new AbortController();
-    const timeoutMs = isPro ? 120_000 : 60_000;
+    const timeoutMs = isPro ? 200_000 : 170_000;
     clientTimeout = setTimeout(() => {
       abortController?.abort();
       appendMessage(messagesEl, 'assistant', t('widgets.requestTimedOut'));
@@ -526,7 +526,9 @@ function setFooterStatus(container: HTMLElement, text: string, tone: 'muted' | '
 }
 
 function renderPreviewState(container: HTMLElement, phase: PreviewPhase, detail = ''): void {
-  const heading = getPreviewHeading(phase);
+  // Web search, page reads and the source check are not WorldMonitor data.
+  const webStep = phase === 'fetching' && /^(search|read|verify):/.test(detail);
+  const heading = webStep ? t('widgets.phaseFetching') : getPreviewHeading(phase);
   const copy = detail || getPreviewCopy(phase);
   const isError = phase === 'error';
 

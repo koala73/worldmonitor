@@ -39,7 +39,14 @@ interface PreparedCluster {
   showNewTag: boolean;
 }
 
+export interface NewsPanelServices {
+  clusterNews: (items: NewsItem[]) => Promise<ClusteredEvent[]>;
+  generateSummary: typeof generateSummary;
+  translateText: typeof translateText;
+}
+
 export class NewsPanel extends Panel {
+  private readonly newsServices: NewsPanelServices;
   private clusteredMode = true;
   private deviationEl: HTMLElement | null = null;
   private relatedAssetContext = new Map<string, RelatedAssetContext>();
@@ -96,8 +103,16 @@ export class NewsPanel extends Panel {
     this.riskScoreGetter = fn;
   }
 
-  constructor(id: string, title: string, infoTooltip?: string) {
+  constructor(id: string, title: string, infoTooltip?: string,
+    services: Partial<NewsPanelServices> = {},
+  ) {
     super({ id, title, showCount: true, trackActivity: true, infoTooltip });
+    this.newsServices = {
+      clusterNews: items => analysisWorker.clusterNews(items),
+      generateSummary,
+      translateText,
+      ...services,
+    };
     this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
     this.createSortToggle();
@@ -283,7 +298,7 @@ export class NewsPanel extends Panel {
     const sigAtStart = this.lastHeadlineSignature;
 
     try {
-      const result = await generateSummary(
+      const result = await this.newsServices.generateSummary(
         this.currentHeadlines.slice(0, 8),
         undefined,
         this.panelId,
@@ -332,7 +347,7 @@ export class NewsPanel extends Panel {
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await translateText(text, currentLang);
+      const translated = await this.newsServices.translateText(text, currentLang);
       if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
@@ -510,7 +525,7 @@ export class NewsPanel extends Panel {
     const requestId = ++this.renderRequestId;
 
     try {
-      const clusters = await analysisWorker.clusterNews(items);
+      const clusters = await this.newsServices.clusterNews(items);
       if (requestId !== this.renderRequestId) return;
       const enriched = await enrichWithVelocityML(clusters);
       this.renderClusters(enriched);

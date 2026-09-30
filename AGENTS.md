@@ -4,8 +4,11 @@ WorldMonitor is a real-time global intelligence dashboard for geopolitics, milit
 
 ## Own the outcome
 
-- Review, explain, report, or diagnose means read-only unless the user also asks for changes.
-- Implement, fix, or ship means make the scoped change, verify it, and deliver a ready PR. Repair that PR after relevant review or CI failures.
+- Treat reports of broken behavior and requests to debug, investigate, diagnose, or "figure out" a failure as requests to resolve it. Prove the cause, make a scoped repair when warranted, verify it, and deliver a ready PR. Do not require the user to say "fix" again.
+- Implement, fix, or ship means complete the scoped change, verify it, and deliver a ready PR. Repair that PR after relevant review or CI failures.
+- Keep explicit diagnosis-only requests, standalone code reviews, and pure explanations read-only. Interpret the whole request and the accepted task scope, not individual verbs.
+- Preserve authorization across turns. A status question or request for explanation does not cancel an active repair. Continue through relevant CI failures without another permission step.
+- Continue available evidence collection until the question is answered or a concrete blocker prevents progress. An unknown cause alone is not a stopping condition. If no defect is demonstrated, report the evidence without a speculative patch.
 - Keep one owner responsible for integration and completion. Delegate only bounded independent work when it reduces total effort. Do not delegate recursively.
 - Start with one observable user outcome. Trace the necessary interface, service, storage, worker, and external-service path before editing. Record what the checks exercise and what they leave unverified.
 - Match planning and verification to risk. Fix demonstrated blockers. Keep optional improvements out of the change. When an approach repeatedly fails, investigate the cause before retrying.

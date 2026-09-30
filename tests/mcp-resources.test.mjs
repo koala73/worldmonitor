@@ -228,6 +228,7 @@ function installMockFetch({ riskPayload = null, keyOverrides = {} } = {}) {
 
   globalThis.fetch = async (url, init) => {
     const u = url.toString();
+    if (u === 'https://www.worldmonitor.app/plugin/plugin.html') return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main><script type="module" src="/plugin/assets/plugin-test.js"></script></body></html>', { headers: { 'Content-Type': 'text/html' } });
 
     // get_country_risk RPC — the sibling fetch dispatch._execute does.
     if (u.includes('/api/intelligence/v1/get-country-risk')) {
@@ -393,6 +394,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/natural-disasters.html',
       'ui://worldmonitor/prediction-markets.html',
       'ui://worldmonitor/forecasts.html',
+      'ui://worldmonitor/news-dashboard.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
     for (const r of body.result.resources) {
       assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
@@ -544,9 +546,9 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
-    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://'));
+    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && u !== 'ui://worldmonitor/news-dashboard.html');
     const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri);
-    assert.deepEqual(uiUris, registryUiUris, 'fleet audit must cover every registered ui:// resource');
+    assert.deepEqual(uiUris, registryUiUris, 'inline-shell audit covers the inline registry; the compiled dashboard is checked in mcp-news-dashboard and browser tests');
 
     for (const uri of uiUris) {
       const res = await handler(envKeyReq(readBody(uri)));

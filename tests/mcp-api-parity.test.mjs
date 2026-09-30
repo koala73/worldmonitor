@@ -136,8 +136,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // quota bounds it" without qualifying the env-key path.
   ["GET /api/market/v1/analyze-stock",
     "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
-  ["POST /api/news/v1/summarize-article",
-    "llm-passthrough: request-time article summarization is intentionally REST-only; get_world_brief reads the gated seeded snapshot instead"],
 
   // === fetch-on-miss (30) ===
   ["GET /api/intelligence/v1/get-risk-scores",
