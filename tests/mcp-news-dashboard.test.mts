@@ -3,6 +3,12 @@ import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
 import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
 import Ajv2020 from 'ajv/dist/2020.js';
+import pluginBuild from '../vite.plugin.config.ts';
+
+test('plugin build uses public map tiles and bundled boundary overrides', () => {
+  assert.equal(pluginBuild.define?.['import.meta.env.VITE_PMTILES_URL'], '""');
+  assert.equal(pluginBuild.define?.['import.meta.env.VITE_COUNTRY_OVERRIDES_URL'], '"/data/country-boundary-overrides.geojson"');
+});
 
 test('public headline schema advertises one translation headline and up to eight brief headlines', () => {
   const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
@@ -16,10 +22,10 @@ test('public headline schema advertises one translation headline and up to eight
 test('dashboard CSP permits the tile, sprite and boundary dependencies requested by its basemap', () => {
   const csp = NEWS_DASHBOARD_META.ui.csp;
   for (const url of [
-    'https://protomaps.github.io/basemaps-assets/sprites/v4/dark@2x.json',
-    'https://protomaps.github.io/basemaps-assets/sprites/v4/dark@2x.png',
-    'https://pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev/planet.pmtiles',
-    'https://maps.worldmonitor.app/country-boundary-overrides.geojson',
+    'https://tiles.openfreemap.org/sprites/ofm_f384/ofm.json',
+    'https://tiles.openfreemap.org/sprites/ofm_f384/ofm.png',
+    'https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/0-255.pbf',
+    'https://tiles.openfreemap.org/planet',
   ]) {
     assert.ok(csp.connectDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
     assert.ok(csp.resourceDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
