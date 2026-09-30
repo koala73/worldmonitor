@@ -1,5 +1,6 @@
 import { rpcError, rpcOk } from '../rpc';
 import { UI_RESOURCE_MIME_TYPE } from './shell';
+// @ts-expect-error JS module, no declaration file.
 import { captureSilentError } from '../../_sentry-edge.js';
 
 export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard.html';
