@@ -79,15 +79,13 @@ test('an omitted (zero) pageSize returns the default page, not one paper', async
   assert.deepEqual(response.papers.map((paper) => paper.id), ['a', 'b', 'c']);
 });
 
-test('query filters title and summary case-insensitively before the page limit', async () => {
+test('query stays unimplemented, as the proto declares', async () => {
   cache.set('research:arxiv:v1:cs.AI::50', { papers: [
-    { id: 'newest', title: 'Vision models', summary: 'images', publishedAt: 40 },
-    { id: 'title-hit', title: 'Scaling TRANSFORMERS', summary: 'x', publishedAt: 30 },
-    { id: 'summary-hit', title: 'Other', summary: 'A transformer study', publishedAt: 20 },
-    { id: 'miss', title: 'Graphs', summary: 'nodes', publishedAt: 10 },
+    { id: 'a', title: 'Vision models', summary: 'images', publishedAt: 20 },
+    { id: 'b', title: 'Scaling transformers', summary: 'x', publishedAt: 10 },
   ] });
-  const response = await listArxivPapers(ctx(), req('cs.AI', 1, 'Transformer'));
-  assert.deepEqual(response.papers.map((paper) => paper.id), ['title-hit']);
-  const all = await listArxivPapers(ctx(), req('cs.AI', 0, 'transformer'));
-  assert.deepEqual(all.papers.map((paper) => paper.id), ['title-hit', 'summary-hit']);
+  const withQuery = await listArxivPapers(ctx(), req('cs.AI', 0, 'transformer'));
+  const withoutQuery = await listArxivPapers(ctx(), req('cs.AI', 0));
+  assert.deepEqual(withQuery.papers.map((paper) => paper.id), withoutQuery.papers.map((paper) => paper.id));
+  assert.deepEqual(withQuery.papers.map((paper) => paper.id), ['a', 'b']);
 });

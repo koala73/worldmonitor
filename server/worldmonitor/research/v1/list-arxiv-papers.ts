@@ -26,7 +26,6 @@ export async function listArxivPapers(
     throw new ValidationError([{ field: 'category', description: 'Unsupported arXiv category' }]);
   }
   const categories = category ? [category] : trackedCategories;
-  const query = (req.query || '').slice(0, 100).toLowerCase();
   const pageSize = resolvePageSize(req.pageSize, 50, 100);
   const snapshots = await Promise.all(categories.map(async (selected) => {
     try {
@@ -50,12 +49,8 @@ export async function listArxivPapers(
       if (!papers.has(paper.id)) papers.set(paper.id, paper);
     }
   }
-  let merged = [...papers.values()];
-  if (query) {
-    merged = merged.filter((paper) => `${paper.title ?? ''}\n${paper.summary ?? ''}`.toLowerCase().includes(query));
-  }
   const result = {
-    papers: merged.sort((a, b) => b.publishedAt - a.publishedAt).slice(0, pageSize),
+    papers: [...papers.values()].sort((a, b) => b.publishedAt - a.publishedAt).slice(0, pageSize),
     pagination: undefined,
   };
   return incomplete ? markNoStoreFallbackResponse(ctx.request, result) : result;
