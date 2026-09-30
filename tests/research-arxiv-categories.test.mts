@@ -10,7 +10,7 @@ const originalEnv = { ...process.env };
 const cache = new Map<string, unknown>();
 const keys: string[] = [];
 const ctx = () => ({ request: new Request('https://worldmonitor.app/api/research/v1/list-arxiv-papers'), headers: {}, pathParams: {} });
-const req = (category = '', pageSize = 50) => ({ category, pageSize, query: '', cursor: '' });
+const req = (category = '', pageSize = 50, query = '') => ({ category, pageSize, query, cursor: '' });
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
@@ -71,4 +71,21 @@ test('malformed and failed sibling snapshots do not discard available papers', a
   const response = await listArxivPapers(context, req());
   assert.deepEqual(response.papers.map((paper) => paper.id), ['available']);
   assert.equal(drainResponseHeaders(context.request)?.['X-No-Cache'], '1');
+});
+
+test('an omitted (zero) pageSize returns the default page, not one paper', async () => {
+  cache.set('research:arxiv:v1:cs.AI::50', { papers: [{ id: 'a', publishedAt: 30 }, { id: 'b', publishedAt: 20 }, { id: 'c', publishedAt: 10 }] });
+  const response = await listArxivPapers(ctx(), req('cs.AI', 0));
+  assert.deepEqual(response.papers.map((paper) => paper.id), ['a', 'b', 'c']);
+});
+
+test('query stays unimplemented, as the proto declares', async () => {
+  cache.set('research:arxiv:v1:cs.AI::50', { papers: [
+    { id: 'a', title: 'Vision models', summary: 'images', publishedAt: 20 },
+    { id: 'b', title: 'Scaling transformers', summary: 'x', publishedAt: 10 },
+  ] });
+  const withQuery = await listArxivPapers(ctx(), req('cs.AI', 0, 'transformer'));
+  const withoutQuery = await listArxivPapers(ctx(), req('cs.AI', 0));
+  assert.deepEqual(withQuery.papers.map((paper) => paper.id), withoutQuery.papers.map((paper) => paper.id));
+  assert.deepEqual(withQuery.papers.map((paper) => paper.id), ['a', 'b']);
 });

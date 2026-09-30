@@ -1,6 +1,30 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
+import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
+import Ajv2020 from 'ajv/dist/2020.js';
+
+test('public headline schema advertises one translation headline and up to eight brief headlines', () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  const validate = new Ajv2020({ strict: false }).compile(buildPublicTool(tool, { compressDescriptions: false }).inputSchema);
+  assert.equal(validate({ headlines: ['First'], mode: 'translate', lang: 'ar' }), true);
+  assert.equal(validate({ headlines: ['First', 'Second'], mode: 'translate', lang: 'ar' }), false);
+  assert.equal(validate({ headlines: Array(8).fill('Headline'), mode: 'brief' }), true);
+  assert.equal(validate({ headlines: ['First', 'Second'] }), true);
+});
+
+test('dashboard CSP permits the tile, sprite and boundary dependencies requested by its basemap', () => {
+  const csp = NEWS_DASHBOARD_META.ui.csp;
+  for (const url of [
+    'https://tiles.openfreemap.org/sprites/ofm_f384/ofm.json',
+    'https://tiles.openfreemap.org/sprites/ofm_f384/ofm.png',
+    'https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/0-255.pbf',
+    'https://tiles.openfreemap.org/planet',
+  ]) {
+    assert.ok(csp.connectDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
+    assert.ok(csp.resourceDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
+  }
+});
 
 test('dashboard entry opens the actual feed panels with empty arguments', () => {
   const tool = TOOL_REGISTRY.find(t => t.name === 'open_news_dashboard');
@@ -17,15 +41,29 @@ const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
 
 test('dashboard resource serves only the fixed build origin and never forwards credentials', async () => {
+  let redirect: RequestRedirect | undefined;
   globalThis.fetch = async (input, init) => {
     assert.equal(String(input), 'https://www.worldmonitor.app/plugin/plugin.html');
-    assert.equal(init?.redirect, 'error');
+    redirect = init?.redirect;
     assert.equal(new Headers(init?.headers).get('Authorization'), null);
     return new Response('<!DOCTYPE html><html><head></head><body><main id="pluginRoot"></main></body></html>', { headers: { 'Content-Type': 'text/html' } });
   };
   const body = await (await readNewsDashboard(1, {})).json();
+  assert.equal(redirect, 'manual');
   assert.match(body.result.contents[0].text, /<base href="https:\/\/www.worldmonitor.app\/">/);
   assert.deepEqual(body.result.contents[0]._meta.ui.csp.frameDomains, []);
+});
+
+test('dashboard resource rejects redirects without following their location', async () => {
+  let redirect: RequestRedirect | undefined;
+  globalThis.fetch = async (_input, init) => {
+    redirect = init?.redirect;
+    return new Response('<head><main id="pluginRoot"></main>', { status: 302, headers: { 'Content-Type': 'text/html', Location: 'https://example.com/' } });
+  };
+  const body = await (await readNewsDashboard(1, {})).json();
+  assert.equal(redirect, 'manual');
+  assert.equal(body.error.code, -32603);
+  assert.equal(body.result, undefined);
 });
 
 test('missing or oversized plugin documents fail explicitly instead of returning a website error page', async () => {
@@ -62,4 +100,35 @@ test('invalid map-center intent fails validation before any downstream request',
   assert.ok(tool._execute);
   globalThis.fetch = async () => { throw new Error('Must not fetch'); };
   await assert.rejects(tool._execute({ map_latitude: 30 }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined), { name: 'RpcValidationError' });
+});
+
+test('headline translation sends the target language through the existing RPC contract', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.mode, 'translate');
+    assert.equal(request.variant, 'ar');
+    assert.equal(request.lang, '');
+    return Response.json({ summary: 'ارتفعت البطالة في ألمانيا', status: 'success' });
+  };
+  const result = await tool._execute!({ headlines: ['Germany unemployment rises'], mode: 'translate', lang: 'ar' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined) as Record<string, unknown>;
+  assert.equal(result.status, 'success');
+});
+
+test('translation rejects multiple headlines instead of silently dropping all but the first', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  globalThis.fetch = async () => { throw new Error('Must not fetch'); };
+  await assert.rejects(tool._execute!({ headlines: ['First', 'Second'], mode: 'translate', lang: 'ar' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined), { name: 'RpcValidationError' });
+});
+
+test('brief analysis retains the full dashboard variant and requested summary language', async () => {
+  const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.mode, 'brief');
+    assert.equal(request.variant, 'full');
+    assert.equal(request.lang, 'fr');
+    return Response.json({ summary: 'Résumé', status: 'success' });
+  };
+  await tool._execute!({ headlines: ['First', 'Second'], lang: 'fr' }, 'https://www.worldmonitor.app', { kind: 'env_key', apiKey: 'fixture-key' }, undefined);
 });

@@ -191,7 +191,9 @@ async function start(): Promise<void> {
   const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
   for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;
   const workerModuleUrl = new URL(mapLibreWorkerAsset, import.meta.url).href;
-  const workerUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(`import ${JSON.stringify(workerModuleUrl)};`)}`;
+  const workerResponse = await fetch(workerModuleUrl, { credentials: 'omit', signal: AbortSignal.timeout(15_000) });
+  if (!workerResponse.ok) throw new Error(`Map worker could not load (${workerResponse.status})`);
+  const workerUrl = URL.createObjectURL(new Blob([await workerResponse.text()], { type: 'text/javascript' }));
   map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerUrl });
   document.getElementById('mapDimensionToggle')!.addEventListener('click', async event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-mode]') : null;
@@ -205,7 +207,7 @@ async function start(): Promise<void> {
     if (applyingTimeRange) return;
     void applyView({ time_range }).catch(() => { status.textContent = 'Time range could not be applied.'; });
   });
-  search = new SearchModal(document.body);
+  search = new SearchModal(document.body, { placeholder: 'Search news', scopes: ['all', 'signals'] });
   search.setCommandVisibleFn(() => false);
   search.setResultVisibleFn(result => result.type === 'news');
   search.setOnSelect(result => { void focusNews(result.id).catch(() => { status.textContent = 'The article location could not be applied.'; }); });
@@ -252,13 +254,23 @@ async function start(): Promise<void> {
       void operation.then(receipt => send({ id: message.id, result: { structuredContent: receipt, content: [{ type: 'text', text: JSON.stringify(receipt) }] } }))
         .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
     }
+    if (message.method === 'ui/notifications/tool-input') {
+      const input = Object.fromEntries(Object.entries(message.params?.arguments ?? {}).filter(([key]) => key !== 'jmespath'));
+      void applyView(input).catch(() => { status.textContent = 'The requested view could not be applied.'; });
+    }
     if (message.method === 'ui/notifications/tool-result') renderResult(message.params);
 
     if (message.method === 'ui/notifications/host-context-changed' && ['light', 'dark'].includes(message.params?.theme)) document.documentElement.dataset.theme = message.params.theme;
   });
   document.addEventListener('click', event => {
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
-    if (!link || !/^https?:$/.test(new URL(link.href).protocol)) return;
+    if (!link) return;
+    if (!link.getAttribute('href')) {
+      event.preventDefault();
+      status.textContent = 'This article source link is unavailable.';
+      return;
+    }
+    if (!/^https?:$/.test(new URL(link.href).protocol)) return;
     event.preventDefault();
     if (openLinks) void request('ui/open-link', { url: link.href }).catch(() => { status.textContent = 'The host could not open this link.'; });
     else status.textContent = 'Opening links is unavailable in this host.';
@@ -292,6 +304,7 @@ async function start(): Promise<void> {
     search.close();
     for (const panel of panels.values()) panel.destroy();
     map.destroy();
+    URL.revokeObjectURL(workerUrl);
   }, { once: true });
 }
 

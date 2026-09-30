@@ -26,7 +26,7 @@ export const RATE_SERIES = [
   { id: 'treasuryFiveYear', fredId: 'DGS5', redisSuffix: 'treasury-five-year', minPoints: 14000, startsWith: '1962-01' },
   { id: 'treasuryTenYear', fredId: 'DGS10', redisSuffix: 'treasury-ten-year', minPoints: 14000, startsWith: '1962-01' },
   { id: 'treasuryThirtyYear', fredId: 'DGS30', redisSuffix: 'treasury-thirty-year', minPoints: 8000, startsWith: '1977-02' },
-  { id: 'sofr', fredId: 'SOFR', redisSuffix: 'sofr', minPoints: 1800, startsWith: '2018-04-02' },
+  { id: 'sofr', fredId: 'SOFR', redisSuffix: 'sofr', minPoints: 1800, startsWith: '2018-04-03' },
 ];
 
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;

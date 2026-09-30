@@ -559,14 +559,14 @@
     },
     {
       "name": "open_news_dashboard",
-      "description": "Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. Map view arguments are applied by the mounted app.",
+      "description": "Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. View arguments configure a rendered instance when delivered by the host. requestedView confirms requested settings, not the applied state of an already-open map.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "analyze_news_headlines",
-      "description": "Run the existing WorldMonitor news summary or translation service on selected headlines. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.",
+      "description": "Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }

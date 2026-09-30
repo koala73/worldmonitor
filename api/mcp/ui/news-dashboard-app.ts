@@ -6,11 +6,16 @@ const previewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_UR
 const ASSET_ORIGIN = previewHost && /^[a-z0-9-]+\.vercel\.app$/i.test(previewHost)
   ? `https://${previewHost}`
   : 'https://www.worldmonitor.app';
+const MAP_ASSET_ORIGINS = [
+  'https://tiles.openfreemap.org',
+  'https://basemaps.cartocdn.com',
+  'https://*.basemaps.cartocdn.com',
+];
 export const NEWS_DASHBOARD_META = {
   ui: {
     csp: {
-      connectDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com'],
-      resourceDomains: [ASSET_ORIGIN, 'https://tiles.openfreemap.org', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'data:'],
+      connectDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
+      resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS, 'data:'],
       frameDomains: [],
       baseUriDomains: [ASSET_ORIGIN],
     },
@@ -22,7 +27,7 @@ export async function readNewsDashboard(id: unknown, corsHeaders: Record<string,
   try {
     const response = await fetch(`${ASSET_ORIGIN}/plugin/plugin.html`, {
       headers: { 'User-Agent': 'WorldMonitor-MCP/1.0' },
-      redirect: 'error',
+      redirect: 'manual',
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) throw new Error('Missing plugin build');

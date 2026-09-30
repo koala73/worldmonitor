@@ -232,6 +232,12 @@
       ]
     },
     {
+      "source": "/.well-known/openai-apps-challenge",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" }
+      ]
+    },
+    {
       "source": "/.well-known/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },

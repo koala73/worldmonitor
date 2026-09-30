@@ -14,7 +14,7 @@ import {
 } from '../../../../src/generated/server/worldmonitor/prediction/v1/service_server';
 
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
-import { clampInt } from '../../../_shared/constants';
+import { resolvePageSize } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
@@ -95,7 +95,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
   try {
     const category = (req.category || '').slice(0, 50);
     const query = (req.query || '').slice(0, 100);
-    const limit = clampInt(req.pageSize, 50, 1, 100);
+    const limit = resolvePageSize(req.pageSize, 50, 100);
     const isCountryCategory = category.startsWith(COUNTRY_CATEGORY_PREFIX);
     const countryCode = isCountryCategory
       ? category.slice(COUNTRY_CATEGORY_PREFIX.length).trim().toUpperCase()

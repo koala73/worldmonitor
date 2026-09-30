@@ -142,6 +142,30 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     assert.equal(response.markets[0].url, 'https://kalshi.com/markets/USGDP-27');
   });
 
+  it('treats an omitted (zero) pageSize as the default, not one market', async () => {
+    const market = (n: number) => ({
+      title: `Will US GDP grow ${n}?`,
+      yesPrice: 50,
+      volume: 1_000 - n,
+      url: `https://kalshi.com/markets/USGDP-${n}`,
+      endDate: '2099-12-31T00:00:00Z',
+      source: 'kalshi',
+    });
+    const payload = { countries: { US: [market(1), market(2), market(3)] }, fetchedAt: 456 };
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify(payload),
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:US',
+      query: '',
+      pageSize: 0,
+      cursor: '',
+    } as never);
+
+    assert.equal(response.markets.length, 3);
+  });
+
   it('fails closed for a malformed country category', async () => {
     let fetchCalls = 0;
     globalThis.fetch = async () => {
