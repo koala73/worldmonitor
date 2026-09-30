@@ -33,7 +33,6 @@ export class PizzIntIndicator {
       h('div', { className: 'pizzint-tensions' },
         h('div', { className: 'pizzint-tensions-title' }, t('components.pizzint.tensionsTitle')),
         h('div', { className: 'pizzint-tensions-list' }),
-        h('div', { className: 'pizzint-tensions-source' }, t('components.pizzint.tensionsSource')),
       ),
       h('div', { className: 'pizzint-footer' },
         h('span', { className: 'pizzint-source' },

@@ -73,7 +73,7 @@ describe('root dependency cache (#8710)', () => {
   });
 
   for (const [workflowText, jobIds] of [
-    [testWorkflow, ['unit-shards', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [testWorkflow, ['unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
     [lintCodeWorkflow, ['biome', 'markdown']],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck']],
   ] as const) {
@@ -218,6 +218,7 @@ const GATE_CHECK_EXEMPTIONS: Record<string, { workflow: string; coveredBy: strin
   'audit-lockfile': { workflow: 'Security Audit', coveredBy: 'security-audit' },
   'audit-rust': { workflow: 'Security Audit', coveredBy: 'security-audit' },
   'unit-shards': { workflow: 'Test', coveredBy: 'unit' },
+  'unit-built-output': { workflow: 'Test', coveredBy: 'unit' },
   'variant-smoke-shards': { workflow: 'Test', coveredBy: 'variant-smoke-full' },
   'variant-smoke-pro-webmcp': { workflow: 'Test', coveredBy: 'variant-smoke-full' },
 };
@@ -1373,6 +1374,33 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('routes completion events through one writer job and retains recovery phases (#8726)', () => {
+    const { jobs } = YAML.parse(deployGateWorkflow);
+    const direct = jobs['evaluate-direct'];
+    assert.ok(direct, 'completion events must not run planner and aggregate jobs');
+    assert.equal(direct.needs, undefined);
+    assert.deepEqual(direct.strategy.matrix, { sha: ['${{ github.event.workflow_run.head_sha }}'] });
+    const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
+    assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
+    assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
+    const checkout = direct.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+    assert.equal(checkout.with['fetch-depth'], 0, 'base drift requires the full commit graph');
+    assert.equal(checkout.with.filter, 'blob:none');
+
+    for (const event of ['workflow_run', 'schedule', 'workflow_dispatch']) {
+      const completion = event === 'workflow_run';
+      const needs = {
+        discover: { result: completion ? 'skipped' : 'success', outputs: { count: '0' } },
+        recover: { result: completion ? 'skipped' : 'success', outputs: { count: '1' } },
+      };
+      const admitted = Object.entries(jobs).filter(([, job]) => {
+        const expression = (job as { if: string }).if.replace(/^\$\{\{\s*|\s*\}\}$/g, '');
+        return runInNewContext(expression, { github: { event_name: event }, needs, always: () => true });
+      }).map(([name]) => name);
+      assert.deepEqual(admitted, completion ? ['evaluate-direct'] : ['discover', 'recover', 'evaluate', 'gate'], event);
+    }
+  });
+
   it('serializes every deploy-gate writer by SHA behind the sweep phase barriers', () => {
     const workflow = YAML.parse(deployGateWorkflow) as {
       concurrency?: unknown;
@@ -1397,16 +1425,16 @@ describe('CI workflow coverage', () => {
     assert.match(jobs.recover?.if ?? '', /always\(\).*needs\.discover\.result == 'success'/);
     assert.match(jobs.evaluate?.if ?? '', /always\(\).*needs\.recover\.result == 'success'.*outputs\.count != '0'/);
     assert.match(jobs.invalidate?.if ?? '', /needs\.discover\.result == 'success'.*outputs\.count != '0'/);
-    assert.equal(jobs.gate?.if, '${{ always() }}');
+    assert.equal(jobs.gate?.if, "${{ always() && github.event_name != 'workflow_run' }}");
 
-    for (const name of ['invalidate', 'evaluate']) {
+    for (const name of ['invalidate', 'evaluate', 'evaluate-direct']) {
       assert.equal(jobs[name]?.concurrency?.group, 'deploy-gate-${{ matrix.sha }}', `${name} must own the SHA lock`);
       assert.equal(jobs[name]?.concurrency?.queue, 'max', `${name} must not replace older pending writers`);
       assert.equal(jobs[name]?.concurrency?.['cancel-in-progress'], false, `${name} must not interrupt an active writer`);
       assert.equal(jobs[name]?.strategy?.['fail-fast'], false, `${name} must finish unrelated SHA work`);
     }
 
-    for (const name of ['discover', 'invalidate', 'recover', 'evaluate']) {
+    for (const name of ['discover', 'invalidate', 'recover', 'evaluate', 'evaluate-direct']) {
       const checkout = jobs[name]?.steps?.find((step) => step.uses?.startsWith('actions/checkout@'));
       assert.equal(checkout?.with?.ref, '${{ github.workflow_sha }}', `${name} must execute trusted workflow code`);
       assert.equal(checkout?.with?.['persist-credentials'], false);
@@ -1492,7 +1520,7 @@ describe('CI workflow coverage', () => {
       assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
     }
 
-    const unit = testJobBlock('unit-shards');
+    const unit = testJobBlock('unit-built-output');
     assert.match(
       unit,
       /^\s+run: node scripts\/openapi-capacity-report\.mjs --out "\$RUNNER_TEMP\/openapi-capacity\.json"\s*$/m,
@@ -1508,7 +1536,7 @@ describe('CI workflow coverage', () => {
     );
     assert.match(
       unit,
-      /name: openapi-capacity-\$\{\{ matrix\.shard \}\}-\$\{\{ github\.run_attempt \}\}/,
+      /name: openapi-capacity-\$\{\{ github\.run_attempt \}\}/,
       'the capacity artifact name must carry run_attempt — upload-artifact v6 rejects a duplicate name within a run, which collides on the re-run started to chase the failure',
     );
     assert.match(
@@ -1764,7 +1792,7 @@ describe('CI workflow coverage', () => {
     // it back to a narrower path-gated job would silently re-open the
     // "bundle-breaking change with green PR CI" gap.
     assert.match(
-      testJobBlock('unit-shards'),
+      testJobBlock('unit-built-output'),
       /^\s+node scripts\/build-sidecar-handlers\.mjs\s*$/m,
       'unit job must run the sidecar handler bundle build',
     );
@@ -1778,7 +1806,7 @@ describe('CI workflow coverage', () => {
       'desktop-config job must run the desktop build env parity check',
     );
     assert.match(
-      testJobBlock('unit-shards'),
+      testJobBlock('unit-built-output'),
       /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
       'unit job must run the desktop build env parity check',
     );

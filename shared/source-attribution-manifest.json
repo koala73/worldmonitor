@@ -782,6 +782,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/ais-relay.cjs"
+        },
+        {
           "path": "scripts/seed-grocery-basket.mjs"
         }
       ]
@@ -14606,6 +14609,9 @@
         },
         {
           "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
+          "path": "api/mcp/ui/news-dashboard-app.ts"
         },
         {
           "path": "api/not-found.ts"

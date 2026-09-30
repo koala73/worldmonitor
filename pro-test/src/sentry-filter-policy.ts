@@ -219,6 +219,17 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // separate Sentry clients, so the marketing copy was the gap that let
   // WORLDMONITOR-108 through.
   /webkit\.messageHandlers/,
+  // Brave iOS's injected wallet shim. Brave's user script assigns
+  // `window.ethereum.selectedAddress = undefined` in every document, and throws
+  // when the page has no `window.ethereum` object. WORLDMONITOR-16Z is the
+  // shape: Brave / iOS 18.7 on `/pro`, a single frame on the document itself.
+  // The dashboard drops it with a bare `/window\.ethereum/`; the two surfaces
+  // run separate Sentry clients. Keyed on the full spaced assignment rather
+  // than the global, so a first-party message that merely names
+  // `window.ethereum` still reports, and minified code never has those spaces.
+  // `tests/pro-sentry-filter-policy.test.mts` pins that no first-party source
+  // on this surface touches `ethereum.selectedAddress`.
+  /evaluating 'window\.ethereum\.selectedAddress = undefined'/,
   // A bare `jQuery` global reference from an injected script.
   // WORLDMONITOR-11F is the shape: `ReferenceError: jQuery is not defined` on
   // Firefox 148 / Linux, sent by `sentry.javascript.react` with a null release,

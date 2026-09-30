@@ -2015,16 +2015,53 @@ describe('api/mcp-proxy — observability', () => {
 
     assert.deepEqual(
       proxyFailureFor(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
-      { isTimeout: true, level: 'warning', errorClass: 'timeout' },
+      { isTimeout: true, level: 'warning', errorClass: 'timeout', report: true },
     );
     assert.deepEqual(
-      proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')),
-      { isTimeout: false, level: 'warning', errorClass: 'McpProxyUpstreamError' },
+      proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 500', { upstreamStatus: 500 })),
+      { isTimeout: false, level: 'warning', errorClass: 'McpProxyUpstreamError', report: true },
     );
     assert.deepEqual(
       proxyFailureFor(new Error('unexpected local invariant failure')),
-      { isTimeout: false, level: 'error', errorClass: 'Error' },
+      { isTimeout: false, level: 'error', errorClass: 'Error', report: true },
     );
+  });
+
+  // The remote MCP server refusing the caller's own credentials is the
+  // caller's configuration, not a proxy fault. One Pro panel saved without its
+  // Tavily key sent 108 such events in three hours (WORLDMONITOR-172). The
+  // audit log keeps the upstream status instead.
+  it('does not report an upstream credential rejection to Sentry', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?credential=${Date.now()}`
+    );
+    for (const status of [401, 403]) {
+      const failure = proxyFailureFor(
+        new McpProxyUpstreamError(`Initialize failed: HTTP ${status}`, { upstreamStatus: status }),
+      );
+      assert.equal(failure.report, false, `upstream ${status} is the caller's credential`);
+      assert.equal(failure.level, 'warning');
+    }
+    // Only the recorded status decides; a message that merely reads like one does not.
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')).report, true);
+    assert.equal(proxyFailureFor(new Error('HTTP 401')).report, true);
+  });
+
+  it('answers an upstream 401 with 422, no Sentry capture, and the status in the audit log', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response('unauthorized', { status: 401 }));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.match((await res.json()).error, /Initialize failed: HTTP 401/);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, 401);
   });
 
   // The Sentry fingerprint keys on errorClass, so expected upstream warnings,
@@ -2074,6 +2111,7 @@ describe('api/mcp-proxy — observability', () => {
     const tail = src.slice(catchAt, src.indexOf('logProxyCall({', catchAt));
 
     assert.match(tail, /captureSilentError\(new Error\(/, 'a swallowed handler fault must not be silent');
+    assert.match(tail, /if \(failure\.report\)/, 'only credential rejections may skip the capture');
     assert.match(tail, /step:\s*'proxy-dispatch'/);
     assert.match(
       tail,

@@ -182,6 +182,25 @@ describe('marketing ignoreErrors', () => {
     );
   });
 
+  it('drops the Brave iOS injected wallet shim (WORLDMONITOR-16Z)', () => {
+    // Verbatim production value: Brave / iOS 18.7 on /pro, one frame on the
+    // document itself (the browser's injected user script).
+    assert.equal(
+      isIgnored('TypeError', "undefined is not an object (evaluating 'window.ethereum.selectedAddress = undefined')"),
+      true,
+    );
+    // A first-party message that merely names the wallet global survives.
+    assert.equal(isIgnored('Error', 'Checkout failed: window.ethereum unavailable'), false);
+  });
+
+  it('pins the marketing surface as ethereum.selectedAddress-free, which is what licenses the rule', () => {
+    const hits = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\bethereum\.selectedAddress\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(hits, [], 'the marketing surface now touches ethereum.selectedAddress — re-derive the WORLDMONITOR-16Z rule');
+  });
+
   // Positive control for the `\b` bounds on the Zalo entry: the pattern must
   // key on the identifier, not on a substring that a longer word contains.
   it('keeps an error that merely mentions a similar word', () => {

@@ -55,6 +55,7 @@ export interface McpToolExecutionContext {
 // ---------------------------------------------------------------------------
 export interface BaseToolDef {
   name: string;
+  title?: string;
   description: string;
   inputSchema: {
     type: string;
@@ -171,6 +172,7 @@ export interface BaseToolDef {
   // constructs the public `_meta` object from it). Optional: only tools with
   // an interactive UI surface set it.
   _uiResourceUri?: string;
+  _openaiEntrypoints?: Array<{ type: 'global' | 'thread' }>;
 }
 
 // Per-entity content-freshness contract (#6080). `maxStaleMin` and
@@ -320,6 +322,7 @@ export interface ApplyJmespathResult {
 // ---------------------------------------------------------------------------
 export interface PublicToolShape {
   name: string;
+  title?: string;
   description: string;
   inputSchema: {
     type: string;
@@ -354,6 +357,7 @@ export interface PublicToolShape {
   _meta: {
     ui?: { resourceUri: string };
     'ui/resourceUri'?: string;
+    'openai/ui'?: { entrypoints: Array<{ type: 'global' | 'thread' }> };
     'worldmonitor/access': McpAccessClass;
     'worldmonitor/weight': number;
   };

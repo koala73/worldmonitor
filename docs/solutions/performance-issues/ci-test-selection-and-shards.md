@@ -34,12 +34,49 @@ its consumed contracts, generated output, packages or the proto workflow still r
 freshness checks. Fork trust checks are unchanged; incomplete proto metadata still
 blocks classification.
 
-The complete data-test inventory is discovered on each invocation. Two shards, with four test processes each,
+The complete data-test inventory is discovered on each invocation. The shards, with four test processes each,
 balance estimated file durations; unmeasured files receive a default cost and
 still run. The Node test API receives literal files, so a second glob expansion
-cannot omit a filename with brackets. Long files start first. Each shard retains
-the `/pro` and dashboard builds and `WM_EXPECT_BUILT_OUTPUT=1`. The required `unit`
+cannot omit a filename with brackets. Long files start first. The required `unit`
 aggregate rejects failed, cancelled or unexpectedly skipped shards.
+
+## Build once, not per shard
+
+Until 2026-09-30 every shard ran the `/pro` and dashboard builds (58-69 s) for the
+44 suites that read them, three times over. Now `unit-built-output` builds once,
+runs the bundle budgets, the tree-wide checks (zh-TW catalogues, health-probe
+cutovers, OpenAPI capacity, edge and sidecar bundles, desktop env parity) and
+`test:data --built-output=only`. The shards run `--built-output=exclude` with no
+build. `unit` requires both jobs.
+
+A suite belongs to the build job when its source names `dist/`, `public/pro/`,
+`WM_EXPECT_BUILT_OUTPUT` or a built-output guard (`readsBuiltOutput` in
+`scripts/run-data-tests.mjs`). Over-matching is harmless. The shards keep
+`WM_EXPECT_BUILT_OUTPUT=1`, so a guarded suite that lands in a shard fails on the
+missing tree instead of skipping. `tests/data-test-shards.test.mjs` proves the
+shards and the build job together run the inventory exactly once.
+
+`build:pro` also installs `pro-test/node_modules`, so a suite that loads
+`pro-test/vite.config.ts` needs the build job too even though it reads no built
+file. A local proof run missed this because the worktree already had that tree;
+CI failed `sentry-release-build` with `ERR_MODULE_NOT_FOUND`. The classifier now
+matches `pro-test/node_modules` and `pro-test/vite.config`. When checking a
+split like this, compare each file's test and skip counts between CI runs from
+before and after it (download the `data-test-timings-*` artifacts), not against a
+local checkout that carries side effects from earlier installs.
+
+Measured on the PR's first green run: `unit` finished at 277 s against a
+25-PR median of about 355 s, with shards at 209-253 s and the build job at
+146 s. The browser smoke leg (about 290 s) is now the slowest check.
+
+Shards check out full history blobless (`filter: blob:none`): about 30 suites
+read commit history, not old file contents. Running those 34 files in a
+blobless clone gave the same results as a full clone and lazily fetched one
+blob, from a clone a third of the size.
+
+`scripts/shared/data-test-durations.json` must stay current or placement drifts:
+`natural-events-transport` (111 s in CI) had no entry and was costed at 1 s,
+which left one shard 45 s behind the others.
 
 ## Local commands
 
@@ -60,16 +97,21 @@ node --import tsx --test --test-concurrency=2 tests/seed-freshness-monitor.test.
 Keep `npm run test:data` as the complete-suite command. Reproduce one CI shard with:
 
 ```sh
-npm run build:pro
-VITE_VARIANT=full ./node_modules/.bin/vite build
-WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --shard=1/2 --concurrency=4 --timings=/tmp/data-test-timings.jsonl
+WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=exclude --shard=1/3 --concurrency=4 --timings=/tmp/data-test-timings.jsonl
 ```
 
-Use `--shard=2/2` for the other half and `--list` to inspect selected files without
-running them. Run heavy local checks sequentially. CI uploads each shard's timing
+and the build job's suites with:
+
+```sh
+npm run build:pro
+VITE_VARIANT=full ./node_modules/.bin/vite build
+WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4
+```
+
+Use `--list` to inspect selected files without running them. Run heavy local checks sequentially. CI uploads each shard's timing
 JSONL separately. `scripts/shared/data-test-durations.json` contains estimates for
-files measured above five seconds; it controls placement only. Refresh estimates
-from successful runs on comparable machines. Do not use reporter row counts as
+every measured file; it controls placement only. Refresh estimates from the
+`data-test-timings-*` artifacts of a successful CI run, not a local machine. Do not use reporter row counts as
 the test inventory: some existing suites change `NODE_TEST_CONTEXT` and suppress
 their per-file summary. The glob inventory and partition contract remain the proof.
 

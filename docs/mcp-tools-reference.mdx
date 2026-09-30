@@ -2677,3 +2677,55 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `open_news_dashboard`
+
+**Access:** `subscription`
+
+Opens WorldMonitor's existing news panels and map as an MCP App. Global and thread entrypoints accept empty arguments. The initial tool result supplies the full-variant English feed digest; the app does not fetch it again on startup.
+
+**API endpoints:** `GET /api/news/v1/list-feed-digest`
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `query` | `string` | Open the existing news search with this query (maximum 200 characters). |
+| `source` | `string` | Filter by source name (maximum 200 characters). |
+| `category` | `string` | Select a news category (maximum 80 characters). |
+| `country` | `string` | Two-letter uppercase country code for news filtering and map focus. |
+| `time_range` | `string` | `1h`, `6h`, `24h`, `48h`, `7d`, or `all`. |
+| `renderer` | `string` | `flat` or `globe`; the app reports the available renderer. |
+| `map_latitude` | `number` | Map center latitude, from -90 to 90; requires longitude. |
+| `map_longitude` | `number` | Map center longitude, from -180 to 180; requires latitude. |
+| `map_zoom` | `number` | Requested zoom, from 1 to 8. |
+
+Returns categories, feed status, generation time, coverage, and `requestedView`. Coverage and freshness follow the existing feed-digest endpoint. The server reports requested state; the mounted app reports applied state after the map settles. App-local `apply_news_view` and `focus_news_article` actions operate on the mounted view when the host supports app tools.
+
+```json
+{ "name": "open_news_dashboard", "arguments": { "country": "DE", "time_range": "24h" } }
+```
+
+### `analyze_news_headlines`
+
+**Access:** `subscription`
+
+Runs the existing news summary or translation service through authenticated MCP. Uses the server Groq provider and full variant; credentials are not passed to the app. Provider availability and cache behavior follow the summary endpoint. Denials remain errors rather than empty results.
+
+**API endpoints:** `POST /api/news/v1/summarize-article`
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `headlines` | `array<string>` | Required: 1–8 headlines, each at most 4,000 characters. |
+| `bodies` | `array<string>` | Optional matching snippets, up to 8 entries of 400 characters each. |
+| `mode` | `string` | `brief` (default) or `translate`. |
+| `lang` | `string` | Output language, default `en`, maximum 16 characters. |
+| `geoContext` | `string` | Optional geographic context, maximum 100 characters. |
+
+Returns the summary endpoint's response, including summary, model, provider, and status/error fields. A successful MCP transport response does not guarantee that the provider generated a summary; inspect the returned status and error.
+
+```json
+{ "name": "analyze_news_headlines", "arguments": { "headlines": ["Energy ministers discuss winter supply"], "mode": "brief", "lang": "en" } }
+```

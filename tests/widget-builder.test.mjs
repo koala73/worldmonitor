@@ -64,18 +64,33 @@ describe('widget relay spend identity trust', () => {
   }
 });
 
+// The relay's Sonnet request settings, for harnesses that evaluate relay functions in isolation.
+const widgetSonnetConstants = () => {
+  const relay = src('scripts/ais-relay.cjs');
+  const params = relay.match(/const WIDGET_SONNET_PARAMS = \{[\s\S]*?\n\};/);
+  const headers = relay.match(/const WIDGET_SONNET_HEADERS = \{[^\n]*\};/);
+  assert.ok(params && headers, 'Missing WIDGET_SONNET_PARAMS or WIDGET_SONNET_HEADERS');
+  return `${params[0]}\n${headers[0]}`;
+};
+
 // Execute the production handler without the relay's unconditional server startup.
 // Only the SDK import is substituted; requests, tool results and SSE use real code.
-async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}' } = {}) {
+async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, failSearch = false, sdkTransport = false, expireDuringFetch = false, sessionToken = 'wms_fixture', fetchStatus = 200, fetchBody = '{"value":42}', searchResults = [{ title: 'Fixture' }], pageText = 'page fixture', verdicts = [], hangOn = null, clock = null, request = {} } = {}) {
   const relay = src('scripts/ais-relay.cjs');
   const extract = name => {
     const match = relay.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`));
     assert.ok(match, `Missing relay function ${name}`);
     return match[0];
   };
-  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [];
+  const requests = [], effects = [], logs = [], frames = [], fetchInits = [], invalidated = [], verifyCalls = [], modelSignals = [], modelOptions = [];
   let ended = 0;
-  let expire;
+  let expire, disconnect;
+  // A hung call settles only through its abort signal; the guard fails a missing abort.
+  const hang = signal => new Promise((_, reject) => {
+    const guard = setTimeout(() => reject(new Error('model call was never aborted')), 300);
+    signal?.addEventListener('abort', () => { clearTimeout(guard); reject(signal.reason); });
+    if (hangOn === 'deadline') expire(); else disconnect();
+  });
   const nextResponse = request => {
     requests.push(structuredClone(request));
     const response = responses[requests.length - 1];
@@ -84,11 +99,12 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     return structuredClone(response);
   };
   const context = {
-    URL, AbortSignal, clearTimeout, parseWidgetAgentResponse,
+    URL, AbortSignal, AbortController, clearTimeout, parseWidgetAgentResponse,
+    ...(clock ? { Date: class extends Date { static now() { return clock(); } } } : {}),
     setTimeout: (callback, ms) => { expire = callback; return setTimeout(callback, ms); },
-    console: { error: (...args) => logs.push(args) },
+    console: { error: (...args) => logs.push(args), log: (...args) => logs.push(args) },
     requireWidgetAgentAccess: () => ({ anthropicConfigured: true, admittedAs: tier }),
-    readRequestBody: async () => JSON.stringify({ prompt: 'Show earthquake data', tier }),
+    readRequestBody: async () => JSON.stringify({ prompt: 'Show earthquake data', tier, ...request }),
     checkProWidgetRateLimit: () => false, checkWidgetRateLimit: () => false,
     isWidgetInjectionAttempt: () => false,
     PRO_WIDGET_KEY: 'test', WIDGET_ANTHROPIC_KEY: 'test',
@@ -98,7 +114,16 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     performWidgetWebSearch: async query => {
       effects.push(`search:${query}`);
       if (failSearch) throw new Error('Search fixture failure');
-      return { results: [{ title: 'Fixture' }] };
+      return { results: searchResults };
+    },
+    performWidgetPageRead: async url => {
+      effects.push(`read:${url}`);
+      return pageText === null ? null : { source: 'exa', text: pageText };
+    },
+    verifyWidgetAgainstSources: async (_client, input, options) => {
+      verifyCalls.push({ ...input, signal: options?.signal });
+      options?.onUsage?.({ input_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 50 }, 'claude-sonnet-5-5');
+      return verdicts.length ? verdicts.shift() : { rightDataset: true, datasetWhy: '', unsupported: [] };
     },
     fetch: async (url, init) => {
       effects.push(url);
@@ -131,30 +156,36 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
         } });
       }
     } : class {
-      messages = { create: async request => {
+      messages = { create: async (request, options) => {
+        modelSignals.push(options?.signal);
+        modelOptions.push(options);
+        if (hangOn && requests.length === responses.length) { requests.push(request); return hang(options?.signal); }
         return nextResponse(request);
       } };
     } }),
   };
   // Include production constants when present, so tests also run against the old loop.
-  const limit = relay.match(/const WIDGET_MAX_TOOL_CALLS = \d+;/)?.[0] ?? '';
-  const toolDefinitions = ['WIDGET_FETCH_TOOL', 'WIDGET_SEARCH_TOOL'].map(name => {
+  const limit = ['WIDGET_MAX_TOOL_CALLS', 'WIDGET_DRAFT_DELIVERY_RESERVE_MS'].map(name => relay.match(new RegExp(`const ${name} = [0-9_]+;`))?.[0] ?? '').join('\n');
+  const toolDefinitions = ['WIDGET_FETCH_TOOL', 'WIDGET_SEARCH_TOOL', 'WIDGET_READ_TOOL'].map(name => {
     const match = relay.match(new RegExp(`const ${name} = \\{[^]*?\\n\\};`));
     assert.ok(match, `Missing ${name}`);
     return match[0];
   }).join('\n');
   const handler = extract('handleWidgetAgentRequest').replace("import('@anthropic-ai/sdk')", 'importAnthropic()');
-  const run = vm.runInNewContext(`${limit}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
+  const run = vm.runInNewContext(`${limit}\n${widgetSonnetConstants()}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('formatWidgetVerifierFindings')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
   const res = {
     writableEnded: false, writeHead() {},
     write(frame) { frames.push(frame); },
     end() { ended++; this.writableEnded = true; },
   };
+  // Node emits a disconnect on the response only; the request closed when its body was read.
+  res.on = (event, cb) => { if (event === 'close') disconnect = () => { if (!res.writableEnded) cb(); }; };
   await run({ headers: {}, on() {}, socket: {} }, res);
   const events = frames.map(frame => JSON.parse(frame.match(/data: (.*)/)[1]));
-  return { requests, effects, fetchInits, invalidated, logs, events, ended };
+  return { requests, effects, fetchInits, invalidated, verifyCalls, modelSignals, modelOptions, logs, events, ended };
 }
 
+const usageLine = result => JSON.parse(result.logs.find(args => args[0] === '[widget-agent] usage')[1]);
 const widgetText = '<!-- title: Quakes --><!-- widget-html --><div>42</div><!-- /widget-html -->';
 const widgetResponse = (stop_reason, content = [{ type: 'text', text: widgetText }]) => ({ stop_reason, content });
 const widgetTool = (id, name = 'fetch_worldmonitor_data', input = { endpoint: '/api/test' }) => ({ type: 'tool_use', id, name, input });
@@ -171,6 +202,69 @@ function assertWidgetError(result, pattern) {
   assert.equal(result.ended, 1);
 }
 
+describe('widget-agent relay — model, caching and usage', () => {
+  it('runs Pro on Sonnet 5.5 with adaptive thinking at low effort, loop caching and refusal fallback', async () => {
+    const result = await runWidgetAgent([widgetResponse('tool_use', [widgetTool('1')]), widgetResponse('end_turn')], { tier: 'pro' });
+    for (const [i, request] of result.requests.entries()) {
+      assert.equal(request.model, 'claude-sonnet-5-5');
+      assert.deepEqual(request.thinking, { type: 'adaptive' });
+      assert.deepEqual(request.output_config, { effort: 'low' });
+      assert.deepEqual(request.cache_control, { type: 'ephemeral' });
+      assert.equal(request.fallbacks, 'default');
+      assert.equal(result.modelOptions[i].headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
+    }
+  });
+
+  it('keeps basic on Haiku, with loop caching but no Sonnet-only fields', async () => {
+    const result = await runWidgetAgent([widgetResponse('end_turn')]);
+    const [request] = result.requests;
+    assert.equal(request.model, 'claude-haiku-4-5-20251001');
+    assert.deepEqual(request.cache_control, { type: 'ephemeral' });
+    assert.equal(request.thinking, undefined);
+    assert.equal(request.fallbacks, undefined);
+    assert.equal(result.modelOptions[0].headers, undefined);
+  });
+
+  it('only ever appends to the conversation, including when tools are switched off', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [1, 2, 3, 4].map(n => widgetTool(String(n)))),
+      widgetResponse('max_tokens', [{ type: 'text', text: 'cut' }]),
+      widgetResponse('end_turn'),
+    ], { tier: 'pro' });
+    assert.ok(result.requests.length >= 3);
+    for (let i = 1; i < result.requests.length; i++) {
+      const before = result.requests[i - 1].messages;
+      assert.deepEqual(result.requests[i].messages.slice(0, before.length), before, `request ${i} rewrote earlier history`);
+    }
+    assert.match(JSON.stringify(result.requests.at(-1).messages), /Tools are now disabled/);
+  });
+
+  it('counts a refused attempt billed before a fallback, from usage.iterations, without double counting', async () => {
+    const tokens = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+    const result = await runWidgetAgent([{
+      ...widgetResponse('end_turn'), model: 'claude-sonnet-5',
+      usage: { ...tokens(20, 800, 5000, 3000), iterations: [{ ...tokens(500, 0, 0, 40), type: 'message' }, { ...tokens(20, 800, 5000, 3000), type: 'fallback_message' }] },
+    }], { tier: 'pro' });
+    assertWidgetSuccess(result);
+    const line = usageLine(result);
+    assert.deepEqual([line.input, line.cacheWrite, line.cacheRead, line.output], [520, 800, 5000, 3040]);
+  });
+
+  it('logs one usage line per request with the builder and source-check tokens summed', async () => {
+    const usage = (input, write, read, output) => ({ input_tokens: input, cache_creation_input_tokens: write, cache_read_input_tokens: read, output_tokens: output });
+    const result = await runWidgetAgent([
+      { ...widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]), model: 'claude-sonnet-5-5', usage: usage(10, 5000, 0, 100) },
+      { ...widgetResponse('end_turn'), model: 'claude-sonnet-5', usage: usage(20, 800, 5000, 3000) },
+    ], { tier: 'pro', searchResults: [{ title: 'T', url: 'https://example.com/t' }] });
+    assertWidgetSuccess(result);
+    const lines = result.logs.filter(args => args[0] === '[widget-agent] usage');
+    assert.equal(lines.length, 1);
+    assert.deepEqual(JSON.parse(lines[0][1]), {
+      model: 'claude-sonnet-5-5', servedBy: ['claude-sonnet-5-5', 'claude-sonnet-5'], calls: 3, input: 1030, cacheWrite: 5800, cacheRead: 5000, output: 3150, toolCalls: 1, outcome: 'complete',
+    });
+  });
+});
+
 describe('widget-agent relay — runtime tool budget and finalization', () => {
   it('executes only three of four calls in one response and returns every tool result', async () => {
     const result = await runWidgetAgent([
@@ -185,13 +279,13 @@ describe('widget-agent relay — runtime tool budget and finalization', () => {
     assertWidgetSuccess(result);
   });
 
-  it('shares the budget across responses and both tools', async () => {
+  it('shares the budget across responses and both tools (4 once the web is used)', async () => {
     const result = await runWidgetAgent([
       widgetResponse('tool_use', [widgetTool('1'), widgetTool('2', 'search_web', { query: 'quakes' })]),
-      widgetResponse('tool_use', [widgetTool('3', 'search_web', { query: 'today' }), widgetTool('4')]),
+      widgetResponse('tool_use', [widgetTool('3', 'search_web', { query: 'today' }), widgetTool('4'), widgetTool('5')]),
       widgetResponse('end_turn'),
     ]);
-    assert.equal(result.effects.length, 3);
+    assert.equal(result.effects.length, 4);
     assert.equal(result.effects.filter(e => e.startsWith('search:')).length, 2);
     assert.equal(toolResultsFor(result.requests[2]).at(-1).is_error, true);
     assertWidgetSuccess(result);
@@ -310,6 +404,31 @@ describe('widget-agent relay — runtime tool budget and finalization', () => {
     assert.equal(result.effects.length, 1);
     assert.equal(result.requests.length, 1);
     assertWidgetError(result, /timeout/i);
+  });
+
+  it('aborts the in-flight model call at the deadline so it stops billing', async () => {
+    const result = await runWidgetAgent([], { hangOn: 'deadline' });
+    assert.equal(result.modelSignals[0]?.aborted, true);
+    assertWidgetError(result, /timeout/i);
+    assert.equal(usageLine(result).outcome, 'timeout');
+  });
+
+  it('aborts the in-flight model call when the client disconnects', async () => {
+    const result = await runWidgetAgent([], { hangOn: 'disconnect' });
+    assert.equal(result.modelSignals[0]?.aborted, true);
+    assert.equal(result.events.some(e => e.type === 'html_complete'), false);
+    assert.equal(usageLine(result).outcome, 'cancelled');
+  });
+
+  it('gives the source verifier a signal bounded by the deadline as well as cancellation', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]), widgetResponse('end_turn'),
+    ]);
+    assertWidgetSuccess(result);
+    const { signal } = result.verifyCalls[0];
+    assert.ok(signal);
+    assert.notEqual(signal, result.modelSignals[0], 'bounded by the deadline, not only by cancellation');
+    assert.equal(signal.aborted, false);
   });
 
   it('serializes the capped tool exchange and finalization through the installed SDK', async () => {
@@ -436,6 +555,17 @@ describe('widget data-tool contracts', () => {
     assert.match(fetchTool.description, /_widget/);
   });
 
+  it('describes read_page and the web provenance rules in both tiers', () => {
+    for (const prompt of prompts) {
+      assert.match(prompt, /### read_page — read a page that search_web returned/);
+      assert.match(prompt, /source domain and as-of date/);
+      assert.match(prompt, /Never label web values "Source: WorldMonitor"/);
+      assert.match(prompt, /identify the period it covers/);
+      assert.match(prompt, /Never infer, extrapolate, estimate or fill from memory/);
+      assert.match(prompt, /4 tool calls once you have used search_web/);
+    }
+  });
+
   it('keeps the basic and Pro data-embedding contracts distinct', () => {
     assert.match(prompts[0], /Embed this data directly into the widget HTML/);
     assert.match(prompts[0], /display-only HTML\. No <script>/);
@@ -454,7 +584,7 @@ describe('widget data-tool contracts', () => {
     const context = vm.createContext({
       URL, AbortSignal, fetch, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,
-      WIDGET_MAX_TOOL_CALLS: 3,
+      WIDGET_MAX_TOOL_CALLS: 3, toolLimit: 3, searchedUrls: new Set(), sources: [], usedWeb: false,
       getWidgetDataSessionToken: async () => 'wms_contract', invalidateWidgetDataSession() {},
       sendWidgetSSE() {}, WIDGET_EXA_KEY: 'fixture', WIDGET_BRAVE_KEY: 'fixture', console,
     });
@@ -676,6 +806,317 @@ describe('widget tool result compaction', () => {
     const out = JSON.parse(compact(JSON.stringify({ data: { q: { quotes: [{ symbol: 'GC=F' }] } } }), ['GC=F', 'XAU']));
     assert.deepEqual(out.data.q.quotes.map(q => q.symbol), ['GC=F']);
     assert.deepEqual(out._widget.symbols, { requested: ['GC=F', 'XAU'], missing: ['XAU'], filtered: ['data.q.quotes'] });
+  });
+});
+
+describe('widget-agent relay — web pages and source verification', () => {
+  const searchResults = [{ title: 'Table', url: 'https://example.com/table', snippet: 's', publishedDate: '' }];
+  const html = body => `<!-- title: T --><!-- widget-html --><div>${body}</div><!-- /widget-html -->`;
+  const draft = body => widgetResponse('end_turn', [{ type: 'text', text: html(body) }]);
+  const finalHtml = result => result.events.find(e => e.type === 'html_complete')?.html;
+  const endpoints = result => result.events.filter(e => e.type === 'tool_call').map(e => e.endpoint);
+
+  it('reads only urls that search_web returned in this request', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'read_page', { url: 'https://evil.example/x' })]),
+      widgetResponse('end_turn'),
+    ], { searchResults });
+    assert.equal(result.effects.some(e => String(e).startsWith('read:')), false);
+    const [toolResult] = toolResultsFor(result.requests[1]);
+    assert.equal(toolResult.is_error, true);
+    assert.match(toolResult.content, /Only urls returned by search_web/);
+  });
+
+  it('reads a searched page and reports its host as progress', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'table' })]),
+      widgetResponse('tool_use', [widgetTool('2', 'read_page', { url: 'https://example.com/table' })]),
+      draft('ok'),
+    ], { searchResults, pageText: '| Team | Pts |' });
+    assert.ok(result.effects.includes('read:https://example.com/table'));
+    assert.ok(endpoints(result).includes('read:example.com'));
+    assert.match(toolResultsFor(result.requests[2]).at(-1).content, /\| Team \| Pts \|/);
+  });
+
+  it('allows a fourth tool call once the widget has searched the web', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' }), widgetTool('2'), widgetTool('3'), widgetTool('4')]),
+      draft('ok'),
+    ], { searchResults });
+    assert.equal(result.effects.filter(e => !String(e).startsWith('search:')).length, 3);
+    assert.equal(toolResultsFor(result.requests[1]).some(r => r.is_error), false);
+  });
+
+  it('does not verify a widget built only from WorldMonitor data', async () => {
+    const result = await runWidgetAgent([widgetResponse('tool_use', [widgetTool('1')]), draft('ok')]);
+    assert.equal(result.verifyCalls.length, 0);
+    assert.equal(endpoints(result).includes('verify:sources'), false);
+    assertWidgetSuccess(result);
+  });
+
+  it('verifies a web-sourced widget against what the model read, then serves it', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+    ], { searchResults });
+    assert.equal(result.verifyCalls.length, 1);
+    const [call] = result.verifyCalls;
+    assert.equal(call.request, 'Show earthquake data');
+    assert.match(call.html, /first/);
+    assert.ok(call.sources.some(source => source.kind === 'search'));
+    assert.match(call.today, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(endpoints(result).includes('verify:sources'));
+    assert.equal(finalHtml(result), '<div>first</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('feeds a failed check back once, grants one more tool call, and serves the fix', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'table 2025-26' })]),
+      draft('last season'),
+      widgetResponse('tool_use', [widgetTool('2', 'search_web', { query: 'table 2026-27' })]),
+      draft('this season'),
+    ], { searchResults, tier: 'pro', verdicts: [{ rightDataset: false, datasetWhy: 'shows the finished 2025-26 table', unsupported: [{ value: 'W W W', why: 'form not in source' }] }] });
+    assert.equal(result.verifyCalls.length, 2, 'the repaired draft is checked again');
+    assert.match(result.verifyCalls[1].html, /this season/);
+    const feedback = result.requests[2].messages.at(-1).content;
+    assert.match(feedback, /finished 2025-26 table/);
+    assert.match(feedback, /W W W/);
+    assert.equal(result.requests[2].tool_choice.type, 'auto');
+    assert.deepEqual(result.effects.filter(e => String(e).startsWith('search:')), ['search:table 2025-26', 'search:table 2026-27']);
+    assert.equal(finalHtml(result), '<div>this season</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('serves the first draft when the check itself fails', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+    ], { searchResults, verdicts: [null] });
+    assert.equal(finalHtml(result), '<div>first</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('never serves a rejected draft when the repair comes back incomplete', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+      widgetResponse('end_turn', [{ type: 'text', text: 'no markers here' }]),
+    ], { searchResults, verdicts: [{ rightDataset: true, datasetWhy: '', unsupported: [{ value: '42', why: 'not in source' }] }] });
+    assert.equal(finalHtml(result), undefined);
+    assertWidgetError(result, /incomplete/i);
+  });
+
+  it('does not recover unchecked HTML from a tool turn after a rejection', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+      widgetResponse('tool_use', [{ type: 'text', text: html('unchecked') }, widgetTool('2', 'search_web', { query: 'q2' })]),
+      widgetResponse('end_turn', [{ type: 'text', text: 'no markers here' }]),
+    ], { searchResults, tier: 'pro', verdicts: [{ rightDataset: false, datasetWhy: 'last season', unsupported: [] }] });
+    assert.equal(finalHtml(result), undefined);
+    assertWidgetError(result, /incomplete/i);
+  });
+
+  it('does not recover web-sourced HTML that never reached the check', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      widgetResponse('tool_use', [{ type: 'text', text: html('unchecked web draft') }, widgetTool('2', 'read_page', { url: 'https://example.com/table' })]),
+      widgetResponse('end_turn', [{ type: 'text', text: 'no markers here' }]),
+    ], { searchResults, tier: 'pro' });
+    assert.equal(result.verifyCalls.length, 0);
+    assert.equal(finalHtml(result), undefined);
+    assertWidgetError(result, /incomplete/i);
+  });
+
+  it('fails closed when the repair cannot be checked', async () => {
+    const reject = { rightDataset: false, datasetWhy: 'last season', unsupported: [] };
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+      draft('repair'),
+    ], { searchResults, tier: 'pro', verdicts: [reject, null] });
+    assert.equal(finalHtml(result), undefined);
+    assertWidgetError(result, /sources could not be verified/i);
+  });
+
+  it('fails closed when no time is left to check the repair', async () => {
+    let now = 1_000_000;
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+      { get stop_reason() { now += 178_000; return 'end_turn'; }, content: [{ type: 'text', text: html('repair') }] },
+    ], { searchResults, tier: 'pro', clock: () => now, verdicts: [{ rightDataset: false, datasetWhy: 'last season', unsupported: [] }] });
+    assert.equal(result.verifyCalls.length, 1);
+    assert.equal(finalHtml(result), undefined);
+    assertWidgetError(result, /sources could not be verified/i);
+  });
+
+  it('still runs the repair turn after a truncation near the basic turn limit', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      widgetResponse('tool_use', [widgetTool('2', 'read_page', { url: 'https://example.com/table' })]),
+      widgetResponse('tool_use', [widgetTool('3')]),
+      widgetResponse('tool_use', [widgetTool('4')]),
+      widgetResponse('max_tokens', [{ type: 'text', text: '<!-- widget-html --><div>cut' }]),
+      draft('rejected'),
+      draft('repaired'),
+    ], { searchResults, verdicts: [{ rightDataset: true, datasetWhy: '', unsupported: [{ value: '42', why: 'not in source' }] }] });
+    assert.equal(result.requests.length, 7);
+    assert.equal(result.requests[6].tool_choice.type, 'none');
+    assert.equal(finalHtml(result), '<div>repaired</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('gives the check the widget being modified, so carried-over values are not rejected', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('updated'),
+    ], { searchResults, tier: 'pro', request: { mode: 'modify', currentHtml: '<div>Arsenal 15 pts</div>', prompt: 'update today' } });
+    assert.match(result.verifyCalls[0].priorHtml, /Arsenal 15 pts/);
+  });
+
+  it('fails instead of serving a repair the check still rejects', async () => {
+    const reject = { rightDataset: false, datasetWhy: 'last season', unsupported: [] };
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      draft('first'),
+      draft('second'),
+    ], { searchResults, tier: 'pro', verdicts: [reject, reject] });
+    assert.equal(result.verifyCalls.length, 2);
+    assert.equal(finalHtml(result), undefined);
+    assertWidgetError(result, /sources could not be verified/i);
+  });
+
+  it('keeps the granted tool call usable when a basic repair starts near the turn limit', async () => {
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'table 2025-26' })]),
+      widgetResponse('tool_use', [widgetTool('2', 'read_page', { url: 'https://example.com/table' })]),
+      widgetResponse('tool_use', [widgetTool('3')]),
+      draft('last season'),
+      widgetResponse('tool_use', [widgetTool('4', 'search_web', { query: 'table 2026-27' })]),
+      draft('this season'),
+    ], { searchResults, verdicts: [{ rightDataset: false, datasetWhy: 'last season', unsupported: [] }] });
+    assert.equal(result.requests[4].tool_choice.type, 'auto');
+    assert.ok(result.effects.includes('search:table 2026-27'));
+    assert.equal(finalHtml(result), '<div>this season</div>');
+    assertWidgetSuccess(result);
+  });
+
+  it('skips the check and serves the draft when too little of the deadline is left', async () => {
+    let now = 1_000_000;
+    const result = await runWidgetAgent([
+      widgetResponse('tool_use', [widgetTool('1', 'search_web', { query: 'q' })]),
+      { get stop_reason() { now += 178_000; return 'end_turn'; }, content: [{ type: 'text', text: html('late') }] },
+    ], { searchResults, tier: 'pro', clock: () => now });
+    assert.equal(result.verifyCalls.length, 0);
+    assert.equal(finalHtml(result), '<div>late</div>');
+    assertWidgetSuccess(result);
+  });
+});
+
+describe('widget page reader', () => {
+  const relay = src('scripts/ais-relay.cjs');
+  const load = fetch => {
+    const match = relay.match(/async function performWidgetPageRead\([\s\S]*?\n\}/);
+    assert.ok(match, 'Missing performWidgetPageRead');
+    return vm.runInNewContext(`${match[0]}\nperformWidgetPageRead`, {
+      fetch, URL, AbortSignal, String, JSON, console: { warn() {} },
+      WIDGET_EXA_KEY: 'exa', WIDGET_FIRECRAWL_KEY: 'fc',
+    });
+  };
+
+  it('sends a User-Agent to both providers and stops when the widget request is cancelled', async () => {
+    const inits = [];
+    const abort = new AbortController();
+    const read = load(async (_url, init) => { inits.push(init); abort.abort(); return { ok: false }; });
+    assert.equal(await read('https://example.com/t', { signal: abort.signal }), null);
+    assert.equal(inits.length, 1, 'no Firecrawl fallback after cancellation');
+    assert.match(inits[0].headers['User-Agent'], /WorldMonitor/);
+    assert.equal(inits[0].signal.aborted, true);
+  });
+
+  it('reads only http and https urls', async () => {
+    const urls = [];
+    const read = load(async url => { urls.push(url); return { ok: false }; });
+    assert.equal(await read('file:///etc/passwd'), null);
+    assert.equal(await read('ftp://example.com/x'), null);
+    assert.equal(urls.length, 0);
+  });
+});
+
+describe('widget source verifier', () => {
+  const relay = src('scripts/ais-relay.cjs');
+  const load = () => {
+    const match = relay.match(/async function verifyWidgetAgainstSources\([\s\S]*?\n\}/);
+    assert.ok(match, 'Missing verifyWidgetAgainstSources');
+    return vm.runInNewContext(`${widgetSonnetConstants()}\n${match[0]}\nverifyWidgetAgainstSources`, { JSON, console: { warn() {} } });
+  };
+  const clientReturning = (text, seen = []) => ({ messages: { create: async req => { seen.push(req); return { content: [{ type: 'text', text }] }; } } });
+  const input = { request: 'Premier League table', today: '2026-09-29', html: '<div>Arsenal 15</div>', sources: [{ kind: 'page', label: 'https://example.com/t', text: '| Arsenal | 15 |' }] };
+
+  it('parses a fenced JSON verdict into the relay shape', async () => {
+    const seen = [];
+    const verdict = await load()(clientReturning('```json\n{"right_dataset": false, "dataset_why": "last season", "unsupported": [{"value": "W", "why": "x"}]}\n```', seen), input);
+    assert.deepEqual(JSON.parse(JSON.stringify(verdict)), { rightDataset: false, datasetWhy: 'last season', unsupported: [{ value: 'W', why: 'x' }] });
+    const sent = seen[0].messages[0].content;
+    assert.match(sent, /Premier League table/);
+    assert.match(sent, /2026-09-29/);
+    assert.match(sent, /\| Arsenal \| 15 \|/);
+    assert.match(sent, /Arsenal 15/);
+  });
+
+  it('makes the check name both periods before judging, so a finished season reads as stale', async () => {
+    const seen = [];
+    const verdict = await load()(clientReturning('{"data_period": "2025-26 final table", "needed_period": "2026-27 in progress", "right_dataset": false, "dataset_why": "finished season", "unsupported": []}', seen), input);
+    assert.match(seen[0].system, /data_period[\s\S]*needed_period[\s\S]*right_dataset/);
+    assert.match(seen[0].system, /finished[^.]*newer one is in progress/);
+    assert.equal(verdict.datasetWhy, 'finished season (data: 2025-26 final table; needed: 2026-27 in progress)');
+  });
+
+  it('checks on Sonnet 5.5 with the builder settings and refusal fallback, and reports its usage', async () => {
+    const seen = [];
+    const reported = [];
+    const client = { messages: { create: async (req, opts) => { seen.push({ req, opts }); return { content: [{ type: 'text', text: '{"right_dataset": true, "unsupported": []}' }], usage: { input_tokens: 7, output_tokens: 3 } }; } } };
+    await load()(client, input, { onUsage: u => reported.push(u) });
+    assert.equal(seen[0].req.model, 'claude-sonnet-5-5');
+    assert.deepEqual(JSON.parse(JSON.stringify(seen[0].req.thinking)), { type: 'adaptive' });
+    assert.equal(seen[0].req.fallbacks, 'default');
+    assert.equal(seen[0].opts.headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
+    assert.deepEqual(reported, [{ input_tokens: 7, output_tokens: 3 }]);
+  });
+
+  it('keeps the newest sources when the material is over budget', async () => {
+    const seen = [];
+    const sources = [
+      { kind: 'worldmonitor', label: 'old', text: `OLDEST ${'o'.repeat(19_000)}` },
+      { kind: 'page', label: 'mid', text: 'm'.repeat(19_000) },
+      { kind: 'page', label: 'mid2', text: 'n'.repeat(19_000) },
+      { kind: 'page', label: 'mid3', text: 'p'.repeat(19_000) },
+      { kind: 'search', label: 'repair', text: `NEWEST ${'r'.repeat(10_000)}` },
+    ];
+    await load()(clientReturning('{"right_dataset": true, "unsupported": []}', seen), { ...input, sources });
+    assert.match(seen[0].messages[0].content, /NEWEST/);
+  });
+
+  it('shows the check the widget being modified as prior material', async () => {
+    const seen = [];
+    await load()(clientReturning('{"right_dataset": true, "unsupported": []}', seen), { ...input, priorHtml: '<div>CARRIED 7</div>' });
+    assert.match(seen[0].messages[0].content, /PRIOR WIDGET[\s\S]*CARRIED 7/);
+  });
+
+  it('sends the whole widget, not a 40,000-character prefix', async () => {
+    const seen = [];
+    const html = `<div>${'x'.repeat(70_000)}</div><p>TAIL-VALUE 99</p>`;
+    await load()(clientReturning('{"right_dataset": true, "unsupported": []}', seen), { ...input, html });
+    assert.match(seen[0].messages[0].content, /TAIL-VALUE 99/);
+  });
+
+  it('returns null when the check errors or its reply is not a verdict', async () => {
+    const verify = load();
+    assert.equal(await verify({ messages: { create: async () => { throw new Error('overloaded'); } } }, input), null);
+    assert.equal(await verify(clientReturning('{"right_dataset": tr'), input), null);
+    assert.equal(await verify(clientReturning('{"unsupported": []}'), input), null);
   });
 });
 
@@ -918,11 +1359,8 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('server timeout is 90 seconds', () => {
-    assert.ok(
-      relay.includes('90_000') || relay.includes('90000'),
-      'Server timeout must be 90 seconds (90_000 ms)',
-    );
+  it('server timeout leaves room for a verified web widget: 180 s PRO, 150 s basic', () => {
+    assert.ok(relay.includes('const timeoutMs = isPro ? 180_000 : 150_000;'));
   });
 
   it('CORS for /widget-agent: POST in Allow-Methods, X-Widget-Key and X-Pro-Key in Allow-Headers', () => {
@@ -1166,8 +1604,9 @@ describe('widget-agent relay — completion contract', () => {
       WIDGET_ANTHROPIC_KEY: 'test-key',
       WIDGET_FETCH_TOOL: {},
       WIDGET_SEARCH_TOOL: {},
+      WIDGET_READ_TOOL: {}, WIDGET_DRAFT_DELIVERY_RESERVE_MS: 5_000,
       performWidgetWebSearch: async () => null,
-      setTimeout,
+      setTimeout, AbortController,
       clearTimeout,
       console,
       AnthropicStub: class {
@@ -1181,12 +1620,12 @@ describe('widget-agent relay — completion contract', () => {
       },
     };
     const res = {
-      writableEnded: false,
+      writableEnded: false, on() {},
       writeHead(status) { assert.equal(status, 200); },
       write(chunk) { chunks.push(chunk); },
       end() { this.writableEnded = true; ends++; },
     };
-    vm.runInNewContext(`${sendSSE}\n${handler}\nthis.run = handleWidgetAgentRequest;`, context);
+    vm.runInNewContext(`${widgetSonnetConstants()}\n${sendSSE}\n${handler}\nthis.run = handleWidgetAgentRequest;`, context);
     await context.run({ headers: {}, on() {} }, res);
     assert.equal(ends, 1, 'stream must end exactly once');
     assert.equal(calls, responses.length, 'generation must consume the expected responses');
@@ -1514,13 +1953,6 @@ describe('WidgetChatModal — SSE client protocol', () => {
 
   it('AbortController used for cancellation', () => {
     assert.ok(modal.includes('AbortController'), 'Must use AbortController for stream cancellation');
-  });
-
-  it('client timeout is 60 seconds', () => {
-    assert.ok(
-      modal.includes('60_000') || modal.includes('60000'),
-      'Client timeout must be 60 seconds (60_000 ms)',
-    );
   });
 
   it('currentHtml sent as separate field (not embedded in conversationHistory)', () => {
@@ -2656,15 +3088,8 @@ describe('PRO widget — modal and layout integration', () => {
     );
   });
 
-  it('modal uses 120s timeout for PRO (vs 60s basic)', () => {
-    assert.ok(
-      modal.includes('120_000') || modal.includes('120000'),
-      'PRO modal timeout must be 120 seconds',
-    );
-    assert.ok(
-      modal.includes('60_000') || modal.includes('60000'),
-      'Basic modal timeout must still be 60 seconds',
-    );
+  it('modal timeout outlasts the relay timeout: 200 s PRO, 170 s basic', () => {
+    assert.ok(modal.includes('const timeoutMs = isPro ? 200_000 : 170_000;'));
   });
 
   it('modal shows preflightProUnavailable when proKeyConfigured is false', () => {

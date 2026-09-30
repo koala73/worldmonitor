@@ -1332,7 +1332,7 @@ describe('scheduled seed freshness monitor', () => {
 
         assert.match(
           workflow,
-          /unit-shards:[\s\S]*?fetch-depth: 0[\s\S]*?name: Enforce health-probe cutovers[\s\S]*?node --import tsx scripts\/check-health-probe-cutovers\.mts/,
+          /\n {2}unit-built-output:\n(?:(?!\n {2}[\w-]+:\n)[\s\S])*?fetch-depth: 0(?:(?!\n {2}[\w-]+:\n)[\s\S])*?name: Enforce health-probe cutovers(?:(?!\n {2}[\w-]+:\n)[\s\S])*?node --import tsx scripts\/check-health-probe-cutovers\.mts/,
         );
         assert.match(
           hook,
@@ -1359,8 +1359,8 @@ describe('scheduled seed freshness monitor', () => {
       // The merge ref's FIRST parent is the base tip the tree was merged onto,
       // so it cannot drift away from what is actually being tested.
       it('bases the cutover diff on the merged tree, not the pinned base.sha', () => {
-        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8').split('  unit-shards:\n')[1]?.split('  unit:\n')[0];
-        assert.ok(workflow, 'the unit shard job must exist');
+        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8').split('  unit-built-output:\n')[1]?.split('  unit:\n')[0];
+        assert.ok(workflow, 'the unit-built-output job must exist');
 
         // Matches the interpolation, not the prose: the step's own comment names
         // the rejected expression to explain why it is rejected.

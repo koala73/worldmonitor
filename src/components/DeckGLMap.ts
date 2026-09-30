@@ -223,6 +223,7 @@ interface DeckMapState {
 
 interface DeckGLMapOptions {
   chrome?: boolean;
+  mapLibreWorkerUrl?: string;
   /**
    * Fired when MapLibre cannot be (re)constructed after the initial ready
    * handshake — e.g. WebGL2 lost mid-session while recreating the fallback
@@ -817,6 +818,7 @@ export class DeckGLMap {
   private destroyed = false;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
+  private readonly mapLibreWorkerUrl: string | undefined;
   private readonly onFatalError: ((error: unknown) => void) | null;
   private initPromise: Promise<void> = Promise.resolve();
   private styleLoadTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -896,6 +898,7 @@ export class DeckGLMap {
   constructor(container: HTMLElement, initialState: DeckMapState, options: DeckGLMapOptions = {}) {
     this.container = container;
     this.chrome = options.chrome ?? true;
+    this.mapLibreWorkerUrl = options.mapLibreWorkerUrl;
     this.onFatalError = options.onFatalError ?? null;
     this.state = {
       ...initialState,
@@ -1096,7 +1099,7 @@ export class DeckGLMap {
   }
 
   private async initMapLibre(): Promise<void> {
-    maplibregl.setWorkerUrl(maplibreWorkerUrl);
+    maplibregl.setWorkerUrl(this.mapLibreWorkerUrl ?? maplibreWorkerUrl);
     // No `setRTLTextPlugin` here: MapLibre 6 shapes Arabic and reorders
     // bidirectional text itself and deprecates the plugin. Registering the
     // self-hosted plugin after the 6.x upgrade also broke RTL labels outright —

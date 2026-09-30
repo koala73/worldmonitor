@@ -1104,6 +1104,14 @@ A vessel classification replayed out of a persisted snapshot that the current cl
 
 Vessel snapshots outlive a deploy, so correcting a classifier reaches new readers immediately and returning readers only once their own snapshot ages out — from their seat the fix simply did not happen. Correcting the classifier is therefore only half the work: the rehydration path has to normalize the old claim too, and it can only do so safely against a signature no legitimate record can satisfy. The hull-identifier asymmetry under Known-Vessel Override is what supplies that signature here, which is why such a signature can only target the combatant classes that asymmetry actually covers. See also: Known-Vessel Override, Dark Ship.
 
+## Widget Builder
+
+### Source Check
+
+The independent second model call that compares a web-sourced widget draft with everything the agent read before the widget reaches the user. It judges whether the data is the right dataset for the current or requested period, and lists displayed values the sources do not support. A widget becomes web-sourced the moment a web search returns results; one built only from our own data never gets the check.
+
+A first draft fails open: if the check cannot run or errors, the draft is served unverified. Once a draft has been rejected, the check fails closed: the model gets one repair, and only a repair that passes a second check is served. A rejected repair, or a recheck that fails or runs out of time, ends the request with an error. A throwaway web search therefore changes what the user gets, not only what the request costs. See also: Anonymous Session.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.

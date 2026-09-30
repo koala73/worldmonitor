@@ -129,6 +129,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/news-dashboard.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for the WorldMonitor news dashboard and analysis adapter. Uses existing sebuf news RPCs; tool metadata and execution envelopes follow the external MCP protocol. No HTTP handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/analysis-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
@@ -339,6 +346,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/ui/news-dashboard-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps HTML resource loader for the compiled WorldMonitor dashboard. The ui:// resource envelope and CSP metadata follow the external MCP Apps protocol. No standalone HTTP data endpoint.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/ui/conflict-events-app.ts",
       "category": "external-protocol",
       "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/conflict-events.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
@@ -464,7 +478,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/download.js",
       "category": "non-json",
@@ -507,7 +520,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
@@ -564,7 +576,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/health.js",
       "category": "ops-admin",
@@ -663,7 +674,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
@@ -762,7 +772,6 @@
       "owner": "@koala73",
       "removal_issue": null
     },
-
     {
       "path": "api/latest-brief.ts",
       "category": "deferred",
@@ -833,7 +842,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },
-
     {
       "path": "api/scenario/v1/run.ts",
       "category": "deferred",
@@ -869,7 +877,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "#3282"
     },
-
     {
       "path": "api/v2/shipping/webhooks/[subscriberId].ts",
       "category": "migration-pending",
