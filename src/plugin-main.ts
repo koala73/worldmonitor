@@ -191,7 +191,9 @@ async function start(): Promise<void> {
   const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
   for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;
   const workerModuleUrl = new URL(mapLibreWorkerAsset, import.meta.url).href;
-  const workerUrl = URL.createObjectURL(new Blob([`import ${JSON.stringify(workerModuleUrl)};`], { type: 'text/javascript' }));
+  const workerResponse = await fetch(workerModuleUrl, { credentials: 'omit', signal: AbortSignal.timeout(15_000) });
+  if (!workerResponse.ok) throw new Error(`Map worker could not load (${workerResponse.status})`);
+  const workerUrl = URL.createObjectURL(new Blob([await workerResponse.text()], { type: 'text/javascript' }));
   map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerUrl });
   document.getElementById('mapDimensionToggle')!.addEventListener('click', async event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-mode]') : null;

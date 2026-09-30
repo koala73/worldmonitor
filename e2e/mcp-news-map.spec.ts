@@ -66,7 +66,7 @@ test.describe('2D basemap with enforced CSP', () => {
     const strictHtml = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script>document.documentElement.dataset.cspViolations='0';document.addEventListener('securitypolicyviolation',()=>document.documentElement.dataset.cspViolations=String(Number(document.documentElement.dataset.cspViolations)+1));</script>`);
     await page.setViewportSize({ width: 1200, height: 1000 });
     await page.goto(origin);
-    await page.setContent(`<iframe title="WorldMonitor plugin" style="border:0;width:100%;height:1000px" sandbox="allow-scripts"></iframe><script>
+    await page.setContent(`<iframe title="WorldMonitor plugin" style="border:0;width:100%;height:1000px" sandbox="allow-scripts allow-same-origin"></iframe><script>
       const frame=document.querySelector('iframe');window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const m=e.data;const send=o=>frame.contentWindow.postMessage({jsonrpc:'2.0',...o},'*');
       if(m.method==='ui/initialize')send({id:m.id,result:{hostCapabilities:{},hostContext:{theme:'dark'}}});
       if(m.method==='ui/notifications/initialized')send({method:'ui/notifications/tool-result',params:{structuredContent:${JSON.stringify(payload)}}});});frame.srcdoc=${JSON.stringify(strictHtml).replace(/</g, '\\u003c')};</script>`);
