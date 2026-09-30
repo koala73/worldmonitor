@@ -74,6 +74,9 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await app.locator('[data-panel="politics"] .panel-summarize-btn').click();
   await expect(app.locator('[data-panel="politics"] .panel-summary-error')).toBeVisible();
   await app.getByRole('button', { name: 'Search news' }).click();
+  await expect(app.locator('.search-scope')).toHaveCount(2);
+  await expect(app.locator('.tip-item, .search-chip, .search-all-commands-link')).toHaveCount(0);
+  await expect(app.locator('.search-input:visible')).toHaveAttribute('placeholder', 'Search news');
   await app.locator('.search-input:visible').fill('Energy');
   await expect(app.locator('.search-results')).toContainText('Energy ministers');
   await app.locator('.search-input:visible').press('Escape');
