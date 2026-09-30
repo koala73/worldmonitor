@@ -25,7 +25,7 @@ const EXTENSIONS = ['mjs', 'mts', 'cjs', 'js', 'ts', 'tsx'];
 const FILE_TOKEN = new RegExp(`^[\\w@./*[\\]{},-]+\\.(?:${EXTENSIONS.join('|')})$`);
 const GLOB = /[*[\]{}]/;
 const SUITE_ROOTS = ['api', 'src-tauri', 'scripts'];
-// The scripts test.yml runs on every code PR (unit-shards and sidecar). A
+// The scripts test.yml runs on every code PR (unit-shards, unit-built-output and sidecar). A
 // suite owned only by a script no workflow invokes still runs nowhere.
 const CI_OWNERS = ['test:data', 'test:sidecar'];
 
