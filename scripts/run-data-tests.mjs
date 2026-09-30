@@ -11,11 +11,13 @@ const timingPath = new URL('./shared/data-test-durations.json', import.meta.url)
 
 // CI builds dist/ and public/pro/ once, in the unit-built-output job, instead of
 // in every unit shard. A suite goes to that job when its source names the built
-// trees or the guards that gate on them. Over-matching only moves a suite to the
+// trees or the guards that gate on them, or loads pro-test's own install
+// (pro-test/node_modules, pro-test/vite.config), which only `npm run build:pro`
+// provides in CI. Over-matching only moves a suite to the
 // job that has the build; a suite that reads built output without naming it
 // still fails loudly in a shard, because the shards also run with
 // WM_EXPECT_BUILT_OUTPUT=1 and no build.
-const BUILT_OUTPUT_REFERENCE = /built-output-guard|pro-built-output|WM_EXPECT_BUILT_OUTPUT|['"`/]dist\/|public\/pro\//;
+const BUILT_OUTPUT_REFERENCE = /built-output-guard|pro-built-output|WM_EXPECT_BUILT_OUTPUT|['"`/]dist\/|public\/pro\/|pro-test\/(?:node_modules|vite\.config)/;
 const BUILT_OUTPUT_MODES = new Set(['all', 'only', 'exclude']);
 
 export function readsBuiltOutput(source) {

@@ -59,6 +59,11 @@ test('suites that read built output run in the job that builds it', () => {
   for (const file of ['tests/dashboard-eager-chunks.test.mjs', 'tests/pro-welcome-prerender.test.mjs', 'tests/deploy-config.test.mjs']) {
     assert.ok(built.has(file), `${file} reads dist/ or public/pro/`);
   }
+  // Loads pro-test/vite.config.ts, whose plugins resolve from pro-test/node_modules;
+  // only build:pro installs that tree in CI (ERR_MODULE_NOT_FOUND in a shard, #8752).
+  for (const file of ['tests/sentry-release-build.test.mts']) {
+    assert.ok(built.has(file), `${file} needs pro-test's install`);
+  }
   assert.ok(built.size < inventory.length / 4, `the built-output job should hold a small slice, got ${built.size}`);
 });
 
@@ -70,8 +75,10 @@ test('built-output classification matches the paths and guards suites use', () =
     "import { guardBuiltOutput } from './_lib/built-output-guard.mjs'",
     "import { shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs'",
     "process.env.WM_EXPECT_BUILT_OUTPUT === '1'",
+    "resolve('pro-test/node_modules/.cache')",
+    "['marketing', 'pro-test/vite.config.ts']",
   ]) assert.equal(readsBuiltOutput(source), true, source);
-  for (const source of ["readFileSync('src/main.ts')", 'const distance = 3;', "readFileSync('public/favicon.ico')", 'const redistribute = 1;']) {
+  for (const source of ["readFileSync('src/main.ts')", 'const distance = 3;', "readFileSync('public/favicon.ico')", 'const redistribute = 1;', "readFileSync('pro-test/src/main.ts')"]) {
     assert.equal(readsBuiltOutput(source), false, source);
   }
   const sources = { a: "readFileSync('dist/x')", b: 'plain' };
