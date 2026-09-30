@@ -191,7 +191,8 @@ async function start(): Promise<void> {
   const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
   for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;
   const workerModuleUrl = new URL(mapLibreWorkerAsset, import.meta.url).href;
-  map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerModuleUrl });
+  const workerUrl = URL.createObjectURL(new Blob([`import ${JSON.stringify(workerModuleUrl)};`], { type: 'text/javascript' }));
+  map = new MapContainer(document.getElementById('mapContainer')!, { zoom: 1, pan: { x: 0, y: 0 }, view: 'global', layers, timeRange: 'all' }, false, { mapLibreWorkerUrl: workerUrl });
   document.getElementById('mapDimensionToggle')!.addEventListener('click', async event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-mode]') : null;
     if (!button) return;
@@ -291,6 +292,7 @@ async function start(): Promise<void> {
     search.close();
     for (const panel of panels.values()) panel.destroy();
     map.destroy();
+    URL.revokeObjectURL(workerUrl);
   }, { once: true });
 }
 
