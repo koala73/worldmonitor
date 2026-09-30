@@ -45,6 +45,7 @@
     "postcss": "8.5.23",
     "ws": "8.21.0",
     "shell-quote": "1.10.0",
-    "metro": "0.84.6"
+    "metro": "0.84.6",
+    "brace-expansion@5": "^5.0.12"
   }
 }

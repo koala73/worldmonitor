@@ -32,8 +32,8 @@
     "undici": "$undici",
     "ws": "$ws",
     "ip-address": "^10.3.1",
-    "brace-expansion@1": "^1.1.18",
-    "brace-expansion@2": "^2.1.4"
+    "brace-expansion@1": "^1.1.21",
+    "brace-expansion@2": "^2.1.7"
   },
   "engines": {
     "node": ">=20"
