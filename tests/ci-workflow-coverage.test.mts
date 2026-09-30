@@ -73,7 +73,7 @@ describe('root dependency cache (#8710)', () => {
   });
 
   for (const [workflowText, jobIds] of [
-    [testWorkflow, ['unit-shards', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
+    [testWorkflow, ['unit-shards', 'unit-built-output', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'variant-smoke-pro-webmcp', 'resilience-validation-smoke']],
     [lintCodeWorkflow, ['biome', 'markdown']],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck']],
   ] as const) {
@@ -218,6 +218,7 @@ const GATE_CHECK_EXEMPTIONS: Record<string, { workflow: string; coveredBy: strin
   'audit-lockfile': { workflow: 'Security Audit', coveredBy: 'security-audit' },
   'audit-rust': { workflow: 'Security Audit', coveredBy: 'security-audit' },
   'unit-shards': { workflow: 'Test', coveredBy: 'unit' },
+  'unit-built-output': { workflow: 'Test', coveredBy: 'unit' },
   'variant-smoke-shards': { workflow: 'Test', coveredBy: 'variant-smoke-full' },
   'variant-smoke-pro-webmcp': { workflow: 'Test', coveredBy: 'variant-smoke-full' },
 };
@@ -1519,7 +1520,7 @@ describe('CI workflow coverage', () => {
       assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
     }
 
-    const unit = testJobBlock('unit-shards');
+    const unit = testJobBlock('unit-built-output');
     assert.match(
       unit,
       /^\s+run: node scripts\/openapi-capacity-report\.mjs --out "\$RUNNER_TEMP\/openapi-capacity\.json"\s*$/m,
@@ -1535,7 +1536,7 @@ describe('CI workflow coverage', () => {
     );
     assert.match(
       unit,
-      /name: openapi-capacity-\$\{\{ matrix\.shard \}\}-\$\{\{ github\.run_attempt \}\}/,
+      /name: openapi-capacity-\$\{\{ github\.run_attempt \}\}/,
       'the capacity artifact name must carry run_attempt — upload-artifact v6 rejects a duplicate name within a run, which collides on the re-run started to chase the failure',
     );
     assert.match(
@@ -1791,7 +1792,7 @@ describe('CI workflow coverage', () => {
     // it back to a narrower path-gated job would silently re-open the
     // "bundle-breaking change with green PR CI" gap.
     assert.match(
-      testJobBlock('unit-shards'),
+      testJobBlock('unit-built-output'),
       /^\s+node scripts\/build-sidecar-handlers\.mjs\s*$/m,
       'unit job must run the sidecar handler bundle build',
     );
@@ -1805,7 +1806,7 @@ describe('CI workflow coverage', () => {
       'desktop-config job must run the desktop build env parity check',
     );
     assert.match(
-      testJobBlock('unit-shards'),
+      testJobBlock('unit-built-output'),
       /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
       'unit job must run the desktop build env parity check',
     );

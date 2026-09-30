@@ -310,7 +310,8 @@ jobs:
       matrix:
         # Three shards, not two (#7805): after #7769 split the browser job,
         # unit-shard (2) became the Test wall at 5m45s, of which ~2 min is
-        # setup and builds every shard repeats and ~3 min is test:data. The
+        # setup and builds every shard repeated and ~3 min is test:data. The
+        # builds now run once in unit-built-output. The
         # sharder balances by measured durations and is generic in the count,
         # so the denominator on the test:data step below is the only other
         # place this number lives. tests/ci-test-selection.test.mjs pins that
@@ -318,6 +319,62 @@ jobs:
         # reads the matrix and proves the shards together run the inventory
         # exactly once.
         shard: [1, 2, 3]
+    timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Suites such as crawlable-corpus and docs-page-dates read commit
+          # history (last-modified dates, base drift), so the graph stays
+          # complete. Blobless: file contents outside the checked-out tree are
+          # fetched only if a suite asks for one, which cuts the clone ~3x.
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
+            blog-site/package-lock.json
+      - uses: ./.github/actions/install-root-deps
+      - name: Install blog-site deps for SEO contract tests
+        # Unit-only nested install; keeps postinstall free of blog-site.
+        # Needed so blog-seo-contract can load astro.config.mjs.
+        run: npm run ci:blog-site
+      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
+      # archive's Lua runs against a real server: the relay harness stubs the
+      # EVAL and the proxy command-gate test only matches the script TEXT. That
+      # suite self-skips when the binaries are absent, so without this step the
+      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
+      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
+      # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
+      - name: Install Redis for the archive Lua suite
+        run: sudo apt-get install -y --no-install-recommends redis-server redis-tools
+      - name: Data tests without built output
+        # No build here: the unit-built-output job builds dist/ and public/pro/
+        # once and runs every suite that names them. The marker stays set, so a
+        # guarded suite that lands in a shard fails instead of skipping.
+        env:
+          WM_EXPECT_BUILT_OUTPUT: '1'
+        run: npm run test:data -- --built-output=exclude --shard=${{ matrix.shard }}/3 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+      - name: Upload data test timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-test-timings.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Everything the shards would otherwise repeat three times: the /pro and
+  # dashboard builds, the bundle budgets that read them, the suites that need
+  # built output (scripts/run-data-tests.mjs --built-output=only), and the
+  # tree-wide checks that do not depend on a shard.
+  unit-built-output:
     timeout-minutes: 15
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -337,10 +394,6 @@ jobs:
             pro-test/package-lock.json
             blog-site/package-lock.json
       - uses: ./.github/actions/install-root-deps
-      - name: Install blog-site deps for SEO contract tests
-        # Unit-only nested install; keeps postinstall free of blog-site.
-        # Needed so blog-seo-contract can load astro.config.mjs.
-        run: npm run ci:blog-site
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -418,19 +471,10 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: openapi-capacity-${{ matrix.shard }}-${{ github.run_attempt }}
+          name: openapi-capacity-${{ github.run_attempt }}
           path: ${{ runner.temp }}/openapi-capacity.json
           if-no-files-found: warn
           retention-days: 14
-      # tests/pizzint-history-redis.test.mjs is the only place the PizzINT
-      # archive's Lua runs against a real server: the relay harness stubs the
-      # EVAL and the proxy command-gate test only matches the script TEXT. That
-      # suite self-skips when the binaries are absent, so without this step the
-      # capacity refusal, newest-capture-wins compare, EXPIREAT and atomic
-      # seed-meta update were verified by nothing in CI. ubuntu-latest does not
-      # ship redis-server. Cheap (~2s) and shard-agnostic, so every shard gets it.
-      - name: Install Redis for the archive Lua suite
-        run: sudo apt-get install -y --no-install-recommends redis-server redis-tools
       - name: Build /pro artifacts for built-output tests
         # public/pro/ stopped being committed in #6898, so the suites that read
         # it need the same treatment dist/ already gets. Ordered before the
@@ -450,12 +494,12 @@ jobs:
           npm run bundle:check
           npm run bundle:check:pro
           npm run bundle:check:embed
-      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --shard=${{ matrix.shard }}/3 --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
+      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data -- --built-output=only --concurrency=4 --timings=${{ runner.temp }}/data-test-timings.jsonl
       - name: Upload data test timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: data-test-timings-${{ matrix.shard }}-${{ github.run_attempt }}
+          name: data-test-timings-built-output-${{ github.run_attempt }}
           path: ${{ runner.temp }}/data-test-timings.jsonl
           if-no-files-found: warn
           retention-days: 14
@@ -499,7 +543,7 @@ jobs:
         run: node scripts/check-desktop-build-env.mjs
 
   unit:
-    needs: [changes, unit-shards]
+    needs: [changes, unit-shards, unit-built-output]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -509,10 +553,11 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
           SHARDS_RESULT: ${{ needs.unit-shards.result }}
+          BUILT_OUTPUT_RESULT: ${{ needs.unit-built-output.result }}
         run: |
           if [ "$CHANGES_RESULT" = success ] && {
-            { [ "$CODE_CHANGED" = true ] && [ "$SHARDS_RESULT" = success ]; } ||
-            { [ "$CODE_CHANGED" = false ] && [ "$SHARDS_RESULT" = skipped ]; }
+            { [ "$CODE_CHANGED" = true ] && [ "$SHARDS_RESULT" = success ] && [ "$BUILT_OUTPUT_RESULT" = success ]; } ||
+            { [ "$CODE_CHANGED" = false ] && [ "$SHARDS_RESULT" = skipped ] && [ "$BUILT_OUTPUT_RESULT" = skipped ]; }
           }; then
             echo "All selected unit shards passed."
           else
