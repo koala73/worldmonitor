@@ -56,6 +56,19 @@ A suite belongs to the build job when its source names `dist/`, `public/pro/`,
 missing tree instead of skipping. `tests/data-test-shards.test.mjs` proves the
 shards and the build job together run the inventory exactly once.
 
+`build:pro` also installs `pro-test/node_modules`, so a suite that loads
+`pro-test/vite.config.ts` needs the build job too even though it reads no built
+file. A local proof run missed this because the worktree already had that tree;
+CI failed `sentry-release-build` with `ERR_MODULE_NOT_FOUND`. The classifier now
+matches `pro-test/node_modules` and `pro-test/vite.config`. When checking a
+split like this, compare each file's test and skip counts between CI runs from
+before and after it (download the `data-test-timings-*` artifacts), not against a
+local checkout that carries side effects from earlier installs.
+
+Measured on the PR's first green run: `unit` finished at 277 s against a
+25-PR median of about 355 s, with shards at 209-253 s and the build job at
+146 s. The browser smoke leg (about 290 s) is now the slowest check.
+
 Shards check out full history blobless (`filter: blob:none`): about 30 suites
 read commit history, not old file contents. Running those 34 files in a
 blobless clone gave the same results as a full clone and lazily fetched one
