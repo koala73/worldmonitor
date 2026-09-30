@@ -19,15 +19,20 @@ export const NEWS_DASHBOARD_META = {
 };
 
 export async function readNewsDashboard(id: unknown, corsHeaders: Record<string, string>): Promise<Response> {
+  let stage = 'fetch';
+  let status: number | undefined;
   try {
     const response = await fetch(`${ASSET_ORIGIN}/plugin/plugin.html`, {
       headers: { 'User-Agent': 'WorldMonitor-MCP/1.0' },
       redirect: 'error',
       signal: AbortSignal.timeout(5000),
     });
+    status = response.status;
+    stage = 'response';
     if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) throw new Error('Missing plugin build');
     if (!response.body) throw new Error('Missing plugin body');
     const reader = response.body.getReader();
+    stage = 'read';
     const decoder = new TextDecoder();
     let html = '';
     let bytes = 0;
@@ -41,10 +46,13 @@ export async function readNewsDashboard(id: unknown, corsHeaders: Record<string,
       }
       html += decoder.decode();
     } finally { await reader.cancel(); }
+    stage = 'document';
     if (!html.includes('id="pluginRoot"') || !html.includes('<head>')) throw new Error('Invalid plugin build');
     const text = html.replace('<head>', `<head><base href="${ASSET_ORIGIN}/">`);
     return rpcOk(id, { contents: [{ uri: NEWS_DASHBOARD_UI_URI, mimeType: UI_RESOURCE_MIME_TYPE, text, _meta: NEWS_DASHBOARD_META }] }, corsHeaders);
-  } catch {
-    return rpcError(id, -32603, 'WorldMonitor dashboard assets are unavailable. Retry after the plugin build is deployed.', corsHeaders);
+  } catch (error) {
+    const diagnostic = { stage, status, errorName: error instanceof Error ? error.name : 'UnknownError' };
+    console.error(JSON.stringify({ event: 'mcp_news_dashboard_asset_failure', ...diagnostic }));
+    return rpcError(id, -32603, 'WorldMonitor dashboard assets are unavailable. Retry after the plugin build is deployed.', corsHeaders, diagnostic);
   }
 }

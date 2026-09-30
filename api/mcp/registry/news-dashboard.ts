@@ -42,7 +42,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'analyze_news_headlines',
-  description: 'Run the existing WorldMonitor news summary or translation service on selected headlines. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
+  description: 'Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
   _outputBudgetBytes: 32768,
   _apiPaths: ['POST /api/news/v1/summarize-article'],
   inputSchema: {
@@ -72,8 +72,13 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
+    const mode = params.mode ?? 'brief';
+    const lang = params.lang ?? 'en';
+    if (mode === 'translate' && (!Array.isArray(params.headlines) || params.headlines.length !== 1)) {
+      throw new RpcValidationError('analyze_news_headlines', [{ field: 'headlines', description: 'Translation requires exactly one headline.' }]);
+    }
     const url = `${base}/api/news/v1/summarize-article`;
-    const body = JSON.stringify({ provider: 'groq', headlines: params.headlines, bodies: params.bodies ?? [], mode: params.mode ?? 'brief', lang: params.lang ?? 'en', geoContext: params.geoContext ?? '', variant: 'full', systemAppend: '' });
+    const body = JSON.stringify({ provider: 'groq', headlines: params.headlines, bodies: params.bodies ?? [], mode, lang: mode === 'translate' ? '' : lang, geoContext: params.geoContext ?? '', variant: mode === 'translate' ? lang : 'full', systemAppend: '' });
     const headers = await buildAuthHeaders(context, 'POST', url, body);
     const response = await fetchMcpDownstream(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-MCP/1.0' }, body, signal: AbortSignal.timeout(25_000) }, execution);
     await assertToolFetchOk(response, 'summarize-article');
