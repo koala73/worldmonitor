@@ -56,7 +56,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
     },
     required: ['headlines'],
     oneOf: [
-      { required: ['mode'], properties: { mode: { const: 'translate' }, headlines: { maxItems: 1 } } },
+      { required: ['mode'], properties: { mode: { const: 'translate' }, headlines: { type: 'array', maxItems: 1 } } },
       { properties: { mode: { const: 'brief' } } },
     ],
   },
