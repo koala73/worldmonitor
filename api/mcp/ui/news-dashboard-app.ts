@@ -10,9 +10,6 @@ const MAP_ASSET_ORIGINS = [
   'https://tiles.openfreemap.org',
   'https://basemaps.cartocdn.com',
   'https://*.basemaps.cartocdn.com',
-  'https://protomaps.github.io',
-  'https://pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev',
-  'https://maps.worldmonitor.app',
 ];
 export const NEWS_DASHBOARD_META = {
   ui: {

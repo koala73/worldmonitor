@@ -31,11 +31,14 @@ test.beforeAll(async () => {
 });
 
 test.describe('2D basemap with enforced CSP', () => {
-
   test('paints public basemap assets without inheriting private PMTiles configuration', async ({ page }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
+      const getExtension = WebGL2RenderingContext.prototype.getExtension;
+      WebGL2RenderingContext.prototype.getExtension = function (name: string) {
+        return name === 'WEBGL_debug_renderer_info' ? null : Reflect.apply(getExtension, this, [name]);
+      };
       const getContext = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = function (type: string, options?: object) {
         return Reflect.apply(getContext, this, [type, type.startsWith('webgl') ? { ...options, preserveDrawingBuffer: true } : options]);
@@ -49,7 +52,7 @@ test.describe('2D basemap with enforced CSP', () => {
           sources: { land: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-60, -40], [60, -40], [60, 60], [-60, 60], [-60, -40]]] } } } },
           layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#16283f' } }, { id: 'land', type: 'fill', source: 'land', paint: { 'fill-color': '#37a56f' } }],
         }, headers: { 'Access-Control-Allow-Origin': '*' } });
-        return route.fulfill({ body: url.pathname.endsWith('.json') ? '{}' : Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64'), contentType: url.pathname.endsWith('.json') ? 'application/json' : 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } });
+        return route.fulfill({ body: url.pathname.endsWith('.json') ? '{}' : await readFile(resolve('public/favico/favicon-32x32.png')), contentType: url.pathname.endsWith('.json') ? 'application/json' : 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } });
       }
       if (url.origin !== origin) return route.abort();
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' });

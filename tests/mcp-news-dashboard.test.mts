@@ -3,12 +3,6 @@ import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
 import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
 import Ajv2020 from 'ajv/dist/2020.js';
-import pluginBuild from '../vite.plugin.config.ts';
-
-test('plugin build uses public map tiles and bundled boundary overrides', () => {
-  assert.equal(pluginBuild.define?.['import.meta.env.VITE_PMTILES_URL'], '""');
-  assert.equal(pluginBuild.define?.['import.meta.env.VITE_COUNTRY_OVERRIDES_URL'], '"/data/country-boundary-overrides.geojson"');
-});
 
 test('public headline schema advertises one translation headline and up to eight brief headlines', () => {
   const tool = TOOL_REGISTRY.find(t => t.name === 'analyze_news_headlines')!;

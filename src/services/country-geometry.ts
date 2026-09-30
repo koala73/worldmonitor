@@ -20,7 +20,7 @@ const COUNTRY_GEOJSON_URL = '/data/countries.geojson';
 const COUNTRY_GEOJSON_TIMEOUT_MS = 15_000;
 
 /** Optional higher-resolution boundary overrides sourced from Natural Earth (served from R2 CDN). */
-const COUNTRY_OVERRIDES_URL = 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
+const COUNTRY_OVERRIDES_URL = import.meta.env?.VITE_COUNTRY_OVERRIDES_URL ?? 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
 const COUNTRY_OVERRIDE_TIMEOUT_MS = 3_000;
 
 /**
