@@ -1,5 +1,8 @@
 body.plugin-body { overflow: auto; height: auto; min-height: 100vh; }
 #pluginRoot { overflow: visible; height: auto; min-height: 720px; }
+@media (min-width: 900px) {
+  #pluginRoot { overflow: hidden; height: 720px; }
+}
 #pluginStatus:empty { display: none; }
 #pluginStatus { padding: 8px; }
 #pluginRoot .panel-close-btn, #pluginRoot .layer-toggles, #pluginRoot .map-legend { display: none; }

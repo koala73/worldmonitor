@@ -9,7 +9,7 @@ import { NEWS_DASHBOARD_UI_URI } from '../ui/news-dashboard-app';
 export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   name: 'open_news_dashboard',
   title: 'WorldMonitor news and maps',
-  description: 'Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. Map view arguments are applied by the mounted app.',
+  description: 'Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. View arguments configure a rendered instance when delivered by the host. requestedView confirms requested settings, not the applied state of an already-open map.',
   _uiResourceUri: NEWS_DASHBOARD_UI_URI,
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 1048576,
@@ -42,7 +42,7 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   },
 }, {
   name: 'analyze_news_headlines',
-  description: 'Run the existing WorldMonitor news summary or translation service on selected headlines. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
+  description: 'Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.',
   _outputBudgetBytes: 32768,
   _apiPaths: ['POST /api/news/v1/summarize-article'],
   inputSchema: {
@@ -55,6 +55,10 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
       geoContext: { type: 'string', maxLength: 100 },
     },
     required: ['headlines'],
+    oneOf: [
+      { required: ['mode'], properties: { mode: { const: 'translate' }, headlines: { type: 'array', maxItems: 1 } } },
+      { properties: { mode: { const: 'brief' } } },
+    ],
   },
   outputSchema: {
     type: 'object',
@@ -72,8 +76,13 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   _execute: async (params, base, context, execution) => {
+    const mode = params.mode ?? 'brief';
+    const lang = params.lang ?? 'en';
+    if (mode === 'translate' && (!Array.isArray(params.headlines) || params.headlines.length !== 1)) {
+      throw new RpcValidationError('analyze_news_headlines', [{ field: 'headlines', description: 'Translation requires exactly one headline.' }]);
+    }
     const url = `${base}/api/news/v1/summarize-article`;
-    const body = JSON.stringify({ provider: 'groq', headlines: params.headlines, bodies: params.bodies ?? [], mode: params.mode ?? 'brief', lang: params.lang ?? 'en', geoContext: params.geoContext ?? '', variant: 'full', systemAppend: '' });
+    const body = JSON.stringify({ provider: 'groq', headlines: params.headlines, bodies: params.bodies ?? [], mode, lang: mode === 'translate' ? '' : lang, geoContext: params.geoContext ?? '', variant: mode === 'translate' ? lang : 'full', systemAppend: '' });
     const headers = await buildAuthHeaders(context, 'POST', url, body);
     const response = await fetchMcpDownstream(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor-MCP/1.0' }, body, signal: AbortSignal.timeout(25_000) }, execution);
     await assertToolFetchOk(response, 'summarize-article');

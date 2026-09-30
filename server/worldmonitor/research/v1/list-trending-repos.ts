@@ -9,7 +9,7 @@ import type {
   ListTrendingReposResponse,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
-import { clampInt } from '../../../_shared/constants';
+import { resolvePageSize } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
@@ -22,7 +22,7 @@ export async function listTrendingRepos(
   try {
     const language = req.language || 'python';
     const period = req.period || 'daily';
-    const pageSize = clampInt(req.pageSize, 50, 1, 100);
+    const pageSize = resolvePageSize(req.pageSize, 50, 100);
     const seedKey = `${SEED_KEY_PREFIX}:${language}:${period}:50`;
     const result = await getCachedJson(seedKey, true) as ListTrendingReposResponse | null;
     if (!result?.repos?.length) return markNoStoreFallbackResponse(ctx.request, { repos: [], pagination: undefined });

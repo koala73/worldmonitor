@@ -94,6 +94,7 @@ const MAX_RECENT = 8;
 
 interface SearchModalOptions {
   placeholder?: string;
+  scopes?: readonly [SearchScope, ...SearchScope[]];
 }
 
 // Trailing-debounce window for per-keystroke search (#4537). Long enough to
@@ -176,11 +177,13 @@ export class SearchModal {
   /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
   private showingAllCommands = false;
   private activeScope: SearchScope = 'all';
+  private readonly scopes: readonly [SearchScope, ...SearchScope[]];
   private quickLaunchExamples: string[] = [];
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
     this.placeholder = options?.placeholder || t('modals.search.placeholder');
+    this.scopes = options?.scopes ?? SEARCH_SCOPES;
     this.isMobile = isMobileDevice();
     this.loadRecentSearches();
   }
@@ -377,7 +380,7 @@ export class SearchModal {
     this.flightSearchFired = false;
     this.selectedIndex = 0;
     this.lastSearchedQuery = '';
-    this.activeScope = 'all';
+    this.activeScope = this.scopes[0];
     this.quickLaunchExamples = [];
     this.createModal();
     if (this.overlay) {
@@ -479,11 +482,12 @@ export class SearchModal {
   }
 
   private createModal(): void {
+    const hasCommands = this.getVisibleCommandCount() > 0;
     this.overlay = document.createElement('div');
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
     declareOverlay(this.overlay, { reload: 'blocking' });
-    this.overlay.setAttribute('aria-label', 'World Monitor intelligence command deck');
+    this.overlay.setAttribute('aria-label', hasCommands ? 'World Monitor intelligence command deck' : this.placeholder);
     this.overlay.dataset.searchScope = this.activeScope;
     // Claim human authority in capture phase, before a click can close the
     // palette or start a new selection. Keyboard-generated clicks have no
@@ -499,7 +503,7 @@ export class SearchModal {
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
           <div class="search-mobile-ident">
-            <span>WM // COMMAND DECK</span>
+            <span>WM // ${hasCommands ? 'COMMAND DECK' : escapeHtml(this.placeholder)}</span>
             <span class="search-index-state"><i></i> LIVE</span>
           </div>
           <div class="search-sheet-header">
@@ -541,7 +545,7 @@ export class SearchModal {
           <div class="search-command-topline">
             <div class="search-command-ident">
               <span class="search-command-mark" aria-hidden="true"><i></i></span>
-              <span>WM // INTELLIGENCE COMMAND DECK</span>
+              <span>WM // ${hasCommands ? 'INTELLIGENCE COMMAND DECK' : escapeHtml(this.placeholder)}</span>
               <span class="search-index-state"><i></i> INDEX ONLINE</span>
             </div>
             <div class="search-command-metrics" aria-label="Search index status">
@@ -609,13 +613,13 @@ export class SearchModal {
     this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
       button.addEventListener('click', () => {
         const scope = button.dataset.searchScope as SearchScope | undefined;
-        if (scope && SEARCH_SCOPES.includes(scope)) this.setActiveScope(scope);
+        if (scope && this.scopes.includes(scope)) this.setActiveScope(scope);
       });
     });
   }
 
   private renderScopeMarkup(): string {
-    const buttons = SEARCH_SCOPES.map((scope) => `
+    const buttons = this.scopes.map((scope) => `
       <button
         type="button"
         class="search-scope${scope === this.activeScope ? ' active' : ''}"
@@ -803,12 +807,12 @@ export class SearchModal {
     const tipLimit = this.activeScope === 'all'
       ? (this.isMobile ? 3 : 7)
       : (this.isMobile ? 2 : 4);
-    const tips = allTips[this.activeScope].slice(0, tipLimit);
+    const tips = this.getVisibleCommandCount() > 0 ? allTips[this.activeScope].slice(0, tipLimit) : [];
     this.quickLaunchExamples = tips.map((tip) => t(tip.exampleKey));
 
     let html = `
       <div class="search-section-header search-launch-header">
-        <span>${t('modals.search.empty')}</span>
+        <span>${this.getVisibleCommandCount() > 0 ? t('modals.search.empty') : escapeHtml(this.placeholder)}</span>
         <span>${escapeHtml(SCOPE_LABELS[this.activeScope])} channel</span>
       </div>
       <div class="search-launch-grid">`;
@@ -852,7 +856,7 @@ export class SearchModal {
   }
 
   private appendSeeAllCommandsLink(): void {
-    if (!this.resultsList) return;
+    if (!this.resultsList || this.getVisibleCommandCount() === 0) return;
     const link = document.createElement('a');
     link.href = '#';
     link.className = 'search-all-commands-link';
@@ -1113,7 +1117,7 @@ export class SearchModal {
       return;
     }
 
-    const commands = getAllCommands();
+    const commands = getAllCommands().filter(command => this.commandVisibleFn(command));
     const byId = new Map(commands.map((cmd) => [cmd.id, cmd]));
     // All Intel restores the pre-deck country-first + view/actions mix; other
     // channels stay scoped via idleChipCommandIds.

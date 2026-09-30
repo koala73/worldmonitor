@@ -97,7 +97,7 @@
     },
     {
       "name": "get_economic_data",
-      "description": "China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.",
+      "description": "Read cached rates, calendars and fuel prices with official-only 12-series China macro (no proxies, see launchReady). Includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, US federal spending awards, earnings, COT positioning, BIS household debt service ratios, and BIS residential/commercial property prices. Optional China macro data has official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Requested datasets may be unavailable or stale; this tool reads cached data and does not fetch fresh upstream releases.",
       "_meta": {
         "worldmonitor/access": "free-account"
       }
@@ -426,14 +426,14 @@
     },
     {
       "name": "get_supply_vulnerabilities",
-      "description": "An absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.",
+      "description": "Return country commodity supply risks, where an absent score means insufficient evidence, never zero risk. Returns one country commodity-vulnerability portfolio with absolute 0-100 bands, concentration, transit, buffer, coverage, staleness, method version, and source provenance; read state and reasons to see why a score is absent.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "get_chokepoint_dependencies",
-      "description": "An absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.",
+      "description": "Return country commodity dependencies by chokepoint, where an absent score means insufficient coverage, never zero risk. Returns the highest-scoring country and commodity dependencies for one maritime chokepoint, from the same snapshot as country vulnerabilities; read state and reasons before drawing conclusions.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
@@ -559,14 +559,14 @@
     },
     {
       "name": "open_news_dashboard",
-      "description": "Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. Map view arguments are applied by the mounted app.",
+      "description": "Open WorldMonitor with its news category panels and interactive map. Returns the current full dashboard feed digest, including publication dates, source provenance inputs, coordinates and coverage. Empty arguments open the dashboard. View arguments configure a rendered instance when delivered by the host. requestedView confirms requested settings, not the applied state of an already-open map.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
     },
     {
       "name": "analyze_news_headlines",
-      "description": "Run the existing WorldMonitor news summary or translation service on selected headlines. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.",
+      "description": "Summarize selected headlines or translate one headline into the target language specified by lang. Requires the same authenticated access as the dashboard service. Supply article snippets as bodies to ground summaries.",
       "_meta": {
         "worldmonitor/access": "subscription"
       }
