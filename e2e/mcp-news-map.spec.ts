@@ -33,6 +33,7 @@ test.beforeAll(async () => {
 test.describe('2D basemap with enforced CSP', () => {
   test('paints public basemap assets without inheriting private PMTiles configuration', async ({ page }, testInfo) => {
     const errors: string[] = [];
+    const mapPayload = { ...payload, categories: Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`region-${index}`, payload.categories.politics])) };
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
       const getExtension = WebGL2RenderingContext.prototype.getExtension;
@@ -69,8 +70,10 @@ test.describe('2D basemap with enforced CSP', () => {
     await page.setContent(`<iframe title="WorldMonitor plugin" style="border:0;width:100%;height:1000px" sandbox="allow-scripts allow-same-origin"></iframe><script>
       const frame=document.querySelector('iframe');window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const m=e.data;const send=o=>frame.contentWindow.postMessage({jsonrpc:'2.0',...o},'*');
       if(m.method==='ui/initialize')send({id:m.id,result:{hostCapabilities:{},hostContext:{theme:'dark'}}});
-      if(m.method==='ui/notifications/initialized')send({method:'ui/notifications/tool-result',params:{structuredContent:${JSON.stringify(payload)}}});});frame.srcdoc=${JSON.stringify(strictHtml).replace(/</g, '\\u003c')};</script>`);
+      if(m.method==='ui/notifications/initialized')send({method:'ui/notifications/tool-result',params:{structuredContent:${JSON.stringify(mapPayload)}}});});frame.srcdoc=${JSON.stringify(strictHtml).replace(/</g, '\\u003c')};</script>`);
     const app = page.frameLocator('iframe');
+    await expect(app.locator('.panel')).toHaveCount(12);
+    await expect.poll(() => app.locator('#mapSection').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(1000);
     await expect(app.locator('#deckgl-basemap canvas')).toBeVisible();
     await expect.poll(() => app.locator('#deckgl-basemap canvas').evaluate((element) => {
       const gl = (element as HTMLCanvasElement).getContext('webgl2');
