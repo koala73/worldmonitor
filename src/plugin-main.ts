@@ -264,7 +264,13 @@ async function start(): Promise<void> {
   });
   document.addEventListener('click', event => {
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
-    if (!link || !/^https?:$/.test(new URL(link.href).protocol)) return;
+    if (!link) return;
+    if (!link.getAttribute('href')) {
+      event.preventDefault();
+      status.textContent = 'This article source link is unavailable.';
+      return;
+    }
+    if (!/^https?:$/.test(new URL(link.href).protocol)) return;
     event.preventDefault();
     if (openLinks) void request('ui/open-link', { url: link.href }).catch(() => { status.textContent = 'The host could not open this link.'; });
     else status.textContent = 'Opening links is unavailable in this host.';
