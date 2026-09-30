@@ -184,10 +184,6 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
    *  Falls back to a generic Bearer default so custom server key input works. */
   const DEFAULT_API_KEY_HEADER = 'Authorization: Bearer {key}';
   let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? (initialSimpleMode ? DEFAULT_API_KEY_HEADER : '');
-  /** The selected preset declares an API key template, so a panel without
-   *  credentials would be rejected by the upstream on every refresh
-   *  (WORLDMONITOR-172). Custom servers keep the key optional. */
-  let keyRequired = !!matchingPreset?.apiKeyHeader;
 
   const urlInput = modal.querySelector('.mcp-server-url') as HTMLInputElement;
   const apiKeyGroup = modal.querySelector('.mcp-api-key-group') as HTMLElement;
@@ -220,14 +216,29 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     return parseAuthHeader(authInput.value);
   }
 
+  /** A panel saved to a keyed preset without that preset's key is rejected by
+   *  the upstream on every refresh (WORLDMONITOR-172). The requirement follows
+   *  the URL being saved, not the card last clicked, and only a non-empty value
+   *  in the preset's own header satisfies it. Custom servers keep keys optional. */
+  function hasRequiredKey(): boolean {
+    const template = MCP_PRESETS.find(p => p.serverUrl === urlInput.value.trim())?.apiKeyHeader;
+    if (!template) return true;
+    const headerName = template.slice(0, template.indexOf(':')).trim();
+    // Header names are case-insensitive; the advanced field may spell it either way.
+    const entry = Object.entries(getEffectiveHeaders())
+      .find(([k]) => k.toLowerCase() === headerName.toLowerCase());
+    return !!entry && extractKeyFromHeaders({ [headerName]: entry[1] }, template) !== null;
+  }
+
   function canAdd(): boolean {
-    return selectedTool !== null && (!keyRequired || Object.keys(getEffectiveHeaders()).length > 0);
+    return selectedTool !== null && hasRequiredKey();
   }
 
   function syncAddEnabled(): void {
     addBtn.disabled = !canAdd();
   }
 
+  urlInput.addEventListener('input', syncAddEnabled);
   apiKeyInput.addEventListener('input', syncAddEnabled);
   authInput.addEventListener('input', syncAddEnabled);
 
@@ -288,7 +299,6 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         const cardApiKeyHeader = matchedCard.dataset.apiKeyHeader ?? '';
         const cardAuthNote = matchedCard.dataset.authNote ?? '';
         const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;
-        keyRequired = cardApiKeyHeader !== '';
         if (cardApiKeyHeader) {
           showSimpleMode(fakePreset);
         } else {
@@ -300,7 +310,6 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         }
       } else {
         presetCards.forEach(c => c.classList.remove('selected'));
-        keyRequired = false;
         activeApiKeyHeader = DEFAULT_API_KEY_HEADER;
         apiKeyGroup.style.display = '';
         apiKeyHint.textContent = '';
@@ -320,7 +329,6 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
 
       const cardApiKeyHeader = card.dataset.apiKeyHeader ?? '';
       const cardAuthNote = card.dataset.authNote ?? '';
-      keyRequired = cardApiKeyHeader !== '';
 
       if (cardApiKeyHeader) {
         const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;

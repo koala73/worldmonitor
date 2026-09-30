@@ -86,6 +86,56 @@ describe('MCP connect modal — keyed presets', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  it('only counts a non-empty value in the preset header, in any case', () => {
+    openMcpConnectModal({ onComplete: vi.fn() });
+    pickPreset(TAVILY!.serverUrl);
+    q<HTMLButtonElement>('.mcp-to-advanced').click();
+    const auth = q<HTMLInputElement>('.mcp-auth-header');
+    const addBtn = q<HTMLButtonElement>('.mcp-add-btn');
+    typeInto(auth, 'X-Foo: bar');
+    expect(addBtn.disabled, 'an unrelated header is not the key').toBe(true);
+    typeInto(auth, 'Authorization:');
+    expect(addBtn.disabled, 'an empty Authorization value is not the key').toBe(true);
+    typeInto(auth, 'Authorization: Bearer');
+    expect(addBtn.disabled, 'the scheme alone is not the key').toBe(true);
+    typeInto(auth, 'authorization: Bearer tvly-lower');
+    expect(addBtn.disabled, 'header names are case-insensitive').toBe(false);
+  });
+
+  it('re-evaluates the requirement when an edited panel changes URL', () => {
+    const onComplete = vi.fn();
+    openMcpConnectModal({
+      onComplete,
+      existingSpec: {
+        id: 'mcp-x', title: 'Tavily', serverUrl: TAVILY!.serverUrl,
+        customHeaders: { Authorization: 'Bearer tvly-old' },
+        toolName: 'tavily_search', toolArgs: {}, refreshIntervalMs: 60_000, createdAt: 1, updatedAt: 1,
+      },
+    });
+    const url = q<HTMLInputElement>('.mcp-server-url');
+    const addBtn = q<HTMLButtonElement>('.mcp-add-btn');
+    typeInto(q<HTMLInputElement>('.mcp-api-key'), '');
+    expect(addBtn.disabled).toBe(true);
+    typeInto(url, 'https://my-mcp.example.com/mcp');
+    expect(addBtn.disabled, 'a custom server keeps the key optional').toBe(false);
+    typeInto(url, TAVILY!.serverUrl);
+    expect(addBtn.disabled, 'moving back to the keyed preset requires the key again').toBe(true);
+  });
+
+  it('requires the key when a keyless panel is edited to a keyed preset URL', () => {
+    openMcpConnectModal({
+      onComplete: vi.fn(),
+      existingSpec: {
+        id: 'mcp-y', title: 'Custom', serverUrl: 'https://my-mcp.example.com/mcp',
+        customHeaders: {}, toolName: 'status', toolArgs: {}, refreshIntervalMs: 60_000, createdAt: 1, updatedAt: 1,
+      },
+    });
+    const addBtn = q<HTMLButtonElement>('.mcp-add-btn');
+    expect(addBtn.disabled).toBe(false);
+    typeInto(q<HTMLInputElement>('.mcp-server-url'), TAVILY!.serverUrl);
+    expect(addBtn.disabled).toBe(true);
+  });
+
   it('still adds a keyless preset straight away', () => {
     expect(KEYLESS).toBeTruthy();
     const onComplete = vi.fn();
