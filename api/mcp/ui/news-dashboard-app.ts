@@ -1,5 +1,6 @@
 import { rpcError, rpcOk } from '../rpc';
 import { UI_RESOURCE_MIME_TYPE } from './shell';
+import { captureSilentError } from '../../_sentry-edge.js';
 
 export const NEWS_DASHBOARD_UI_URI = 'ui://worldmonitor/news-dashboard.html';
 const previewHost = process.env.VERCEL_ENV === 'preview' ? process.env.VERCEL_URL : undefined;
@@ -52,6 +53,7 @@ export async function readNewsDashboard(id: unknown, corsHeaders: Record<string,
     return rpcOk(id, { contents: [{ uri: NEWS_DASHBOARD_UI_URI, mimeType: UI_RESOURCE_MIME_TYPE, text, _meta: NEWS_DASHBOARD_META }] }, corsHeaders);
   } catch (error) {
     const diagnostic = { stage, status, errorName: error instanceof Error ? error.name : 'UnknownError' };
+    captureSilentError(new Error('News dashboard assets unavailable'), { tags: { route: 'mcp', step: stage }, extra: diagnostic });
     console.error(JSON.stringify({ event: 'mcp_news_dashboard_asset_failure', ...diagnostic }));
     return rpcError(id, -32603, 'WorldMonitor dashboard assets are unavailable. Retry after the plugin build is deployed.', corsHeaders, diagnostic);
   }
